@@ -13,6 +13,12 @@ function Get-MimStatus {
     return Invoke-MimApi -BaseUrl $BaseUrl -Method GET -Path "/status" -TimeoutSeconds $TimeoutSeconds
 }
 
+function Get-MimManifest {
+    param([Parameter(Mandatory = $true)][string]$BaseUrl, [int]$TimeoutSeconds = 15)
+    $response = Invoke-MimApi -BaseUrl $BaseUrl -Method GET -Path "/manifest" -TimeoutSeconds $TimeoutSeconds
+    return Normalize-MimManifestResponse -InputObject $response
+}
+
 function New-MimObjective {
     param([Parameter(Mandatory = $true)][string]$BaseUrl, [Parameter(Mandatory = $true)]$Objective, [int]$TimeoutSeconds = 15)
     $response = Invoke-MimApi -BaseUrl $BaseUrl -Method POST -Path "/objectives" -TimeoutSeconds $TimeoutSeconds -Body (Convert-ToMimObjective -Objective $Objective)
@@ -68,6 +74,16 @@ function New-MimReview {
     )
     $response = Invoke-MimApi -BaseUrl $BaseUrl -Method POST -Path "/reviews" -TimeoutSeconds $TimeoutSeconds -Body (Convert-ToMimReview -Review $Review -RemoteTaskId $RemoteTaskId)
     return Normalize-MimReviewResponse -InputObject $response
+}
+
+function New-MimJournalEntry {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [Parameter(Mandatory = $true)]$Entry,
+        [int]$TimeoutSeconds = 15
+    )
+    $response = Invoke-MimApi -BaseUrl $BaseUrl -Method POST -Path "/journal" -TimeoutSeconds $TimeoutSeconds -Body (Convert-ToMimJournalEntry -Entry $Entry)
+    return Normalize-MimJournalResponse -InputObject $response
 }
 
 function Get-MimJournal {

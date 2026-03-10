@@ -1,0 +1,163 @@
+{
+    "generated_at":  "2026-03-10T01:44:48.6915832Z",
+    "repository":  {
+                       "root":  "E:\\TOD",
+                       "branch":  "main",
+                       "commit":  "a71b2c7"
+                   },
+    "top_level_folders":  [
+                              {
+                                  "Name":  "client",
+                                  "file_count":  2
+                              },
+                              {
+                                  "Name":  "docs",
+                                  "file_count":  5
+                              },
+                              {
+                                  "Name":  "scripts",
+                                  "file_count":  3
+                              },
+                              {
+                                  "Name":  "tod",
+                                  "file_count":  21
+                              }
+                          ],
+    "directories":  [
+                        "client",
+                        "docs",
+                        "scripts",
+                        "tod",
+                        "tod\\config",
+                        "tod\\data",
+                        "tod\\out",
+                        "tod\\state",
+                        "tod\\templates",
+                        "tod\\out\\prompts",
+                        "tod\\out\\prompts-v2"
+                    ],
+    "files":  [
+                  ".env",
+                  ".gitignore",
+                  "README.md",
+                  "TOD.code-workspace",
+                  "client\\mim_api_client.ps1",
+                  "client\\mim_api_helpers.ps1",
+                  "docs\\codex-result-format-v1.md",
+                  "docs\\mim-manifest-contract-v1.md",
+                  "docs\\mim-tod-alpha-link.md",
+                  "docs\\tod-mim-shared-contract-v1.md",
+                  "docs\\tod-orchestrator-v1-spec.md",
+                  "scripts\\Connect-Mim.ps1",
+                  "scripts\\TOD-Engineer.ps1",
+                  "scripts\\TOD.ps1",
+                  "tod\\config\\sync-policy.json",
+                  "tod\\config\\tod-config.json",
+                  "tod\\data\\engineering-memory.json",
+                  "tod\\data\\module-summaries.json",
+                  "tod\\data\\repo-index.json",
+                  "tod\\data\\sample-codex-result.json",
+                  "tod\\data\\sample-manifest.json",
+                  "tod\\data\\state.json",
+                  "tod\\out\\prompts\\4.md",
+                  "tod\\out\\prompts\\5.md",
+                  "tod\\out\\prompts\\6.md",
+                  "tod\\out\\prompts\\7.md",
+                  "tod\\out\\prompts\\8.md",
+                  "tod\\out\\prompts\\TSK-0001.md",
+                  "tod\\out\\prompts-v2\\10.md",
+                  "tod\\out\\prompts-v2\\16.md",
+                  "tod\\out\\prompts-v2\\17.md",
+                  "tod\\state\\engineering_memory.json",
+                  "tod\\state\\module_summaries.json",
+                  "tod\\state\\repo_index.json",
+                  "tod\\templates\\codex-task-prompt.md"
+              ],
+    "files_by_extension":  [
+                               {
+                                   "extension":  ".md",
+                                   "count":  16
+                               },
+                               {
+                                   "extension":  ".json",
+                                   "count":  11
+                               },
+                               {
+                                   "extension":  ".ps1",
+                                   "count":  5
+                               },
+                               {
+                                   "extension":  ".env",
+                                   "count":  1
+                               },
+                               {
+                                   "extension":  ".gitignore",
+                                   "count":  1
+                               },
+                               {
+                                   "extension":  ".code-workspace",
+                                   "count":  1
+                               }
+                           ],
+    "important_files":  [
+                            "README.md",
+                            "client\\mim_api_client.ps1",
+                            "client\\mim_api_helpers.ps1",
+                            "scripts\\TOD-Engineer.ps1",
+                            "scripts\\TOD.ps1",
+                            "tod\\config\\tod-config.json",
+                            "tod/data/state.json",
+                            "tod/data/engineering-memory.json",
+                            "tod/data/repo-index.json",
+                            "tod/data/module-summaries.json"
+                        ],
+    "entry_points":  [
+                         "scripts\\Connect-Mim.ps1",
+                         "scripts\\TOD-Engineer.ps1",
+                         "scripts\\TOD.ps1"
+                     ],
+    "scripts":  [
+                    "client\\mim_api_client.ps1",
+                    "client\\mim_api_helpers.ps1",
+                    "scripts\\Connect-Mim.ps1",
+                    "scripts\\TOD-Engineer.ps1",
+                    "scripts\\TOD.ps1"
+                ],
+    "key_files":  [
+                      "README.md",
+                      "client\\mim_api_client.ps1",
+                      "client\\mim_api_helpers.ps1",
+                      "scripts\\TOD-Engineer.ps1",
+                      "scripts\\TOD.ps1",
+                      "tod\\config\\tod-config.json"
+                  ],
+    "test_files":  [
+                       "docs\\tod-orchestrator-v1-spec.md"
+                   ],
+    "docs_files":  [
+                       "README.md",
+                       "docs\\codex-result-format-v1.md",
+                       "docs\\mim-manifest-contract-v1.md",
+                       "docs\\mim-tod-alpha-link.md",
+                       "docs\\tod-mim-shared-contract-v1.md",
+                       "docs\\tod-orchestrator-v1-spec.md",
+                       "tod\\out\\prompts\\4.md",
+                       "tod\\out\\prompts\\5.md",
+                       "tod\\out\\prompts\\6.md",
+                       "tod\\out\\prompts\\7.md",
+                       "tod\\out\\prompts\\8.md",
+                       "tod\\out\\prompts\\TSK-0001.md",
+                       "tod\\out\\prompts-v2\\10.md",
+                       "tod\\out\\prompts-v2\\16.md",
+                       "tod\\out\\prompts-v2\\17.md",
+                       "tod\\templates\\codex-task-prompt.md"
+                   ],
+    "sync_status":  {
+                        "stale":  false,
+                        "stale_reason":  "sync_current",
+                        "manifest_repo_signature":  "sha256:0d7d0bd372fc3eef37afc5d5e8ec016b4cfc57b4c1cc11687c659070869428d9",
+                        "reindex_triggered":  false,
+                        "reindex_succeeded":  false,
+                        "updated_at":  "2026-03-10T01:45:14.1016265Z"
+                    }
+}

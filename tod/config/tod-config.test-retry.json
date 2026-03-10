@@ -1,0 +1,59 @@
+{
+    "mim_base_url":  "http://192.168.1.120:8000",
+    "mode":  "local",
+    "timeout_seconds":  15,
+    "fallback_to_local":  true,
+    "execution_engine":  {
+                             "active":  "local",
+                             "fallback":  "codex",
+                             "allow_fallback":  true,
+                             "retry_policy":  {
+                                                  "enabled":  true,
+                                                  "max_attempts_per_engine":  2,
+                                                  "max_attempts_by_category":  {
+                                                                                   "code_change":  1,
+                                                                                   "review_only":  2,
+                                                                                   "refactor":  2
+                                                                               },
+                                                  "backoff_ms":  200,
+                                                  "retry_on_status":  [
+                                                                          "failed",
+                                                                          "error",
+                                                                          "not_implemented"
+                                                                      ],
+                                                  "no_retry_failure_categories":  [
+                                                                                      "auth",
+                                                                                      "capability"
+                                                                                  ],
+                                                  "backoff_by_failure_category":  {
+                                                                                      "timeout":  2,
+                                                                                      "network":  2,
+                                                                                      "rate_limit":  3
+                                                                                  }
+                                              },
+                             "routing_policy":  {
+                                                    "enabled":  true,
+                                                    "min_runs":  1,
+                                                    "min_success_rate":  75,
+                                                    "improvement_margin":  5,
+                                                    "source":  "routing_policy_v1",
+                                                    "allow_placeholder_for_code_change":  false,
+                                                    "prefer_stable_on_sync_warn":  true,
+                                                    "block_on_contract_drift":  true,
+                                                    "recent_failure_window":  5,
+                                                    "recent_failure_threshold":  2,
+                                                    "min_category_records_light":  10,
+                                                    "min_category_records_strong":  20,
+                                                    "weights":  {
+                                                                    "availability":  0.25,
+                                                                    "task_category_support":  0.2,
+                                                                    "historical_success":  0.2,
+                                                                    "recent_fallback":  0.1,
+                                                                    "review_quality":  0.05,
+                                                                    "failure_rate":  0.1,
+                                                                    "review_corrections":  0.05,
+                                                                    "latency":  0.05
+                                                                }
+                                                }
+                         }
+}

@@ -1,0 +1,243 @@
+{
+    "generated_at":  "2026-03-10T01:19:54.5627205Z",
+    "repository":  {
+                       "root":  "E:\\TOD",
+                       "branch":  "main",
+                       "commit":  "a71b2c7"
+                   },
+    "modules":  [
+                    {
+                        "path":  "README.md",
+                        "summary":  "Module summary generated from static scan and naming heuristics.",
+                        "exports_functions":  [
+
+                                              ],
+                        "classes":  [
+
+                                    ],
+                        "dependencies_imports":  [
+
+                                                 ],
+                        "related_modules":  [
+                                                "tod/data/module-summaries.json"
+                                            ],
+                        "category":  "module",
+                        "confidence":  "medium",
+                        "last_indexed":  "2026-03-10T01:19:54.4802272Z"
+                    },
+                    {
+                        "path":  "client/mim_api_client.ps1",
+                        "summary":  "Module summary generated from static scan and naming heuristics.",
+                        "exports_functions":  [
+
+                                              ],
+                        "classes":  [
+
+                                    ],
+                        "dependencies_imports":  [
+
+                                                 ],
+                        "related_modules":  [
+                                                "client/mim_api_helpers.ps1",
+                                                "tod/data/module-summaries.json"
+                                            ],
+                        "category":  "module",
+                        "confidence":  "medium",
+                        "last_indexed":  "2026-03-10T01:19:54.4835073Z"
+                    },
+                    {
+                        "path":  "client/mim_api_helpers.ps1",
+                        "summary":  "Module summary generated from static scan and naming heuristics.",
+                        "exports_functions":  [
+
+                                              ],
+                        "classes":  [
+
+                                    ],
+                        "dependencies_imports":  [
+
+                                                 ],
+                        "related_modules":  [
+                                                "client/mim_api_client.ps1",
+                                                "tod/data/module-summaries.json"
+                                            ],
+                        "category":  "module",
+                        "confidence":  "medium",
+                        "last_indexed":  "2026-03-10T01:19:54.4857421Z"
+                    },
+                    {
+                        "path":  "scripts/TOD-Engineer.ps1",
+                        "summary":  "Module summary generated from static scan and naming heuristics.",
+                        "exports_functions":  [
+
+                                              ],
+                        "classes":  [
+
+                                    ],
+                        "dependencies_imports":  [
+
+                                                 ],
+                        "related_modules":  [
+                                                "scripts/TOD.ps1",
+                                                "scripts/Connect-Mim.ps1",
+                                                "tod/data/engineering-memory.json",
+                                                "tod/data/module-summaries.json"
+                                            ],
+                        "category":  "module",
+                        "confidence":  "medium",
+                        "last_indexed":  "2026-03-10T01:19:54.4897151Z"
+                    },
+                    {
+                        "path":  "scripts/TOD.ps1",
+                        "summary":  "Module summary generated from static scan and naming heuristics.",
+                        "exports_functions":  [
+
+                                              ],
+                        "classes":  [
+
+                                    ],
+                        "dependencies_imports":  [
+
+                                                 ],
+                        "related_modules":  [
+                                                "scripts/TOD-Engineer.ps1",
+                                                "scripts/Connect-Mim.ps1",
+                                                "tod/data/module-summaries.json"
+                                            ],
+                        "category":  "module",
+                        "confidence":  "medium",
+                        "last_indexed":  "2026-03-10T01:19:54.4917892Z"
+                    },
+                    {
+                        "path":  "tod/config/tod-config.json",
+                        "summary":  "Module summary generated from static scan and naming heuristics.",
+                        "exports_functions":  [
+
+                                              ],
+                        "classes":  [
+
+                                    ],
+                        "dependencies_imports":  [
+
+                                                 ],
+                        "related_modules":  [
+                                                "tod/data/state.json",
+                                                "tod/data/engineering-memory.json",
+                                                "tod/data/repo-index.json",
+                                                "tod/data/module-summaries.json"
+                                            ],
+                        "category":  "module",
+                        "confidence":  "medium",
+                        "last_indexed":  "2026-03-10T01:19:54.4938802Z"
+                    },
+                    {
+                        "path":  "scripts/Connect-Mim.ps1",
+                        "summary":  "Module summary generated from static scan and naming heuristics.",
+                        "exports_functions":  [
+
+                                              ],
+                        "classes":  [
+
+                                    ],
+                        "dependencies_imports":  [
+
+                                                 ],
+                        "related_modules":  [
+                                                "scripts/TOD-Engineer.ps1",
+                                                "scripts/TOD.ps1",
+                                                "tod/data/module-summaries.json"
+                                            ],
+                        "category":  "module",
+                        "confidence":  "medium",
+                        "last_indexed":  "2026-03-10T01:19:54.4960960Z"
+                    },
+                    {
+                        "path":  "tod/data/state.json",
+                        "summary":  "Module summary generated from static scan and naming heuristics.",
+                        "exports_functions":  [
+
+                                              ],
+                        "classes":  [
+
+                                    ],
+                        "dependencies_imports":  [
+
+                                                 ],
+                        "related_modules":  [
+                                                "tod/config/tod-config.json",
+                                                "tod/data/engineering-memory.json",
+                                                "tod/data/repo-index.json",
+                                                "tod/data/module-summaries.json"
+                                            ],
+                        "category":  "state",
+                        "confidence":  "medium",
+                        "last_indexed":  "2026-03-10T01:19:54.4992800Z"
+                    },
+                    {
+                        "path":  "tod/data/engineering-memory.json",
+                        "summary":  "Module summary generated from static scan and naming heuristics.",
+                        "exports_functions":  [
+
+                                              ],
+                        "classes":  [
+
+                                    ],
+                        "dependencies_imports":  [
+
+                                                 ],
+                        "related_modules":  [
+                                                "tod/config/tod-config.json",
+                                                "tod/data/state.json",
+                                                "tod/data/repo-index.json",
+                                                "tod/data/module-summaries.json"
+                                            ],
+                        "category":  "state",
+                        "confidence":  "medium",
+                        "last_indexed":  "2026-03-10T01:19:54.5018101Z"
+                    },
+                    {
+                        "path":  "tod/data/repo-index.json",
+                        "summary":  "Module summary generated from static scan and naming heuristics.",
+                        "exports_functions":  [
+
+                                              ],
+                        "classes":  [
+
+                                    ],
+                        "dependencies_imports":  [
+
+                                                 ],
+                        "related_modules":  [
+                                                "tod/config/tod-config.json",
+                                                "tod/data/state.json",
+                                                "tod/data/engineering-memory.json",
+                                                "tod/data/module-summaries.json"
+                                            ],
+                        "category":  "state",
+                        "confidence":  "medium",
+                        "last_indexed":  "2026-03-10T01:19:54.5049378Z"
+                    },
+                    {
+                        "path":  "tod/data/module-summaries.json",
+                        "summary":  "Module summary generated from static scan and naming heuristics.",
+                        "exports_functions":  [
+
+                                              ],
+                        "classes":  [
+
+                                    ],
+                        "dependencies_imports":  [
+
+                                                 ],
+                        "related_modules":  [
+                                                "tod/config/tod-config.json",
+                                                "tod/data/state.json",
+                                                "tod/data/engineering-memory.json",
+                                                "tod/data/repo-index.json"
+                                            ],
+                        "category":  "state",
+                        "confidence":  "medium",
+                        "last_indexed":  "2026-03-10T01:19:54.5083380Z"
+                    }
+                ]
+}

@@ -1,0 +1,22 @@
+{
+  "contract_version": "tod-mim-shared-contract-v1",
+  "schema_version": "2026-03-09-01",
+  "required_capabilities": [
+    "health",
+    "status",
+    "manifest",
+    "objectives",
+    "tasks",
+    "results",
+    "reviews",
+    "journal"
+  ],
+  "signature_sources": [
+    "docs/tod-mim-shared-contract-v1.md",
+    "docs/mim-manifest-contract-v1.md",
+    "client/mim_api_client.ps1",
+    "client/mim_api_helpers.ps1",
+    "scripts/TOD.ps1",
+    "tod/config/tod-config.json"
+  ]
+}

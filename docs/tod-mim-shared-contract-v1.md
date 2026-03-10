@@ -82,6 +82,27 @@ Rule:
 }
 ```
 
+### Manifest
+```json
+{
+  "system_name": "string",
+  "system_version": "string",
+  "contract_version": "string",
+  "schema_version": "string",
+  "repo_signature": "string",
+  "capabilities": ["string"],
+  "recent_changes": [
+    {
+      "id": "string",
+      "summary": "string",
+      "timestamp": "string"
+    }
+  ],
+  "last_updated_at": "string",
+  "generated_at": "string"
+}
+```
+
 ## Endpoint Mapping
 - new-objective -> POST /objectives
 - list-objectives -> GET /objectives
@@ -91,6 +112,7 @@ Rule:
 - review-task -> POST /reviews
 - show-journal -> GET /journal
 - ping-mim -> GET /health and GET /status
+- get-manifest -> GET /manifest
 
 ## Compatibility Notes
 - MIM currently uses integer IDs in API responses for core records.

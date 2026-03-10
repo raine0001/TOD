@@ -1,0 +1,22 @@
+{
+  "system_name": "MIM",
+  "system_version": "0.1.0-alpha",
+  "contract_version": "tod-mim-v1",
+  "schema_version": "2026-03-09-01",
+  "repo_signature": "sha256:pending-server-signature",
+  "capabilities": [
+    "health",
+    "status",
+    "objectives",
+    "tasks",
+    "results",
+    "reviews",
+    "journal"
+  ],
+  "recent_changes": [
+    "Added review endpoint",
+    "Added journal endpoint",
+    "Aligned structured workflow schema"
+  ],
+  "last_updated_at": "2026-03-09T22:10:00Z"
+}

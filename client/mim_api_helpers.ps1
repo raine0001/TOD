@@ -110,6 +110,18 @@ function Convert-ToMimReview {
     }
 }
 
+function Convert-ToMimJournalEntry {
+    param([Parameter(Mandatory = $true)]$Entry)
+
+    return [pscustomobject]@{
+        actor = [string](Get-OptionalProperty -Object $Entry -Name "actor" -Default "tod")
+        action = [string](Get-OptionalProperty -Object $Entry -Name "action" -Default "sync_mim")
+        target_type = [string](Get-OptionalProperty -Object $Entry -Name "target_type" -Default "sync_state")
+        target_id = [string](Get-OptionalProperty -Object $Entry -Name "target_id" -Default "sync_state")
+        summary = [string](Get-OptionalProperty -Object $Entry -Name "summary" -Default "")
+    }
+}
+
 function Convert-ToArray {
     param($Value)
 
@@ -186,6 +198,7 @@ function Normalize-MimResultResponse {
         test_results = @(Convert-ToArray -Value (Get-OptionalProperty -Object $InputObject -Name "test_results" -Default @()))
         failures = @(Convert-ToArray -Value (Get-OptionalProperty -Object $InputObject -Name "failures" -Default @()))
         recommendations = @(Convert-ToArray -Value (Get-OptionalProperty -Object $InputObject -Name "recommendations" -Default @()))
+        engine_metadata = Get-OptionalProperty -Object $InputObject -Name "engine_metadata" -Default $null
         created_at = [string](Get-OptionalProperty -Object $InputObject -Name "created_at" -Default "")
     }
 }
@@ -225,5 +238,24 @@ function Normalize-MimJournalResponse {
         target_id = [string]$targetId
         summary = [string](Get-OptionalProperty -Object $InputObject -Name "summary" -Default "")
         timestamp = [string]$timestamp
+    }
+}
+
+function Normalize-MimManifestResponse {
+    param([Parameter(Mandatory = $true)]$InputObject)
+
+    $capabilities = Convert-ToArray -Value (Get-OptionalProperty -Object $InputObject -Name "capabilities" -Default @())
+    $recentChanges = Convert-ToArray -Value (Get-OptionalProperty -Object $InputObject -Name "recent_changes" -Default @())
+
+    return [pscustomobject]@{
+        system_name = [string](Get-OptionalProperty -Object $InputObject -Name "system_name" -Default "")
+        system_version = [string](Get-OptionalProperty -Object $InputObject -Name "system_version" -Default "")
+        contract_version = [string](Get-OptionalProperty -Object $InputObject -Name "contract_version" -Default "")
+        schema_version = [string](Get-OptionalProperty -Object $InputObject -Name "schema_version" -Default "")
+        repo_signature = [string](Get-OptionalProperty -Object $InputObject -Name "repo_signature" -Default "")
+        capabilities = @($capabilities)
+        recent_changes = @($recentChanges)
+        last_updated_at = [string](Get-OptionalProperty -Object $InputObject -Name "last_updated_at" -Default "")
+        generated_at = [string](Get-OptionalProperty -Object $InputObject -Name "generated_at" -Default "")
     }
 }

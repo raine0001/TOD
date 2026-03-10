@@ -1,0 +1,7 @@
+{
+  "actor": "tod",
+  "action": "sync_mim",
+  "target_type": "sync_state",
+  "target_id": "sync_state",
+  "summary": "sync-mim decision=ok status=none actions="
+}
