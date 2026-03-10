@@ -313,3 +313,18 @@ Reliability drift penalty decay:
 
 - Configure `execution_engine.routing_policy.drift_detection.decay_half_life_days` to control how quickly penalties taper as signals age.
 - Configure `execution_engine.routing_policy.drift_detection.decay_floor` to keep a small residual penalty floor instead of dropping to zero instantly.
+
+MIM-facing TOD runtime metadata endpoints (action output contracts):
+
+```powershell
+.\scripts\TOD.ps1 -Action get-reliability
+.\scripts\TOD.ps1 -Action get-capabilities
+.\scripts\TOD.ps1 -Action get-version
+```
+
+These provide:
+
+- current alert state and drift penalty activity
+- engine reliability scores and recovery state
+- execution/reliability capability metadata
+- TOD runtime/policy version metadata

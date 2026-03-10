@@ -87,9 +87,31 @@ Describe "TOD Reliability Dashboards" {
 
         $payload | Should Not BeNullOrEmpty
         [string]$payload.path | Should Be "/tod/reliability"
+        (($payload.PSObject.Properties.Name) -contains "current_alert_state") | Should Be $true
+        (($payload.PSObject.Properties.Name) -contains "drift_penalties_active") | Should Be $true
+        (($payload.PSObject.Properties.Name) -contains "recovery_state") | Should Be $true
         (($payload.PSObject.Properties.Name) -contains "engine_reliability_score") | Should Be $true
         (($payload.PSObject.Properties.Name) -contains "retry_trend") | Should Be $true
         (($payload.PSObject.Properties.Name) -contains "guardrail_trend") | Should Be $true
         (($payload.PSObject.Properties.Name) -contains "drift_warnings") | Should Be $true
+    }
+
+    It "get-capabilities returns endpoint payload shape" {
+        $caps = Invoke-TodActionJson -Action "get-capabilities"
+
+        $caps | Should Not BeNullOrEmpty
+        [string]$caps.path | Should Be "/tod/capabilities"
+        (($caps.PSObject.Properties.Name) -contains "execution") | Should Be $true
+        (($caps.PSObject.Properties.Name) -contains "reliability") | Should Be $true
+        (($caps.PSObject.Properties.Name) -contains "endpoints") | Should Be $true
+    }
+
+    It "get-version returns endpoint payload shape" {
+        $ver = Invoke-TodActionJson -Action "get-version"
+
+        $ver | Should Not BeNullOrEmpty
+        [string]$ver.path | Should Be "/tod/version"
+        (($ver.PSObject.Properties.Name) -contains "version") | Should Be $true
+        (($ver.PSObject.Properties.Name) -contains "policy_source") | Should Be $true
     }
 }

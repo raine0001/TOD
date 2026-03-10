@@ -19,6 +19,8 @@ param(
         "show-failure-taxonomy",
         "show-reliability-dashboard",
         "get-reliability",
+        "get-capabilities",
+        "get-version",
         "add-result",
         "review-task",
         "show-journal"
@@ -1387,6 +1389,67 @@ function Build-ReliabilityDashboard {
         guardrail_trend = $guardrailTrend
         drift_warnings = @($driftWarnings)
         recent_routing_decisions = @($recentRouting.records)
+    }
+}
+
+function Get-AlertSeverityRank {
+    param([string]$State)
+
+    switch (([string]$State).ToLowerInvariant()) {
+        "critical" { return 3 }
+        "degraded" { return 2 }
+        "warning" { return 1 }
+        default { return 0 }
+    }
+}
+
+function Get-TodVersionPayload {
+    param(
+        [Parameter(Mandatory = $true)]$Config,
+        [Parameter(Mandatory = $true)]$State
+    )
+
+    $scriptVersion = "tod-runtime-v1"
+    $sourceVersion = if ($Config -and $Config.PSObject.Properties["execution_engine"] -and $Config.execution_engine -and $Config.execution_engine.PSObject.Properties["routing_policy"] -and $Config.execution_engine.routing_policy -and $Config.execution_engine.routing_policy.PSObject.Properties["source"] -and -not [string]::IsNullOrWhiteSpace([string]$Config.execution_engine.routing_policy.source)) {
+        [string]$Config.execution_engine.routing_policy.source
+    }
+    else {
+        "routing_policy_v1"
+    }
+
+    return [pscustomobject]@{
+        path = "/tod/version"
+        service = "tod"
+        runtime = "powershell"
+        version = $scriptVersion
+        policy_source = $sourceVersion
+        generated_at = Get-UtcNow
+        state_updated_at = if ($State -and $State.PSObject.Properties["engine_performance"] -and $State.engine_performance -and $State.engine_performance.PSObject.Properties["updated_at"]) { [string]$State.engine_performance.updated_at } else { "" }
+    }
+}
+
+function Get-TodCapabilitiesPayload {
+    param([Parameter(Mandatory = $true)]$Config)
+
+    return [pscustomobject]@{
+        path = "/tod/capabilities"
+        service = "tod"
+        generated_at = Get-UtcNow
+        execution = [pscustomobject]@{
+            engines = @("codex", "local")
+            fallback_supported = [bool]$Config.execution_engine.allow_fallback
+            retry_policy = [pscustomobject]@{
+                enabled = [bool]$Config.execution_engine.retry_policy.enabled
+                categories = @($Config.execution_engine.retry_policy.max_attempts_by_category.PSObject.Properties.Name)
+            }
+        }
+        reliability = [pscustomobject]@{
+            drift_detection = $true
+            trust_restoration = $true
+            alert_states = @("stable", "warning", "degraded", "critical")
+            quarantine_supported = if ($Config.execution_engine.routing_policy.PSObject.Properties["drift_detection"] -and $Config.execution_engine.routing_policy.drift_detection -and $Config.execution_engine.routing_policy.drift_detection.PSObject.Properties["quarantine_enabled"]) { [bool]$Config.execution_engine.routing_policy.drift_detection.quarantine_enabled } else { $false }
+        }
+        endpoints = @("/tod/reliability", "/tod/capabilities", "/tod/version")
     }
 }
 
@@ -4251,14 +4314,57 @@ switch ($Action) {
 
     "get-reliability" {
         $dashboard = Build-ReliabilityDashboard -State $state -Config $config -Window $Top -CategoryFilter $Category -EngineFilter $Engine
+        $retryTrend = if ($dashboard.PSObject.Properties["retry_trend"]) { @($dashboard.retry_trend) } else { @() }
+        $driftWarnings = if ($dashboard.PSObject.Properties["drift_warnings"]) { @($dashboard.drift_warnings) } else { @() }
+
+        $overallAlert = "stable"
+        $maxRank = 0
+        foreach ($item in @($retryTrend)) {
+            $alert = if ($item.PSObject.Properties["alert_state"] -and -not [string]::IsNullOrWhiteSpace([string]$item.alert_state)) { [string]$item.alert_state } else { "stable" }
+            $rank = Get-AlertSeverityRank -State $alert
+            if ($rank -gt $maxRank) {
+                $maxRank = $rank
+                $overallAlert = $alert
+            }
+        }
+
+        $driftPenaltyActive = @($retryTrend | Where-Object {
+                (($_.PSObject.Properties["confidence_penalty"] -and $null -ne $_.confidence_penalty -and [double]$_.confidence_penalty -gt 0.0) -or
+                 ($_.PSObject.Properties["score_penalty"] -and $null -ne $_.score_penalty -and [double]$_.score_penalty -gt 0.0))
+            })
+        $recoveryState = @($retryTrend | ForEach-Object {
+                [pscustomobject]@{
+                    engine = [string]$_.engine
+                    alert_state = if ($_.PSObject.Properties["alert_state"]) { [string]$_.alert_state } else { "stable" }
+                    recovery_progress = if ($_.PSObject.Properties["recovery_progress"] -and $null -ne $_.recovery_progress) { [double]$_.recovery_progress } else { 0.0 }
+                    consecutive_stable_runs = if ($_.PSObject.Properties["consecutive_stable_runs"] -and $null -ne $_.consecutive_stable_runs) { [int]$_.consecutive_stable_runs } else { 0 }
+                    confidence_penalty = if ($_.PSObject.Properties["confidence_penalty"] -and $null -ne $_.confidence_penalty) { [double]$_.confidence_penalty } else { 0.0 }
+                    score_penalty = if ($_.PSObject.Properties["score_penalty"] -and $null -ne $_.score_penalty) { [double]$_.score_penalty } else { 0.0 }
+                }
+            })
+
         [pscustomobject]@{
             path = "/tod/reliability"
             generated_at = Get-UtcNow
+            current_alert_state = $overallAlert
+            drift_penalties_active = (@($driftPenaltyActive).Count -gt 0)
+            drift_penalty_engines = @($driftPenaltyActive | ForEach-Object { [string]$_.engine })
+            recovery_state = @($recoveryState)
             engine_reliability_score = if ($dashboard.PSObject.Properties["engine_reliability"]) { $dashboard.engine_reliability.by_engine } else { @() }
-            retry_trend = if ($dashboard.PSObject.Properties["retry_trend"]) { @($dashboard.retry_trend) } else { @() }
+            retry_trend = @($retryTrend)
             guardrail_trend = if ($dashboard.PSObject.Properties["guardrail_trend"]) { $dashboard.guardrail_trend } else { $null }
-            drift_warnings = if ($dashboard.PSObject.Properties["drift_warnings"]) { @($dashboard.drift_warnings) } else { @() }
+            drift_warnings = @($driftWarnings)
         } | ConvertTo-Json -Depth 18
+    }
+
+    "get-capabilities" {
+        $caps = Get-TodCapabilitiesPayload -Config $config
+        $caps | ConvertTo-Json -Depth 18
+    }
+
+    "get-version" {
+        $versionPayload = Get-TodVersionPayload -Config $config -State $state
+        $versionPayload | ConvertTo-Json -Depth 18
     }
 
     "add-result" {
