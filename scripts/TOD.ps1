@@ -18,6 +18,7 @@ param(
         "show-routing-feedback",
         "show-failure-taxonomy",
         "show-reliability-dashboard",
+        "get-reliability",
         "add-result",
         "review-task",
         "show-journal"
@@ -737,6 +738,507 @@ function Build-FailureTaxonomyReport {
     }
 }
 
+function Get-RoutingDriftSignal {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        $RoutingPolicy,
+        [string]$EngineFilter,
+        [string]$TaskCategoryFilter
+    )
+
+    $driftCfg = if ($RoutingPolicy -and $RoutingPolicy.PSObject.Properties["drift_detection"] -and $null -ne $RoutingPolicy.drift_detection) {
+        $RoutingPolicy.drift_detection
+    }
+    else {
+        $null
+    }
+
+    $enabled = $true
+    $recentWindow = 20
+    $baselineWindow = 50
+    $minBaselineRecords = 10
+    $failureRateMultiplier = 1.5
+    $retryRateThreshold = 0.35
+    $fallbackRateMultiplier = 1.5
+    $fallbackRateThreshold = 0.3
+    $guardrailRateMultiplier = 1.8
+    $guardrailRateThreshold = 0.15
+    $engineScoreDropThreshold = 0.2
+    $confidencePenaltyFailureDrift = 0.18
+    $confidencePenaltyRetryHigh = 0.12
+    $confidencePenaltyFallbackDrift = 0.09
+    $confidencePenaltyGuardrailSpike = 0.1
+    $confidencePenaltyScoreDrop = 0.12
+    $scorePenaltyFailureDrift = 0.12
+    $scorePenaltyRetryHigh = 0.08
+    $scorePenaltyFallbackDrift = 0.08
+    $scorePenaltyGuardrailSpike = 0.1
+    $scorePenaltyScoreDrop = 0.12
+
+    if ($driftCfg) {
+        if ($driftCfg.PSObject.Properties["enabled"] -and $null -ne $driftCfg.enabled) { $enabled = [bool]$driftCfg.enabled }
+        if ($driftCfg.PSObject.Properties["recent_window"] -and $null -ne $driftCfg.recent_window) { $recentWindow = [int]$driftCfg.recent_window }
+        if ($driftCfg.PSObject.Properties["baseline_window"] -and $null -ne $driftCfg.baseline_window) { $baselineWindow = [int]$driftCfg.baseline_window }
+        if ($driftCfg.PSObject.Properties["minimum_baseline_records"] -and $null -ne $driftCfg.minimum_baseline_records) { $minBaselineRecords = [int]$driftCfg.minimum_baseline_records }
+        if ($driftCfg.PSObject.Properties["failure_rate_multiplier"] -and $null -ne $driftCfg.failure_rate_multiplier) { $failureRateMultiplier = [double]$driftCfg.failure_rate_multiplier }
+        if ($driftCfg.PSObject.Properties["retry_rate_threshold"] -and $null -ne $driftCfg.retry_rate_threshold) { $retryRateThreshold = [double]$driftCfg.retry_rate_threshold }
+        if ($driftCfg.PSObject.Properties["fallback_rate_multiplier"] -and $null -ne $driftCfg.fallback_rate_multiplier) { $fallbackRateMultiplier = [double]$driftCfg.fallback_rate_multiplier }
+        if ($driftCfg.PSObject.Properties["fallback_rate_threshold"] -and $null -ne $driftCfg.fallback_rate_threshold) { $fallbackRateThreshold = [double]$driftCfg.fallback_rate_threshold }
+        if ($driftCfg.PSObject.Properties["guardrail_rate_multiplier"] -and $null -ne $driftCfg.guardrail_rate_multiplier) { $guardrailRateMultiplier = [double]$driftCfg.guardrail_rate_multiplier }
+        if ($driftCfg.PSObject.Properties["guardrail_rate_threshold"] -and $null -ne $driftCfg.guardrail_rate_threshold) { $guardrailRateThreshold = [double]$driftCfg.guardrail_rate_threshold }
+        if ($driftCfg.PSObject.Properties["engine_score_drop_threshold"] -and $null -ne $driftCfg.engine_score_drop_threshold) { $engineScoreDropThreshold = [double]$driftCfg.engine_score_drop_threshold }
+        if ($driftCfg.PSObject.Properties["confidence_penalty_failure_drift"] -and $null -ne $driftCfg.confidence_penalty_failure_drift) { $confidencePenaltyFailureDrift = [double]$driftCfg.confidence_penalty_failure_drift }
+        if ($driftCfg.PSObject.Properties["confidence_penalty_retry_high"] -and $null -ne $driftCfg.confidence_penalty_retry_high) { $confidencePenaltyRetryHigh = [double]$driftCfg.confidence_penalty_retry_high }
+        if ($driftCfg.PSObject.Properties["confidence_penalty_fallback_drift"] -and $null -ne $driftCfg.confidence_penalty_fallback_drift) { $confidencePenaltyFallbackDrift = [double]$driftCfg.confidence_penalty_fallback_drift }
+        if ($driftCfg.PSObject.Properties["confidence_penalty_guardrail_spike"] -and $null -ne $driftCfg.confidence_penalty_guardrail_spike) { $confidencePenaltyGuardrailSpike = [double]$driftCfg.confidence_penalty_guardrail_spike }
+        if ($driftCfg.PSObject.Properties["confidence_penalty_score_drop"] -and $null -ne $driftCfg.confidence_penalty_score_drop) { $confidencePenaltyScoreDrop = [double]$driftCfg.confidence_penalty_score_drop }
+        if ($driftCfg.PSObject.Properties["score_penalty_failure_drift"] -and $null -ne $driftCfg.score_penalty_failure_drift) { $scorePenaltyFailureDrift = [double]$driftCfg.score_penalty_failure_drift }
+        if ($driftCfg.PSObject.Properties["score_penalty_retry_high"] -and $null -ne $driftCfg.score_penalty_retry_high) { $scorePenaltyRetryHigh = [double]$driftCfg.score_penalty_retry_high }
+        if ($driftCfg.PSObject.Properties["score_penalty_fallback_drift"] -and $null -ne $driftCfg.score_penalty_fallback_drift) { $scorePenaltyFallbackDrift = [double]$driftCfg.score_penalty_fallback_drift }
+        if ($driftCfg.PSObject.Properties["score_penalty_guardrail_spike"] -and $null -ne $driftCfg.score_penalty_guardrail_spike) { $scorePenaltyGuardrailSpike = [double]$driftCfg.score_penalty_guardrail_spike }
+        if ($driftCfg.PSObject.Properties["score_penalty_score_drop"] -and $null -ne $driftCfg.score_penalty_score_drop) { $scorePenaltyScoreDrop = [double]$driftCfg.score_penalty_score_drop }
+    }
+
+    if ($recentWindow -lt 1) { $recentWindow = 20 }
+    if ($baselineWindow -lt $recentWindow) { $baselineWindow = [math]::Max($recentWindow, 50) }
+    if ($minBaselineRecords -lt 1) { $minBaselineRecords = 10 }
+
+    $records = @($State.engine_performance.records | Sort-Object -Property created_at -Descending)
+    if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
+        $records = @($records | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $EngineFilter.ToLowerInvariant() })
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TaskCategoryFilter)) {
+        $records = @($records | Where-Object {
+                if ($_.PSObject.Properties["task_category"] -and $null -ne $_.task_category) {
+                    ([string]$_.task_category).ToLowerInvariant() -eq $TaskCategoryFilter.ToLowerInvariant()
+                }
+                else {
+                    $false
+                }
+            })
+    }
+
+    $baselineRecords = @($records | Select-Object -First $baselineWindow)
+    $recentRecords = @($records | Select-Object -First $recentWindow)
+    $baselineTotal = [int]@($baselineRecords).Count
+    $recentTotal = [int]@($recentRecords).Count
+
+    $getFailureRate = {
+        param($Items)
+        $total = [double]@($Items).Count
+        if ($total -le 0) { return 0.0 }
+        $fails = [double]@($Items | Where-Object { (-not [bool]$_.success) -or [bool]$_.needs_escalation -or ([string]$_.review_decision -eq "escalate") }).Count
+        return ($fails / $total)
+    }
+    $getRetryRate = {
+        param($Items)
+        $total = [double]@($Items).Count
+        if ($total -le 0) { return 0.0 }
+        $retries = [double]@($Items | Where-Object {
+                if ($_.PSObject.Properties["retry_inflated"] -and $null -ne $_.retry_inflated) { [bool]$_.retry_inflated }
+                elseif ($_.PSObject.Properties["attempts_count"] -and $null -ne $_.attempts_count) { [int]$_.attempts_count -gt 1 }
+                else { $false }
+            }).Count
+        return ($retries / $total)
+    }
+
+    $baselineFailureRate = & $getFailureRate $baselineRecords
+    $recentFailureRate = & $getFailureRate $recentRecords
+    $baselineRetryRate = & $getRetryRate $baselineRecords
+    $recentRetryRate = & $getRetryRate $recentRecords
+    $getFallbackRate = {
+        param($Items)
+        $total = [double]@($Items).Count
+        if ($total -le 0) { return 0.0 }
+        $fallbacks = [double]@($Items | Where-Object {
+                if ($_.PSObject.Properties["fallback_applied"] -and $null -ne $_.fallback_applied) { [bool]$_.fallback_applied } else { $false }
+            }).Count
+        return ($fallbacks / $total)
+    }
+    $baselineFallbackRate = & $getFallbackRate $baselineRecords
+    $recentFallbackRate = & $getFallbackRate $recentRecords
+
+    $routingRecords = @($State.routing_decisions.records | Sort-Object -Property created_at -Descending)
+    if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
+        $routingRecords = @($routingRecords | Where-Object {
+                $selected = ([string]$_.selected_engine).ToLowerInvariant()
+                if ($selected -eq "local-placeholder") { $selected = "local" }
+                $selected -eq $EngineFilter.ToLowerInvariant()
+            })
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TaskCategoryFilter)) {
+        $routingRecords = @($routingRecords | Where-Object {
+                if ($_.PSObject.Properties["task_category"] -and $null -ne $_.task_category) {
+                    ([string]$_.task_category).ToLowerInvariant() -eq $TaskCategoryFilter.ToLowerInvariant()
+                }
+                else {
+                    $false
+                }
+            })
+    }
+    $routingBaseline = @($routingRecords | Select-Object -First $baselineWindow)
+    $routingRecent = @($routingRecords | Select-Object -First $recentWindow)
+    $getGuardrailBlockRate = {
+        param($Items)
+        $total = [double]@($Items).Count
+        if ($total -le 0) { return 0.0 }
+        $blocks = [double]@($Items | Where-Object {
+                $outcome = if ($_.PSObject.Properties["final_outcome"] -and $null -ne $_.final_outcome) { ([string]$_.final_outcome).ToLowerInvariant() } else { "" }
+                $outcome -in @("blocked_pre_invocation", "escalated_pre_run")
+            }).Count
+        return ($blocks / $total)
+    }
+    $baselineGuardrailRate = & $getGuardrailBlockRate $routingBaseline
+    $recentGuardrailRate = & $getGuardrailBlockRate $routingRecent
+
+    $getRecoveryScore = {
+        param($Items)
+        $total = [double]@($Items).Count
+        if ($total -le 0) { return 0.0 }
+        $clean = [double]@($Items | Where-Object {
+                $onRetry = if ($_.PSObject.Properties["recovered_on_retry"] -and $null -ne $_.recovered_on_retry) { [bool]$_.recovered_on_retry } else { $false }
+                $onFallback = if ($_.PSObject.Properties["recovered_on_fallback"] -and $null -ne $_.recovered_on_fallback) { [bool]$_.recovered_on_fallback } else { $false }
+                [bool]$_.success -and (-not $onRetry) -and (-not $onFallback)
+            }).Count
+        $retryRecovered = [double]@($Items | Where-Object {
+                if ($_.PSObject.Properties["recovered_on_retry"] -and $null -ne $_.recovered_on_retry) { [bool]$_.recovered_on_retry } else { $false }
+            }).Count
+        $fallbackRecovered = [double]@($Items | Where-Object {
+                if ($_.PSObject.Properties["recovered_on_fallback"] -and $null -ne $_.recovered_on_fallback) { [bool]$_.recovered_on_fallback } else { $false }
+            }).Count
+        $manual = [double]@($Items | Where-Object {
+                if ($_.PSObject.Properties["manual_intervention_required"] -and $null -ne $_.manual_intervention_required) { [bool]$_.manual_intervention_required } else { -not [bool]$_.success }
+            }).Count
+        $failures = [double]@($Items | Where-Object {
+                $manualRequired = if ($_.PSObject.Properties["manual_intervention_required"] -and $null -ne $_.manual_intervention_required) { [bool]$_.manual_intervention_required } else { $false }
+                (-not [bool]$_.success) -and (-not $manualRequired)
+            }).Count
+
+        $score = (($clean * 1.0) + ($retryRecovered * 0.6) + ($fallbackRecovered * 0.4) + ($failures * -1.0) + ($manual * -1.0)) / $total
+        return [math]::Max(-1.0, [math]::Min(1.0, [double]$score))
+    }
+    $baselineRecoveryScore = & $getRecoveryScore $baselineRecords
+    $recentRecoveryScore = & $getRecoveryScore $recentRecords
+
+    $failureDrift = $false
+    if ($enabled -and $baselineTotal -ge $minBaselineRecords -and $recentTotal -ge [math]::Min(5, $recentWindow)) {
+        if ($baselineFailureRate -gt 0.0) {
+            $failureDrift = ($recentFailureRate -gt ($baselineFailureRate * $failureRateMultiplier))
+        }
+        else {
+            $failureDrift = ($recentFailureRate -ge 0.2)
+        }
+    }
+
+    $retryHigh = $false
+    if ($enabled -and $recentTotal -ge [math]::Min(5, $recentWindow)) {
+        $retryHigh = ($recentRetryRate -ge $retryRateThreshold)
+    }
+    $fallbackDrift = $false
+    if ($enabled -and $baselineTotal -ge $minBaselineRecords -and $recentTotal -ge [math]::Min(5, $recentWindow)) {
+        $fallbackDrift = ($recentFallbackRate -ge [math]::Max($fallbackRateThreshold, ($baselineFallbackRate * $fallbackRateMultiplier)))
+    }
+    $guardrailSpike = $false
+    if ($enabled -and [int]@($routingBaseline).Count -ge $minBaselineRecords -and [int]@($routingRecent).Count -ge [math]::Min(5, $recentWindow)) {
+        $guardrailSpike = ($recentGuardrailRate -ge [math]::Max($guardrailRateThreshold, ($baselineGuardrailRate * $guardrailRateMultiplier)))
+    }
+    $scoreDrop = $false
+    if ($enabled -and $baselineTotal -ge $minBaselineRecords -and $recentTotal -ge [math]::Min(5, $recentWindow)) {
+        $scoreDrop = (($baselineRecoveryScore - $recentRecoveryScore) -ge $engineScoreDropThreshold)
+    }
+
+    $warnings = @()
+    if ($failureDrift) {
+        $warnings += [pscustomobject]@{
+            code = "failure_rate_drift"
+            severity = "warn"
+            message = "Failure rate drift detected in recent window."
+            recent_failure_rate = [math]::Round($recentFailureRate, 4)
+            baseline_failure_rate = [math]::Round($baselineFailureRate, 4)
+            threshold = [math]::Round(($baselineFailureRate * $failureRateMultiplier), 4)
+        }
+    }
+    if ($retryHigh) {
+        $warnings += [pscustomobject]@{
+            code = "retry_rate_high"
+            severity = "warn"
+            message = "Retry rate exceeded configured threshold."
+            recent_retry_rate = [math]::Round($recentRetryRate, 4)
+            threshold = [math]::Round($retryRateThreshold, 4)
+        }
+    }
+    if ($fallbackDrift) {
+        $warnings += [pscustomobject]@{
+            code = "fallback_dependence_rising"
+            severity = "warn"
+            message = "Fallback dependence increased in recent window."
+            recent_fallback_rate = [math]::Round($recentFallbackRate, 4)
+            baseline_fallback_rate = [math]::Round($baselineFallbackRate, 4)
+            threshold = [math]::Round([math]::Max($fallbackRateThreshold, ($baselineFallbackRate * $fallbackRateMultiplier)), 4)
+        }
+    }
+    if ($guardrailSpike) {
+        $warnings += [pscustomobject]@{
+            code = "guardrail_block_spike"
+            severity = "warn"
+            message = "Guardrail-block rate spiked in recent routing decisions."
+            recent_guardrail_block_rate = [math]::Round($recentGuardrailRate, 4)
+            baseline_guardrail_block_rate = [math]::Round($baselineGuardrailRate, 4)
+            threshold = [math]::Round([math]::Max($guardrailRateThreshold, ($baselineGuardrailRate * $guardrailRateMultiplier)), 4)
+        }
+    }
+    if ($scoreDrop) {
+        $warnings += [pscustomobject]@{
+            code = "engine_reliability_score_drop"
+            severity = "warn"
+            message = "Engine recovery quality score dropped beyond threshold."
+            recent_engine_score = [math]::Round($recentRecoveryScore, 4)
+            baseline_engine_score = [math]::Round($baselineRecoveryScore, 4)
+            drop = [math]::Round(($baselineRecoveryScore - $recentRecoveryScore), 4)
+            threshold = [math]::Round($engineScoreDropThreshold, 4)
+        }
+    }
+
+    $confidencePenalty = 0.0
+    $scorePenalty = 0.0
+    if ($failureDrift) {
+        $confidencePenalty += $confidencePenaltyFailureDrift
+        $scorePenalty += $scorePenaltyFailureDrift
+    }
+    if ($retryHigh) {
+        $confidencePenalty += $confidencePenaltyRetryHigh
+        $scorePenalty += $scorePenaltyRetryHigh
+    }
+    if ($fallbackDrift) {
+        $confidencePenalty += $confidencePenaltyFallbackDrift
+        $scorePenalty += $scorePenaltyFallbackDrift
+    }
+    if ($guardrailSpike) {
+        $confidencePenalty += $confidencePenaltyGuardrailSpike
+        $scorePenalty += $scorePenaltyGuardrailSpike
+    }
+    if ($scoreDrop) {
+        $confidencePenalty += $confidencePenaltyScoreDrop
+        $scorePenalty += $scorePenaltyScoreDrop
+    }
+
+    return [pscustomobject]@{
+        enabled = [bool]$enabled
+        recent_window = [int]$recentWindow
+        baseline_window = [int]$baselineWindow
+        minimum_baseline_records = [int]$minBaselineRecords
+        runs_considered = [pscustomobject]@{
+            recent = [int]$recentTotal
+            baseline = [int]$baselineTotal
+        }
+        rates = [pscustomobject]@{
+            recent_failure = [math]::Round($recentFailureRate, 4)
+            baseline_failure = [math]::Round($baselineFailureRate, 4)
+            recent_retry = [math]::Round($recentRetryRate, 4)
+            baseline_retry = [math]::Round($baselineRetryRate, 4)
+            recent_fallback = [math]::Round($recentFallbackRate, 4)
+            baseline_fallback = [math]::Round($baselineFallbackRate, 4)
+            recent_guardrail_block = [math]::Round($recentGuardrailRate, 4)
+            baseline_guardrail_block = [math]::Round($baselineGuardrailRate, 4)
+        }
+        engine_score = [pscustomobject]@{
+            recent = [math]::Round($recentRecoveryScore, 4)
+            baseline = [math]::Round($baselineRecoveryScore, 4)
+            drop = [math]::Round(($baselineRecoveryScore - $recentRecoveryScore), 4)
+        }
+        warning = ([bool]$failureDrift -or [bool]$retryHigh -or [bool]$fallbackDrift -or [bool]$guardrailSpike -or [bool]$scoreDrop)
+        warning_count = [int]@($warnings).Count
+        warnings = @($warnings)
+        confidence_penalty = [math]::Round([math]::Min(0.6, $confidencePenalty), 4)
+        score_penalty = [math]::Round([math]::Min(0.6, $scorePenalty), 4)
+    }
+}
+
+function Get-RecoveryQualitySummary {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [int]$Window = 50,
+        [string]$CategoryFilter,
+        [string]$EngineFilter
+    )
+
+    $weights = [pscustomobject]@{
+        clean_success = 1.0
+        recovered_retry = 0.6
+        recovered_fallback = 0.4
+        guardrail_block = 0.2
+        unrecovered_failure = -1.0
+        manual_intervention = -1.0
+    }
+
+    $perf = @($State.engine_performance.records | Sort-Object -Property created_at -Descending | Select-Object -First $Window)
+    if (-not [string]::IsNullOrWhiteSpace($CategoryFilter)) {
+        $perf = @($perf | Where-Object {
+                if ($_.PSObject.Properties["task_category"] -and $null -ne $_.task_category) {
+                    ([string]$_.task_category).ToLowerInvariant() -eq $CategoryFilter.ToLowerInvariant()
+                }
+                else {
+                    $false
+                }
+            })
+    }
+    if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
+        $perf = @($perf | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $EngineFilter.ToLowerInvariant() })
+    }
+
+    $routing = @($State.routing_decisions.records | Sort-Object -Property created_at -Descending | Select-Object -First $Window)
+    if (-not [string]::IsNullOrWhiteSpace($CategoryFilter)) {
+        $routing = @($routing | Where-Object {
+                if ($_.PSObject.Properties["task_category"] -and $null -ne $_.task_category) {
+                    ([string]$_.task_category).ToLowerInvariant() -eq $CategoryFilter.ToLowerInvariant()
+                }
+                else {
+                    $false
+                }
+            })
+    }
+    if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
+        $routing = @($routing | Where-Object {
+                ([string]$_.selected_engine).ToLowerInvariant() -eq (Convert-EngineAliasLabel -Engine $EngineFilter)
+            })
+    }
+
+    $engines = @()
+    $engines += @($perf | ForEach-Object { ([string]$_.engine).ToLowerInvariant() })
+    $engines += @($routing | ForEach-Object {
+            $selected = [string]$_.selected_engine
+            if ($selected -eq "local-placeholder") { "local" } else { $selected.ToLowerInvariant() }
+        })
+    $engines = @($engines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+
+    $byEngine = @()
+    foreach ($engine in $engines) {
+        $perfEngine = @($perf | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $engine })
+        $routingEngine = @($routing | Where-Object {
+                $selected = ([string]$_.selected_engine).ToLowerInvariant()
+                if ($selected -eq "local-placeholder") { $selected = "local" }
+                $selected -eq $engine
+            })
+
+        $cleanSuccess = [int]@($perfEngine | Where-Object {
+                $onRetry = if ($_.PSObject.Properties["recovered_on_retry"] -and $null -ne $_.recovered_on_retry) { [bool]$_.recovered_on_retry } else { $false }
+                $onFallback = if ($_.PSObject.Properties["recovered_on_fallback"] -and $null -ne $_.recovered_on_fallback) { [bool]$_.recovered_on_fallback } else { $false }
+                [bool]$_.success -and (-not $onRetry) -and (-not $onFallback)
+            }).Count
+        $recoveredRetry = [int]@($perfEngine | Where-Object {
+                if ($_.PSObject.Properties["recovered_on_retry"] -and $null -ne $_.recovered_on_retry) { [bool]$_.recovered_on_retry } else { $false }
+            }).Count
+        $recoveredFallback = [int]@($perfEngine | Where-Object {
+                if ($_.PSObject.Properties["recovered_on_fallback"] -and $null -ne $_.recovered_on_fallback) { [bool]$_.recovered_on_fallback } else { $false }
+            }).Count
+        $manualIntervention = [int]@($perfEngine | Where-Object {
+                if ($_.PSObject.Properties["manual_intervention_required"] -and $null -ne $_.manual_intervention_required) { [bool]$_.manual_intervention_required } else { -not [bool]$_.success }
+            }).Count
+        $unrecoveredFailure = [int]@($perfEngine | Where-Object { (-not [bool]$_.success) -and (-not [bool]$_.manual_intervention_required) }).Count
+        $guardrailBlock = [int]@($routingEngine | Where-Object {
+                $outcome = ([string]$_.final_outcome).ToLowerInvariant()
+                $outcome -in @("blocked_pre_invocation", "escalated_pre_run")
+            }).Count
+
+        $totalOutcomes = $cleanSuccess + $recoveredRetry + $recoveredFallback + $manualIntervention + $unrecoveredFailure + $guardrailBlock
+        if ($totalOutcomes -le 0) { continue }
+
+        $scoreNumerator =
+            ($weights.clean_success * $cleanSuccess) +
+            ($weights.recovered_retry * $recoveredRetry) +
+            ($weights.recovered_fallback * $recoveredFallback) +
+            ($weights.guardrail_block * $guardrailBlock) +
+            ($weights.unrecovered_failure * $unrecoveredFailure) +
+            ($weights.manual_intervention * $manualIntervention)
+        $score = [double]$scoreNumerator / [double]$totalOutcomes
+        $score = [math]::Round([math]::Max(-1.0, [math]::Min(1.0, $score)), 4)
+
+        $band = "critical"
+        if ($score -ge 0.75) { $band = "strong" }
+        elseif ($score -ge 0.5) { $band = "stable" }
+        elseif ($score -ge 0.25) { $band = "watch" }
+
+        $byEngine += [pscustomobject]@{
+            engine = $engine
+            reliability_score = $score
+            reliability_band = $band
+            total_outcomes = [int]$totalOutcomes
+            counts = [pscustomobject]@{
+                clean_success = $cleanSuccess
+                recovered_retry = $recoveredRetry
+                recovered_fallback = $recoveredFallback
+                guardrail_block = $guardrailBlock
+                unrecovered_failure = $unrecoveredFailure
+                manual_intervention = $manualIntervention
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        generated_at = Get-UtcNow
+        source = "recovery_quality_v1"
+        window = [int]$Window
+        scoring = $weights
+        by_engine = @($byEngine | Sort-Object -Property reliability_score -Descending)
+    }
+}
+
+function Get-GuardrailTrendSummary {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [int]$Window = 50,
+        [string]$CategoryFilter,
+        [string]$EngineFilter
+    )
+
+    $records = @($State.routing_decisions.records | Sort-Object -Property created_at -Descending | Select-Object -First ([math]::Max(10, ($Window * 2))))
+    if (-not [string]::IsNullOrWhiteSpace($CategoryFilter)) {
+        $records = @($records | Where-Object {
+                if ($_.PSObject.Properties["task_category"] -and $null -ne $_.task_category) {
+                    ([string]$_.task_category).ToLowerInvariant() -eq $CategoryFilter.ToLowerInvariant()
+                }
+                else {
+                    $false
+                }
+            })
+    }
+    if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
+        $records = @($records | Where-Object { ([string]$_.selected_engine).ToLowerInvariant() -eq (Convert-EngineAliasLabel -Engine $EngineFilter) })
+    }
+
+    $recent = @($records | Select-Object -First $Window)
+    $prior = @($records | Select-Object -Skip $Window -First $Window)
+
+    $blockRate = {
+        param($Items)
+        $total = [double]@($Items).Count
+        if ($total -le 0) { return $null }
+        $blocked = [double]@($Items | Where-Object {
+            $outcome = if ($_.PSObject.Properties["final_outcome"] -and $null -ne $_.final_outcome) { ([string]$_.final_outcome).ToLowerInvariant() } else { "" }
+                $outcome -in @("blocked_pre_invocation", "escalated_pre_run")
+            }).Count
+        return [math]::Round(($blocked / $total), 4)
+    }
+
+    $recentRate = & $blockRate $recent
+    $priorRate = & $blockRate $prior
+    $direction = "stable"
+    if ($null -ne $recentRate -and $null -ne $priorRate) {
+        if ($recentRate -gt $priorRate) { $direction = "up" }
+        elseif ($recentRate -lt $priorRate) { $direction = "down" }
+    }
+
+    return [pscustomobject]@{
+        source = "guardrail_trend_v1"
+        window = [int]$Window
+        recent_block_rate = $recentRate
+        prior_block_rate = $priorRate
+        trend = $direction
+        recent_total = [int]@($recent).Count
+        prior_total = [int]@($prior).Count
+    }
+}
+
 function Build-ReliabilityDashboard {
     param(
         [Parameter(Mandatory = $true)]$State,
@@ -749,6 +1251,40 @@ function Build-ReliabilityDashboard {
     $routingFeedback = Build-RoutingFeedbackReport -State $State -Config $Config -HealthWindow $Window
     $taxonomy = Build-FailureTaxonomyReport -State $State -Window $Window -CategoryFilter $CategoryFilter -EngineFilter $EngineFilter
     $recentRouting = Get-RoutingDecisionSummary -State $State -TaskFilter "" -Take 5
+    $recoveryQuality = Get-RecoveryQualitySummary -State $State -Window $Window -CategoryFilter $CategoryFilter -EngineFilter $EngineFilter
+    $guardrailTrend = Get-GuardrailTrendSummary -State $State -Window $Window -CategoryFilter $CategoryFilter -EngineFilter $EngineFilter
+
+    $engineNames = @($State.engine_performance.records | ForEach-Object { ([string]$_.engine).ToLowerInvariant() } | Where-Object { $_ } | Select-Object -Unique)
+    if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
+        $engineNames = @($engineNames | Where-Object { $_ -eq $EngineFilter.ToLowerInvariant() })
+    }
+    $retryTrend = @()
+    $driftWarnings = @()
+    foreach ($eng in $engineNames) {
+        $drift = Get-RoutingDriftSignal -State $State -RoutingPolicy $Config.execution_engine.routing_policy -EngineFilter $eng -TaskCategoryFilter $CategoryFilter
+        $retryTrend += [pscustomobject]@{
+            engine = $eng
+            recent_retry_rate = [double]$drift.rates.recent_retry
+            baseline_retry_rate = [double]$drift.rates.baseline_retry
+            recent_fallback_rate = [double]$drift.rates.recent_fallback
+            baseline_fallback_rate = [double]$drift.rates.baseline_fallback
+            recent_guardrail_block_rate = [double]$drift.rates.recent_guardrail_block
+            baseline_guardrail_block_rate = [double]$drift.rates.baseline_guardrail_block
+            recent_engine_score = [double]$drift.engine_score.recent
+            baseline_engine_score = [double]$drift.engine_score.baseline
+            confidence_penalty = [double]$drift.confidence_penalty
+            score_penalty = [double]$drift.score_penalty
+        }
+        foreach ($warning in @($drift.warnings)) {
+            $driftWarnings += [pscustomobject]@{
+                engine = $eng
+                code = [string]$warning.code
+                severity = [string]$warning.severity
+                message = [string]$warning.message
+                details = $warning
+            }
+        }
+    }
 
     return [pscustomobject]@{
         generated_at = Get-UtcNow
@@ -764,6 +1300,10 @@ function Build-ReliabilityDashboard {
         }
         routing_feedback = $routingFeedback
         failure_taxonomy = $taxonomy
+        engine_reliability = $recoveryQuality
+        retry_trend = @($retryTrend)
+        guardrail_trend = $guardrailTrend
+        drift_warnings = @($driftWarnings)
         recent_routing_decisions = @($recentRouting.records)
     }
 }
@@ -1303,6 +1843,29 @@ function Load-TodConfig {
                     recent_failure_threshold = 2
                     min_category_records_light = 10
                     min_category_records_strong = 20
+                    drift_detection = [pscustomobject]@{
+                        enabled = $true
+                        recent_window = 20
+                        baseline_window = 50
+                        minimum_baseline_records = 10
+                        failure_rate_multiplier = 1.5
+                        retry_rate_threshold = 0.35
+                        fallback_rate_multiplier = 1.5
+                        fallback_rate_threshold = 0.3
+                        guardrail_rate_multiplier = 1.8
+                        guardrail_rate_threshold = 0.15
+                        engine_score_drop_threshold = 0.2
+                        confidence_penalty_failure_drift = 0.18
+                        confidence_penalty_retry_high = 0.12
+                        confidence_penalty_fallback_drift = 0.09
+                        confidence_penalty_guardrail_spike = 0.1
+                        confidence_penalty_score_drop = 0.12
+                        score_penalty_failure_drift = 0.12
+                        score_penalty_retry_high = 0.08
+                        score_penalty_fallback_drift = 0.08
+                        score_penalty_guardrail_spike = 0.1
+                        score_penalty_score_drop = 0.12
+                    }
                     weights = (Get-DefaultRoutingWeights)
                 }
             }
@@ -1391,6 +1954,29 @@ function Load-TodConfig {
                 recent_failure_threshold = 2
                 min_category_records_light = 10
                 min_category_records_strong = 20
+                drift_detection = [pscustomobject]@{
+                    enabled = $true
+                    recent_window = 20
+                    baseline_window = 50
+                    minimum_baseline_records = 10
+                    failure_rate_multiplier = 1.5
+                    retry_rate_threshold = 0.35
+                    fallback_rate_multiplier = 1.5
+                    fallback_rate_threshold = 0.3
+                    guardrail_rate_multiplier = 1.8
+                    guardrail_rate_threshold = 0.15
+                    engine_score_drop_threshold = 0.2
+                    confidence_penalty_failure_drift = 0.18
+                    confidence_penalty_retry_high = 0.12
+                    confidence_penalty_fallback_drift = 0.09
+                    confidence_penalty_guardrail_spike = 0.1
+                    confidence_penalty_score_drop = 0.12
+                    score_penalty_failure_drift = 0.12
+                    score_penalty_retry_high = 0.08
+                    score_penalty_fallback_drift = 0.08
+                    score_penalty_guardrail_spike = 0.1
+                    score_penalty_score_drop = 0.12
+                }
                 weights = (Get-DefaultRoutingWeights)
             }) -Force
     }
@@ -1406,6 +1992,52 @@ function Load-TodConfig {
     if (-not $cfg.execution_engine.routing_policy.PSObject.Properties["recent_failure_threshold"] -or $null -eq $cfg.execution_engine.routing_policy.recent_failure_threshold) { $cfg.execution_engine.routing_policy.recent_failure_threshold = 2 }
     if (-not $cfg.execution_engine.routing_policy.PSObject.Properties["min_category_records_light"] -or $null -eq $cfg.execution_engine.routing_policy.min_category_records_light) { $cfg.execution_engine.routing_policy.min_category_records_light = 10 }
     if (-not $cfg.execution_engine.routing_policy.PSObject.Properties["min_category_records_strong"] -or $null -eq $cfg.execution_engine.routing_policy.min_category_records_strong) { $cfg.execution_engine.routing_policy.min_category_records_strong = 20 }
+    if (-not $cfg.execution_engine.routing_policy.PSObject.Properties["drift_detection"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection) {
+        $cfg.execution_engine.routing_policy | Add-Member -NotePropertyName drift_detection -NotePropertyValue ([pscustomobject]@{
+                enabled = $true
+                recent_window = 20
+                baseline_window = 50
+                minimum_baseline_records = 10
+                failure_rate_multiplier = 1.5
+                retry_rate_threshold = 0.35
+                fallback_rate_multiplier = 1.5
+                fallback_rate_threshold = 0.3
+                guardrail_rate_multiplier = 1.8
+                guardrail_rate_threshold = 0.15
+                engine_score_drop_threshold = 0.2
+                confidence_penalty_failure_drift = 0.18
+                confidence_penalty_retry_high = 0.12
+                confidence_penalty_fallback_drift = 0.09
+                confidence_penalty_guardrail_spike = 0.1
+                confidence_penalty_score_drop = 0.12
+                score_penalty_failure_drift = 0.12
+                score_penalty_retry_high = 0.08
+                score_penalty_fallback_drift = 0.08
+                score_penalty_guardrail_spike = 0.1
+                score_penalty_score_drop = 0.12
+            }) -Force
+    }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["enabled"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.enabled) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName enabled -NotePropertyValue $true -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["recent_window"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.recent_window) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName recent_window -NotePropertyValue 20 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["baseline_window"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.baseline_window) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName baseline_window -NotePropertyValue 50 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["minimum_baseline_records"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.minimum_baseline_records) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName minimum_baseline_records -NotePropertyValue 10 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["failure_rate_multiplier"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.failure_rate_multiplier) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName failure_rate_multiplier -NotePropertyValue 1.5 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["retry_rate_threshold"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.retry_rate_threshold) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName retry_rate_threshold -NotePropertyValue 0.35 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["fallback_rate_multiplier"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.fallback_rate_multiplier) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName fallback_rate_multiplier -NotePropertyValue 1.5 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["fallback_rate_threshold"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.fallback_rate_threshold) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName fallback_rate_threshold -NotePropertyValue 0.3 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["guardrail_rate_multiplier"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.guardrail_rate_multiplier) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName guardrail_rate_multiplier -NotePropertyValue 1.8 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["guardrail_rate_threshold"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.guardrail_rate_threshold) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName guardrail_rate_threshold -NotePropertyValue 0.15 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["engine_score_drop_threshold"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.engine_score_drop_threshold) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName engine_score_drop_threshold -NotePropertyValue 0.2 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["confidence_penalty_failure_drift"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.confidence_penalty_failure_drift) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName confidence_penalty_failure_drift -NotePropertyValue 0.18 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["confidence_penalty_retry_high"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.confidence_penalty_retry_high) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName confidence_penalty_retry_high -NotePropertyValue 0.12 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["confidence_penalty_fallback_drift"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.confidence_penalty_fallback_drift) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName confidence_penalty_fallback_drift -NotePropertyValue 0.09 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["confidence_penalty_guardrail_spike"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.confidence_penalty_guardrail_spike) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName confidence_penalty_guardrail_spike -NotePropertyValue 0.1 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["confidence_penalty_score_drop"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.confidence_penalty_score_drop) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName confidence_penalty_score_drop -NotePropertyValue 0.12 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["score_penalty_failure_drift"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.score_penalty_failure_drift) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName score_penalty_failure_drift -NotePropertyValue 0.12 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["score_penalty_retry_high"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.score_penalty_retry_high) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName score_penalty_retry_high -NotePropertyValue 0.08 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["score_penalty_fallback_drift"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.score_penalty_fallback_drift) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName score_penalty_fallback_drift -NotePropertyValue 0.08 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["score_penalty_guardrail_spike"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.score_penalty_guardrail_spike) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName score_penalty_guardrail_spike -NotePropertyValue 0.1 -Force }
+    if (-not $cfg.execution_engine.routing_policy.drift_detection.PSObject.Properties["score_penalty_score_drop"] -or $null -eq $cfg.execution_engine.routing_policy.drift_detection.score_penalty_score_drop) { $cfg.execution_engine.routing_policy.drift_detection | Add-Member -NotePropertyName score_penalty_score_drop -NotePropertyValue 0.12 -Force }
     if (-not $cfg.execution_engine.routing_policy.PSObject.Properties["weights"] -or $null -eq $cfg.execution_engine.routing_policy.weights) {
         $cfg.execution_engine.routing_policy | Add-Member -NotePropertyName weights -NotePropertyValue (Get-DefaultRoutingWeights) -Force
     }
@@ -1443,6 +2075,18 @@ function Resolve-ExecutionEngineConfig {
     $recentFailureThreshold = 2
     $minCategoryRecordsLight = 10
     $minCategoryRecordsStrong = 20
+    $driftDetectionPolicy = [pscustomobject]@{
+        enabled = $true
+        recent_window = 20
+        baseline_window = 50
+        minimum_baseline_records = 10
+        failure_rate_multiplier = 1.5
+        retry_rate_threshold = 0.35
+        confidence_penalty_failure_drift = 0.18
+        confidence_penalty_retry_high = 0.12
+        score_penalty_failure_drift = 0.12
+        score_penalty_retry_high = 0.08
+    }
     $weights = Get-DefaultRoutingWeights
     $effectiveWeights = Normalize-RoutingWeights -Weights $weights
 
@@ -1459,8 +2103,33 @@ function Resolve-ExecutionEngineConfig {
         if ($policy.PSObject.Properties["recent_failure_threshold"] -and $null -ne $policy.recent_failure_threshold) { $recentFailureThreshold = [int]$policy.recent_failure_threshold }
         if ($policy.PSObject.Properties["min_category_records_light"] -and $null -ne $policy.min_category_records_light) { $minCategoryRecordsLight = [int]$policy.min_category_records_light }
         if ($policy.PSObject.Properties["min_category_records_strong"] -and $null -ne $policy.min_category_records_strong) { $minCategoryRecordsStrong = [int]$policy.min_category_records_strong }
+        if ($policy.PSObject.Properties["drift_detection"] -and $null -ne $policy.drift_detection) {
+            $driftDetectionPolicy = $policy.drift_detection
+        }
         if ($policy.PSObject.Properties["weights"] -and $null -ne $policy.weights) { $weights = $policy.weights }
     }
+
+    if (-not $driftDetectionPolicy.PSObject.Properties["enabled"] -or $null -eq $driftDetectionPolicy.enabled) { $driftDetectionPolicy | Add-Member -NotePropertyName enabled -NotePropertyValue $true -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["recent_window"] -or $null -eq $driftDetectionPolicy.recent_window) { $driftDetectionPolicy | Add-Member -NotePropertyName recent_window -NotePropertyValue 20 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["baseline_window"] -or $null -eq $driftDetectionPolicy.baseline_window) { $driftDetectionPolicy | Add-Member -NotePropertyName baseline_window -NotePropertyValue 50 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["minimum_baseline_records"] -or $null -eq $driftDetectionPolicy.minimum_baseline_records) { $driftDetectionPolicy | Add-Member -NotePropertyName minimum_baseline_records -NotePropertyValue 10 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["failure_rate_multiplier"] -or $null -eq $driftDetectionPolicy.failure_rate_multiplier) { $driftDetectionPolicy | Add-Member -NotePropertyName failure_rate_multiplier -NotePropertyValue 1.5 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["retry_rate_threshold"] -or $null -eq $driftDetectionPolicy.retry_rate_threshold) { $driftDetectionPolicy | Add-Member -NotePropertyName retry_rate_threshold -NotePropertyValue 0.35 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["fallback_rate_multiplier"] -or $null -eq $driftDetectionPolicy.fallback_rate_multiplier) { $driftDetectionPolicy | Add-Member -NotePropertyName fallback_rate_multiplier -NotePropertyValue 1.5 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["fallback_rate_threshold"] -or $null -eq $driftDetectionPolicy.fallback_rate_threshold) { $driftDetectionPolicy | Add-Member -NotePropertyName fallback_rate_threshold -NotePropertyValue 0.3 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["guardrail_rate_multiplier"] -or $null -eq $driftDetectionPolicy.guardrail_rate_multiplier) { $driftDetectionPolicy | Add-Member -NotePropertyName guardrail_rate_multiplier -NotePropertyValue 1.8 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["guardrail_rate_threshold"] -or $null -eq $driftDetectionPolicy.guardrail_rate_threshold) { $driftDetectionPolicy | Add-Member -NotePropertyName guardrail_rate_threshold -NotePropertyValue 0.15 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["engine_score_drop_threshold"] -or $null -eq $driftDetectionPolicy.engine_score_drop_threshold) { $driftDetectionPolicy | Add-Member -NotePropertyName engine_score_drop_threshold -NotePropertyValue 0.2 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["confidence_penalty_failure_drift"] -or $null -eq $driftDetectionPolicy.confidence_penalty_failure_drift) { $driftDetectionPolicy | Add-Member -NotePropertyName confidence_penalty_failure_drift -NotePropertyValue 0.18 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["confidence_penalty_retry_high"] -or $null -eq $driftDetectionPolicy.confidence_penalty_retry_high) { $driftDetectionPolicy | Add-Member -NotePropertyName confidence_penalty_retry_high -NotePropertyValue 0.12 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["confidence_penalty_fallback_drift"] -or $null -eq $driftDetectionPolicy.confidence_penalty_fallback_drift) { $driftDetectionPolicy | Add-Member -NotePropertyName confidence_penalty_fallback_drift -NotePropertyValue 0.09 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["confidence_penalty_guardrail_spike"] -or $null -eq $driftDetectionPolicy.confidence_penalty_guardrail_spike) { $driftDetectionPolicy | Add-Member -NotePropertyName confidence_penalty_guardrail_spike -NotePropertyValue 0.1 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["confidence_penalty_score_drop"] -or $null -eq $driftDetectionPolicy.confidence_penalty_score_drop) { $driftDetectionPolicy | Add-Member -NotePropertyName confidence_penalty_score_drop -NotePropertyValue 0.12 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["score_penalty_failure_drift"] -or $null -eq $driftDetectionPolicy.score_penalty_failure_drift) { $driftDetectionPolicy | Add-Member -NotePropertyName score_penalty_failure_drift -NotePropertyValue 0.12 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["score_penalty_retry_high"] -or $null -eq $driftDetectionPolicy.score_penalty_retry_high) { $driftDetectionPolicy | Add-Member -NotePropertyName score_penalty_retry_high -NotePropertyValue 0.08 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["score_penalty_fallback_drift"] -or $null -eq $driftDetectionPolicy.score_penalty_fallback_drift) { $driftDetectionPolicy | Add-Member -NotePropertyName score_penalty_fallback_drift -NotePropertyValue 0.08 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["score_penalty_guardrail_spike"] -or $null -eq $driftDetectionPolicy.score_penalty_guardrail_spike) { $driftDetectionPolicy | Add-Member -NotePropertyName score_penalty_guardrail_spike -NotePropertyValue 0.1 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["score_penalty_score_drop"] -or $null -eq $driftDetectionPolicy.score_penalty_score_drop) { $driftDetectionPolicy | Add-Member -NotePropertyName score_penalty_score_drop -NotePropertyValue 0.12 -Force }
 
     $weights = Normalize-RoutingWeights -Weights $weights
     $effectiveWeights = $weights
@@ -1523,6 +2192,7 @@ function Resolve-ExecutionEngineConfig {
         recent_failure_threshold = $recentFailureThreshold
         min_category_records_light = $minCategoryRecordsLight
         min_category_records_strong = $minCategoryRecordsStrong
+        drift_detection = $driftDetectionPolicy
         weights = $weights
         effective_weights = $effectiveWeights
     }
@@ -1533,6 +2203,9 @@ function Resolve-ExecutionEngineConfig {
     $fallbackHealth = $null
     $activeHealthBand = "unknown"
     $fallbackHealthBand = "unknown"
+    $activeDrift = $null
+    $fallbackDrift = $null
+    $selectedDrift = $null
     if ((-not $routingBlocked) -and (-not $DisableAdaptiveRouting) -and $policyEnabled -and $null -ne $State -and $State.PSObject.Properties["engine_performance"] -and $State.engine_performance -and $State.engine_performance.PSObject.Properties["records"]) {
         $perfSummary = Get-EnginePerformanceSummary -State $State -TaskCategoryFilter $TaskCategoryHint
         $activeMetrics = @($perfSummary.by_engine | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $active } | Select-Object -First 1)
@@ -1559,6 +2232,11 @@ function Resolve-ExecutionEngineConfig {
         $activeSuccess = if ($activeMetrics) { [double]$activeMetrics.pass_rate } else { 0.0 }
         $fallbackRuns = if ($fallbackMetrics) { [int]$fallbackMetrics.total_runs } else { 0 }
         $fallbackSuccess = if ($fallbackMetrics) { [double]$fallbackMetrics.pass_rate } else { 0.0 }
+
+        $activeDrift = Get-RoutingDriftSignal -State $State -RoutingPolicy $policySnapshot -EngineFilter $active -TaskCategoryFilter $TaskCategoryHint
+        if ($allowFallback -and $fallback -ne $active) {
+            $fallbackDrift = Get-RoutingDriftSignal -State $State -RoutingPolicy $policySnapshot -EngineFilter $fallback -TaskCategoryFilter $TaskCategoryHint
+        }
         $scoresByEngine = @{}
         $healthMap = @{}
         $healthSummary = Get-EngineHealthSummary -State $State -Window $recentFailureWindow
@@ -1634,11 +2312,17 @@ function Resolve-ExecutionEngineConfig {
         }
 
         $activeScore = Get-WeightedEngineScore -EngineName $active -Metrics $activeMetrics -MinRuns $minRuns -LatencyMin $latencyMin -LatencyMax $latencyMax -Weights $effectiveWeights
+        if ($activeDrift -and $activeDrift.PSObject.Properties["score_penalty"] -and $null -ne $activeDrift.score_penalty) {
+            $activeScore = [math]::Max(0.0, ([double]$activeScore - [double]$activeDrift.score_penalty))
+        }
         $activeScore = [math]::Round(([double]$activeScore * (Get-HealthBandMultiplier -HealthRecord $activeHealth)), 6)
         $scoresByEngine[$active] = $activeScore
         $fallbackScore = $null
         if ($allowFallback -and $fallback -ne $active) {
             $fallbackScore = Get-WeightedEngineScore -EngineName $fallback -Metrics $fallbackMetrics -MinRuns $minRuns -LatencyMin $latencyMin -LatencyMax $latencyMax -Weights $effectiveWeights
+            if ($fallbackDrift -and $fallbackDrift.PSObject.Properties["score_penalty"] -and $null -ne $fallbackDrift.score_penalty) {
+                $fallbackScore = [math]::Max(0.0, ([double]$fallbackScore - [double]$fallbackDrift.score_penalty))
+            }
             $fallbackScore = [math]::Round(([double]$fallbackScore * (Get-HealthBandMultiplier -HealthRecord $fallbackHealth)), 6)
             $scoresByEngine[$fallback] = $fallbackScore
         }
@@ -1752,6 +2436,21 @@ function Resolve-ExecutionEngineConfig {
         }
     }
 
+    if ($activeDrift -or $fallbackDrift) {
+        $selectedDrift = $activeDrift
+        if ($active -eq $fallback -and $fallbackDrift) {
+            $selectedDrift = $fallbackDrift
+        }
+
+        if ((-not $routingBlocked) -and $selectedDrift -and $selectedDrift.PSObject.Properties["confidence_penalty"] -and $null -ne $selectedDrift.confidence_penalty) {
+            $penalty = [double]$selectedDrift.confidence_penalty
+            if ($penalty -gt 0) {
+                $confidence = [math]::Max(0.2, [math]::Round(([double]$confidence - $penalty), 4))
+                $selectionReason = "$selectionReason Drift-adjusted confidence applied (penalty=$([math]::Round($penalty, 3)))."
+            }
+        }
+    }
+
     if ($DisableAdaptiveRouting -and -not $routingBlocked) {
         $selectionReason = "Configured engine forced by operator override."
         $confidence = 1.0
@@ -1781,6 +2480,11 @@ function Resolve-ExecutionEngineConfig {
             health = [pscustomobject]@{
                 active = $activeHealth
                 fallback = $fallbackHealth
+            }
+            drift = [pscustomobject]@{
+                active = $activeDrift
+                fallback = $fallbackDrift
+                selected = $selectedDrift
             }
         }
     }
@@ -2789,6 +3493,29 @@ if ($Action -eq "init") {
                     recent_failure_threshold = 2
                     min_category_records_light = 10
                     min_category_records_strong = 20
+                    drift_detection = @{
+                        enabled = $true
+                        recent_window = 20
+                        baseline_window = 50
+                        minimum_baseline_records = 10
+                        failure_rate_multiplier = 1.5
+                        retry_rate_threshold = 0.35
+                        fallback_rate_multiplier = 1.5
+                        fallback_rate_threshold = 0.3
+                        guardrail_rate_multiplier = 1.8
+                        guardrail_rate_threshold = 0.15
+                        engine_score_drop_threshold = 0.2
+                        confidence_penalty_failure_drift = 0.18
+                        confidence_penalty_retry_high = 0.12
+                        confidence_penalty_fallback_drift = 0.09
+                        confidence_penalty_guardrail_spike = 0.1
+                        confidence_penalty_score_drop = 0.12
+                        score_penalty_failure_drift = 0.12
+                        score_penalty_retry_high = 0.08
+                        score_penalty_fallback_drift = 0.08
+                        score_penalty_guardrail_spike = 0.1
+                        score_penalty_score_drop = 0.12
+                    }
                     weights = (Get-DefaultRoutingWeights)
                 }
             }
@@ -3407,6 +4134,18 @@ switch ($Action) {
     "show-reliability-dashboard" {
         $dashboard = Build-ReliabilityDashboard -State $state -Config $config -Window $Top -CategoryFilter $Category -EngineFilter $Engine
         $dashboard | ConvertTo-Json -Depth 18
+    }
+
+    "get-reliability" {
+        $dashboard = Build-ReliabilityDashboard -State $state -Config $config -Window $Top -CategoryFilter $Category -EngineFilter $Engine
+        [pscustomobject]@{
+            path = "/tod/reliability"
+            generated_at = Get-UtcNow
+            engine_reliability_score = if ($dashboard.PSObject.Properties["engine_reliability"]) { $dashboard.engine_reliability.by_engine } else { @() }
+            retry_trend = if ($dashboard.PSObject.Properties["retry_trend"]) { @($dashboard.retry_trend) } else { @() }
+            guardrail_trend = if ($dashboard.PSObject.Properties["guardrail_trend"]) { $dashboard.guardrail_trend } else { $null }
+            drift_warnings = if ($dashboard.PSObject.Properties["drift_warnings"]) { @($dashboard.drift_warnings) } else { @() }
+        } | ConvertTo-Json -Depth 18
     }
 
     "add-result" {
