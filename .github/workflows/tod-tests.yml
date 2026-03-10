@@ -1,0 +1,42 @@
+name: TOD Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tod-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PowerShell Test Dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not (Get-Module -ListAvailable -Name Pester)) {
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+            Install-Module -Name Pester -Scope CurrentUser -Force -SkipPublisherCheck
+          }
+
+      - name: Run TOD Test Suite
+        shell: pwsh
+        run: |
+          ./scripts/Invoke-TODTests.CI.ps1 -SummaryPath "tod/out/results-v2/tod-tests-summary.json"
+
+      - name: Upload TOD Test Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tod-tests-summary
+          path: tod/out/results-v2/tod-tests-summary.json
+          if-no-files-found: warn
