@@ -24,6 +24,8 @@ function New-DriftTestConfig {
     $cfg.execution_engine.routing_policy.drift_detection.fallback_rate_multiplier = 1.2
     $cfg.execution_engine.routing_policy.drift_detection.fallback_rate_threshold = 0.25
     $cfg.execution_engine.routing_policy.drift_detection.engine_score_drop_threshold = 0.1
+    $cfg.execution_engine.routing_policy.drift_detection.decay_half_life_days = 7
+    $cfg.execution_engine.routing_policy.drift_detection.decay_floor = 0.25
 
     $tempPath = Join-Path $repoRoot ("tod/config/tod-config.test-drift-{0}.json" -f ([guid]::NewGuid().ToString("N")))
     $cfg | ConvertTo-Json -Depth 30 | Set-Content $tempPath
@@ -103,6 +105,58 @@ Describe "TOD Drift Penalties" {
             @($trend).Count | Should BeGreaterThan 0
             [double]$trend[0].confidence_penalty | Should BeGreaterThan 0
             [double]$trend[0].score_penalty | Should BeGreaterThan 0
+            [double]$trend[0].decay_factor | Should BeGreaterThan 0
+        }
+        finally {
+            $originalState | Set-Content $statePath
+            if (Test-Path $cfgPath) { Remove-Item $cfgPath -Force }
+        }
+    }
+
+    It "decays penalties when drift signals are old" {
+        $originalState = Get-Content $statePath -Raw
+        $cfgPath = New-DriftTestConfig
+        try {
+            $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+            $cfg.execution_engine.routing_policy.drift_detection.decay_half_life_days = 1
+            $cfg.execution_engine.routing_policy.drift_detection.decay_floor = 0.1
+            $cfg | ConvertTo-Json -Depth 30 | Set-Content $cfgPath
+
+            $state = $originalState | ConvertFrom-Json
+            $task = @($state.tasks | Where-Object { [string]$_.id -eq "45" } | Select-Object -First 1)
+            if (@($task).Count -eq 0) {
+                throw "Task 45 not found in state; cannot run drift decay test."
+            }
+            $task[0].task_category = "refactor"
+            $state.sync_state.last_comparison = [pscustomobject]@{ status = "ok" }
+
+            $records = @()
+            for ($i = 1; $i -le 10; $i++) {
+                $r = New-PerfRecord -TaskId "45" -Engine "codex" -TaskCategory "refactor" -Success $false -RetryInflated $true -FallbackApplied $true -ReviewDecision "escalate" -Index $i
+                $r.created_at = (Get-Date).ToUniversalTime().AddDays(-10).AddMinutes(-1 * $i).ToString("o")
+                $records += $r
+            }
+            for ($i = 11; $i -le 20; $i++) {
+                $r = New-PerfRecord -TaskId "45" -Engine "codex" -TaskCategory "refactor" -Success $true -RetryInflated $false -FallbackApplied $false -ReviewDecision "pass" -Index $i
+                $r.created_at = (Get-Date).ToUniversalTime().AddDays(-10).AddMinutes(-1 * $i).ToString("o")
+                $records += $r
+            }
+
+            $state.engine_performance.records = @($records)
+            $state.engine_performance.updated_at = (Get-Date).ToUniversalTime().AddDays(-10).ToString("o")
+            $state.routing_decisions.records = @()
+            $state.routing_decisions.updated_at = (Get-Date).ToUniversalTime().AddDays(-10).ToString("o")
+            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
+
+            $reliabilityRaw = & $todScript -Action "get-reliability" -Top 20 -ConfigPath $cfgPath -Engine "codex"
+            $reliability = $reliabilityRaw | ConvertFrom-Json
+            $trend = @($reliability.retry_trend | Select-Object -First 1)
+
+            @($trend).Count | Should BeGreaterThan 0
+            [double]$trend[0].decay_factor | Should BeLessThan 1
+            [double]$trend[0].signal_age_days | Should BeGreaterThan 1
+            [double]$trend[0].confidence_penalty | Should BeGreaterThan 0
+            [double]$trend[0].confidence_penalty | Should BeLessThan 0.6
         }
         finally {
             $originalState | Set-Content $statePath

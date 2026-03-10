@@ -65,6 +65,8 @@ Describe "TOD Reliability Dashboards" {
             (($firstTrend[0].PSObject.Properties.Name) -contains "recent_fallback_rate") | Should Be $true
             (($firstTrend[0].PSObject.Properties.Name) -contains "recent_guardrail_block_rate") | Should Be $true
             (($firstTrend[0].PSObject.Properties.Name) -contains "recent_engine_score") | Should Be $true
+            (($firstTrend[0].PSObject.Properties.Name) -contains "decay_factor") | Should Be $true
+            (($firstTrend[0].PSObject.Properties.Name) -contains "signal_age_days") | Should Be $true
             (($firstTrend[0].PSObject.Properties.Name) -contains "score_penalty") | Should Be $true
         }
     }

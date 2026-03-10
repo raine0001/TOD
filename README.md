@@ -290,3 +290,26 @@ CI-friendly wrapper (fails on any test failure and prints only summary-path mark
 Branch protection guidance for CI enforcement:
 
 - [docs/github-branch-protection.md](docs/github-branch-protection.md)
+
+Apply branch protection from Windows with one command:
+
+```powershell
+.\scripts\apply_branch_protection.ps1 -Repository raine0001/mim -Branch main
+```
+
+Optional override for required check context:
+
+```powershell
+.\scripts\apply_branch_protection.ps1 -Repository raine0001/mim -Branch main -RequiredCheck "TOD Tests / test"
+```
+
+Linux/macOS equivalent:
+
+```bash
+bash ./scripts/apply_branch_protection.sh raine0001/mim main
+```
+
+Reliability drift penalty decay:
+
+- Configure `execution_engine.routing_policy.drift_detection.decay_half_life_days` to control how quickly penalties taper as signals age.
+- Configure `execution_engine.routing_policy.drift_detection.decay_floor` to keep a small residual penalty floor instead of dropping to zero instantly.

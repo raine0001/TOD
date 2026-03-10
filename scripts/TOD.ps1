@@ -774,6 +774,8 @@ function Get-RoutingDriftSignal {
     $scorePenaltyFallbackDrift = 0.08
     $scorePenaltyGuardrailSpike = 0.1
     $scorePenaltyScoreDrop = 0.12
+    $decayHalfLifeDays = 7.0
+    $decayFloor = 0.25
 
     if ($driftCfg) {
         if ($driftCfg.PSObject.Properties["enabled"] -and $null -ne $driftCfg.enabled) { $enabled = [bool]$driftCfg.enabled }
@@ -797,11 +799,16 @@ function Get-RoutingDriftSignal {
         if ($driftCfg.PSObject.Properties["score_penalty_fallback_drift"] -and $null -ne $driftCfg.score_penalty_fallback_drift) { $scorePenaltyFallbackDrift = [double]$driftCfg.score_penalty_fallback_drift }
         if ($driftCfg.PSObject.Properties["score_penalty_guardrail_spike"] -and $null -ne $driftCfg.score_penalty_guardrail_spike) { $scorePenaltyGuardrailSpike = [double]$driftCfg.score_penalty_guardrail_spike }
         if ($driftCfg.PSObject.Properties["score_penalty_score_drop"] -and $null -ne $driftCfg.score_penalty_score_drop) { $scorePenaltyScoreDrop = [double]$driftCfg.score_penalty_score_drop }
+        if ($driftCfg.PSObject.Properties["decay_half_life_days"] -and $null -ne $driftCfg.decay_half_life_days) { $decayHalfLifeDays = [double]$driftCfg.decay_half_life_days }
+        if ($driftCfg.PSObject.Properties["decay_floor"] -and $null -ne $driftCfg.decay_floor) { $decayFloor = [double]$driftCfg.decay_floor }
     }
 
     if ($recentWindow -lt 1) { $recentWindow = 20 }
     if ($baselineWindow -lt $recentWindow) { $baselineWindow = [math]::Max($recentWindow, 50) }
     if ($minBaselineRecords -lt 1) { $minBaselineRecords = 10 }
+    if ($decayHalfLifeDays -le 0) { $decayHalfLifeDays = 7.0 }
+    if ($decayFloor -lt 0.0) { $decayFloor = 0.0 }
+    if ($decayFloor -gt 1.0) { $decayFloor = 1.0 }
 
     $records = @($State.engine_performance.records | Sort-Object -Property created_at -Descending)
     if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
@@ -1022,6 +1029,27 @@ function Get-RoutingDriftSignal {
         $scorePenalty += $scorePenaltyScoreDrop
     }
 
+    $latestSignalAt = $null
+    if (@($recentRecords).Count -gt 0) {
+        $latestText = if ($recentRecords[0].PSObject.Properties["created_at"]) { [string]$recentRecords[0].created_at } else { "" }
+        if (-not [string]::IsNullOrWhiteSpace($latestText)) {
+            try {
+                $latestSignalAt = [datetime]$latestText
+            }
+            catch {
+                $latestSignalAt = $null
+            }
+        }
+    }
+
+    $signalAgeDays = 0.0
+    if ($latestSignalAt) {
+        $signalAgeDays = [math]::Max(0.0, ((Get-Date).ToUniversalTime() - $latestSignalAt.ToUniversalTime()).TotalDays)
+    }
+    $decayFactor = [math]::Max($decayFloor, [math]::Exp(-[math]::Log(2.0) * ($signalAgeDays / $decayHalfLifeDays)))
+    $confidencePenalty = $confidencePenalty * $decayFactor
+    $scorePenalty = $scorePenalty * $decayFactor
+
     return [pscustomobject]@{
         enabled = [bool]$enabled
         recent_window = [int]$recentWindow
@@ -1049,6 +1077,13 @@ function Get-RoutingDriftSignal {
         warning = ([bool]$failureDrift -or [bool]$retryHigh -or [bool]$fallbackDrift -or [bool]$guardrailSpike -or [bool]$scoreDrop)
         warning_count = [int]@($warnings).Count
         warnings = @($warnings)
+        decay = [pscustomobject]@{
+            half_life_days = [math]::Round($decayHalfLifeDays, 4)
+            floor = [math]::Round($decayFloor, 4)
+            factor = [math]::Round($decayFactor, 4)
+            signal_age_days = [math]::Round($signalAgeDays, 4)
+            latest_signal_at = if ($latestSignalAt) { $latestSignalAt.ToUniversalTime().ToString("o") } else { "" }
+        }
         confidence_penalty = [math]::Round([math]::Min(0.6, $confidencePenalty), 4)
         score_penalty = [math]::Round([math]::Min(0.6, $scorePenalty), 4)
     }
@@ -1272,6 +1307,8 @@ function Build-ReliabilityDashboard {
             baseline_guardrail_block_rate = [double]$drift.rates.baseline_guardrail_block
             recent_engine_score = [double]$drift.engine_score.recent
             baseline_engine_score = [double]$drift.engine_score.baseline
+            decay_factor = if ($drift.PSObject.Properties["decay"]) { [double]$drift.decay.factor } else { 1.0 }
+            signal_age_days = if ($drift.PSObject.Properties["decay"]) { [double]$drift.decay.signal_age_days } else { 0.0 }
             confidence_penalty = [double]$drift.confidence_penalty
             score_penalty = [double]$drift.score_penalty
         }

@@ -65,7 +65,9 @@
         "score_penalty_retry_high": 0.08,
         "score_penalty_fallback_drift": 0.08,
         "score_penalty_guardrail_spike": 0.1,
-        "score_penalty_score_drop": 0.12
+        "score_penalty_score_drop": 0.12,
+        "decay_half_life_days": 7,
+        "decay_floor": 0.25
       },
       "weights": {
         "availability": 0.25,
