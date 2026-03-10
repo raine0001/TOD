@@ -276,6 +276,18 @@ function Add-EnginePerformanceRecord {
     )
 
     $engineName = [string]$InvokeResult.active_engine
+    $attemptedEngines = @($InvokeResult.attempted_engines)
+    $attemptDetails = if ($InvokeResult.PSObject.Properties["attempts"] -and $null -ne $InvokeResult.attempts) { @($InvokeResult.attempts) } else { @() }
+    $attemptCount = if (@($attemptDetails).Count -gt 0) { [int]@($attemptDetails).Count } else { [int]@($attemptedEngines).Count }
+    $uniqueEngineCount = [int]@($attemptedEngines | Select-Object -Unique).Count
+    $hadRetry = ($attemptCount -gt $uniqueEngineCount)
+    $isSuccess = ([string]$ReviewDecision -eq "pass")
+    $recoveredOnFallback = ([bool]$InvokeResult.fallback_applied -and $isSuccess)
+    $recoveredOnRetry = ($hadRetry -and -not [bool]$InvokeResult.fallback_applied -and $isSuccess)
+    $unrecoveredFailure = (([string]$ReviewDecision -eq "escalate") -or [bool]$InvokeResult.result.needs_escalation)
+    $degradedSuccess = ($isSuccess -and ($recoveredOnFallback -or $recoveredOnRetry))
+    $manualInterventionRequired = (-not $isSuccess)
+
     $record = [pscustomobject]@{
         id = "ENGPERF-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 8).ToUpperInvariant())
         task_id = [string]$TaskId
@@ -283,12 +295,19 @@ function Add-EnginePerformanceRecord {
         task_type = $TaskType
         task_category = $TaskCategory
         fallback_applied = [bool]$InvokeResult.fallback_applied
-        attempted_engines = @($InvokeResult.attempted_engines)
+        attempted_engines = @($attemptedEngines)
+        attempts_count = $attemptCount
+        retry_inflated = $hadRetry
         result_status = [string]$InvokeResult.result.status
         needs_escalation = [bool]$InvokeResult.result.needs_escalation
         failure_category = if ($InvokeResult.PSObject.Properties["failure_category"] -and -not [string]::IsNullOrWhiteSpace([string]$InvokeResult.failure_category)) { [string]$InvokeResult.failure_category } else { "none" }
         review_decision = [string]$ReviewDecision
-        success = ([string]$ReviewDecision -eq "pass")
+        success = $isSuccess
+        recovered_on_retry = $recoveredOnRetry
+        recovered_on_fallback = $recoveredOnFallback
+        unrecovered_failure = $unrecoveredFailure
+        degraded_success = $degradedSuccess
+        manual_intervention_required = $manualInterventionRequired
         review_score = $(switch ([string]$ReviewDecision) { "pass" { 1.0 } "revise" { 0.5 } "escalate" { 0.0 } default { 0.0 } })
         latency_ms = if ($InvokeResult.PSObject.Properties["elapsed_ms"] -and $null -ne $InvokeResult.elapsed_ms) { [double]$InvokeResult.elapsed_ms } else { $null }
         files_involved = @($FilesInvolved | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -656,6 +675,10 @@ function Build-RoutingFeedbackReport {
             version = if ($State.PSObject.Properties["routing_feedback"] -and $State.routing_feedback -and $State.routing_feedback.PSObject.Properties["version"]) { [string]$State.routing_feedback.version } else { "feedback_v1" }
             updated_at = if ($State.PSObject.Properties["routing_feedback"] -and $State.routing_feedback -and $State.routing_feedback.PSObject.Properties["updated_at"]) { [string]$State.routing_feedback.updated_at } else { "" }
         }
+        policy_snapshot = [pscustomobject]@{
+            routing_policy = $Config.execution_engine.routing_policy
+            retry_policy = $Config.execution_engine.retry_policy
+        }
         engine_health = $health
     }
 }
@@ -735,6 +758,10 @@ function Build-ReliabilityDashboard {
             category = if ([string]::IsNullOrWhiteSpace($CategoryFilter)) { "" } else { $CategoryFilter }
             engine = if ([string]::IsNullOrWhiteSpace($EngineFilter)) { "" } else { $EngineFilter }
         }
+        policy_snapshot = [pscustomobject]@{
+            routing_policy = $Config.execution_engine.routing_policy
+            retry_policy = $Config.execution_engine.retry_policy
+        }
         routing_feedback = $routingFeedback
         failure_taxonomy = $taxonomy
         recent_routing_decisions = @($recentRouting.records)
@@ -806,6 +833,7 @@ function Add-RoutingDecisionRecord {
             blocked = if ($routingMeta -and $routingMeta.PSObject.Properties["blocked"]) { [bool]$routingMeta.blocked } else { $false }
             task_category = [string]$TaskCategory
             policy = if ($routingMeta -and $routingMeta.PSObject.Properties["policy"]) { $routingMeta.policy } else { $null }
+            retry_policy = if ($EngineConfig.PSObject.Properties["retry_policy"]) { $EngineConfig.retry_policy } else { $null }
             active_metrics = if ($routingMeta -and $routingMeta.PSObject.Properties["active_metrics"]) { $routingMeta.active_metrics } else { $null }
             fallback_metrics = if ($routingMeta -and $routingMeta.PSObject.Properties["fallback_metrics"]) { $routingMeta.fallback_metrics } else { $null }
         }
@@ -1216,6 +1244,8 @@ function Build-RunTaskReport {
         routing_confidence = if ($latestRoutingRecord -and $latestRoutingRecord.PSObject.Properties["confidence"]) { [double]$latestRoutingRecord.confidence } else { $null }
         routing_source = if ($latestRoutingRecord -and $latestRoutingRecord.PSObject.Properties["source"]) { [string]$latestRoutingRecord.source } else { "" }
         routing_final_outcome = if ($latestRoutingRecord -and $latestRoutingRecord.PSObject.Properties["final_outcome"]) { [string]$latestRoutingRecord.final_outcome } else { "" }
+        routing_policy_snapshot = if ($latestRoutingRecord -and $latestRoutingRecord.routing -and $latestRoutingRecord.routing.PSObject.Properties["policy"]) { $latestRoutingRecord.routing.policy } else { $null }
+        retry_policy_snapshot = if ($latestRoutingRecord -and $latestRoutingRecord.routing -and $latestRoutingRecord.routing.PSObject.Properties["retry_policy"]) { $latestRoutingRecord.routing.retry_policy } else { $null }
         performance_delta = $perfDelta
         reliability_scorecard = $scorecard
     }

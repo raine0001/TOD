@@ -40,3 +40,13 @@ jobs:
           name: tod-tests-summary
           path: tod/out/results-v2/tod-tests-summary.json
           if-no-files-found: warn
+
+      - name: Upload TOD Test Trends
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tod-tests-trends
+          path: |
+            tod/out/results-v2/tod-tests-history.json
+            tod/out/results-v2/tod-tests-trends.json
+          if-no-files-found: warn
