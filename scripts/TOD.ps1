@@ -776,6 +776,8 @@ function Get-RoutingDriftSignal {
     $scorePenaltyScoreDrop = 0.12
     $decayHalfLifeDays = 7.0
     $decayFloor = 0.25
+    $normalizationWindowRuns = 8
+    $stableRunDecayFloor = 0.2
 
     if ($driftCfg) {
         if ($driftCfg.PSObject.Properties["enabled"] -and $null -ne $driftCfg.enabled) { $enabled = [bool]$driftCfg.enabled }
@@ -801,6 +803,8 @@ function Get-RoutingDriftSignal {
         if ($driftCfg.PSObject.Properties["score_penalty_score_drop"] -and $null -ne $driftCfg.score_penalty_score_drop) { $scorePenaltyScoreDrop = [double]$driftCfg.score_penalty_score_drop }
         if ($driftCfg.PSObject.Properties["decay_half_life_days"] -and $null -ne $driftCfg.decay_half_life_days) { $decayHalfLifeDays = [double]$driftCfg.decay_half_life_days }
         if ($driftCfg.PSObject.Properties["decay_floor"] -and $null -ne $driftCfg.decay_floor) { $decayFloor = [double]$driftCfg.decay_floor }
+        if ($driftCfg.PSObject.Properties["normalization_window_runs"] -and $null -ne $driftCfg.normalization_window_runs) { $normalizationWindowRuns = [int]$driftCfg.normalization_window_runs }
+        if ($driftCfg.PSObject.Properties["stable_run_decay_floor"] -and $null -ne $driftCfg.stable_run_decay_floor) { $stableRunDecayFloor = [double]$driftCfg.stable_run_decay_floor }
     }
 
     if ($recentWindow -lt 1) { $recentWindow = 20 }
@@ -809,6 +813,9 @@ function Get-RoutingDriftSignal {
     if ($decayHalfLifeDays -le 0) { $decayHalfLifeDays = 7.0 }
     if ($decayFloor -lt 0.0) { $decayFloor = 0.0 }
     if ($decayFloor -gt 1.0) { $decayFloor = 1.0 }
+    if ($normalizationWindowRuns -lt 1) { $normalizationWindowRuns = 8 }
+    if ($stableRunDecayFloor -lt 0.0) { $stableRunDecayFloor = 0.0 }
+    if ($stableRunDecayFloor -gt 1.0) { $stableRunDecayFloor = 1.0 }
 
     $records = @($State.engine_performance.records | Sort-Object -Property created_at -Descending)
     if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
@@ -1029,6 +1036,22 @@ function Get-RoutingDriftSignal {
         $scorePenalty += $scorePenaltyScoreDrop
     }
 
+    $consecutiveStableRuns = 0
+    foreach ($r in @($records)) {
+        $stableSuccess = [bool]$r.success
+        $stableRetry = if ($r.PSObject.Properties["retry_inflated"] -and $null -ne $r.retry_inflated) { [bool]$r.retry_inflated } elseif ($r.PSObject.Properties["attempts_count"] -and $null -ne $r.attempts_count) { [int]$r.attempts_count -gt 1 } else { $false }
+        $stableFallback = if ($r.PSObject.Properties["fallback_applied"] -and $null -ne $r.fallback_applied) { [bool]$r.fallback_applied } else { $false }
+        $stableEscalation = if ($r.PSObject.Properties["needs_escalation"] -and $null -ne $r.needs_escalation) { [bool]$r.needs_escalation } else { ([string]$r.review_decision -eq "escalate") }
+        if ($stableSuccess -and (-not $stableRetry) -and (-not $stableFallback) -and (-not $stableEscalation)) {
+            $consecutiveStableRuns += 1
+        }
+        else {
+            break
+        }
+    }
+    $recoveryProgress = [math]::Min(1.0, ([double]$consecutiveStableRuns / [double]$normalizationWindowRuns))
+    $stableRunDecayFactor = [math]::Max($stableRunDecayFloor, (1.0 - $recoveryProgress))
+
     $latestSignalAt = $null
     if (@($recentRecords).Count -gt 0) {
         $latestText = if ($recentRecords[0].PSObject.Properties["created_at"]) { [string]$recentRecords[0].created_at } else { "" }
@@ -1047,8 +1070,19 @@ function Get-RoutingDriftSignal {
         $signalAgeDays = [math]::Max(0.0, ((Get-Date).ToUniversalTime() - $latestSignalAt.ToUniversalTime()).TotalDays)
     }
     $decayFactor = [math]::Max($decayFloor, [math]::Exp(-[math]::Log(2.0) * ($signalAgeDays / $decayHalfLifeDays)))
-    $confidencePenalty = $confidencePenalty * $decayFactor
-    $scorePenalty = $scorePenalty * $decayFactor
+    $confidencePenalty = $confidencePenalty * $decayFactor * $stableRunDecayFactor
+    $scorePenalty = $scorePenalty * $decayFactor * $stableRunDecayFactor
+
+    $alertState = "stable"
+    if ($guardrailSpike -or ($scoreDrop -and ($baselineRecoveryScore - $recentRecoveryScore) -ge ($engineScoreDropThreshold * 1.25)) -or $recentFailureRate -ge 0.5) {
+        $alertState = "critical"
+    }
+    elseif (@($warnings).Count -ge 3 -or $recentFailureRate -ge 0.35 -or $confidencePenalty -ge 0.22) {
+        $alertState = "degraded"
+    }
+    elseif (@($warnings).Count -gt 0) {
+        $alertState = "warning"
+    }
 
     return [pscustomobject]@{
         enabled = [bool]$enabled
@@ -1075,8 +1109,16 @@ function Get-RoutingDriftSignal {
             drop = [math]::Round(($baselineRecoveryScore - $recentRecoveryScore), 4)
         }
         warning = ([bool]$failureDrift -or [bool]$retryHigh -or [bool]$fallbackDrift -or [bool]$guardrailSpike -or [bool]$scoreDrop)
+        alert_state = $alertState
         warning_count = [int]@($warnings).Count
         warnings = @($warnings)
+        recovery = [pscustomobject]@{
+            normalization_window_runs = [int]$normalizationWindowRuns
+            consecutive_stable_runs = [int]$consecutiveStableRuns
+            recovery_progress = [math]::Round($recoveryProgress, 4)
+            stable_run_decay_floor = [math]::Round($stableRunDecayFloor, 4)
+            stable_run_decay_factor = [math]::Round($stableRunDecayFactor, 4)
+        }
         decay = [pscustomobject]@{
             half_life_days = [math]::Round($decayHalfLifeDays, 4)
             floor = [math]::Round($decayFloor, 4)
@@ -1307,6 +1349,9 @@ function Build-ReliabilityDashboard {
             baseline_guardrail_block_rate = [double]$drift.rates.baseline_guardrail_block
             recent_engine_score = [double]$drift.engine_score.recent
             baseline_engine_score = [double]$drift.engine_score.baseline
+            alert_state = if ($drift.PSObject.Properties["alert_state"]) { [string]$drift.alert_state } else { "stable" }
+            recovery_progress = if ($drift.PSObject.Properties["recovery"]) { [double]$drift.recovery.recovery_progress } else { 0.0 }
+            consecutive_stable_runs = if ($drift.PSObject.Properties["recovery"]) { [int]$drift.recovery.consecutive_stable_runs } else { 0 }
             decay_factor = if ($drift.PSObject.Properties["decay"]) { [double]$drift.decay.factor } else { 1.0 }
             signal_age_days = if ($drift.PSObject.Properties["decay"]) { [double]$drift.decay.signal_age_days } else { 0.0 }
             confidence_penalty = [double]$drift.confidence_penalty
@@ -2167,6 +2212,10 @@ function Resolve-ExecutionEngineConfig {
     if (-not $driftDetectionPolicy.PSObject.Properties["score_penalty_fallback_drift"] -or $null -eq $driftDetectionPolicy.score_penalty_fallback_drift) { $driftDetectionPolicy | Add-Member -NotePropertyName score_penalty_fallback_drift -NotePropertyValue 0.08 -Force }
     if (-not $driftDetectionPolicy.PSObject.Properties["score_penalty_guardrail_spike"] -or $null -eq $driftDetectionPolicy.score_penalty_guardrail_spike) { $driftDetectionPolicy | Add-Member -NotePropertyName score_penalty_guardrail_spike -NotePropertyValue 0.1 -Force }
     if (-not $driftDetectionPolicy.PSObject.Properties["score_penalty_score_drop"] -or $null -eq $driftDetectionPolicy.score_penalty_score_drop) { $driftDetectionPolicy | Add-Member -NotePropertyName score_penalty_score_drop -NotePropertyValue 0.12 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["normalization_window_runs"] -or $null -eq $driftDetectionPolicy.normalization_window_runs) { $driftDetectionPolicy | Add-Member -NotePropertyName normalization_window_runs -NotePropertyValue 8 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["stable_run_decay_floor"] -or $null -eq $driftDetectionPolicy.stable_run_decay_floor) { $driftDetectionPolicy | Add-Member -NotePropertyName stable_run_decay_floor -NotePropertyValue 0.2 -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["quarantine_enabled"] -or $null -eq $driftDetectionPolicy.quarantine_enabled) { $driftDetectionPolicy | Add-Member -NotePropertyName quarantine_enabled -NotePropertyValue $true -Force }
+    if (-not $driftDetectionPolicy.PSObject.Properties["quarantine_alert_state"] -or [string]::IsNullOrWhiteSpace([string]$driftDetectionPolicy.quarantine_alert_state)) { $driftDetectionPolicy | Add-Member -NotePropertyName quarantine_alert_state -NotePropertyValue "critical" -Force }
 
     $weights = Normalize-RoutingWeights -Weights $weights
     $effectiveWeights = $weights
@@ -2274,6 +2323,33 @@ function Resolve-ExecutionEngineConfig {
         if ($allowFallback -and $fallback -ne $active) {
             $fallbackDrift = Get-RoutingDriftSignal -State $State -RoutingPolicy $policySnapshot -EngineFilter $fallback -TaskCategoryFilter $TaskCategoryHint
         }
+
+        function Get-DriftAlertRank {
+            param([string]$State)
+            switch (([string]$State).ToLowerInvariant()) {
+                "critical" { return 3 }
+                "degraded" { return 2 }
+                "warning" { return 1 }
+                default { return 0 }
+            }
+        }
+
+        $quarantineEnabled = if ($driftDetectionPolicy.PSObject.Properties["quarantine_enabled"] -and $null -ne $driftDetectionPolicy.quarantine_enabled) { [bool]$driftDetectionPolicy.quarantine_enabled } else { $true }
+        $quarantineState = if ($driftDetectionPolicy.PSObject.Properties["quarantine_alert_state"] -and -not [string]::IsNullOrWhiteSpace([string]$driftDetectionPolicy.quarantine_alert_state)) { ([string]$driftDetectionPolicy.quarantine_alert_state).ToLowerInvariant() } else { "critical" }
+
+        if ((-not $routingBlocked) -and (-not $routingApplied) -and $quarantineEnabled -and $allowFallback -and $fallback -ne $active) {
+            $activeAlert = if ($activeDrift -and $activeDrift.PSObject.Properties["alert_state"]) { [string]$activeDrift.alert_state } else { "stable" }
+            $fallbackAlert = if ($fallbackDrift -and $fallbackDrift.PSObject.Properties["alert_state"]) { [string]$fallbackDrift.alert_state } else { "stable" }
+
+            if ((Get-DriftAlertRank -State $activeAlert) -ge (Get-DriftAlertRank -State $quarantineState) -and (Get-DriftAlertRank -State $fallbackAlert) -lt (Get-DriftAlertRank -State $quarantineState)) {
+                $active = $fallback
+                $routingApplied = $true
+                $routingReason = "drift_quarantine_active_deprefer"
+                $selectionReason = "Active engine drift state '$activeAlert' triggered temporary de-preference/quarantine; switched to fallback engine with drift state '$fallbackAlert'."
+                $confidence = 0.91
+            }
+        }
+
         $scoresByEngine = @{}
         $healthMap = @{}
         $healthSummary = Get-EngineHealthSummary -State $State -Window $recentFailureWindow

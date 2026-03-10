@@ -66,8 +66,12 @@
         "score_penalty_fallback_drift": 0.08,
         "score_penalty_guardrail_spike": 0.1,
         "score_penalty_score_drop": 0.12,
+        "normalization_window_runs": 8,
+        "stable_run_decay_floor": 0.2,
         "decay_half_life_days": 7,
-        "decay_floor": 0.25
+        "decay_floor": 0.25,
+        "quarantine_enabled": true,
+        "quarantine_alert_state": "critical"
       },
       "weights": {
         "availability": 0.25,

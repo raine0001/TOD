@@ -106,6 +106,7 @@ Describe "TOD Drift Penalties" {
             [double]$trend[0].confidence_penalty | Should BeGreaterThan 0
             [double]$trend[0].score_penalty | Should BeGreaterThan 0
             [double]$trend[0].decay_factor | Should BeGreaterThan 0
+            ([string]$trend[0].alert_state).Length | Should BeGreaterThan 0
         }
         finally {
             $originalState | Set-Content $statePath
@@ -157,6 +158,53 @@ Describe "TOD Drift Penalties" {
             [double]$trend[0].signal_age_days | Should BeGreaterThan 1
             [double]$trend[0].confidence_penalty | Should BeGreaterThan 0
             [double]$trend[0].confidence_penalty | Should BeLessThan 0.6
+        }
+        finally {
+            $originalState | Set-Content $statePath
+            if (Test-Path $cfgPath) { Remove-Item $cfgPath -Force }
+        }
+    }
+
+    It "reports critical drift alert state for severe degradation" {
+        $originalState = Get-Content $statePath -Raw
+        $cfgPath = New-DriftTestConfig
+        try {
+            $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+            $cfg.execution_engine.routing_policy.drift_detection.guardrail_rate_threshold = 0.05
+            $cfg | ConvertTo-Json -Depth 30 | Set-Content $cfgPath
+
+            $state = $originalState | ConvertFrom-Json
+            $task = @($state.tasks | Where-Object { [string]$_.id -eq "45" } | Select-Object -First 1)
+            if (@($task).Count -eq 0) {
+                throw "Task 45 not found in state; cannot run drift quarantine test."
+            }
+            $task[0].task_category = "refactor"
+            $state.sync_state.last_comparison = [pscustomobject]@{ status = "ok" }
+
+            $records = @()
+            for ($i = 1; $i -le 12; $i++) {
+                $records += (New-PerfRecord -TaskId "45" -Engine "codex" -TaskCategory "refactor" -Success $false -RetryInflated $true -FallbackApplied $true -ReviewDecision "escalate" -Index $i)
+            }
+            for ($i = 13; $i -le 24; $i++) {
+                $records += (New-PerfRecord -TaskId "45" -Engine "codex" -TaskCategory "refactor" -Success $true -RetryInflated $false -FallbackApplied $false -ReviewDecision "pass" -Index $i)
+            }
+
+            $state.engine_performance.records = @($records)
+            $state.engine_performance.updated_at = (Get-Date).ToUniversalTime().ToString("o")
+            $state.routing_decisions.records = @(
+                [pscustomobject]@{ id = "R1"; task_id = "45"; task_category = "refactor"; selected_engine = "codex"; final_outcome = "blocked_pre_invocation"; created_at = (Get-Date).ToUniversalTime().AddMinutes(-1).ToString("o") },
+                [pscustomobject]@{ id = "R2"; task_id = "45"; task_category = "refactor"; selected_engine = "codex"; final_outcome = "blocked_pre_invocation"; created_at = (Get-Date).ToUniversalTime().AddMinutes(-2).ToString("o") },
+                [pscustomobject]@{ id = "R3"; task_id = "45"; task_category = "refactor"; selected_engine = "codex"; final_outcome = "pass"; created_at = (Get-Date).ToUniversalTime().AddMinutes(-20).ToString("o") }
+            )
+            $state.routing_decisions.updated_at = (Get-Date).ToUniversalTime().ToString("o")
+            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
+
+            $reliabilityRaw = & $todScript -Action "get-reliability" -Top 20 -ConfigPath $cfgPath -Engine "codex"
+            $reliability = $reliabilityRaw | ConvertFrom-Json
+            $trend = @($reliability.retry_trend | Select-Object -First 1)
+
+            @($trend).Count | Should BeGreaterThan 0
+            [string]$trend[0].alert_state | Should Be "critical"
         }
         finally {
             $originalState | Set-Content $statePath
