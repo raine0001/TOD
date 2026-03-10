@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 2 ]]; then
-  echo "Usage: $0 <owner/repo> <branch>"
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 <owner/repo> [branch]"
   exit 1
 fi
 
 REPO="$1"
-BRANCH="$2"
+BRANCH="${2:-main}"
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "gh CLI not found in PATH"

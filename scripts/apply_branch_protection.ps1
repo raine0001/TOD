@@ -1,8 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Repository,
-    [Parameter(Mandatory = $true)]
-    [string]$Branch,
+    [string]$Branch = "main",
     [string]$RequiredCheck = "TOD Tests / test"
 )
 
@@ -37,6 +36,11 @@ if (-not $ghPath) {
 
 $null = & $ghPath auth status
 
+$normalizedBranch = ([string]$Branch).Trim().ToLowerInvariant()
+if ([string]::IsNullOrWhiteSpace($normalizedBranch)) {
+    $normalizedBranch = "main"
+}
+
 $payload = [ordered]@{
     required_status_checks = [ordered]@{
         strict = $true
@@ -61,8 +65,8 @@ $payload = [ordered]@{
 $tempFile = New-TemporaryFile
 try {
     $payload | ConvertTo-Json -Depth 12 | Set-Content -Path $tempFile
-    & $ghPath api --method PUT -H "Accept: application/vnd.github+json" "repos/$Repository/branches/$Branch/protection" --input $tempFile
-    Write-Host "Branch protection applied for $Repository:$Branch" -ForegroundColor Green
+    & $ghPath api --method PUT -H "Accept: application/vnd.github+json" "repos/$Repository/branches/$normalizedBranch/protection" --input $tempFile
+    Write-Host "Branch protection applied for $Repository:$normalizedBranch" -ForegroundColor Green
 }
 finally {
     if (Test-Path -Path $tempFile) {
