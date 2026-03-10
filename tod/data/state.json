@@ -1,0 +1,1634 @@
+{
+    "objectives":  [
+                       {
+                           "id":  "OBJ-0001",
+                           "title":  "Smoke Objective",
+                           "description":  "Validate TOD workflow loop",
+                           "priority":  "high",
+                           "constraints":  [
+                                               "No unrelated changes"
+                                           ],
+                           "success_criteria":  [
+                                                    "Objective created",
+                                                    "Task created",
+                                                    "Prompt packaged",
+                                                    "Result logged",
+                                                    "Review logged"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:11:03.4094469Z",
+                           "updated_at":  "2026-03-10T00:11:03.4164288Z"
+                       },
+                       {
+                           "id":  "OBJ-0002",
+                           "title":  "Post Patch Objective",
+                           "description":  "Validate new record shape",
+                           "priority":  "medium",
+                           "constraints":  [
+                                               "Constraint A"
+                                           ],
+                           "success_criteria":  [
+                                                    "Criterion A"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:12:06.4645814Z",
+                           "updated_at":  "2026-03-10T00:12:06.4655811Z"
+                       },
+                       {
+                           "id":  "OBJ-0003",
+                           "title":  "Array Return Fix Objective",
+                           "description":  "Confirm arrays persist",
+                           "priority":  "medium",
+                           "constraints":  [
+                                               "Constraint X"
+                                           ],
+                           "success_criteria":  [
+                                                    "Criterion X"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:12:25.4444042Z",
+                           "updated_at":  "2026-03-10T00:12:25.4444042Z"
+                       },
+                       {
+                           "id":  "OBJ-0004",
+                           "title":  "Bridge Test Objective",
+                           "description":  "Test hybrid MIM fallback behavior",
+                           "priority":  "medium",
+                           "constraints":  [
+
+                                           ],
+                           "success_criteria":  [
+                                                    "Objective is recorded somewhere"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:26:43.5790385Z",
+                           "updated_at":  "2026-03-10T00:26:43.5790385Z"
+                       },
+                       {
+                           "id":  "OBJ-0005",
+                           "title":  "Bridge Lifecycle Objective",
+                           "description":  "Validate TOD-\u003eMIM-\u003eTOD lifecycle",
+                           "priority":  "medium",
+                           "constraints":  [
+
+                                           ],
+                           "success_criteria":  [
+                                                    "Create objective",
+                                                    "task",
+                                                    "result",
+                                                    "review",
+                                                    "journal"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:28:13.1946811Z",
+                           "updated_at":  "2026-03-10T00:28:13.1946811Z"
+                       },
+                       {
+                           "id":  "OBJ-0006",
+                           "title":  "Bridge Lifecycle Objective 2",
+                           "description":  "Validate stable hybrid bridge output",
+                           "priority":  "medium",
+                           "constraints":  [
+
+                                           ],
+                           "success_criteria":  [
+                                                    "Objective created"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:29:02.7773222Z",
+                           "updated_at":  "2026-03-10T00:29:02.7773222Z"
+                       },
+                       {
+                           "id":  "OBJ-0007",
+                           "title":  "Bridge Contract Objective",
+                           "description":  "Schema-compatible objective create",
+                           "priority":  "medium",
+                           "constraints":  [
+
+                                           ],
+                           "success_criteria":  [
+                                                    "objective created and mapped"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:30:59.4247649Z",
+                           "updated_at":  "2026-03-10T00:30:59.4247649Z",
+                           "remote_objective_id":  "5"
+                       },
+                       {
+                           "id":  "6",
+                           "title":  "MIM-TOD Alpha Link Objective",
+                           "description":  "E2E bridge workflow objective",
+                           "priority":  "medium",
+                           "constraints":  [
+
+                                           ],
+                           "success_criteria":  [
+                                                    "ping/create/package/result/review/journal"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:43:56.936857Z",
+                           "updated_at":  "2026-03-10T00:43:57.0004422Z",
+                           "remote_objective_id":  "6"
+                       },
+                       {
+                           "id":  "7",
+                           "title":  "Bridge Verification Objective",
+                           "description":  "Validate TOD-MIM bridge end-to-end",
+                           "priority":  "medium",
+                           "constraints":  [
+
+                                           ],
+                           "success_criteria":  [
+                                                    "ping",
+                                                    "objective",
+                                                    "task",
+                                                    "package",
+                                                    "result",
+                                                    "review",
+                                                    "journal"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:47:03.328700Z",
+                           "updated_at":  "2026-03-10T00:47:03.4149427Z",
+                           "remote_objective_id":  "7"
+                       },
+                       {
+                           "id":  "8",
+                           "title":  "Bridge Verification Objective 2",
+                           "description":  "Validate TOD-MIM bridge end-to-end",
+                           "priority":  "medium",
+                           "constraints":  [
+
+                                           ],
+                           "success_criteria":  [
+                                                    "ping",
+                                                    "objective",
+                                                    "task",
+                                                    "package",
+                                                    "result",
+                                                    "review",
+                                                    "journal"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:47:23.525325Z",
+                           "updated_at":  "2026-03-10T00:47:23.6140010Z",
+                           "remote_objective_id":  "8"
+                       },
+                       {
+                           "id":  "9",
+                           "title":  "Bridge Quick Test Objective",
+                           "description":  "Quick bridge test",
+                           "priority":  "medium",
+                           "constraints":  [
+
+                                           ],
+                           "success_criteria":  [
+                                                    "objective task result review journal"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:47:36.689046Z",
+                           "updated_at":  "2026-03-10T00:47:36.7025655Z",
+                           "remote_objective_id":  "9"
+                       },
+                       {
+                           "id":  "10",
+                           "title":  "Bridge Step Test Objective",
+                           "description":  "Stepwise bridge validation",
+                           "priority":  "medium",
+                           "constraints":  [
+
+                                           ],
+                           "success_criteria":  [
+                                                    "loop works"
+                                                ],
+                           "status":  "open",
+                           "created_at":  "2026-03-10T00:47:52.873738Z",
+                           "updated_at":  "2026-03-10T00:47:52.8925110Z",
+                           "remote_objective_id":  "10"
+                       }
+                   ],
+    "tasks":  [
+                  {
+                      "id":  "TSK-0001",
+                      "objective_id":  "OBJ-0001",
+                      "title":  "Smoke Task",
+                      "type":  "implementation",
+                      "scope":  "Run end-to-end scaffolding validation",
+                      "dependencies":  [
+
+                                       ],
+                      "acceptance_criteria":  [
+                                                  "Prompt generated",
+                                                  "Journal entries present"
+                                              ],
+                      "status":  "reviewed_pass",
+                      "assigned_executor":  "codex",
+                      "created_at":  "2026-03-10T00:11:03.5148863Z",
+                      "updated_at":  "2026-03-10T00:11:03.7313075Z"
+                  },
+                  {
+                      "id":  "TSK-0002",
+                      "objective_id":  "OBJ-0001",
+                      "title":  "Array Shape Check",
+                      "type":  "validation",
+                      "scope":  "Verify list serialization remains arrays",
+                      "dependencies":  [
+
+                                       ],
+                      "acceptance_criteria":  [
+                                                  "Empty dependency is []"
+                                              ],
+                      "status":  "implemented",
+                      "assigned_executor":  "codex",
+                      "created_at":  "2026-03-10T00:11:27.4237796Z",
+                      "updated_at":  "2026-03-10T00:11:27.4587376Z"
+                  },
+                  {
+                      "id":  "TSK-0003",
+                      "objective_id":  "OBJ-0003",
+                      "title":  "Array Return Fix Task",
+                      "type":  "validation",
+                      "scope":  "Validate list fields",
+                      "dependencies":  [
+
+                                       ],
+                      "acceptance_criteria":  [
+                                                  "Stored as arrays"
+                                              ],
+                      "status":  "implemented",
+                      "assigned_executor":  "codex",
+                      "created_at":  "2026-03-10T00:12:25.5163465Z",
+                      "updated_at":  "2026-03-10T00:12:25.5732786Z"
+                  },
+                  {
+                      "id":  "TSK-0004",
+                      "objective_id":  "OBJ-0007",
+                      "title":  "Bridge Contract Task",
+                      "type":  "implementation",
+                      "scope":  "Schema-compatible task create",
+                      "dependencies":  [
+
+                                       ],
+                      "acceptance_criteria":  [
+                                                  "task created and mapped"
+                                              ],
+                      "status":  "reviewed_pass",
+                      "assigned_executor":  "codex",
+                      "created_at":  "2026-03-10T00:30:59.5909392Z",
+                      "updated_at":  "2026-03-10T00:30:59.8723488Z",
+                      "remote_task_id":  "3"
+                  },
+                  {
+                      "id":  "4",
+                      "objective_id":  "6",
+                      "title":  "MIM-TOD Alpha Link Task",
+                      "type":  "implementation",
+                      "scope":  "Run full bridge loop",
+                      "dependencies":  [
+
+                                       ],
+                      "acceptance_criteria":  [
+                                                  "Loop complete"
+                                              ],
+                      "status":  "pass",
+                      "assigned_executor":  "codex",
+                      "created_at":  "2026-03-10T00:43:57.0461475Z",
+                      "updated_at":  "2026-03-10T00:43:57.3623222Z",
+                      "remote_task_id":  "4"
+                  },
+                  {
+                      "id":  "5",
+                      "objective_id":  "7",
+                      "title":  "Bridge Verification Task",
+                      "type":  "implementation",
+                      "scope":  "Run verification lifecycle through MIM",
+                      "dependencies":  [
+
+                                       ],
+                      "acceptance_criteria":  [
+                                                  "MIM journal includes full lifecycle"
+                                              ],
+                      "status":  "pass",
+                      "assigned_executor":  "codex",
+                      "created_at":  "2026-03-10T00:47:04.6007663Z",
+                      "updated_at":  "2026-03-10T00:47:07.9522899Z",
+                      "remote_task_id":  "5"
+                  },
+                  {
+                      "id":  "6",
+                      "objective_id":  "8",
+                      "title":  "Bridge Verification Task 2",
+                      "type":  "implementation",
+                      "scope":  "Run verification lifecycle through MIM",
+                      "dependencies":  [
+
+                                       ],
+                      "acceptance_criteria":  [
+                                                  "MIM journal includes full lifecycle"
+                                              ],
+                      "status":  "pass",
+                      "assigned_executor":  "codex",
+                      "created_at":  "2026-03-10T00:47:24.1297058Z",
+                      "updated_at":  "2026-03-10T00:47:25.9828061Z",
+                      "remote_task_id":  "6"
+                  },
+                  {
+                      "id":  "7",
+                      "objective_id":  "9",
+                      "title":  "Bridge Quick Test Task",
+                      "type":  "implementation",
+                      "scope":  "Quick lifecycle check",
+                      "dependencies":  [
+
+                                       ],
+                      "acceptance_criteria":  [
+                                                  "journal updated"
+                                              ],
+                      "status":  "pass",
+                      "assigned_executor":  "codex",
+                      "created_at":  "2026-03-10T00:47:36.7713165Z",
+                      "updated_at":  "2026-03-10T00:47:37.1644106Z",
+                      "remote_task_id":  "7"
+                  },
+                  {
+                      "id":  "8",
+                      "objective_id":  "10",
+                      "title":  "Bridge Step Test Task",
+                      "type":  "implementation",
+                      "scope":  "Validate task/result/review flow",
+                      "dependencies":  [
+
+                                       ],
+                      "acceptance_criteria":  [
+                                                  "journal has entries"
+                                              ],
+                      "status":  "pass",
+                      "assigned_executor":  "codex",
+                      "created_at":  "2026-03-10T00:47:58.3178715Z",
+                      "updated_at":  "2026-03-10T00:48:06.8672111Z",
+                      "remote_task_id":  "8"
+                  }
+              ],
+    "execution_results":  [
+                              {
+                                  "id":  "RES-0001",
+                                  "task_id":  "TSK-0001",
+                                  "summary":  "Smoke result recorded",
+                                  "files_changed":  [
+                                                        "scripts/TOD.ps1",
+                                                        "README.md"
+                                                    ],
+                                  "tests_run":  [
+                                                    "manual smoke test"
+                                                ],
+                                  "test_results":  [
+                                                       "pass"
+                                                   ],
+                                  "failures":  [
+
+                                               ],
+                                  "recommendations":  [
+                                                          "Proceed to next task"
+                                                      ],
+                                  "created_at":  "2026-03-10T00:11:03.6828716Z"
+                              },
+                              {
+                                  "id":  "RES-0002",
+                                  "task_id":  "TSK-0002",
+                                  "summary":  "Array shape check result",
+                                  "files_changed":  [
+                                                        "scripts/TOD.ps1"
+                                                    ],
+                                  "tests_run":  [
+                                                    "serialization test"
+                                                ],
+                                  "test_results":  [
+                                                       "pass"
+                                                   ],
+                                  "failures":  [
+
+                                               ],
+                                  "recommendations":  [
+
+                                                      ],
+                                  "created_at":  "2026-03-10T00:11:27.4587376Z"
+                              },
+                              {
+                                  "id":  "RES-0003",
+                                  "task_id":  "TSK-0003",
+                                  "summary":  "Result for array return fix",
+                                  "files_changed":  [
+                                                        "scripts/TOD.ps1"
+                                                    ],
+                                  "tests_run":  [
+                                                    "array test"
+                                                ],
+                                  "test_results":  [
+                                                       "pass"
+                                                   ],
+                                  "failures":  [
+
+                                               ],
+                                  "recommendations":  [
+
+                                                      ],
+                                  "created_at":  "2026-03-10T00:12:25.5732786Z"
+                              },
+                              {
+                                  "id":  "RES-0004",
+                                  "task_id":  "TSK-0004",
+                                  "summary":  "Bridge contract result",
+                                  "files_changed":  [
+                                                        "scripts/TOD.ps1"
+                                                    ],
+                                  "tests_run":  [
+                                                    "integration smoke"
+                                                ],
+                                  "test_results":  [
+                                                       "pass"
+                                                   ],
+                                  "failures":  [
+
+                                               ],
+                                  "recommendations":  [
+                                                          "continue"
+                                                      ],
+                                  "created_at":  "2026-03-10T00:30:59.6628397Z"
+                              },
+                              {
+                                  "id":  "3",
+                                  "task_id":  "4",
+                                  "summary":  "Alpha link result recorded",
+                                  "files_changed":  [
+                                                        "scripts/TOD.ps1",
+                                                        "client/mim_api_client.ps1",
+                                                        "client/mim_api_helpers.ps1"
+                                                    ],
+                                  "tests_run":  [
+                                                    "integration loop"
+                                                ],
+                                  "test_results":  [
+                                                       "pass"
+                                                   ],
+                                  "failures":  [
+
+                                               ],
+                                  "recommendations":  [
+                                                          "proceed"
+                                                      ],
+                                  "created_at":  "2026-03-10T00:43:57.224799Z"
+                              },
+                              {
+                                  "id":  "4",
+                                  "task_id":  "5",
+                                  "summary":  "Bridge verification result recorded",
+                                  "files_changed":  [
+                                                        "scripts/TOD.ps1",
+                                                        "client/mim_api_client.ps1",
+                                                        "client/mim_api_helpers.ps1"
+                                                    ],
+                                  "tests_run":  [
+                                                    "bridge smoke test"
+                                                ],
+                                  "test_results":  [
+                                                       "pass"
+                                                   ],
+                                  "failures":  [
+
+                                               ],
+                                  "recommendations":  [
+                                                          "continue"
+                                                      ],
+                                  "created_at":  "2026-03-10T00:47:07.237696Z"
+                              },
+                              {
+                                  "id":  "5",
+                                  "task_id":  "6",
+                                  "summary":  "Bridge verification result recorded",
+                                  "files_changed":  [
+                                                        "scripts/TOD.ps1",
+                                                        "client/mim_api_client.ps1",
+                                                        "client/mim_api_helpers.ps1"
+                                                    ],
+                                  "tests_run":  [
+                                                    "bridge smoke test"
+                                                ],
+                                  "test_results":  [
+                                                       "pass"
+                                                   ],
+                                  "failures":  [
+
+                                               ],
+                                  "recommendations":  [
+                                                          "continue"
+                                                      ],
+                                  "created_at":  "2026-03-10T00:47:25.349473Z"
+                              },
+                              {
+                                  "id":  "6",
+                                  "task_id":  "7",
+                                  "summary":  "quick test result",
+                                  "files_changed":  [
+                                                        "scripts/TOD.ps1"
+                                                    ],
+                                  "tests_run":  [
+                                                    "quick test"
+                                                ],
+                                  "test_results":  [
+                                                       "pass"
+                                                   ],
+                                  "failures":  [
+
+                                               ],
+                                  "recommendations":  [
+                                                          "continue"
+                                                      ],
+                                  "created_at":  "2026-03-10T00:47:37.012901Z"
+                              },
+                              {
+                                  "id":  "7",
+                                  "task_id":  "8",
+                                  "summary":  "Step test result",
+                                  "files_changed":  [
+                                                        "scripts/TOD.ps1"
+                                                    ],
+                                  "tests_run":  [
+                                                    "step test"
+                                                ],
+                                  "test_results":  [
+                                                       "pass"
+                                                   ],
+                                  "failures":  [
+
+                                               ],
+                                  "recommendations":  [
+                                                          "continue"
+                                                      ],
+                                  "created_at":  "2026-03-10T00:48:06.727497Z"
+                              }
+                          ],
+    "review_decisions":  [
+                             {
+                                 "id":  "REV-0001",
+                                 "task_id":  "TSK-0001",
+                                 "decision":  "pass",
+                                 "rationale":  "Smoke acceptance checks passed",
+                                 "unresolved_issues":  [
+
+                                                       ],
+                                 "scope_drift_detected":  false,
+                                 "created_at":  "2026-03-10T00:11:03.7313075Z"
+                             },
+                             {
+                                 "id":  "REV-0002",
+                                 "task_id":  "TSK-0004",
+                                 "decision":  "pass",
+                                 "rationale":  "Bridge contract lifecycle succeeded",
+                                 "unresolved_issues":  [
+
+                                                       ],
+                                 "scope_drift_detected":  false,
+                                 "created_at":  "2026-03-10T00:30:59.7931571Z"
+                             },
+                             {
+                                 "id":  "3",
+                                 "task_id":  "4",
+                                 "decision":  "pass",
+                                 "rationale":  "Alpha link loop succeeded",
+                                 "unresolved_issues":  [
+
+                                                       ],
+                                 "scope_drift_detected":  false,
+                                 "created_at":  "2026-03-10T00:43:57.353226Z"
+                             },
+                             {
+                                 "id":  "4",
+                                 "task_id":  "5",
+                                 "decision":  "pass",
+                                 "rationale":  "Bridge verification lifecycle succeeded",
+                                 "unresolved_issues":  [
+
+                                                       ],
+                                 "scope_drift_detected":  false,
+                                 "created_at":  "2026-03-10T00:47:07.903668Z"
+                             },
+                             {
+                                 "id":  "5",
+                                 "task_id":  "6",
+                                 "decision":  "pass",
+                                 "rationale":  "Bridge verification lifecycle succeeded",
+                                 "unresolved_issues":  [
+
+                                                       ],
+                                 "scope_drift_detected":  false,
+                                 "created_at":  "2026-03-10T00:47:25.945460Z"
+                             },
+                             {
+                                 "id":  "6",
+                                 "task_id":  "7",
+                                 "decision":  "pass",
+                                 "rationale":  "quick test passed",
+                                 "unresolved_issues":  [
+
+                                                       ],
+                                 "scope_drift_detected":  false,
+                                 "created_at":  "2026-03-10T00:47:37.145286Z"
+                             },
+                             {
+                                 "id":  "7",
+                                 "task_id":  "8",
+                                 "decision":  "pass",
+                                 "rationale":  "Step test succeeded",
+                                 "unresolved_issues":  [
+
+                                                       ],
+                                 "scope_drift_detected":  false,
+                                 "created_at":  "2026-03-10T00:48:06.860470Z"
+                             }
+                         ],
+    "journal":  [
+                    {
+                        "id":  "JRNL-0001",
+                        "actor":  "user",
+                        "action":  "create_objective",
+                        "entity_type":  "objective",
+                        "entity_id":  "OBJ-0001",
+                        "payload":  {
+                                        "id":  "OBJ-0001",
+                                        "title":  "Smoke Objective",
+                                        "description":  "Validate TOD workflow loop",
+                                        "priority":  "high",
+                                        "constraints":  "No unrelated changes",
+                                        "success_criteria":  [
+                                                                 "Objective created",
+                                                                 "Task created",
+                                                                 "Prompt packaged",
+                                                                 "Result logged",
+                                                                 "Review logged"
+                                                             ],
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:11:03.4094469Z",
+                                        "updated_at":  "2026-03-10T00:11:03.4164288Z"
+                                    },
+                        "created_at":  "2026-03-10T00:11:03.4299516Z"
+                    },
+                    {
+                        "id":  "JRNL-0002",
+                        "actor":  "tod",
+                        "action":  "add_task",
+                        "entity_type":  "task",
+                        "entity_id":  "TSK-0001",
+                        "payload":  {
+                                        "id":  "TSK-0001",
+                                        "objective_id":  "OBJ-0001",
+                                        "title":  "Smoke Task",
+                                        "type":  "implementation",
+                                        "scope":  "Run end-to-end scaffolding validation",
+                                        "dependencies":  {
+
+                                                         },
+                                        "acceptance_criteria":  [
+                                                                    "Prompt generated",
+                                                                    "Journal entries present"
+                                                                ],
+                                        "status":  "planned",
+                                        "assigned_executor":  "codex",
+                                        "created_at":  "2026-03-10T00:11:03.5148863Z",
+                                        "updated_at":  "2026-03-10T00:11:03.5148863Z"
+                                    },
+                        "created_at":  "2026-03-10T00:11:03.5188762Z"
+                    },
+                    {
+                        "id":  "JRNL-0003",
+                        "actor":  "tod",
+                        "action":  "package_task",
+                        "entity_type":  "task",
+                        "entity_id":  "TSK-0001",
+                        "payload":  {
+                                        "prompt_path":  "E:\\TOD\\tod\\out\\prompts\\TSK-0001.md"
+                                    },
+                        "created_at":  "2026-03-10T00:11:03.6503761Z"
+                    },
+                    {
+                        "id":  "JRNL-0004",
+                        "actor":  "codex",
+                        "action":  "add_result",
+                        "entity_type":  "execution_result",
+                        "entity_id":  "RES-0001",
+                        "payload":  {
+                                        "id":  "RES-0001",
+                                        "task_id":  "TSK-0001",
+                                        "summary":  "Smoke result recorded",
+                                        "files_changed":  [
+                                                              "scripts/TOD.ps1",
+                                                              "README.md"
+                                                          ],
+                                        "tests_run":  "manual smoke test",
+                                        "test_results":  "pass",
+                                        "failures":  {
+
+                                                     },
+                                        "recommendations":  "Proceed to next task",
+                                        "created_at":  "2026-03-10T00:11:03.6828716Z"
+                                    },
+                        "created_at":  "2026-03-10T00:11:03.6858633Z"
+                    },
+                    {
+                        "id":  "JRNL-0005",
+                        "actor":  "tod",
+                        "action":  "review_task",
+                        "entity_type":  "review_decision",
+                        "entity_id":  "REV-0001",
+                        "payload":  {
+                                        "id":  "REV-0001",
+                                        "task_id":  "TSK-0001",
+                                        "decision":  "pass",
+                                        "rationale":  "Smoke acceptance checks passed",
+                                        "unresolved_issues":  {
+
+                                                              },
+                                        "scope_drift_detected":  false,
+                                        "created_at":  "2026-03-10T00:11:03.7313075Z"
+                                    },
+                        "created_at":  "2026-03-10T00:11:03.7333040Z"
+                    },
+                    {
+                        "id":  "JRNL-0006",
+                        "actor":  "tod",
+                        "action":  "add_task",
+                        "entity_type":  "task",
+                        "entity_id":  "TSK-0002",
+                        "payload":  {
+                                        "id":  "TSK-0002",
+                                        "objective_id":  "OBJ-0001",
+                                        "title":  "Array Shape Check",
+                                        "type":  "validation",
+                                        "scope":  "Verify list serialization remains arrays",
+                                        "dependencies":  null,
+                                        "acceptance_criteria":  [
+                                                                    "Empty dependency is []"
+                                                                ],
+                                        "status":  "planned",
+                                        "assigned_executor":  "codex",
+                                        "created_at":  "2026-03-10T00:11:27.4237796Z",
+                                        "updated_at":  "2026-03-10T00:11:27.4237796Z"
+                                    },
+                        "created_at":  "2026-03-10T00:11:27.4257742Z"
+                    },
+                    {
+                        "id":  "JRNL-0007",
+                        "actor":  "codex",
+                        "action":  "add_result",
+                        "entity_type":  "execution_result",
+                        "entity_id":  "RES-0002",
+                        "payload":  {
+                                        "id":  "RES-0002",
+                                        "task_id":  "TSK-0002",
+                                        "summary":  "Array shape check result",
+                                        "files_changed":  [
+                                                              "scripts/TOD.ps1"
+                                                          ],
+                                        "tests_run":  [
+                                                          "serialization test"
+                                                      ],
+                                        "test_results":  [
+                                                             "pass"
+                                                         ],
+                                        "failures":  null,
+                                        "recommendations":  null,
+                                        "created_at":  "2026-03-10T00:11:27.4587376Z"
+                                    },
+                        "created_at":  "2026-03-10T00:11:27.4597332Z"
+                    },
+                    {
+                        "id":  "JRNL-0008",
+                        "actor":  "user",
+                        "action":  "create_objective",
+                        "entity_type":  "objective",
+                        "entity_id":  "OBJ-0002",
+                        "payload":  {
+                                        "id":  "OBJ-0002",
+                                        "title":  "Post Patch Objective",
+                                        "description":  "Validate new record shape",
+                                        "priority":  "medium",
+                                        "constraints":  "Constraint A",
+                                        "success_criteria":  "Criterion A",
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:12:06.4645814Z",
+                                        "updated_at":  "2026-03-10T00:12:06.4655811Z"
+                                    },
+                        "created_at":  "2026-03-10T00:12:06.4665765Z"
+                    },
+                    {
+                        "id":  "JRNL-0009",
+                        "actor":  "user",
+                        "action":  "create_objective",
+                        "entity_type":  "objective",
+                        "entity_id":  "OBJ-0003",
+                        "payload":  {
+                                        "id":  "OBJ-0003",
+                                        "title":  "Array Return Fix Objective",
+                                        "description":  "Confirm arrays persist",
+                                        "priority":  "medium",
+                                        "constraints":  [
+                                                            "Constraint X"
+                                                        ],
+                                        "success_criteria":  [
+                                                                 "Criterion X"
+                                                             ],
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:12:25.4444042Z",
+                                        "updated_at":  "2026-03-10T00:12:25.4444042Z"
+                                    },
+                        "created_at":  "2026-03-10T00:12:25.4454008Z"
+                    },
+                    {
+                        "id":  "JRNL-0010",
+                        "actor":  "tod",
+                        "action":  "add_task",
+                        "entity_type":  "task",
+                        "entity_id":  "TSK-0003",
+                        "payload":  {
+                                        "id":  "TSK-0003",
+                                        "objective_id":  "OBJ-0003",
+                                        "title":  "Array Return Fix Task",
+                                        "type":  "validation",
+                                        "scope":  "Validate list fields",
+                                        "dependencies":  [
+
+                                                         ],
+                                        "acceptance_criteria":  [
+                                                                    "Stored as arrays"
+                                                                ],
+                                        "status":  "planned",
+                                        "assigned_executor":  "codex",
+                                        "created_at":  "2026-03-10T00:12:25.5163465Z",
+                                        "updated_at":  "2026-03-10T00:12:25.5163465Z"
+                                    },
+                        "created_at":  "2026-03-10T00:12:25.5163465Z"
+                    },
+                    {
+                        "id":  "JRNL-0011",
+                        "actor":  "codex",
+                        "action":  "add_result",
+                        "entity_type":  "execution_result",
+                        "entity_id":  "RES-0003",
+                        "payload":  {
+                                        "id":  "RES-0003",
+                                        "task_id":  "TSK-0003",
+                                        "summary":  "Result for array return fix",
+                                        "files_changed":  [
+                                                              "scripts/TOD.ps1"
+                                                          ],
+                                        "tests_run":  [
+                                                          "array test"
+                                                      ],
+                                        "test_results":  [
+                                                             "pass"
+                                                         ],
+                                        "failures":  [
+
+                                                     ],
+                                        "recommendations":  [
+
+                                                            ],
+                                        "created_at":  "2026-03-10T00:12:25.5732786Z"
+                                    },
+                        "created_at":  "2026-03-10T00:12:25.5742761Z"
+                    },
+                    {
+                        "id":  "JRNL-0012",
+                        "actor":  "user",
+                        "action":  "create_objective_remote_cached",
+                        "entity_type":  "objective",
+                        "entity_id":  "OBJ-0004",
+                        "payload":  {
+                                        "id":  "OBJ-0004",
+                                        "title":  "Bridge Test Objective",
+                                        "description":  "Test hybrid MIM fallback behavior",
+                                        "priority":  "medium",
+                                        "constraints":  [
+
+                                                        ],
+                                        "success_criteria":  [
+                                                                 "Objective is recorded somewhere"
+                                                             ],
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:26:43.5790385Z",
+                                        "updated_at":  "2026-03-10T00:26:43.5790385Z"
+                                    },
+                        "created_at":  "2026-03-10T00:26:43.6572397Z"
+                    },
+                    {
+                        "id":  "JRNL-0013",
+                        "actor":  "user",
+                        "action":  "create_objective",
+                        "entity_type":  "objective",
+                        "entity_id":  "OBJ-0005",
+                        "payload":  {
+                                        "id":  "OBJ-0005",
+                                        "title":  "Bridge Lifecycle Objective",
+                                        "description":  "Validate TOD-\u003eMIM-\u003eTOD lifecycle",
+                                        "priority":  "medium",
+                                        "constraints":  [
+
+                                                        ],
+                                        "success_criteria":  [
+                                                                 "Create objective",
+                                                                 "task",
+                                                                 "result",
+                                                                 "review",
+                                                                 "journal"
+                                                             ],
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:28:13.1946811Z",
+                                        "updated_at":  "2026-03-10T00:28:13.1946811Z"
+                                    },
+                        "created_at":  "2026-03-10T00:28:13.3120822Z"
+                    },
+                    {
+                        "id":  "JRNL-0014",
+                        "actor":  "user",
+                        "action":  "create_objective",
+                        "entity_type":  "objective",
+                        "entity_id":  "OBJ-0006",
+                        "payload":  {
+                                        "id":  "OBJ-0006",
+                                        "title":  "Bridge Lifecycle Objective 2",
+                                        "description":  "Validate stable hybrid bridge output",
+                                        "priority":  "medium",
+                                        "constraints":  [
+
+                                                        ],
+                                        "success_criteria":  [
+                                                                 "Objective created"
+                                                             ],
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:29:02.7773222Z",
+                                        "updated_at":  "2026-03-10T00:29:02.7773222Z"
+                                    },
+                        "created_at":  "2026-03-10T00:29:02.8273099Z"
+                    },
+                    {
+                        "id":  "JRNL-0015",
+                        "actor":  "user",
+                        "action":  "create_objective_remote_cached",
+                        "entity_type":  "objective",
+                        "entity_id":  "OBJ-0007",
+                        "payload":  {
+                                        "id":  "OBJ-0007",
+                                        "title":  "Bridge Contract Objective",
+                                        "description":  "Schema-compatible objective create",
+                                        "priority":  "medium",
+                                        "constraints":  [
+
+                                                        ],
+                                        "success_criteria":  [
+                                                                 "objective created and mapped"
+                                                             ],
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:30:59.4247649Z",
+                                        "updated_at":  "2026-03-10T00:30:59.4247649Z",
+                                        "remote_objective_id":  "5"
+                                    },
+                        "created_at":  "2026-03-10T00:30:59.5420172Z"
+                    },
+                    {
+                        "id":  "JRNL-0016",
+                        "actor":  "tod",
+                        "action":  "add_task_remote_cached",
+                        "entity_type":  "task",
+                        "entity_id":  "TSK-0004",
+                        "payload":  {
+                                        "id":  "TSK-0004",
+                                        "objective_id":  "OBJ-0007",
+                                        "title":  "Bridge Contract Task",
+                                        "type":  "implementation",
+                                        "scope":  "Schema-compatible task create",
+                                        "dependencies":  [
+
+                                                         ],
+                                        "acceptance_criteria":  [
+                                                                    "task created and mapped"
+                                                                ],
+                                        "status":  "planned",
+                                        "assigned_executor":  "codex",
+                                        "created_at":  "2026-03-10T00:30:59.5909392Z",
+                                        "updated_at":  "2026-03-10T00:30:59.5909392Z",
+                                        "remote_task_id":  "3"
+                                    },
+                        "created_at":  "2026-03-10T00:30:59.6221735Z"
+                    },
+                    {
+                        "id":  "JRNL-0017",
+                        "actor":  "codex",
+                        "action":  "add_result_remote_cached",
+                        "entity_type":  "execution_result",
+                        "entity_id":  "RES-0004",
+                        "payload":  {
+                                        "id":  "RES-0004",
+                                        "task_id":  "TSK-0004",
+                                        "summary":  "Bridge contract result",
+                                        "files_changed":  [
+                                                              "scripts/TOD.ps1"
+                                                          ],
+                                        "tests_run":  [
+                                                          "integration smoke"
+                                                      ],
+                                        "test_results":  [
+                                                             "pass"
+                                                         ],
+                                        "failures":  [
+
+                                                     ],
+                                        "recommendations":  [
+                                                                "continue"
+                                                            ],
+                                        "created_at":  "2026-03-10T00:30:59.6628397Z"
+                                    },
+                        "created_at":  "2026-03-10T00:30:59.7468844Z"
+                    },
+                    {
+                        "id":  "JRNL-0018",
+                        "actor":  "tod",
+                        "action":  "review_task_remote_cached",
+                        "entity_type":  "review_decision",
+                        "entity_id":  "REV-0002",
+                        "payload":  {
+                                        "id":  "REV-0002",
+                                        "task_id":  "TSK-0004",
+                                        "decision":  "pass",
+                                        "rationale":  "Bridge contract lifecycle succeeded",
+                                        "unresolved_issues":  [
+
+                                                              ],
+                                        "scope_drift_detected":  false,
+                                        "created_at":  "2026-03-10T00:30:59.7931571Z"
+                                    },
+                        "created_at":  "2026-03-10T00:30:59.8733975Z"
+                    },
+                    {
+                        "id":  "JRNL-0019",
+                        "actor":  "user",
+                        "action":  "create_objective_remote_cached",
+                        "entity_type":  "objective",
+                        "entity_id":  "6",
+                        "payload":  {
+                                        "id":  "6",
+                                        "title":  "MIM-TOD Alpha Link Objective",
+                                        "description":  "E2E bridge workflow objective",
+                                        "priority":  "medium",
+                                        "constraints":  [
+
+                                                        ],
+                                        "success_criteria":  [
+                                                                 "ping/create/package/result/review/journal"
+                                                             ],
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:43:56.936857Z",
+                                        "updated_at":  "2026-03-10T00:43:57.0004422Z",
+                                        "remote_objective_id":  "6"
+                                    },
+                        "created_at":  "2026-03-10T00:43:57.0025248Z"
+                    },
+                    {
+                        "id":  "JRNL-0020",
+                        "actor":  "tod",
+                        "action":  "add_task_remote_cached",
+                        "entity_type":  "task",
+                        "entity_id":  "4",
+                        "payload":  {
+                                        "id":  "4",
+                                        "objective_id":  "6",
+                                        "title":  "MIM-TOD Alpha Link Task",
+                                        "type":  "implementation",
+                                        "scope":  "Run full bridge loop",
+                                        "dependencies":  [
+
+                                                         ],
+                                        "acceptance_criteria":  [
+                                                                    "Loop complete"
+                                                                ],
+                                        "status":  "planned",
+                                        "assigned_executor":  "codex",
+                                        "created_at":  "2026-03-10T00:43:57.0461475Z",
+                                        "updated_at":  "2026-03-10T00:43:57.0602766Z",
+                                        "remote_task_id":  "4"
+                                    },
+                        "created_at":  "2026-03-10T00:43:57.0612830Z"
+                    },
+                    {
+                        "id":  "JRNL-0021",
+                        "actor":  "tod",
+                        "action":  "package_task",
+                        "entity_type":  "task",
+                        "entity_id":  "4",
+                        "payload":  {
+                                        "prompt_path":  "E:\\TOD\\tod\\out\\prompts\\4.md"
+                                    },
+                        "created_at":  "2026-03-10T00:43:57.1335419Z"
+                    },
+                    {
+                        "id":  "JRNL-0022",
+                        "actor":  "codex",
+                        "action":  "add_result_remote_cached",
+                        "entity_type":  "execution_result",
+                        "entity_id":  "3",
+                        "payload":  {
+                                        "id":  "3",
+                                        "task_id":  "4",
+                                        "summary":  "Alpha link result recorded",
+                                        "files_changed":  [
+                                                              "scripts/TOD.ps1",
+                                                              "client/mim_api_client.ps1",
+                                                              "client/mim_api_helpers.ps1"
+                                                          ],
+                                        "tests_run":  [
+                                                          "integration loop"
+                                                      ],
+                                        "test_results":  [
+                                                             "pass"
+                                                         ],
+                                        "failures":  [
+
+                                                     ],
+                                        "recommendations":  [
+                                                                "proceed"
+                                                            ],
+                                        "created_at":  "2026-03-10T00:43:57.224799Z"
+                                    },
+                        "created_at":  "2026-03-10T00:43:57.2479578Z"
+                    },
+                    {
+                        "id":  "JRNL-0023",
+                        "actor":  "tod",
+                        "action":  "review_task_remote_cached",
+                        "entity_type":  "review_decision",
+                        "entity_id":  "3",
+                        "payload":  {
+                                        "id":  "3",
+                                        "task_id":  "4",
+                                        "decision":  "pass",
+                                        "rationale":  "Alpha link loop succeeded",
+                                        "unresolved_issues":  [
+
+                                                              ],
+                                        "scope_drift_detected":  false,
+                                        "created_at":  "2026-03-10T00:43:57.353226Z"
+                                    },
+                        "created_at":  "2026-03-10T00:43:57.3633317Z"
+                    },
+                    {
+                        "id":  "JRNL-0024",
+                        "actor":  "user",
+                        "action":  "create_objective_remote_cached",
+                        "entity_type":  "objective",
+                        "entity_id":  "7",
+                        "payload":  {
+                                        "id":  "7",
+                                        "title":  "Bridge Verification Objective",
+                                        "description":  "Validate TOD-MIM bridge end-to-end",
+                                        "priority":  "medium",
+                                        "constraints":  [
+
+                                                        ],
+                                        "success_criteria":  [
+                                                                 "ping",
+                                                                 "objective",
+                                                                 "task",
+                                                                 "package",
+                                                                 "result",
+                                                                 "review",
+                                                                 "journal"
+                                                             ],
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:47:03.328700Z",
+                                        "updated_at":  "2026-03-10T00:47:03.4149427Z",
+                                        "remote_objective_id":  "7"
+                                    },
+                        "created_at":  "2026-03-10T00:47:03.4434020Z"
+                    },
+                    {
+                        "id":  "JRNL-0025",
+                        "actor":  "tod",
+                        "action":  "add_task_remote_cached",
+                        "entity_type":  "task",
+                        "entity_id":  "5",
+                        "payload":  {
+                                        "id":  "5",
+                                        "objective_id":  "7",
+                                        "title":  "Bridge Verification Task",
+                                        "type":  "implementation",
+                                        "scope":  "Run verification lifecycle through MIM",
+                                        "dependencies":  [
+
+                                                         ],
+                                        "acceptance_criteria":  [
+                                                                    "MIM journal includes full lifecycle"
+                                                                ],
+                                        "status":  "planned",
+                                        "assigned_executor":  "codex",
+                                        "created_at":  "2026-03-10T00:47:04.6007663Z",
+                                        "updated_at":  "2026-03-10T00:47:04.8771310Z",
+                                        "remote_task_id":  "5"
+                                    },
+                        "created_at":  "2026-03-10T00:47:04.9016227Z"
+                    },
+                    {
+                        "id":  "JRNL-0026",
+                        "actor":  "tod",
+                        "action":  "package_task",
+                        "entity_type":  "task",
+                        "entity_id":  "5",
+                        "payload":  {
+                                        "prompt_path":  "E:\\TOD\\tod\\out\\prompts\\5.md"
+                                    },
+                        "created_at":  "2026-03-10T00:47:06.1033078Z"
+                    },
+                    {
+                        "id":  "JRNL-0027",
+                        "actor":  "codex",
+                        "action":  "add_result_remote_cached",
+                        "entity_type":  "execution_result",
+                        "entity_id":  "4",
+                        "payload":  {
+                                        "id":  "4",
+                                        "task_id":  "5",
+                                        "summary":  "Bridge verification result recorded",
+                                        "files_changed":  [
+                                                              "scripts/TOD.ps1",
+                                                              "client/mim_api_client.ps1",
+                                                              "client/mim_api_helpers.ps1"
+                                                          ],
+                                        "tests_run":  [
+                                                          "bridge smoke test"
+                                                      ],
+                                        "test_results":  [
+                                                             "pass"
+                                                         ],
+                                        "failures":  [
+
+                                                     ],
+                                        "recommendations":  [
+                                                                "continue"
+                                                            ],
+                                        "created_at":  "2026-03-10T00:47:07.237696Z"
+                                    },
+                        "created_at":  "2026-03-10T00:47:07.3298111Z"
+                    },
+                    {
+                        "id":  "JRNL-0028",
+                        "actor":  "tod",
+                        "action":  "review_task_remote_cached",
+                        "entity_type":  "review_decision",
+                        "entity_id":  "4",
+                        "payload":  {
+                                        "id":  "4",
+                                        "task_id":  "5",
+                                        "decision":  "pass",
+                                        "rationale":  "Bridge verification lifecycle succeeded",
+                                        "unresolved_issues":  [
+
+                                                              ],
+                                        "scope_drift_detected":  false,
+                                        "created_at":  "2026-03-10T00:47:07.903668Z"
+                                    },
+                        "created_at":  "2026-03-10T00:47:07.9578293Z"
+                    },
+                    {
+                        "id":  "JRNL-0029",
+                        "actor":  "user",
+                        "action":  "create_objective_remote_cached",
+                        "entity_type":  "objective",
+                        "entity_id":  "8",
+                        "payload":  {
+                                        "id":  "8",
+                                        "title":  "Bridge Verification Objective 2",
+                                        "description":  "Validate TOD-MIM bridge end-to-end",
+                                        "priority":  "medium",
+                                        "constraints":  [
+
+                                                        ],
+                                        "success_criteria":  [
+                                                                 "ping",
+                                                                 "objective",
+                                                                 "task",
+                                                                 "package",
+                                                                 "result",
+                                                                 "review",
+                                                                 "journal"
+                                                             ],
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:47:23.525325Z",
+                                        "updated_at":  "2026-03-10T00:47:23.6140010Z",
+                                        "remote_objective_id":  "8"
+                                    },
+                        "created_at":  "2026-03-10T00:47:23.6254431Z"
+                    },
+                    {
+                        "id":  "JRNL-0030",
+                        "actor":  "tod",
+                        "action":  "add_task_remote_cached",
+                        "entity_type":  "task",
+                        "entity_id":  "6",
+                        "payload":  {
+                                        "id":  "6",
+                                        "objective_id":  "8",
+                                        "title":  "Bridge Verification Task 2",
+                                        "type":  "implementation",
+                                        "scope":  "Run verification lifecycle through MIM",
+                                        "dependencies":  [
+
+                                                         ],
+                                        "acceptance_criteria":  [
+                                                                    "MIM journal includes full lifecycle"
+                                                                ],
+                                        "status":  "planned",
+                                        "assigned_executor":  "codex",
+                                        "created_at":  "2026-03-10T00:47:24.1297058Z",
+                                        "updated_at":  "2026-03-10T00:47:24.2444625Z",
+                                        "remote_task_id":  "6"
+                                    },
+                        "created_at":  "2026-03-10T00:47:24.2509412Z"
+                    },
+                    {
+                        "id":  "JRNL-0031",
+                        "actor":  "tod",
+                        "action":  "package_task",
+                        "entity_type":  "task",
+                        "entity_id":  "6",
+                        "payload":  {
+                                        "prompt_path":  "E:\\TOD\\tod\\out\\prompts\\6.md"
+                                    },
+                        "created_at":  "2026-03-10T00:47:24.7714301Z"
+                    },
+                    {
+                        "id":  "JRNL-0032",
+                        "actor":  "codex",
+                        "action":  "add_result_remote_cached",
+                        "entity_type":  "execution_result",
+                        "entity_id":  "5",
+                        "payload":  {
+                                        "id":  "5",
+                                        "task_id":  "6",
+                                        "summary":  "Bridge verification result recorded",
+                                        "files_changed":  [
+                                                              "scripts/TOD.ps1",
+                                                              "client/mim_api_client.ps1",
+                                                              "client/mim_api_helpers.ps1"
+                                                          ],
+                                        "tests_run":  [
+                                                          "bridge smoke test"
+                                                      ],
+                                        "test_results":  [
+                                                             "pass"
+                                                         ],
+                                        "failures":  [
+
+                                                     ],
+                                        "recommendations":  [
+                                                                "continue"
+                                                            ],
+                                        "created_at":  "2026-03-10T00:47:25.349473Z"
+                                    },
+                        "created_at":  "2026-03-10T00:47:25.4023072Z"
+                    },
+                    {
+                        "id":  "JRNL-0033",
+                        "actor":  "tod",
+                        "action":  "review_task_remote_cached",
+                        "entity_type":  "review_decision",
+                        "entity_id":  "5",
+                        "payload":  {
+                                        "id":  "5",
+                                        "task_id":  "6",
+                                        "decision":  "pass",
+                                        "rationale":  "Bridge verification lifecycle succeeded",
+                                        "unresolved_issues":  [
+
+                                                              ],
+                                        "scope_drift_detected":  false,
+                                        "created_at":  "2026-03-10T00:47:25.945460Z"
+                                    },
+                        "created_at":  "2026-03-10T00:47:25.9903332Z"
+                    },
+                    {
+                        "id":  "JRNL-0034",
+                        "actor":  "user",
+                        "action":  "create_objective_remote_cached",
+                        "entity_type":  "objective",
+                        "entity_id":  "9",
+                        "payload":  {
+                                        "id":  "9",
+                                        "title":  "Bridge Quick Test Objective",
+                                        "description":  "Quick bridge test",
+                                        "priority":  "medium",
+                                        "constraints":  [
+
+                                                        ],
+                                        "success_criteria":  [
+                                                                 "objective task result review journal"
+                                                             ],
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:47:36.689046Z",
+                                        "updated_at":  "2026-03-10T00:47:36.7025655Z",
+                                        "remote_objective_id":  "9"
+                                    },
+                        "created_at":  "2026-03-10T00:47:36.7056650Z"
+                    },
+                    {
+                        "id":  "JRNL-0035",
+                        "actor":  "tod",
+                        "action":  "add_task_remote_cached",
+                        "entity_type":  "task",
+                        "entity_id":  "7",
+                        "payload":  {
+                                        "id":  "7",
+                                        "objective_id":  "9",
+                                        "title":  "Bridge Quick Test Task",
+                                        "type":  "implementation",
+                                        "scope":  "Quick lifecycle check",
+                                        "dependencies":  [
+
+                                                         ],
+                                        "acceptance_criteria":  [
+                                                                    "journal updated"
+                                                                ],
+                                        "status":  "planned",
+                                        "assigned_executor":  "codex",
+                                        "created_at":  "2026-03-10T00:47:36.7713165Z",
+                                        "updated_at":  "2026-03-10T00:47:36.8244187Z",
+                                        "remote_task_id":  "7"
+                                    },
+                        "created_at":  "2026-03-10T00:47:36.8254923Z"
+                    },
+                    {
+                        "id":  "JRNL-0036",
+                        "actor":  "tod",
+                        "action":  "package_task",
+                        "entity_type":  "task",
+                        "entity_id":  "7",
+                        "payload":  {
+                                        "prompt_path":  "E:\\TOD\\tod\\out\\prompts\\7.md"
+                                    },
+                        "created_at":  "2026-03-10T00:47:36.8932301Z"
+                    },
+                    {
+                        "id":  "JRNL-0037",
+                        "actor":  "codex",
+                        "action":  "add_result_remote_cached",
+                        "entity_type":  "execution_result",
+                        "entity_id":  "6",
+                        "payload":  {
+                                        "id":  "6",
+                                        "task_id":  "7",
+                                        "summary":  "quick test result",
+                                        "files_changed":  [
+                                                              "scripts/TOD.ps1"
+                                                          ],
+                                        "tests_run":  [
+                                                          "quick test"
+                                                      ],
+                                        "test_results":  [
+                                                             "pass"
+                                                         ],
+                                        "failures":  [
+
+                                                     ],
+                                        "recommendations":  [
+                                                                "continue"
+                                                            ],
+                                        "created_at":  "2026-03-10T00:47:37.012901Z"
+                                    },
+                        "created_at":  "2026-03-10T00:47:37.0356831Z"
+                    },
+                    {
+                        "id":  "JRNL-0038",
+                        "actor":  "tod",
+                        "action":  "review_task_remote_cached",
+                        "entity_type":  "review_decision",
+                        "entity_id":  "6",
+                        "payload":  {
+                                        "id":  "6",
+                                        "task_id":  "7",
+                                        "decision":  "pass",
+                                        "rationale":  "quick test passed",
+                                        "unresolved_issues":  [
+
+                                                              ],
+                                        "scope_drift_detected":  false,
+                                        "created_at":  "2026-03-10T00:47:37.145286Z"
+                                    },
+                        "created_at":  "2026-03-10T00:47:37.1644106Z"
+                    },
+                    {
+                        "id":  "JRNL-0039",
+                        "actor":  "user",
+                        "action":  "create_objective_remote_cached",
+                        "entity_type":  "objective",
+                        "entity_id":  "10",
+                        "payload":  {
+                                        "id":  "10",
+                                        "title":  "Bridge Step Test Objective",
+                                        "description":  "Stepwise bridge validation",
+                                        "priority":  "medium",
+                                        "constraints":  [
+
+                                                        ],
+                                        "success_criteria":  [
+                                                                 "loop works"
+                                                             ],
+                                        "status":  "open",
+                                        "created_at":  "2026-03-10T00:47:52.873738Z",
+                                        "updated_at":  "2026-03-10T00:47:52.8925110Z",
+                                        "remote_objective_id":  "10"
+                                    },
+                        "created_at":  "2026-03-10T00:47:52.8935596Z"
+                    },
+                    {
+                        "id":  "JRNL-0040",
+                        "actor":  "tod",
+                        "action":  "add_task_remote_cached",
+                        "entity_type":  "task",
+                        "entity_id":  "8",
+                        "payload":  {
+                                        "id":  "8",
+                                        "objective_id":  "10",
+                                        "title":  "Bridge Step Test Task",
+                                        "type":  "implementation",
+                                        "scope":  "Validate task/result/review flow",
+                                        "dependencies":  [
+
+                                                         ],
+                                        "acceptance_criteria":  [
+                                                                    "journal has entries"
+                                                                ],
+                                        "status":  "planned",
+                                        "assigned_executor":  "codex",
+                                        "created_at":  "2026-03-10T00:47:58.3178715Z",
+                                        "updated_at":  "2026-03-10T00:47:58.3290131Z",
+                                        "remote_task_id":  "8"
+                                    },
+                        "created_at":  "2026-03-10T00:47:58.3300104Z"
+                    },
+                    {
+                        "id":  "JRNL-0041",
+                        "actor":  "tod",
+                        "action":  "package_task",
+                        "entity_type":  "task",
+                        "entity_id":  "8",
+                        "payload":  {
+                                        "prompt_path":  "E:\\TOD\\tod\\out\\prompts\\8.md"
+                                    },
+                        "created_at":  "2026-03-10T00:48:06.6495138Z"
+                    },
+                    {
+                        "id":  "JRNL-0042",
+                        "actor":  "codex",
+                        "action":  "add_result_remote_cached",
+                        "entity_type":  "execution_result",
+                        "entity_id":  "7",
+                        "payload":  {
+                                        "id":  "7",
+                                        "task_id":  "8",
+                                        "summary":  "Step test result",
+                                        "files_changed":  [
+                                                              "scripts/TOD.ps1"
+                                                          ],
+                                        "tests_run":  [
+                                                          "step test"
+                                                      ],
+                                        "test_results":  [
+                                                             "pass"
+                                                         ],
+                                        "failures":  [
+
+                                                     ],
+                                        "recommendations":  [
+                                                                "continue"
+                                                            ],
+                                        "created_at":  "2026-03-10T00:48:06.727497Z"
+                                    },
+                        "created_at":  "2026-03-10T00:48:06.7921947Z"
+                    },
+                    {
+                        "id":  "JRNL-0043",
+                        "actor":  "tod",
+                        "action":  "review_task_remote_cached",
+                        "entity_type":  "review_decision",
+                        "entity_id":  "7",
+                        "payload":  {
+                                        "id":  "7",
+                                        "task_id":  "8",
+                                        "decision":  "pass",
+                                        "rationale":  "Step test succeeded",
+                                        "unresolved_issues":  [
+
+                                                              ],
+                                        "scope_drift_detected":  false,
+                                        "created_at":  "2026-03-10T00:48:06.860470Z"
+                                    },
+                        "created_at":  "2026-03-10T00:48:06.8672111Z"
+                    }
+                ]
+}
