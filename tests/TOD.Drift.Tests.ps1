@@ -70,6 +70,49 @@ function New-PerfRecord {
     }
 }
 
+function Get-DriftTrendSnapshot {
+    param(
+        [Parameter(Mandatory = $true)][string]$ConfigPath
+    )
+
+    $reliabilityRaw = & $todScript -Action "get-reliability" -Top 20 -ConfigPath $ConfigPath -Engine "codex"
+    $reliability = $reliabilityRaw | ConvertFrom-Json
+    return @($reliability.retry_trend | Select-Object -First 1)
+}
+
+function Set-ScenarioState {
+    param(
+        [Parameter(Mandatory = $true)]$StateObject,
+        [Parameter(Mandatory = $true)][hashtable[]]$Recent,
+        [Parameter(Mandatory = $true)][hashtable[]]$Baseline
+    )
+
+    $task = @($StateObject.tasks | Where-Object { [string]$_.id -eq "45" } | Select-Object -First 1)
+    if (@($task).Count -eq 0) {
+        throw "Task 45 not found in state; cannot run transition sanity scenario."
+    }
+    $task[0].task_category = "refactor"
+    $StateObject.sync_state.last_comparison = [pscustomobject]@{ status = "ok" }
+
+    $records = @()
+    $now = Get-Date
+    $idx = 1
+    foreach ($r in $Recent) {
+        $records += (New-PerfRecord -TaskId "45" -Engine "codex" -TaskCategory "refactor" -Success ([bool]$r.success) -RetryInflated ([bool]$r.retry) -FallbackApplied ([bool]$r.fallback) -ReviewDecision ([string]$r.review) -Index $idx)
+        $idx++
+    }
+    foreach ($b in $Baseline) {
+        $rec = New-PerfRecord -TaskId "45" -Engine "codex" -TaskCategory "refactor" -Success ([bool]$b.success) -RetryInflated ([bool]$b.retry) -FallbackApplied ([bool]$b.fallback) -ReviewDecision ([string]$b.review) -Index ($idx + 20)
+        $records += $rec
+        $idx++
+    }
+
+    $StateObject.engine_performance.records = @($records)
+    $StateObject.engine_performance.updated_at = $now.ToUniversalTime().ToString("o")
+    $StateObject.routing_decisions.records = @()
+    $StateObject.routing_decisions.updated_at = $now.ToUniversalTime().ToString("o")
+}
+
 Describe "TOD Drift Penalties" {
     It "applies drift confidence penalty and emits warnings in reliability endpoint" {
         $originalState = Get-Content $statePath -Raw
@@ -205,6 +248,64 @@ Describe "TOD Drift Penalties" {
 
             @($trend).Count | Should BeGreaterThan 0
             [string]$trend[0].alert_state | Should Be "critical"
+        }
+        finally {
+            $originalState | Set-Content $statePath
+            if (Test-Path $cfgPath) { Remove-Item $cfgPath -Force }
+        }
+    }
+
+    It "manual sanity transition follows stable-warning-degraded-warning-stable" {
+        $originalState = Get-Content $statePath -Raw
+        $cfgPath = New-DriftTestConfig
+        try {
+            $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
+            $cfg.execution_engine.routing_policy.drift_detection.quarantine_enabled = $false
+            $cfg.execution_engine.routing_policy.drift_detection.retry_rate_threshold = 0.25
+            $cfg.execution_engine.routing_policy.drift_detection.engine_score_drop_threshold = 0.3
+            $cfg | ConvertTo-Json -Depth 30 | Set-Content $cfgPath
+
+            $stable = 1..10 | ForEach-Object { @{ success = $true; retry = $false; fallback = $false; review = "pass" } }
+            $warning = @(@{ success = $false; retry = $false; fallback = $false; review = "escalate" }) + (1..9 | ForEach-Object { @{ success = $true; retry = $false; fallback = $false; review = "pass" } })
+            $degraded = @(@{ success = $false; retry = $true; fallback = $false; review = "escalate" }, @{ success = $false; retry = $true; fallback = $false; review = "escalate" }) + (1..8 | ForEach-Object { @{ success = $true; retry = $true; fallback = $false; review = "pass" } })
+            $recoveryWarning = (1..3 | ForEach-Object { @{ success = $true; retry = $true; fallback = $false; review = "pass" } }) + (1..7 | ForEach-Object { @{ success = $true; retry = $false; fallback = $false; review = "pass" } })
+            $recoveryStable = 1..10 | ForEach-Object { @{ success = $true; retry = $false; fallback = $false; review = "pass" } }
+
+            $state = $originalState | ConvertFrom-Json
+            Set-ScenarioState -StateObject $state -Recent $stable -Baseline $stable
+            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
+            $stableTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath
+
+            $state = $originalState | ConvertFrom-Json
+            Set-ScenarioState -StateObject $state -Recent $warning -Baseline $stable
+            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
+            $warningTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath
+
+            $state = $originalState | ConvertFrom-Json
+            Set-ScenarioState -StateObject $state -Recent $degraded -Baseline $warning
+            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
+            $degradedTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath
+
+            $state = $originalState | ConvertFrom-Json
+            Set-ScenarioState -StateObject $state -Recent $recoveryWarning -Baseline $degraded
+            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
+            $recoveryWarningTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath
+
+            $state = $originalState | ConvertFrom-Json
+            Set-ScenarioState -StateObject $state -Recent $recoveryStable -Baseline $recoveryWarning
+            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
+            $recoveryStableTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath
+
+            [string]$stableTrend[0].alert_state | Should Be "stable"
+            [string]$warningTrend[0].alert_state | Should Be "warning"
+            [string]$degradedTrend[0].alert_state | Should Be "degraded"
+            [string]$recoveryWarningTrend[0].alert_state | Should Be "warning"
+            [string]$recoveryStableTrend[0].alert_state | Should Be "stable"
+
+            [double]$warningTrend[0].confidence_penalty | Should BeGreaterThan 0
+            [double]$degradedTrend[0].confidence_penalty | Should BeGreaterThan ([double]$warningTrend[0].confidence_penalty)
+            [double]$recoveryWarningTrend[0].confidence_penalty | Should BeLessThan ([double]$degradedTrend[0].confidence_penalty)
+            [double]$recoveryStableTrend[0].confidence_penalty | Should Be 0
         }
         finally {
             $originalState | Set-Content $statePath
