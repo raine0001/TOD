@@ -25,6 +25,7 @@ param(
         "engineer-run",
         "engineer-scorecard",
         "get-engineering-loop-summary",
+        "get-engineering-signal",
         "get-engineering-loop-history",
         "engineer-cycle",
         "review-engineering-cycle",
@@ -644,6 +645,88 @@ function Get-TodEngineeringLoopSummaryPayload {
         last_run = if ($loop.PSObject.Properties["last_run"]) { $loop.last_run } else { $null }
         last_scorecard = if ($loop.PSObject.Properties["last_scorecard"]) { $loop.last_scorecard } else { $null }
         confidence = if ($bus.PSObject.Properties["section_confidence"] -and $bus.section_confidence.PSObject.Properties["engineering_loop"]) { [double]$bus.section_confidence.engineering_loop } else { 0.0 }
+    }
+}
+
+function Get-TodEngineeringSignalPayload {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Config,
+        [int]$Top = 10
+    )
+
+    $bus = Get-TodStateBusPayload -Config $Config -State $State -Top $Top
+    $loop = if ($bus.PSObject.Properties["engineering_loop_state"]) { $bus.engineering_loop_state } else { [pscustomobject]@{} }
+
+    $lastCycle = if ($loop.PSObject.Properties["last_cycle_result"]) { $loop.last_cycle_result } else { $null }
+    $stopReason = if ($lastCycle -and $lastCycle.PSObject.Properties["stop_reason"] -and -not [string]::IsNullOrWhiteSpace([string]$lastCycle.stop_reason)) {
+        [string]$lastCycle.stop_reason
+    }
+    else {
+        ""
+    }
+
+    $phaseSnapshot = [ordered]@{}
+    $phaseTrends = if ($loop.PSObject.Properties["phase_trends"] -and $null -ne $loop.phase_trends) { $loop.phase_trends } else { [pscustomobject]@{} }
+    foreach ($phaseName in @("create", "plan", "implement", "test", "manage")) {
+        $series = if ($phaseTrends.PSObject.Properties[$phaseName] -and $null -ne $phaseTrends.$phaseName) { @($phaseTrends.$phaseName) } else { @() }
+        $latest = if (@($series).Count -gt 0) { [double]$series[@($series).Count - 1].score } else { $null }
+        $direction = "flat"
+        if (@($series).Count -ge 2) {
+            $delta = [double]$series[@($series).Count - 1].score - [double]$series[@($series).Count - 2].score
+            if ($delta -gt 0.03) { $direction = "improving" }
+            elseif ($delta -lt -0.03) { $direction = "declining" }
+        }
+
+        $phaseSnapshot[$phaseName] = [pscustomobject]@{
+            latest_score = if ($null -ne $latest) { [math]::Round($latest, 4) } else { $null }
+            direction = $direction
+        }
+    }
+
+    $implementStable = ($phaseSnapshot["implement"].latest_score -ne $null -and [double]$phaseSnapshot["implement"].latest_score -ge 0.70)
+    $testLagging = ($phaseSnapshot["test"].latest_score -ne $null -and [double]$phaseSnapshot["test"].latest_score -lt 0.60)
+
+    $operatorSignals = @()
+    $pendingApprovalFlag = if ($loop.PSObject.Properties["approval_pending_flag"]) { [bool]$loop.approval_pending_flag } else { $false }
+    if ($pendingApprovalFlag) {
+        $operatorSignals += "engineering loop paused awaiting approval"
+    }
+
+    $trendDirection = if ($loop.PSObject.Properties["trend_direction"]) { [string]$loop.trend_direction } else { "flat" }
+    if ($trendDirection -eq "declining") {
+        $operatorSignals += "test maturity regressed"
+    }
+
+    if ($implementStable -and $testLagging) {
+        $operatorSignals += "implementation stable, testing lagging"
+    }
+
+    $penalties = if ($loop.PSObject.Properties["top_penalties"] -and $null -ne $loop.top_penalties) {
+        @($loop.top_penalties | Select-Object -First 3)
+    }
+    else {
+        @()
+    }
+
+    return [pscustomobject]@{
+        path = "/tod/engineer/signal"
+        service = "tod"
+        source = "engineering_signal_v1"
+        generated_at = Get-UtcNow
+        contract_version = "engineering_signal_v1"
+        current_engineering_loop_status = if ($loop.PSObject.Properties["status"]) { [string]$loop.status } else { "idle" }
+        latest_maturity_band = if ($loop.PSObject.Properties["maturity_band"]) { [string]$loop.maturity_band } else { "early" }
+        pending_approval_state = [pscustomobject]@{
+            pending = $pendingApprovalFlag
+            count = if ($loop.PSObject.Properties["pending_approval_count"]) { [int]$loop.pending_approval_count } else { 0 }
+        }
+        stop_reason = $stopReason
+        top_penalties = @($penalties)
+        trend_direction = $trendDirection
+        trend_delta = if ($loop.PSObject.Properties["trend_delta"]) { [double]$loop.trend_delta } else { 0.0 }
+        phase_snapshot = [pscustomobject]$phaseSnapshot
+        operator_signals = @($operatorSignals | Select-Object -Unique)
     }
 }
 
@@ -2065,6 +2148,7 @@ function Get-TodCapabilitiesPayload {
         "/tod/engineer/run",
         "/tod/engineer/scorecard",
         "/tod/engineer/summary",
+        "/tod/engineer/signal",
         "/tod/engineer/history",
         "/tod/engineer/cycle",
         "/tod/engineer/review",
@@ -2106,6 +2190,7 @@ function Get-TodCapabilitiesPayload {
         }
         engineering_loop_v2 = [pscustomobject]@{
             summary_endpoint = "/tod/engineer/summary"
+            signal_endpoint = "/tod/engineer/signal"
             history_endpoint = "/tod/engineer/history"
             cycle_endpoint = "/tod/engineer/cycle"
             review_endpoint = "/tod/engineer/review"
@@ -3166,6 +3251,7 @@ function Get-TodStateBusPayload {
         "/tod/engineer/run",
         "/tod/engineer/scorecard",
         "/tod/engineer/summary",
+        "/tod/engineer/signal",
         "/tod/engineer/history",
         "/tod/engineer/cycle",
         "/tod/engineer/review",
@@ -6471,6 +6557,11 @@ switch ($Action) {
 
     "get-engineering-loop-summary" {
         $payload = Get-TodEngineeringLoopSummaryPayload -State $state -Config $config -Top $Top
+        $payload | ConvertTo-Json -Depth 18
+    }
+
+    "get-engineering-signal" {
+        $payload = Get-TodEngineeringSignalPayload -State $state -Config $config -Top $Top
         $payload | ConvertTo-Json -Depth 18
     }
 

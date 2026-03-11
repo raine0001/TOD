@@ -115,6 +115,7 @@ Describe "TOD Reliability Dashboards" {
         (@($caps.endpoints) -contains "/tod/engineer/run") | Should Be $true
         (@($caps.endpoints) -contains "/tod/engineer/scorecard") | Should Be $true
         (@($caps.endpoints) -contains "/tod/engineer/summary") | Should Be $true
+        (@($caps.endpoints) -contains "/tod/engineer/signal") | Should Be $true
         (@($caps.endpoints) -contains "/tod/engineer/history") | Should Be $true
         (@($caps.endpoints) -contains "/tod/engineer/cycle") | Should Be $true
         (@($caps.endpoints) -contains "/tod/engineer/review") | Should Be $true
@@ -167,6 +168,21 @@ Describe "TOD Reliability Dashboards" {
         (($summary.PSObject.Properties.Name) -contains "status") | Should Be $true
         (($summary.PSObject.Properties.Name) -contains "latest_score") | Should Be $true
         (($summary.PSObject.Properties.Name) -contains "run_history_count") | Should Be $true
+    }
+
+    It "get-engineering-signal returns stable integration payload" {
+        $signal = Invoke-TodActionJson -Action "get-engineering-signal" -ExtraArgs @{ Top = "10" }
+
+        $signal | Should Not BeNullOrEmpty
+        [string]$signal.path | Should Be "/tod/engineer/signal"
+        [string]$signal.contract_version | Should Be "engineering_signal_v1"
+        (($signal.PSObject.Properties.Name) -contains "current_engineering_loop_status") | Should Be $true
+        (($signal.PSObject.Properties.Name) -contains "latest_maturity_band") | Should Be $true
+        (($signal.PSObject.Properties.Name) -contains "pending_approval_state") | Should Be $true
+        (($signal.PSObject.Properties.Name) -contains "stop_reason") | Should Be $true
+        (($signal.PSObject.Properties.Name) -contains "top_penalties") | Should Be $true
+        (($signal.PSObject.Properties.Name) -contains "trend_direction") | Should Be $true
+        (($signal.PSObject.Properties.Name) -contains "operator_signals") | Should Be $true
     }
 
     It "get-engineering-loop-history returns paged history payload" {
@@ -594,6 +610,7 @@ Describe "TOD Reliability Dashboards" {
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/run") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/scorecard") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/summary") | Should Be $true
+        (@($bus.capability_state.endpoints) -contains "/tod/engineer/signal") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/history") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/cycle") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/review") | Should Be $true

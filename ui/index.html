@@ -1089,6 +1089,7 @@
             <label for="objectiveSelect">Tracked Objective</label>
             <select id="objectiveSelect"></select>
             <div id="projectMeta" class="project-meta">Loading project telemetry...</div>
+            <div id="engineeringSignalMeta" class="project-meta">Engineering signal: loading...</div>
             <div id="taskFunnel" class="funnel"></div>
           </div>
         </div>
@@ -1113,6 +1114,7 @@
               <option value="engineer-run">engineer-run</option>
               <option value="engineer-scorecard">engineer-scorecard</option>
               <option value="get-engineering-loop-summary">get-engineering-loop-summary</option>
+              <option value="get-engineering-signal">get-engineering-signal</option>
               <option value="get-engineering-loop-history">get-engineering-loop-history</option>
               <option value="engineer-cycle">engineer-cycle</option>
               <option value="review-engineering-cycle">review-engineering-cycle</option>
@@ -1336,6 +1338,7 @@
     const progressRingEl = document.getElementById('progressRing');
     const progressPctEl = document.getElementById('progressPct');
     const projectMetaEl = document.getElementById('projectMeta');
+    const engineeringSignalMetaEl = document.getElementById('engineeringSignalMeta');
     const taskFunnelEl = document.getElementById('taskFunnel');
     const callsBodyEl = document.getElementById('callsBody');
     const mimIndicatorEl = document.getElementById('mimIndicator');
@@ -1790,10 +1793,23 @@
 
         const marker = data.marker || null;
         const progress = data.progress || {};
+        const engineeringSignal = data.engineering_signal || null;
         const percent = Number(progress.percent) || 0;
         const status = marker && marker.status ? marker.status : 'unknown';
         setProgressRing(percent, status);
         const trendHtml = formatTrend(percent);
+
+        if (engineeringSignal && engineeringSignal.current_engineering_loop_status) {
+          const approval = engineeringSignal.pending_approval_state || {};
+          const pendingLabel = approval.pending ? `pending:${Number(approval.count) || 0}` : 'pending:0';
+          const stopReason = engineeringSignal.stop_reason || 'none';
+          const topPenalty = Array.isArray(engineeringSignal.top_penalties) && engineeringSignal.top_penalties.length > 0
+            ? (engineeringSignal.top_penalties[0].name || engineeringSignal.top_penalties[0].code || 'penalty')
+            : 'none';
+          engineeringSignalMetaEl.textContent = `Engineering signal | status:${engineeringSignal.current_engineering_loop_status} | band:${engineeringSignal.latest_maturity_band || 'early'} | trend:${engineeringSignal.trend_direction || 'flat'} | ${pendingLabel} | stop:${stopReason} | top-penalty:${topPenalty}`;
+        } else {
+          engineeringSignalMetaEl.textContent = 'Engineering signal unavailable';
+        }
 
         if (!marker) {
           projectMetaEl.innerHTML = `No current objective marker available. ${trendHtml}`;
