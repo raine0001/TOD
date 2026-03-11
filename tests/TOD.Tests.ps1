@@ -271,6 +271,98 @@ Describe "TOD Reliability Dashboards" {
         }
     }
 
+    It "engineering loop run history enforces minimum retention floor of 10" {
+        $originalStateRaw = Get-Content -Path $statePath -Raw
+        $tmpConfigPath = Join-Path $repoRoot ("tod/config/tod-config.test-retention-floor-{0}.json" -f ([guid]::NewGuid().ToString("N")))
+        try {
+            $cfg = (Get-Content -Path $configPath -Raw) | ConvertFrom-Json
+            if (-not $cfg.PSObject.Properties["engineering_loop"] -or $null -eq $cfg.engineering_loop) {
+                $cfg | Add-Member -NotePropertyName engineering_loop -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            $cfg.engineering_loop.max_run_history = 1
+            $cfg.engineering_loop.max_scorecard_history = 150
+            ($cfg | ConvertTo-Json -Depth 24) | Set-Content -Path $tmpConfigPath
+
+            $state = $originalStateRaw | ConvertFrom-Json
+            if (-not $state.PSObject.Properties["engineering_loop"] -or $null -eq $state.engineering_loop) {
+                $state | Add-Member -NotePropertyName engineering_loop -NotePropertyValue ([pscustomobject]@{
+                        run_history = @()
+                        scorecard_history = @()
+                        last_run = $null
+                        last_scorecard = $null
+                        updated_at = ""
+                    }) -Force
+            }
+            $state.engineering_loop.run_history = @()
+            $state.engineering_loop.last_run = $null
+            ($state | ConvertTo-Json -Depth 24) | Set-Content -Path $statePath
+
+            for ($i = 0; $i -lt 12; $i++) {
+                $null = Invoke-TodActionJson -Action "engineer-run" -ExtraArgs @{ Top = "5"; ConfigPath = $tmpConfigPath }
+            }
+
+            $bus = Invoke-TodActionJson -Action "get-state-bus" -ExtraArgs @{ Top = "10"; ConfigPath = $tmpConfigPath }
+            [int]$bus.engineering_loop_state.run_history_count | Should Be 10
+        }
+        finally {
+            Set-Content -Path $statePath -Value $originalStateRaw
+            if (Test-Path -Path $tmpConfigPath) {
+                Remove-Item -Path $tmpConfigPath -Force
+            }
+        }
+    }
+
+    It "engineering loop scorecard history enforces maximum retention clamp of 1000" {
+        $originalStateRaw = Get-Content -Path $statePath -Raw
+        $tmpConfigPath = Join-Path $repoRoot ("tod/config/tod-config.test-retention-ceiling-{0}.json" -f ([guid]::NewGuid().ToString("N")))
+        try {
+            $cfg = (Get-Content -Path $configPath -Raw) | ConvertFrom-Json
+            if (-not $cfg.PSObject.Properties["engineering_loop"] -or $null -eq $cfg.engineering_loop) {
+                $cfg | Add-Member -NotePropertyName engineering_loop -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            $cfg.engineering_loop.max_run_history = 150
+            $cfg.engineering_loop.max_scorecard_history = 5000
+            ($cfg | ConvertTo-Json -Depth 24) | Set-Content -Path $tmpConfigPath
+
+            $state = $originalStateRaw | ConvertFrom-Json
+            if (-not $state.PSObject.Properties["engineering_loop"] -or $null -eq $state.engineering_loop) {
+                $state | Add-Member -NotePropertyName engineering_loop -NotePropertyValue ([pscustomobject]@{
+                        run_history = @()
+                        scorecard_history = @()
+                        last_run = $null
+                        last_scorecard = $null
+                        updated_at = ""
+                    }) -Force
+            }
+
+            $base = (Get-Date).ToUniversalTime().AddMinutes(-1006)
+            $rows = @()
+            for ($i = 0; $i -lt 1005; $i++) {
+                $rows += [pscustomobject]@{
+                    generated_at = $base.AddMinutes($i).ToString("o")
+                    window = 25
+                    score = 0.5
+                    band = "test"
+                    low_areas = @()
+                }
+            }
+
+            $state.engineering_loop.scorecard_history = @($rows)
+            $state.engineering_loop.last_scorecard = $rows[@($rows).Count - 1]
+            ($state | ConvertTo-Json -Depth 24) | Set-Content -Path $statePath
+
+            $null = Invoke-TodActionJson -Action "engineer-scorecard" -ExtraArgs @{ Top = "5"; ConfigPath = $tmpConfigPath }
+            $bus = Invoke-TodActionJson -Action "get-state-bus" -ExtraArgs @{ Top = "10"; ConfigPath = $tmpConfigPath }
+            [int]$bus.engineering_loop_state.scorecard_history_count | Should Be 1000
+        }
+        finally {
+            Set-Content -Path $statePath -Value $originalStateRaw
+            if (Test-Path -Path $tmpConfigPath) {
+                Remove-Item -Path $tmpConfigPath -Force
+            }
+        }
+    }
+
     It "sandbox-write and sandbox-list return endpoint payload shape" {
         $sandboxRelPath = "selftest/tod-sandbox-test.txt"
         $sandboxBody = "sandbox smoke write"

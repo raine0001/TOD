@@ -168,6 +168,66 @@
       animation: mimPulse 500ms ease-in-out infinite alternate;
     }
 
+    .loop-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: rgba(4, 18, 16, 0.7);
+    }
+
+    .loop-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: rgba(125, 191, 161, 0.45);
+      box-shadow: 0 0 0 rgba(45, 255, 157, 0);
+    }
+
+    .loop-indicator.is-strong {
+      color: var(--neon);
+      border-color: var(--line-strong);
+    }
+
+    .loop-indicator.is-strong .loop-dot,
+    .loop-indicator.is-active .loop-dot {
+      background: var(--neon);
+    }
+
+    .loop-indicator.is-active {
+      color: #bfffd9;
+      border-color: rgba(45, 255, 157, 0.45);
+    }
+
+    .loop-indicator.is-warming {
+      color: var(--warn);
+      border-color: rgba(255, 209, 102, 0.45);
+    }
+
+    .loop-indicator.is-warming .loop-dot {
+      background: var(--warn);
+    }
+
+    .loop-indicator.is-idle {
+      color: var(--muted);
+      border-color: var(--line);
+    }
+
+    .loop-indicator.is-degraded {
+      color: var(--danger);
+      border-color: rgba(255, 92, 122, 0.45);
+    }
+
+    .loop-indicator.is-degraded .loop-dot {
+      background: var(--danger);
+    }
+
     .probe-wrap {
       display: inline-flex;
       align-items: center;
@@ -239,7 +299,8 @@
     }
 
     .probe-readout,
-    .mim-indicator {
+    .mim-indicator,
+    .loop-indicator {
       white-space: nowrap;
     }
 
@@ -994,6 +1055,10 @@
             <span class="mim-dot"></span>
             <span id="mimIndicatorText">MIM Link Idle</span>
           </div>
+          <div id="loopIndicator" class="loop-indicator is-idle" aria-live="polite">
+            <span class="loop-dot"></span>
+            <span id="loopIndicatorText">Loop: idle</span>
+          </div>
         </div>
       </div>
     </header>
@@ -1245,6 +1310,8 @@
     const callsBodyEl = document.getElementById('callsBody');
     const mimIndicatorEl = document.getElementById('mimIndicator');
     const mimIndicatorTextEl = document.getElementById('mimIndicatorText');
+    const loopIndicatorEl = document.getElementById('loopIndicator');
+    const loopIndicatorTextEl = document.getElementById('loopIndicatorText');
     const probeBtn = document.getElementById('probeBtn');
     const probeReadoutEl = document.getElementById('probeReadout');
     const reqPerMinEl = document.getElementById('reqPerMin');
@@ -1326,6 +1393,32 @@
       if (value === 'critical') {
         document.body.classList.add('tone-critical');
       }
+    }
+
+    function setLoopIndicator(status, latestScore, trendDirection) {
+      if (!loopIndicatorEl || !loopIndicatorTextEl) {
+        return;
+      }
+
+      const resolvedStatus = String(status || 'idle').toLowerCase();
+      loopIndicatorEl.classList.remove('is-strong', 'is-active', 'is-warming', 'is-idle', 'is-degraded');
+
+      let statusClass = 'is-idle';
+      if (resolvedStatus === 'strong') {
+        statusClass = 'is-strong';
+      } else if (resolvedStatus === 'active') {
+        statusClass = 'is-active';
+      } else if (resolvedStatus === 'warming') {
+        statusClass = 'is-warming';
+      } else if (resolvedStatus === 'degraded' || resolvedStatus === 'critical') {
+        statusClass = 'is-degraded';
+      }
+
+      loopIndicatorEl.classList.add(statusClass);
+
+      const scoreText = Number.isFinite(Number(latestScore)) ? Number(latestScore).toFixed(2) : '-';
+      const trendText = String(trendDirection || 'flat').toLowerCase();
+      loopIndicatorTextEl.textContent = `Loop: ${resolvedStatus} | score ${scoreText} | trend ${trendText}`;
     }
 
     function isTypingTarget(element) {
@@ -1935,9 +2028,11 @@
         renderScoreSparkline(busScoreSparklineEl, loop.recent_scorecards || []);
 
         renderSystemPosture(posture);
+        setLoopIndicator(loop.status || posture.engineering_loop_status, loop.latest_score, loop.trend_direction);
 
         busMetaEl.textContent = `State bus refreshed at ${now} (${bus.generated_at || 'unknown timestamp'})`;
       } catch (err) {
+        setLoopIndicator('idle', null, 'flat');
         busMetaEl.textContent = err.message;
       } finally {
         loadBusBtn.disabled = false;
