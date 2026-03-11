@@ -4,7 +4,10 @@ Development orchestration workspace for the MIM ecosystem.
 
 Primary specification:
 - [docs/tod-orchestrator-v1-spec.md](docs/tod-orchestrator-v1-spec.md)
+- [docs/tod-command-reference.md](docs/tod-command-reference.md)
+- [docs/tod-state-bus-contract-v1.md](docs/tod-state-bus-contract-v1.md)
 - [docs/tod-mim-shared-contract-v1.md](docs/tod-mim-shared-contract-v1.md)
+- [docs/mim-tod-execution-feedback-contract-v1.md](docs/mim-tod-execution-feedback-contract-v1.md)
 - [docs/mim-manifest-contract-v1.md](docs/mim-manifest-contract-v1.md)
 - [docs/task24-mim-post-journal-handoff.md](docs/task24-mim-post-journal-handoff.md)
 - [docs/execution-engine-interface-v1.md](docs/execution-engine-interface-v1.md)
@@ -62,6 +65,8 @@ Execution engine config behavior:
 - `execution_engine.active`: currently `codex` or `local`
 - `execution_engine.fallback`: fallback engine when enabled
 - `execution_engine.allow_fallback`: allow fallback usage
+- `engineering_loop.max_run_history`: max persisted `engineer-run` history entries (10-1000)
+- `engineering_loop.max_scorecard_history`: max persisted `engineer-scorecard` trend entries (10-1000)
 - Invalid engine values fail fast with a validation error.
 
 Connectivity check:
@@ -69,6 +74,123 @@ Connectivity check:
 ```powershell
 .\scripts\TOD.ps1 -Action ping-mim
 ```
+
+### Simple Visual UI (Local)
+
+Run a lightweight local UI to inspect TOD output and trigger basic actions:
+
+```powershell
+.\scripts\Start-TOD-UI.ps1
+```
+
+Safer launcher with automatic free-port selection:
+
+```powershell
+.\scripts\Start-TOD-UI-Safe.ps1
+```
+
+Then open:
+
+```text
+http://localhost:8844/
+```
+
+Notes:
+- The UI is intentionally minimal for now.
+- It exposes a local API endpoint at `POST /api/run` that proxies to `scripts/TOD.ps1`.
+- It includes a current project marker and a visual progress ring based on objective/task state.
+- It exposes `GET /api/project-status` for the marker and progress payload.
+- The action list includes `get-state-bus` for a unified snapshot of objective, agent, execution, reliability, and block/uncertainty state.
+- Use `Ctrl+C` in the terminal running `Start-TOD-UI.ps1` to stop the server.
+
+One-command smoke validation for the local UI stack:
+
+```powershell
+.\scripts\Invoke-TODSmoke.ps1
+```
+
+Fail-fast mode for CI or shell pipelines:
+
+```powershell
+.\scripts\Invoke-TODSmoke.ps1 -FailOnError
+```
+
+Watch mode (prints only first run, failures, and deltas by default):
+
+```powershell
+.\scripts\Invoke-TODSmokeWatch.ps1 -IntervalSeconds 180
+```
+
+Run a short local watch sample:
+
+```powershell
+.\scripts\Invoke-TODSmokeWatch.ps1 -IntervalSeconds 15 -MaxIterations 4
+```
+
+Execution pipeline self-test (package + run-task + persistence checks):
+
+```powershell
+.\scripts\Invoke-TODExecutionSelfTest.ps1 -TaskId 45
+```
+
+Fail-fast mode for automation:
+
+```powershell
+.\scripts\Invoke-TODExecutionSelfTest.ps1 -TaskId 45 -FailOnError
+```
+
+### MIM Debug Logging
+
+TOD can write per-request debug logs for all MIM HTTP calls.
+
+Config in `tod/config/tod-config.json`:
+
+```json
+"mim_debug": {
+	"enabled": true,
+	"log_path": "e:/TOD/tod/out/mim-http.log"
+}
+```
+
+When enabled, each line in the log file is JSON containing:
+- `timestamp_utc`
+- `request.method`, `request.uri`, `request.body`
+- `response.status_code`, `response.body`
+- `response.error`, `response.error_body` (for failures)
+- `elapsed_ms`
+
+Quick tail command:
+
+```powershell
+Get-Content .\tod\out\mim-http.log -Tail 20
+```
+
+### Execution Feedback Publisher (Objective 22 Task B)
+
+TOD can publish execution lifecycle feedback to MIM:
+
+`POST /gateway/capabilities/executions/{execution_id}/feedback`
+
+Enable in `tod/config/tod-config.json`:
+
+```json
+"execution_feedback": {
+	"enabled": true,
+	"source": "tod",
+	"auth_token": ""
+}
+```
+
+Current `run-task` feedback events (when an execution id is available):
+- `accepted`
+- `running`
+- terminal state: `succeeded` or `failed`
+- `blocked` when guardrail prevents execution pre-invocation
+
+Execution id resolution order:
+1. Explicit `-ExecutionId` parameter on `run-task`
+2. Task field `execution_id`
+3. Task field `remote_execution_id`
 
 Ping output includes:
 - reachable
@@ -193,6 +315,86 @@ Durable record rule:
 .\scripts\TOD.ps1 -Action list-tasks
 .\scripts\TOD.ps1 -Action show-journal -Top 20
 ```
+
+## TOD Command Reference
+
+Use this as a quick day-to-day command map.
+
+### TOD Runtime (Core)
+
+```powershell
+.\scripts\TOD.ps1 -Action init
+.\scripts\TOD.ps1 -Action ping-mim
+.\scripts\TOD.ps1 -Action compare-manifest
+.\scripts\TOD.ps1 -Action sync-mim
+```
+
+### Objective and Task Flow
+
+```powershell
+.\scripts\TOD.ps1 -Action new-objective -Title "..." -Description "..."
+.\scripts\TOD.ps1 -Action list-objectives
+.\scripts\TOD.ps1 -Action add-task -ObjectiveId <ID> -Title "..." -Scope "..."
+.\scripts\TOD.ps1 -Action list-tasks -ObjectiveId <ID>
+.\scripts\TOD.ps1 -Action package-task -TaskId <ID>
+.\scripts\TOD.ps1 -Action run-task -TaskId <ID>
+.\scripts\TOD.ps1 -Action run-task-report -TaskId <ID>
+```
+
+### Results and Review
+
+```powershell
+.\scripts\TOD.ps1 -Action add-result -TaskId <ID> -Summary "..."
+.\scripts\TOD.ps1 -Action review-task -TaskId <ID> -Decision pass -Rationale "..."
+.\scripts\TOD.ps1 -Action show-journal -Top 25
+```
+
+### Reliability and Routing Views
+
+```powershell
+.\scripts\TOD.ps1 -Action get-reliability
+.\scripts\TOD.ps1 -Action show-reliability-dashboard -Top 25
+.\scripts\TOD.ps1 -Action show-engine-performance
+.\scripts\TOD.ps1 -Action show-routing-decisions
+.\scripts\TOD.ps1 -Action show-routing-feedback
+.\scripts\TOD.ps1 -Action show-failure-taxonomy
+.\scripts\TOD.ps1 -Action get-capabilities
+.\scripts\TOD.ps1 -Action get-research -Top 10
+.\scripts\TOD.ps1 -Action get-resourcing -ObjectiveId <ID> -Top 10
+.\scripts\TOD.ps1 -Action engineer-run -Top 10
+.\scripts\TOD.ps1 -Action engineer-run -TaskId <ID> -ApplyPlan
+.\scripts\TOD.ps1 -Action engineer-scorecard -Top 25
+.\scripts\TOD.ps1 -Action sandbox-list -Top 25
+.\scripts\TOD.ps1 -Action sandbox-plan -SandboxPath "notes/demo.txt" -Content "planned content"
+.\scripts\TOD.ps1 -Action sandbox-apply-plan -SandboxPlanPath "tod/sandbox/artifacts/PLAN-XXXXXXXXXX.json"
+.\scripts\TOD.ps1 -Action sandbox-write -SandboxPath "notes/demo.txt" -Content "hello sandbox"
+.\scripts\TOD.ps1 -Action get-version
+```
+
+### TOD Command Console (UI)
+
+```powershell
+.\scripts\Start-TOD-UI.ps1 -Port 8844
+```
+
+Notes:
+- If `8844` is busy, `Start-TOD-UI.ps1` auto-falls forward to the next available port.
+- Open the printed URL in browser (for example `http://localhost:8845/`).
+
+Optional convenience command:
+
+```powershell
+Import-Module TODTools -DisableNameChecking -Force
+Start-TOD-UI -Port 8844
+```
+
+### Debug Logs
+
+```powershell
+Get-Content .\tod\out\mim-http.log -Tail 20
+```
+
+This log captures MIM request/response telemetry when `mim_debug.enabled` is true in `tod/config/tod-config.json`.
 
 ### Validated Bridge Run (Real Command Path)
 

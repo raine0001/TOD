@@ -3,6 +3,19 @@
   "mode": "hybrid",
   "timeout_seconds": 15,
   "fallback_to_local": true,
+  "mim_debug": {
+    "enabled": true,
+    "log_path": "e:/TOD/tod/out/mim-http.log"
+  },
+  "execution_feedback": {
+    "enabled": false,
+    "source": "tod",
+    "auth_token": ""
+  },
+  "engineering_loop": {
+    "max_run_history": 150,
+    "max_scorecard_history": 150
+  },
   "execution_engine": {
     "active": "codex",
     "fallback": "local",

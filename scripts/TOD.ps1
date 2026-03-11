@@ -20,6 +20,15 @@ param(
         "show-reliability-dashboard",
         "get-reliability",
         "get-capabilities",
+        "get-research",
+        "get-resourcing",
+        "engineer-run",
+        "engineer-scorecard",
+        "sandbox-list",
+        "sandbox-plan",
+        "sandbox-apply-plan",
+        "sandbox-write",
+        "get-state-bus",
         "get-version",
         "add-result",
         "review-task",
@@ -57,7 +66,13 @@ param(
     [int]$Top = 25,
     [string]$ConfigPath,
     [string]$ManifestPath,
-    [string]$PackagePath
+    [string]$PackagePath,
+    [string]$ExecutionId,
+    [string]$SandboxPath,
+    [string]$SandboxPlanPath,
+    [string]$Content,
+    [switch]$Append
+    ,[switch]$ApplyPlan
     ,[string]$Engine
     ,[string]$Category
 )
@@ -209,6 +224,31 @@ function Normalize-State {
         $State.routing_feedback | Add-Member -NotePropertyName updated_at -NotePropertyValue "" -Force
     }
 
+    if (-not $State.PSObject.Properties["engineering_loop"]) {
+        $State | Add-Member -NotePropertyName engineering_loop -NotePropertyValue ([pscustomobject]@{
+                run_history = @()
+                scorecard_history = @()
+                last_run = $null
+                last_scorecard = $null
+                updated_at = ""
+            }) -Force
+    }
+    if (-not $State.engineering_loop.PSObject.Properties["run_history"]) {
+        $State.engineering_loop | Add-Member -NotePropertyName run_history -NotePropertyValue @() -Force
+    }
+    if (-not $State.engineering_loop.PSObject.Properties["scorecard_history"]) {
+        $State.engineering_loop | Add-Member -NotePropertyName scorecard_history -NotePropertyValue @() -Force
+    }
+    if (-not $State.engineering_loop.PSObject.Properties["last_run"]) {
+        $State.engineering_loop | Add-Member -NotePropertyName last_run -NotePropertyValue $null -Force
+    }
+    if (-not $State.engineering_loop.PSObject.Properties["last_scorecard"]) {
+        $State.engineering_loop | Add-Member -NotePropertyName last_scorecard -NotePropertyValue $null -Force
+    }
+    if (-not $State.engineering_loop.PSObject.Properties["updated_at"]) {
+        $State.engineering_loop | Add-Member -NotePropertyName updated_at -NotePropertyValue "" -Force
+    }
+
     foreach ($objective in @($State.objectives)) {
         $objective.constraints = Convert-ToStringArray -Value $objective.constraints
         $objective.success_criteria = Convert-ToStringArray -Value $objective.success_criteria
@@ -323,6 +363,105 @@ function Add-EnginePerformanceRecord {
     Update-RoutingFeedbackModel -State $State
     Sync-EnginePerformanceToEngineeringMemory -State $State -LatestRecord $record
     return $record
+}
+
+function Add-EngineeringRunHistoryRecord {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Payload,
+        [int]$MaxEntries = 150
+    )
+
+    $focus = if ($Payload.PSObject.Properties["focus"]) { $Payload.focus } else { $null }
+    $phases = if ($Payload.PSObject.Properties["phases"]) { $Payload.phases } else { $null }
+    $plan = if ($phases -and $phases.PSObject.Properties["plan"]) { $phases.plan } else { $null }
+    $implement = if ($phases -and $phases.PSObject.Properties["implement"]) { $phases.implement } else { $null }
+
+    $entry = [pscustomobject]@{
+        run_id = if ($Payload.PSObject.Properties["run_id"]) { [string]$Payload.run_id } else { "" }
+        generated_at = if ($Payload.PSObject.Properties["generated_at"]) { [string]$Payload.generated_at } else { Get-UtcNow }
+        objective_id = if ($focus -and $focus.PSObject.Properties["objective_id"]) { [string]$focus.objective_id } else { "" }
+        task_id = if ($focus -and $focus.PSObject.Properties["task_id"]) { [string]$focus.task_id } else { "" }
+        task_category = if ($focus -and $focus.PSObject.Properties["task_category"]) { [string]$focus.task_category } else { "" }
+        plan_artifact_path = if ($plan -and $plan.PSObject.Properties["artifact_path"]) { [string]$plan.artifact_path } else { "" }
+        sandbox_path = if ($plan -and $plan.PSObject.Properties["sandbox_path"]) { [string]$plan.sandbox_path } else { "" }
+        implement_status = if ($implement -and $implement.PSObject.Properties["status"]) { [string]$implement.status } else { "" }
+        apply_requested = if ($implement -and $implement.PSObject.Properties["apply_requested"]) { [bool]$implement.apply_requested } else { $false }
+        source = if ($Payload.PSObject.Properties["source"]) { [string]$Payload.source } else { "" }
+    }
+
+    $history = @($State.engineering_loop.run_history)
+    $history += $entry
+    if (@($history).Count -gt $MaxEntries) {
+        $history = @($history | Select-Object -Last $MaxEntries)
+    }
+
+    $State.engineering_loop.run_history = @($history)
+    $State.engineering_loop.last_run = $entry
+    $State.engineering_loop.updated_at = Get-UtcNow
+    return $entry
+}
+
+function Add-EngineeringScorecardHistoryRecord {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Payload,
+        [int]$MaxEntries = 150
+    )
+
+    $overall = if ($Payload.PSObject.Properties["overall"]) { $Payload.overall } else { $null }
+
+    $entry = [pscustomobject]@{
+        generated_at = if ($Payload.PSObject.Properties["generated_at"]) { [string]$Payload.generated_at } else { Get-UtcNow }
+        window = if ($Payload.PSObject.Properties["window"] -and $null -ne $Payload.window) { [int]$Payload.window } else { 0 }
+        score = if ($overall -and $overall.PSObject.Properties["score"] -and $null -ne $overall.score) { [double]$overall.score } else { 0.0 }
+        band = if ($overall -and $overall.PSObject.Properties["band"]) { [string]$overall.band } else { "" }
+        low_areas = if ($overall -and $overall.PSObject.Properties["low_areas"]) { @($overall.low_areas) } else { @() }
+    }
+
+    $history = @($State.engineering_loop.scorecard_history)
+    $history += $entry
+    if (@($history).Count -gt $MaxEntries) {
+        $history = @($history | Select-Object -Last $MaxEntries)
+    }
+
+    $State.engineering_loop.scorecard_history = @($history)
+    $State.engineering_loop.last_scorecard = $entry
+    $State.engineering_loop.updated_at = Get-UtcNow
+    return $entry
+}
+
+function Resolve-EngineeringLoopHistoryLimit {
+    param(
+        [Parameter(Mandatory = $true)]$Config,
+        [ValidateSet("run_history", "scorecard_history")][string]$Kind
+    )
+
+    $defaultLimit = 150
+    if (-not $Config -or -not $Config.PSObject.Properties["engineering_loop"] -or $null -eq $Config.engineering_loop) {
+        return $defaultLimit
+    }
+
+    $limits = $Config.engineering_loop
+    $value = $null
+    if ($Kind -eq "run_history") {
+        if ($limits.PSObject.Properties["max_run_history"] -and $null -ne $limits.max_run_history) {
+            $value = [int]$limits.max_run_history
+        }
+    }
+    else {
+        if ($limits.PSObject.Properties["max_scorecard_history"] -and $null -ne $limits.max_scorecard_history) {
+            $value = [int]$limits.max_scorecard_history
+        }
+    }
+
+    if ($null -eq $value -or $value -lt 10) {
+        return $defaultLimit
+    }
+    if ($value -gt 1000) {
+        return 1000
+    }
+    return $value
 }
 
 function Get-DefaultRoutingWeights {
@@ -1431,6 +1570,21 @@ function Get-TodVersionPayload {
 function Get-TodCapabilitiesPayload {
     param([Parameter(Mandatory = $true)]$Config)
 
+    $capabilityEndpoints = @(
+        "/tod/reliability",
+        "/tod/capabilities",
+        "/tod/research",
+        "/tod/resourcing",
+        "/tod/engineer/run",
+        "/tod/engineer/scorecard",
+        "/tod/sandbox/files",
+        "/tod/sandbox/plan",
+        "/tod/sandbox/apply",
+        "/tod/sandbox/write",
+        "/tod/state-bus",
+        "/tod/version"
+    )
+
     return [pscustomobject]@{
         path = "/tod/capabilities"
         service = "tod"
@@ -1449,7 +1603,1050 @@ function Get-TodCapabilitiesPayload {
             alert_states = @("stable", "warning", "degraded", "critical")
             quarantine_supported = if ($Config.execution_engine.routing_policy.PSObject.Properties["drift_detection"] -and $Config.execution_engine.routing_policy.drift_detection -and $Config.execution_engine.routing_policy.drift_detection.PSObject.Properties["quarantine_enabled"]) { [bool]$Config.execution_engine.routing_policy.drift_detection.quarantine_enabled } else { $false }
         }
-        endpoints = @("/tod/reliability", "/tod/capabilities", "/tod/version")
+        research = [pscustomobject]@{
+            repository_index_available = (Test-Path -Path $repoIndexPath)
+            engineering_memory_available = (Test-Path -Path $engineeringMemoryPath)
+            supports_related_file_exploration = $true
+        }
+        resourcing = [pscustomobject]@{
+            supports_external_handoff_brief = $true
+            supports_skill_gap_recommendations = $true
+            procurement_automation = $false
+        }
+        code_write_sandbox = [pscustomobject]@{
+            enabled = $true
+            root = "tod/sandbox/workspace"
+            supports_append = $true
+            supports_plan = $true
+            supports_apply_plan = $true
+            path_guardrails = @("disallow_parent_traversal", "workspace_confined")
+        }
+        endpoints = @($capabilityEndpoints)
+    }
+}
+
+function Get-TodResearchPayload {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [int]$Top = 10
+    )
+
+    $safeTop = if ($Top -lt 1) { 1 } elseif ($Top -gt 100) { 100 } else { $Top }
+    $objectives = if ($State.PSObject.Properties["objectives"]) { @($State.objectives) } else { @() }
+    $tasks = if ($State.PSObject.Properties["tasks"]) { @($State.tasks) } else { @() }
+
+    $recentObjectives = @($objectives | Sort-Object updated_at, created_at -Descending | Select-Object -First $safeTop | ForEach-Object {
+            [pscustomobject]@{
+                objective_id = [string]$_.id
+                title = [string]$_.title
+                status = if ($_.PSObject.Properties["status"]) { [string]$_.status } else { "unknown" }
+                priority = if ($_.PSObject.Properties["priority"]) { [string]$_.priority } else { "" }
+            }
+        })
+
+    $recentTasks = @($tasks | Sort-Object updated_at, created_at -Descending | Select-Object -First $safeTop | ForEach-Object {
+            [pscustomobject]@{
+                task_id = [string]$_.id
+                objective_id = if ($_.PSObject.Properties["objective_id"]) { [string]$_.objective_id } else { "" }
+                title = if ($_.PSObject.Properties["title"]) { [string]$_.title } else { "" }
+                status = if ($_.PSObject.Properties["status"]) { [string]$_.status } else { "unknown" }
+                task_category = Resolve-TaskCategory -Task $_
+            }
+        })
+
+    $repo = $null
+    if (Test-Path -Path $repoIndexPath) {
+        try {
+            $repo = (Get-Content -Path $repoIndexPath -Raw) | ConvertFrom-Json
+        }
+        catch {
+            $repo = $null
+        }
+    }
+
+    $memory = $null
+    if (Test-Path -Path $engineeringMemoryPath) {
+        try {
+            $memory = (Get-Content -Path $engineeringMemoryPath -Raw) | ConvertFrom-Json
+        }
+        catch {
+            $memory = $null
+        }
+    }
+
+    $memoryTags = @()
+    if ($memory) {
+        foreach ($bucket in @("decision_memory", "failure_memory", "pattern_memory", "test_memory", "repo_memory", "architecture_memory")) {
+            if ($memory.PSObject.Properties[$bucket] -and $memory.$bucket) {
+                foreach ($entry in @($memory.$bucket)) {
+                    if ($entry.PSObject.Properties["tags"] -and $entry.tags) {
+                        $memoryTags += @($entry.tags | ForEach-Object { [string]$_ })
+                    }
+                }
+            }
+        }
+    }
+
+    $topTags = @($memoryTags | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Group-Object | Sort-Object Count -Descending | Select-Object -First 8 | ForEach-Object { [string]$_.Name })
+    $researchPrompts = @(
+        "Trace active objective dependencies and unresolved blockers",
+        "Identify modules with highest recent churn risk",
+        "Map reliability hotspots to task categories",
+        "Generate external handoff summary for current objective"
+    )
+
+    return [pscustomobject]@{
+        path = "/tod/research"
+        service = "tod"
+        source = "research_snapshot_v1"
+        generated_at = Get-UtcNow
+        repository = [pscustomobject]@{
+            indexed = ($null -ne $repo)
+            branch = if ($repo -and $repo.PSObject.Properties["repository"] -and $repo.repository.PSObject.Properties["branch"]) { [string]$repo.repository.branch } else { "unknown" }
+            commit = if ($repo -and $repo.PSObject.Properties["repository"] -and $repo.repository.PSObject.Properties["commit"]) { [string]$repo.repository.commit } else { "unknown" }
+            top_level_folders = if ($repo -and $repo.PSObject.Properties["top_level_folders"]) { @($repo.top_level_folders | Select-Object -First 12) } else { @() }
+            important_files = if ($repo -and $repo.PSObject.Properties["important_files"]) { @($repo.important_files | Select-Object -First 20) } else { @() }
+        }
+        active_context = [pscustomobject]@{
+            recent_objectives = @($recentObjectives)
+            recent_tasks = @($recentTasks)
+            frequent_memory_tags = @($topTags)
+        }
+        exploration = [pscustomobject]@{
+            research_prompts = @($researchPrompts)
+            suggested_actions = @("index-repo", "generate-module-summaries", "find-related-files", "show-impact-area")
+            engineer_script = "scripts/TOD-Engineer.ps1"
+        }
+    }
+}
+
+function Get-TodResourcingPayload {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [string]$ObjectiveId,
+        [string]$TaskId,
+        [int]$Top = 10
+    )
+
+    $safeTop = if ($Top -lt 1) { 1 } elseif ($Top -gt 100) { 100 } else { $Top }
+    $objectives = if ($State.PSObject.Properties["objectives"]) { @($State.objectives) } else { @() }
+    $tasks = if ($State.PSObject.Properties["tasks"]) { @($State.tasks) } else { @() }
+
+    $selectedObjective = $null
+    if (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) {
+        $selectedObjective = @($objectives | Where-Object { [string]$_.id -eq [string]$ObjectiveId } | Select-Object -First 1)
+    }
+    if ($null -eq $selectedObjective -or @($selectedObjective).Count -eq 0) {
+        $selectedObjective = @($objectives | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
+    }
+    $objective = if ($null -ne $selectedObjective -and @($selectedObjective).Count -gt 0) { @($selectedObjective)[0] } else { $null }
+
+    $selectedTask = $null
+    if (-not [string]::IsNullOrWhiteSpace($TaskId)) {
+        $selectedTask = @($tasks | Where-Object { [string]$_.id -eq [string]$TaskId } | Select-Object -First 1)
+    }
+    $task = if ($null -ne $selectedTask -and @($selectedTask).Count -gt 0) { @($selectedTask)[0] } else { $null }
+
+    $objectiveTasks = if ($objective -and $objective.PSObject.Properties["id"]) {
+        @($tasks | Where-Object { [string]$_.objective_id -eq [string]$objective.id })
+    }
+    else {
+        @($tasks | Select-Object -First $safeTop)
+    }
+
+    $categoryCounts = @{}
+    foreach ($t in $objectiveTasks) {
+        $cat = Resolve-TaskCategory -Task $t
+        if (-not $categoryCounts.ContainsKey($cat)) {
+            $categoryCounts[$cat] = 0
+        }
+        $categoryCounts[$cat] = [int]$categoryCounts[$cat] + 1
+    }
+
+    $skills = @()
+    if ($categoryCounts.ContainsKey("code_change") -or $categoryCounts.ContainsKey("refactor")) { $skills += "PowerShell development" }
+    if ($categoryCounts.ContainsKey("test_generation")) { $skills += "Automated test authoring" }
+    if ($categoryCounts.ContainsKey("sync_check")) { $skills += "Integration/API contract validation" }
+    if (@($skills).Count -eq 0) { $skills = @("General software engineering") }
+
+    $workPackages = @($objectiveTasks | Sort-Object updated_at, created_at -Descending | Select-Object -First $safeTop | ForEach-Object {
+            [pscustomobject]@{
+                task_id = [string]$_.id
+                title = if ($_.PSObject.Properties["title"]) { [string]$_.title } else { "" }
+                status = if ($_.PSObject.Properties["status"]) { [string]$_.status } else { "unknown" }
+                category = Resolve-TaskCategory -Task $_
+            }
+        })
+
+    return [pscustomobject]@{
+        path = "/tod/resourcing"
+        service = "tod"
+        source = "resourcing_brief_v1"
+        generated_at = Get-UtcNow
+        focus = [pscustomobject]@{
+            objective_id = if ($objective) { [string]$objective.id } else { "" }
+            objective_title = if ($objective -and $objective.PSObject.Properties["title"]) { [string]$objective.title } else { "" }
+            task_id = if ($task -and $task.PSObject.Properties["id"]) { [string]$task.id } else { "" }
+            task_title = if ($task -and $task.PSObject.Properties["title"]) { [string]$task.title } else { "" }
+        }
+        demand_profile = [pscustomobject]@{
+            task_count = @($objectiveTasks).Count
+            categories = [pscustomobject]$categoryCounts
+            target_skills = @($skills)
+        }
+        external_resourcing = [pscustomobject]@{
+            channels = @("specialist_contractor", "partner_delivery_team", "domain_reviewer")
+            handoff_package_minimum = @("objective brief", "task list", "acceptance criteria", "validation commands", "repo access constraints")
+            governance = @("NDA and access policy enforcement", "branch protection and PR review gates", "artifact traceability")
+            procurement_automation = $false
+        }
+        suggested_work_packages = @($workPackages)
+    }
+}
+
+function Get-TodSandboxRoot {
+    $root = Join-Path $repoRoot "tod/sandbox/workspace"
+    if (-not (Test-Path -Path $root)) {
+        New-Item -ItemType Directory -Path $root -Force | Out-Null
+    }
+    return $root
+}
+
+function Get-TodEngineerRunPayload {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Config,
+        [string]$ObjectiveId,
+        [string]$TaskId,
+        [string]$Body,
+        [switch]$Append,
+        [switch]$ApplyPlan,
+        [int]$Top = 10
+    )
+
+    $safeTop = if ($Top -lt 1) { 1 } elseif ($Top -gt 100) { 100 } else { $Top }
+    $objectives = if ($State.PSObject.Properties["objectives"]) { @($State.objectives) } else { @() }
+    $tasks = if ($State.PSObject.Properties["tasks"]) { @($State.tasks) } else { @() }
+
+    $selectedObjective = $null
+    if (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) {
+        $selectedObjective = @($objectives | Where-Object { [string]$_.id -eq [string]$ObjectiveId } | Select-Object -First 1)
+    }
+    if (($null -eq $selectedObjective -or @($selectedObjective).Count -eq 0) -and @($objectives).Count -gt 0) {
+        $selectedObjective = @($objectives | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
+    }
+    $objective = if ($null -ne $selectedObjective -and @($selectedObjective).Count -gt 0) { @($selectedObjective)[0] } else { $null }
+
+    $selectedTask = $null
+    if (-not [string]::IsNullOrWhiteSpace($TaskId)) {
+        $selectedTask = @($tasks | Where-Object { [string]$_.id -eq [string]$TaskId } | Select-Object -First 1)
+    }
+    if (($null -eq $selectedTask -or @($selectedTask).Count -eq 0) -and $objective) {
+        $objectiveTasks = @($tasks | Where-Object { [string]$_.objective_id -eq [string]$objective.id })
+        $preferred = @($objectiveTasks | Where-Object {
+                $status = if ($_.PSObject.Properties["status"]) { ([string]$_.status).ToLowerInvariant() } else { "" }
+                $status -in @("in_progress", "open", "planned", "todo")
+            } | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
+        if (@($preferred).Count -gt 0) {
+            $selectedTask = $preferred
+        }
+        else {
+            $selectedTask = @($objectiveTasks | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
+        }
+    }
+    if (($null -eq $selectedTask -or @($selectedTask).Count -eq 0) -and @($tasks).Count -gt 0) {
+        $selectedTask = @($tasks | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
+    }
+    $task = if ($null -ne $selectedTask -and @($selectedTask).Count -gt 0) { @($selectedTask)[0] } else { $null }
+
+    $resolvedObjectiveId = if ($objective -and $objective.PSObject.Properties["id"]) { [string]$objective.id } else { "" }
+    $resolvedTaskId = if ($task -and $task.PSObject.Properties["id"]) { [string]$task.id } else { "" }
+
+    $research = Get-TodResearchPayload -State $State -Top $safeTop
+    $resourcing = Get-TodResourcingPayload -State $State -ObjectiveId $resolvedObjectiveId -TaskId $resolvedTaskId -Top $safeTop
+
+    $taskCategory = if ($task) { Resolve-TaskCategory -Task $task } else { "code_change" }
+    $packagePath = ""
+    $packageContent = ""
+    if (-not [string]::IsNullOrWhiteSpace($resolvedTaskId)) {
+        try {
+            $packagePath = Resolve-TaskPackagePath -TaskId $resolvedTaskId -ExplicitPath ""
+            if (Test-Path -Path $packagePath) {
+                $packageContent = [string](Get-Content -Path $packagePath -Raw)
+            }
+        }
+        catch {
+            $packagePath = ""
+            $packageContent = ""
+        }
+    }
+
+    $timestampSlug = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
+    $sandboxPath = if (-not [string]::IsNullOrWhiteSpace($resolvedTaskId)) {
+        "engineer-runs/{0}.md" -f $resolvedTaskId
+    }
+    else {
+        "engineer-runs/run-{0}.md" -f $timestampSlug
+    }
+
+    $effectiveBody = ""
+    if (-not [string]::IsNullOrWhiteSpace([string]$Body)) {
+        $effectiveBody = [string]$Body
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($packageContent)) {
+        $effectiveBody = $packageContent
+    }
+    else {
+        $effectiveBody = @(
+            "# TOD Engineer Run Draft"
+            ""
+            "- generated_at: $(Get-UtcNow)"
+            "- objective_id: $resolvedObjectiveId"
+            "- task_id: $resolvedTaskId"
+            "- task_category: $taskCategory"
+            ""
+            "## Work Plan"
+            "1. Confirm acceptance criteria"
+            "2. Implement scoped changes"
+            "3. Run regression tests"
+            "4. Prepare review summary"
+        ) -join [Environment]::NewLine
+    }
+
+    $plan = Invoke-TodSandboxPlanWrite -RelativePath $sandboxPath -Body $effectiveBody -Append:$Append
+    $applyResult = $null
+    if ($ApplyPlan) {
+        $applyResult = Invoke-TodSandboxApplyPlan -PlanPath ([string]$plan.artifact_path)
+    }
+
+    $phaseCreate = if (($objective -ne $null) -or ($task -ne $null)) { "ready" } else { "missing_context" }
+    $phaseImplement = if ($ApplyPlan) { "applied" } else { "planned_only" }
+
+    return [pscustomobject]@{
+        path = "/tod/engineer/run"
+        service = "tod"
+        source = "engineer_run_v1"
+        generated_at = Get-UtcNow
+        run_id = "ENGRUN-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 10).ToUpperInvariant())
+        focus = [pscustomobject]@{
+            objective_id = $resolvedObjectiveId
+            objective_title = if ($objective -and $objective.PSObject.Properties["title"]) { [string]$objective.title } else { "" }
+            task_id = $resolvedTaskId
+            task_title = if ($task -and $task.PSObject.Properties["title"]) { [string]$task.title } else { "" }
+            task_category = $taskCategory
+        }
+        phases = [pscustomobject]@{
+            create = [pscustomobject]@{ status = $phaseCreate; evidence = @("objective_context", "task_context") }
+            plan = [pscustomobject]@{ status = "planned"; artifact_path = [string]$plan.artifact_path; sandbox_path = [string]$plan.sandbox_path }
+            implement = [pscustomobject]@{ status = $phaseImplement; apply_requested = [bool]$ApplyPlan; apply_result = $applyResult }
+            test = [pscustomobject]@{ status = "pending_validation"; commands = @('powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-TODTests.ps1 -Path "tests/*.Tests.ps1"') }
+            manage = [pscustomobject]@{ status = "recorded"; journal_action = "engineer_run" }
+        }
+        package = [pscustomobject]@{
+            available = (-not [string]::IsNullOrWhiteSpace($packagePath))
+            package_path = $packagePath
+        }
+        research_snapshot = [pscustomobject]@{
+            repository_indexed = if ($research -and $research.PSObject.Properties["repository"] -and $research.repository.PSObject.Properties["indexed"]) { [bool]$research.repository.indexed } else { $false }
+            top_prompts = if ($research -and $research.PSObject.Properties["exploration"] -and $research.exploration.PSObject.Properties["research_prompts"]) { @($research.exploration.research_prompts | Select-Object -First 3) } else { @() }
+        }
+        resourcing_snapshot = [pscustomobject]@{
+            target_skills = if ($resourcing -and $resourcing.PSObject.Properties["demand_profile"] -and $resourcing.demand_profile.PSObject.Properties["target_skills"]) { @($resourcing.demand_profile.target_skills) } else { @() }
+            channels = if ($resourcing -and $resourcing.PSObject.Properties["external_resourcing"] -and $resourcing.external_resourcing.PSObject.Properties["channels"]) { @($resourcing.external_resourcing.channels) } else { @() }
+        }
+    }
+}
+
+function Get-TodEngineerScorecardPayload {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [int]$Top = 25
+    )
+
+    $safeTop = if ($Top -lt 1) { 1 } elseif ($Top -gt 200) { 200 } else { $Top }
+    $journal = if ($State.PSObject.Properties["journal"]) { @($State.journal | Sort-Object created_at -Descending | Select-Object -First $safeTop) } else { @() }
+    $actions = @($journal | ForEach-Object {
+            if ($_.PSObject.Properties["action"] -and -not [string]::IsNullOrWhiteSpace([string]$_.action)) {
+                ([string]$_.action).ToLowerInvariant()
+            }
+        })
+
+    $countMatches = {
+        param([string[]]$Needles)
+        return [int]@($actions | Where-Object { $Needles -contains $_ }).Count
+    }
+
+    $createCount = (& $countMatches @("new_objective", "new_objective_local", "new_objective_remote", "add_task", "add_task_local", "add_task_remote"))
+    $planCount = (& $countMatches @("package_task", "sandbox_plan", "engineer_run"))
+    $implementCount = (& $countMatches @("invoke_engine", "run_task", "sandbox_apply_plan", "sandbox_write", "engineer_run"))
+    $testCount = (& $countMatches @("add_result", "review_task", "review_task_local", "review_task_remote"))
+    $manageCount = (& $countMatches @("show_journal", "sync_mim", "compare_manifest", "engineer_run"))
+
+    $scoreFrom = {
+        param([int]$Count, [int]$Target)
+        if ($Target -le 0) { return 0.0 }
+        return [math]::Round([math]::Min(1.0, ([double]$Count / [double]$Target)), 4)
+    }
+
+    $createScore = (& $scoreFrom $createCount 3)
+    $planScore = (& $scoreFrom $planCount 3)
+    $implementScore = (& $scoreFrom $implementCount 3)
+    $testScore = (& $scoreFrom $testCount 3)
+    $manageScore = (& $scoreFrom $manageCount 3)
+
+    $overall = [math]::Round((($createScore + $planScore + $implementScore + $testScore + $manageScore) / 5.0), 4)
+    $band = if ($overall -ge 0.8) { "strong" } elseif ($overall -ge 0.6) { "good" } elseif ($overall -ge 0.4) { "emerging" } else { "early" }
+
+    $gaps = @()
+    if ($createScore -lt 0.5) { $gaps += "create" }
+    if ($planScore -lt 0.5) { $gaps += "plan" }
+    if ($implementScore -lt 0.5) { $gaps += "implement" }
+    if ($testScore -lt 0.5) { $gaps += "test" }
+    if ($manageScore -lt 0.5) { $gaps += "manage" }
+
+    return [pscustomobject]@{
+        path = "/tod/engineer/scorecard"
+        service = "tod"
+        source = "engineer_scorecard_v1"
+        generated_at = Get-UtcNow
+        window = [int]$safeTop
+        overall = [pscustomobject]@{
+            score = $overall
+            band = $band
+            low_areas = @($gaps)
+        }
+        dimensions = @(
+            [pscustomobject]@{ name = "create"; score = $createScore; evidence_count = [int]$createCount; target = 3 },
+            [pscustomobject]@{ name = "plan"; score = $planScore; evidence_count = [int]$planCount; target = 3 },
+            [pscustomobject]@{ name = "implement"; score = $implementScore; evidence_count = [int]$implementCount; target = 3 },
+            [pscustomobject]@{ name = "test"; score = $testScore; evidence_count = [int]$testCount; target = 3 },
+            [pscustomobject]@{ name = "manage"; score = $manageScore; evidence_count = [int]$manageCount; target = 3 }
+        )
+        recommendations = @(
+            "Run engineer-run to generate an implementation plan artifact.",
+            "Apply plan in sandbox only after reviewing diff_preview.",
+            "Run full tests and record outcomes with add-result/review-task."
+        )
+        recent_actions = @($actions | Select-Object -First 12)
+    }
+}
+
+function Resolve-TodSandboxTargetPath {
+    param([Parameter(Mandatory = $true)][string]$RelativePath)
+
+    if ([string]::IsNullOrWhiteSpace($RelativePath)) {
+        throw "-SandboxPath is required"
+    }
+
+    $normalized = (($RelativePath -replace "\\", "/").Trim())
+    while ($normalized.StartsWith("./")) {
+        $normalized = $normalized.Substring(2)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        throw "Sandbox path cannot be empty after normalization."
+    }
+
+    if ($normalized.Contains("..")) {
+        throw "Sandbox path cannot contain parent traversal segments."
+    }
+
+    $root = Get-TodSandboxRoot
+    $candidate = Join-Path $root $normalized
+    $rootFull = [System.IO.Path]::GetFullPath($root)
+    $targetFull = [System.IO.Path]::GetFullPath($candidate)
+
+    if (-not $targetFull.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Sandbox path escaped allowed root."
+    }
+
+    return $targetFull
+}
+
+function Get-TodSandboxListPayload {
+    param([int]$Top = 25)
+
+    $safeTop = if ($Top -lt 1) { 1 } elseif ($Top -gt 200) { 200 } else { $Top }
+    $root = Get-TodSandboxRoot
+    $rootFull = [System.IO.Path]::GetFullPath($root)
+
+    $files = @()
+    if (Test-Path -Path $root) {
+        $files = @(Get-ChildItem -Path $root -File -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First $safeTop)
+    }
+
+    $items = @($files | ForEach-Object {
+            $full = [System.IO.Path]::GetFullPath([string]$_.FullName)
+            $relative = $full.Substring($rootFull.Length).TrimStart([char[]]@([char]92, [char]47))
+            [pscustomobject]@{
+                path = ($relative -replace "\\", "/")
+                bytes = [int64]$_.Length
+                updated_at = ([datetime]$_.LastWriteTimeUtc).ToString("o")
+            }
+        })
+
+    return [pscustomobject]@{
+        path = "/tod/sandbox/files"
+        service = "tod"
+        source = "sandbox_files_v1"
+        generated_at = Get-UtcNow
+        root = "tod/sandbox/workspace"
+        file_count = @($items).Count
+        files = @($items)
+    }
+}
+
+function Convert-ToSandboxRelativePath {
+    param([Parameter(Mandatory = $true)][string]$FullPath)
+
+    $root = Get-TodSandboxRoot
+    $rootFull = [System.IO.Path]::GetFullPath($root)
+    $pathFull = [System.IO.Path]::GetFullPath($FullPath)
+    $relative = $pathFull.Substring($rootFull.Length).TrimStart([char[]]@([char]92, [char]47))
+    return ($relative -replace "\\", "/")
+}
+
+function Get-StringSha256 {
+    param([string]$Value)
+
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$Value)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = $sha.ComputeHash($bytes)
+    }
+    finally {
+        $sha.Dispose()
+    }
+
+    return ([System.BitConverter]::ToString($hash).Replace("-", "").ToLowerInvariant())
+}
+
+function New-TodSandboxDiffPreview {
+    param(
+        [string]$Before,
+        [string]$After,
+        [int]$MaxLines = 120
+    )
+
+    [string[]]$beforeLines = if ([string]::IsNullOrEmpty($Before)) { @("") } else { @([regex]::Split($Before, "`r?`n")) }
+    [string[]]$afterLines = if ([string]::IsNullOrEmpty($After)) { @("") } else { @([regex]::Split($After, "`r?`n")) }
+
+    $rows = @(Compare-Object -ReferenceObject $beforeLines -DifferenceObject $afterLines)
+    if (@($rows).Count -eq 0) {
+        return @("~ no textual changes")
+    }
+
+    $lines = @()
+    foreach ($row in $rows) {
+        $symbol = if ([string]$row.SideIndicator -eq "=>") { "+" } else { "-" }
+        $lines += ("{0} {1}" -f $symbol, [string]$row.InputObject)
+    }
+
+    if (@($lines).Count -gt $MaxLines) {
+        $truncated = @($lines | Select-Object -First $MaxLines)
+        $truncated += ("... ({0} additional diff lines omitted)" -f (@($lines).Count - $MaxLines))
+        return $truncated
+    }
+
+    return $lines
+}
+
+function Invoke-TodSandboxPlanWrite {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath,
+        [Parameter(Mandatory = $true)][string]$Body,
+        [switch]$Append
+    )
+
+    $target = Resolve-TodSandboxTargetPath -RelativePath $RelativePath
+    $beforeExists = Test-Path -Path $target
+    $beforeText = if ($beforeExists) { [string](Get-Content -Path $target -Raw) } else { "" }
+
+    $afterText = if ($Append -and $beforeExists) {
+        if ([string]::IsNullOrEmpty($beforeText)) { [string]$Body } else { $beforeText + [Environment]::NewLine + [string]$Body }
+    }
+    else {
+        [string]$Body
+    }
+
+    $artifactRoot = Join-Path $repoRoot "tod/sandbox/artifacts"
+    if (-not (Test-Path -Path $artifactRoot)) {
+        New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+    }
+
+    $planId = "PLAN-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 10).ToUpperInvariant())
+    $artifactFile = Join-Path $artifactRoot ("{0}.json" -f $planId)
+    $targetRelative = Convert-ToSandboxRelativePath -FullPath $target
+
+    $appendArg = if ($Append) { " -Append" } else { "" }
+
+    $payload = [pscustomobject]@{
+        path = "/tod/sandbox/plan"
+        service = "tod"
+        source = "sandbox_plan_v1"
+        generated_at = Get-UtcNow
+        plan_id = $planId
+        sandbox_path = $targetRelative
+        mode = if ($Append) { "append" } else { "overwrite" }
+        will_create = (-not $beforeExists)
+        current_bytes = [int]([System.Text.Encoding]::UTF8.GetByteCount($beforeText))
+        planned_bytes = [int]([System.Text.Encoding]::UTF8.GetByteCount($afterText))
+        current_sha256 = Get-StringSha256 -Value $beforeText
+        planned_sha256 = Get-StringSha256 -Value $afterText
+        diff_preview = @(New-TodSandboxDiffPreview -Before $beforeText -After $afterText -MaxLines 120)
+        planned_content = $afterText
+        artifact_path = ("tod/sandbox/artifacts/{0}.json" -f $planId)
+        apply_command = (".\\scripts\\TOD.ps1 -Action sandbox-write -SandboxPath `"{0}`" -Content `"<content>`"{1}" -f $targetRelative, $appendArg)
+    }
+
+    $payload | ConvertTo-Json -Depth 20 | Set-Content -Path $artifactFile
+    return $payload
+}
+
+function Resolve-TodSandboxPlanArtifactPath {
+    param([Parameter(Mandatory = $true)][string]$PlanPath)
+
+    $artifactRoot = Join-Path $repoRoot "tod/sandbox/artifacts"
+    if (-not (Test-Path -Path $artifactRoot)) {
+        New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+    }
+
+    $clean = (($PlanPath -replace "\\", "/").Trim())
+    while ($clean.StartsWith("./")) {
+        $clean = $clean.Substring(2)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($clean)) {
+        throw "-SandboxPlanPath cannot be empty."
+    }
+
+    if ($clean.Contains("..")) {
+        throw "Sandbox plan path cannot contain parent traversal segments."
+    }
+
+    $candidate = if ([System.IO.Path]::IsPathRooted($clean)) {
+        $clean
+    }
+    else {
+        if ($clean.StartsWith("tod/sandbox/artifacts/")) {
+            Join-Path $repoRoot ($clean -replace "/", "\\")
+        }
+        elseif ($clean.StartsWith("PLAN-")) {
+            Join-Path $artifactRoot ($clean + ".json")
+        }
+        else {
+            Join-Path $artifactRoot ($clean -replace "/", "\\")
+        }
+    }
+
+    $full = [System.IO.Path]::GetFullPath($candidate)
+    $artifactRootFull = [System.IO.Path]::GetFullPath($artifactRoot)
+    if (-not $full.StartsWith($artifactRootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Sandbox plan artifact path escaped allowed root."
+    }
+
+    if (-not $full.EndsWith(".json", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $full = $full + ".json"
+    }
+
+    return $full
+}
+
+function Invoke-TodSandboxApplyPlan {
+    param([Parameter(Mandatory = $true)][string]$PlanPath)
+
+    $artifactPath = Resolve-TodSandboxPlanArtifactPath -PlanPath $PlanPath
+    if (-not (Test-Path -Path $artifactPath)) {
+        throw "Sandbox plan artifact not found: $artifactPath"
+    }
+
+    $plan = (Get-Content -Path $artifactPath -Raw) | ConvertFrom-Json
+    if (-not $plan -or -not $plan.PSObject.Properties["sandbox_path"]) {
+        throw "Invalid sandbox plan artifact."
+    }
+
+    $target = Resolve-TodSandboxTargetPath -RelativePath ([string]$plan.sandbox_path)
+    $beforeExists = Test-Path -Path $target
+    $beforeText = if ($beforeExists) { [string](Get-Content -Path $target -Raw) } else { "" }
+    $beforeHash = Get-StringSha256 -Value $beforeText
+    $expectedCurrent = if ($plan.PSObject.Properties["current_sha256"]) { [string]$plan.current_sha256 } else { "" }
+
+    if (-not [string]::IsNullOrWhiteSpace($expectedCurrent) -and -not $beforeHash.Equals($expectedCurrent, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Sandbox plan apply rejected: current content hash does not match plan baseline."
+    }
+
+    if (-not $plan.PSObject.Properties["planned_content"]) {
+        throw "Sandbox plan artifact missing planned_content."
+    }
+
+    $parent = Split-Path -Parent $target
+    if (-not (Test-Path -Path $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+
+    $plannedText = [string]$plan.planned_content
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($target, $plannedText, $utf8NoBom)
+
+    $afterText = [string](Get-Content -Path $target -Raw)
+    $afterHash = Get-StringSha256 -Value $afterText
+    $expectedPlanned = if ($plan.PSObject.Properties["planned_sha256"]) { [string]$plan.planned_sha256 } else { "" }
+    if (-not [string]::IsNullOrWhiteSpace($expectedPlanned) -and -not $afterHash.Equals($expectedPlanned, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Sandbox plan apply failed: written content hash does not match planned hash."
+    }
+
+    return [pscustomobject]@{
+        path = "/tod/sandbox/apply"
+        service = "tod"
+        source = "sandbox_apply_v1"
+        generated_at = Get-UtcNow
+        applied = $true
+        plan_id = if ($plan.PSObject.Properties["plan_id"]) { [string]$plan.plan_id } else { "" }
+        sandbox_path = Convert-ToSandboxRelativePath -FullPath $target
+        artifact_path = (("tod/sandbox/artifacts/{0}" -f ([System.IO.Path]::GetFileName($artifactPath))) -replace "\\", "/")
+        bytes = [int]([System.Text.Encoding]::UTF8.GetByteCount($afterText))
+        sha256 = $afterHash
+    }
+}
+
+function Invoke-TodSandboxWrite {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath,
+        [Parameter(Mandatory = $true)][string]$Body,
+        [switch]$Append
+    )
+
+    $target = Resolve-TodSandboxTargetPath -RelativePath $RelativePath
+    $parent = Split-Path -Parent $target
+    if (-not (Test-Path -Path $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+
+    if ($Append -and (Test-Path -Path $target)) {
+        Add-Content -Path $target -Value $Body
+    }
+    else {
+        Set-Content -Path $target -Value $Body
+    }
+
+    $hash = (Get-FileHash -Path $target -Algorithm SHA256).Hash.ToLowerInvariant()
+    $root = Get-TodSandboxRoot
+    $rootFull = [System.IO.Path]::GetFullPath($root)
+    $relative = ([System.IO.Path]::GetFullPath($target)).Substring($rootFull.Length).TrimStart([char[]]@([char]92, [char]47))
+
+    return [pscustomobject]@{
+        path = "/tod/sandbox/write"
+        service = "tod"
+        source = "sandbox_write_v1"
+        generated_at = Get-UtcNow
+        sandbox_path = ($relative -replace "\\", "/")
+        bytes = [int64](Get-Item -Path $target).Length
+        sha256 = $hash
+        append = [bool]$Append
+    }
+}
+
+function Get-TodStateBusPayload {
+    param(
+        [Parameter(Mandatory = $true)]$Config,
+        [Parameter(Mandatory = $true)]$State,
+        [int]$Top = 10
+    )
+
+    $safeTop = if ($Top -lt 1) { 1 } elseif ($Top -gt 100) { 100 } else { $Top }
+
+    $objectives = if ($State.PSObject.Properties["objectives"]) { @($State.objectives) } else { @() }
+    $tasks = if ($State.PSObject.Properties["tasks"]) { @($State.tasks) } else { @() }
+    $reviews = if ($State.PSObject.Properties["reviews"]) { @($State.reviews) } else { @() }
+    $results = if ($State.PSObject.Properties["execution_results"]) { @($State.execution_results) } else { @() }
+    $journal = if ($State.PSObject.Properties["journal"]) { @($State.journal) } else { @() }
+    $routingRecords = if ($State.PSObject.Properties["routing_decisions"]) { @($State.routing_decisions) } else { @() }
+
+    $sortedObjectives = @($objectives | Sort-Object created_at -Descending)
+    $currentObjective = @($sortedObjectives | Select-Object -First 1)
+    $currentObjectiveId = if (@($currentObjective).Count -gt 0) { [string]$currentObjective[0].id } else { "" }
+    $objectiveTasks = if ([string]::IsNullOrWhiteSpace($currentObjectiveId)) { @() } else { @($tasks | Where-Object { [string]$_.objective_id -eq $currentObjectiveId }) }
+
+    $taskStatusCounts = @{}
+    foreach ($task in $objectiveTasks) {
+        $statusValue = if ($task.PSObject.Properties["status"] -and -not [string]::IsNullOrWhiteSpace([string]$task.status)) { [string]$task.status } else { "unknown" }
+        $statusKey = $statusValue.Trim().ToLowerInvariant()
+        if (-not $taskStatusCounts.ContainsKey($statusKey)) {
+            $taskStatusCounts[$statusKey] = 0
+        }
+        $taskStatusCounts[$statusKey] = [int]$taskStatusCounts[$statusKey] + 1
+    }
+
+    $activeTask = @($tasks | Sort-Object updated_at -Descending | Where-Object {
+            $_.PSObject.Properties["status"] -and
+            ([string]$_.status).ToLowerInvariant() -eq "in_progress"
+        } | Select-Object -First 1)
+    if (@($activeTask).Count -eq 0) {
+        $activeTask = @($tasks | Sort-Object updated_at -Descending | Select-Object -First 1)
+    }
+
+    $pendingReviews = @($tasks | Where-Object {
+            $_.PSObject.Properties["status"] -and
+            (([string]$_.status).ToLowerInvariant() -eq "implemented")
+        })
+
+    $recentRouting = @($routingRecords | Sort-Object timestamp -Descending | Select-Object -First $safeTop)
+    $recentJournal = @($journal | Sort-Object timestamp -Descending | Select-Object -First $safeTop)
+
+    $currentAlertState = "stable"
+    $driftWarnings = @()
+    try {
+        $dashboard = Build-ReliabilityDashboardReport -State $State -Config $Config -Window $safeTop -CategoryFilter "" -EngineFilter ""
+        if ($dashboard -and $dashboard.PSObject.Properties["retry_trend"]) {
+            $maxRank = 0
+            foreach ($item in @($dashboard.retry_trend)) {
+                $alert = if ($item.PSObject.Properties["alert_state"] -and -not [string]::IsNullOrWhiteSpace([string]$item.alert_state)) { [string]$item.alert_state } else { "stable" }
+                $rank = Get-AlertSeverityRank -State $alert
+                if ($rank -gt $maxRank) {
+                    $maxRank = $rank
+                    $currentAlertState = $alert
+                }
+            }
+        }
+        if ($dashboard -and $dashboard.PSObject.Properties["drift_warnings"]) {
+            $driftWarnings = @($dashboard.drift_warnings)
+        }
+    }
+    catch {
+        $currentAlertState = "stable"
+        $driftWarnings = @()
+    }
+
+    $candidateExecutions = @()
+    foreach ($task in $tasks) {
+        if ($task.PSObject.Properties["execution_id"] -and -not [string]::IsNullOrWhiteSpace([string]$task.execution_id)) {
+            $candidateExecutions += [string]$task.execution_id
+        }
+        elseif ($task.PSObject.Properties["remote_execution_id"] -and -not [string]::IsNullOrWhiteSpace([string]$task.remote_execution_id)) {
+            $candidateExecutions += [string]$task.remote_execution_id
+        }
+    }
+    $executionIds = @($candidateExecutions | Select-Object -Unique)
+
+    $activeGoals = @($objectives | Where-Object {
+            $_.PSObject.Properties["status"] -and
+            @("open", "active", "in_progress", "planned") -contains ([string]$_.status).ToLowerInvariant()
+        })
+    $activeGoalCount = @($activeGoals).Count
+
+    $activeExecutionCount = @($executionIds).Count
+    if ($activeExecutionCount -eq 0 -and @($activeTask).Count -gt 0) {
+        $activeTaskStatus = if ($activeTask[0].PSObject.Properties["status"]) { ([string]$activeTask[0].status).ToLowerInvariant() } else { "" }
+        if ($activeTaskStatus -eq "in_progress") {
+            $activeExecutionCount = 1
+        }
+    }
+
+    $resolvedMode = if ($Config.PSObject.Properties["mode"] -and -not [string]::IsNullOrWhiteSpace([string]$Config.mode)) { ([string]$Config.mode).ToLowerInvariant() } else { "local" }
+    $isRemoteAuthority = ($resolvedMode -eq "remote" -or $resolvedMode -eq "hybrid")
+
+    $contractDriftBlocking = if ($State -and $State.PSObject.Properties["sync_state"] -and $State.sync_state -and $State.sync_state.PSObject.Properties["last_comparison"] -and $State.sync_state.last_comparison) {
+        $comparison = $State.sync_state.last_comparison
+        ($comparison.PSObject.Properties["status"] -and ([string]$comparison.status).ToLowerInvariant() -eq "breaking")
+    }
+    else {
+        $false
+    }
+
+    $guardrailBlockCandidates = @($recentRouting | Where-Object {
+            $_.PSObject.Properties["final_outcome"] -and
+            ([string]$_.final_outcome).ToLowerInvariant() -eq "blocked_pre_invocation"
+        }).Count
+
+    $engineeringLoop = if ($State.PSObject.Properties["engineering_loop"]) { $State.engineering_loop } else { $null }
+    $runHistory = if ($engineeringLoop -and $engineeringLoop.PSObject.Properties["run_history"]) { @($engineeringLoop.run_history) } else { @() }
+    $scorecardHistory = if ($engineeringLoop -and $engineeringLoop.PSObject.Properties["scorecard_history"]) { @($engineeringLoop.scorecard_history) } else { @() }
+    $recentRuns = @($runHistory | Sort-Object generated_at -Descending | Select-Object -First 5)
+    $recentScorecards = @($scorecardHistory | Sort-Object generated_at -Descending | Select-Object -First 5)
+    $lastRun = if (@($recentRuns).Count -gt 0) { $recentRuns[0] } elseif ($engineeringLoop -and $engineeringLoop.PSObject.Properties["last_run"]) { $engineeringLoop.last_run } else { $null }
+    $lastScorecard = if (@($recentScorecards).Count -gt 0) { $recentScorecards[0] } elseif ($engineeringLoop -and $engineeringLoop.PSObject.Properties["last_scorecard"]) { $engineeringLoop.last_scorecard } else { $null }
+
+    $latestScore = if ($lastScorecard -and $lastScorecard.PSObject.Properties["score"] -and $null -ne $lastScorecard.score) { [double]$lastScorecard.score } else { $null }
+    $trendDirection = "flat"
+    $trendDelta = 0.0
+    if (@($recentScorecards).Count -ge 2) {
+        $oldestScore = [double]$recentScorecards[@($recentScorecards).Count - 1].score
+        $newestScore = [double]$recentScorecards[0].score
+        $trendDelta = [math]::Round(($newestScore - $oldestScore), 4)
+        if ($trendDelta -gt 0.03) {
+            $trendDirection = "improving"
+        }
+        elseif ($trendDelta -lt -0.03) {
+            $trendDirection = "declining"
+        }
+    }
+
+    $engineeringLoopStatus = if (@($runHistory).Count -eq 0) {
+        "idle"
+    }
+    elseif ($latestScore -ne $null -and $latestScore -ge 0.8) {
+        "strong"
+    }
+    elseif ($latestScore -ne $null -and $latestScore -ge 0.6) {
+        "active"
+    }
+    else {
+        "warming"
+    }
+
+    $worldConfidence = if (@($currentObjective).Count -gt 0) { 0.92 } else { 0.75 }
+    if ($isRemoteAuthority) { $worldConfidence -= 0.08 }
+
+    $intentConfidence = if (@($objectiveTasks).Count -gt 0) { 0.9 } else { 0.78 }
+    if ($isRemoteAuthority) { $intentConfidence -= 0.05 }
+
+    $executionConfidence = if (@($executionIds).Count -gt 0) { 0.86 } elseif (@($activeTask).Count -gt 0) { 0.8 } else { 0.72 }
+    $reliabilityConfidence = if (@($driftWarnings).Count -gt 0) { 0.78 } else { 0.9 }
+    $blocksConfidence = if ($contractDriftBlocking -or $guardrailBlockCandidates -gt 0) { 0.9 } else { 0.84 }
+    $engineeringConfidence = if ((@($runHistory).Count -gt 0) -or (@($scorecardHistory).Count -gt 0)) { 0.93 } else { 0.76 }
+
+    $agentAvailability = "idle"
+    if ($currentAlertState -eq "critical" -or $currentAlertState -eq "degraded") {
+        $agentAvailability = "degraded"
+    }
+    elseif ($activeExecutionCount -gt 0) {
+        $agentAvailability = "busy"
+    }
+    elseif ((@($tasks).Count -gt 0) -or (@($objectives).Count -gt 0)) {
+        $agentAvailability = "awake"
+    }
+
+    $executorHealth = switch ($currentAlertState) {
+        "critical" { "critical" }
+        "degraded" { "degraded" }
+        "warning" { "watch" }
+        default { "healthy" }
+    }
+
+    $pendingConfirmations = @($pendingReviews).Count
+    $contractDriftBlockCount = 0
+    if ($contractDriftBlocking) {
+        $contractDriftBlockCount = 1
+    }
+    $blockedItems = [int]$guardrailBlockCandidates + [int]$contractDriftBlockCount
+    $capabilityEndpoints = @(
+        "/tod/reliability",
+        "/tod/capabilities",
+        "/tod/research",
+        "/tod/resourcing",
+        "/tod/engineer/run",
+        "/tod/engineer/scorecard",
+        "/tod/sandbox/files",
+        "/tod/sandbox/plan",
+        "/tod/sandbox/apply",
+        "/tod/sandbox/write",
+        "/tod/state-bus",
+        "/tod/version"
+    )
+    $registeredCapabilities = @($capabilityEndpoints).Count
+
+    return [pscustomobject]@{
+        path = "/tod/state-bus"
+        service = "tod"
+        generated_at = Get-UtcNow
+        objective_id = $currentObjectiveId
+        system_posture = [pscustomobject]@{
+            agent_state = $agentAvailability
+            current_alert_state = $currentAlertState
+            engineering_loop_status = $engineeringLoopStatus
+            active_goal_count = [int]$activeGoalCount
+            active_execution_count = [int]$activeExecutionCount
+            pending_confirmations = [int]$pendingConfirmations
+            blocked_items = [int]$blockedItems
+            engineer_runs_total = [int]@($runHistory).Count
+            scorecard_samples_total = [int]@($scorecardHistory).Count
+            registered_capabilities = [int]$registeredCapabilities
+            current_executor_health = $executorHealth
+            summary = "SYSTEM POSTURE | Agent: $agentAvailability | Alert: $currentAlertState | Loop: $engineeringLoopStatus | Executions: $activeExecutionCount active | Pending confirmations: $pendingConfirmations | Blocked items: $blockedItems | Runs: $(@($runHistory).Count) | Scorecards: $(@($scorecardHistory).Count) | Capabilities: $registeredCapabilities registered | Reliability: $executorHealth"
+        }
+        source_of_truth = [pscustomobject]@{
+            mode = $resolvedMode
+            world_state = if ($isRemoteAuthority) { "mim_authoritative_with_local_cache" } else { "local_state" }
+            intent_state = if ($isRemoteAuthority) { "mim_authoritative_with_local_projection" } else { "local_state" }
+            execution_state = if ($isRemoteAuthority) { "hybrid_execution_telemetry" } else { "local_execution_telemetry" }
+            reliability_state = "tod_local_derived"
+            engineering_loop = "tod_local_history"
+            capability_state = "tod_runtime_config"
+            agent_state = "tod_runtime_config"
+            blocks = "tod_local_guardrails"
+        }
+        section_confidence = [pscustomobject]@{
+            agent_state = 0.98
+            world_state = [math]::Round($worldConfidence, 2)
+            capability_state = 0.97
+            intent_state = [math]::Round($intentConfidence, 2)
+            execution_state = [math]::Round($executionConfidence, 2)
+            reliability_state = [math]::Round($reliabilityConfidence, 2)
+            engineering_loop = [math]::Round($engineeringConfidence, 2)
+            blocks = [math]::Round($blocksConfidence, 2)
+        }
+        agent_state = [pscustomobject]@{
+            mode = $resolvedMode
+            active_engine = if ($Config.PSObject.Properties["execution_engine"] -and $Config.execution_engine -and $Config.execution_engine.PSObject.Properties["active"]) { [string]$Config.execution_engine.active } else { "codex" }
+            fallback_engine = if ($Config.PSObject.Properties["execution_engine"] -and $Config.execution_engine -and $Config.execution_engine.PSObject.Properties["fallback"]) { [string]$Config.execution_engine.fallback } else { "local" }
+            current_alert_state = $currentAlertState
+        }
+        world_state = [pscustomobject]@{
+            objective = if (@($currentObjective).Count -gt 0) { $currentObjective[0] } else { $null }
+            objectives_total = @($objectives).Count
+            tasks_total = @($tasks).Count
+            reviews_total = @($reviews).Count
+            results_total = @($results).Count
+            journal_total = @($journal).Count
+        }
+        capability_state = [pscustomobject]@{
+            endpoints = @($capabilityEndpoints)
+            drift_detection_enabled = $true
+            fallback_supported = if ($Config.PSObject.Properties["execution_engine"] -and $Config.execution_engine -and $Config.execution_engine.PSObject.Properties["allow_fallback"]) { [bool]$Config.execution_engine.allow_fallback } else { $false }
+        }
+        intent_state = [pscustomobject]@{
+            objective_id = $currentObjectiveId
+            objective_status = if (@($currentObjective).Count -gt 0 -and $currentObjective[0].PSObject.Properties["status"]) { [string]$currentObjective[0].status } else { "unknown" }
+            objective_priority = if (@($currentObjective).Count -gt 0 -and $currentObjective[0].PSObject.Properties["priority"]) { [string]$currentObjective[0].priority } else { "" }
+            task_funnel = [pscustomobject]@{
+                total = @($objectiveTasks).Count
+                by_status = [pscustomobject]$taskStatusCounts
+            }
+            pending_review_count = @($pendingReviews).Count
+        }
+        execution_state = [pscustomobject]@{
+            active_task = if (@($activeTask).Count -gt 0) { $activeTask[0] } else { $null }
+            execution_ids = @($executionIds)
+            recent_routing = @($recentRouting)
+            recent_journal = @($recentJournal)
+        }
+        reliability_state = [pscustomobject]@{
+            current_alert_state = $currentAlertState
+            drift_warning_count = @($driftWarnings).Count
+            drift_warnings = @($driftWarnings)
+        }
+        engineering_loop_state = [pscustomobject]@{
+            status = $engineeringLoopStatus
+            run_history_count = [int]@($runHistory).Count
+            scorecard_history_count = [int]@($scorecardHistory).Count
+            latest_score = $latestScore
+            trend_direction = $trendDirection
+            trend_delta = $trendDelta
+            last_run = $lastRun
+            last_scorecard = $lastScorecard
+            recent_runs = @($recentRuns)
+            recent_scorecards = @($recentScorecards)
+        }
+        blocks = [pscustomobject]@{
+            contract_drift_blocking = [bool]$contractDriftBlocking
+            routing_guardrail_block_candidates = [int]$guardrailBlockCandidates
+            uncertainties = if (@($driftWarnings).Count -gt 0) {
+                @($driftWarnings | Select-Object -First 5 | ForEach-Object { [string]$_.message })
+            }
+            else {
+                @()
+            }
+        }
     }
 }
 
@@ -1954,6 +3151,19 @@ function Load-TodConfig {
             mode = "hybrid"
             timeout_seconds = 15
             fallback_to_local = $true
+            mim_debug = [pscustomobject]@{
+                enabled = $false
+                log_path = ""
+            }
+            execution_feedback = [pscustomobject]@{
+                enabled = $false
+                source = "tod"
+                auth_token = ""
+            }
+            engineering_loop = [pscustomobject]@{
+                max_run_history = 150
+                max_scorecard_history = 150
+            }
             execution_engine = [pscustomobject]@{
                 active = "codex"
                 fallback = "local"
@@ -2022,6 +3232,34 @@ function Load-TodConfig {
     if ([string]::IsNullOrWhiteSpace($cfg.mode)) { $cfg.mode = "hybrid" }
     if (-not $cfg.timeout_seconds) { $cfg.timeout_seconds = 15 }
     if ($null -eq $cfg.fallback_to_local) { $cfg.fallback_to_local = $true }
+    if (-not $cfg.PSObject.Properties["mim_debug"] -or $null -eq $cfg.mim_debug) {
+        $cfg | Add-Member -NotePropertyName mim_debug -NotePropertyValue ([pscustomobject]@{
+                enabled = $false
+                log_path = ""
+            }) -Force
+    }
+    if (-not $cfg.mim_debug.PSObject.Properties["enabled"] -or $null -eq $cfg.mim_debug.enabled) { $cfg.mim_debug.enabled = $false }
+    if (-not $cfg.mim_debug.PSObject.Properties["log_path"] -or $null -eq $cfg.mim_debug.log_path) { $cfg.mim_debug.log_path = "" }
+    if (-not $cfg.PSObject.Properties["execution_feedback"] -or $null -eq $cfg.execution_feedback) {
+        $cfg | Add-Member -NotePropertyName execution_feedback -NotePropertyValue ([pscustomobject]@{
+                enabled = $false
+                source = "tod"
+                auth_token = ""
+            }) -Force
+    }
+    if (-not $cfg.execution_feedback.PSObject.Properties["enabled"] -or $null -eq $cfg.execution_feedback.enabled) { $cfg.execution_feedback.enabled = $false }
+    if (-not $cfg.execution_feedback.PSObject.Properties["source"] -or [string]::IsNullOrWhiteSpace([string]$cfg.execution_feedback.source)) { $cfg.execution_feedback.source = "tod" }
+    if (-not $cfg.execution_feedback.PSObject.Properties["auth_token"] -or $null -eq $cfg.execution_feedback.auth_token) { $cfg.execution_feedback.auth_token = "" }
+    if (-not $cfg.PSObject.Properties["engineering_loop"] -or $null -eq $cfg.engineering_loop) {
+        $cfg | Add-Member -NotePropertyName engineering_loop -NotePropertyValue ([pscustomobject]@{
+                max_run_history = 150
+                max_scorecard_history = 150
+            }) -Force
+    }
+    if (-not $cfg.engineering_loop.PSObject.Properties["max_run_history"] -or $null -eq $cfg.engineering_loop.max_run_history) { $cfg.engineering_loop.max_run_history = 150 }
+    if (-not $cfg.engineering_loop.PSObject.Properties["max_scorecard_history"] -or $null -eq $cfg.engineering_loop.max_scorecard_history) { $cfg.engineering_loop.max_scorecard_history = 150 }
+    $cfg.engineering_loop.max_run_history = [math]::Max(10, [math]::Min(1000, [int]$cfg.engineering_loop.max_run_history))
+    $cfg.engineering_loop.max_scorecard_history = [math]::Max(10, [math]::Min(1000, [int]$cfg.engineering_loop.max_scorecard_history))
 
     if (-not $cfg.PSObject.Properties["execution_engine"] -or $null -eq $cfg.execution_engine) {
         $cfg | Add-Member -NotePropertyName execution_engine -NotePropertyValue ([pscustomobject]@{
@@ -3586,6 +4824,85 @@ function Resolve-RemoteTaskId {
     return $null
 }
 
+function Resolve-ExecutionFeedbackConfig {
+    param([Parameter(Mandatory = $true)]$Config)
+
+    $cfg = if ($Config.PSObject.Properties["execution_feedback"] -and $null -ne $Config.execution_feedback) {
+        $Config.execution_feedback
+    }
+    else {
+        [pscustomobject]@{ enabled = $false; source = "tod"; auth_token = "" }
+    }
+
+    return [pscustomobject]@{
+        enabled = [bool]$cfg.enabled
+        source = if ([string]::IsNullOrWhiteSpace([string]$cfg.source)) { "tod" } else { [string]$cfg.source }
+        auth_token = if ($cfg.PSObject.Properties["auth_token"]) { [string]$cfg.auth_token } else { "" }
+    }
+}
+
+function Resolve-ExecutionIdForTask {
+    param(
+        [string]$ExplicitExecutionId,
+        $Task
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitExecutionId)) {
+        return [string]$ExplicitExecutionId
+    }
+
+    if ($null -eq $Task) {
+        return ""
+    }
+
+    if ($Task.PSObject.Properties["execution_id"] -and -not [string]::IsNullOrWhiteSpace([string]$Task.execution_id)) {
+        return [string]$Task.execution_id
+    }
+    if ($Task.PSObject.Properties["remote_execution_id"] -and -not [string]::IsNullOrWhiteSpace([string]$Task.remote_execution_id)) {
+        return [string]$Task.remote_execution_id
+    }
+    return ""
+}
+
+function Try-PublishExecutionFeedback {
+    param(
+        [Parameter(Mandatory = $true)]$Config,
+        [Parameter(Mandatory = $true)]$FeedbackConfig,
+        [AllowEmptyString()][string]$ExecutionId,
+        [Parameter(Mandatory = $true)][string]$Status,
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        $Details
+    )
+
+    if (-not [bool]$FeedbackConfig.enabled) {
+        return [pscustomobject]@{ attempted = $false; published = $false; reason = "disabled" }
+    }
+    if (-not (Use-Remote -Config $Config)) {
+        return [pscustomobject]@{ attempted = $false; published = $false; reason = "remote_mode_disabled" }
+    }
+    if ([string]::IsNullOrWhiteSpace($ExecutionId)) {
+        return [pscustomobject]@{ attempted = $false; published = $false; reason = "missing_execution_id" }
+    }
+    if (-not (Get-Command -Name New-MimExecutionFeedback -ErrorAction SilentlyContinue)) {
+        return [pscustomobject]@{ attempted = $false; published = $false; reason = "mim_feedback_client_unavailable" }
+    }
+
+    try {
+        $response = Invoke-MimSafely -Config $Config -Operation "POST /gateway/capabilities/executions/$ExecutionId/feedback" -ApiCall {
+            New-MimExecutionFeedback -BaseUrl $Config.mim_base_url -ExecutionId $ExecutionId -Status $Status -Source $FeedbackConfig.source -TaskId $TaskId -Details $Details -AuthToken ([string]$FeedbackConfig.auth_token) -TimeoutSeconds ([int]$Config.timeout_seconds)
+        }
+
+        if ($null -eq $response) {
+            return [pscustomobject]@{ attempted = $true; published = $false; reason = "mim_unavailable_fallback" }
+        }
+
+        return [pscustomobject]@{ attempted = $true; published = $true; reason = "ok"; response = $response }
+    }
+    catch {
+        return [pscustomobject]@{ attempted = $true; published = $false; reason = "error"; error = [string]$_.Exception.Message }
+    }
+}
+
 if ($Action -eq "init") {
     if (-not (Test-Path -Path (Split-Path -Parent $statePath))) {
         New-Item -ItemType Directory -Path (Split-Path -Parent $statePath) -Force | Out-Null
@@ -3718,6 +5035,13 @@ if ($Action -eq "init") {
 
 $state = Load-State
 $config = Load-TodConfig
+if (Get-Command -Name Set-MimApiDebugLogging -ErrorAction SilentlyContinue) {
+    $resolvedDebugPath = [string]$config.mim_debug.log_path
+    if ([string]::IsNullOrWhiteSpace($resolvedDebugPath)) {
+        $resolvedDebugPath = Join-Path $repoRoot "tod/out/mim-http.log"
+    }
+    Set-MimApiDebugLogging -Enabled ([bool]$config.mim_debug.enabled) -LogPath $resolvedDebugPath
+}
 $engineConfig = Resolve-ExecutionEngineConfig -Config $config -State $state -DisableAdaptiveRouting:$ForceConfiguredEngine
 $capabilityGate = Apply-CapabilityDegrade -Config $config -State $state -ActionName $Action
 Assert-ContractGate -ActionName $Action -State $state -AllowDrift:$AllowContractDrift
@@ -4188,6 +5512,9 @@ switch ($Action) {
 
         $task = Get-TaskFromState -State $state -TaskId $TaskId
         if (-not $task) { throw "Task not found in local state cache: $TaskId" }
+        $feedbackConfig = Resolve-ExecutionFeedbackConfig -Config $config
+        $resolvedExecutionId = Resolve-ExecutionIdForTask -ExplicitExecutionId $ExecutionId -Task $task
+        $feedbackEvents = @()
         $taskCategoryResolved = Resolve-TaskCategory -Task $task
         $actionEngineConfig = Resolve-ExecutionEngineConfig -Config $config -State $state -DisableAdaptiveRouting:$ForceConfiguredEngine -TaskCategoryHint $taskCategoryResolved
         $routingPre = Add-RoutingDecisionRecord -State $state -TaskId $TaskId -ActionName "run_task" -EngineConfig $actionEngineConfig -TaskCategory $taskCategoryResolved -FinalOutcome "pre_invocation"
@@ -4201,13 +5528,21 @@ switch ($Action) {
                     routing_decision_id = [string]$routingFinalBlocked.id
                     routing_decision = $routingFinalBlocked
                 })
+            $blockedFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status "blocked" -TaskId $TaskId -Details ([pscustomobject]@{
+                    reason = "guardrail_blocked"
+                    routing_decision_id = [string]$routingFinalBlocked.id
+                    task_category = $taskCategoryResolved
+                })
+            $feedbackEvents += @([pscustomobject]@{ status = "blocked"; publish = $blockedFeedback })
             Save-State -State $state
 
             [pscustomobject]@{
                 task_id = [string]$TaskId
+                execution_id = [string]$resolvedExecutionId
                 task_category = $taskCategoryResolved
                 decision = "escalate"
                 blocked = $true
+                execution_feedback = @($feedbackEvents)
                 routing_decision_preinvoke = $routingPre[0]
                 routing_decision = $routingFinalBlocked
                 message = "run-task blocked by routing guardrail before engine invocation."
@@ -4216,7 +5551,32 @@ switch ($Action) {
         }
 
         $packagePath = Resolve-TaskPackagePath -TaskId $TaskId -ExplicitPath $PackagePath
-        $invokeResult = Invoke-ExecutionEngine -Task $task -TaskId $TaskId -PackagePath $packagePath -EngineConfig $actionEngineConfig
+        $acceptedFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status "accepted" -TaskId $TaskId -Details ([pscustomobject]@{
+                task_category = $taskCategoryResolved
+                package_path = $packagePath
+                assigned_executor = if ($task.PSObject.Properties["assigned_executor"]) { [string]$task.assigned_executor } else { "" }
+            })
+        $feedbackEvents += @([pscustomobject]@{ status = "accepted"; publish = $acceptedFeedback })
+
+        $runningFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status "running" -TaskId $TaskId -Details ([pscustomobject]@{
+                task_category = $taskCategoryResolved
+                package_path = $packagePath
+            })
+        $feedbackEvents += @([pscustomobject]@{ status = "running"; publish = $runningFeedback })
+
+        $invokeResult = $null
+        try {
+            $invokeResult = Invoke-ExecutionEngine -Task $task -TaskId $TaskId -PackagePath $packagePath -EngineConfig $actionEngineConfig
+        }
+        catch {
+            $failedFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status "failed" -TaskId $TaskId -Details ([pscustomobject]@{
+                    reason = "executor_unavailable"
+                    task_category = $taskCategoryResolved
+                    error = [string]$_.Exception.Message
+                })
+            $feedbackEvents += @([pscustomobject]@{ status = "failed"; publish = $failedFeedback })
+            throw
+        }
 
         $resultPayload = $invokeResult.result
         $filesChangedCsv = (@($resultPayload.files_changed) | ForEach-Object { [string]$_ }) -join ","
@@ -4251,6 +5611,27 @@ switch ($Action) {
         $unresolvedCsv = (@($resultPayload.failures) + @($precheckWarnings) | ForEach-Object { [string]$_ }) -join ","
         $reviewResponse = (& $PSCommandPath -Action review-task -ConfigPath $configPath -TaskId $TaskId -Decision $reviewDecision -Rationale $rationale -UnresolvedIssues $unresolvedCsv) | ConvertFrom-Json
 
+        $attemptedEngines = @($invokeResult.attempted_engines)
+        $attemptRecords = @($invokeResult.attempts)
+        $uniqueEngineCount = @($attemptedEngines | Select-Object -Unique).Count
+        $hadRetry = ($attemptRecords.Count -gt $uniqueEngineCount)
+        $fallbackUsed = [bool]$invokeResult.fallback_applied
+        $terminalStatus = if ($reviewDecision -eq "pass") { "succeeded" } else { "failed" }
+        $recovered = ($terminalStatus -eq "succeeded" -and ($hadRetry -or $fallbackUsed))
+        $terminalFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status $terminalStatus -TaskId $TaskId -Details ([pscustomobject]@{
+                review_decision = $reviewDecision
+                task_category = $taskCategoryResolved
+                attempted_engines = @($attemptedEngines)
+                fallback_used = $fallbackUsed
+                retry_in_progress = $false
+                recovered = $recovered
+                unrecovered_failure = ($terminalStatus -eq "failed")
+                failure_category = if ($invokeResult.PSObject.Properties["failure_category"]) { [string]$invokeResult.failure_category } else { "none" }
+                guardrail_blocked = $false
+                executor_unavailable = $false
+            })
+        $feedbackEvents += @([pscustomobject]@{ status = $terminalStatus; publish = $terminalFeedback })
+
         $stateAfter = Load-State
     $routingRecord = Update-RoutingDecisionRecord -State $stateAfter -RoutingDecisionId ([string]$routingPre[0].id) -FinalOutcome ([string]$reviewDecision) -InvokeResult $invokeResult
         $taskType = if ($task.PSObject.Properties["type"]) { [string]$task.type } else { "implementation" }
@@ -4270,11 +5651,13 @@ switch ($Action) {
 
         [pscustomobject]@{
             task_id = $TaskId
+            execution_id = [string]$resolvedExecutionId
             package_path = $packagePath
             engine_invocation = $invokeResult
             add_result_response = $addResultResponse
             review_response = $reviewResponse
             decision = $reviewDecision
+            execution_feedback = @($feedbackEvents)
             routing_decision_preinvoke = $routingPre[0]
             routing_decision = $routingRecord
             engine_performance_record = $perfRecord
@@ -4360,6 +5743,72 @@ switch ($Action) {
     "get-capabilities" {
         $caps = Get-TodCapabilitiesPayload -Config $config
         $caps | ConvertTo-Json -Depth 18
+    }
+
+    "get-research" {
+        $payload = Get-TodResearchPayload -State $state -Top $Top
+        $payload | ConvertTo-Json -Depth 18
+    }
+
+    "get-resourcing" {
+        $payload = Get-TodResourcingPayload -State $state -ObjectiveId $ObjectiveId -TaskId $TaskId -Top $Top
+        $payload | ConvertTo-Json -Depth 18
+    }
+
+    "engineer-run" {
+        $payload = Get-TodEngineerRunPayload -State $state -Config $config -ObjectiveId $ObjectiveId -TaskId $TaskId -Body $Content -Append:$Append -ApplyPlan:$ApplyPlan -Top $Top
+        $runHistoryLimit = Resolve-EngineeringLoopHistoryLimit -Config $config -Kind "run_history"
+        $null = Add-EngineeringRunHistoryRecord -State $state -Payload $payload -MaxEntries $runHistoryLimit
+        Add-Journal -State $state -Actor "tod" -ActionName "engineer_run" -EntityType "task" -EntityId $(if (-not [string]::IsNullOrWhiteSpace([string]$payload.focus.task_id)) { [string]$payload.focus.task_id } else { "none" }) -Payload $payload
+        Save-State -State $state
+        $payload | ConvertTo-Json -Depth 18
+    }
+
+    "engineer-scorecard" {
+        $payload = Get-TodEngineerScorecardPayload -State $state -Top $Top
+        $scorecardHistoryLimit = Resolve-EngineeringLoopHistoryLimit -Config $config -Kind "scorecard_history"
+        $null = Add-EngineeringScorecardHistoryRecord -State $state -Payload $payload -MaxEntries $scorecardHistoryLimit
+        Save-State -State $state
+        $payload | ConvertTo-Json -Depth 18
+    }
+
+    "sandbox-list" {
+        $payload = Get-TodSandboxListPayload -Top $Top
+        $payload | ConvertTo-Json -Depth 18
+    }
+
+    "sandbox-plan" {
+        if ([string]::IsNullOrWhiteSpace($SandboxPath)) { throw "-SandboxPath is required" }
+        if ($null -eq $Content) { throw "-Content is required" }
+
+        $payload = Invoke-TodSandboxPlanWrite -RelativePath $SandboxPath -Body ([string]$Content) -Append:$Append
+        Add-Journal -State $state -Actor "tod" -ActionName "sandbox_plan" -EntityType "sandbox_file" -EntityId ([string]$payload.sandbox_path) -Payload $payload
+        Save-State -State $state
+        $payload | ConvertTo-Json -Depth 18
+    }
+
+    "sandbox-apply-plan" {
+        if ([string]::IsNullOrWhiteSpace($SandboxPlanPath)) { throw "-SandboxPlanPath is required" }
+
+        $payload = Invoke-TodSandboxApplyPlan -PlanPath $SandboxPlanPath
+        Add-Journal -State $state -Actor "tod" -ActionName "sandbox_apply_plan" -EntityType "sandbox_file" -EntityId ([string]$payload.sandbox_path) -Payload $payload
+        Save-State -State $state
+        $payload | ConvertTo-Json -Depth 18
+    }
+
+    "sandbox-write" {
+        if ([string]::IsNullOrWhiteSpace($SandboxPath)) { throw "-SandboxPath is required" }
+        if ($null -eq $Content) { throw "-Content is required" }
+
+        $payload = Invoke-TodSandboxWrite -RelativePath $SandboxPath -Body ([string]$Content) -Append:$Append
+        Add-Journal -State $state -Actor "tod" -ActionName "sandbox_write" -EntityType "sandbox_file" -EntityId ([string]$payload.sandbox_path) -Payload $payload
+        Save-State -State $state
+        $payload | ConvertTo-Json -Depth 18
+    }
+
+    "get-state-bus" {
+        $stateBus = Get-TodStateBusPayload -Config $config -State $state -Top $Top
+        $stateBus | ConvertTo-Json -Depth 24
     }
 
     "get-version" {
