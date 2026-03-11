@@ -117,6 +117,7 @@ Describe "TOD Reliability Dashboards" {
         (@($caps.endpoints) -contains "/tod/engineer/summary") | Should Be $true
         (@($caps.endpoints) -contains "/tod/engineer/history") | Should Be $true
         (@($caps.endpoints) -contains "/tod/engineer/cycle") | Should Be $true
+        (@($caps.endpoints) -contains "/tod/engineer/review") | Should Be $true
         (@($caps.endpoints) -contains "/tod/sandbox/files") | Should Be $true
         (@($caps.endpoints) -contains "/tod/sandbox/plan") | Should Be $true
         (@($caps.endpoints) -contains "/tod/sandbox/apply") | Should Be $true
@@ -180,12 +181,74 @@ Describe "TOD Reliability Dashboards" {
     }
 
     It "engineer-cycle executes bounded loop cycles" {
-        $cycle = Invoke-TodActionJson -Action "engineer-cycle" -ExtraArgs @{ Cycles = "2"; Top = "10" }
+        $tmpConfigPath = Join-Path $repoRoot ("tod/config/tod-config.test-cycle-{0}.json" -f ([guid]::NewGuid().ToString("N")) )
+        try {
+            $cfg = (Get-Content -Path $configPath -Raw) | ConvertFrom-Json
+            if (-not $cfg.PSObject.Properties["engineering_loop"] -or $null -eq $cfg.engineering_loop) {
+                $cfg | Add-Member -NotePropertyName engineering_loop -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            if (-not $cfg.engineering_loop.PSObject.Properties["safe_continue"] -or $null -eq $cfg.engineering_loop.safe_continue) {
+                $cfg.engineering_loop | Add-Member -NotePropertyName safe_continue -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            $cfg.engineering_loop.safe_continue.require_no_pending_approval = $false
+            ($cfg | ConvertTo-Json -Depth 24) | Set-Content -Path $tmpConfigPath
 
-        $cycle | Should Not BeNullOrEmpty
-        [string]$cycle.path | Should Be "/tod/engineer/cycle"
-        (($cycle.PSObject.Properties.Name) -contains "cycle_steps") | Should Be $true
-        ([int]$cycle.cycles_executed) | Should BeGreaterThan 0
+            $cycle = Invoke-TodActionJson -Action "engineer-cycle" -ExtraArgs @{ Cycles = "2"; Top = "10"; ConfigPath = $tmpConfigPath }
+
+            $cycle | Should Not BeNullOrEmpty
+            [string]$cycle.path | Should Be "/tod/engineer/cycle"
+            (($cycle.PSObject.Properties.Name) -contains "cycle_steps") | Should Be $true
+            ([int]$cycle.cycles_executed) | Should BeGreaterThan 0
+
+            $history = Invoke-TodActionJson -Action "get-engineering-loop-history" -ExtraArgs @{ HistoryKind = "cycle_records"; Page = "1"; PageSize = "5"; ConfigPath = $tmpConfigPath }
+            [string]$history.history_kind | Should Be "cycle_records"
+            (@($history.items).Count -ge 1) | Should Be $true
+            (($history.items[0].PSObject.Properties.Name) -contains "cycle_id") | Should Be $true
+            (($history.items[0].PSObject.Properties.Name) -contains "run_id") | Should Be $true
+            (($history.items[0].PSObject.Properties.Name) -contains "score_snapshot") | Should Be $true
+        }
+        finally {
+            if (Test-Path -Path $tmpConfigPath) {
+                Remove-Item -Path $tmpConfigPath -Force
+            }
+        }
+    }
+
+    It "review-engineering-cycle supports operator actions" {
+        $tmpConfigPath = Join-Path $repoRoot ("tod/config/tod-config.test-review-{0}.json" -f ([guid]::NewGuid().ToString("N")) )
+        try {
+            $cfg = (Get-Content -Path $configPath -Raw) | ConvertFrom-Json
+            if (-not $cfg.PSObject.Properties["engineering_loop"] -or $null -eq $cfg.engineering_loop) {
+                $cfg | Add-Member -NotePropertyName engineering_loop -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            if (-not $cfg.engineering_loop.PSObject.Properties["safe_continue"] -or $null -eq $cfg.engineering_loop.safe_continue) {
+                $cfg.engineering_loop | Add-Member -NotePropertyName safe_continue -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            $cfg.engineering_loop.safe_continue.require_no_pending_approval = $false
+            ($cfg | ConvertTo-Json -Depth 24) | Set-Content -Path $tmpConfigPath
+
+            $cycle = Invoke-TodActionJson -Action "engineer-cycle" -ExtraArgs @{ Cycles = "1"; Top = "10"; ConfigPath = $tmpConfigPath }
+            ([int]$cycle.cycles_executed) | Should BeGreaterThan 0
+            $cid = [string]$cycle.cycle_steps[0].cycle_id
+
+            $reject = Invoke-TodActionJson -Action "review-engineering-cycle" -ExtraArgs @{ CycleId = $cid; CycleReviewAction = "reject_apply"; Rationale = "operator deferred apply"; ConfigPath = $tmpConfigPath }
+            [string]$reject.path | Should Be "/tod/engineer/review"
+            [string]$reject.action | Should Be "reject_apply"
+
+            $continue = Invoke-TodActionJson -Action "review-engineering-cycle" -ExtraArgs @{ CycleId = $cid; CycleReviewAction = "continue_cycle"; Rationale = "run one more cycle"; ConfigPath = $tmpConfigPath }
+            [string]$continue.path | Should Be "/tod/engineer/review"
+            [string]$continue.action | Should Be "continue_cycle"
+            (($continue.review.result.PSObject.Properties.Name) -contains "continued_cycle") | Should Be $true
+
+            $reviews = Invoke-TodActionJson -Action "get-engineering-loop-history" -ExtraArgs @{ HistoryKind = "review_actions"; Page = "1"; PageSize = "5"; ConfigPath = $tmpConfigPath }
+            [string]$reviews.history_kind | Should Be "review_actions"
+            (@($reviews.items).Count -ge 1) | Should Be $true
+        }
+        finally {
+            if (Test-Path -Path $tmpConfigPath) {
+                Remove-Item -Path $tmpConfigPath -Force
+            }
+        }
     }
 
     It "sandbox-apply-plan requires dangerous approval by default" {
@@ -522,13 +585,18 @@ Describe "TOD Reliability Dashboards" {
         (($bus.section_confidence.PSObject.Properties.Name) -contains "engineering_loop") | Should Be $true
         (($bus.engineering_loop_state.PSObject.Properties.Name) -contains "run_history_count") | Should Be $true
         (($bus.engineering_loop_state.PSObject.Properties.Name) -contains "scorecard_history_count") | Should Be $true
+        (($bus.engineering_loop_state.PSObject.Properties.Name) -contains "cycle_records_count") | Should Be $true
+        (($bus.engineering_loop_state.PSObject.Properties.Name) -contains "approval_pending_flag") | Should Be $true
+        (($bus.engineering_loop_state.PSObject.Properties.Name) -contains "phase_trends") | Should Be $true
         (($bus.engineering_loop_state.PSObject.Properties.Name) -contains "recent_runs") | Should Be $true
         (($bus.engineering_loop_state.PSObject.Properties.Name) -contains "recent_scorecards") | Should Be $true
+        (($bus.engineering_loop_state.PSObject.Properties.Name) -contains "recent_cycles") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/run") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/scorecard") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/summary") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/history") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/cycle") | Should Be $true
+        (@($bus.capability_state.endpoints) -contains "/tod/engineer/review") | Should Be $true
     }
 
     It "get-version returns endpoint payload shape" {

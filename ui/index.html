@@ -1115,6 +1115,7 @@
               <option value="get-engineering-loop-summary">get-engineering-loop-summary</option>
               <option value="get-engineering-loop-history">get-engineering-loop-history</option>
               <option value="engineer-cycle">engineer-cycle</option>
+              <option value="review-engineering-cycle">review-engineering-cycle</option>
               <option value="sandbox-list">sandbox-list</option>
               <option value="sandbox-plan">sandbox-plan</option>
               <option value="sandbox-apply-plan">sandbox-apply-plan</option>
@@ -1210,6 +1211,24 @@
         <div id="busScoreHistory" class="bus-list">No scorecard samples recorded.</div>
       </div>
 
+      <div class="card span-3">
+        <h2>Engineering Loop</h2>
+        <div class="summary-grid">
+          <div class="summary-item"><span class="k">Current Run</span><span id="loopCurrentRun" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Last Cycle</span><span id="loopLastCycle" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Threshold State</span><span id="loopThresholdState" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Maturity Band</span><span id="loopMaturityBand" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Approval Pending</span><span id="loopApprovalPending" class="v">no</span></div>
+          <div class="summary-item"><span class="k">Pending Count</span><span id="loopApprovalCount" class="v">0</span></div>
+        </div>
+
+        <label>Top Penalties</label>
+        <div id="loopTopPenalties" class="bus-list">No active penalties.</div>
+
+        <label>Phase Trends</label>
+        <div id="loopPhaseTrends" class="bus-list">No phase trend samples yet.</div>
+      </div>
+
       <div id="mimTelemetryCard" class="card span-3 mim-telemetry-card">
         <h2>MIM Call Telemetry</h2>
         <div class="row-2">
@@ -1302,6 +1321,14 @@
     const postureCapabilitiesEl = document.getElementById('postureCapabilities');
     const postureHealthEl = document.getElementById('postureHealth');
     const postureSummaryEl = document.getElementById('postureSummary');
+    const loopCurrentRunEl = document.getElementById('loopCurrentRun');
+    const loopLastCycleEl = document.getElementById('loopLastCycle');
+    const loopThresholdStateEl = document.getElementById('loopThresholdState');
+    const loopMaturityBandEl = document.getElementById('loopMaturityBand');
+    const loopApprovalPendingEl = document.getElementById('loopApprovalPending');
+    const loopApprovalCountEl = document.getElementById('loopApprovalCount');
+    const loopTopPenaltiesEl = document.getElementById('loopTopPenalties');
+    const loopPhaseTrendsEl = document.getElementById('loopPhaseTrends');
     const logsEl = document.getElementById('logs');
     const logMetaEl = document.getElementById('logMeta');
     const tailEl = document.getElementById('tail');
@@ -1928,6 +1955,48 @@
       postureSummaryEl.textContent = data.summary || 'SYSTEM POSTURE | No summary available.';
     }
 
+    function renderEngineeringLoopPanel(loop) {
+      const data = loop || {};
+      const currentRun = data.current_run && data.current_run.run_id ? String(data.current_run.run_id) : '-';
+      const lastCycle = data.last_cycle_result && data.last_cycle_result.cycle_id ? String(data.last_cycle_result.cycle_id) : '-';
+
+      setStateBusValue(loopCurrentRunEl, currentRun);
+      setStateBusValue(loopLastCycleEl, lastCycle);
+      setStateBusValue(loopThresholdStateEl, data.stop_threshold_state || '-');
+      setStateBusValue(loopMaturityBandEl, data.maturity_band || '-');
+      setStateBusValue(loopApprovalPendingEl, data.approval_pending_flag ? 'yes' : 'no');
+      setStateBusValue(loopApprovalCountEl, Number.isFinite(Number(data.pending_approval_count)) ? Number(data.pending_approval_count) : 0, '0');
+
+      renderBusList(
+        loopTopPenaltiesEl,
+        data.top_penalties || [],
+        item => {
+          const reason = item && item.reason ? String(item.reason) : 'unknown';
+          const value = item && Number.isFinite(Number(item.value)) ? Number(item.value).toFixed(2) : '0.00';
+          const detail = item && item.detail ? String(item.detail) : '';
+          return `${reason} (${value})${detail ? ` | ${detail}` : ''}`;
+        },
+        'No active penalties.'
+      );
+
+      const phases = data.phase_trends || {};
+      const phaseNames = ['create', 'plan', 'implement', 'test', 'manage'];
+      const rows = [];
+      for (const name of phaseNames) {
+        const samples = Array.isArray(phases[name]) ? phases[name] : [];
+        if (samples.length === 0) {
+          rows.push(`${name}: no samples`);
+          continue;
+        }
+        const first = Number(samples[0].score);
+        const last = Number(samples[samples.length - 1].score);
+        const delta = Number.isFinite(first) && Number.isFinite(last) ? (last - first) : 0;
+        const trend = delta > 0.03 ? 'up' : (delta < -0.03 ? 'down' : 'flat');
+        rows.push(`${name}: ${Number.isFinite(last) ? last.toFixed(2) : '0.00'} (${trend} ${delta.toFixed(2)})`);
+      }
+      renderBusList(loopPhaseTrendsEl, rows, item => String(item), 'No phase trend samples yet.');
+    }
+
     async function loadStateBus() {
       loadBusBtn.disabled = true;
       try {
@@ -2031,6 +2100,7 @@
         renderScoreSparkline(busScoreSparklineEl, loop.recent_scorecards || []);
 
         renderSystemPosture(posture);
+        renderEngineeringLoopPanel(loop);
         setLoopIndicator(loop.status || posture.engineering_loop_status, loop.latest_score, loop.trend_direction);
 
         busMetaEl.textContent = `State bus refreshed at ${now} (${bus.generated_at || 'unknown timestamp'})`;

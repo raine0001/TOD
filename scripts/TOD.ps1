@@ -27,6 +27,7 @@ param(
         "get-engineering-loop-summary",
         "get-engineering-loop-history",
         "engineer-cycle",
+        "review-engineering-cycle",
         "sandbox-list",
         "sandbox-plan",
         "sandbox-apply-plan",
@@ -78,11 +79,13 @@ param(
     ,[switch]$ApplyPlan
     ,[string]$Engine
     ,[string]$Category
-    ,[ValidateSet("run_history", "scorecard_history")][string]$HistoryKind = "run_history"
+    ,[ValidateSet("run_history", "scorecard_history", "cycle_records", "review_actions")][string]$HistoryKind = "run_history"
     ,[int]$Page = 1
     ,[int]$PageSize = 25
     ,[int]$Cycles = 1
     ,[bool]$DangerousApproved = $false
+    ,[string]$CycleId
+    ,[ValidateSet("approve_apply", "reject_apply", "continue_cycle", "freeze_objective", "mark_complete")][string]$CycleReviewAction
 )
 
 Set-StrictMode -Version Latest
@@ -236,8 +239,12 @@ function Normalize-State {
         $State | Add-Member -NotePropertyName engineering_loop -NotePropertyValue ([pscustomobject]@{
                 run_history = @()
                 scorecard_history = @()
+                cycle_records = @()
+                review_actions = @()
                 last_run = $null
                 last_scorecard = $null
+                last_cycle = $null
+                pending_approval_count = 0
                 updated_at = ""
             }) -Force
     }
@@ -247,11 +254,23 @@ function Normalize-State {
     if (-not $State.engineering_loop.PSObject.Properties["scorecard_history"]) {
         $State.engineering_loop | Add-Member -NotePropertyName scorecard_history -NotePropertyValue @() -Force
     }
+    if (-not $State.engineering_loop.PSObject.Properties["cycle_records"]) {
+        $State.engineering_loop | Add-Member -NotePropertyName cycle_records -NotePropertyValue @() -Force
+    }
+    if (-not $State.engineering_loop.PSObject.Properties["review_actions"]) {
+        $State.engineering_loop | Add-Member -NotePropertyName review_actions -NotePropertyValue @() -Force
+    }
     if (-not $State.engineering_loop.PSObject.Properties["last_run"]) {
         $State.engineering_loop | Add-Member -NotePropertyName last_run -NotePropertyValue $null -Force
     }
     if (-not $State.engineering_loop.PSObject.Properties["last_scorecard"]) {
         $State.engineering_loop | Add-Member -NotePropertyName last_scorecard -NotePropertyValue $null -Force
+    }
+    if (-not $State.engineering_loop.PSObject.Properties["last_cycle"]) {
+        $State.engineering_loop | Add-Member -NotePropertyName last_cycle -NotePropertyValue $null -Force
+    }
+    if (-not $State.engineering_loop.PSObject.Properties["pending_approval_count"]) {
+        $State.engineering_loop | Add-Member -NotePropertyName pending_approval_count -NotePropertyValue 0 -Force
     }
     if (-not $State.engineering_loop.PSObject.Properties["updated_at"]) {
         $State.engineering_loop | Add-Member -NotePropertyName updated_at -NotePropertyValue "" -Force
@@ -425,6 +444,8 @@ function Add-EngineeringScorecardHistoryRecord {
         score = if ($overall -and $overall.PSObject.Properties["score"] -and $null -ne $overall.score) { [double]$overall.score } else { 0.0 }
         band = if ($overall -and $overall.PSObject.Properties["band"]) { [string]$overall.band } else { "" }
         low_areas = if ($overall -and $overall.PSObject.Properties["low_areas"]) { @($overall.low_areas) } else { @() }
+        dimensions = if ($Payload.PSObject.Properties["dimensions"]) { @($Payload.dimensions | ForEach-Object { [pscustomobject]@{ name = [string]$_.name; score = [double]$_.score } }) } else { @() }
+        penalties = if ($Payload.PSObject.Properties["explainability"] -and $Payload.explainability -and $Payload.explainability.PSObject.Properties["penalties"]) { @($Payload.explainability.penalties) } else { @() }
     }
 
     $history = @($State.engineering_loop.scorecard_history)
@@ -437,6 +458,66 @@ function Add-EngineeringScorecardHistoryRecord {
     $State.engineering_loop.last_scorecard = $entry
     $State.engineering_loop.updated_at = Get-UtcNow
     return $entry
+}
+
+function Add-EngineeringCycleRecord {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$CycleRecord,
+        [int]$MaxEntries = 300
+    )
+
+    $history = @($State.engineering_loop.cycle_records)
+    $history += $CycleRecord
+    if (@($history).Count -gt $MaxEntries) {
+        $history = @($history | Select-Object -Last $MaxEntries)
+    }
+
+    $State.engineering_loop.cycle_records = @($history)
+    $State.engineering_loop.last_cycle = $CycleRecord
+    $pending = @($history | Where-Object {
+            $_.PSObject.Properties["approval_status"] -and
+            ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply"
+        }).Count
+    $State.engineering_loop.pending_approval_count = [int]$pending
+    $State.engineering_loop.updated_at = Get-UtcNow
+    return $CycleRecord
+}
+
+function Add-EngineeringReviewActionRecord {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$ReviewAction,
+        [int]$MaxEntries = 400
+    )
+
+    $history = @($State.engineering_loop.review_actions)
+    $history += $ReviewAction
+    if (@($history).Count -gt $MaxEntries) {
+        $history = @($history | Select-Object -Last $MaxEntries)
+    }
+
+    $State.engineering_loop.review_actions = @($history)
+    $State.engineering_loop.updated_at = Get-UtcNow
+    return $ReviewAction
+}
+
+function Resolve-EngineeringCycleRecordLimit {
+    param([Parameter(Mandatory = $true)]$Config)
+
+    $defaultLimit = 300
+    if (-not $Config -or -not $Config.PSObject.Properties["engineering_loop"] -or $null -eq $Config.engineering_loop) {
+        return $defaultLimit
+    }
+
+    if ($Config.engineering_loop.PSObject.Properties["max_cycle_records"] -and $null -ne $Config.engineering_loop.max_cycle_records) {
+        $value = [int]$Config.engineering_loop.max_cycle_records
+        if ($value -lt 25) { return 25 }
+        if ($value -gt 2000) { return 2000 }
+        return $value
+    }
+
+    return $defaultLimit
 }
 
 function Resolve-EngineeringLoopHistoryLimit {
@@ -570,7 +651,7 @@ function Get-TodEngineeringLoopHistoryPayload {
     param(
         [Parameter(Mandatory = $true)]$State,
         [Parameter(Mandatory = $true)]$Config,
-        [ValidateSet("run_history", "scorecard_history")][string]$HistoryKind = "run_history",
+        [ValidateSet("run_history", "scorecard_history", "cycle_records", "review_actions")][string]$HistoryKind = "run_history",
         [int]$Page = 1,
         [int]$PageSize = 25
     )
@@ -579,6 +660,12 @@ function Get-TodEngineeringLoopHistoryPayload {
     $records = @()
     if ($HistoryKind -eq "scorecard_history") {
         $records = if ($loop -and $loop.PSObject.Properties["scorecard_history"]) { @($loop.scorecard_history | Sort-Object generated_at -Descending) } else { @() }
+    }
+    elseif ($HistoryKind -eq "cycle_records") {
+        $records = if ($loop -and $loop.PSObject.Properties["cycle_records"]) { @($loop.cycle_records | Sort-Object created_at -Descending) } else { @() }
+    }
+    elseif ($HistoryKind -eq "review_actions") {
+        $records = if ($loop -and $loop.PSObject.Properties["review_actions"]) { @($loop.review_actions | Sort-Object created_at -Descending) } else { @() }
     }
     else {
         $records = if ($loop -and $loop.PSObject.Properties["run_history"]) { @($loop.run_history | Sort-Object generated_at -Descending) } else { @() }
@@ -608,7 +695,8 @@ function Get-TodEngineerCyclePayload {
         [Parameter(Mandatory = $true)]$Config,
         [int]$Cycles = 1,
         [int]$Top = 10,
-        [bool]$DangerousApproved = $false
+        [bool]$DangerousApproved = $false,
+        [bool]$BypassSafeContinue = $false
     )
 
     $autonomy = if ($Config.PSObject.Properties["engineering_loop"] -and $Config.engineering_loop -and $Config.engineering_loop.PSObject.Properties["autonomy"]) { $Config.engineering_loop.autonomy } else { $null }
@@ -617,6 +705,37 @@ function Get-TodEngineerCyclePayload {
     if ($maxCycles -gt 20) { $maxCycles = 20 }
     $safeCycles = if ($Cycles -lt 1) { 1 } elseif ($Cycles -gt $maxCycles) { $maxCycles } else { $Cycles }
     $stopAtScore = if ($autonomy -and $autonomy.PSObject.Properties["stop_at_score"] -and $null -ne $autonomy.stop_at_score) { [double]$autonomy.stop_at_score } else { 0.85 }
+
+    $safeContinue = if ($Config.PSObject.Properties["engineering_loop"] -and $Config.engineering_loop -and $Config.engineering_loop.PSObject.Properties["safe_continue"]) { $Config.engineering_loop.safe_continue } else { $null }
+    $requireNoPendingApproval = if ($safeContinue -and $safeContinue.PSObject.Properties["require_no_pending_approval"] -and $null -ne $safeContinue.require_no_pending_approval) { [bool]$safeContinue.require_no_pending_approval } else { $true }
+    $pendingApprovalCount = if ($State.PSObject.Properties["engineering_loop"] -and $State.engineering_loop.PSObject.Properties["cycle_records"]) {
+        [int]@($State.engineering_loop.cycle_records | Where-Object {
+                $_.PSObject.Properties["approval_status"] -and ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply"
+            }).Count
+    }
+    else {
+        0
+    }
+    if (-not $BypassSafeContinue -and $requireNoPendingApproval -and $pendingApprovalCount -gt 0) {
+        return [pscustomobject]@{
+            path = "/tod/engineer/cycle"
+            service = "tod"
+            source = "engineer_cycle_v1"
+            generated_at = Get-UtcNow
+            cycles_requested = [int]$Cycles
+            cycles_executed = 0
+            max_cycles_allowed = [int]$maxCycles
+            stop_at_score = [double]$stopAtScore
+            stopped_early = $true
+            stop_reason = "safe_continue_pending_approval"
+            dangerous_approved = [bool]$DangerousApproved
+            pending_approval_count = [int]$pendingApprovalCount
+            cycle_steps = @()
+            final = $null
+        }
+    }
+
+    $cycleRecordLimit = Resolve-EngineeringCycleRecordLimit -Config $Config
 
     $steps = @()
     $stoppedEarly = $false
@@ -644,8 +763,43 @@ function Get-TodEngineerCyclePayload {
         }
 
         $decision = if ($score -ge $stopAtScore) { "stop" } else { "continue" }
+        $cycleId = "ENGCYC-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 10).ToUpperInvariant())
+        $approvalStatus = "pending_apply"
+        $approvalPending = $true
+        $topPenalties = if ($scorePayload.PSObject.Properties["explainability"] -and $scorePayload.explainability -and $scorePayload.explainability.PSObject.Properties["penalties"]) {
+            @($scorePayload.explainability.penalties | Select-Object -First 3)
+        }
+        else {
+            @()
+        }
+        $thresholdState = if ($score -ge $stopAtScore) { "met" } else { "below_threshold" }
+
+        $cycleRecord = [pscustomobject]@{
+            cycle_id = $cycleId
+            run_id = [string]$runPayload.run_id
+            objective_id = if ($runPayload.PSObject.Properties["focus"] -and $runPayload.focus.PSObject.Properties["objective_id"]) { [string]$runPayload.focus.objective_id } else { "" }
+            objective_title = if ($runPayload.PSObject.Properties["focus"] -and $runPayload.focus.PSObject.Properties["objective_title"]) { [string]$runPayload.focus.objective_title } else { "" }
+            task_id = if ($runPayload.PSObject.Properties["focus"] -and $runPayload.focus.PSObject.Properties["task_id"]) { [string]$runPayload.focus.task_id } else { "" }
+            task_title = if ($runPayload.PSObject.Properties["focus"] -and $runPayload.focus.PSObject.Properties["task_title"]) { [string]$runPayload.focus.task_title } else { "" }
+            phase_outputs = if ($runPayload.PSObject.Properties["phases"]) { $runPayload.phases } else { $null }
+            stop_reason = if ($decision -eq "stop") { "score_target_reached" } else { "continue_requested" }
+            approval_status = $approvalStatus
+            approval_pending = [bool]$approvalPending
+            score_snapshot = [pscustomobject]@{
+                overall = if ($scorePayload.PSObject.Properties["overall"]) { $scorePayload.overall } else { $null }
+                dimensions = if ($scorePayload.PSObject.Properties["dimensions"]) { @($scorePayload.dimensions) } else { @() }
+            }
+            maturity_band = $band
+            top_penalties = @($topPenalties)
+            stop_threshold_state = $thresholdState
+            created_at = Get-UtcNow
+            updated_at = Get-UtcNow
+        }
+        $null = Add-EngineeringCycleRecord -State $State -CycleRecord $cycleRecord -MaxEntries $cycleRecordLimit
+
         $steps += [pscustomobject]@{
             cycle = [int]$cycle
+            cycle_id = $cycleId
             run_id = [string]$runPayload.run_id
             score = [double]$score
             band = $band
@@ -672,8 +826,128 @@ function Get-TodEngineerCyclePayload {
         stopped_early = [bool]$stoppedEarly
         stop_reason = $stopReason
         dangerous_approved = [bool]$DangerousApproved
+        pending_approval_count = if ($State.engineering_loop.PSObject.Properties["pending_approval_count"]) { [int]$State.engineering_loop.pending_approval_count } else { 0 }
         cycle_steps = @($steps)
         final = if (@($steps).Count -gt 0) { $steps[@($steps).Count - 1] } else { $null }
+    }
+}
+
+function Invoke-TodEngineeringCycleReview {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Config,
+        [Parameter(Mandatory = $true)][string]$CycleId,
+        [Parameter(Mandatory = $true)][ValidateSet("approve_apply", "reject_apply", "continue_cycle", "freeze_objective", "mark_complete")][string]$CycleReviewAction,
+        [string]$Rationale,
+        [int]$Top = 10,
+        [bool]$DangerousApproved = $false
+    )
+
+    $records = if ($State.PSObject.Properties["engineering_loop"] -and $State.engineering_loop.PSObject.Properties["cycle_records"]) { @($State.engineering_loop.cycle_records) } else { @() }
+    $target = @($records | Where-Object { $_.PSObject.Properties["cycle_id"] -and [string]$_.cycle_id -eq [string]$CycleId } | Select-Object -First 1)
+    if (@($target).Count -eq 0) {
+        throw "Cycle record not found: $CycleId"
+    }
+
+    $cycle = $target[0]
+    $result = [pscustomobject]@{
+        cycle_id = [string]$CycleId
+        action = [string]$CycleReviewAction
+        applied = $false
+        objective_state = ""
+        note = ""
+    }
+
+    switch ($CycleReviewAction) {
+        "approve_apply" {
+            Assert-DangerousActionApproved -Config $Config -ActionName "sandbox-apply-plan" -DangerousApproved:$DangerousApproved
+            $artifactPath = if ($cycle.PSObject.Properties["phase_outputs"] -and $cycle.phase_outputs -and $cycle.phase_outputs.PSObject.Properties["plan"] -and $cycle.phase_outputs.plan.PSObject.Properties["artifact_path"]) { [string]$cycle.phase_outputs.plan.artifact_path } else { "" }
+            if ([string]::IsNullOrWhiteSpace($artifactPath)) {
+                throw "Cycle record does not have a plan artifact to apply."
+            }
+
+            $applyPayload = Invoke-TodSandboxApplyPlan -PlanPath $artifactPath
+            $cycle.approval_status = "approved_apply"
+            $cycle.approval_pending = $false
+            $cycle.apply_result = $applyPayload
+            $cycle.updated_at = Get-UtcNow
+            $result.applied = $true
+            $result.note = "Plan artifact applied."
+        }
+
+        "reject_apply" {
+            $cycle.approval_status = "rejected_apply"
+            $cycle.approval_pending = $false
+            $cycle.updated_at = Get-UtcNow
+            $result.note = "Apply rejected by operator."
+        }
+
+        "continue_cycle" {
+            $continued = Get-TodEngineerCyclePayload -State $State -Config $Config -Cycles 1 -Top $Top -DangerousApproved:$DangerousApproved -BypassSafeContinue:$true
+            $result | Add-Member -NotePropertyName continued_cycle -NotePropertyValue $continued -Force
+            $result.note = "Triggered one additional bounded cycle."
+        }
+
+        "freeze_objective" {
+            if ($cycle.PSObject.Properties["objective_id"] -and -not [string]::IsNullOrWhiteSpace([string]$cycle.objective_id)) {
+                $objective = @($State.objectives | Where-Object { [string]$_.id -eq [string]$cycle.objective_id } | Select-Object -First 1)
+                if (@($objective).Count -gt 0) {
+                    $objective[0].status = "frozen"
+                    $objective[0].updated_at = Get-UtcNow
+                    $result.objective_state = "frozen"
+                }
+            }
+            $result.note = "Objective freeze recorded."
+        }
+
+        "mark_complete" {
+            if ($cycle.PSObject.Properties["objective_id"] -and -not [string]::IsNullOrWhiteSpace([string]$cycle.objective_id)) {
+                $objective = @($State.objectives | Where-Object { [string]$_.id -eq [string]$cycle.objective_id } | Select-Object -First 1)
+                if (@($objective).Count -gt 0) {
+                    $objective[0].status = "completed"
+                    $objective[0].updated_at = Get-UtcNow
+                    $result.objective_state = "completed"
+                }
+            }
+            if ($cycle.PSObject.Properties["task_id"] -and -not [string]::IsNullOrWhiteSpace([string]$cycle.task_id)) {
+                $task = @($State.tasks | Where-Object { [string]$_.id -eq [string]$cycle.task_id } | Select-Object -First 1)
+                if (@($task).Count -gt 0) {
+                    $task[0].status = "completed"
+                    $task[0].updated_at = Get-UtcNow
+                }
+            }
+            $result.note = "Objective/task marked complete."
+        }
+    }
+
+    $reviewRecord = [pscustomobject]@{
+        review_id = "ENGREV-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 10).ToUpperInvariant())
+        cycle_id = [string]$CycleId
+        action = [string]$CycleReviewAction
+        rationale = if ([string]::IsNullOrWhiteSpace([string]$Rationale)) { "" } else { [string]$Rationale }
+        result = $result
+        created_at = Get-UtcNow
+    }
+    $null = Add-EngineeringReviewActionRecord -State $State -ReviewAction $reviewRecord
+
+    Add-Journal -State $State -Actor "operator" -ActionName "engineering_cycle_review" -EntityType "cycle" -EntityId ([string]$CycleId) -Payload $reviewRecord
+
+    $pending = @($State.engineering_loop.cycle_records | Where-Object {
+            $_.PSObject.Properties["approval_status"] -and
+            ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply"
+        }).Count
+    $State.engineering_loop.pending_approval_count = [int]$pending
+    $State.engineering_loop.updated_at = Get-UtcNow
+
+    return [pscustomobject]@{
+        path = "/tod/engineer/review"
+        service = "tod"
+        source = "engineering_cycle_review_v1"
+        generated_at = Get-UtcNow
+        cycle_id = [string]$CycleId
+        action = [string]$CycleReviewAction
+        review = $reviewRecord
+        pending_approval_count = [int]$pending
     }
 }
 
@@ -1793,6 +2067,7 @@ function Get-TodCapabilitiesPayload {
         "/tod/engineer/summary",
         "/tod/engineer/history",
         "/tod/engineer/cycle",
+        "/tod/engineer/review",
         "/tod/sandbox/files",
         "/tod/sandbox/plan",
         "/tod/sandbox/apply",
@@ -1833,6 +2108,7 @@ function Get-TodCapabilitiesPayload {
             summary_endpoint = "/tod/engineer/summary"
             history_endpoint = "/tod/engineer/history"
             cycle_endpoint = "/tod/engineer/cycle"
+            review_endpoint = "/tod/engineer/review"
             explainable_scorecard = $true
             cycle_runner = $true
         }
@@ -2765,10 +3041,15 @@ function Get-TodStateBusPayload {
     $engineeringLoop = if ($State.PSObject.Properties["engineering_loop"]) { $State.engineering_loop } else { $null }
     $runHistory = if ($engineeringLoop -and $engineeringLoop.PSObject.Properties["run_history"]) { @($engineeringLoop.run_history) } else { @() }
     $scorecardHistory = if ($engineeringLoop -and $engineeringLoop.PSObject.Properties["scorecard_history"]) { @($engineeringLoop.scorecard_history) } else { @() }
+    $cycleRecords = if ($engineeringLoop -and $engineeringLoop.PSObject.Properties["cycle_records"]) { @($engineeringLoop.cycle_records) } else { @() }
+    $reviewActions = if ($engineeringLoop -and $engineeringLoop.PSObject.Properties["review_actions"]) { @($engineeringLoop.review_actions) } else { @() }
     $recentRuns = @($runHistory | Sort-Object generated_at -Descending | Select-Object -First 5)
     $recentScorecards = @($scorecardHistory | Sort-Object generated_at -Descending | Select-Object -First 5)
+    $recentCycles = @($cycleRecords | Sort-Object created_at -Descending | Select-Object -First 5)
+    $recentReviews = @($reviewActions | Sort-Object created_at -Descending | Select-Object -First 5)
     $lastRun = if (@($recentRuns).Count -gt 0) { $recentRuns[0] } elseif ($engineeringLoop -and $engineeringLoop.PSObject.Properties["last_run"]) { $engineeringLoop.last_run } else { $null }
     $lastScorecard = if (@($recentScorecards).Count -gt 0) { $recentScorecards[0] } elseif ($engineeringLoop -and $engineeringLoop.PSObject.Properties["last_scorecard"]) { $engineeringLoop.last_scorecard } else { $null }
+    $lastCycle = if (@($recentCycles).Count -gt 0) { $recentCycles[0] } elseif ($engineeringLoop -and $engineeringLoop.PSObject.Properties["last_cycle"]) { $engineeringLoop.last_cycle } else { $null }
 
     $latestScore = if ($lastScorecard -and $lastScorecard.PSObject.Properties["score"] -and $null -ne $lastScorecard.score) { [double]$lastScorecard.score } else { $null }
     $trendDirection = "flat"
@@ -2797,6 +3078,50 @@ function Get-TodStateBusPayload {
     else {
         "warming"
     }
+    $pendingApprovalCount = [int]@($cycleRecords | Where-Object {
+            $_.PSObject.Properties["approval_status"] -and
+            ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply"
+        }).Count
+
+    $phaseTrendWindow = @($recentScorecards | Select-Object -First 12)
+    $buildPhaseTrend = {
+        param([string]$PhaseName)
+        return @($phaseTrendWindow | Sort-Object generated_at | ForEach-Object {
+                $dims = if ($_.PSObject.Properties["dimensions"] -and $null -ne $_.dimensions) { @($_.dimensions) } else { @() }
+                $dim = @($dims | Where-Object { [string]$_.name -eq $PhaseName } | Select-Object -First 1)
+                if (@($dim).Count -gt 0) {
+                    [pscustomobject]@{
+                        at = if ($_.PSObject.Properties["generated_at"]) { [string]$_.generated_at } else { "" }
+                        score = [double]$dim[0].score
+                    }
+                }
+            })
+    }
+    $phaseTrends = [pscustomobject]@{
+        create = (& $buildPhaseTrend "create")
+        plan = (& $buildPhaseTrend "plan")
+        implement = (& $buildPhaseTrend "implement")
+        test = (& $buildPhaseTrend "test")
+        manage = (& $buildPhaseTrend "manage")
+    }
+
+    $topPenalties = if ($lastScorecard -and $lastScorecard.PSObject.Properties["penalties"]) {
+        @($lastScorecard.penalties | Select-Object -First 3)
+    }
+    elseif ($lastCycle -and $lastCycle.PSObject.Properties["top_penalties"]) {
+        @($lastCycle.top_penalties | Select-Object -First 3)
+    }
+    else {
+        @()
+    }
+
+    $stopThreshold = if ($Config.PSObject.Properties["engineering_loop"] -and $Config.engineering_loop -and $Config.engineering_loop.PSObject.Properties["autonomy"] -and $Config.engineering_loop.autonomy -and $Config.engineering_loop.autonomy.PSObject.Properties["stop_at_score"]) {
+        [double]$Config.engineering_loop.autonomy.stop_at_score
+    }
+    else {
+        0.85
+    }
+    $thresholdState = if ($latestScore -ne $null -and [double]$latestScore -ge $stopThreshold) { "met" } else { "awaiting" }
 
     $worldConfidence = if (@($currentObjective).Count -gt 0) { 0.92 } else { 0.75 }
     if ($isRemoteAuthority) { $worldConfidence -= 0.08 }
@@ -2843,6 +3168,7 @@ function Get-TodStateBusPayload {
         "/tod/engineer/summary",
         "/tod/engineer/history",
         "/tod/engineer/cycle",
+        "/tod/engineer/review",
         "/tod/sandbox/files",
         "/tod/sandbox/plan",
         "/tod/sandbox/apply",
@@ -2865,11 +3191,13 @@ function Get-TodStateBusPayload {
             active_execution_count = [int]$activeExecutionCount
             pending_confirmations = [int]$pendingConfirmations
             blocked_items = [int]$blockedItems
+            cycle_records_total = [int]@($cycleRecords).Count
+            pending_cycle_approvals = [int]$pendingApprovalCount
             engineer_runs_total = [int]@($runHistory).Count
             scorecard_samples_total = [int]@($scorecardHistory).Count
             registered_capabilities = [int]$registeredCapabilities
             current_executor_health = $executorHealth
-            summary = "SYSTEM POSTURE | Agent: $agentAvailability | Alert: $currentAlertState | Loop: $engineeringLoopStatus | Executions: $activeExecutionCount active | Pending confirmations: $pendingConfirmations | Blocked items: $blockedItems | Runs: $(@($runHistory).Count) | Scorecards: $(@($scorecardHistory).Count) | Capabilities: $registeredCapabilities registered | Reliability: $executorHealth"
+            summary = "SYSTEM POSTURE | Agent: $agentAvailability | Alert: $currentAlertState | Loop: $engineeringLoopStatus | Executions: $activeExecutionCount active | Pending confirmations: $pendingConfirmations | Cycle approvals pending: $pendingApprovalCount | Blocked items: $blockedItems | Runs: $(@($runHistory).Count) | Scorecards: $(@($scorecardHistory).Count) | Capabilities: $registeredCapabilities registered | Reliability: $executorHealth"
         }
         source_of_truth = [pscustomobject]@{
             mode = $resolvedMode
@@ -2936,13 +3264,26 @@ function Get-TodStateBusPayload {
             status = $engineeringLoopStatus
             run_history_count = [int]@($runHistory).Count
             scorecard_history_count = [int]@($scorecardHistory).Count
+            cycle_records_count = [int]@($cycleRecords).Count
+            review_actions_count = [int]@($reviewActions).Count
             latest_score = $latestScore
             trend_direction = $trendDirection
             trend_delta = $trendDelta
             last_run = $lastRun
             last_scorecard = $lastScorecard
+            current_run = $lastRun
+            last_cycle_result = $lastCycle
+            stop_threshold = $stopThreshold
+            stop_threshold_state = $thresholdState
+            maturity_band = if ($lastScorecard -and $lastScorecard.PSObject.Properties["band"]) { [string]$lastScorecard.band } else { "early" }
+            top_penalties = @($topPenalties)
+            approval_pending_flag = ($pendingApprovalCount -gt 0)
+            pending_approval_count = [int]$pendingApprovalCount
+            phase_trends = $phaseTrends
             recent_runs = @($recentRuns)
             recent_scorecards = @($recentScorecards)
+            recent_cycles = @($recentCycles)
+            recent_reviews = @($recentReviews)
         }
         blocks = [pscustomobject]@{
             contract_drift_blocking = [bool]$contractDriftBlocking
@@ -3470,6 +3811,7 @@ function Load-TodConfig {
             engineering_loop = [pscustomobject]@{
                 max_run_history = 150
                 max_scorecard_history = 150
+                max_cycle_records = 300
                 guardrails = [pscustomobject]@{
                     require_confirmation_for_apply = $true
                     require_confirmation_for_write = $false
@@ -3477,6 +3819,9 @@ function Load-TodConfig {
                 autonomy = [pscustomobject]@{
                     max_cycles_per_run = 5
                     stop_at_score = 0.85
+                }
+                safe_continue = [pscustomobject]@{
+                    require_no_pending_approval = $true
                 }
             }
             execution_engine = [pscustomobject]@{
@@ -3573,8 +3918,10 @@ function Load-TodConfig {
     }
     if (-not $cfg.engineering_loop.PSObject.Properties["max_run_history"] -or $null -eq $cfg.engineering_loop.max_run_history) { $cfg.engineering_loop.max_run_history = 150 }
     if (-not $cfg.engineering_loop.PSObject.Properties["max_scorecard_history"] -or $null -eq $cfg.engineering_loop.max_scorecard_history) { $cfg.engineering_loop.max_scorecard_history = 150 }
+    if (-not $cfg.engineering_loop.PSObject.Properties["max_cycle_records"] -or $null -eq $cfg.engineering_loop.max_cycle_records) { $cfg.engineering_loop.max_cycle_records = 300 }
     $cfg.engineering_loop.max_run_history = [math]::Max(10, [math]::Min(1000, [int]$cfg.engineering_loop.max_run_history))
     $cfg.engineering_loop.max_scorecard_history = [math]::Max(10, [math]::Min(1000, [int]$cfg.engineering_loop.max_scorecard_history))
+    $cfg.engineering_loop.max_cycle_records = [math]::Max(25, [math]::Min(2000, [int]$cfg.engineering_loop.max_cycle_records))
     if (-not $cfg.engineering_loop.PSObject.Properties["guardrails"] -or $null -eq $cfg.engineering_loop.guardrails) {
         $cfg.engineering_loop | Add-Member -NotePropertyName guardrails -NotePropertyValue ([pscustomobject]@{
                 require_confirmation_for_apply = $true
@@ -3602,6 +3949,14 @@ function Load-TodConfig {
     }
     $cfg.engineering_loop.autonomy.max_cycles_per_run = [math]::Max(1, [math]::Min(20, [int]$cfg.engineering_loop.autonomy.max_cycles_per_run))
     $cfg.engineering_loop.autonomy.stop_at_score = [math]::Max(0.0, [math]::Min(1.0, [double]$cfg.engineering_loop.autonomy.stop_at_score))
+    if (-not $cfg.engineering_loop.PSObject.Properties["safe_continue"] -or $null -eq $cfg.engineering_loop.safe_continue) {
+        $cfg.engineering_loop | Add-Member -NotePropertyName safe_continue -NotePropertyValue ([pscustomobject]@{
+                require_no_pending_approval = $true
+            }) -Force
+    }
+    if (-not $cfg.engineering_loop.safe_continue.PSObject.Properties["require_no_pending_approval"] -or $null -eq $cfg.engineering_loop.safe_continue.require_no_pending_approval) {
+        $cfg.engineering_loop.safe_continue.require_no_pending_approval = $true
+    }
 
     if (-not $cfg.PSObject.Properties["execution_engine"] -or $null -eq $cfg.execution_engine) {
         $cfg | Add-Member -NotePropertyName execution_engine -NotePropertyValue ([pscustomobject]@{
@@ -6126,6 +6481,15 @@ switch ($Action) {
 
     "engineer-cycle" {
         $payload = Get-TodEngineerCyclePayload -State $state -Config $config -Cycles $Cycles -Top $Top -DangerousApproved:$DangerousApproved
+        Save-State -State $state
+        $payload | ConvertTo-Json -Depth 24
+    }
+
+    "review-engineering-cycle" {
+        if ([string]::IsNullOrWhiteSpace($CycleId)) { throw "-CycleId is required" }
+        if ([string]::IsNullOrWhiteSpace($CycleReviewAction)) { throw "-CycleReviewAction is required" }
+
+        $payload = Invoke-TodEngineeringCycleReview -State $state -Config $config -CycleId $CycleId -CycleReviewAction $CycleReviewAction -Rationale $Rationale -Top $Top -DangerousApproved:$DangerousApproved
         Save-State -State $state
         $payload | ConvertTo-Json -Depth 24
     }
