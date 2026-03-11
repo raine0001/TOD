@@ -1,6 +1,89 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$script:MimApiDebugEnabled = $false
+$script:MimApiDebugLogPath = Join-Path (Split-Path -Parent $PSScriptRoot) "tod/out/mim-http.log"
+
+function Set-MimApiDebugLogging {
+    param(
+        [bool]$Enabled = $false,
+        [string]$LogPath
+    )
+
+    $script:MimApiDebugEnabled = [bool]$Enabled
+    if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
+        $script:MimApiDebugLogPath = $LogPath
+    }
+}
+
+function Convert-MimResponseToLogValue {
+    param($Value)
+
+    if ($null -eq $Value) {
+        return $null
+    }
+
+    try {
+        return (($Value | ConvertTo-Json -Depth 20 -Compress) | ConvertFrom-Json)
+    }
+    catch {
+        return [string]$Value
+    }
+}
+
+function Get-MimHttpErrorBody {
+    param([Parameter(Mandatory = $true)]$Exception)
+
+    $stream = $null
+    try {
+        if ($Exception.PSObject.Properties["Response"] -and $null -ne $Exception.Response -and $Exception.Response.GetResponseStream) {
+            $stream = $Exception.Response.GetResponseStream()
+            if ($null -ne $stream) {
+                $reader = New-Object System.IO.StreamReader($stream)
+                $text = $reader.ReadToEnd()
+                if (-not [string]::IsNullOrWhiteSpace($text)) {
+                    return $text
+                }
+            }
+        }
+    }
+    catch {
+    }
+    finally {
+        if ($null -ne $stream) {
+            $stream.Dispose()
+        }
+    }
+
+    return ""
+}
+
+function Write-MimApiDebugLog {
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Entry
+    )
+
+    if (-not $script:MimApiDebugEnabled) {
+        return
+    }
+
+    $line = $null
+    try {
+        $line = ($Entry | ConvertTo-Json -Depth 20 -Compress)
+    }
+    catch {
+        return
+    }
+
+    $logDir = Split-Path -Parent $script:MimApiDebugLogPath
+    if (-not [string]::IsNullOrWhiteSpace($logDir) -and -not (Test-Path -Path $logDir)) {
+        New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+    }
+
+    Add-Content -Path $script:MimApiDebugLogPath -Value $line
+}
+
 function Normalize-MimBaseUrl {
     param([Parameter(Mandatory = $true)][string]$BaseUrl)
     return $BaseUrl.TrimEnd("/")
@@ -16,15 +99,17 @@ function Invoke-MimApi {
         [Parameter(Mandatory = $true)][ValidateSet("GET", "POST")][string]$Method,
         [Parameter(Mandatory = $true)][string]$Path,
         [int]$TimeoutSeconds = 15,
-        $Body
+        $Body,
+        [hashtable]$AdditionalHeaders
     )
 
     $base = Normalize-MimBaseUrl -BaseUrl $BaseUrl
     $uri = "{0}{1}" -f $base, $Path
     $headers = New-MimRequestHeaders
-
-    if ($Method -eq "GET") {
-        return Invoke-RestMethod -Uri $uri -Method Get -Headers $headers -TimeoutSec $TimeoutSeconds
+    if ($null -ne $AdditionalHeaders) {
+        foreach ($key in $AdditionalHeaders.Keys) {
+            $headers[[string]$key] = [string]$AdditionalHeaders[$key]
+        }
     }
 
     $jsonBody = $null
@@ -32,7 +117,57 @@ function Invoke-MimApi {
         $jsonBody = $Body | ConvertTo-Json -Depth 12
     }
 
-    return Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -TimeoutSec $TimeoutSeconds -Body $jsonBody
+    $start = Get-Date
+    try {
+        $response = $null
+        if ($Method -eq "GET") {
+            $response = Invoke-RestMethod -Uri $uri -Method Get -Headers $headers -TimeoutSec $TimeoutSeconds
+        }
+        else {
+            $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -TimeoutSec $TimeoutSeconds -Body $jsonBody
+        }
+
+        Write-MimApiDebugLog -Entry @{
+            timestamp_utc = (Get-Date).ToUniversalTime().ToString("o")
+            request = @{
+                method = $Method
+                uri = $uri
+                timeout_seconds = $TimeoutSeconds
+                body = if ($null -ne $jsonBody) { $jsonBody } else { $null }
+            }
+            response = @{
+                status_code = 200
+                body = Convert-MimResponseToLogValue -Value $response
+            }
+            elapsed_ms = [int]((Get-Date) - $start).TotalMilliseconds
+        }
+
+        return $response
+    }
+    catch {
+        $statusCode = $null
+        if ($_.Exception.PSObject.Properties["Response"] -and $null -ne $_.Exception.Response -and $_.Exception.Response.PSObject.Properties["StatusCode"]) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+
+        Write-MimApiDebugLog -Entry @{
+            timestamp_utc = (Get-Date).ToUniversalTime().ToString("o")
+            request = @{
+                method = $Method
+                uri = $uri
+                timeout_seconds = $TimeoutSeconds
+                body = if ($null -ne $jsonBody) { $jsonBody } else { $null }
+            }
+            response = @{
+                status_code = $statusCode
+                error = $_.Exception.Message
+                error_body = (Get-MimHttpErrorBody -Exception $_.Exception)
+            }
+            elapsed_ms = [int]((Get-Date) - $start).TotalMilliseconds
+        }
+
+        throw
+    }
 }
 
 function Convert-ToMimObjective {

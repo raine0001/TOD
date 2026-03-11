@@ -91,3 +91,32 @@ function Get-MimJournal {
     $response = Invoke-MimApi -BaseUrl $BaseUrl -Method GET -Path "/journal?top=$Top" -TimeoutSeconds $TimeoutSeconds
     return @($response | ForEach-Object { Normalize-MimJournalResponse -InputObject $_ })
 }
+
+function New-MimExecutionFeedback {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [Parameter(Mandatory = $true)][string]$ExecutionId,
+        [Parameter(Mandatory = $true)][ValidateSet("accepted", "running", "succeeded", "failed", "blocked")][string]$Status,
+        [string]$Source = "tod",
+        [string]$TaskId = "",
+        $Details,
+        [string]$AuthToken,
+        [int]$TimeoutSeconds = 15
+    )
+
+    $headers = @{}
+    if (-not [string]::IsNullOrWhiteSpace($AuthToken)) {
+        $headers["Authorization"] = "Bearer $AuthToken"
+    }
+
+    $payload = [pscustomobject]@{
+        status = [string]$Status
+        source = [string]$Source
+        task_id = [string]$TaskId
+        timestamp = (Get-Date).ToUniversalTime().ToString("o")
+        details = if ($null -ne $Details) { $Details } else { [pscustomobject]@{} }
+    }
+
+    $response = Invoke-MimApi -BaseUrl $BaseUrl -Method POST -Path "/gateway/capabilities/executions/$ExecutionId/feedback" -TimeoutSeconds $TimeoutSeconds -Body $payload -AdditionalHeaders $headers
+    return $response
+}

@@ -1,2 +1,24 @@
 # Local secrets
 .env
+
+# Runtime and generated artifacts
+logs/
+runtime/
+history/
+output/
+sandbox/
+tod/sandbox/
+tod/out/
+
+*.log
+*.tmp
+*.sqlite
+*.db
+
+# Runtime state files
+state.json
+tod/data/state.json
+tod/data/test-summary.json
+
+# Ephemeral test configs
+tod/config/tod-config.test-*.json
