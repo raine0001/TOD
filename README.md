@@ -67,6 +67,10 @@ Execution engine config behavior:
 - `execution_engine.allow_fallback`: allow fallback usage
 - `engineering_loop.max_run_history`: max persisted `engineer-run` history entries (10-1000)
 - `engineering_loop.max_scorecard_history`: max persisted `engineer-scorecard` trend entries (10-1000)
+- `engineering_loop.guardrails.require_confirmation_for_apply`: require explicit `-DangerousApproved $true` for `sandbox-apply-plan`
+- `engineering_loop.guardrails.require_confirmation_for_write`: optional confirmation gate for `sandbox-write`
+- `engineering_loop.autonomy.max_cycles_per_run`: upper bound for `engineer-cycle`
+- `engineering_loop.autonomy.stop_at_score`: stop threshold for cycle automation
 - Invalid engine values fail fast with a validation error.
 
 Connectivity check:
@@ -362,11 +366,14 @@ Use this as a quick day-to-day command map.
 .\scripts\TOD.ps1 -Action get-research -Top 10
 .\scripts\TOD.ps1 -Action get-resourcing -ObjectiveId <ID> -Top 10
 .\scripts\TOD.ps1 -Action engineer-run -Top 10
-.\scripts\TOD.ps1 -Action engineer-run -TaskId <ID> -ApplyPlan
+.\scripts\TOD.ps1 -Action engineer-run -TaskId <ID> -ApplyPlan -DangerousApproved $true
 .\scripts\TOD.ps1 -Action engineer-scorecard -Top 25
+.\scripts\TOD.ps1 -Action get-engineering-loop-summary -Top 10
+.\scripts\TOD.ps1 -Action get-engineering-loop-history -HistoryKind run_history -Page 1 -PageSize 25
+.\scripts\TOD.ps1 -Action engineer-cycle -Cycles 3 -Top 10
 .\scripts\TOD.ps1 -Action sandbox-list -Top 25
 .\scripts\TOD.ps1 -Action sandbox-plan -SandboxPath "notes/demo.txt" -Content "planned content"
-.\scripts\TOD.ps1 -Action sandbox-apply-plan -SandboxPlanPath "tod/sandbox/artifacts/PLAN-XXXXXXXXXX.json"
+.\scripts\TOD.ps1 -Action sandbox-apply-plan -SandboxPlanPath "tod/sandbox/artifacts/PLAN-XXXXXXXXXX.json" -DangerousApproved $true
 .\scripts\TOD.ps1 -Action sandbox-write -SandboxPath "notes/demo.txt" -Content "hello sandbox"
 .\scripts\TOD.ps1 -Action get-version
 ```

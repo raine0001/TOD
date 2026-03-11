@@ -14,7 +14,15 @@
   },
   "engineering_loop": {
     "max_run_history": 150,
-    "max_scorecard_history": 150
+    "max_scorecard_history": 150,
+    "guardrails": {
+      "require_confirmation_for_apply": true,
+      "require_confirmation_for_write": false
+    },
+    "autonomy": {
+      "max_cycles_per_run": 5,
+      "stop_at_score": 0.85
+    }
   },
   "execution_engine": {
     "active": "codex",

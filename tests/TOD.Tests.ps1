@@ -17,7 +17,7 @@ function Invoke-TodActionJson {
         ConfigPath = $configPath
     }
     foreach ($k in $ExtraArgs.Keys) {
-        $invokeParams[$k] = [string]$ExtraArgs[$k]
+        $invokeParams[$k] = $ExtraArgs[$k]
     }
 
     $raw = & $todScript @invokeParams
@@ -106,6 +106,7 @@ Describe "TOD Reliability Dashboards" {
         (($caps.PSObject.Properties.Name) -contains "reliability") | Should Be $true
         (($caps.PSObject.Properties.Name) -contains "research") | Should Be $true
         (($caps.PSObject.Properties.Name) -contains "resourcing") | Should Be $true
+        (($caps.PSObject.Properties.Name) -contains "engineering_loop_v2") | Should Be $true
         (($caps.PSObject.Properties.Name) -contains "code_write_sandbox") | Should Be $true
         (($caps.PSObject.Properties.Name) -contains "endpoints") | Should Be $true
         (@($caps.endpoints) -contains "/tod/state-bus") | Should Be $true
@@ -113,6 +114,9 @@ Describe "TOD Reliability Dashboards" {
         (@($caps.endpoints) -contains "/tod/resourcing") | Should Be $true
         (@($caps.endpoints) -contains "/tod/engineer/run") | Should Be $true
         (@($caps.endpoints) -contains "/tod/engineer/scorecard") | Should Be $true
+        (@($caps.endpoints) -contains "/tod/engineer/summary") | Should Be $true
+        (@($caps.endpoints) -contains "/tod/engineer/history") | Should Be $true
+        (@($caps.endpoints) -contains "/tod/engineer/cycle") | Should Be $true
         (@($caps.endpoints) -contains "/tod/sandbox/files") | Should Be $true
         (@($caps.endpoints) -contains "/tod/sandbox/plan") | Should Be $true
         (@($caps.endpoints) -contains "/tod/sandbox/apply") | Should Be $true
@@ -144,11 +148,57 @@ Describe "TOD Reliability Dashboards" {
         [string]$scorecard.path | Should Be "/tod/engineer/scorecard"
         (($scorecard.PSObject.Properties.Name) -contains "overall") | Should Be $true
         (($scorecard.PSObject.Properties.Name) -contains "dimensions") | Should Be $true
+        (($scorecard.PSObject.Properties.Name) -contains "explainability") | Should Be $true
+        (($scorecard.explainability.PSObject.Properties.Name) -contains "base_score") | Should Be $true
+        (($scorecard.explainability.PSObject.Properties.Name) -contains "penalties") | Should Be $true
         (@($scorecard.dimensions).Count -ge 5) | Should Be $true
 
         $bus = Invoke-TodActionJson -Action "get-state-bus" -ExtraArgs @{ Top = "10" }
         (($bus.PSObject.Properties.Name) -contains "engineering_loop_state") | Should Be $true
         ([int]$bus.engineering_loop_state.scorecard_history_count) | Should BeGreaterThan 0
+    }
+
+    It "get-engineering-loop-summary returns v2 summary payload" {
+        $summary = Invoke-TodActionJson -Action "get-engineering-loop-summary" -ExtraArgs @{ Top = "10" }
+
+        $summary | Should Not BeNullOrEmpty
+        [string]$summary.path | Should Be "/tod/engineer/summary"
+        (($summary.PSObject.Properties.Name) -contains "status") | Should Be $true
+        (($summary.PSObject.Properties.Name) -contains "latest_score") | Should Be $true
+        (($summary.PSObject.Properties.Name) -contains "run_history_count") | Should Be $true
+    }
+
+    It "get-engineering-loop-history returns paged history payload" {
+        $history = Invoke-TodActionJson -Action "get-engineering-loop-history" -ExtraArgs @{ HistoryKind = "run_history"; Page = "1"; PageSize = "5" }
+
+        $history | Should Not BeNullOrEmpty
+        [string]$history.path | Should Be "/tod/engineer/history"
+        [string]$history.history_kind | Should Be "run_history"
+        (($history.PSObject.Properties.Name) -contains "paging") | Should Be $true
+        (($history.paging.PSObject.Properties.Name) -contains "page") | Should Be $true
+        (($history.PSObject.Properties.Name) -contains "items") | Should Be $true
+    }
+
+    It "engineer-cycle executes bounded loop cycles" {
+        $cycle = Invoke-TodActionJson -Action "engineer-cycle" -ExtraArgs @{ Cycles = "2"; Top = "10" }
+
+        $cycle | Should Not BeNullOrEmpty
+        [string]$cycle.path | Should Be "/tod/engineer/cycle"
+        (($cycle.PSObject.Properties.Name) -contains "cycle_steps") | Should Be $true
+        ([int]$cycle.cycles_executed) | Should BeGreaterThan 0
+    }
+
+    It "sandbox-apply-plan requires dangerous approval by default" {
+        $sandboxRelPath = "selftest/tod-sandbox-guardrail.txt"
+        $plannedBody = "guardrail apply"
+        $plan = Invoke-TodActionJson -Action "sandbox-plan" -ExtraArgs @{ SandboxPath = $sandboxRelPath; Content = $plannedBody }
+
+        {
+            Invoke-TodActionJson -Action "sandbox-apply-plan" -ExtraArgs @{ SandboxPlanPath = [string]$plan.artifact_path }
+        } | Should Throw
+
+        $applyApproved = Invoke-TodActionJson -Action "sandbox-apply-plan" -ExtraArgs @{ SandboxPlanPath = [string]$plan.artifact_path; DangerousApproved = $true }
+        [string]$applyApproved.path | Should Be "/tod/sandbox/apply"
     }
 
     It "engineering loop scorecard trend direction is flat for low delta" {
@@ -409,7 +459,7 @@ Describe "TOD Reliability Dashboards" {
 
         $null = Invoke-TodActionJson -Action "sandbox-write" -ExtraArgs @{ SandboxPath = $sandboxRelPath; Content = $initialBody }
         $plan = Invoke-TodActionJson -Action "sandbox-plan" -ExtraArgs @{ SandboxPath = $sandboxRelPath; Content = $plannedBody }
-        $apply = Invoke-TodActionJson -Action "sandbox-apply-plan" -ExtraArgs @{ SandboxPlanPath = [string]$plan.artifact_path }
+        $apply = Invoke-TodActionJson -Action "sandbox-apply-plan" -ExtraArgs @{ SandboxPlanPath = [string]$plan.artifact_path; DangerousApproved = $true }
 
         [string]$apply.path | Should Be "/tod/sandbox/apply"
         ([bool]$apply.applied) | Should Be $true
@@ -476,6 +526,9 @@ Describe "TOD Reliability Dashboards" {
         (($bus.engineering_loop_state.PSObject.Properties.Name) -contains "recent_scorecards") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/run") | Should Be $true
         (@($bus.capability_state.endpoints) -contains "/tod/engineer/scorecard") | Should Be $true
+        (@($bus.capability_state.endpoints) -contains "/tod/engineer/summary") | Should Be $true
+        (@($bus.capability_state.endpoints) -contains "/tod/engineer/history") | Should Be $true
+        (@($bus.capability_state.endpoints) -contains "/tod/engineer/cycle") | Should Be $true
     }
 
     It "get-version returns endpoint payload shape" {

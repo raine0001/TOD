@@ -24,6 +24,9 @@ param(
         "get-resourcing",
         "engineer-run",
         "engineer-scorecard",
+        "get-engineering-loop-summary",
+        "get-engineering-loop-history",
+        "engineer-cycle",
         "sandbox-list",
         "sandbox-plan",
         "sandbox-apply-plan",
@@ -75,6 +78,11 @@ param(
     ,[switch]$ApplyPlan
     ,[string]$Engine
     ,[string]$Category
+    ,[ValidateSet("run_history", "scorecard_history")][string]$HistoryKind = "run_history"
+    ,[int]$Page = 1
+    ,[int]$PageSize = 25
+    ,[int]$Cycles = 1
+    ,[bool]$DangerousApproved = $false
 )
 
 Set-StrictMode -Version Latest
@@ -462,6 +470,211 @@ function Resolve-EngineeringLoopHistoryLimit {
         return 1000
     }
     return $value
+}
+
+function Assert-DangerousActionApproved {
+    param(
+        [Parameter(Mandatory = $true)]$Config,
+        [Parameter(Mandatory = $true)][string]$ActionName,
+        [bool]$DangerousApproved = $false
+    )
+
+    $policy = $null
+    if ($Config -and $Config.PSObject.Properties["engineering_loop"] -and $Config.engineering_loop -and $Config.engineering_loop.PSObject.Properties["guardrails"]) {
+        $policy = $Config.engineering_loop.guardrails
+    }
+
+    $requireApply = $true
+    $requireWrite = $false
+    if ($policy) {
+        if ($policy.PSObject.Properties["require_confirmation_for_apply"] -and $null -ne $policy.require_confirmation_for_apply) {
+            $requireApply = [bool]$policy.require_confirmation_for_apply
+        }
+        if ($policy.PSObject.Properties["require_confirmation_for_write"] -and $null -ne $policy.require_confirmation_for_write) {
+            $requireWrite = [bool]$policy.require_confirmation_for_write
+        }
+    }
+
+    $action = ([string]$ActionName).ToLowerInvariant()
+    if ($action -eq "sandbox-apply-plan" -and $requireApply -and -not $DangerousApproved) {
+        throw "Action blocked by guardrail: sandbox-apply-plan requires explicit approval. Re-run with -DangerousApproved `$true."
+    }
+    if ($action -eq "sandbox-write" -and $requireWrite -and -not $DangerousApproved) {
+        throw "Action blocked by guardrail: sandbox-write requires explicit approval. Re-run with -DangerousApproved `$true."
+    }
+}
+
+function Convert-ToPagedEngineeringHistory {
+    param(
+        [Parameter(Mandatory = $true)]$Items,
+        [int]$Page = 1,
+        [int]$PageSize = 25
+    )
+
+    $safePage = if ($Page -lt 1) { 1 } else { $Page }
+    $safeSize = if ($PageSize -lt 1) { 1 } elseif ($PageSize -gt 200) { 200 } else { $PageSize }
+    $all = @($Items)
+    $total = @($all).Count
+    $totalPages = if ($total -le 0) { 0 } else { [math]::Ceiling(([double]$total / [double]$safeSize)) }
+    $offset = ($safePage - 1) * $safeSize
+    if ($offset -ge $total) {
+        return [pscustomobject]@{
+            page = [int]$safePage
+            page_size = [int]$safeSize
+            total = [int]$total
+            total_pages = [int]$totalPages
+            has_more = $false
+            items = @()
+        }
+    }
+
+    $slice = @($all | Select-Object -Skip $offset -First $safeSize)
+    return [pscustomobject]@{
+        page = [int]$safePage
+        page_size = [int]$safeSize
+        total = [int]$total
+        total_pages = [int]$totalPages
+        has_more = (($offset + @($slice).Count) -lt $total)
+        items = @($slice)
+    }
+}
+
+function Get-TodEngineeringLoopSummaryPayload {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Config,
+        [int]$Top = 10
+    )
+
+    $bus = Get-TodStateBusPayload -Config $Config -State $State -Top $Top
+    $loop = if ($bus.PSObject.Properties["engineering_loop_state"]) { $bus.engineering_loop_state } else { [pscustomobject]@{} }
+
+    return [pscustomobject]@{
+        path = "/tod/engineer/summary"
+        service = "tod"
+        source = "engineering_loop_summary_v2"
+        generated_at = Get-UtcNow
+        status = if ($loop.PSObject.Properties["status"]) { [string]$loop.status } else { "idle" }
+        latest_score = if ($loop.PSObject.Properties["latest_score"]) { $loop.latest_score } else { $null }
+        trend_direction = if ($loop.PSObject.Properties["trend_direction"]) { [string]$loop.trend_direction } else { "flat" }
+        trend_delta = if ($loop.PSObject.Properties["trend_delta"]) { [double]$loop.trend_delta } else { 0.0 }
+        run_history_count = if ($loop.PSObject.Properties["run_history_count"]) { [int]$loop.run_history_count } else { 0 }
+        scorecard_history_count = if ($loop.PSObject.Properties["scorecard_history_count"]) { [int]$loop.scorecard_history_count } else { 0 }
+        last_run = if ($loop.PSObject.Properties["last_run"]) { $loop.last_run } else { $null }
+        last_scorecard = if ($loop.PSObject.Properties["last_scorecard"]) { $loop.last_scorecard } else { $null }
+        confidence = if ($bus.PSObject.Properties["section_confidence"] -and $bus.section_confidence.PSObject.Properties["engineering_loop"]) { [double]$bus.section_confidence.engineering_loop } else { 0.0 }
+    }
+}
+
+function Get-TodEngineeringLoopHistoryPayload {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Config,
+        [ValidateSet("run_history", "scorecard_history")][string]$HistoryKind = "run_history",
+        [int]$Page = 1,
+        [int]$PageSize = 25
+    )
+
+    $loop = if ($State.PSObject.Properties["engineering_loop"]) { $State.engineering_loop } else { $null }
+    $records = @()
+    if ($HistoryKind -eq "scorecard_history") {
+        $records = if ($loop -and $loop.PSObject.Properties["scorecard_history"]) { @($loop.scorecard_history | Sort-Object generated_at -Descending) } else { @() }
+    }
+    else {
+        $records = if ($loop -and $loop.PSObject.Properties["run_history"]) { @($loop.run_history | Sort-Object generated_at -Descending) } else { @() }
+    }
+
+    $paged = Convert-ToPagedEngineeringHistory -Items $records -Page $Page -PageSize $PageSize
+    return [pscustomobject]@{
+        path = "/tod/engineer/history"
+        service = "tod"
+        source = "engineering_loop_history_v2"
+        generated_at = Get-UtcNow
+        history_kind = $HistoryKind
+        paging = [pscustomobject]@{
+            page = [int]$paged.page
+            page_size = [int]$paged.page_size
+            total = [int]$paged.total
+            total_pages = [int]$paged.total_pages
+            has_more = [bool]$paged.has_more
+        }
+        items = @($paged.items)
+    }
+}
+
+function Get-TodEngineerCyclePayload {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Config,
+        [int]$Cycles = 1,
+        [int]$Top = 10,
+        [bool]$DangerousApproved = $false
+    )
+
+    $autonomy = if ($Config.PSObject.Properties["engineering_loop"] -and $Config.engineering_loop -and $Config.engineering_loop.PSObject.Properties["autonomy"]) { $Config.engineering_loop.autonomy } else { $null }
+    $maxCycles = if ($autonomy -and $autonomy.PSObject.Properties["max_cycles_per_run"] -and $null -ne $autonomy.max_cycles_per_run) { [int]$autonomy.max_cycles_per_run } else { 5 }
+    if ($maxCycles -lt 1) { $maxCycles = 1 }
+    if ($maxCycles -gt 20) { $maxCycles = 20 }
+    $safeCycles = if ($Cycles -lt 1) { 1 } elseif ($Cycles -gt $maxCycles) { $maxCycles } else { $Cycles }
+    $stopAtScore = if ($autonomy -and $autonomy.PSObject.Properties["stop_at_score"] -and $null -ne $autonomy.stop_at_score) { [double]$autonomy.stop_at_score } else { 0.85 }
+
+    $steps = @()
+    $stoppedEarly = $false
+    $stopReason = "max_cycles_reached"
+
+    for ($cycle = 1; $cycle -le $safeCycles; $cycle++) {
+        $runPayload = Get-TodEngineerRunPayload -State $State -Config $Config -Top $Top -ApplyPlan:$false
+        $runHistoryLimit = Resolve-EngineeringLoopHistoryLimit -Config $Config -Kind "run_history"
+        $null = Add-EngineeringRunHistoryRecord -State $State -Payload $runPayload -MaxEntries $runHistoryLimit
+        Add-Journal -State $State -Actor "tod" -ActionName "engineer_run_cycle" -EntityType "task" -EntityId $(if (-not [string]::IsNullOrWhiteSpace([string]$runPayload.focus.task_id)) { [string]$runPayload.focus.task_id } else { "none" }) -Payload ([pscustomobject]@{ cycle = $cycle; run_id = $runPayload.run_id })
+
+        $scorePayload = Get-TodEngineerScorecardPayload -State $State -Config $Config -Top $Top
+        $scoreHistoryLimit = Resolve-EngineeringLoopHistoryLimit -Config $Config -Kind "scorecard_history"
+        $null = Add-EngineeringScorecardHistoryRecord -State $State -Payload $scorePayload -MaxEntries $scoreHistoryLimit
+
+        $score = if ($scorePayload.PSObject.Properties["overall"] -and $scorePayload.overall.PSObject.Properties["score"]) { [double]$scorePayload.overall.score } else { 0.0 }
+        $band = if ($scorePayload.PSObject.Properties["overall"] -and $scorePayload.overall.PSObject.Properties["band"]) { [string]$scorePayload.overall.band } else { "early" }
+        $trend = if ($State.engineering_loop.PSObject.Properties["scorecard_history"] -and @($State.engineering_loop.scorecard_history).Count -ge 2) {
+            $history = @($State.engineering_loop.scorecard_history | Sort-Object generated_at -Descending | Select-Object -First 2)
+            $delta = [double]$history[0].score - [double]$history[1].score
+            if ($delta -gt 0.03) { "improving" } elseif ($delta -lt -0.03) { "declining" } else { "flat" }
+        }
+        else {
+            "flat"
+        }
+
+        $decision = if ($score -ge $stopAtScore) { "stop" } else { "continue" }
+        $steps += [pscustomobject]@{
+            cycle = [int]$cycle
+            run_id = [string]$runPayload.run_id
+            score = [double]$score
+            band = $band
+            trend_direction = $trend
+            decision = $decision
+        }
+
+        if ($decision -eq "stop") {
+            $stoppedEarly = $true
+            $stopReason = "score_target_reached"
+            break
+        }
+    }
+
+    return [pscustomobject]@{
+        path = "/tod/engineer/cycle"
+        service = "tod"
+        source = "engineer_cycle_v1"
+        generated_at = Get-UtcNow
+        cycles_requested = [int]$Cycles
+        cycles_executed = [int]@($steps).Count
+        max_cycles_allowed = [int]$maxCycles
+        stop_at_score = [double]$stopAtScore
+        stopped_early = [bool]$stoppedEarly
+        stop_reason = $stopReason
+        dangerous_approved = [bool]$DangerousApproved
+        cycle_steps = @($steps)
+        final = if (@($steps).Count -gt 0) { $steps[@($steps).Count - 1] } else { $null }
+    }
 }
 
 function Get-DefaultRoutingWeights {
@@ -1577,6 +1790,9 @@ function Get-TodCapabilitiesPayload {
         "/tod/resourcing",
         "/tod/engineer/run",
         "/tod/engineer/scorecard",
+        "/tod/engineer/summary",
+        "/tod/engineer/history",
+        "/tod/engineer/cycle",
         "/tod/sandbox/files",
         "/tod/sandbox/plan",
         "/tod/sandbox/apply",
@@ -1612,6 +1828,13 @@ function Get-TodCapabilitiesPayload {
             supports_external_handoff_brief = $true
             supports_skill_gap_recommendations = $true
             procurement_automation = $false
+        }
+        engineering_loop_v2 = [pscustomobject]@{
+            summary_endpoint = "/tod/engineer/summary"
+            history_endpoint = "/tod/engineer/history"
+            cycle_endpoint = "/tod/engineer/cycle"
+            explainable_scorecard = $true
+            cycle_runner = $true
         }
         code_write_sandbox = [pscustomobject]@{
             enabled = $true
@@ -1821,6 +2044,7 @@ function Get-TodEngineerRunPayload {
         [string]$Body,
         [switch]$Append,
         [switch]$ApplyPlan,
+        [bool]$DangerousApproved = $false,
         [int]$Top = 10
     )
 
@@ -1916,6 +2140,7 @@ function Get-TodEngineerRunPayload {
     $plan = Invoke-TodSandboxPlanWrite -RelativePath $sandboxPath -Body $effectiveBody -Append:$Append
     $applyResult = $null
     if ($ApplyPlan) {
+        Assert-DangerousActionApproved -Config $Config -ActionName "sandbox-apply-plan" -DangerousApproved:$DangerousApproved
         $applyResult = Invoke-TodSandboxApplyPlan -PlanPath ([string]$plan.artifact_path)
     }
 
@@ -1960,6 +2185,7 @@ function Get-TodEngineerRunPayload {
 function Get-TodEngineerScorecardPayload {
     param(
         [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Config,
         [int]$Top = 25
     )
 
@@ -1994,7 +2220,65 @@ function Get-TodEngineerScorecardPayload {
     $testScore = (& $scoreFrom $testCount 3)
     $manageScore = (& $scoreFrom $manageCount 3)
 
-    $overall = [math]::Round((($createScore + $planScore + $implementScore + $testScore + $manageScore) / 5.0), 4)
+    $dimensionWeights = [ordered]@{
+        create = 0.2
+        plan = 0.2
+        implement = 0.2
+        test = 0.2
+        manage = 0.2
+    }
+
+    $baseScore = [math]::Round((
+            ($createScore * [double]$dimensionWeights.create) +
+            ($planScore * [double]$dimensionWeights.plan) +
+            ($implementScore * [double]$dimensionWeights.implement) +
+            ($testScore * [double]$dimensionWeights.test) +
+            ($manageScore * [double]$dimensionWeights.manage)
+        ), 4)
+
+    $reviewDecisions = if ($State.PSObject.Properties["review_decisions"]) { @($State.review_decisions | Sort-Object created_at -Descending | Select-Object -First $safeTop) } else { @() }
+    $reviseOrEscalate = @($reviewDecisions | Where-Object {
+            $_.PSObject.Properties["decision"] -and
+            @("revise", "escalate") -contains ([string]$_.decision).ToLowerInvariant()
+        })
+    $decisionRate = if (@($reviewDecisions).Count -gt 0) { [double](@($reviseOrEscalate).Count) / [double](@($reviewDecisions).Count) } else { 0.0 }
+
+    $driftWarnings = @()
+    try {
+        $dashboard = Build-ReliabilityDashboardReport -State $State -Config $Config -Window $safeTop -CategoryFilter "" -EngineFilter ""
+        if ($dashboard -and $dashboard.PSObject.Properties["drift_warnings"]) {
+            $driftWarnings = @($dashboard.drift_warnings)
+        }
+    }
+    catch {
+        $driftWarnings = @()
+    }
+
+    $penalties = @()
+    $driftPenalty = [math]::Round([math]::Min(0.15, (@($driftWarnings).Count * 0.03)), 4)
+    if ($driftPenalty -gt 0.0) {
+        $penalties += [pscustomobject]@{ reason = "reliability_drift"; value = $driftPenalty; detail = "Active drift warnings in reliability dashboard." }
+    }
+
+    $reviewPenalty = 0.0
+    if ($decisionRate -ge 0.4) {
+        $reviewPenalty = 0.1
+    }
+    elseif ($decisionRate -ge 0.2) {
+        $reviewPenalty = 0.05
+    }
+    if ($reviewPenalty -gt 0.0) {
+        $penalties += [pscustomobject]@{ reason = "review_rework_rate"; value = $reviewPenalty; detail = "Recent review decisions include revise/escalate outcomes." }
+    }
+
+    $evidenceTotal = [int]($createCount + $planCount + $implementCount + $testCount + $manageCount)
+    $evidencePenalty = if ($evidenceTotal -lt 5) { 0.05 } else { 0.0 }
+    if ($evidencePenalty -gt 0.0) {
+        $penalties += [pscustomobject]@{ reason = "sparse_evidence"; value = $evidencePenalty; detail = "Limited engineering loop evidence in selected window." }
+    }
+
+    $totalPenalty = [math]::Round((@($penalties | ForEach-Object { [double]$_.value } | Measure-Object -Sum).Sum), 4)
+    $overall = [math]::Round([math]::Max(0.0, ($baseScore - $totalPenalty)), 4)
     $band = if ($overall -ge 0.8) { "strong" } elseif ($overall -ge 0.6) { "good" } elseif ($overall -ge 0.4) { "emerging" } else { "early" }
 
     $gaps = @()
@@ -2022,6 +2306,26 @@ function Get-TodEngineerScorecardPayload {
             [pscustomobject]@{ name = "test"; score = $testScore; evidence_count = [int]$testCount; target = 3 },
             [pscustomobject]@{ name = "manage"; score = $manageScore; evidence_count = [int]$manageCount; target = 3 }
         )
+        explainability = [pscustomobject]@{
+            model = "weighted_dimensions_with_penalties_v1"
+            base_score = $baseScore
+            total_penalty = $totalPenalty
+            adjusted_score = $overall
+            contributions = @(
+                [pscustomobject]@{ dimension = "create"; weight = [double]$dimensionWeights.create; contribution = [math]::Round(($createScore * [double]$dimensionWeights.create), 4) },
+                [pscustomobject]@{ dimension = "plan"; weight = [double]$dimensionWeights.plan; contribution = [math]::Round(($planScore * [double]$dimensionWeights.plan), 4) },
+                [pscustomobject]@{ dimension = "implement"; weight = [double]$dimensionWeights.implement; contribution = [math]::Round(($implementScore * [double]$dimensionWeights.implement), 4) },
+                [pscustomobject]@{ dimension = "test"; weight = [double]$dimensionWeights.test; contribution = [math]::Round(($testScore * [double]$dimensionWeights.test), 4) },
+                [pscustomobject]@{ dimension = "manage"; weight = [double]$dimensionWeights.manage; contribution = [math]::Round(($manageScore * [double]$dimensionWeights.manage), 4) }
+            )
+            penalties = @($penalties)
+            evidence_summary = [pscustomobject]@{
+                evidence_total = $evidenceTotal
+                review_decisions_window = [int]@($reviewDecisions).Count
+                revise_or_escalate_rate = [math]::Round($decisionRate, 4)
+                drift_warning_count = [int]@($driftWarnings).Count
+            }
+        }
         recommendations = @(
             "Run engineer-run to generate an implementation plan artifact.",
             "Apply plan in sandbox only after reviewing diff_preview.",
@@ -2536,6 +2840,9 @@ function Get-TodStateBusPayload {
         "/tod/resourcing",
         "/tod/engineer/run",
         "/tod/engineer/scorecard",
+        "/tod/engineer/summary",
+        "/tod/engineer/history",
+        "/tod/engineer/cycle",
         "/tod/sandbox/files",
         "/tod/sandbox/plan",
         "/tod/sandbox/apply",
@@ -3163,6 +3470,14 @@ function Load-TodConfig {
             engineering_loop = [pscustomobject]@{
                 max_run_history = 150
                 max_scorecard_history = 150
+                guardrails = [pscustomobject]@{
+                    require_confirmation_for_apply = $true
+                    require_confirmation_for_write = $false
+                }
+                autonomy = [pscustomobject]@{
+                    max_cycles_per_run = 5
+                    stop_at_score = 0.85
+                }
             }
             execution_engine = [pscustomobject]@{
                 active = "codex"
@@ -3260,6 +3575,33 @@ function Load-TodConfig {
     if (-not $cfg.engineering_loop.PSObject.Properties["max_scorecard_history"] -or $null -eq $cfg.engineering_loop.max_scorecard_history) { $cfg.engineering_loop.max_scorecard_history = 150 }
     $cfg.engineering_loop.max_run_history = [math]::Max(10, [math]::Min(1000, [int]$cfg.engineering_loop.max_run_history))
     $cfg.engineering_loop.max_scorecard_history = [math]::Max(10, [math]::Min(1000, [int]$cfg.engineering_loop.max_scorecard_history))
+    if (-not $cfg.engineering_loop.PSObject.Properties["guardrails"] -or $null -eq $cfg.engineering_loop.guardrails) {
+        $cfg.engineering_loop | Add-Member -NotePropertyName guardrails -NotePropertyValue ([pscustomobject]@{
+                require_confirmation_for_apply = $true
+                require_confirmation_for_write = $false
+            }) -Force
+    }
+    if (-not $cfg.engineering_loop.guardrails.PSObject.Properties["require_confirmation_for_apply"] -or $null -eq $cfg.engineering_loop.guardrails.require_confirmation_for_apply) {
+        $cfg.engineering_loop.guardrails.require_confirmation_for_apply = $true
+    }
+    if (-not $cfg.engineering_loop.guardrails.PSObject.Properties["require_confirmation_for_write"] -or $null -eq $cfg.engineering_loop.guardrails.require_confirmation_for_write) {
+        $cfg.engineering_loop.guardrails.require_confirmation_for_write = $false
+    }
+
+    if (-not $cfg.engineering_loop.PSObject.Properties["autonomy"] -or $null -eq $cfg.engineering_loop.autonomy) {
+        $cfg.engineering_loop | Add-Member -NotePropertyName autonomy -NotePropertyValue ([pscustomobject]@{
+                max_cycles_per_run = 5
+                stop_at_score = 0.85
+            }) -Force
+    }
+    if (-not $cfg.engineering_loop.autonomy.PSObject.Properties["max_cycles_per_run"] -or $null -eq $cfg.engineering_loop.autonomy.max_cycles_per_run) {
+        $cfg.engineering_loop.autonomy.max_cycles_per_run = 5
+    }
+    if (-not $cfg.engineering_loop.autonomy.PSObject.Properties["stop_at_score"] -or $null -eq $cfg.engineering_loop.autonomy.stop_at_score) {
+        $cfg.engineering_loop.autonomy.stop_at_score = 0.85
+    }
+    $cfg.engineering_loop.autonomy.max_cycles_per_run = [math]::Max(1, [math]::Min(20, [int]$cfg.engineering_loop.autonomy.max_cycles_per_run))
+    $cfg.engineering_loop.autonomy.stop_at_score = [math]::Max(0.0, [math]::Min(1.0, [double]$cfg.engineering_loop.autonomy.stop_at_score))
 
     if (-not $cfg.PSObject.Properties["execution_engine"] -or $null -eq $cfg.execution_engine) {
         $cfg | Add-Member -NotePropertyName execution_engine -NotePropertyValue ([pscustomobject]@{
@@ -5756,7 +6098,7 @@ switch ($Action) {
     }
 
     "engineer-run" {
-        $payload = Get-TodEngineerRunPayload -State $state -Config $config -ObjectiveId $ObjectiveId -TaskId $TaskId -Body $Content -Append:$Append -ApplyPlan:$ApplyPlan -Top $Top
+        $payload = Get-TodEngineerRunPayload -State $state -Config $config -ObjectiveId $ObjectiveId -TaskId $TaskId -Body $Content -Append:$Append -ApplyPlan:$ApplyPlan -DangerousApproved:$DangerousApproved -Top $Top
         $runHistoryLimit = Resolve-EngineeringLoopHistoryLimit -Config $config -Kind "run_history"
         $null = Add-EngineeringRunHistoryRecord -State $state -Payload $payload -MaxEntries $runHistoryLimit
         Add-Journal -State $state -Actor "tod" -ActionName "engineer_run" -EntityType "task" -EntityId $(if (-not [string]::IsNullOrWhiteSpace([string]$payload.focus.task_id)) { [string]$payload.focus.task_id } else { "none" }) -Payload $payload
@@ -5765,11 +6107,27 @@ switch ($Action) {
     }
 
     "engineer-scorecard" {
-        $payload = Get-TodEngineerScorecardPayload -State $state -Top $Top
+        $payload = Get-TodEngineerScorecardPayload -State $state -Config $config -Top $Top
         $scorecardHistoryLimit = Resolve-EngineeringLoopHistoryLimit -Config $config -Kind "scorecard_history"
         $null = Add-EngineeringScorecardHistoryRecord -State $state -Payload $payload -MaxEntries $scorecardHistoryLimit
         Save-State -State $state
         $payload | ConvertTo-Json -Depth 18
+    }
+
+    "get-engineering-loop-summary" {
+        $payload = Get-TodEngineeringLoopSummaryPayload -State $state -Config $config -Top $Top
+        $payload | ConvertTo-Json -Depth 18
+    }
+
+    "get-engineering-loop-history" {
+        $payload = Get-TodEngineeringLoopHistoryPayload -State $state -Config $config -HistoryKind $HistoryKind -Page $Page -PageSize $PageSize
+        $payload | ConvertTo-Json -Depth 24
+    }
+
+    "engineer-cycle" {
+        $payload = Get-TodEngineerCyclePayload -State $state -Config $config -Cycles $Cycles -Top $Top -DangerousApproved:$DangerousApproved
+        Save-State -State $state
+        $payload | ConvertTo-Json -Depth 24
     }
 
     "sandbox-list" {
@@ -5789,6 +6147,7 @@ switch ($Action) {
 
     "sandbox-apply-plan" {
         if ([string]::IsNullOrWhiteSpace($SandboxPlanPath)) { throw "-SandboxPlanPath is required" }
+        Assert-DangerousActionApproved -Config $config -ActionName "sandbox-apply-plan" -DangerousApproved:$DangerousApproved
 
         $payload = Invoke-TodSandboxApplyPlan -PlanPath $SandboxPlanPath
         Add-Journal -State $state -Actor "tod" -ActionName "sandbox_apply_plan" -EntityType "sandbox_file" -EntityId ([string]$payload.sandbox_path) -Payload $payload
@@ -5799,6 +6158,7 @@ switch ($Action) {
     "sandbox-write" {
         if ([string]::IsNullOrWhiteSpace($SandboxPath)) { throw "-SandboxPath is required" }
         if ($null -eq $Content) { throw "-Content is required" }
+        Assert-DangerousActionApproved -Config $config -ActionName "sandbox-write" -DangerousApproved:$DangerousApproved
 
         $payload = Invoke-TodSandboxWrite -RelativePath $SandboxPath -Body ([string]$Content) -Append:$Append
         Add-Journal -State $state -Actor "tod" -ActionName "sandbox_write" -EntityType "sandbox_file" -EntityId ([string]$payload.sandbox_path) -Payload $payload
