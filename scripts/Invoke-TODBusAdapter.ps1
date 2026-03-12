@@ -10,6 +10,7 @@ param(
     [string]$PlanId,
     [string]$ActionId,
     [string]$SourceDomain,
+    [string]$SourceContext,
     [string[]]$ArtifactPaths = @(),
     [string]$EventStreamPath = "tod/out/bus/events.jsonl",
     [string]$InboundInboxPath = "tod/inbox/bus/events",
@@ -102,8 +103,13 @@ function Get-AdapterState {
                 guardrail_blocked = 0
                 failed_runtime = 0
                 successful_runtime = 0
+                paused_pending_inquiry = 0
+                resumed_after_inquiry = 0
+                deferred_for_operator_clarification = 0
+                cancelled_pending_inquiry_timeout = 0
             }
             accepted_execution_ids = @()
+            paused_execution_ids = @()
         }
     }
 
@@ -116,11 +122,15 @@ function Get-AdapterState {
     if (-not $state.PSObject.Properties["accepted_execution_ids"] -or $null -eq $state.accepted_execution_ids) {
         $state | Add-Member -NotePropertyName accepted_execution_ids -NotePropertyValue @() -Force
     }
+    if (-not $state.PSObject.Properties["paused_execution_ids"] -or $null -eq $state.paused_execution_ids) {
+        $state | Add-Member -NotePropertyName paused_execution_ids -NotePropertyValue @() -Force
+    }
 
     foreach ($name in @(
             "inbound_accepted", "inbound_rejected", "inbound_ignored", "inbound_duplicate", "outbound_published",
             "retries_scheduled", "recoveries", "drift_detected", "fallback_applied", "cancelled",
-            "guardrail_blocked", "failed_runtime", "successful_runtime"
+            "guardrail_blocked", "failed_runtime", "successful_runtime", "paused_pending_inquiry",
+            "resumed_after_inquiry", "deferred_for_operator_clarification", "cancelled_pending_inquiry_timeout"
         )) {
         if (-not $state.counters.PSObject.Properties[$name]) {
             $state.counters | Add-Member -NotePropertyName $name -NotePropertyValue 0 -Force
@@ -193,6 +203,54 @@ function Resolve-DomainPolicyDecision {
     return [pscustomobject]@{ decision = "blocked"; source_domain = $domainValue; matched_domain = $matchedDomain }
 }
 
+function Resolve-PerceptionContextDecision {
+    param(
+        [Parameter(Mandatory = $true)]$Policy,
+        [Parameter(Mandatory = $true)][string]$SourceDomain,
+        [Parameter(Mandatory = $true)][string]$RuntimeAction,
+        $Payload
+    )
+
+    if (-not $Policy.PSObject.Properties["perception_context_rules"] -or $null -eq $Policy.perception_context_rules) {
+        return $null
+    }
+
+    $contextState = ""
+    $contextSafety = ""
+    if ($null -ne $Payload -and $Payload.PSObject.Properties["perception_context"] -and $Payload.perception_context) {
+        if ($Payload.perception_context.PSObject.Properties["state"] -and -not [string]::IsNullOrWhiteSpace([string]$Payload.perception_context.state)) {
+            $contextState = [string]$Payload.perception_context.state
+        }
+        if ($Payload.perception_context.PSObject.Properties["safety"] -and -not [string]::IsNullOrWhiteSpace([string]$Payload.perception_context.safety)) {
+            $contextSafety = [string]$Payload.perception_context.safety
+        }
+    }
+
+    foreach ($rule in @($Policy.perception_context_rules)) {
+        $domainMatches = [string]$rule.domain -ieq $SourceDomain
+        if (-not $domainMatches) { continue }
+
+        $actionMatches = (@($rule.runtime_actions).Count -eq 0) -or (@($rule.runtime_actions) -contains $RuntimeAction)
+        if (-not $actionMatches) { continue }
+
+        $stateMatches = (@($rule.context_states).Count -eq 0) -or (@($rule.context_states) -contains $contextState)
+        if (-not $stateMatches) { continue }
+
+        $safetyMatches = (@($rule.context_safety).Count -eq 0) -or (@($rule.context_safety) -contains $contextSafety)
+        if (-not $safetyMatches) { continue }
+
+        return [pscustomobject]@{
+            decision = [string]$rule.decision
+            reason_code = [string]$rule.reason_code
+            message = [string]$rule.message
+            context_state = $contextState
+            context_safety = $contextSafety
+        }
+    }
+
+    return $null
+}
+
 function New-Reason {
     param(
         [Parameter(Mandatory = $true)][string]$Code,
@@ -245,6 +303,7 @@ function New-CorrelationObject {
     if (-not [string]::IsNullOrWhiteSpace($PlanId)) { $corr.plan_id = $PlanId }
     if (-not [string]::IsNullOrWhiteSpace($ActionId)) { $corr.action_id = $ActionId }
     if (-not [string]::IsNullOrWhiteSpace($SourceDomain)) { $corr.source_domain = $SourceDomain }
+    if (-not [string]::IsNullOrWhiteSpace($SourceContext)) { $corr.source_context = $SourceContext }
     return [pscustomobject]$corr
 }
 
@@ -282,9 +341,15 @@ function Build-CorrelationFromEvent {
         trace_id = [string]$Event.correlation.trace_id
         execution_id = [string]$Event.correlation.execution_id
     }
-    foreach ($name in @("goal_id", "plan_id", "action_id", "source_domain")) {
+    foreach ($name in @("goal_id", "plan_id", "action_id", "source_domain", "source_context")) {
         if ($Event.correlation.PSObject.Properties[$name] -and -not [string]::IsNullOrWhiteSpace([string]$Event.correlation.$name)) {
             $corr[$name] = [string]$Event.correlation.$name
+        }
+    }
+
+    if (-not $corr.Contains("source_context") -and $Event.PSObject.Properties["payload"] -and $Event.payload -and $Event.payload.PSObject.Properties["perception_context"] -and $Event.payload.perception_context) {
+        if ($Event.payload.perception_context.PSObject.Properties["context_id"] -and -not [string]::IsNullOrWhiteSpace([string]$Event.payload.perception_context.context_id)) {
+            $corr["source_context"] = [string]$Event.payload.perception_context.context_id
         }
     }
     return [pscustomobject]$corr
@@ -299,7 +364,7 @@ function Get-ReliabilitySignal {
         [Parameter(Mandatory = $true)][bool]$Recovered
     )
 
-    if ($FinalOutcome -in @("failed", "cancelled", "guardrail_blocked")) {
+    if ($FinalOutcome -in @("failed", "cancelled", "guardrail_blocked", "cancelled_pending_inquiry_timeout")) {
         return "critical"
     }
     if ($DriftEvents -gt 0 -or $Fallbacks -gt 0) {
@@ -380,9 +445,15 @@ function Build-ExecutionSummaries {
         $traceIdValue = [string]$first.correlation.trace_id
         $executionIdValue = [string]$first.correlation.execution_id
         $sourceDomainValue = ""
+        $sourceContextValue = ""
         foreach ($evtWithDomain in @($groupEvents)) {
             if ($evtWithDomain.PSObject.Properties["correlation"] -and $evtWithDomain.correlation -and $evtWithDomain.correlation.PSObject.Properties["source_domain"] -and -not [string]::IsNullOrWhiteSpace([string]$evtWithDomain.correlation.source_domain)) {
                 $sourceDomainValue = [string]$evtWithDomain.correlation.source_domain
+            }
+            if ($evtWithDomain.PSObject.Properties["correlation"] -and $evtWithDomain.correlation -and $evtWithDomain.correlation.PSObject.Properties["source_context"] -and -not [string]::IsNullOrWhiteSpace([string]$evtWithDomain.correlation.source_context)) {
+                $sourceContextValue = [string]$evtWithDomain.correlation.source_context
+            }
+            if (-not [string]::IsNullOrWhiteSpace($sourceDomainValue) -and -not [string]::IsNullOrWhiteSpace($sourceContextValue)) {
                 break
             }
         }
@@ -392,10 +463,17 @@ function Build-ExecutionSummaries {
         $recovered = [bool](@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.recovered" }).Count -gt 0)
         $driftEvents = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.drift_detected" }).Count
         $cancelled = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.cancelled" }).Count
+        $pausedEvents = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.paused_pending_inquiry" }).Count
+        $resumedEvents = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.resumed_after_inquiry" }).Count
+        $inquiryDeferrals = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.deferred_for_operator_clarification" }).Count
+        $inquiryTimeoutCancellations = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.cancelled_pending_inquiry_timeout" }).Count
         $guardrailBlocks = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.guardrail_blocked" }).Count
 
         $finalOutcome = "in_progress"
-        if (@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.cancelled" }).Count -gt 0) {
+        if ($inquiryTimeoutCancellations -gt 0) {
+            $finalOutcome = "cancelled_pending_inquiry_timeout"
+        }
+        elseif (@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.cancelled" }).Count -gt 0) {
             $finalOutcome = "cancelled"
         }
         elseif (@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.guardrail_blocked" }).Count -gt 0) {
@@ -406,6 +484,29 @@ function Build-ExecutionSummaries {
         }
         elseif (@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.succeeded" }).Count -gt 0) {
             $finalOutcome = "succeeded"
+        }
+        elseif ($resumedEvents -gt 0) {
+            $finalOutcome = "resumed_after_inquiry"
+        }
+        elseif ($inquiryDeferrals -gt 0) {
+            $finalOutcome = "deferred_for_operator_clarification"
+        }
+        elseif ($pausedEvents -gt 0) {
+            $finalOutcome = "paused_pending_inquiry"
+        }
+
+        $inquiryState = "none"
+        if ($inquiryTimeoutCancellations -gt 0) {
+            $inquiryState = "cancelled_pending_inquiry_timeout"
+        }
+        elseif ($resumedEvents -gt 0) {
+            $inquiryState = "resumed_after_inquiry"
+        }
+        elseif ($inquiryDeferrals -gt 0) {
+            $inquiryState = "deferred_for_operator_clarification"
+        }
+        elseif ($pausedEvents -gt 0) {
+            $inquiryState = "paused_pending_inquiry"
         }
 
         $reliabilitySignal = Get-ReliabilitySignal -FinalOutcome $finalOutcome -Retries $retries -Fallbacks $fallbacks -DriftEvents $driftEvents -Recovered $recovered
@@ -428,11 +529,17 @@ function Build-ExecutionSummaries {
             trace_id = $traceIdValue
             execution_id = $executionIdValue
             source_domain = $sourceDomainValue
+            source_context = $sourceContextValue
             final_outcome = $finalOutcome
             retries = $retries
             fallbacks = $fallbacks
             recovered = $recovered
             drift_events = $driftEvents
+            paused_events = $pausedEvents
+            resumed_events = $resumedEvents
+            inquiry_deferrals = $inquiryDeferrals
+            inquiry_timeout_cancellations = $inquiryTimeoutCancellations
+            inquiry_state = $inquiryState
             cancelled = $cancelled
             guardrail_blocks = $guardrailBlocks
             reliability_signal = $reliabilitySignal
@@ -539,6 +646,10 @@ function Write-StatusArtifact {
             drift_detected = [int]$state.counters.drift_detected
             fallback_applied = [int]$state.counters.fallback_applied
             cancelled = [int]$state.counters.cancelled
+            paused_pending_inquiry = [int]$state.counters.paused_pending_inquiry
+            resumed_after_inquiry = [int]$state.counters.resumed_after_inquiry
+            deferred_for_operator_clarification = [int]$state.counters.deferred_for_operator_clarification
+            cancelled_pending_inquiry_timeout = [int]$state.counters.cancelled_pending_inquiry_timeout
             guardrail_blocked = [int]$state.counters.guardrail_blocked
             failed_runtime = [int]$state.counters.failed_runtime
             successful_runtime = [int]$state.counters.successful_runtime
@@ -655,7 +766,9 @@ switch ($Action) {
             $executionIdValue = Get-ExecutionIdFromEvent -Event $event
 
             if ($inboundType -eq "execution.cancel_requested") {
-                if (@($state.accepted_execution_ids) -notcontains $executionIdValue) {
+                $isAccepted = (@($state.accepted_execution_ids) -contains $executionIdValue)
+                $isPaused = (@($state.paused_execution_ids) -contains $executionIdValue)
+                if ((-not $isAccepted) -and (-not $isPaused)) {
                     $state.counters.inbound_ignored = [int]$state.counters.inbound_ignored + 1
                     Save-AdapterState -State $state -StateFile $stateAbs
                     Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
@@ -672,26 +785,195 @@ switch ($Action) {
                 }
 
                 $corrCancelled = Build-CorrelationFromEvent -Event $event
+                $isInquiryTimeout = $false
+                if ($event.PSObject.Properties["payload"] -and $event.payload) {
+                    if ($event.payload.PSObject.Properties["cancel_reason"] -and [string]$event.payload.cancel_reason -eq "pending_inquiry_timeout") {
+                        $isInquiryTimeout = $true
+                    }
+                    if ($event.payload.PSObject.Properties["reason_code"] -and [string]$event.payload.reason_code -eq "pending_inquiry_timeout") {
+                        $isInquiryTimeout = $true
+                    }
+                    if ($event.payload.PSObject.Properties["pending_inquiry_timeout"] -and [bool]$event.payload.pending_inquiry_timeout) {
+                        $isInquiryTimeout = $true
+                    }
+                }
                 $cancelEventId = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 12))
-                $cancelReason = New-Reason -Code "execution_cancelled" -Severity "warning" -Category "execution" -Message "Cancellation request accepted for active execution." -Evidence ([pscustomobject]@{ execution_id = $executionIdValue })
-                $null = Publish-EventInternal -Type "execution.cancelled" -Id $cancelEventId -Correlation $corrCancelled -Payload ([pscustomobject]@{ state = "cancelled"; cause = "cancel_requested" }) -Reasons @($cancelReason) -Artifacts @()
+                if ($isInquiryTimeout) {
+                    $cancelReason = New-Reason -Code "inquiry_timeout_cancelled" -Severity "warning" -Category "execution" -Message "Execution cancelled after pending inquiry timeout." -Evidence ([pscustomobject]@{ execution_id = $executionIdValue })
+                    $null = Publish-EventInternal -Type "execution.cancelled_pending_inquiry_timeout" -Id $cancelEventId -Correlation $corrCancelled -Payload ([pscustomobject]@{ state = "cancelled"; cause = "pending_inquiry_timeout" }) -Reasons @($cancelReason) -Artifacts @()
+                    $state.counters.cancelled_pending_inquiry_timeout = [int]$state.counters.cancelled_pending_inquiry_timeout + 1
+                }
+                else {
+                    $cancelReason = New-Reason -Code "execution_cancelled" -Severity "warning" -Category "execution" -Message "Cancellation request accepted for active execution." -Evidence ([pscustomobject]@{ execution_id = $executionIdValue })
+                    $null = Publish-EventInternal -Type "execution.cancelled" -Id $cancelEventId -Correlation $corrCancelled -Payload ([pscustomobject]@{ state = "cancelled"; cause = "cancel_requested" }) -Reasons @($cancelReason) -Artifacts @()
+                }
 
                 $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
                 $state.accepted_execution_ids = @($state.accepted_execution_ids | Where-Object { [string]$_ -ne $executionIdValue })
+                $state.paused_execution_ids = @($state.paused_execution_ids | Where-Object { [string]$_ -ne $executionIdValue })
                 $state.counters.inbound_accepted = [int]$state.counters.inbound_accepted + 1
                 $state.counters.cancelled = [int]$state.counters.cancelled + 1
                 Save-AdapterState -State $state -StateFile $stateAbs
+                $cancelStatus = "accepted_cancelled"
+                if ($isInquiryTimeout) {
+                    $cancelStatus = "accepted_cancelled_pending_inquiry_timeout"
+                }
                 Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
                         logged_at = (Get-Date).ToUniversalTime().ToString("o")
-                        status = "accepted_cancelled"
+                        status = $cancelStatus
                         reason = "request_validated"
                         event_id = $eventIdValue
                         event_type = $inboundType
                         trace_id = [string]$event.correlation.trace_id
                         execution_id = $executionIdValue
                     })
-                Write-StatusArtifact -LastAction "consume-event" -LastStatus "accepted_cancelled" -LastEventId $eventIdValue
-                [pscustomobject]@{ ok = $true; action = "consume-event"; status = "accepted_cancelled"; event_id = $eventIdValue; event_type = $inboundType } | ConvertTo-Json -Depth 10 | Write-Output
+                Write-StatusArtifact -LastAction "consume-event" -LastStatus $cancelStatus -LastEventId $eventIdValue
+                [pscustomobject]@{ ok = $true; action = "consume-event"; status = $cancelStatus; event_id = $eventIdValue; event_type = $inboundType } | ConvertTo-Json -Depth 10 | Write-Output
+                break
+            }
+
+            if ($inboundType -eq "execution.pause_requested") {
+                $isAccepted = (@($state.accepted_execution_ids) -contains $executionIdValue)
+                $isPaused = (@($state.paused_execution_ids) -contains $executionIdValue)
+                if ((-not $isAccepted) -and (-not $isPaused)) {
+                    $state.counters.inbound_ignored = [int]$state.counters.inbound_ignored + 1
+                    Save-AdapterState -State $state -StateFile $stateAbs
+                    Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
+                            logged_at = (Get-Date).ToUniversalTime().ToString("o")
+                            status = "ignored_out_of_order"
+                            reason = "request_out_of_order_ignored"
+                            event_id = $eventIdValue
+                            event_type = $inboundType
+                            execution_id = $executionIdValue
+                        })
+                    Write-StatusArtifact -LastAction "consume-event" -LastStatus "ignored_out_of_order" -LastEventId $eventIdValue
+                    [pscustomobject]@{ ok = $true; action = "consume-event"; status = "ignored_out_of_order"; event_id = $eventIdValue; event_type = $inboundType } | ConvertTo-Json -Depth 10 | Write-Output
+                    break
+                }
+
+                $deferForClarification = $false
+                if ($event.PSObject.Properties["payload"] -and $event.payload -and $event.payload.PSObject.Properties["defer_for_operator_clarification"]) {
+                    $deferForClarification = [bool]$event.payload.defer_for_operator_clarification
+                }
+
+                $corrPaused = Build-CorrelationFromEvent -Event $event
+                $pauseEventId = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 12))
+                if ($deferForClarification) {
+                    $deferReason = New-Reason -Code "inquiry_deferred_for_operator_clarification" -Severity "warning" -Category "execution" -Message "Execution deferred for operator clarification." -Evidence ([pscustomobject]@{ execution_id = $executionIdValue })
+                    $null = Publish-EventInternal -Type "execution.deferred_for_operator_clarification" -Id $pauseEventId -Correlation $corrPaused -Payload ([pscustomobject]@{ state = "deferred_for_operator_clarification"; cause = "inquiry_pending" }) -Reasons @($deferReason) -Artifacts @()
+                    $state.counters.deferred_for_operator_clarification = [int]$state.counters.deferred_for_operator_clarification + 1
+                }
+                else {
+                    $pauseReason = New-Reason -Code "inquiry_pause_requested" -Severity "warning" -Category "execution" -Message "Execution paused pending inquiry resolution." -Evidence ([pscustomobject]@{ execution_id = $executionIdValue })
+                    $null = Publish-EventInternal -Type "execution.paused_pending_inquiry" -Id $pauseEventId -Correlation $corrPaused -Payload ([pscustomobject]@{ state = "paused_pending_inquiry"; cause = "pause_requested" }) -Reasons @($pauseReason) -Artifacts @()
+                    $state.counters.paused_pending_inquiry = [int]$state.counters.paused_pending_inquiry + 1
+                }
+
+                $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
+                $state.accepted_execution_ids = @($state.accepted_execution_ids | Where-Object { [string]$_ -ne $executionIdValue })
+                if (@($state.paused_execution_ids) -notcontains $executionIdValue) {
+                    $state.paused_execution_ids = @($state.paused_execution_ids) + @($executionIdValue)
+                }
+                $state.counters.inbound_accepted = [int]$state.counters.inbound_accepted + 1
+                Save-AdapterState -State $state -StateFile $stateAbs
+
+                $pauseStatus = if ($deferForClarification) { "deferred_for_operator_clarification" } else { "paused_pending_inquiry" }
+                Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
+                        logged_at = (Get-Date).ToUniversalTime().ToString("o")
+                        status = $pauseStatus
+                        reason = "request_validated"
+                        event_id = $eventIdValue
+                        event_type = $inboundType
+                        trace_id = [string]$event.correlation.trace_id
+                        execution_id = $executionIdValue
+                    })
+                Write-StatusArtifact -LastAction "consume-event" -LastStatus $pauseStatus -LastEventId $eventIdValue
+                [pscustomobject]@{ ok = $true; action = "consume-event"; status = $pauseStatus; event_id = $eventIdValue; event_type = $inboundType } | ConvertTo-Json -Depth 10 | Write-Output
+                break
+            }
+
+            if ($inboundType -eq "execution.resume_requested") {
+                if (@($state.paused_execution_ids) -notcontains $executionIdValue) {
+                    $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
+                    $state.counters.inbound_rejected = [int]$state.counters.inbound_rejected + 1
+                    Save-AdapterState -State $state -StateFile $stateAbs
+                    Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
+                            logged_at = (Get-Date).ToUniversalTime().ToString("o")
+                            status = "rejected_invalid_resume"
+                            reason = "inquiry_resume_invalid_state"
+                            event_id = $eventIdValue
+                            event_type = $inboundType
+                            execution_id = $executionIdValue
+                        })
+                    Write-StatusArtifact -LastAction "consume-event" -LastStatus "rejected_invalid_resume" -LastEventId $eventIdValue
+                    [pscustomobject]@{ ok = $false; action = "consume-event"; status = "rejected_invalid_resume"; event_id = $eventIdValue; event_type = $inboundType } | ConvertTo-Json -Depth 10 | Write-Output
+                    break
+                }
+
+                $corrResumed = Build-CorrelationFromEvent -Event $event
+                $resumeEventId = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 12))
+                $resumeReason = New-Reason -Code "inquiry_resumed" -Severity "info" -Category "execution" -Message "Execution resumed after inquiry resolution." -Evidence ([pscustomobject]@{ execution_id = $executionIdValue })
+                $null = Publish-EventInternal -Type "execution.resumed_after_inquiry" -Id $resumeEventId -Correlation $corrResumed -Payload ([pscustomobject]@{ state = "resumed_after_inquiry"; cause = "resume_requested" }) -Reasons @($resumeReason) -Artifacts @()
+
+                $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
+                $state.paused_execution_ids = @($state.paused_execution_ids | Where-Object { [string]$_ -ne $executionIdValue })
+                if (@($state.accepted_execution_ids) -notcontains $executionIdValue) {
+                    $state.accepted_execution_ids = @($state.accepted_execution_ids) + @($executionIdValue)
+                }
+                $state.counters.inbound_accepted = [int]$state.counters.inbound_accepted + 1
+                $state.counters.resumed_after_inquiry = [int]$state.counters.resumed_after_inquiry + 1
+                Save-AdapterState -State $state -StateFile $stateAbs
+                Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
+                        logged_at = (Get-Date).ToUniversalTime().ToString("o")
+                        status = "resumed_after_inquiry"
+                        reason = "request_validated"
+                        event_id = $eventIdValue
+                        event_type = $inboundType
+                        trace_id = [string]$event.correlation.trace_id
+                        execution_id = $executionIdValue
+                    })
+                Write-StatusArtifact -LastAction "consume-event" -LastStatus "resumed_after_inquiry" -LastEventId $eventIdValue
+                [pscustomobject]@{ ok = $true; action = "consume-event"; status = "resumed_after_inquiry"; event_id = $eventIdValue; event_type = $inboundType } | ConvertTo-Json -Depth 10 | Write-Output
+                break
+            }
+
+            if ($inboundType -eq "execution.clarification_received") {
+                if (@($state.paused_execution_ids) -notcontains $executionIdValue) {
+                    $state.counters.inbound_ignored = [int]$state.counters.inbound_ignored + 1
+                    Save-AdapterState -State $state -StateFile $stateAbs
+                    Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
+                            logged_at = (Get-Date).ToUniversalTime().ToString("o")
+                            status = "ignored_out_of_order"
+                            reason = "request_out_of_order_ignored"
+                            event_id = $eventIdValue
+                            event_type = $inboundType
+                            execution_id = $executionIdValue
+                        })
+                    Write-StatusArtifact -LastAction "consume-event" -LastStatus "ignored_out_of_order" -LastEventId $eventIdValue
+                    [pscustomobject]@{ ok = $true; action = "consume-event"; status = "ignored_out_of_order"; event_id = $eventIdValue; event_type = $inboundType } | ConvertTo-Json -Depth 10 | Write-Output
+                    break
+                }
+
+                $corrClarified = Build-CorrelationFromEvent -Event $event
+                $clarificationEventId = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 12))
+                $clarificationReason = New-Reason -Code "clarification_received" -Severity "info" -Category "execution" -Message "Clarification received while execution remains paused/deferred." -Evidence ([pscustomobject]@{ execution_id = $executionIdValue })
+                $null = Publish-EventInternal -Type "execution.deferred_for_operator_clarification" -Id $clarificationEventId -Correlation $corrClarified -Payload ([pscustomobject]@{ state = "deferred_for_operator_clarification"; cause = "clarification_received" }) -Reasons @($clarificationReason) -Artifacts @()
+
+                $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
+                $state.counters.inbound_accepted = [int]$state.counters.inbound_accepted + 1
+                $state.counters.deferred_for_operator_clarification = [int]$state.counters.deferred_for_operator_clarification + 1
+                Save-AdapterState -State $state -StateFile $stateAbs
+                Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
+                        logged_at = (Get-Date).ToUniversalTime().ToString("o")
+                        status = "deferred_for_operator_clarification"
+                        reason = "request_validated"
+                        event_id = $eventIdValue
+                        event_type = $inboundType
+                        trace_id = [string]$event.correlation.trace_id
+                        execution_id = $executionIdValue
+                    })
+                Write-StatusArtifact -LastAction "consume-event" -LastStatus "deferred_for_operator_clarification" -LastEventId $eventIdValue
+                [pscustomobject]@{ ok = $true; action = "consume-event"; status = "deferred_for_operator_clarification"; event_id = $eventIdValue; event_type = $inboundType } | ConvertTo-Json -Depth 10 | Write-Output
                 break
             }
 
@@ -755,6 +1037,22 @@ switch ($Action) {
             }
 
             $domainPolicy = Resolve-DomainPolicyDecision -Policy $executionDomainPolicy -SourceDomain $sourceDomainValue -RuntimeAction $runtimeAction
+            $payloadForPolicy = $null
+            if ($event.PSObject.Properties["payload"]) {
+                $payloadForPolicy = $event.payload
+            }
+            $perceptionDecision = Resolve-PerceptionContextDecision -Policy $executionDomainPolicy -SourceDomain $sourceDomainValue -RuntimeAction $runtimeAction -Payload $payloadForPolicy
+            $domainDecisionCode = ""
+            $domainDecisionMessage = ""
+            if ($null -ne $perceptionDecision) {
+                $domainPolicy = [pscustomobject]@{
+                    decision = [string]$perceptionDecision.decision
+                    source_domain = $sourceDomainValue
+                    matched_domain = $sourceDomainValue
+                }
+                $domainDecisionCode = [string]$perceptionDecision.reason_code
+                $domainDecisionMessage = [string]$perceptionDecision.message
+            }
             if ([string]$domainPolicy.decision -eq "unsupported_domain") {
                 $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
                 $state.counters.inbound_ignored = [int]$state.counters.inbound_ignored + 1
@@ -776,8 +1074,8 @@ switch ($Action) {
             if ([string]$domainPolicy.decision -in @("blocked", "deferred")) {
                 $corrDomainBlocked = Build-CorrelationFromEvent -Event $event
                 $domainBlockedId = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 12))
-                $reasonCode = if ([string]$domainPolicy.decision -eq "deferred") { "domain_policy_deferred" } else { "domain_policy_blocked" }
-                $reasonMessage = if ([string]$domainPolicy.decision -eq "deferred") { "Runtime action deferred by cross-domain execution policy." } else { "Runtime action blocked by cross-domain execution policy." }
+                $reasonCode = if (-not [string]::IsNullOrWhiteSpace($domainDecisionCode)) { $domainDecisionCode } elseif ([string]$domainPolicy.decision -eq "deferred") { "domain_policy_deferred" } else { "domain_policy_blocked" }
+                $reasonMessage = if (-not [string]::IsNullOrWhiteSpace($domainDecisionMessage)) { $domainDecisionMessage } elseif ([string]$domainPolicy.decision -eq "deferred") { "Runtime action deferred by cross-domain execution policy." } else { "Runtime action blocked by cross-domain execution policy." }
                 $null = Publish-EventInternal -Type "execution.guardrail_blocked" -Id $domainBlockedId -Correlation $corrDomainBlocked -Payload ([pscustomobject]@{ runtime_action = $runtimeAction; decision = [string]$domainPolicy.decision; source_domain = [string]$domainPolicy.source_domain; policy_path = $ExecutionDomainPolicyPath }) -Reasons @(
                     New-Reason -Code $reasonCode -Severity "warning" -Category "guardrail" -Message $reasonMessage -Evidence ([pscustomobject]@{ runtime_action = $runtimeAction; source_domain = [string]$domainPolicy.source_domain; matched_domain = [string]$domainPolicy.matched_domain })
                 ) -Artifacts @()
@@ -829,8 +1127,10 @@ switch ($Action) {
                 ) -Artifacts @()
 
                 $dryRunSuccessId = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 12))
-                $null = Publish-EventInternal -Type "execution.succeeded" -Id $dryRunSuccessId -Correlation $corrDryRun -Payload ([pscustomobject]@{ runtime_action = $runtimeAction; dry_run = $true; result = [pscustomobject]@{ status = "dry_run"; policy_reason = "domain_policy_dry_run_only" } }) -Reasons @(
-                    New-Reason -Code "domain_policy_dry_run_only" -Severity "info" -Category "guardrail" -Message "Domain policy limited execution to dry-run only." -Evidence ([pscustomobject]@{ runtime_action = $runtimeAction; source_domain = [string]$domainPolicy.source_domain })
+                $dryRunReasonCode = if (-not [string]::IsNullOrWhiteSpace($domainDecisionCode)) { $domainDecisionCode } else { "domain_policy_dry_run_only" }
+                $dryRunReasonMessage = if (-not [string]::IsNullOrWhiteSpace($domainDecisionMessage)) { $domainDecisionMessage } else { "Domain policy limited execution to dry-run only." }
+                $null = Publish-EventInternal -Type "execution.succeeded" -Id $dryRunSuccessId -Correlation $corrDryRun -Payload ([pscustomobject]@{ runtime_action = $runtimeAction; dry_run = $true; result = [pscustomobject]@{ status = "dry_run"; policy_reason = $dryRunReasonCode } }) -Reasons @(
+                    New-Reason -Code $dryRunReasonCode -Severity "info" -Category "guardrail" -Message $dryRunReasonMessage -Evidence ([pscustomobject]@{ runtime_action = $runtimeAction; source_domain = [string]$domainPolicy.source_domain })
                 ) -Artifacts @()
 
                 Write-StatusArtifact -LastAction "consume-event" -LastStatus "accepted_dry_run" -LastEventId $eventIdValue
@@ -880,7 +1180,8 @@ switch ($Action) {
 
             $corrAccepted = Build-CorrelationFromEvent -Event $event
             $startEventId = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 12))
-            $startReason = New-Reason -Code "execution_started" -Severity "info" -Category "execution" -Message "Execution requested event accepted and runtime action started." -Evidence ([pscustomobject]@{ runtime_action = $runtimeAction })
+            $startReasonCode = if ([string]$sourceDomainValue -like "workspace.perception*") { "perception_workspace_action_allowed" } else { "execution_started" }
+            $startReason = New-Reason -Code $startReasonCode -Severity "info" -Category "execution" -Message "Execution requested event accepted and runtime action started." -Evidence ([pscustomobject]@{ runtime_action = $runtimeAction; source_domain = $sourceDomainValue })
             $null = Publish-EventInternal -Type "execution.started" -Id $startEventId -Correlation $corrAccepted -Payload ([pscustomobject]@{ runtime_action = $runtimeAction; state = "started" }) -Reasons @($startReason) -Artifacts @()
 
             $runtimeOk = $false
@@ -1036,7 +1337,7 @@ switch ($Action) {
             action = "consume-inbox"
             status = "processed"
             consumed = @($results).Count
-            accepted = [int]@($results | Where-Object { [string]$_.status -in @("accepted", "accepted_executed", "accepted_control_signal", "accepted_cancelled") }).Count
+            accepted = [int]@($results | Where-Object { [string]$_.status -in @("accepted", "accepted_executed", "accepted_control_signal", "accepted_cancelled", "accepted_cancelled_pending_inquiry_timeout", "paused_pending_inquiry", "resumed_after_inquiry", "deferred_for_operator_clarification") }).Count
             ignored = [int]@($results | Where-Object { [string]$_.status -eq "ignored_unknown" }).Count
             rejected = [int]@($results | Where-Object { [string]$_.status -eq "rejected_malformed" }).Count
             duplicate = [int]@($results | Where-Object { [string]$_.status -eq "duplicate_ignored" }).Count

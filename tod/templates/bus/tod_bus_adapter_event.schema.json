@@ -19,12 +19,19 @@
     "execution.recovered",
     "execution.drift_detected",
     "execution.fallback_applied",
-    "execution.cancelled"
+    "execution.cancelled",
+    "execution.paused_pending_inquiry",
+    "execution.resumed_after_inquiry",
+    "execution.cancelled_pending_inquiry_timeout",
+    "execution.deferred_for_operator_clarification"
   ],
   "inbound_event_types": [
     "execution.requested",
     "execution.cancel_requested",
-    "execution.priority_changed"
+    "execution.priority_changed",
+    "execution.pause_requested",
+    "execution.resume_requested",
+    "execution.clarification_received"
   ],
   "runtime_allowed_actions": [
     "get-engineering-loop-summary"
@@ -48,7 +55,17 @@
     "domain_policy_blocked",
     "domain_policy_deferred",
     "domain_policy_dry_run_only",
-    "request_unsupported_domain_ignored"
+    "request_unsupported_domain_ignored",
+    "perception_workspace_action_allowed",
+    "perception_context_uncertain_dry_run",
+    "perception_context_uncertain_deferred",
+    "perception_unsafe_action_blocked",
+    "inquiry_pause_requested",
+    "inquiry_resumed",
+    "inquiry_timeout_cancelled",
+    "inquiry_deferred_for_operator_clarification",
+    "inquiry_resume_invalid_state",
+    "clarification_received"
   ],
   "correlation_required_fields": [
     "event_id",
@@ -59,6 +76,7 @@
     "goal_id",
     "plan_id",
     "action_id",
-    "source_domain"
+    "source_domain",
+    "source_context"
   ]
 }
