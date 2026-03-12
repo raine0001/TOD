@@ -600,3 +600,1257 @@
                           }
 }
 
+{
+    "timestamp":  "2026-03-12T05:54:12.5476091Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "29b5ffc5ca088cbf02eade210fd2ce7c749afbaa",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T05:56:39.2725564Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "29b5ffc5ca088cbf02eade210fd2ce7c749afbaa",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T05:56:58.2434882Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "29b5ffc5ca088cbf02eade210fd2ce7c749afbaa",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T06:00:36.2677588Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "29b5ffc5ca088cbf02eade210fd2ce7c749afbaa",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T06:01:33.6712688Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  24,
+                   "promotable":  4,
+                   "low_value":  19,
+                   "non_low_value":  5,
+                   "duplicate_groups":  2,
+                   "duplicate_suppression_candidates":  1
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T06:02:03.8256578Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "29b5ffc5ca088cbf02eade210fd2ce7c749afbaa",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T06:02:10.4014906Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "29b5ffc5ca088cbf02eade210fd2ce7c749afbaa",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T06:02:30.7541116Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  24,
+                   "promotable":  4,
+                   "low_value":  19,
+                   "non_low_value":  5,
+                   "duplicate_groups":  2,
+                   "duplicate_suppression_candidates":  1
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T06:02:34.4251838Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "29b5ffc5ca088cbf02eade210fd2ce7c749afbaa",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T06:06:19.2837630Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  6,
+                   "promotable":  4,
+                   "low_value":  1,
+                   "non_low_value":  5,
+                   "duplicate_groups":  1,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T06:06:23.1353508Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T06:06:46.0045484Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T06:06:57.5645501Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T06:25:55.1337582Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  6,
+                   "promotable":  4,
+                   "low_value":  1,
+                   "non_low_value":  5,
+                   "duplicate_groups":  1,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T06:32:15.3492352Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T07:04:53.0260227Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  6,
+                   "promotable":  4,
+                   "low_value":  1,
+                   "non_low_value":  5,
+                   "duplicate_groups":  1,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T07:13:43.0511333Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T07:26:14.4992672Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  6,
+                   "promotable":  4,
+                   "low_value":  1,
+                   "non_low_value":  5,
+                   "duplicate_groups":  1,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T07:32:31.9008208Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  6,
+                   "promotable":  4,
+                   "low_value":  1,
+                   "non_low_value":  5,
+                   "duplicate_groups":  1,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T07:43:50.4525386Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  6,
+                   "promotable":  4,
+                   "low_value":  1,
+                   "non_low_value":  5,
+                   "duplicate_groups":  1,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T07:50:06.6825385Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  6,
+                   "promotable":  4,
+                   "low_value":  1,
+                   "non_low_value":  5,
+                   "duplicate_groups":  1,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T08:01:24.2118887Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  6,
+                   "promotable":  4,
+                   "low_value":  1,
+                   "non_low_value":  5,
+                   "duplicate_groups":  1,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T08:03:00.3406156Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T08:04:15.8326857Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  6,
+                   "promotable":  4,
+                   "low_value":  1,
+                   "non_low_value":  5,
+                   "duplicate_groups":  1,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T08:13:04.9016347Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T08:19:22.4395566Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  6,
+                   "promotable":  4,
+                   "low_value":  1,
+                   "non_low_value":  5,
+                   "duplicate_groups":  1,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T08:25:12.1988522Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T08:32:47.4692306Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T08:35:18.0213080Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  9,
+                   "promotable":  4,
+                   "low_value":  4,
+                   "non_low_value":  5,
+                   "duplicate_groups":  2,
+                   "duplicate_suppression_candidates":  1
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T08:44:09.0144674Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T08:45:27.4657311Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T09:07:38.1961281Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T09:13:57.2538962Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T09:29:49.5359853Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T09:42:25.8238559Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T09:44:59.1616028Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T09:46:14.5940336Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  15,
+                   "promotable":  6,
+                   "low_value":  6,
+                   "non_low_value":  9,
+                   "duplicate_groups":  3,
+                   "duplicate_suppression_candidates":  1
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T10:06:22.0644360Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T10:16:26.8704695Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T10:24:02.6323438Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T10:39:04.5445893Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  15,
+                   "promotable":  6,
+                   "low_value":  6,
+                   "non_low_value":  9,
+                   "duplicate_groups":  3,
+                   "duplicate_suppression_candidates":  1
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T10:49:08.6389066Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  15,
+                   "promotable":  6,
+                   "low_value":  6,
+                   "non_low_value":  9,
+                   "duplicate_groups":  3,
+                   "duplicate_suppression_candidates":  1
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T10:50:41.9432070Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T10:53:16.2732015Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T10:54:35.4405134Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T10:55:53.8273792Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T11:08:25.0075111Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  15,
+                   "promotable":  6,
+                   "low_value":  6,
+                   "non_low_value":  9,
+                   "duplicate_groups":  3,
+                   "duplicate_suppression_candidates":  1
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T11:09:43.7766203Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T11:12:14.8888350Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  15,
+                   "promotable":  6,
+                   "low_value":  6,
+                   "non_low_value":  9,
+                   "duplicate_groups":  3,
+                   "duplicate_suppression_candidates":  1
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T11:28:33.4208679Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  15,
+                   "promotable":  6,
+                   "low_value":  6,
+                   "non_low_value":  9,
+                   "duplicate_groups":  3,
+                   "duplicate_suppression_candidates":  1
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T14:08:03.0945355Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  10,
+                   "promotable":  6,
+                   "low_value":  1,
+                   "non_low_value":  9,
+                   "duplicate_groups":  2,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T14:08:06.9770210Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T14:08:22.6499303Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T14:08:33.3327576Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  10,
+                   "promotable":  6,
+                   "low_value":  1,
+                   "non_low_value":  9,
+                   "duplicate_groups":  2,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T14:08:36.7229823Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T14:09:00.6803007Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T14:17:50.9670641Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T14:19:09.7060594Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T14:45:27.7014116Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  10,
+                   "promotable":  6,
+                   "low_value":  1,
+                   "non_low_value":  9,
+                   "duplicate_groups":  2,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T14:45:47.4807120Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T14:47:49.4048581Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T14:49:52.5094947Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  10,
+                   "promotable":  7,
+                   "low_value":  0,
+                   "non_low_value":  10,
+                   "duplicate_groups":  2,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T14:49:57.1705135Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T14:50:20.6502382Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T14:50:36.9144522Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "2c5350c5a058cae0cbdb3d1dd41c5cfd96fc244f",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T14:55:46.3082459Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T15:01:57.7011240Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T15:04:28.1953999Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  10,
+                   "promotable":  7,
+                   "low_value":  0,
+                   "non_low_value":  10,
+                   "duplicate_groups":  2,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T15:09:29.4248560Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  10,
+                   "promotable":  7,
+                   "low_value":  0,
+                   "non_low_value":  10,
+                   "duplicate_groups":  2,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T15:10:47.8513775Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T15:13:18.2895185Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  10,
+                   "promotable":  7,
+                   "low_value":  0,
+                   "non_low_value":  10,
+                   "duplicate_groups":  2,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T15:15:33.8404915Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T15:16:26.6602038Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T15:16:30.4322961Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T15:35:54.0437249Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "action":  "approval_reduction_pass",
+    "summary":  "Analyzed pending approvals and generated promotable/low-value/duplicate queues.",
+    "reduction_summary_path":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+    "totals":  {
+                   "pending":  10,
+                   "promotable":  7,
+                   "low_value":  0,
+                   "non_low_value":  10,
+                   "duplicate_groups":  2,
+                   "duplicate_suppression_candidates":  0
+               }
+}
+
+{
+    "timestamp":  "2026-03-12T15:38:28.0639521Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T15:42:17.6175971Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T15:47:21.8570940Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T15:49:02.1785746Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+
+{
+    "timestamp":  "2026-03-12T15:49:06.6946178Z",
+    "machine":  "DR_HOME_II",
+    "repo":  "TOD",
+    "objective":  "16",
+    "action":  "shared_state_sync",
+    "summary":  "Regenerated shared_state snapshots and contracts; objective ledger refreshed.",
+    "commit_sha":  "17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9",
+    "validation_result":  {
+                              "regression_passed":  true,
+                              "quality_gate_ok":  true,
+                              "smoke_passed":  true
+                          }
+}
+

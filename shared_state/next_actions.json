@@ -1,5 +1,5 @@
 {
-    "generated_at":  "2026-03-12T14:50:36.9124455Z",
+    "generated_at":  "2026-03-12T15:49:06.6916226Z",
     "source":  "tod-shared-state-sync-v1",
     "current_objective_in_progress":  "16",
     "next_proposed_objective":  "TOD-17",
@@ -21,7 +21,7 @@
 
                                  ],
     "approval_backlog_snapshot":  {
-                                      "generated_at":  "2026-03-12T14:50:36.8941113Z",
+                                      "generated_at":  "2026-03-12T15:49:06.6706139Z",
                                       "total_pending":  10,
                                       "by_type":  {
                                                       "pending_apply":  10
@@ -51,7 +51,7 @@
                                                              "task_id":  "45",
                                                              "status":  "pending_apply",
                                                              "source":  "objective:16",
-                                                             "age_hours":  9.15,
+                                                             "age_hours":  10.13,
                                                              "maturity_band":  "good",
                                                              "score":  0.6667
                                                          },
@@ -61,7 +61,7 @@
                                                              "task_id":  "45",
                                                              "status":  "pending_apply",
                                                              "source":  "objective:16",
-                                                             "age_hours":  9.13,
+                                                             "age_hours":  10.11,
                                                              "maturity_band":  "good",
                                                              "score":  0.7333
                                                          },
@@ -71,7 +71,7 @@
                                                              "task_id":  "45",
                                                              "status":  "pending_apply",
                                                              "source":  "objective:16",
-                                                             "age_hours":  8.91,
+                                                             "age_hours":  9.89,
                                                              "maturity_band":  "good",
                                                              "score":  0.6667
                                                          },
@@ -81,7 +81,7 @@
                                                              "task_id":  "45",
                                                              "status":  "pending_apply",
                                                              "source":  "objective:16",
-                                                             "age_hours":  8.89,
+                                                             "age_hours":  9.86,
                                                              "maturity_band":  "good",
                                                              "score":  0.7333
                                                          },
@@ -91,7 +91,7 @@
                                                              "task_id":  "45",
                                                              "status":  "pending_apply",
                                                              "source":  "objective:16",
-                                                             "age_hours":  5.73,
+                                                             "age_hours":  6.71,
                                                              "maturity_band":  "good",
                                                              "score":  0.6667
                                                          },
@@ -101,7 +101,7 @@
                                                              "task_id":  "45",
                                                              "status":  "pending_apply",
                                                              "source":  "objective:16",
-                                                             "age_hours":  5.36,
+                                                             "age_hours":  6.34,
                                                              "maturity_band":  "good",
                                                              "score":  0.6667
                                                          },
@@ -111,14 +111,14 @@
                                                              "task_id":  "45",
                                                              "status":  "pending_apply",
                                                              "source":  "objective:16",
-                                                             "age_hours":  0.06,
+                                                             "age_hours":  1.04,
                                                              "maturity_band":  "good",
                                                              "score":  0.6667
                                                          }
                                                      ]
                                   },
     "integration_status":  {
-                               "generated_at":  "2026-03-12T14:50:36.9000960Z",
+                               "generated_at":  "2026-03-12T15:49:06.6756086Z",
                                "source":  "tod-integration-status-v1",
                                "mim_schema":  "2026-03-12-57",
                                "tod_contract":  "2026-03-12-57",
@@ -157,7 +157,7 @@
                                 }
                             ],
     "approval_reduction_summary":  {
-                                       "generated_at":  "2026-03-12T14:49:52.4965293Z",
+                                       "generated_at":  "2026-03-12T15:35:54.0356993Z",
                                        "source":  "tod-approval-reduction-pass-v1",
                                        "totals":  {
                                                       "pending":  10,

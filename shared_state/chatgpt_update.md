@@ -1,6 +1,6 @@
 # TOD ChatGPT Development Update
 
-Generated: 2026-03-12T05:47:44.7093448Z
+Generated: 2026-03-12T15:49:06.6966105Z
 
 ## Objective Status
 - Current objective in progress: 16
@@ -10,27 +10,27 @@ Generated: 2026-03-12T05:47:44.7093448Z
 
 ## Build + Repo
 - Branch: main
-- Commit: ac435170ed078302ce739a507a85a6fcce75f8e2
+- Commit: 17dd4385d288ac958ddaadfa1a80a0c9d0cbd0f9
 - Release tag: 
 
 ## Validation
-- Regression passed: True (passed=34, failed=0, total=34)
+- Regression passed: True (passed=4, failed=0, total=4)
 - Quality gate ok: True
 - Smoke passed: True
 
 ## Drift + Blockers
-- Trend: flat
-- Reliability alert: critical
-- Pending approvals: 12
-- Blocker: pending approvals (12)
-- Approval triage by type: {"pending_apply":12}
-- Approval triage by age: {"lt_24h":12,"h24_to_h72":0,"gt_72h":0,"unknown":0}
-- Approval triage by source: {"objective:16":12}
-- Approval triage counts: stale=0 low_value=10 promotable=2
+- Trend: declining
+- Reliability alert: warning
+- Pending approvals: 10
+- Blocker: pending approvals (10)
+- Approval triage by type: {"pending_apply":10}
+- Approval triage by age: {"lt_24h":10,"h24_to_h72":0,"gt_72h":0,"unknown":0}
+- Approval triage by source: {"objective:16":10}
+- Approval triage counts: stale=0 low_value=0 promotable=7
 - Integration status: mim_schema=2026-03-12-57 tod_contract=2026-03-12-57 compatible=True
 - Catch-up roadmap: TOD-17, TOD-18, TOD-19, TOD-20, TOD-21, TOD-22
 - Approval reduction snapshot present: true
-- Approval reduction totals: {"pending":129,"promotable":15,"low_value":101,"non_low_value":28,"duplicate_groups":3,"duplicate_suppression_candidates":1}
+- Approval reduction totals: {"pending":10,"promotable":7,"low_value":0,"non_low_value":10,"duplicate_groups":2,"duplicate_suppression_candidates":0}
 - Failing regression tests: none
 
 ## Canonical Shared State Files
