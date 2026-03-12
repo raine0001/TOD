@@ -1,0 +1,49 @@
+{
+  "schema_name": "tod_bus_execution_summary_handoff_v1",
+  "summary_version": "1.0.0",
+  "producer": "TOD",
+  "type": "bus_execution_summaries",
+  "required_metadata_fields": [
+    "generated_at",
+    "summary_version",
+    "source",
+    "type",
+    "ordering_notes",
+    "retention_notes",
+    "discovery_pointer_path",
+    "contract_path",
+    "summary_count",
+    "summaries"
+  ],
+  "required_summary_fields": [
+    "trace_id",
+    "execution_id",
+    "final_outcome",
+    "retries",
+    "fallbacks",
+    "recovered",
+    "drift_events",
+    "cancelled",
+    "guardrail_blocks",
+    "reliability_signal",
+    "recommended_attention",
+    "event_count",
+    "artifact_links",
+    "last_event_at"
+  ],
+  "ordering": {
+    "primary": "last_event_at desc",
+    "tie_breakers": [
+      "trace_id asc",
+      "execution_id asc"
+    ]
+  },
+  "retention": {
+    "artifact_mode": "overwrite_on_regeneration",
+    "history_source_of_truth": "tod/out/bus/events.jsonl"
+  },
+  "boundary_notes": [
+    "TOD publishes execution/runtime reliability signals only.",
+    "MIM retains ownership of cognition, strategy, meaning, and governance."
+  ]
+}

@@ -1,27 +1,27 @@
 {
-    "generated_at":  "2026-03-12T15:53:32.2884342Z",
+    "generated_at":  "2026-03-12T16:09:34.2068416Z",
     "source":  "tod-bus-adapter-v1",
     "type":  "bus_adapter_status",
     "last_action":  "summarize-executions",
     "last_status":  "ok",
     "last_event_id":  "",
     "counters":  {
-                     "inbound_accepted":  4,
+                     "inbound_accepted":  7,
                      "inbound_rejected":  1,
                      "inbound_ignored":  0,
                      "inbound_duplicate":  0,
-                     "outbound_published":  18,
-                     "retries_scheduled":  2,
-                     "recoveries":  2,
-                     "drift_detected":  2,
-                     "fallback_applied":  2,
+                     "outbound_published":  36,
+                     "retries_scheduled":  5,
+                     "recoveries":  5,
+                     "drift_detected":  5,
+                     "fallback_applied":  5,
                      "cancelled":  0,
                      "guardrail_blocked":  0,
                      "failed_runtime":  0,
-                     "successful_runtime":  2
+                     "successful_runtime":  5
                  },
     "accepted_execution_ids_count":  0,
-    "stream_event_count":  19,
+    "stream_event_count":  37,
     "schema":  "tod_bus_adapter_event_v1",
     "inbound_event_types":  [
                                 "execution.requested",
@@ -41,13 +41,13 @@
                                  "execution.cancelled"
                              ],
     "lifecycle_feedback":  {
-                               "retries_scheduled":  2,
-                               "recoveries":  2,
-                               "drift_detected":  2,
-                               "fallback_applied":  2,
+                               "retries_scheduled":  5,
+                               "recoveries":  5,
+                               "drift_detected":  5,
+                               "fallback_applied":  5,
                                "cancelled":  0,
                                "guardrail_blocked":  0,
                                "failed_runtime":  0,
-                               "successful_runtime":  2
+                               "successful_runtime":  5
                            }
 }

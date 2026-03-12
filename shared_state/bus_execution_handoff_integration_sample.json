@@ -1,61 +1,9 @@
 {
-    "ok":  true,
+    "generated_at":  "2026-03-12T16:09:34.2335060Z",
     "source":  "tod-bus-adapter-sample-loop-v1",
-    "generated_at":  "2026-03-12T16:09:34.2303719Z",
+    "type":  "tod_execution_summary_handoff_integration",
     "trace_id":  "trace-596bc179",
     "execution_id":  "exec-03a91305",
-    "goal_id":  "MIMGOAL-DE9BF5ED",
-    "steps":  [
-                  {
-                      "ok":  true,
-                      "action":  "consume-event",
-                      "status":  "accepted_executed",
-                      "event_id":  "evt-494938b88b",
-                      "event_type":  "execution.requested",
-                      "runtime_action":  "get-engineering-loop-summary"
-                  }
-              ],
-    "execution_summary":  [
-                              {
-                                  "trace_id":  "trace-596bc179",
-                                  "execution_id":  "exec-03a91305",
-                                  "final_outcome":  "succeeded",
-                                  "retries":  1,
-                                  "fallbacks":  1,
-                                  "recovered":  true,
-                                  "drift_events":  1,
-                                  "cancelled":  0,
-                                  "guardrail_blocks":  0,
-                                  "reliability_signal":  "warning",
-                                  "recommended_attention":  "monitor_closely",
-                                  "event_count":  6,
-                                  "artifact_links":  [
-                                                         "shared_state/next_actions.json",
-                                                         "shared_state/review_artifacts_index.json"
-                                                     ],
-                                  "last_event_at":  "2026-03-12T16:09:34.1285133Z"
-                              }
-                          ],
-    "execution_summary_artifact":  "shared_state/bus_execution_summaries.json",
-    "execution_summary_handoff":  {
-                                      "generated_at":  "2026-03-12T16:09:34.1903250Z",
-                                      "summary_version":  "1.0.0",
-                                      "source":  "tod-bus-adapter-v1",
-                                      "ordering_notes":  "Summaries are sorted by last_event_at descending; ties are ordered by trace_id then execution_id ascending.",
-                                      "retention_notes":  "Artifact is regenerated and overwritten per summarize-executions run; long-term history remains in the bus event stream.",
-                                      "discovery_pointer_path":  "shared_state/bus_execution_summaries.index.json",
-                                      "contract_path":  "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
-                                      "pointer":  {
-                                                      "generated_at":  "2026-03-12T16:09:34.1903250Z",
-                                                      "summary_version":  "1.0.0",
-                                                      "source":  "tod-bus-adapter-v1",
-                                                      "type":  "bus_execution_summaries_pointer",
-                                                      "latest_summary_path":  "shared_state/bus_execution_summaries.json",
-                                                      "contract_path":  "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
-                                                      "ordering_notes":  "Summaries are sorted by last_event_at descending; ties are ordered by trace_id then execution_id ascending.",
-                                                      "retention_notes":  "Artifact is regenerated and overwritten per summarize-executions run; long-term history remains in the bus event stream."
-                                                  }
-                                  },
     "lifecycle":  {
                       "started":  [
                                       {
@@ -280,15 +228,44 @@
 
                                  ]
                   },
-    "summary":  {
-                    "consumed_requested":  true,
-                    "published_started":  true,
-                    "published_retry_scheduled":  true,
-                    "published_recovered":  true,
-                    "published_drift_detected":  true,
-                    "published_fallback_applied":  true,
-                    "published_cancelled":  false,
-                    "published_succeeded":  true,
-                    "published_failed":  false
+    "execution_summary":  [
+                              {
+                                  "trace_id":  "trace-596bc179",
+                                  "execution_id":  "exec-03a91305",
+                                  "final_outcome":  "succeeded",
+                                  "retries":  1,
+                                  "fallbacks":  1,
+                                  "recovered":  true,
+                                  "drift_events":  1,
+                                  "cancelled":  0,
+                                  "guardrail_blocks":  0,
+                                  "reliability_signal":  "warning",
+                                  "recommended_attention":  "monitor_closely",
+                                  "event_count":  6,
+                                  "artifact_links":  [
+                                                         "shared_state/next_actions.json",
+                                                         "shared_state/review_artifacts_index.json"
+                                                     ],
+                                  "last_event_at":  "2026-03-12T16:09:34.1285133Z"
+                              }
+                          ],
+    "handoff":  {
+                    "generated_at":  "2026-03-12T16:09:34.1903250Z",
+                    "summary_version":  "1.0.0",
+                    "source":  "tod-bus-adapter-v1",
+                    "ordering_notes":  "Summaries are sorted by last_event_at descending; ties are ordered by trace_id then execution_id ascending.",
+                    "retention_notes":  "Artifact is regenerated and overwritten per summarize-executions run; long-term history remains in the bus event stream.",
+                    "discovery_pointer_path":  "shared_state/bus_execution_summaries.index.json",
+                    "contract_path":  "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
+                    "pointer":  {
+                                    "generated_at":  "2026-03-12T16:09:34.1903250Z",
+                                    "summary_version":  "1.0.0",
+                                    "source":  "tod-bus-adapter-v1",
+                                    "type":  "bus_execution_summaries_pointer",
+                                    "latest_summary_path":  "shared_state/bus_execution_summaries.json",
+                                    "contract_path":  "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
+                                    "ordering_notes":  "Summaries are sorted by last_event_at descending; ties are ordered by trace_id then execution_id ascending.",
+                                    "retention_notes":  "Artifact is regenerated and overwritten per summarize-executions run; long-term history remains in the bus event stream."
+                                }
                 }
 }

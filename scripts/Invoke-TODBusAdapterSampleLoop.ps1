@@ -1,6 +1,7 @@
 param(
     [string]$AdapterScriptPath = "scripts/Invoke-TODBusAdapter.ps1",
-    [string]$OutputPath = "shared_state/bus_adapter_integration_sample.json"
+    [string]$OutputPath = "shared_state/bus_adapter_integration_sample.json",
+    [string]$HandoffOutputPath = "shared_state/bus_execution_handoff_integration_sample.json"
 )
 
 Set-StrictMode -Version Latest
@@ -16,6 +17,7 @@ function Get-LocalPath {
 
 $adapterAbs = Get-LocalPath -PathValue $AdapterScriptPath
 $outputAbs = Get-LocalPath -PathValue $OutputPath
+$handoffOutputAbs = Get-LocalPath -PathValue $HandoffOutputPath
 if (-not (Test-Path -Path $adapterAbs)) { throw "Adapter script not found: $adapterAbs" }
 
 $traceId = "trace-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 8))
@@ -36,6 +38,22 @@ $steps += ($requestedRaw | ConvertFrom-Json)
 
 $summaryRaw = & $adapterAbs -Action "summarize-executions"
 $summaryObj = $summaryRaw | ConvertFrom-Json
+$summaryDoc = $null
+$summaryPathResolved = ""
+if (-not [string]::IsNullOrWhiteSpace([string]$summaryObj.summary_path)) {
+    $summaryPathResolved = Get-LocalPath -PathValue ([string]$summaryObj.summary_path)
+}
+if (-not [string]::IsNullOrWhiteSpace($summaryPathResolved) -and (Test-Path -Path $summaryPathResolved)) {
+    $summaryDoc = Get-Content -Path $summaryPathResolved -Raw | ConvertFrom-Json
+}
+$pointerObj = $null
+$pointerPathResolved = ""
+if (-not [string]::IsNullOrWhiteSpace([string]$summaryObj.discovery_pointer_path)) {
+    $pointerPathResolved = Get-LocalPath -PathValue ([string]$summaryObj.discovery_pointer_path)
+}
+if (-not [string]::IsNullOrWhiteSpace($pointerPathResolved) -and (Test-Path -Path $pointerPathResolved)) {
+    $pointerObj = Get-Content -Path $pointerPathResolved -Raw | ConvertFrom-Json
+}
 
 $streamPath = Get-LocalPath -PathValue "tod/out/bus/events.jsonl"
 $traceEvents = @()
@@ -70,10 +88,20 @@ $result = [pscustomobject]@{
     execution_id = $executionId
     goal_id = $goalId
     steps = @($steps)
-    execution_summary = @($summaryObj.summaries | Where-Object {
+    execution_summary = @($summaryDoc.summaries | Where-Object {
             [string]$_.trace_id -eq $traceId -and [string]$_.execution_id -eq $executionId
         } | Select-Object -First 1)
     execution_summary_artifact = [string]$summaryObj.summary_path
+    execution_summary_handoff = [pscustomobject]@{
+        generated_at = if ($null -ne $summaryDoc) { [string]$summaryDoc.generated_at } else { "" }
+        summary_version = [string]$summaryObj.summary_version
+        source = if ($null -ne $summaryDoc) { [string]$summaryDoc.source } else { [string]$summaryObj.source }
+        ordering_notes = [string]$summaryObj.ordering_notes
+        retention_notes = [string]$summaryObj.retention_notes
+        discovery_pointer_path = [string]$summaryObj.discovery_pointer_path
+        contract_path = [string]$summaryObj.contract_path
+        pointer = $pointerObj
+    }
     lifecycle = [pscustomobject]@{
         started = @($lifecycleStarted)
         retry_scheduled = @($lifecycleRetryScheduled)
@@ -101,6 +129,21 @@ $outDir = Split-Path -Parent $outputAbs
 if (-not [string]::IsNullOrWhiteSpace($outDir) -and -not (Test-Path -Path $outDir)) {
     New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 }
+$handoffOutDir = Split-Path -Parent $handoffOutputAbs
+if (-not [string]::IsNullOrWhiteSpace($handoffOutDir) -and -not (Test-Path -Path $handoffOutDir)) {
+    New-Item -ItemType Directory -Path $handoffOutDir -Force | Out-Null
+}
 
 $result | ConvertTo-Json -Depth 20 | Set-Content -Path $outputAbs
+$handoffArtifact = [pscustomobject]@{
+    generated_at = (Get-Date).ToUniversalTime().ToString("o")
+    source = "tod-bus-adapter-sample-loop-v1"
+    type = "tod_execution_summary_handoff_integration"
+    trace_id = $traceId
+    execution_id = $executionId
+    lifecycle = $result.lifecycle
+    execution_summary = $result.execution_summary
+    handoff = $result.execution_summary_handoff
+}
+$handoffArtifact | ConvertTo-Json -Depth 20 | Set-Content -Path $handoffOutputAbs
 $result | ConvertTo-Json -Depth 20 | Write-Output

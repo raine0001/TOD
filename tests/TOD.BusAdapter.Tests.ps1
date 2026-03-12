@@ -20,9 +20,27 @@ function New-TestPaths {
         CorrelationLog = (Join-Path $base "correlation-log.jsonl")
         Status = (Join-Path $base "bus-adapter-status.json")
         Summary = (Join-Path $base "bus-execution-summaries.json")
+        SummaryIndex = (Join-Path $base "bus-execution-summaries.index.json")
+        SummaryContract = (Join-Path $repoRoot "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json")
         Inbox = $inbox
         Processed = $processed
     }
+}
+
+function Get-RelativePathPortable {
+    param(
+        [Parameter(Mandatory = $true)][string]$BasePath,
+        [Parameter(Mandatory = $true)][string]$TargetPath
+    )
+
+    $baseFull = [System.IO.Path]::GetFullPath($BasePath)
+    $targetFull = [System.IO.Path]::GetFullPath($TargetPath)
+    if (-not $baseFull.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+        $baseFull = $baseFull + [System.IO.Path]::DirectorySeparatorChar
+    }
+    $baseUri = New-Object System.Uri($baseFull)
+    $targetUri = New-Object System.Uri($targetFull)
+    return ([System.Uri]::UnescapeDataString($baseUri.MakeRelativeUri($targetUri).ToString())).Replace("\\", "/")
 }
 
 function Invoke-Adapter {
@@ -42,6 +60,8 @@ function Invoke-Adapter {
         CorrelationLogPath = $Paths.CorrelationLog
         BusStatusPath = $Paths.Status
         ExecutionSummaryPath = $Paths.Summary
+        ExecutionSummaryIndexPath = $Paths.SummaryIndex
+        ExecutionSummaryContractPath = $Paths.SummaryContract
     }
     foreach ($k in $InputParams.Keys) {
         $invokeMap[$k] = $InputParams[$k]
@@ -333,5 +353,83 @@ Describe "TOD Bus Adapter" {
         [int]$target.drift_events | Should Be @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.drift_detected" }).Count
         [int]$target.cancelled | Should Be @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.cancelled" }).Count
         [int]$target.guardrail_blocks | Should Be @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.guardrail_blocked" }).Count
+    }
+
+    It "execution summary contract metadata and pointer are consistent" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-contract-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-contract"; execution_id = "exec-contract" }
+            payload = @{ runtime_action = "get-engineering-loop-summary" }
+        } | ConvertTo-Json -Depth 10 -Compress
+        $null = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+
+        $summaryResult = Invoke-Adapter -Paths $paths -AdapterAction "summarize-executions"
+        [bool]$summaryResult.ok | Should Be $true
+        (Test-Path -Path $paths.Summary) | Should Be $true
+        (Test-Path -Path $paths.SummaryIndex) | Should Be $true
+
+        $summaryDoc = Get-Content -Path $paths.Summary -Raw | ConvertFrom-Json
+        $pointerDoc = Get-Content -Path $paths.SummaryIndex -Raw | ConvertFrom-Json
+        $contractDoc = Get-Content -Path $paths.SummaryContract -Raw | ConvertFrom-Json
+
+        foreach ($field in @($contractDoc.required_metadata_fields)) {
+            (($summaryDoc.PSObject.Properties.Name) -contains [string]$field) | Should Be $true
+        }
+        [string]$summaryDoc.summary_version | Should Be ([string]$contractDoc.summary_version)
+        [string]$summaryDoc.type | Should Be ([string]$contractDoc.type)
+        [string]$pointerDoc.type | Should Be "bus_execution_summaries_pointer"
+        [string]$pointerDoc.latest_summary_path | Should Be (Get-RelativePathPortable -BasePath $repoRoot -TargetPath $paths.Summary)
+        [string]$pointerDoc.contract_path | Should Be (Get-RelativePathPortable -BasePath $repoRoot -TargetPath $paths.SummaryContract)
+
+        $firstSummary = @($summaryDoc.summaries | Select-Object -First 1)
+        ($firstSummary.Count -gt 0) | Should Be $true
+        foreach ($field in @($contractDoc.required_summary_fields)) {
+            (($firstSummary[0].PSObject.Properties.Name) -contains [string]$field) | Should Be $true
+        }
+    }
+
+    It "execution summaries are stably ordered" {
+        $paths = New-TestPaths
+
+        foreach ($suffix in @("b", "a")) {
+            $evt = @{
+                event_id = "evt-order-$suffix"
+                event_type = "execution.requested"
+                occurred_at = "2026-03-12T00:00:00Z"
+                producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+                correlation = @{ trace_id = "trace-order-$suffix"; execution_id = "exec-order-$suffix" }
+                payload = @{ runtime_action = "get-engineering-loop-summary" }
+            } | ConvertTo-Json -Depth 10 -Compress
+            $null = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        }
+
+        $summaryResult = Invoke-Adapter -Paths $paths -AdapterAction "summarize-executions"
+        $sorted = @($summaryResult.summaries)
+        ($sorted.Count -ge 2) | Should Be $true
+
+        for ($i = 1; $i -lt $sorted.Count; $i++) {
+            $prev = $sorted[$i - 1]
+            $curr = $sorted[$i]
+
+            $prevTs = [datetime]::Parse([string]$prev.last_event_at)
+            $currTs = [datetime]::Parse([string]$curr.last_event_at)
+            ($prevTs -ge $currTs) | Should Be $true
+
+            if ($prevTs -eq $currTs) {
+                $prevTrace = [string]$prev.trace_id
+                $currTrace = [string]$curr.trace_id
+                if ($prevTrace -eq $currTrace) {
+                    ([string]$prev.execution_id -le [string]$curr.execution_id) | Should Be $true
+                }
+                else {
+                    ($prevTrace -le $currTrace) | Should Be $true
+                }
+            }
+        }
     }
 }

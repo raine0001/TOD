@@ -20,6 +20,8 @@ param(
     [string]$SchemaPath = "tod/templates/bus/tod_bus_adapter_event.schema.json",
     [string]$BusStatusPath = "shared_state/bus_adapter_status.json",
     [string]$ExecutionSummaryPath = "shared_state/bus_execution_summaries.json",
+    [string]$ExecutionSummaryIndexPath = "shared_state/bus_execution_summaries.index.json",
+    [string]$ExecutionSummaryContractPath = "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
     [string]$TodScriptPath = "scripts/TOD.ps1",
     [string]$TodConfigPath = "tod/config/tod-config.json"
 )
@@ -41,6 +43,23 @@ function Ensure-ParentDir {
     if (-not [string]::IsNullOrWhiteSpace($dir) -and -not (Test-Path -Path $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
+}
+
+function Get-RepoRelativePath {
+    param([Parameter(Mandatory = $true)][string]$AbsolutePath)
+
+    $baseFull = [System.IO.Path]::GetFullPath($repoRoot)
+    $targetFull = [System.IO.Path]::GetFullPath($AbsolutePath)
+
+    if (-not $baseFull.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+        $baseFull = $baseFull + [System.IO.Path]::DirectorySeparatorChar
+    }
+
+    $baseUri = New-Object System.Uri($baseFull)
+    $targetUri = New-Object System.Uri($targetFull)
+    $relativeUri = $baseUri.MakeRelativeUri($targetUri)
+    $relativePath = [System.Uri]::UnescapeDataString($relativeUri.ToString())
+    return $relativePath.Replace("\\", "/")
 }
 
 function Append-JsonLine {
@@ -372,7 +391,13 @@ function Build-ExecutionSummaries {
         }
     }
 
-    return @($summaries | Sort-Object -Property last_event_at -Descending)
+    return @(
+        $summaries | Sort-Object -Property @(
+            @{ Expression = { [string]$_.last_event_at }; Descending = $true },
+            @{ Expression = { [string]$_.trace_id }; Descending = $false },
+            @{ Expression = { [string]$_.execution_id }; Descending = $false }
+        )
+    )
 }
 
 function Publish-EventInternal {
@@ -481,6 +506,8 @@ $correlationLogAbs = Get-LocalPath -PathValue $CorrelationLogPath
 $schemaAbs = Get-LocalPath -PathValue $SchemaPath
 $busStatusAbs = Get-LocalPath -PathValue $BusStatusPath
 $executionSummaryAbs = Get-LocalPath -PathValue $ExecutionSummaryPath
+$executionSummaryIndexAbs = Get-LocalPath -PathValue $ExecutionSummaryIndexPath
+$executionSummaryContractAbs = Get-LocalPath -PathValue $ExecutionSummaryContractPath
 $todScriptAbs = Get-LocalPath -PathValue $TodScriptPath
 $todConfigAbs = Get-LocalPath -PathValue $TodConfigPath
 
@@ -893,6 +920,8 @@ switch ($Action) {
                 correlation_log = $correlationLogAbs
                 schema = $schemaAbs
                 execution_summary = $executionSummaryAbs
+                execution_summary_index = $executionSummaryIndexAbs
+                execution_summary_contract = $executionSummaryContractAbs
             }
         }
 
@@ -903,23 +932,53 @@ switch ($Action) {
 
     "summarize-executions" {
         $summaries = Build-ExecutionSummaries
+        $summaryVersion = "1.0.0"
+        $orderingNotes = "Summaries are sorted by last_event_at descending; ties are ordered by trace_id then execution_id ascending."
+        $retentionNotes = "Artifact is regenerated and overwritten per summarize-executions run; long-term history remains in the bus event stream."
+        $summaryPathRelative = Get-RepoRelativePath -AbsolutePath $executionSummaryAbs
+        $summaryIndexPathRelative = Get-RepoRelativePath -AbsolutePath $executionSummaryIndexAbs
+        $summaryContractPathRelative = Get-RepoRelativePath -AbsolutePath $executionSummaryContractAbs
+
         $summaryObj = [pscustomobject]@{
             generated_at = (Get-Date).ToUniversalTime().ToString("o")
+            summary_version = $summaryVersion
             source = "tod-bus-adapter-v1"
             type = "bus_execution_summaries"
+            ordering_notes = $orderingNotes
+            retention_notes = $retentionNotes
+            discovery_pointer_path = $summaryIndexPathRelative
+            contract_path = $summaryContractPathRelative
             summary_count = [int]@($summaries).Count
             summaries = @($summaries)
         }
 
+        $pointerObj = [pscustomobject]@{
+            generated_at = $summaryObj.generated_at
+            summary_version = $summaryVersion
+            source = "tod-bus-adapter-v1"
+            type = "bus_execution_summaries_pointer"
+            latest_summary_path = $summaryPathRelative
+            contract_path = $summaryContractPathRelative
+            ordering_notes = $orderingNotes
+            retention_notes = $retentionNotes
+        }
+
         Ensure-ParentDir -FilePath $executionSummaryAbs
         $summaryObj | ConvertTo-Json -Depth 20 | Set-Content -Path $executionSummaryAbs
+        Ensure-ParentDir -FilePath $executionSummaryIndexAbs
+        $pointerObj | ConvertTo-Json -Depth 20 | Set-Content -Path $executionSummaryIndexAbs
         Write-StatusArtifact -LastAction "summarize-executions" -LastStatus "ok"
 
         [pscustomobject]@{
             ok = $true
             action = "summarize-executions"
             status = "ok"
-            summary_path = $executionSummaryAbs
+            summary_path = $summaryPathRelative
+            summary_version = $summaryVersion
+            ordering_notes = $orderingNotes
+            retention_notes = $retentionNotes
+            discovery_pointer_path = $summaryIndexPathRelative
+            contract_path = $summaryContractPathRelative
             summary_count = [int]@($summaries).Count
             summaries = @($summaries)
         } | ConvertTo-Json -Depth 20 | Write-Output

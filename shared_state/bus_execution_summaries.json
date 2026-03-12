@@ -1,9 +1,71 @@
 {
-    "generated_at":  "2026-03-12T15:53:32.2863954Z",
+    "generated_at":  "2026-03-12T16:09:34.1903250Z",
+    "summary_version":  "1.0.0",
     "source":  "tod-bus-adapter-v1",
     "type":  "bus_execution_summaries",
-    "summary_count":  5,
+    "ordering_notes":  "Summaries are sorted by last_event_at descending; ties are ordered by trace_id then execution_id ascending.",
+    "retention_notes":  "Artifact is regenerated and overwritten per summarize-executions run; long-term history remains in the bus event stream.",
+    "discovery_pointer_path":  "shared_state/bus_execution_summaries.index.json",
+    "contract_path":  "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
+    "summary_count":  8,
     "summaries":  [
+                      {
+                          "trace_id":  "trace-596bc179",
+                          "execution_id":  "exec-03a91305",
+                          "final_outcome":  "succeeded",
+                          "retries":  1,
+                          "fallbacks":  1,
+                          "recovered":  true,
+                          "drift_events":  1,
+                          "cancelled":  0,
+                          "guardrail_blocks":  0,
+                          "reliability_signal":  "warning",
+                          "recommended_attention":  "monitor_closely",
+                          "event_count":  6,
+                          "artifact_links":  [
+                                                 "shared_state/next_actions.json",
+                                                 "shared_state/review_artifacts_index.json"
+                                             ],
+                          "last_event_at":  "2026-03-12T16:09:34.1285133Z"
+                      },
+                      {
+                          "trace_id":  "trace-7a6afd3e",
+                          "execution_id":  "exec-d407b597",
+                          "final_outcome":  "succeeded",
+                          "retries":  1,
+                          "fallbacks":  1,
+                          "recovered":  true,
+                          "drift_events":  1,
+                          "cancelled":  0,
+                          "guardrail_blocks":  0,
+                          "reliability_signal":  "warning",
+                          "recommended_attention":  "monitor_closely",
+                          "event_count":  6,
+                          "artifact_links":  [
+                                                 "shared_state/next_actions.json",
+                                                 "shared_state/review_artifacts_index.json"
+                                             ],
+                          "last_event_at":  "2026-03-12T16:08:31.2131834Z"
+                      },
+                      {
+                          "trace_id":  "trace-9c2e71af",
+                          "execution_id":  "exec-18fbbeb9",
+                          "final_outcome":  "succeeded",
+                          "retries":  1,
+                          "fallbacks":  1,
+                          "recovered":  true,
+                          "drift_events":  1,
+                          "cancelled":  0,
+                          "guardrail_blocks":  0,
+                          "reliability_signal":  "warning",
+                          "recommended_attention":  "monitor_closely",
+                          "event_count":  6,
+                          "artifact_links":  [
+                                                 "shared_state/next_actions.json",
+                                                 "shared_state/review_artifacts_index.json"
+                                             ],
+                          "last_event_at":  "2026-03-12T16:08:00.2308550Z"
+                      },
                       {
                           "trace_id":  "trace-ccb5240d",
                           "execution_id":  "exec-50d7d19d",

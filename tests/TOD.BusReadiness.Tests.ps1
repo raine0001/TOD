@@ -4,12 +4,14 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $schemaPath = Join-Path $repoRoot "tod/templates/bus/tod_execution_event_envelope.schema.json"
 $samplesPath = Join-Path $repoRoot "tod/templates/bus/tod_execution_event_samples.json"
+$summaryContractPath = Join-Path $repoRoot "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json"
 $docPath = Join-Path $repoRoot "docs/tod-unified-state-bus-execution-events-v1.md"
 
 Describe "TOD Bus Readiness Artifacts" {
     It "contains required contract artifacts" {
         (Test-Path -Path $schemaPath) | Should Be $true
         (Test-Path -Path $samplesPath) | Should Be $true
+        (Test-Path -Path $summaryContractPath) | Should Be $true
         (Test-Path -Path $docPath) | Should Be $true
     }
 
