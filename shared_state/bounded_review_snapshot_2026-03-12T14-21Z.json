@@ -1,0 +1,63 @@
+{
+  "generated_at": "2026-03-12T14:21:30Z",
+  "source": "tod-bounded-review-v1",
+  "scope": "manual-low-value-and-promotable-review",
+  "low_value_manual_review": {
+    "count": 1,
+    "items": [
+      {
+        "cycle_id": "ENGCYC-DD0B562DF2",
+        "objective_id": "16",
+        "task_id": "45",
+        "approval_status": "pending_apply",
+        "maturity_band": "emerging",
+        "score": 0.5333,
+        "created_at": "2026-03-12T09:28:52.4517519Z",
+        "updated_at": "2026-03-12T09:28:52.4517519Z",
+        "notes": "Single remaining low-value pending item; no duplicate suppression candidates remain."
+      }
+    ],
+    "recommendation": "hold_for_manual_review"
+  },
+  "promotable_batch_candidate_review": {
+    "count": 6,
+    "candidate_ids": [
+      "ENGCYC-7913857882",
+      "ENGCYC-6721778291",
+      "ENGCYC-83488067D9",
+      "ENGCYC-310C17A63A",
+      "ENGCYC-29E14CB7EB",
+      "ENGCYC-CACB1AD8DF"
+    ],
+    "score_band": {
+      "max": 0.7333,
+      "min": 0.6667
+    },
+    "recommendation": "batch_candidate_ready_for_guarded_promotion_review"
+  },
+  "simulation_health_check": {
+    "window_events": 10,
+    "category_counts": {
+      "programming": 5,
+      "graphics": 4,
+      "layout": 1
+    },
+    "top_tasks": {
+      "diagram_refresh": 4,
+      "shared_state_refresh": 3,
+      "layout_digest_refresh": 1,
+      "reliability_snapshot": 1,
+      "engineering_signal_snapshot": 1
+    },
+    "max_same_task_streak": 2,
+    "assessment": "healthy_non_stuck_small_window"
+  },
+  "current_state_reference": {
+    "pending_total": 10,
+    "promotable": 6,
+    "low_value": 1,
+    "duplicate_suppression_candidates": 0,
+    "integration_compatible": true
+  },
+  "next_bounded_step": "continue_conservative_simulation_and_reassess_promotable_batch"
+}

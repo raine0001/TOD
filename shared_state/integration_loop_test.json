@@ -1,8 +1,8 @@
 {
     "ok":  true,
     "source":  "tod-mim-integration-loop-test-v1",
-    "generated_at":  "2026-03-12T05:33:02.0874489Z",
-    "goal_id":  "MIMGOAL-E1804CC34F",
+    "generated_at":  "2026-03-12T14:49:03.8120101Z",
+    "goal_id":  "MIMGOAL-9A1095C6DC",
     "steps":  [
                   {
                       "step":  "tod_signal_before",
@@ -11,48 +11,48 @@
                                       "path":  "/tod/engineer/signal",
                                       "service":  "tod",
                                       "source":  "engineering_signal_v1",
-                                      "generated_at":  "2026-03-12T05:32:57.7064067Z",
+                                      "generated_at":  "2026-03-12T14:48:59.1292952Z",
                                       "contract_version":  "engineering_signal_v1",
                                       "current_engineering_loop_status":  "warming",
-                                      "latest_maturity_band":  "early",
+                                      "latest_maturity_band":  "emerging",
                                       "pending_approval_state":  {
-                                                                     "pending":  false,
-                                                                     "count":  0
+                                                                     "pending":  true,
+                                                                     "count":  13
                                                                  },
                                       "stop_reason":  "continue_requested",
                                       "top_penalties":  [
                                                             {
-                                                                "reason":  "sparse_evidence",
-                                                                "value":  0.05,
-                                                                "detail":  "Limited engineering loop evidence in selected window."
+
                                                             }
                                                         ],
-                                      "trend_direction":  "improving",
-                                      "trend_delta":  0.15,
+                                      "trend_direction":  "declining",
+                                      "trend_delta":  -0.1333,
                                       "phase_snapshot":  {
                                                              "create":  {
                                                                             "latest_score":  0,
                                                                             "direction":  "flat"
                                                                         },
                                                              "plan":  {
-                                                                          "latest_score":  0.3333,
+                                                                          "latest_score":  1,
                                                                           "direction":  "flat"
                                                                       },
                                                              "implement":  {
-                                                                               "latest_score":  0.3333,
+                                                                               "latest_score":  1,
                                                                                "direction":  "flat"
                                                                            },
                                                              "test":  {
                                                                           "latest_score":  0,
-                                                                          "direction":  "flat"
+                                                                          "direction":  "declining"
                                                                       },
                                                              "manage":  {
-                                                                            "latest_score":  0.3333,
-                                                                            "direction":  "flat"
+                                                                            "latest_score":  0,
+                                                                            "direction":  "declining"
                                                                         }
                                                          },
                                       "operator_signals":  [
-
+                                                               "engineering loop paused awaiting approval",
+                                                               "test maturity regressed",
+                                                               "implementation stable, testing lagging"
                                                            ]
                                   },
                       "error":  ""
@@ -64,16 +64,16 @@
                                       "ok":  true,
                                       "source":  "tod-context-exchange-v1",
                                       "action":  "ingest",
-                                      "generated_at":  "2026-03-12T05:32:57.7205294Z",
+                                      "generated_at":  "2026-03-12T14:48:59.2108912Z",
                                       "accepted_count":  1,
                                       "rejected_count":  0,
                                       "accepted":  [
                                                        {
-                                                           "file":  "E:\\TOD\\tod\\inbox\\context-sync\\updates\\integration-loop-5b248a3c.json",
-                                                           "update_id":  "CTXUPD-3A6F2888D1",
+                                                           "file":  "E:\\TOD\\tod\\inbox\\context-sync\\updates\\integration-loop-fb31d37c.json",
+                                                           "update_id":  "CTXUPD-C5073911B7",
                                                            "source":  "mim-strategy-engine",
-                                                           "summary":  "Execute loop validation for MIMGOAL-E1804CC34F",
-                                                           "processed_path":  "E:\\TOD\\tod\\out\\context-sync\\processed\\integration-loop-5b248a3c.json"
+                                                           "summary":  "Execute loop validation for MIMGOAL-9A1095C6DC",
+                                                           "processed_path":  "E:\\TOD\\tod\\out\\context-sync\\processed\\integration-loop-fb31d37c.json"
                                                        }
                                                    ],
                                       "rejected":  [
@@ -90,35 +90,19 @@
                                       "path":  "/tod/engineer/cycle",
                                       "service":  "tod",
                                       "source":  "engineer_cycle_v1",
-                                      "generated_at":  "2026-03-12T05:32:58.9595088Z",
+                                      "generated_at":  "2026-03-12T14:48:59.8901019Z",
                                       "cycles_requested":  1,
-                                      "cycles_executed":  1,
+                                      "cycles_executed":  0,
                                       "max_cycles_allowed":  5,
                                       "stop_at_score":  0.85,
-                                      "stopped_early":  false,
-                                      "stop_reason":  "max_cycles_reached",
+                                      "stopped_early":  true,
+                                      "stop_reason":  "safe_continue_pending_approval",
                                       "dangerous_approved":  false,
-                                      "pending_approval_count":  1,
+                                      "pending_approval_count":  13,
                                       "cycle_steps":  [
-                                                          {
-                                                              "cycle":  1,
-                                                              "cycle_id":  "ENGCYC-6404138044",
-                                                              "run_id":  "ENGRUN-AC7CBA9538",
-                                                              "score":  0.15,
-                                                              "band":  "early",
-                                                              "trend_direction":  "flat",
-                                                              "decision":  "continue"
-                                                          }
+
                                                       ],
-                                      "final":  {
-                                                    "cycle":  1,
-                                                    "cycle_id":  "ENGCYC-6404138044",
-                                                    "run_id":  "ENGRUN-AC7CBA9538",
-                                                    "score":  0.15,
-                                                    "band":  "early",
-                                                    "trend_direction":  "flat",
-                                                    "decision":  "continue"
-                                                }
+                                      "final":  null
                                   },
                       "error":  ""
                   },
@@ -127,25 +111,25 @@
                       "ok":  true,
                       "payload":  {
                                       "path":  "/tod/reliability",
-                                      "generated_at":  "2026-03-12T05:33:00.0428582Z",
-                                      "current_alert_state":  "critical",
-                                      "reliability_alert_state_raw":  "critical",
+                                      "generated_at":  "2026-03-12T14:49:00.9993545Z",
+                                      "current_alert_state":  "warning",
+                                      "reliability_alert_state_raw":  "warning",
                                       "reliability_alert_reasons":  [
                                                                         {
                                                                             "code":  "retry_trend_alert",
-                                                                            "severity":  "critical",
+                                                                            "severity":  "warning",
                                                                             "message":  "Retry/fallback trend elevated reliability alert state.",
                                                                             "evidence":  {
                                                                                              "engine":  "codex",
-                                                                                             "recent_retry_rate":  0.7,
+                                                                                             "recent_retry_rate":  0.5,
                                                                                              "baseline_retry_rate":  0.5,
-                                                                                             "recent_fallback_rate":  0.9,
-                                                                                             "baseline_fallback_rate":  0.6429
+                                                                                             "recent_fallback_rate":  1,
+                                                                                             "baseline_fallback_rate":  0.75
                                                                                          }
                                                                         },
                                                                         {
                                                                             "code":  "drift_penalty_active",
-                                                                            "severity":  "critical",
+                                                                            "severity":  "warning",
                                                                             "message":  "Drift penalties are currently active for one or more engines.",
                                                                             "evidence":  {
                                                                                              "engines":  [
@@ -159,9 +143,9 @@
                                                                             "severity":  "warning",
                                                                             "message":  "Drift warning signals were emitted by the reliability dashboard.",
                                                                             "evidence":  {
-                                                                                             "total":  2,
+                                                                                             "total":  1,
                                                                                              "by_severity":  {
-                                                                                                                 "warn":  2
+                                                                                                                 "warn":  1
                                                                                                              }
                                                                                          }
                                                                         },
@@ -170,34 +154,34 @@
                                                                             "severity":  "warning",
                                                                             "message":  "Pending approval backlog is adding operational reliability pressure.",
                                                                             "evidence":  {
-                                                                                             "total":  1,
+                                                                                             "total":  13,
                                                                                              "stale_count":  0,
-                                                                                             "low_value_count":  1,
-                                                                                             "promotable_count":  0
+                                                                                             "low_value_count":  3,
+                                                                                             "promotable_count":  7
                                                                                          }
                                                                         }
                                                                     ],
                                       "reliability_alert_inputs":  {
-                                                                       "alert_state_raw":  "critical",
+                                                                       "alert_state_raw":  "warning",
                                                                        "retry_trend":  {
                                                                                            "engine_count":  1,
                                                                                            "by_engine":  [
                                                                                                              {
                                                                                                                  "engine":  "codex",
-                                                                                                                 "alert_state":  "critical",
-                                                                                                                 "recent_retry_rate":  0.7,
+                                                                                                                 "alert_state":  "warning",
+                                                                                                                 "recent_retry_rate":  0.5,
                                                                                                                  "baseline_retry_rate":  0.5,
-                                                                                                                 "recent_fallback_rate":  0.9,
-                                                                                                                 "baseline_fallback_rate":  0.6429,
-                                                                                                                 "confidence_penalty":  0.2399,
-                                                                                                                 "score_penalty":  0.1999
+                                                                                                                 "recent_fallback_rate":  1,
+                                                                                                                 "baseline_fallback_rate":  0.75,
+                                                                                                                 "confidence_penalty":  0.12,
+                                                                                                                 "score_penalty":  0.08
                                                                                                              }
                                                                                                          ]
                                                                                        },
                                                                        "drift_warnings":  {
-                                                                                              "total":  2,
+                                                                                              "total":  1,
                                                                                               "by_severity":  {
-                                                                                                                  "warn":  2
+                                                                                                                  "warn":  1
                                                                                                               }
                                                                                           },
                                                                        "drift_penalties":  {
@@ -211,28 +195,28 @@
                                                                                                "source":  "guardrail_trend_v1",
                                                                                                "window":  12,
                                                                                                "recent_block_rate":  0,
-                                                                                               "prior_block_rate":  null,
+                                                                                               "prior_block_rate":  0,
                                                                                                "trend":  "stable",
-                                                                                               "recent_total":  8,
-                                                                                               "prior_total":  0
+                                                                                               "recent_total":  12,
+                                                                                               "prior_total":  8
                                                                                            },
                                                                        "pending_approvals":  {
-                                                                                                 "total":  1,
+                                                                                                 "total":  13,
                                                                                                  "by_type":  {
-                                                                                                                 "pending_apply":  1
+                                                                                                                 "pending_apply":  13
                                                                                                              },
                                                                                                  "by_age":  {
-                                                                                                                "lt_24h":  1,
+                                                                                                                "lt_24h":  13,
                                                                                                                 "h24_to_h72":  0,
                                                                                                                 "gt_72h":  0,
                                                                                                                 "unknown":  0
                                                                                                             },
                                                                                                  "by_source":  {
-                                                                                                                   "objective:16":  1
+                                                                                                                   "objective:16":  13
                                                                                                                },
                                                                                                  "stale_count":  0,
-                                                                                                 "low_value_count":  1,
-                                                                                                 "promotable_count":  0
+                                                                                                 "low_value_count":  3,
+                                                                                                 "promotable_count":  7
                                                                                              }
                                                                    },
                                       "drift_penalties_active":  true,
@@ -242,55 +226,55 @@
                                       "recovery_state":  [
                                                              {
                                                                  "engine":  "codex",
-                                                                 "alert_state":  "critical",
+                                                                 "alert_state":  "warning",
                                                                  "recovery_progress":  0,
                                                                  "consecutive_stable_runs":  0,
-                                                                 "confidence_penalty":  0.2399,
-                                                                 "score_penalty":  0.1999
+                                                                 "confidence_penalty":  0.12,
+                                                                 "score_penalty":  0.08
                                                              }
                                                          ],
                                       "engine_reliability_score":  {
                                                                        "engine":  "codex",
-                                                                       "reliability_score":  -0.0667,
-                                                                       "reliability_band":  "critical",
+                                                                       "reliability_score":  0.4,
+                                                                       "reliability_band":  "watch",
                                                                        "total_outcomes":  12,
                                                                        "counts":  {
                                                                                       "clean_success":  0,
                                                                                       "recovered_retry":  0,
-                                                                                      "recovered_fallback":  8,
+                                                                                      "recovered_fallback":  12,
                                                                                       "guardrail_block":  0,
                                                                                       "unrecovered_failure":  0,
-                                                                                      "manual_intervention":  4
+                                                                                      "manual_intervention":  0
                                                                                   }
                                                                    },
                                       "retry_trend":  [
                                                           {
                                                               "engine":  "codex",
-                                                              "recent_retry_rate":  0.7,
+                                                              "recent_retry_rate":  0.5,
                                                               "baseline_retry_rate":  0.5,
-                                                              "recent_fallback_rate":  0.9,
-                                                              "baseline_fallback_rate":  0.6429,
+                                                              "recent_fallback_rate":  1,
+                                                              "baseline_fallback_rate":  0.75,
                                                               "recent_guardrail_block_rate":  0,
                                                               "baseline_guardrail_block_rate":  0,
-                                                              "recent_engine_score":  -0.24,
-                                                              "baseline_engine_score":  0.1143,
-                                                              "alert_state":  "critical",
+                                                              "recent_engine_score":  0.4,
+                                                              "baseline_engine_score":  0.2,
+                                                              "alert_state":  "warning",
                                                               "recovery_progress":  0,
                                                               "consecutive_stable_runs":  0,
-                                                              "decay_factor":  0.9995,
-                                                              "signal_age_days":  0.0048,
-                                                              "confidence_penalty":  0.2399,
-                                                              "score_penalty":  0.1999
+                                                              "decay_factor":  0.9998,
+                                                              "signal_age_days":  0.0017,
+                                                              "confidence_penalty":  0.12,
+                                                              "score_penalty":  0.08
                                                           }
                                                       ],
                                       "guardrail_trend":  {
                                                               "source":  "guardrail_trend_v1",
                                                               "window":  12,
                                                               "recent_block_rate":  0,
-                                                              "prior_block_rate":  null,
+                                                              "prior_block_rate":  0,
                                                               "trend":  "stable",
-                                                              "recent_total":  8,
-                                                              "prior_total":  0
+                                                              "recent_total":  12,
+                                                              "prior_total":  8
                                                           },
                                       "drift_warnings":  [
                                                              {
@@ -302,23 +286,8 @@
                                                                                  "code":  "retry_rate_high",
                                                                                  "severity":  "warn",
                                                                                  "message":  "Retry rate exceeded configured threshold.",
-                                                                                 "recent_retry_rate":  0.7,
+                                                                                 "recent_retry_rate":  0.5,
                                                                                  "threshold":  0.35
-                                                                             }
-                                                             },
-                                                             {
-                                                                 "engine":  "codex",
-                                                                 "code":  "engine_reliability_score_drop",
-                                                                 "severity":  "warn",
-                                                                 "message":  "Engine recovery quality score dropped beyond threshold.",
-                                                                 "details":  {
-                                                                                 "code":  "engine_reliability_score_drop",
-                                                                                 "severity":  "warn",
-                                                                                 "message":  "Engine recovery quality score dropped beyond threshold.",
-                                                                                 "recent_engine_score":  -0.24,
-                                                                                 "baseline_engine_score":  0.1143,
-                                                                                 "drop":  0.3543,
-                                                                                 "threshold":  0.2
                                                                              }
                                                              }
                                                          ]
@@ -332,15 +301,15 @@
                                       "ok":  true,
                                       "source":  "tod-context-exchange-v1",
                                       "action":  "export",
-                                      "generated_at":  "2026-03-12T05:33:01.4866417Z",
+                                      "generated_at":  "2026-03-12T14:49:02.9994594Z",
                                       "latest_yaml":  "E:\\TOD\\tod\\out\\context-sync\\MIM_CONTEXT_EXPORT.latest.yaml",
                                       "latest_json":  "E:\\TOD\\tod\\out\\context-sync\\MIM_CONTEXT_EXPORT.latest.json",
-                                      "versioned_yaml":  "E:\\TOD\\tod\\out\\context-sync\\exports\\MIM_CONTEXT_EXPORT-20260312-053301.yaml",
-                                      "versioned_json":  "E:\\TOD\\tod\\out\\context-sync\\exports\\MIM_CONTEXT_EXPORT-20260312-053301.json",
+                                      "versioned_yaml":  "E:\\TOD\\tod\\out\\context-sync\\exports\\MIM_CONTEXT_EXPORT-20260312-144903.yaml",
+                                      "versioned_json":  "E:\\TOD\\tod\\out\\context-sync\\exports\\MIM_CONTEXT_EXPORT-20260312-144903.json",
                                       "inbox_dir":  "E:\\TOD\\tod\\inbox\\context-sync\\updates",
                                       "processed_dir":  "E:\\TOD\\tod\\out\\context-sync\\processed",
                                       "updates_log":  "E:\\TOD\\tod\\out\\context-sync\\context-updates-log.jsonl",
-                                      "preview":  "MIM_CONTEXT_EXPORT\r\n\r\nsystem:\r\n  name: MIM server\r\n  environment: local + containers\r\n  gpu: RTX 4060 Ti 16GB\r\n\r\nstatus:\r\n  objective_active: 17\r\n  phase: warming\r\n  reliability: n/a\r\n  trend: improving\r\n  blockers: pending approvals (1)\r\n\r\nrecent_actions:\r\n  - regression suite run: pass (34/34)\r\n  - runtime health verified\r\n  - SSH connectivity: verify with scripts/Connect-Mim.ps1 as needed\r\n\r\nprojects:\r\n  - TOD\r\n  - comm_app\r\n  - coachMIM\r\n  - mim_pulz\r\n  - MIM Robotics\r\n  - Viasion\r\n  - Mimir\r\n  - mim_devl\r\n\r\nnext_actions:\r\n  - finalize verification gate\r\n  - begin objective 21 planning"
+                                      "preview":  "MIM_CONTEXT_EXPORT\r\n\r\nsystem:\r\n  name: MIM server\r\n  environment: local + containers\r\n  gpu: RTX 4060 Ti 16GB\r\n\r\nstatus:\r\n  objective_active: 17\r\n  phase: warming\r\n  reliability: n/a\r\n  trend: declining\r\n  blockers: pending approvals (13)\r\n\r\nrecent_actions:\r\n  - regression suite run: pass (34/34)\r\n  - runtime health verified\r\n  - SSH connectivity: verify with scripts/Connect-Mim.ps1 as needed\r\n\r\nprojects:\r\n  - TOD\r\n  - comm_app\r\n  - coachMIM\r\n  - mim_pulz\r\n  - MIM Robotics\r\n  - Viasion\r\n  - Mimir\r\n  - mim_devl\r\n\r\nnext_actions:\r\n  - finalize verification gate\r\n  - begin objective 21 planning"
                                   },
                       "error":  ""
                   },
@@ -351,48 +320,48 @@
                                       "path":  "/tod/engineer/signal",
                                       "service":  "tod",
                                       "source":  "engineering_signal_v1",
-                                      "generated_at":  "2026-03-12T05:33:02.0617753Z",
+                                      "generated_at":  "2026-03-12T14:49:03.7782723Z",
                                       "contract_version":  "engineering_signal_v1",
                                       "current_engineering_loop_status":  "warming",
-                                      "latest_maturity_band":  "early",
+                                      "latest_maturity_band":  "emerging",
                                       "pending_approval_state":  {
                                                                      "pending":  true,
-                                                                     "count":  1
+                                                                     "count":  13
                                                                  },
                                       "stop_reason":  "continue_requested",
                                       "top_penalties":  [
                                                             {
-                                                                "reason":  "sparse_evidence",
-                                                                "value":  0.05,
-                                                                "detail":  "Limited engineering loop evidence in selected window."
+
                                                             }
                                                         ],
-                                      "trend_direction":  "improving",
-                                      "trend_delta":  0.15,
+                                      "trend_direction":  "declining",
+                                      "trend_delta":  -0.1333,
                                       "phase_snapshot":  {
                                                              "create":  {
                                                                             "latest_score":  0,
                                                                             "direction":  "flat"
                                                                         },
                                                              "plan":  {
-                                                                          "latest_score":  0.3333,
+                                                                          "latest_score":  1,
                                                                           "direction":  "flat"
                                                                       },
                                                              "implement":  {
-                                                                               "latest_score":  0.3333,
+                                                                               "latest_score":  1,
                                                                                "direction":  "flat"
                                                                            },
                                                              "test":  {
                                                                           "latest_score":  0,
-                                                                          "direction":  "flat"
+                                                                          "direction":  "declining"
                                                                       },
                                                              "manage":  {
-                                                                            "latest_score":  0.3333,
-                                                                            "direction":  "flat"
+                                                                            "latest_score":  0,
+                                                                            "direction":  "declining"
                                                                         }
                                                          },
                                       "operator_signals":  [
-                                                               "engineering loop paused awaiting approval"
+                                                               "engineering loop paused awaiting approval",
+                                                               "test maturity regressed",
+                                                               "implementation stable, testing lagging"
                                                            ]
                                   },
                       "error":  ""
@@ -401,8 +370,8 @@
     "summary":  {
                     "steps_total":  6,
                     "steps_failed":  0,
-                    "pending_approvals_after":  1,
-                    "trend_after":  "improving",
-                    "reliability_alert_after":  "critical"
+                    "pending_approvals_after":  13,
+                    "trend_after":  "declining",
+                    "reliability_alert_after":  "warning"
                 }
 }

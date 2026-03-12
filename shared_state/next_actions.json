@@ -1,10 +1,10 @@
 {
-    "generated_at":  "2026-03-12T05:47:44.6941863Z",
+    "generated_at":  "2026-03-12T14:50:36.9124455Z",
     "source":  "tod-shared-state-sync-v1",
     "current_objective_in_progress":  "16",
     "next_proposed_objective":  "TOD-17",
     "blockers":  [
-                     "pending approvals (12)"
+                     "pending approvals (10)"
                  ],
     "required_verification":  [
                                   "focused quality gate",
@@ -21,127 +21,28 @@
 
                                  ],
     "approval_backlog_snapshot":  {
-                                      "generated_at":  "2026-03-12T05:47:44.6361257Z",
-                                      "total_pending":  12,
+                                      "generated_at":  "2026-03-12T14:50:36.8941113Z",
+                                      "total_pending":  10,
                                       "by_type":  {
-                                                      "pending_apply":  12
+                                                      "pending_apply":  10
                                                   },
                                       "by_age":  {
-                                                     "lt_24h":  12,
+                                                     "lt_24h":  10,
                                                      "h24_to_h72":  0,
                                                      "gt_72h":  0,
                                                      "unknown":  0
                                                  },
                                       "by_source":  {
-                                                        "objective:16":  12
+                                                        "objective:16":  10
                                                     },
                                       "stale_count":  0,
-                                      "low_value_count":  10,
-                                      "promotable_count":  2,
+                                      "low_value_count":  0,
+                                      "promotable_count":  7,
                                       "stale":  [
 
                                                 ],
                                       "low_value":  [
-                                                        {
-                                                            "id":  "ENGCYC-A25925AF98",
-                                                            "objective_id":  "16",
-                                                            "task_id":  "45",
-                                                            "status":  "pending_apply",
-                                                            "source":  "objective:16",
-                                                            "age_hours":  0.11,
-                                                            "maturity_band":  "emerging",
-                                                            "score":  0.5333
-                                                        },
-                                                        {
-                                                            "id":  "ENGCYC-1912843BDE",
-                                                            "objective_id":  "16",
-                                                            "task_id":  "45",
-                                                            "status":  "pending_apply",
-                                                            "source":  "objective:16",
-                                                            "age_hours":  0.11,
-                                                            "maturity_band":  "emerging",
-                                                            "score":  0.5333
-                                                        },
-                                                        {
-                                                            "id":  "ENGCYC-D7CB9D82DD",
-                                                            "objective_id":  "16",
-                                                            "task_id":  "45",
-                                                            "status":  "pending_apply",
-                                                            "source":  "objective:16",
-                                                            "age_hours":  0.09,
-                                                            "maturity_band":  "emerging",
-                                                            "score":  0.4667
-                                                        },
-                                                        {
-                                                            "id":  "ENGCYC-1D7F6FAADD",
-                                                            "objective_id":  "16",
-                                                            "task_id":  "45",
-                                                            "status":  "pending_apply",
-                                                            "source":  "objective:16",
-                                                            "age_hours":  0.09,
-                                                            "maturity_band":  "emerging",
-                                                            "score":  0.4667
-                                                        },
-                                                        {
-                                                            "id":  "ENGCYC-5F8EECEAFE",
-                                                            "objective_id":  "16",
-                                                            "task_id":  "45",
-                                                            "status":  "pending_apply",
-                                                            "source":  "objective:16",
-                                                            "age_hours":  0.07,
-                                                            "maturity_band":  "emerging",
-                                                            "score":  0.4667
-                                                        },
-                                                        {
-                                                            "id":  "ENGCYC-84D1FBDF6D",
-                                                            "objective_id":  "16",
-                                                            "task_id":  "45",
-                                                            "status":  "pending_apply",
-                                                            "source":  "objective:16",
-                                                            "age_hours":  0.07,
-                                                            "maturity_band":  "emerging",
-                                                            "score":  0.4667
-                                                        },
-                                                        {
-                                                            "id":  "ENGCYC-926EFEF1A7",
-                                                            "objective_id":  "16",
-                                                            "task_id":  "45",
-                                                            "status":  "pending_apply",
-                                                            "source":  "objective:16",
-                                                            "age_hours":  0.06,
-                                                            "maturity_band":  "emerging",
-                                                            "score":  0.5333
-                                                        },
-                                                        {
-                                                            "id":  "ENGCYC-5DB79A5864",
-                                                            "objective_id":  "16",
-                                                            "task_id":  "45",
-                                                            "status":  "pending_apply",
-                                                            "source":  "objective:16",
-                                                            "age_hours":  0.05,
-                                                            "maturity_band":  "emerging",
-                                                            "score":  0.4667
-                                                        },
-                                                        {
-                                                            "id":  "ENGCYC-2DEC0388E3",
-                                                            "objective_id":  "16",
-                                                            "task_id":  "45",
-                                                            "status":  "pending_apply",
-                                                            "source":  "objective:16",
-                                                            "age_hours":  0.05,
-                                                            "maturity_band":  "emerging",
-                                                            "score":  0.4667
-                                                        },
-                                                        {
-                                                            "id":  "ENGCYC-3C89172C36",
-                                                            "objective_id":  "16",
-                                                            "task_id":  "45",
-                                                            "status":  "pending_apply",
-                                                            "source":  "objective:16",
-                                                            "age_hours":  0.04,
-                                                            "maturity_band":  "emerging",
-                                                            "score":  0.5333
-                                                        }
+
                                                     ],
                                       "promotable":  [
                                                          {
@@ -150,7 +51,7 @@
                                                              "task_id":  "45",
                                                              "status":  "pending_apply",
                                                              "source":  "objective:16",
-                                                             "age_hours":  0.11,
+                                                             "age_hours":  9.15,
                                                              "maturity_band":  "good",
                                                              "score":  0.6667
                                                          },
@@ -160,14 +61,64 @@
                                                              "task_id":  "45",
                                                              "status":  "pending_apply",
                                                              "source":  "objective:16",
-                                                             "age_hours":  0.08,
+                                                             "age_hours":  9.13,
                                                              "maturity_band":  "good",
                                                              "score":  0.7333
+                                                         },
+                                                         {
+                                                             "id":  "ENGCYC-CACB1AD8DF",
+                                                             "objective_id":  "16",
+                                                             "task_id":  "45",
+                                                             "status":  "pending_apply",
+                                                             "source":  "objective:16",
+                                                             "age_hours":  8.91,
+                                                             "maturity_band":  "good",
+                                                             "score":  0.6667
+                                                         },
+                                                         {
+                                                             "id":  "ENGCYC-7913857882",
+                                                             "objective_id":  "16",
+                                                             "task_id":  "45",
+                                                             "status":  "pending_apply",
+                                                             "source":  "objective:16",
+                                                             "age_hours":  8.89,
+                                                             "maturity_band":  "good",
+                                                             "score":  0.7333
+                                                         },
+                                                         {
+                                                             "id":  "ENGCYC-310C17A63A",
+                                                             "objective_id":  "16",
+                                                             "task_id":  "45",
+                                                             "status":  "pending_apply",
+                                                             "source":  "objective:16",
+                                                             "age_hours":  5.73,
+                                                             "maturity_band":  "good",
+                                                             "score":  0.6667
+                                                         },
+                                                         {
+                                                             "id":  "ENGCYC-83488067D9",
+                                                             "objective_id":  "16",
+                                                             "task_id":  "45",
+                                                             "status":  "pending_apply",
+                                                             "source":  "objective:16",
+                                                             "age_hours":  5.36,
+                                                             "maturity_band":  "good",
+                                                             "score":  0.6667
+                                                         },
+                                                         {
+                                                             "id":  "ENGCYC-218F6B45DC",
+                                                             "objective_id":  "16",
+                                                             "task_id":  "45",
+                                                             "status":  "pending_apply",
+                                                             "source":  "objective:16",
+                                                             "age_hours":  0.06,
+                                                             "maturity_band":  "good",
+                                                             "score":  0.6667
                                                          }
                                                      ]
                                   },
     "integration_status":  {
-                               "generated_at":  "2026-03-12T05:47:44.6539222Z",
+                               "generated_at":  "2026-03-12T14:50:36.9000960Z",
                                "source":  "tod-integration-status-v1",
                                "mim_schema":  "2026-03-12-57",
                                "tod_contract":  "2026-03-12-57",
@@ -206,21 +157,21 @@
                                 }
                             ],
     "approval_reduction_summary":  {
-                                       "generated_at":  "2026-03-12T05:14:55.8718458Z",
+                                       "generated_at":  "2026-03-12T14:49:52.4965293Z",
                                        "source":  "tod-approval-reduction-pass-v1",
                                        "totals":  {
-                                                      "pending":  129,
-                                                      "promotable":  15,
-                                                      "low_value":  101,
-                                                      "non_low_value":  28,
-                                                      "duplicate_groups":  3,
-                                                      "duplicate_suppression_candidates":  1
+                                                      "pending":  10,
+                                                      "promotable":  7,
+                                                      "low_value":  0,
+                                                      "non_low_value":  10,
+                                                      "duplicate_groups":  2,
+                                                      "duplicate_suppression_candidates":  0
                                                   },
                                        "queue_sizes":  {
-                                                           "promotable_first":  15,
-                                                           "low_value_review":  20,
-                                                           "duplicate_groups":  3,
-                                                           "duplicate_suppression_candidates":  1
+                                                           "promotable_first":  7,
+                                                           "low_value_review":  0,
+                                                           "duplicate_groups":  2,
+                                                           "duplicate_suppression_candidates":  0
                                                        }
                                    }
 }

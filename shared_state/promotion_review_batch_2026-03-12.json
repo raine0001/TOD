@@ -1,0 +1,72 @@
+{
+  "generated_at": "2026-03-12T14:48:00Z",
+  "source": "tod-promotion-review-batch-v1",
+  "type": "guarded_promotion_review",
+  "objective_id": "16",
+  "task_id": "45",
+  "policy": {
+    "auto_apply": false,
+    "guarded_only": true,
+    "require_validation_green": true,
+    "apply_decision": "deferred"
+  },
+  "validation": {
+    "regression": {
+      "passed_all": true,
+      "passed": 34,
+      "failed": 0,
+      "generated_at": "2026-03-12T14:47:45.8958842Z"
+    },
+    "smoke": {
+      "passed_all": true,
+      "current_alert_state": "stable",
+      "generated_at": "2026-03-12T14:45:41.6514427Z"
+    }
+  },
+  "batch_candidates": [
+    {
+      "cycle_id": "ENGCYC-7913857882",
+      "score": 0.7333,
+      "maturity_band": "good",
+      "status": "pending_apply"
+    },
+    {
+      "cycle_id": "ENGCYC-6721778291",
+      "score": 0.7333,
+      "maturity_band": "good",
+      "status": "pending_apply"
+    },
+    {
+      "cycle_id": "ENGCYC-83488067D9",
+      "score": 0.6667,
+      "maturity_band": "good",
+      "status": "pending_apply"
+    },
+    {
+      "cycle_id": "ENGCYC-310C17A63A",
+      "score": 0.6667,
+      "maturity_band": "good",
+      "status": "pending_apply"
+    },
+    {
+      "cycle_id": "ENGCYC-29E14CB7EB",
+      "score": 0.6667,
+      "maturity_band": "good",
+      "status": "pending_apply"
+    },
+    {
+      "cycle_id": "ENGCYC-CACB1AD8DF",
+      "score": 0.6667,
+      "maturity_band": "good",
+      "status": "pending_apply"
+    }
+  ],
+  "decision": {
+    "result": "review_ready_no_apply",
+    "notes": [
+      "Promotable candidates reconfirmed.",
+      "Validation checks are green.",
+      "No apply executed per conservative guardrail."
+    ]
+  }
+}

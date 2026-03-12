@@ -1,24 +1,24 @@
 {
-    "generated_at":  "2026-03-12T05:47:44.6551443Z",
+    "generated_at":  "2026-03-12T14:50:36.9011029Z",
     "source":  "tod-execution-evidence-v1",
     "execution_reliability":  {
-                                  "current_alert_state":  "critical",
+                                  "current_alert_state":  "warning",
                                   "reliability_alert_reasons":  [
                                                                     {
                                                                         "code":  "retry_trend_alert",
-                                                                        "severity":  "critical",
+                                                                        "severity":  "warning",
                                                                         "message":  "Retry/fallback trend elevated reliability alert state.",
                                                                         "evidence":  {
                                                                                          "engine":  "codex",
-                                                                                         "recent_retry_rate":  0.75,
+                                                                                         "recent_retry_rate":  0.5,
                                                                                          "baseline_retry_rate":  0.5,
                                                                                          "recent_fallback_rate":  1,
-                                                                                         "baseline_fallback_rate":  0.6667
+                                                                                         "baseline_fallback_rate":  0.75
                                                                                      }
                                                                     },
                                                                     {
                                                                         "code":  "drift_penalty_active",
-                                                                        "severity":  "critical",
+                                                                        "severity":  "warning",
                                                                         "message":  "Drift penalties are currently active for one or more engines.",
                                                                         "evidence":  {
                                                                                          "engines":  [
@@ -32,9 +32,9 @@
                                                                         "severity":  "warning",
                                                                         "message":  "Drift warning signals were emitted by the reliability dashboard.",
                                                                         "evidence":  {
-                                                                                         "total":  3,
+                                                                                         "total":  1,
                                                                                          "by_severity":  {
-                                                                                                             "warn":  3
+                                                                                                             "warn":  1
                                                                                                          }
                                                                                      }
                                                                     },
@@ -43,10 +43,10 @@
                                                                         "severity":  "warning",
                                                                         "message":  "Pending approval backlog is adding operational reliability pressure.",
                                                                         "evidence":  {
-                                                                                         "total":  12,
+                                                                                         "total":  10,
                                                                                          "stale_count":  0,
-                                                                                         "low_value_count":  10,
-                                                                                         "promotable_count":  2
+                                                                                         "low_value_count":  0,
+                                                                                         "promotable_count":  7
                                                                                      }
                                                                     }
                                                                 ],
@@ -66,75 +66,44 @@
                                                                }
                               },
     "constraint_evaluation_outcomes":  {
-                                           "drift_warnings":  [
-                                                                  {
-                                                                      "engine":  "codex",
-                                                                      "code":  "retry_rate_high",
-                                                                      "severity":  "warn",
-                                                                      "message":  "Retry rate exceeded configured threshold.",
-                                                                      "details":  {
-                                                                                      "code":  "retry_rate_high",
-                                                                                      "severity":  "warn",
-                                                                                      "message":  "Retry rate exceeded configured threshold.",
-                                                                                      "recent_retry_rate":  0.75,
-                                                                                      "threshold":  0.35
-                                                                                  }
-                                                                  },
-                                                                  {
-                                                                      "engine":  "codex",
-                                                                      "code":  "fallback_dependence_rising",
-                                                                      "severity":  "warn",
-                                                                      "message":  "Fallback dependence increased in recent window.",
-                                                                      "details":  {
-                                                                                      "code":  "fallback_dependence_rising",
-                                                                                      "severity":  "warn",
-                                                                                      "message":  "Fallback dependence increased in recent window.",
-                                                                                      "recent_fallback_rate":  1,
-                                                                                      "baseline_fallback_rate":  0.6667,
-                                                                                      "threshold":  1
-                                                                                  }
-                                                                  },
-                                                                  {
-                                                                      "engine":  "codex",
-                                                                      "code":  "engine_reliability_score_drop",
-                                                                      "severity":  "warn",
-                                                                      "message":  "Engine recovery quality score dropped beyond threshold.",
-                                                                      "details":  {
-                                                                                      "code":  "engine_reliability_score_drop",
-                                                                                      "severity":  "warn",
-                                                                                      "message":  "Engine recovery quality score dropped beyond threshold.",
-                                                                                      "recent_engine_score":  -0.3,
-                                                                                      "baseline_engine_score":  0.1333,
-                                                                                      "drop":  0.4333,
-                                                                                      "threshold":  0.2
-                                                                                  }
-                                                                  }
-                                                              ],
+                                           "drift_warnings":  {
+                                                                  "engine":  "codex",
+                                                                  "code":  "retry_rate_high",
+                                                                  "severity":  "warn",
+                                                                  "message":  "Retry rate exceeded configured threshold.",
+                                                                  "details":  {
+                                                                                  "code":  "retry_rate_high",
+                                                                                  "severity":  "warn",
+                                                                                  "message":  "Retry rate exceeded configured threshold.",
+                                                                                  "recent_retry_rate":  0.5,
+                                                                                  "threshold":  0.35
+                                                                              }
+                                                              },
                                            "guardrail_trend":  {
                                                                    "source":  "guardrail_trend_v1",
                                                                    "window":  10,
                                                                    "recent_block_rate":  0,
-                                                                   "prior_block_rate":  null,
+                                                                   "prior_block_rate":  0,
                                                                    "trend":  "stable",
                                                                    "recent_total":  10,
-                                                                   "prior_total":  0
+                                                                   "prior_total":  10
                                                                }
                                        },
     "retry_fallback_metrics":  [
                                    {
                                        "engine":  "codex",
-                                       "recent_retry_rate":  0.75,
+                                       "recent_retry_rate":  0.5,
                                        "baseline_retry_rate":  0.5,
                                        "recent_fallback_rate":  1,
-                                       "baseline_fallback_rate":  0.6667
+                                       "baseline_fallback_rate":  0.75
                                    }
                                ],
     "performance_deltas":  [
                                {
                                    "engine":  "codex",
-                                   "engine_score_recent":  -0.3,
-                                   "engine_score_baseline":  0.1333,
-                                   "engine_score_delta":  -0.4333
+                                   "engine_score_recent":  0.4,
+                                   "engine_score_baseline":  0.2,
+                                   "engine_score_delta":  0.2
                                }
                            ]
 }

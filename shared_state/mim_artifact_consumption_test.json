@@ -1,0 +1,20 @@
+{
+    "generated_at":  "2026-03-12T14:48:58.2693662Z",
+    "source":  "tod-mim-artifact-consumption-test-v1",
+    "mode":  "simulated_mim_consumer",
+    "index_path":  ".\\shared_state\\review_artifacts_index.json",
+    "latest":  "bounded_review_snapshot_2026-03-12T14-21Z.json",
+    "latest_timestamp":  "2026-03-12T14:21:00Z",
+    "artifact_found":  true,
+    "artifact_source":  "tod-bounded-review-v1",
+    "artifact_type":  "bounded_review_snapshot",
+    "ingest_decision":  "ingest",
+    "memory_update":  {
+                          "memory_key":  "tod.bounded_review.latest",
+                          "status":  "updated",
+                          "value":  {
+                                        "artifact":  "bounded_review_snapshot_2026-03-12T14-21Z.json",
+                                        "generated_at":  "2026-03-12T14:21:30Z"
+                                    }
+                      }
+}

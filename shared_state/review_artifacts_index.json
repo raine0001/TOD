@@ -1,0 +1,10 @@
+{
+  "latest": "bounded_review_snapshot_2026-03-12T14-21Z.json",
+  "latest_timestamp": "2026-03-12T14:21:00Z",
+  "artifact_count": 1,
+  "recent": [
+    "bounded_review_snapshot_2026-03-12T14-21Z.json"
+  ],
+  "type": "bounded_review",
+  "producer": "TOD"
+}

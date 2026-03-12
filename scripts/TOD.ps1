@@ -811,6 +811,11 @@ function Get-TodEngineeringLoopSummaryPayload {
         last_scorecard = if ($loop.PSObject.Properties["last_scorecard"]) { $loop.last_scorecard } else { $null }
         confidence = if ($bus.PSObject.Properties["section_confidence"] -and $bus.section_confidence.PSObject.Properties["engineering_loop"]) { [double]$bus.section_confidence.engineering_loop } else { 0.0 }
         pending_approvals_total = [int]$approvalSummary.pending_approvals_total
+        pending_approvals_low_value = [int]$approvalSummary.pending_approvals_low_value_count
+        pending_approvals_promotable = [int]$approvalSummary.pending_approvals_promotable_count
+        pending_approvals_stale = [int]$approvalSummary.pending_approvals_stale_count
+        approval_source_distribution = $approvalSummary.pending_approvals_by_source
+        approval_age_distribution = $approvalSummary.pending_approvals_by_age
         pending_approvals_by_type = $approvalSummary.pending_approvals_by_type
         pending_approvals_by_age = $approvalSummary.pending_approvals_by_age
         pending_approvals_by_source = $approvalSummary.pending_approvals_by_source
@@ -3027,6 +3032,11 @@ function Get-TodEngineerScorecardPayload {
         )
         recent_actions = @($actions | Select-Object -First 12)
         pending_approvals_total = [int]$approvalSummary.pending_approvals_total
+        pending_approvals_low_value = [int]$approvalSummary.pending_approvals_low_value_count
+        pending_approvals_promotable = [int]$approvalSummary.pending_approvals_promotable_count
+        pending_approvals_stale = [int]$approvalSummary.pending_approvals_stale_count
+        approval_source_distribution = $approvalSummary.pending_approvals_by_source
+        approval_age_distribution = $approvalSummary.pending_approvals_by_age
         pending_approvals_by_type = $approvalSummary.pending_approvals_by_type
         pending_approvals_by_age = $approvalSummary.pending_approvals_by_age
         pending_approvals_by_source = $approvalSummary.pending_approvals_by_source
