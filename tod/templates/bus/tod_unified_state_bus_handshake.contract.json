@@ -1,0 +1,68 @@
+{
+  "schema_name": "tod_unified_state_bus_handshake_v1",
+  "contract_version": "1.0.0",
+  "source_domain": "tod",
+  "producer_metadata": {
+    "system": "TOD",
+    "component": "bus_adapter",
+    "role": "execution_runtime"
+  },
+  "consumer_metadata": {
+    "primary_consumer": "MIM",
+    "consumer_role": "reasoning_runtime",
+    "ownership_boundary": "MIM owns cognition, meaning, planning, and governance."
+  },
+  "supported_inbound_event_types": [
+    "execution.requested",
+    "execution.cancel_requested",
+    "execution.priority_changed"
+  ],
+  "supported_outbound_event_types": [
+    "execution.started",
+    "execution.succeeded",
+    "execution.failed",
+    "execution.guardrail_blocked",
+    "execution.retry_scheduled",
+    "execution.recovered",
+    "execution.drift_detected",
+    "execution.fallback_applied",
+    "execution.cancelled"
+  ],
+  "compatibility_expectations": {
+    "required_consumer_domains": [
+      "mim"
+    ],
+    "required_summary_pointer_type": "bus_execution_summaries_pointer",
+    "required_summary_type": "bus_execution_summaries",
+    "compatible_summary_contract": "tod_bus_execution_summary_handoff_v1",
+    "compatible_summary_version": "1.0.0"
+  },
+  "correlation_requirements": {
+    "required": [
+      "event_id",
+      "trace_id",
+      "execution_id"
+    ],
+    "optional": [
+      "goal_id",
+      "plan_id",
+      "action_id",
+      "source_domain"
+    ]
+  },
+  "replay_duplicate_ordering_expectations": {
+    "replay": "allowed_from_event_stream",
+    "idempotency_key": "event_id",
+    "duplicate_handling": "safe_ignore_after_first_process",
+    "ordering": "best_effort_stream_order_with_out_of_order_tolerance_for_control_signals"
+  },
+  "semantic_separation": {
+    "transient_bus_semantics": "tod/out/bus/events.jsonl is append-only transient execution telemetry.",
+    "durable_shared_state_semantics": "shared_state/* artifacts are durable handoff projections for cross-session/system consumption."
+  },
+  "boundary_notes": [
+    "TOD participates as execution/runtime domain only.",
+    "TOD must not publish cognition, strategy meaning, planning intent, or governance decisions.",
+    "MIM remains the authority for cognition, planning, and governance interpretation."
+  ]
+}

@@ -42,3 +42,15 @@
 
 {"linked_at":"2026-03-12T16:18:15.1809582Z","event_id":"evt-9c8c318940e8","trace_id":"trace-dbaf5ec1","execution_id":"exec-589a653b","artifact_path":"shared_state/review_artifacts_index.json"}
 
+{"linked_at":"2026-03-12T16:22:58.6200049Z","event_id":"evt-7ff37d81c55c","trace_id":"trace-7bea3600","execution_id":"exec-33fa54a8","artifact_path":"shared_state/next_actions.json"}
+
+{"linked_at":"2026-03-12T16:22:58.6211616Z","event_id":"evt-7ff37d81c55c","trace_id":"trace-7bea3600","execution_id":"exec-33fa54a8","artifact_path":"shared_state/review_artifacts_index.json"}
+
+{"linked_at":"2026-03-12T16:23:42.6153528Z","event_id":"evt-8f97c6521923","trace_id":"trace-d4e73432","execution_id":"exec-5ab99b97","artifact_path":"shared_state/next_actions.json"}
+
+{"linked_at":"2026-03-12T16:23:42.6163549Z","event_id":"evt-8f97c6521923","trace_id":"trace-d4e73432","execution_id":"exec-5ab99b97","artifact_path":"shared_state/review_artifacts_index.json"}
+
+{"linked_at":"2026-03-12T16:23:53.8408918Z","event_id":"evt-7a3dd2148a85","trace_id":"trace-c29672a8","execution_id":"exec-fd393825","artifact_path":"shared_state/next_actions.json"}
+
+{"linked_at":"2026-03-12T16:23:53.8408918Z","event_id":"evt-7a3dd2148a85","trace_id":"trace-c29672a8","execution_id":"exec-fd393825","artifact_path":"shared_state/review_artifacts_index.json"}
+

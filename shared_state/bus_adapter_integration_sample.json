@@ -1,24 +1,24 @@
 {
     "ok":  true,
     "source":  "tod-bus-adapter-sample-loop-v1",
-    "generated_at":  "2026-03-12T16:18:15.2870172Z",
-    "trace_id":  "trace-dbaf5ec1",
-    "execution_id":  "exec-589a653b",
-    "goal_id":  "MIMGOAL-8A01148C",
+    "generated_at":  "2026-03-12T16:23:53.9762025Z",
+    "trace_id":  "trace-c29672a8",
+    "execution_id":  "exec-fd393825",
+    "goal_id":  "MIMGOAL-EC737218",
     "steps":  [
                   {
                       "ok":  true,
                       "action":  "consume-event",
                       "status":  "accepted_executed",
-                      "event_id":  "evt-e3ce0feada",
+                      "event_id":  "evt-824d04e6fe",
                       "event_type":  "execution.requested",
                       "runtime_action":  "get-engineering-loop-summary"
                   }
               ],
     "execution_summary":  [
                               {
-                                  "trace_id":  "trace-dbaf5ec1",
-                                  "execution_id":  "exec-589a653b",
+                                  "trace_id":  "trace-c29672a8",
+                                  "execution_id":  "exec-fd393825",
                                   "final_outcome":  "succeeded",
                                   "retries":  1,
                                   "fallbacks":  1,
@@ -33,12 +33,12 @@
                                                          "shared_state/next_actions.json",
                                                          "shared_state/review_artifacts_index.json"
                                                      ],
-                                  "last_event_at":  "2026-03-12T16:18:15.1789489Z"
+                                  "last_event_at":  "2026-03-12T16:23:53.8398575Z"
                               }
                           ],
     "execution_summary_artifact":  "shared_state/bus_execution_summaries.json",
     "execution_summary_handoff":  {
-                                      "generated_at":  "2026-03-12T16:18:15.2639135Z",
+                                      "generated_at":  "2026-03-12T16:23:53.9274869Z",
                                       "summary_version":  "1.0.0",
                                       "source":  "tod-bus-adapter-v1",
                                       "ordering_notes":  "Summaries are sorted by last_event_at descending; ties are ordered by trace_id then execution_id ascending.",
@@ -46,7 +46,7 @@
                                       "discovery_pointer_path":  "shared_state/bus_execution_summaries.index.json",
                                       "contract_path":  "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
                                       "pointer":  {
-                                                      "generated_at":  "2026-03-12T16:18:15.2639135Z",
+                                                      "generated_at":  "2026-03-12T16:23:53.9274869Z",
                                                       "summary_version":  "1.0.0",
                                                       "source":  "tod-bus-adapter-v1",
                                                       "type":  "bus_execution_summaries_pointer",
@@ -59,18 +59,18 @@
     "lifecycle":  {
                       "started":  [
                                       {
-                                          "event_id":  "evt-e3d7f10a994a",
+                                          "event_id":  "evt-d01fecf0bc10",
                                           "event_type":  "execution.started",
-                                          "occurred_at":  "2026-03-12T16:18:14.3683489Z",
+                                          "occurred_at":  "2026-03-12T16:23:53.1395675Z",
                                           "producer":  {
                                                            "system":  "TOD",
                                                            "component":  "bus_adapter",
                                                            "role":  "execution_runtime"
                                                        },
                                           "correlation":  {
-                                                              "trace_id":  "trace-dbaf5ec1",
-                                                              "execution_id":  "exec-589a653b",
-                                                              "goal_id":  "MIMGOAL-8A01148C",
+                                                              "trace_id":  "trace-c29672a8",
+                                                              "execution_id":  "exec-fd393825",
+                                                              "goal_id":  "MIMGOAL-EC737218",
                                                               "source_domain":  "mim"
                                                           },
                                           "reasons":  [
@@ -92,18 +92,18 @@
                                   ],
                       "retry_scheduled":  [
                                               {
-                                                  "event_id":  "evt-d622e2b5ecca",
+                                                  "event_id":  "evt-844ae85b47f5",
                                                   "event_type":  "execution.retry_scheduled",
-                                                  "occurred_at":  "2026-03-12T16:18:14.3768155Z",
+                                                  "occurred_at":  "2026-03-12T16:23:53.1472075Z",
                                                   "producer":  {
                                                                    "system":  "TOD",
                                                                    "component":  "bus_adapter",
                                                                    "role":  "execution_runtime"
                                                                },
                                                   "correlation":  {
-                                                                      "trace_id":  "trace-dbaf5ec1",
-                                                                      "execution_id":  "exec-589a653b",
-                                                                      "goal_id":  "MIMGOAL-8A01148C",
+                                                                      "trace_id":  "trace-c29672a8",
+                                                                      "execution_id":  "exec-fd393825",
+                                                                      "goal_id":  "MIMGOAL-EC737218",
                                                                       "source_domain":  "mim"
                                                                   },
                                                   "reasons":  [
@@ -128,18 +128,18 @@
                                           ],
                       "recovered":  [
                                         {
-                                            "event_id":  "evt-8b1f861aab25",
+                                            "event_id":  "evt-a66ea9d6b2f4",
                                             "event_type":  "execution.recovered",
-                                            "occurred_at":  "2026-03-12T16:18:15.1513241Z",
+                                            "occurred_at":  "2026-03-12T16:23:53.8108739Z",
                                             "producer":  {
                                                              "system":  "TOD",
                                                              "component":  "bus_adapter",
                                                              "role":  "execution_runtime"
                                                          },
                                             "correlation":  {
-                                                                "trace_id":  "trace-dbaf5ec1",
-                                                                "execution_id":  "exec-589a653b",
-                                                                "goal_id":  "MIMGOAL-8A01148C",
+                                                                "trace_id":  "trace-c29672a8",
+                                                                "execution_id":  "exec-fd393825",
+                                                                "goal_id":  "MIMGOAL-EC737218",
                                                                 "source_domain":  "mim"
                                                             },
                                             "reasons":  [
@@ -163,18 +163,18 @@
                                     ],
                       "drift_detected":  [
                                              {
-                                                 "event_id":  "evt-17f4f8702e66",
+                                                 "event_id":  "evt-15d94d9f742c",
                                                  "event_type":  "execution.drift_detected",
-                                                 "occurred_at":  "2026-03-12T16:18:15.1647311Z",
+                                                 "occurred_at":  "2026-03-12T16:23:53.8253178Z",
                                                  "producer":  {
                                                                   "system":  "TOD",
                                                                   "component":  "bus_adapter",
                                                                   "role":  "execution_runtime"
                                                               },
                                                  "correlation":  {
-                                                                     "trace_id":  "trace-dbaf5ec1",
-                                                                     "execution_id":  "exec-589a653b",
-                                                                     "goal_id":  "MIMGOAL-8A01148C",
+                                                                     "trace_id":  "trace-c29672a8",
+                                                                     "execution_id":  "exec-fd393825",
+                                                                     "goal_id":  "MIMGOAL-EC737218",
                                                                      "source_domain":  "mim"
                                                                  },
                                                  "reasons":  [
@@ -198,18 +198,18 @@
                                          ],
                       "fallback_applied":  [
                                                {
-                                                   "event_id":  "evt-a3d5dd4be0fc",
+                                                   "event_id":  "evt-1c046d91a9a8",
                                                    "event_type":  "execution.fallback_applied",
-                                                   "occurred_at":  "2026-03-12T16:18:15.1489627Z",
+                                                   "occurred_at":  "2026-03-12T16:23:53.8088024Z",
                                                    "producer":  {
                                                                     "system":  "TOD",
                                                                     "component":  "bus_adapter",
                                                                     "role":  "execution_runtime"
                                                                 },
                                                    "correlation":  {
-                                                                       "trace_id":  "trace-dbaf5ec1",
-                                                                       "execution_id":  "exec-589a653b",
-                                                                       "goal_id":  "MIMGOAL-8A01148C",
+                                                                       "trace_id":  "trace-c29672a8",
+                                                                       "execution_id":  "exec-fd393825",
+                                                                       "goal_id":  "MIMGOAL-EC737218",
                                                                        "source_domain":  "mim"
                                                                    },
                                                    "reasons":  [
@@ -236,18 +236,18 @@
                                     ],
                       "succeeded":  [
                                         {
-                                            "event_id":  "evt-9c8c318940e8",
+                                            "event_id":  "evt-7a3dd2148a85",
                                             "event_type":  "execution.succeeded",
-                                            "occurred_at":  "2026-03-12T16:18:15.1789489Z",
+                                            "occurred_at":  "2026-03-12T16:23:53.8398575Z",
                                             "producer":  {
                                                              "system":  "TOD",
                                                              "component":  "bus_adapter",
                                                              "role":  "execution_runtime"
                                                          },
                                             "correlation":  {
-                                                                "trace_id":  "trace-dbaf5ec1",
-                                                                "execution_id":  "exec-589a653b",
-                                                                "goal_id":  "MIMGOAL-8A01148C",
+                                                                "trace_id":  "trace-c29672a8",
+                                                                "execution_id":  "exec-fd393825",
+                                                                "goal_id":  "MIMGOAL-EC737218",
                                                                 "source_domain":  "mim"
                                                             },
                                             "reasons":  [
@@ -267,7 +267,7 @@
                                                                            "runtime_action":  "get-engineering-loop-summary",
                                                                            "path":  "/tod/engineer/summary",
                                                                            "status":  "warming",
-                                                                           "generated_at":  "2026-03-12T16:18:15.1469679Z"
+                                                                           "generated_at":  "2026-03-12T16:23:53.8066846Z"
                                                                        }
                                                         },
                                             "artifact_links":  [
