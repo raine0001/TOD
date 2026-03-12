@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("publish-event", "consume-event", "consume-inbox", "status")][string]$Action = "status",
+    [ValidateSet("publish-event", "consume-event", "consume-inbox", "status", "summarize-executions")][string]$Action = "status",
     [string]$EventType,
     [string]$EventJson,
     [string]$EventFile,
@@ -19,6 +19,7 @@ param(
     [string]$CorrelationLogPath = "shared_state/bus_correlation_links.jsonl",
     [string]$SchemaPath = "tod/templates/bus/tod_bus_adapter_event.schema.json",
     [string]$BusStatusPath = "shared_state/bus_adapter_status.json",
+    [string]$ExecutionSummaryPath = "shared_state/bus_execution_summaries.json",
     [string]$TodScriptPath = "scripts/TOD.ps1",
     [string]$TodConfigPath = "tod/config/tod-config.json"
 )
@@ -226,6 +227,154 @@ function Build-CorrelationFromEvent {
     return [pscustomobject]$corr
 }
 
+function Get-ReliabilitySignal {
+    param(
+        [Parameter(Mandatory = $true)][string]$FinalOutcome,
+        [Parameter(Mandatory = $true)][int]$Retries,
+        [Parameter(Mandatory = $true)][int]$Fallbacks,
+        [Parameter(Mandatory = $true)][int]$DriftEvents,
+        [Parameter(Mandatory = $true)][bool]$Recovered
+    )
+
+    if ($FinalOutcome -in @("failed", "cancelled", "guardrail_blocked")) {
+        return "critical"
+    }
+    if ($DriftEvents -gt 0 -or $Fallbacks -gt 0) {
+        return "warning"
+    }
+    if ($Retries -gt 0 -or $Recovered) {
+        return "elevated"
+    }
+    return "stable"
+}
+
+function Get-RecommendedAttention {
+    param([Parameter(Mandatory = $true)][string]$ReliabilitySignal)
+
+    switch ($ReliabilitySignal) {
+        "critical" { return "immediate_review" }
+        "warning" { return "monitor_closely" }
+        "elevated" { return "observe" }
+        default { return "none" }
+    }
+}
+
+function Build-ExecutionSummaries {
+    $events = @()
+    if (Test-Path -Path $eventStreamAbs) {
+        $events = @(
+            Get-Content -Path $eventStreamAbs |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object {
+                try { $_ | ConvertFrom-Json }
+                catch { $null }
+            } |
+            Where-Object {
+                $null -ne $_ -and
+                $_.PSObject.Properties["correlation"] -and
+                $_.correlation -and
+                $_.correlation.PSObject.Properties["trace_id"] -and
+                $_.correlation.PSObject.Properties["execution_id"] -and
+                -not [string]::IsNullOrWhiteSpace([string]$_.correlation.trace_id) -and
+                -not [string]::IsNullOrWhiteSpace([string]$_.correlation.execution_id)
+            }
+        )
+    }
+
+    $correlationLinks = @()
+    if (Test-Path -Path $correlationLogAbs) {
+        $correlationLinks = @(
+            Get-Content -Path $correlationLogAbs |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object {
+                try { $_ | ConvertFrom-Json }
+                catch { $null }
+            } |
+            Where-Object {
+                $null -ne $_ -and
+                $_.PSObject.Properties["trace_id"] -and
+                $_.PSObject.Properties["execution_id"] -and
+                $_.PSObject.Properties["artifact_path"]
+            }
+        )
+    }
+
+    $groups = @{}
+    foreach ($evt in $events) {
+        $key = "{0}|{1}" -f ([string]$evt.correlation.trace_id), ([string]$evt.correlation.execution_id)
+        if (-not $groups.ContainsKey($key)) {
+            $groups[$key] = @()
+        }
+        $groups[$key] += $evt
+    }
+
+    $summaries = @()
+    foreach ($key in $groups.Keys) {
+        $groupEvents = @($groups[$key] | Sort-Object -Property occurred_at)
+        if (@($groupEvents).Count -eq 0) { continue }
+
+        $first = $groupEvents[0]
+        $traceIdValue = [string]$first.correlation.trace_id
+        $executionIdValue = [string]$first.correlation.execution_id
+
+        $retries = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.retry_scheduled" }).Count
+        $fallbacks = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.fallback_applied" }).Count
+        $recovered = [bool](@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.recovered" }).Count -gt 0)
+        $driftEvents = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.drift_detected" }).Count
+        $cancelled = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.cancelled" }).Count
+        $guardrailBlocks = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.guardrail_blocked" }).Count
+
+        $finalOutcome = "in_progress"
+        if (@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.cancelled" }).Count -gt 0) {
+            $finalOutcome = "cancelled"
+        }
+        elseif (@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.guardrail_blocked" }).Count -gt 0) {
+            $finalOutcome = "guardrail_blocked"
+        }
+        elseif (@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.failed" }).Count -gt 0) {
+            $finalOutcome = "failed"
+        }
+        elseif (@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.succeeded" }).Count -gt 0) {
+            $finalOutcome = "succeeded"
+        }
+
+        $reliabilitySignal = Get-ReliabilitySignal -FinalOutcome $finalOutcome -Retries $retries -Fallbacks $fallbacks -DriftEvents $driftEvents -Recovered $recovered
+        $recommendedAttention = Get-RecommendedAttention -ReliabilitySignal $reliabilitySignal
+
+        $artifactFromEvents = @(
+            $groupEvents |
+            ForEach-Object {
+                if ($_.PSObject.Properties["artifact_links"] -and $_.artifact_links) { @($_.artifact_links) } else { @() }
+            }
+        )
+        $artifactFromCorrelationLog = @(
+            $correlationLinks |
+            Where-Object { [string]$_.trace_id -eq $traceIdValue -and [string]$_.execution_id -eq $executionIdValue } |
+            ForEach-Object { [string]$_.artifact_path }
+        )
+        $artifactLinks = @($artifactFromEvents + $artifactFromCorrelationLog | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+
+        $summaries += [pscustomobject]@{
+            trace_id = $traceIdValue
+            execution_id = $executionIdValue
+            final_outcome = $finalOutcome
+            retries = $retries
+            fallbacks = $fallbacks
+            recovered = $recovered
+            drift_events = $driftEvents
+            cancelled = $cancelled
+            guardrail_blocks = $guardrailBlocks
+            reliability_signal = $reliabilitySignal
+            recommended_attention = $recommendedAttention
+            event_count = [int]@($groupEvents).Count
+            artifact_links = $artifactLinks
+            last_event_at = [string]$groupEvents[-1].occurred_at
+        }
+    }
+
+    return @($summaries | Sort-Object -Property last_event_at -Descending)
+}
+
 function Publish-EventInternal {
     param(
         [Parameter(Mandatory = $true)][string]$Type,
@@ -331,6 +480,7 @@ $consumerLogAbs = Get-LocalPath -PathValue $ConsumerLogPath
 $correlationLogAbs = Get-LocalPath -PathValue $CorrelationLogPath
 $schemaAbs = Get-LocalPath -PathValue $SchemaPath
 $busStatusAbs = Get-LocalPath -PathValue $BusStatusPath
+$executionSummaryAbs = Get-LocalPath -PathValue $ExecutionSummaryPath
 $todScriptAbs = Get-LocalPath -PathValue $TodScriptPath
 $todConfigAbs = Get-LocalPath -PathValue $TodConfigPath
 
@@ -742,11 +892,37 @@ switch ($Action) {
                 consumer_log = $consumerLogAbs
                 correlation_log = $correlationLogAbs
                 schema = $schemaAbs
+                execution_summary = $executionSummaryAbs
             }
         }
 
         $statusObj | ConvertTo-Json -Depth 20 | Write-Output
         Write-StatusArtifact -LastAction "status" -LastStatus "ok"
+        break
+    }
+
+    "summarize-executions" {
+        $summaries = Build-ExecutionSummaries
+        $summaryObj = [pscustomobject]@{
+            generated_at = (Get-Date).ToUniversalTime().ToString("o")
+            source = "tod-bus-adapter-v1"
+            type = "bus_execution_summaries"
+            summary_count = [int]@($summaries).Count
+            summaries = @($summaries)
+        }
+
+        Ensure-ParentDir -FilePath $executionSummaryAbs
+        $summaryObj | ConvertTo-Json -Depth 20 | Set-Content -Path $executionSummaryAbs
+        Write-StatusArtifact -LastAction "summarize-executions" -LastStatus "ok"
+
+        [pscustomobject]@{
+            ok = $true
+            action = "summarize-executions"
+            status = "ok"
+            summary_path = $executionSummaryAbs
+            summary_count = [int]@($summaries).Count
+            summaries = @($summaries)
+        } | ConvertTo-Json -Depth 20 | Write-Output
         break
     }
 }

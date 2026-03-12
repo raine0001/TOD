@@ -19,6 +19,7 @@ function New-TestPaths {
         ConsumerLog = (Join-Path $base "consumer-log.jsonl")
         CorrelationLog = (Join-Path $base "correlation-log.jsonl")
         Status = (Join-Path $base "bus-adapter-status.json")
+        Summary = (Join-Path $base "bus-execution-summaries.json")
         Inbox = $inbox
         Processed = $processed
     }
@@ -40,6 +41,7 @@ function Invoke-Adapter {
         ConsumerLogPath = $Paths.ConsumerLog
         CorrelationLogPath = $Paths.CorrelationLog
         BusStatusPath = $Paths.Status
+        ExecutionSummaryPath = $Paths.Summary
     }
     foreach ($k in $InputParams.Keys) {
         $invokeMap[$k] = $InputParams[$k]
@@ -268,5 +270,68 @@ Describe "TOD Bus Adapter" {
 
         $status = Get-Content -Path $paths.Status -Raw | ConvertFrom-Json
         [int]$status.lifecycle_feedback.cancelled | Should BeGreaterThan 0
+    }
+
+    It "execution summary rollup is accurate for enriched lifecycle" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-sum-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-sum"; execution_id = "exec-sum"; goal_id = "goal-sum"; source_domain = "mim" }
+            payload = @{ runtime_action = "get-engineering-loop-summary"; reliability_hints = @{ simulate_retry_once = $true; simulate_drift = $true } }
+        } | ConvertTo-Json -Depth 12 -Compress
+
+        $consumeResult = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        [bool]$consumeResult.ok | Should Be $true
+
+        $summaryResult = Invoke-Adapter -Paths $paths -AdapterAction "summarize-executions"
+        [bool]$summaryResult.ok | Should Be $true
+        (Test-Path -Path $paths.Summary) | Should Be $true
+
+        $target = @($summaryResult.summaries | Where-Object { [string]$_.trace_id -eq "trace-sum" -and [string]$_.execution_id -eq "exec-sum" }) | Select-Object -First 1
+        ($null -ne $target) | Should Be $true
+        [string]$target.final_outcome | Should Be "succeeded"
+        [int]$target.retries | Should BeGreaterThan 0
+        [int]$target.fallbacks | Should BeGreaterThan 0
+        [bool]$target.recovered | Should Be $true
+        [int]$target.drift_events | Should BeGreaterThan 0
+        [int]$target.cancelled | Should Be 0
+        [int]$target.guardrail_blocks | Should Be 0
+        [string]$target.reliability_signal | Should Be "warning"
+        [string]$target.recommended_attention | Should Be "monitor_closely"
+        @($target.artifact_links).Count | Should BeGreaterThan 0
+    }
+
+    It "execution summary remains consistent with event stream counts" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-sum-002"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-consistency"; execution_id = "exec-consistency" }
+            payload = @{ runtime_action = "get-engineering-loop-summary"; reliability_hints = @{ simulate_retry_once = $true } }
+        } | ConvertTo-Json -Depth 10 -Compress
+
+        $null = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        $streamEvents = @(
+            Get-StreamEvents -StreamPath $paths.Stream |
+            Where-Object { [string]$_.correlation.trace_id -eq "trace-consistency" -and [string]$_.correlation.execution_id -eq "exec-consistency" }
+        )
+
+        $summaryResult = Invoke-Adapter -Paths $paths -AdapterAction "summarize-executions"
+        $target = @($summaryResult.summaries | Where-Object { [string]$_.trace_id -eq "trace-consistency" -and [string]$_.execution_id -eq "exec-consistency" }) | Select-Object -First 1
+
+        ($null -ne $target) | Should Be $true
+        [int]$target.event_count | Should Be @($streamEvents).Count
+        [int]$target.retries | Should Be @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.retry_scheduled" }).Count
+        [int]$target.fallbacks | Should Be @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.fallback_applied" }).Count
+        [int]$target.drift_events | Should Be @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.drift_detected" }).Count
+        [int]$target.cancelled | Should Be @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.cancelled" }).Count
+        [int]$target.guardrail_blocks | Should Be @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.guardrail_blocked" }).Count
     }
 }

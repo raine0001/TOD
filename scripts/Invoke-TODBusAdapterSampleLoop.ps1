@@ -34,6 +34,9 @@ $requestedRaw = & $adapterAbs -Action "consume-event" -EventJson (@{
     } | ConvertTo-Json -Depth 10 -Compress)
 $steps += ($requestedRaw | ConvertFrom-Json)
 
+$summaryRaw = & $adapterAbs -Action "summarize-executions"
+$summaryObj = $summaryRaw | ConvertFrom-Json
+
 $streamPath = Get-LocalPath -PathValue "tod/out/bus/events.jsonl"
 $traceEvents = @()
 if (Test-Path -Path $streamPath) {
@@ -67,6 +70,10 @@ $result = [pscustomobject]@{
     execution_id = $executionId
     goal_id = $goalId
     steps = @($steps)
+    execution_summary = @($summaryObj.summaries | Where-Object {
+            [string]$_.trace_id -eq $traceId -and [string]$_.execution_id -eq $executionId
+        } | Select-Object -First 1)
+    execution_summary_artifact = [string]$summaryObj.summary_path
     lifecycle = [pscustomobject]@{
         started = @($lifecycleStarted)
         retry_scheduled = @($lifecycleRetryScheduled)

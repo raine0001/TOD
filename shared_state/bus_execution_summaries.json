@@ -1,0 +1,103 @@
+{
+    "generated_at":  "2026-03-12T15:53:32.2863954Z",
+    "source":  "tod-bus-adapter-v1",
+    "type":  "bus_execution_summaries",
+    "summary_count":  5,
+    "summaries":  [
+                      {
+                          "trace_id":  "trace-ccb5240d",
+                          "execution_id":  "exec-50d7d19d",
+                          "final_outcome":  "succeeded",
+                          "retries":  1,
+                          "fallbacks":  1,
+                          "recovered":  true,
+                          "drift_events":  1,
+                          "cancelled":  0,
+                          "guardrail_blocks":  0,
+                          "reliability_signal":  "warning",
+                          "recommended_attention":  "monitor_closely",
+                          "event_count":  6,
+                          "artifact_links":  [
+                                                 "shared_state/next_actions.json",
+                                                 "shared_state/review_artifacts_index.json"
+                                             ],
+                          "last_event_at":  "2026-03-12T15:53:32.2359350Z"
+                      },
+                      {
+                          "trace_id":  "trace-42ea7409",
+                          "execution_id":  "exec-a427c65d",
+                          "final_outcome":  "succeeded",
+                          "retries":  1,
+                          "fallbacks":  1,
+                          "recovered":  true,
+                          "drift_events":  1,
+                          "cancelled":  0,
+                          "guardrail_blocks":  0,
+                          "reliability_signal":  "warning",
+                          "recommended_attention":  "monitor_closely",
+                          "event_count":  6,
+                          "artifact_links":  [
+                                                 "shared_state/next_actions.json",
+                                                 "shared_state/review_artifacts_index.json"
+                                             ],
+                          "last_event_at":  "2026-03-12T15:42:52.1160688Z"
+                      },
+                      {
+                          "trace_id":  "trace-61607499",
+                          "execution_id":  "exec-005f446c",
+                          "final_outcome":  "succeeded",
+                          "retries":  0,
+                          "fallbacks":  0,
+                          "recovered":  false,
+                          "drift_events":  0,
+                          "cancelled":  0,
+                          "guardrail_blocks":  0,
+                          "reliability_signal":  "stable",
+                          "recommended_attention":  "none",
+                          "event_count":  2,
+                          "artifact_links":  [
+                                                 "shared_state/next_actions.json",
+                                                 "shared_state/review_artifacts_index.json"
+                                             ],
+                          "last_event_at":  "2026-03-12T15:31:10.6188895Z"
+                      },
+                      {
+                          "trace_id":  "trace-8432e048",
+                          "execution_id":  "exec-0a3b11a4",
+                          "final_outcome":  "succeeded",
+                          "retries":  0,
+                          "fallbacks":  0,
+                          "recovered":  false,
+                          "drift_events":  0,
+                          "cancelled":  0,
+                          "guardrail_blocks":  0,
+                          "reliability_signal":  "stable",
+                          "recommended_attention":  "none",
+                          "event_count":  2,
+                          "artifact_links":  [
+                                                 "shared_state/approval_reduction_summary.json",
+                                                 "shared_state/next_actions.json"
+                                             ],
+                          "last_event_at":  "2026-03-12T15:30:39.1846873Z"
+                      },
+                      {
+                          "trace_id":  "trace-654d80b8",
+                          "execution_id":  "exec-eee2e57a",
+                          "final_outcome":  "succeeded",
+                          "retries":  0,
+                          "fallbacks":  0,
+                          "recovered":  false,
+                          "drift_events":  0,
+                          "cancelled":  0,
+                          "guardrail_blocks":  0,
+                          "reliability_signal":  "stable",
+                          "recommended_attention":  "none",
+                          "event_count":  3,
+                          "artifact_links":  [
+                                                 "shared_state/approval_reduction_summary.json",
+                                                 "shared_state/next_actions.json"
+                                             ],
+                          "last_event_at":  "2026-03-12T15:15:35.1807206Z"
+                      }
+                  ]
+}

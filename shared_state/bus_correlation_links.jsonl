@@ -14,3 +14,7 @@
 
 {"linked_at":"2026-03-12T15:42:52.1186683Z","event_id":"evt-060a72b93401","trace_id":"trace-42ea7409","execution_id":"exec-a427c65d","artifact_path":"shared_state/review_artifacts_index.json"}
 
+{"linked_at":"2026-03-12T15:53:32.2379519Z","event_id":"evt-b5b1f9283b5d","trace_id":"trace-ccb5240d","execution_id":"exec-50d7d19d","artifact_path":"shared_state/next_actions.json"}
+
+{"linked_at":"2026-03-12T15:53:32.2389535Z","event_id":"evt-b5b1f9283b5d","trace_id":"trace-ccb5240d","execution_id":"exec-50d7d19d","artifact_path":"shared_state/review_artifacts_index.json"}
+

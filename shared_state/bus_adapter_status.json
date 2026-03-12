@@ -1,27 +1,27 @@
 {
-    "generated_at":  "2026-03-12T15:42:52.1338681Z",
+    "generated_at":  "2026-03-12T15:53:32.2884342Z",
     "source":  "tod-bus-adapter-v1",
     "type":  "bus_adapter_status",
-    "last_action":  "consume-event",
-    "last_status":  "accepted_executed",
-    "last_event_id":  "evt-c0fe2494e3",
+    "last_action":  "summarize-executions",
+    "last_status":  "ok",
+    "last_event_id":  "",
     "counters":  {
-                     "inbound_accepted":  3,
+                     "inbound_accepted":  4,
                      "inbound_rejected":  1,
                      "inbound_ignored":  0,
                      "inbound_duplicate":  0,
-                     "outbound_published":  12,
-                     "retries_scheduled":  1,
-                     "recoveries":  1,
-                     "drift_detected":  1,
-                     "fallback_applied":  1,
+                     "outbound_published":  18,
+                     "retries_scheduled":  2,
+                     "recoveries":  2,
+                     "drift_detected":  2,
+                     "fallback_applied":  2,
                      "cancelled":  0,
                      "guardrail_blocked":  0,
                      "failed_runtime":  0,
-                     "successful_runtime":  1
+                     "successful_runtime":  2
                  },
     "accepted_execution_ids_count":  0,
-    "stream_event_count":  13,
+    "stream_event_count":  19,
     "schema":  "tod_bus_adapter_event_v1",
     "inbound_event_types":  [
                                 "execution.requested",
@@ -41,13 +41,13 @@
                                  "execution.cancelled"
                              ],
     "lifecycle_feedback":  {
-                               "retries_scheduled":  1,
-                               "recoveries":  1,
-                               "drift_detected":  1,
-                               "fallback_applied":  1,
+                               "retries_scheduled":  2,
+                               "recoveries":  2,
+                               "drift_detected":  2,
+                               "fallback_applied":  2,
                                "cancelled":  0,
                                "guardrail_blocked":  0,
                                "failed_runtime":  0,
-                               "successful_runtime":  1
+                               "successful_runtime":  2
                            }
 }
