@@ -1,7 +1,8 @@
 param(
     [string]$AdapterScriptPath = "scripts/Invoke-TODBusAdapter.ps1",
     [string]$OutputPath = "shared_state/bus_adapter_integration_sample.json",
-    [string]$HandoffOutputPath = "shared_state/bus_execution_handoff_integration_sample.json"
+    [string]$HandoffOutputPath = "shared_state/bus_execution_handoff_integration_sample.json",
+    [string]$SourceDomain = "mim"
 )
 
 Set-StrictMode -Version Latest
@@ -31,7 +32,7 @@ $requestedRaw = & $adapterAbs -Action "consume-event" -EventJson (@{
         event_type = "execution.requested"
         occurred_at = (Get-Date).ToUniversalTime().ToString("o")
         producer = @{ system = "MIM"; component = "ingestion_service"; role = "reasoning_runtime" }
-        correlation = @{ trace_id = $traceId; execution_id = $executionId; goal_id = $goalId; source_domain = "mim" }
+    correlation = @{ trace_id = $traceId; execution_id = $executionId; goal_id = $goalId; source_domain = $SourceDomain }
     payload = @{ runtime_action = "get-engineering-loop-summary"; reliability_hints = @{ simulate_retry_once = $true; simulate_drift = $true } }
     } | ConvertTo-Json -Depth 10 -Compress)
 $steps += ($requestedRaw | ConvertFrom-Json)
@@ -79,6 +80,9 @@ $lifecycleFallbackApplied = @($traceEvents | Where-Object { [string]$_.event_typ
 $lifecycleCancelled = @($traceEvents | Where-Object { [string]$_.event_type -eq "execution.cancelled" })
 $lifecycleSucceeded = @($traceEvents | Where-Object { [string]$_.event_type -eq "execution.succeeded" })
 $lifecycleFailed = @($traceEvents | Where-Object { [string]$_.event_type -eq "execution.failed" })
+$executionSummaryEntry = @($summaryDoc.summaries | Where-Object {
+        [string]$_.trace_id -eq $traceId -and [string]$_.execution_id -eq $executionId
+    } | Select-Object -First 1)
 
 $result = [pscustomobject]@{
     ok = $true
@@ -87,10 +91,9 @@ $result = [pscustomobject]@{
     trace_id = $traceId
     execution_id = $executionId
     goal_id = $goalId
+    source_domain = $SourceDomain
     steps = @($steps)
-    execution_summary = @($summaryDoc.summaries | Where-Object {
-            [string]$_.trace_id -eq $traceId -and [string]$_.execution_id -eq $executionId
-        } | Select-Object -First 1)
+    execution_summary = $executionSummaryEntry
     execution_summary_artifact = [string]$summaryObj.summary_path
     execution_summary_handoff = [pscustomobject]@{
         generated_at = if ($null -ne $summaryDoc) { [string]$summaryDoc.generated_at } else { "" }
@@ -100,6 +103,7 @@ $result = [pscustomobject]@{
         retention_notes = [string]$summaryObj.retention_notes
         discovery_pointer_path = [string]$summaryObj.discovery_pointer_path
         contract_path = [string]$summaryObj.contract_path
+        source_domain = if ($executionSummaryEntry -and $executionSummaryEntry.PSObject.Properties["source_domain"]) { [string]$executionSummaryEntry.source_domain } else { $SourceDomain }
         pointer = $pointerObj
     }
     lifecycle = [pscustomobject]@{
@@ -144,6 +148,7 @@ $handoffArtifact = [pscustomobject]@{
     lifecycle = $result.lifecycle
     execution_summary = $result.execution_summary
     handoff = $result.execution_summary_handoff
+    source_domain = $SourceDomain
 }
 $handoffArtifact | ConvertTo-Json -Depth 20 | Set-Content -Path $handoffOutputAbs
 $result | ConvertTo-Json -Depth 20 | Write-Output

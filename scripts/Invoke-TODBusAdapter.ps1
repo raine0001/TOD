@@ -22,6 +22,7 @@ param(
     [string]$ExecutionSummaryPath = "shared_state/bus_execution_summaries.json",
     [string]$ExecutionSummaryIndexPath = "shared_state/bus_execution_summaries.index.json",
     [string]$ExecutionSummaryContractPath = "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
+    [string]$ExecutionDomainPolicyPath = "tod/templates/bus/tod_cross_domain_execution_policy.json",
     [string]$TodScriptPath = "scripts/TOD.ps1",
     [string]$TodConfigPath = "tod/config/tod-config.json"
 )
@@ -147,6 +148,49 @@ function Get-Schema {
         throw "Schema file not found: $SchemaFile"
     }
     return $schema
+}
+
+function Get-ExecutionDomainPolicy {
+    param([Parameter(Mandatory = $true)][string]$PolicyFile)
+
+    $policy = Load-JsonIfExists -Path $PolicyFile
+    if ($null -eq $policy) {
+        throw "Execution domain policy file not found: $PolicyFile"
+    }
+    if (-not $policy.PSObject.Properties["domains"] -or $null -eq $policy.domains) {
+        throw "Execution domain policy is missing domains"
+    }
+    return $policy
+}
+
+function Resolve-DomainPolicyDecision {
+    param(
+        [Parameter(Mandatory = $true)]$Policy,
+        [Parameter(Mandatory = $true)][string]$SourceDomain,
+        [Parameter(Mandatory = $true)][string]$RuntimeAction
+    )
+
+    $domainValue = if ([string]::IsNullOrWhiteSpace($SourceDomain)) { "legacy" } else { [string]$SourceDomain }
+    $domainPolicy = @($Policy.domains | Where-Object { [string]$_.domain -ieq $domainValue } | Select-Object -First 1)
+    if ($domainPolicy.Count -eq 0) {
+        return [pscustomobject]@{ decision = "unsupported_domain"; source_domain = $domainValue; matched_domain = "" }
+    }
+
+    $matchedDomain = [string]$domainPolicy[0].domain
+    if (@($domainPolicy[0].blocked_actions) -contains $RuntimeAction) {
+        return [pscustomobject]@{ decision = "blocked"; source_domain = $domainValue; matched_domain = $matchedDomain }
+    }
+    if (@($domainPolicy[0].deferred_actions) -contains $RuntimeAction) {
+        return [pscustomobject]@{ decision = "deferred"; source_domain = $domainValue; matched_domain = $matchedDomain }
+    }
+    if (@($domainPolicy[0].dry_run_only_actions) -contains $RuntimeAction) {
+        return [pscustomobject]@{ decision = "dry_run_only"; source_domain = $domainValue; matched_domain = $matchedDomain }
+    }
+    if (@($domainPolicy[0].allowed_actions) -contains $RuntimeAction) {
+        return [pscustomobject]@{ decision = "allowed"; source_domain = $domainValue; matched_domain = $matchedDomain }
+    }
+
+    return [pscustomobject]@{ decision = "blocked"; source_domain = $domainValue; matched_domain = $matchedDomain }
 }
 
 function New-Reason {
@@ -335,6 +379,13 @@ function Build-ExecutionSummaries {
         $first = $groupEvents[0]
         $traceIdValue = [string]$first.correlation.trace_id
         $executionIdValue = [string]$first.correlation.execution_id
+        $sourceDomainValue = ""
+        foreach ($evtWithDomain in @($groupEvents)) {
+            if ($evtWithDomain.PSObject.Properties["correlation"] -and $evtWithDomain.correlation -and $evtWithDomain.correlation.PSObject.Properties["source_domain"] -and -not [string]::IsNullOrWhiteSpace([string]$evtWithDomain.correlation.source_domain)) {
+                $sourceDomainValue = [string]$evtWithDomain.correlation.source_domain
+                break
+            }
+        }
 
         $retries = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.retry_scheduled" }).Count
         $fallbacks = [int]@($groupEvents | Where-Object { [string]$_.event_type -eq "execution.fallback_applied" }).Count
@@ -376,6 +427,7 @@ function Build-ExecutionSummaries {
         $summaries += [pscustomobject]@{
             trace_id = $traceIdValue
             execution_id = $executionIdValue
+            source_domain = $sourceDomainValue
             final_outcome = $finalOutcome
             retries = $retries
             fallbacks = $fallbacks
@@ -508,10 +560,12 @@ $busStatusAbs = Get-LocalPath -PathValue $BusStatusPath
 $executionSummaryAbs = Get-LocalPath -PathValue $ExecutionSummaryPath
 $executionSummaryIndexAbs = Get-LocalPath -PathValue $ExecutionSummaryIndexPath
 $executionSummaryContractAbs = Get-LocalPath -PathValue $ExecutionSummaryContractPath
+$executionDomainPolicyAbs = Get-LocalPath -PathValue $ExecutionDomainPolicyPath
 $todScriptAbs = Get-LocalPath -PathValue $TodScriptPath
 $todConfigAbs = Get-LocalPath -PathValue $TodConfigPath
 
 $schema = Get-Schema -SchemaFile $schemaAbs
+$executionDomainPolicy = Get-ExecutionDomainPolicy -PolicyFile $executionDomainPolicyAbs
 $state = Get-AdapterState -StateFile $stateAbs
 
 switch ($Action) {
@@ -695,6 +749,95 @@ switch ($Action) {
                 break
             }
 
+            $sourceDomainValue = "legacy"
+            if ($event.PSObject.Properties["correlation"] -and $event.correlation -and $event.correlation.PSObject.Properties["source_domain"] -and -not [string]::IsNullOrWhiteSpace([string]$event.correlation.source_domain)) {
+                $sourceDomainValue = [string]$event.correlation.source_domain
+            }
+
+            $domainPolicy = Resolve-DomainPolicyDecision -Policy $executionDomainPolicy -SourceDomain $sourceDomainValue -RuntimeAction $runtimeAction
+            if ([string]$domainPolicy.decision -eq "unsupported_domain") {
+                $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
+                $state.counters.inbound_ignored = [int]$state.counters.inbound_ignored + 1
+                Save-AdapterState -State $state -StateFile $stateAbs
+                Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
+                        logged_at = (Get-Date).ToUniversalTime().ToString("o")
+                        status = "ignored_unsupported_domain"
+                        reason = "request_unsupported_domain_ignored"
+                        event_id = $eventIdValue
+                        event_type = $inboundType
+                        runtime_action = $runtimeAction
+                        source_domain = $sourceDomainValue
+                    })
+                Write-StatusArtifact -LastAction "consume-event" -LastStatus "ignored_unsupported_domain" -LastEventId $eventIdValue
+                [pscustomobject]@{ ok = $true; action = "consume-event"; status = "ignored_unsupported_domain"; event_id = $eventIdValue; event_type = $inboundType; source_domain = $sourceDomainValue; runtime_action = $runtimeAction } | ConvertTo-Json -Depth 12 | Write-Output
+                break
+            }
+
+            if ([string]$domainPolicy.decision -in @("blocked", "deferred")) {
+                $corrDomainBlocked = Build-CorrelationFromEvent -Event $event
+                $domainBlockedId = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 12))
+                $reasonCode = if ([string]$domainPolicy.decision -eq "deferred") { "domain_policy_deferred" } else { "domain_policy_blocked" }
+                $reasonMessage = if ([string]$domainPolicy.decision -eq "deferred") { "Runtime action deferred by cross-domain execution policy." } else { "Runtime action blocked by cross-domain execution policy." }
+                $null = Publish-EventInternal -Type "execution.guardrail_blocked" -Id $domainBlockedId -Correlation $corrDomainBlocked -Payload ([pscustomobject]@{ runtime_action = $runtimeAction; decision = [string]$domainPolicy.decision; source_domain = [string]$domainPolicy.source_domain; policy_path = $ExecutionDomainPolicyPath }) -Reasons @(
+                    New-Reason -Code $reasonCode -Severity "warning" -Category "guardrail" -Message $reasonMessage -Evidence ([pscustomobject]@{ runtime_action = $runtimeAction; source_domain = [string]$domainPolicy.source_domain; matched_domain = [string]$domainPolicy.matched_domain })
+                ) -Artifacts @()
+
+                $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
+                $state.counters.inbound_rejected = [int]$state.counters.inbound_rejected + 1
+                $state.counters.guardrail_blocked = [int]$state.counters.guardrail_blocked + 1
+                Save-AdapterState -State $state -StateFile $stateAbs
+                Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
+                        logged_at = (Get-Date).ToUniversalTime().ToString("o")
+                        status = if ([string]$domainPolicy.decision -eq "deferred") { "deferred_domain_policy" } else { "rejected_domain_policy" }
+                        reason = $reasonCode
+                        event_id = $eventIdValue
+                        event_type = $inboundType
+                        runtime_action = $runtimeAction
+                        source_domain = [string]$domainPolicy.source_domain
+                    })
+                if ([string]$domainPolicy.decision -eq "deferred") {
+                    Write-StatusArtifact -LastAction "consume-event" -LastStatus "deferred_domain_policy" -LastEventId $eventIdValue
+                    [pscustomobject]@{ ok = $true; action = "consume-event"; status = "deferred_domain_policy"; event_id = $eventIdValue; event_type = $inboundType; source_domain = [string]$domainPolicy.source_domain; runtime_action = $runtimeAction } | ConvertTo-Json -Depth 12 | Write-Output
+                }
+                else {
+                    Write-StatusArtifact -LastAction "consume-event" -LastStatus "rejected_domain_policy" -LastEventId $eventIdValue
+                    [pscustomobject]@{ ok = $false; action = "consume-event"; status = "rejected_domain_policy"; event_id = $eventIdValue; event_type = $inboundType; source_domain = [string]$domainPolicy.source_domain; runtime_action = $runtimeAction } | ConvertTo-Json -Depth 12 | Write-Output
+                }
+                break
+            }
+
+            if ([string]$domainPolicy.decision -eq "dry_run_only") {
+                $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
+                $state.counters.inbound_accepted = [int]$state.counters.inbound_accepted + 1
+                Save-AdapterState -State $state -StateFile $stateAbs
+                Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
+                        logged_at = (Get-Date).ToUniversalTime().ToString("o")
+                        status = "accepted_dry_run"
+                        reason = "domain_policy_dry_run_only"
+                        event_id = $eventIdValue
+                        event_type = $inboundType
+                        trace_id = [string]$event.correlation.trace_id
+                        execution_id = $executionIdValue
+                        source_domain = [string]$domainPolicy.source_domain
+                        runtime_action = $runtimeAction
+                    })
+
+                $corrDryRun = Build-CorrelationFromEvent -Event $event
+                $dryRunStartId = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 12))
+                $null = Publish-EventInternal -Type "execution.started" -Id $dryRunStartId -Correlation $corrDryRun -Payload ([pscustomobject]@{ runtime_action = $runtimeAction; state = "started"; dry_run = $true }) -Reasons @(
+                    New-Reason -Code "execution_started" -Severity "info" -Category "execution" -Message "Execution request accepted in dry-run mode by domain policy." -Evidence ([pscustomobject]@{ runtime_action = $runtimeAction; source_domain = [string]$domainPolicy.source_domain })
+                ) -Artifacts @()
+
+                $dryRunSuccessId = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 12))
+                $null = Publish-EventInternal -Type "execution.succeeded" -Id $dryRunSuccessId -Correlation $corrDryRun -Payload ([pscustomobject]@{ runtime_action = $runtimeAction; dry_run = $true; result = [pscustomobject]@{ status = "dry_run"; policy_reason = "domain_policy_dry_run_only" } }) -Reasons @(
+                    New-Reason -Code "domain_policy_dry_run_only" -Severity "info" -Category "guardrail" -Message "Domain policy limited execution to dry-run only." -Evidence ([pscustomobject]@{ runtime_action = $runtimeAction; source_domain = [string]$domainPolicy.source_domain })
+                ) -Artifacts @()
+
+                Write-StatusArtifact -LastAction "consume-event" -LastStatus "accepted_dry_run" -LastEventId $eventIdValue
+                [pscustomobject]@{ ok = $true; action = "consume-event"; status = "accepted_dry_run"; event_id = $eventIdValue; event_type = $inboundType; source_domain = [string]$domainPolicy.source_domain; runtime_action = $runtimeAction } | ConvertTo-Json -Depth 12 | Write-Output
+                break
+            }
+
             if (@($schema.runtime_allowed_actions) -notcontains $runtimeAction) {
                 $corr = Build-CorrelationFromEvent -Event $event
                 $blockedReason = New-Reason -Code "guardrail_action_not_allowed" -Severity "warning" -Category "guardrail" -Message "Requested runtime action is not allowed by bus adapter guardrail." -Evidence ([pscustomobject]@{ runtime_action = $runtimeAction })
@@ -837,7 +980,7 @@ switch ($Action) {
                 $state.counters.successful_runtime = [int]$state.counters.successful_runtime + 1
                 Save-AdapterState -State $state -StateFile $stateAbs
                 Write-StatusArtifact -LastAction "consume-event" -LastStatus "accepted_executed" -LastEventId $eventIdValue
-                [pscustomobject]@{ ok = $true; action = "consume-event"; status = "accepted_executed"; event_id = $eventIdValue; event_type = $inboundType; runtime_action = $runtimeAction } | ConvertTo-Json -Depth 12 | Write-Output
+                [pscustomobject]@{ ok = $true; action = "consume-event"; status = "accepted_executed"; event_id = $eventIdValue; event_type = $inboundType; source_domain = $sourceDomainValue; runtime_action = $runtimeAction } | ConvertTo-Json -Depth 12 | Write-Output
                 break
             }
 
@@ -849,7 +992,7 @@ switch ($Action) {
             $state.counters.failed_runtime = [int]$state.counters.failed_runtime + 1
             Save-AdapterState -State $state -StateFile $stateAbs
             Write-StatusArtifact -LastAction "consume-event" -LastStatus "accepted_failed" -LastEventId $eventIdValue
-            [pscustomobject]@{ ok = $false; action = "consume-event"; status = "accepted_failed"; event_id = $eventIdValue; event_type = $inboundType; runtime_action = $runtimeAction; error = $runtimeError } | ConvertTo-Json -Depth 12 | Write-Output
+            [pscustomobject]@{ ok = $false; action = "consume-event"; status = "accepted_failed"; event_id = $eventIdValue; event_type = $inboundType; source_domain = $sourceDomainValue; runtime_action = $runtimeAction; error = $runtimeError } | ConvertTo-Json -Depth 12 | Write-Output
             break
         }
 
@@ -880,7 +1023,7 @@ switch ($Action) {
         $files = @(Get-ChildItem -Path $inboxAbs -Filter "*.json" -File | Sort-Object LastWriteTimeUtc)
         $results = @()
         foreach ($file in $files) {
-            $consumeRaw = & $PSCommandPath -Action "consume-event" -EventFile $file.FullName -EventStreamPath $EventStreamPath -InboundInboxPath $InboundInboxPath -ProcessedInboxPath $ProcessedInboxPath -AdapterStatePath $AdapterStatePath -ConsumerLogPath $ConsumerLogPath -CorrelationLogPath $CorrelationLogPath -SchemaPath $SchemaPath -BusStatusPath $BusStatusPath -TodScriptPath $TodScriptPath -TodConfigPath $TodConfigPath
+            $consumeRaw = & $PSCommandPath -Action "consume-event" -EventFile $file.FullName -EventStreamPath $EventStreamPath -InboundInboxPath $InboundInboxPath -ProcessedInboxPath $ProcessedInboxPath -AdapterStatePath $AdapterStatePath -ConsumerLogPath $ConsumerLogPath -CorrelationLogPath $CorrelationLogPath -SchemaPath $SchemaPath -BusStatusPath $BusStatusPath -ExecutionSummaryPath $ExecutionSummaryPath -ExecutionSummaryIndexPath $ExecutionSummaryIndexPath -ExecutionSummaryContractPath $ExecutionSummaryContractPath -ExecutionDomainPolicyPath $ExecutionDomainPolicyPath -TodScriptPath $TodScriptPath -TodConfigPath $TodConfigPath
             $consumeObj = $consumeRaw | ConvertFrom-Json
             $results += $consumeObj
 
@@ -922,6 +1065,7 @@ switch ($Action) {
                 execution_summary = $executionSummaryAbs
                 execution_summary_index = $executionSummaryIndexAbs
                 execution_summary_contract = $executionSummaryContractAbs
+                execution_domain_policy = $executionDomainPolicyAbs
             }
         }
 
@@ -938,6 +1082,7 @@ switch ($Action) {
         $summaryPathRelative = Get-RepoRelativePath -AbsolutePath $executionSummaryAbs
         $summaryIndexPathRelative = Get-RepoRelativePath -AbsolutePath $executionSummaryIndexAbs
         $summaryContractPathRelative = Get-RepoRelativePath -AbsolutePath $executionSummaryContractAbs
+        $domainPolicyPathRelative = Get-RepoRelativePath -AbsolutePath $executionDomainPolicyAbs
 
         $summaryObj = [pscustomobject]@{
             generated_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -948,6 +1093,7 @@ switch ($Action) {
             retention_notes = $retentionNotes
             discovery_pointer_path = $summaryIndexPathRelative
             contract_path = $summaryContractPathRelative
+            execution_domain_policy_path = $domainPolicyPathRelative
             summary_count = [int]@($summaries).Count
             summaries = @($summaries)
         }
@@ -959,6 +1105,7 @@ switch ($Action) {
             type = "bus_execution_summaries_pointer"
             latest_summary_path = $summaryPathRelative
             contract_path = $summaryContractPathRelative
+            execution_domain_policy_path = $domainPolicyPathRelative
             ordering_notes = $orderingNotes
             retention_notes = $retentionNotes
         }

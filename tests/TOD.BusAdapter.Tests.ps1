@@ -22,6 +22,7 @@ function New-TestPaths {
         Summary = (Join-Path $base "bus-execution-summaries.json")
         SummaryIndex = (Join-Path $base "bus-execution-summaries.index.json")
         SummaryContract = (Join-Path $repoRoot "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json")
+        DomainPolicy = (Join-Path $repoRoot "tod/templates/bus/tod_cross_domain_execution_policy.json")
         Inbox = $inbox
         Processed = $processed
     }
@@ -62,6 +63,7 @@ function Invoke-Adapter {
         ExecutionSummaryPath = $Paths.Summary
         ExecutionSummaryIndexPath = $Paths.SummaryIndex
         ExecutionSummaryContractPath = $Paths.SummaryContract
+        ExecutionDomainPolicyPath = $Paths.DomainPolicy
     }
     foreach ($k in $InputParams.Keys) {
         $invokeMap[$k] = $InputParams[$k]
@@ -86,7 +88,7 @@ Describe "TOD Bus Adapter" {
             event_type = "execution.requested"
             occurred_at = "2026-03-12T00:00:00Z"
             producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
-            correlation = @{ trace_id = "trace-a"; execution_id = "exec-a" }
+            correlation = @{ trace_id = "trace-a"; execution_id = "exec-a"; source_domain = "mim" }
             payload = @{ runtime_action = "get-engineering-loop-summary" }
         } | ConvertTo-Json -Depth 8 -Compress
 
@@ -98,6 +100,51 @@ Describe "TOD Bus Adapter" {
         $streamEvents = @((Get-Content -Path $paths.Stream) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
         @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.started" }).Count | Should Be 1
         @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.succeeded" }).Count | Should Be 1
+        [string](@($streamEvents | Where-Object { [string]$_.event_type -eq "execution.started" } | Select-Object -First 1).correlation.source_domain) | Should Be "mim"
+    }
+
+    It "blocked action from policy-restricted domain is rejected safely" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-domain-blocked-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "OPS"; component = "operations"; role = "runtime_control" }
+            correlation = @{ trace_id = "trace-domain-blocked"; execution_id = "exec-domain-blocked"; source_domain = "ops" }
+            payload = @{ runtime_action = "get-engineering-loop-summary" }
+        } | ConvertTo-Json -Depth 10 -Compress
+
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        [bool]$result.ok | Should Be $false
+        [string]$result.status | Should Be "rejected_domain_policy"
+
+        $streamEvents = Get-StreamEvents -StreamPath $paths.Stream
+        $blocked = @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.guardrail_blocked" } | Select-Object -Last 1)
+        ($blocked.Count -gt 0) | Should Be $true
+        [string]$blocked[0].correlation.source_domain | Should Be "ops"
+        [string]$blocked[0].reasons[0].code | Should Be "domain_policy_blocked"
+    }
+
+    It "unsupported source domain is ignored safely" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-domain-unsupported-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "EXT"; component = "external"; role = "runtime_requester" }
+            correlation = @{ trace_id = "trace-domain-unsupported"; execution_id = "exec-domain-unsupported"; source_domain = "external_unknown" }
+            payload = @{ runtime_action = "get-engineering-loop-summary" }
+        } | ConvertTo-Json -Depth 10 -Compress
+
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        [bool]$result.ok | Should Be $true
+        [string]$result.status | Should Be "ignored_unsupported_domain"
+
+        $streamEvents = Get-StreamEvents -StreamPath $paths.Stream
+        @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.started" }).Count | Should Be 0
+        @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.succeeded" }).Count | Should Be 0
     }
 
     It "malformed inbound event rejected" {
@@ -322,7 +369,43 @@ Describe "TOD Bus Adapter" {
         [int]$target.guardrail_blocks | Should Be 0
         [string]$target.reliability_signal | Should Be "warning"
         [string]$target.recommended_attention | Should Be "monitor_closely"
+        [string]$target.source_domain | Should Be "mim"
         @($target.artifact_links).Count | Should BeGreaterThan 0
+    }
+
+    It "source_domain is preserved across lifecycle events and summary handoff artifacts" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-domain-preserve-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-domain-preserve"; execution_id = "exec-domain-preserve"; source_domain = "mim" }
+            payload = @{ runtime_action = "get-engineering-loop-summary" }
+        } | ConvertTo-Json -Depth 10 -Compress
+
+        $consumeResult = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        [bool]$consumeResult.ok | Should Be $true
+
+        $summaryResult = Invoke-Adapter -Paths $paths -AdapterAction "summarize-executions"
+        [bool]$summaryResult.ok | Should Be $true
+        (Test-Path -Path $paths.Summary) | Should Be $true
+        (Test-Path -Path $paths.SummaryIndex) | Should Be $true
+
+        $streamEvents = Get-StreamEvents -StreamPath $paths.Stream
+        foreach ($evtObj in @($streamEvents | Where-Object { [string]$_.event_type -in @("execution.started", "execution.succeeded") })) {
+            [string]$evtObj.correlation.source_domain | Should Be "mim"
+        }
+
+        $summaryDoc = Get-Content -Path $paths.Summary -Raw | ConvertFrom-Json
+        $summaryEntry = @($summaryDoc.summaries | Where-Object { [string]$_.trace_id -eq "trace-domain-preserve" -and [string]$_.execution_id -eq "exec-domain-preserve" } | Select-Object -First 1)
+        ($summaryEntry.Count -gt 0) | Should Be $true
+        [string]$summaryEntry[0].source_domain | Should Be "mim"
+        [string]$summaryDoc.execution_domain_policy_path | Should Be "tod/templates/bus/tod_cross_domain_execution_policy.json"
+
+        $pointerDoc = Get-Content -Path $paths.SummaryIndex -Raw | ConvertFrom-Json
+        [string]$pointerDoc.execution_domain_policy_path | Should Be "tod/templates/bus/tod_cross_domain_execution_policy.json"
     }
 
     It "execution summary remains consistent with event stream counts" {

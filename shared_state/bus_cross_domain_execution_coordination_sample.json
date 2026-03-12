@@ -1,0 +1,324 @@
+{
+    "generated_at":  "2026-03-12T16:36:26.6378415Z",
+    "source":  "tod-cross-domain-execution-coordination-sample-v1",
+    "type":  "tod_cross_domain_execution_coordination_sample",
+    "policy":  {
+                   "path":  "tod/templates/bus/tod_cross_domain_execution_policy.json",
+                   "version":  "1.0.0",
+                   "default_unknown_domain_decision":  "ignore",
+                   "reason_codes":  [
+                                        "domain_policy_allowed",
+                                        "domain_policy_blocked",
+                                        "domain_policy_deferred",
+                                        "domain_policy_dry_run_only",
+                                        "request_unsupported_domain_ignored"
+                                    ]
+               },
+    "domains":  {
+                    "allowed":  [
+                                    "legacy",
+                                    "mim"
+                                ],
+                    "blocked":  [
+                                    "ops"
+                                ],
+                    "dry_run_only":  [
+                                         "observability"
+                                     ]
+                },
+    "bounded_execution_flow":  {
+                                   "source_domain":  "mim",
+                                   "trace_id":  "trace-d24beec6",
+                                   "execution_id":  "exec-4412669f",
+                                   "request":  {
+                                                   "ok":  true,
+                                                   "action":  "consume-event",
+                                                   "status":  "accepted_executed",
+                                                   "event_id":  "evt-56496ad0f5",
+                                                   "event_type":  "execution.requested",
+                                                   "source_domain":  "mim",
+                                                   "runtime_action":  "get-engineering-loop-summary"
+                                               },
+                                   "lifecycle":  {
+                                                     "started":  [
+                                                                     {
+                                                                         "event_id":  "evt-9f6291877b9c",
+                                                                         "event_type":  "execution.started",
+                                                                         "occurred_at":  "2026-03-12T16:36:25.5972267Z",
+                                                                         "producer":  {
+                                                                                          "system":  "TOD",
+                                                                                          "component":  "bus_adapter",
+                                                                                          "role":  "execution_runtime"
+                                                                                      },
+                                                                         "correlation":  {
+                                                                                             "trace_id":  "trace-d24beec6",
+                                                                                             "execution_id":  "exec-4412669f",
+                                                                                             "goal_id":  "MIMGOAL-87B00BA4",
+                                                                                             "source_domain":  "mim"
+                                                                                         },
+                                                                         "reasons":  [
+                                                                                         {
+                                                                                             "code":  "execution_started",
+                                                                                             "severity":  "info",
+                                                                                             "category":  "execution",
+                                                                                             "message":  "Execution requested event accepted and runtime action started.",
+                                                                                             "evidence":  {
+                                                                                                              "runtime_action":  "get-engineering-loop-summary"
+                                                                                                          }
+                                                                                         }
+                                                                                     ],
+                                                                         "payload":  {
+                                                                                         "runtime_action":  "get-engineering-loop-summary",
+                                                                                         "state":  "started"
+                                                                                     }
+                                                                     }
+                                                                 ],
+                                                     "retry_scheduled":  [
+                                                                             {
+                                                                                 "event_id":  "evt-76bba0f93ebd",
+                                                                                 "event_type":  "execution.retry_scheduled",
+                                                                                 "occurred_at":  "2026-03-12T16:36:25.6025663Z",
+                                                                                 "producer":  {
+                                                                                                  "system":  "TOD",
+                                                                                                  "component":  "bus_adapter",
+                                                                                                  "role":  "execution_runtime"
+                                                                                              },
+                                                                                 "correlation":  {
+                                                                                                     "trace_id":  "trace-d24beec6",
+                                                                                                     "execution_id":  "exec-4412669f",
+                                                                                                     "goal_id":  "MIMGOAL-87B00BA4",
+                                                                                                     "source_domain":  "mim"
+                                                                                                 },
+                                                                                 "reasons":  [
+                                                                                                 {
+                                                                                                     "code":  "retry_scheduled",
+                                                                                                     "severity":  "warning",
+                                                                                                     "category":  "retry",
+                                                                                                     "message":  "Transient runtime failure encountered; bounded retry scheduled.",
+                                                                                                     "evidence":  {
+                                                                                                                      "runtime_action":  "get-engineering-loop-summary",
+                                                                                                                      "attempt":  1,
+                                                                                                                      "next_attempt":  2
+                                                                                                                  }
+                                                                                                 }
+                                                                                             ],
+                                                                                 "payload":  {
+                                                                                                 "runtime_action":  "get-engineering-loop-summary",
+                                                                                                 "current_attempt":  1,
+                                                                                                 "next_attempt":  2
+                                                                                             }
+                                                                             }
+                                                                         ],
+                                                     "recovered":  [
+                                                                       {
+                                                                           "event_id":  "evt-9df6a01f28b3",
+                                                                           "event_type":  "execution.recovered",
+                                                                           "occurred_at":  "2026-03-12T16:36:26.4104256Z",
+                                                                           "producer":  {
+                                                                                            "system":  "TOD",
+                                                                                            "component":  "bus_adapter",
+                                                                                            "role":  "execution_runtime"
+                                                                                        },
+                                                                           "correlation":  {
+                                                                                               "trace_id":  "trace-d24beec6",
+                                                                                               "execution_id":  "exec-4412669f",
+                                                                                               "goal_id":  "MIMGOAL-87B00BA4",
+                                                                                               "source_domain":  "mim"
+                                                                                           },
+                                                                           "reasons":  [
+                                                                                           {
+                                                                                               "code":  "recovery_completed",
+                                                                                               "severity":  "info",
+                                                                                               "category":  "recovery",
+                                                                                               "message":  "Execution recovered after bounded retry.",
+                                                                                               "evidence":  {
+                                                                                                                "runtime_action":  "get-engineering-loop-summary",
+                                                                                                                "attempts":  2
+                                                                                                            }
+                                                                                           }
+                                                                                       ],
+                                                                           "payload":  {
+                                                                                           "runtime_action":  "get-engineering-loop-summary",
+                                                                                           "attempts":  2,
+                                                                                           "state":  "recovered"
+                                                                                       }
+                                                                       }
+                                                                   ],
+                                                     "drift_detected":  [
+                                                                            {
+                                                                                "event_id":  "evt-1befa4ed3ea1",
+                                                                                "event_type":  "execution.drift_detected",
+                                                                                "occurred_at":  "2026-03-12T16:36:26.4280492Z",
+                                                                                "producer":  {
+                                                                                                 "system":  "TOD",
+                                                                                                 "component":  "bus_adapter",
+                                                                                                 "role":  "execution_runtime"
+                                                                                             },
+                                                                                "correlation":  {
+                                                                                                    "trace_id":  "trace-d24beec6",
+                                                                                                    "execution_id":  "exec-4412669f",
+                                                                                                    "goal_id":  "MIMGOAL-87B00BA4",
+                                                                                                    "source_domain":  "mim"
+                                                                                                },
+                                                                                "reasons":  [
+                                                                                                {
+                                                                                                    "code":  "drift_detected",
+                                                                                                    "severity":  "warning",
+                                                                                                    "category":  "drift",
+                                                                                                    "message":  "Runtime drift signal observed during bounded execution.",
+                                                                                                    "evidence":  {
+                                                                                                                     "runtime_action":  "get-engineering-loop-summary",
+                                                                                                                     "status":  "warming"
+                                                                                                                 }
+                                                                                                }
+                                                                                            ],
+                                                                                "payload":  {
+                                                                                                "runtime_action":  "get-engineering-loop-summary",
+                                                                                                "drift_state":  "warning",
+                                                                                                "status":  "warming"
+                                                                                            }
+                                                                            }
+                                                                        ],
+                                                     "fallback_applied":  [
+                                                                              {
+                                                                                  "event_id":  "evt-bd8f3faf1e9f",
+                                                                                  "event_type":  "execution.fallback_applied",
+                                                                                  "occurred_at":  "2026-03-12T16:36:26.4084226Z",
+                                                                                  "producer":  {
+                                                                                                   "system":  "TOD",
+                                                                                                   "component":  "bus_adapter",
+                                                                                                   "role":  "execution_runtime"
+                                                                                               },
+                                                                                  "correlation":  {
+                                                                                                      "trace_id":  "trace-d24beec6",
+                                                                                                      "execution_id":  "exec-4412669f",
+                                                                                                      "goal_id":  "MIMGOAL-87B00BA4",
+                                                                                                      "source_domain":  "mim"
+                                                                                                  },
+                                                                                  "reasons":  [
+                                                                                                  {
+                                                                                                      "code":  "fallback_applied",
+                                                                                                      "severity":  "warning",
+                                                                                                      "category":  "recovery",
+                                                                                                      "message":  "Fallback path applied via bounded retry execution.",
+                                                                                                      "evidence":  {
+                                                                                                                       "runtime_action":  "get-engineering-loop-summary",
+                                                                                                                       "attempts":  2
+                                                                                                                   }
+                                                                                                  }
+                                                                                              ],
+                                                                                  "payload":  {
+                                                                                                  "runtime_action":  "get-engineering-loop-summary",
+                                                                                                  "strategy":  "bounded_retry",
+                                                                                                  "attempts":  2
+                                                                                              }
+                                                                              }
+                                                                          ],
+                                                     "cancelled":  [
+
+                                                                   ],
+                                                     "succeeded":  [
+                                                                       {
+                                                                           "event_id":  "evt-be79284e19f3",
+                                                                           "event_type":  "execution.succeeded",
+                                                                           "occurred_at":  "2026-03-12T16:36:26.4448384Z",
+                                                                           "producer":  {
+                                                                                            "system":  "TOD",
+                                                                                            "component":  "bus_adapter",
+                                                                                            "role":  "execution_runtime"
+                                                                                        },
+                                                                           "correlation":  {
+                                                                                               "trace_id":  "trace-d24beec6",
+                                                                                               "execution_id":  "exec-4412669f",
+                                                                                               "goal_id":  "MIMGOAL-87B00BA4",
+                                                                                               "source_domain":  "mim"
+                                                                                           },
+                                                                           "reasons":  [
+                                                                                           {
+                                                                                               "code":  "execution_succeeded",
+                                                                                               "severity":  "info",
+                                                                                               "category":  "outcome",
+                                                                                               "message":  "Requested runtime action completed successfully.",
+                                                                                               "evidence":  {
+                                                                                                                "runtime_action":  "get-engineering-loop-summary"
+                                                                                                            }
+                                                                                           }
+                                                                                       ],
+                                                                           "payload":  {
+                                                                                           "runtime_action":  "get-engineering-loop-summary",
+                                                                                           "result":  {
+                                                                                                          "runtime_action":  "get-engineering-loop-summary",
+                                                                                                          "path":  "/tod/engineer/summary",
+                                                                                                          "status":  "warming",
+                                                                                                          "generated_at":  "2026-03-12T16:36:26.4064096Z"
+                                                                                                      }
+                                                                                       },
+                                                                           "artifact_links":  [
+                                                                                                  "shared_state/next_actions.json",
+                                                                                                  "shared_state/review_artifacts_index.json"
+                                                                                              ]
+                                                                       }
+                                                                   ],
+                                                     "failed":  [
+
+                                                                ]
+                                                 },
+                                   "summary_pointer":  {
+                                                           "generated_at":  "2026-03-12T16:36:26.5614971Z",
+                                                           "summary_version":  "1.0.0",
+                                                           "source":  "tod-bus-adapter-v1",
+                                                           "type":  "bus_execution_summaries_pointer",
+                                                           "latest_summary_path":  "shared_state/bus_execution_summaries.json",
+                                                           "contract_path":  "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
+                                                           "execution_domain_policy_path":  "tod/templates/bus/tod_cross_domain_execution_policy.json",
+                                                           "ordering_notes":  "Summaries are sorted by last_event_at descending; ties are ordered by trace_id then execution_id ascending.",
+                                                           "retention_notes":  "Artifact is regenerated and overwritten per summarize-executions run; long-term history remains in the bus event stream."
+                                                       },
+                                   "summary_entry":  {
+                                                         "trace_id":  "trace-d24beec6",
+                                                         "execution_id":  "exec-4412669f",
+                                                         "source_domain":  "mim",
+                                                         "final_outcome":  "succeeded",
+                                                         "retries":  1,
+                                                         "fallbacks":  1,
+                                                         "recovered":  true,
+                                                         "drift_events":  1,
+                                                         "cancelled":  0,
+                                                         "guardrail_blocks":  0,
+                                                         "reliability_signal":  "warning",
+                                                         "recommended_attention":  "monitor_closely",
+                                                         "event_count":  6,
+                                                         "artifact_links":  [
+                                                                                "shared_state/next_actions.json",
+                                                                                "shared_state/review_artifacts_index.json"
+                                                                            ],
+                                                         "last_event_at":  "2026-03-12T16:36:26.4448384Z"
+                                                     },
+                                   "handoff":  {
+                                                   "generated_at":  "2026-03-12T16:36:26.5614971Z",
+                                                   "summary_version":  "1.0.0",
+                                                   "source":  "tod-bus-adapter-v1",
+                                                   "ordering_notes":  "Summaries are sorted by last_event_at descending; ties are ordered by trace_id then execution_id ascending.",
+                                                   "retention_notes":  "Artifact is regenerated and overwritten per summarize-executions run; long-term history remains in the bus event stream.",
+                                                   "discovery_pointer_path":  "shared_state/bus_execution_summaries.index.json",
+                                                   "contract_path":  "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
+                                                   "source_domain":  "mim",
+                                                   "pointer":  {
+                                                                   "generated_at":  "2026-03-12T16:36:26.5614971Z",
+                                                                   "summary_version":  "1.0.0",
+                                                                   "source":  "tod-bus-adapter-v1",
+                                                                   "type":  "bus_execution_summaries_pointer",
+                                                                   "latest_summary_path":  "shared_state/bus_execution_summaries.json",
+                                                                   "contract_path":  "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
+                                                                   "execution_domain_policy_path":  "tod/templates/bus/tod_cross_domain_execution_policy.json",
+                                                                   "ordering_notes":  "Summaries are sorted by last_event_at descending; ties are ordered by trace_id then execution_id ascending.",
+                                                                   "retention_notes":  "Artifact is regenerated and overwritten per summarize-executions run; long-term history remains in the bus event stream."
+                                                               }
+                                               }
+                               },
+    "boundary_assertion":  {
+                               "tod_scope":  "execution_runtime_only",
+                               "mim_scope":  "cognition_planning_meaning_governance",
+                               "policy_enforced":  true
+                           }
+}

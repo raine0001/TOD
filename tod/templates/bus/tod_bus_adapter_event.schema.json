@@ -43,7 +43,12 @@
     "recovery_completed",
     "drift_detected",
     "fallback_applied",
-    "execution_cancelled"
+    "execution_cancelled",
+    "domain_policy_allowed",
+    "domain_policy_blocked",
+    "domain_policy_deferred",
+    "domain_policy_dry_run_only",
+    "request_unsupported_domain_ignored"
   ],
   "correlation_required_fields": [
     "event_id",

@@ -18,6 +18,7 @@
   "required_summary_fields": [
     "trace_id",
     "execution_id",
+    "source_domain",
     "final_outcome",
     "retries",
     "fallbacks",
@@ -30,6 +31,9 @@
     "event_count",
     "artifact_links",
     "last_event_at"
+  ],
+  "optional_metadata_fields": [
+    "execution_domain_policy_path"
   ],
   "ordering": {
     "primary": "last_event_at desc",
