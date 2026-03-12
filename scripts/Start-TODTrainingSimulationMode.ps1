@@ -245,6 +245,8 @@ $summary = [pscustomobject]@{
         graphics = [int]$stats.graphics
         layout = [int]$stats.layout
     }
+    validations_performed = @()
+    failures = @()
     artifacts = [pscustomobject]@{
         journal = $journalPath
         summary = $summaryPath
@@ -252,6 +254,17 @@ $summary = [pscustomobject]@{
         graphics_storyboard = $graphicsStoryboardPath
     }
     suggested_next_objective = "TOD-17"
+}
+
+if (Test-Path -Path $journalPath) {
+    try {
+        $entries = @(Get-Content -Path $journalPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
+        $summary.validations_performed = @($entries | ForEach-Object { [string]$_.validation } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+        $summary.failures = @($entries | Where-Object { -not [bool]$_.ok } | Select-Object -First 20)
+    }
+    catch {
+        $summary.failures = @([pscustomobject]@{ task = "summary-derivation"; detail = $_.Exception.Message })
+    }
 }
 
 $summary | ConvertTo-Json -Depth 12 | Set-Content -Path $summaryPath
