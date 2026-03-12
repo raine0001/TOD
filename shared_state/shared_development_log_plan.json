@@ -1,0 +1,62 @@
+{
+    "generated_at":  "2026-03-12T05:46:10.0208649Z",
+    "source":  "tod-shared-state-sync-v1",
+    "contract_version":  "tod-shared-development-log-contract-v1",
+    "purpose":  "Shared development logging and handoff protocol between TOD, MIM, and collaborators.",
+    "ownership":  {
+                      "tod":  [
+                                  "Publish canonical build/objective state snapshots.",
+                                  "Ingest collaborator updates from context inbox.",
+                                  "Append objective-level sync events to dev journal."
+                              ],
+                      "mim":  [
+                                  "Consume shared_state updates for planning and memory persistence.",
+                                  "Publish structured planning/status updates to TOD context inbox.",
+                                  "Correlate execution lifecycle feedback with objective state."
+                              ],
+                      "collaborators":  [
+                                            "Submit structured updates with source, summary, and project scope.",
+                                            "Use canonical shared_state files as source-of-truth during parallel work.",
+                                            "Avoid direct edits to canonical state artifacts."
+                                        ]
+                  },
+    "cadence":  {
+                    "event_driven":  [
+                                         "after focused quality gate",
+                                         "after full regression",
+                                         "after context ingest/export cycle",
+                                         "after objective transition"
+                                     ],
+                    "periodic":  {
+                                     "minimum":  "daily",
+                                     "recommended":  "per active development session"
+                                 }
+                },
+    "channels":  {
+                     "canonical_state_files":  [
+                                                   "shared_state/current_build_state.json",
+                                                   "shared_state/objectives.json",
+                                                   "shared_state/contracts.json",
+                                                   "shared_state/next_actions.json",
+                                                   "shared_state/shared_development_log_plan.json"
+                                               ],
+                     "append_only_logs":  [
+                                              "shared_state/dev_journal.jsonl",
+                                              "tod/out/context-sync/context-updates-log.jsonl"
+                                          ],
+                     "handoff_snapshots":  [
+                                               "shared_state/chatgpt_update.md",
+                                               "shared_state/chatgpt_update.json",
+                                               "shared_state/latest_summary.md"
+                                           ],
+                     "inbox":  "tod/inbox/context-sync/updates",
+                     "processed_updates":  "tod/out/context-sync/processed"
+                 },
+    "merge_rules":  [
+                        "append-only for journal and context update logs",
+                        "use UTC ISO-8601 timestamps in all entries",
+                        "never overwrite canonical snapshot files manually",
+                        "prefer objective-scoped summaries over freeform notes",
+                        "ingested updates must preserve original payload in log record"
+                    ]
+}

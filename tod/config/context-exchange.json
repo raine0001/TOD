@@ -1,0 +1,23 @@
+{
+  "version": "tod-mim-context-exchange-v1",
+  "system": {
+    "name": "MIM server",
+    "environment": "local + containers",
+    "gpu": "RTX 4060 Ti 16GB"
+  },
+  "paths": {
+    "export_dir": "tod/out/context-sync/exports",
+    "latest_export_file": "tod/out/context-sync/MIM_CONTEXT_EXPORT.latest.yaml",
+    "latest_export_json": "tod/out/context-sync/MIM_CONTEXT_EXPORT.latest.json",
+    "inbox_dir": "tod/inbox/context-sync/updates",
+    "processed_dir": "tod/out/context-sync/processed",
+    "updates_log": "tod/out/context-sync/context-updates-log.jsonl"
+  },
+  "defaults": {
+    "next_actions": [
+      "finalize verification gate",
+      "begin objective 21 planning"
+    ],
+    "project_limit": 8
+  }
+}

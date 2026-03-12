@@ -1,0 +1,38 @@
+{
+  "version": "media-pipeline-profiles-v1",
+  "default_policy": {
+    "requires_prompt_manifest": true,
+    "requires_output_metadata": true,
+    "requires_license_check": true,
+    "requires_review_before_publish": true
+  },
+  "profiles": [
+    {
+      "project_id": "mim_images",
+      "enabled": true,
+      "capabilities": ["image-generation", "image-editing", "thumbnailing", "captioning", "asset-packaging"],
+      "input_paths": ["assets/input", "assets/reference", "prompts"],
+      "output_paths": ["assets/output", "assets/exports", "assets/previews"],
+      "blocked_paths": ["licenses", "secrets"],
+      "artifact_manifest": "assets/output/manifest.json"
+    },
+    {
+      "project_id": "mim_box",
+      "enabled": true,
+      "capabilities": ["image-generation", "video-composition", "audio-processing", "document-layout"],
+      "input_paths": ["media/input", "media/reference", "prompts"],
+      "output_paths": ["media/output", "media/exports", "docs/generated"],
+      "blocked_paths": ["prod-keys", "secrets"],
+      "artifact_manifest": "media/output/manifest.json"
+    },
+    {
+      "project_id": "viasion",
+      "enabled": true,
+      "capabilities": ["vision-annotation", "frame-extraction", "preview-rendering"],
+      "input_paths": ["vision/input", "pipelines"],
+      "output_paths": ["vision/output", "vision/previews"],
+      "blocked_paths": ["models", "weights", "calibration"],
+      "artifact_manifest": "vision/output/manifest.json"
+    }
+  ]
+}

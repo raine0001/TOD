@@ -20,8 +20,22 @@ function Invoke-TodActionJson {
         $invokeParams[$k] = $ExtraArgs[$k]
     }
 
-    $raw = & $todScript @invokeParams
-    return ($raw | ConvertFrom-Json)
+    $attempt = 0
+    while ($true) {
+        try {
+            $raw = & $todScript @invokeParams
+            return ($raw | ConvertFrom-Json)
+        }
+        catch {
+            $attempt += 1
+            $errText = [string]$_.Exception.Message
+            $isTransientStateLock = $errText -match "state\.json" -and $errText -match "used by another process"
+            if ($attempt -ge 3 -or -not $isTransientStateLock) {
+                throw
+            }
+            Start-Sleep -Milliseconds 150
+        }
+    }
 }
 
 Describe "TOD Reliability Reports" {
@@ -89,12 +103,18 @@ Describe "TOD Reliability Dashboards" {
         $payload | Should Not BeNullOrEmpty
         [string]$payload.path | Should Be "/tod/reliability"
         (($payload.PSObject.Properties.Name) -contains "current_alert_state") | Should Be $true
+        (($payload.PSObject.Properties.Name) -contains "reliability_alert_state_raw") | Should Be $true
+        (($payload.PSObject.Properties.Name) -contains "reliability_alert_reasons") | Should Be $true
+        (($payload.PSObject.Properties.Name) -contains "reliability_alert_inputs") | Should Be $true
         (($payload.PSObject.Properties.Name) -contains "drift_penalties_active") | Should Be $true
         (($payload.PSObject.Properties.Name) -contains "recovery_state") | Should Be $true
         (($payload.PSObject.Properties.Name) -contains "engine_reliability_score") | Should Be $true
         (($payload.PSObject.Properties.Name) -contains "retry_trend") | Should Be $true
         (($payload.PSObject.Properties.Name) -contains "guardrail_trend") | Should Be $true
         (($payload.PSObject.Properties.Name) -contains "drift_warnings") | Should Be $true
+
+        @($payload.reliability_alert_reasons).Count | Should BeGreaterThan 0
+        (($payload.reliability_alert_inputs.PSObject.Properties.Name) -contains "pending_approvals") | Should Be $true
     }
 
     It "get-capabilities returns endpoint payload shape" {
@@ -268,7 +288,7 @@ Describe "TOD Reliability Dashboards" {
     }
 
     It "sandbox-apply-plan requires dangerous approval by default" {
-        $sandboxRelPath = "selftest/tod-sandbox-guardrail.txt"
+        $sandboxRelPath = "projects/tod/docs/selftest/tod-sandbox-guardrail-{0}.txt" -f ([guid]::NewGuid().ToString("N"))
         $plannedBody = "guardrail apply"
         $plan = Invoke-TodActionJson -Action "sandbox-plan" -ExtraArgs @{ SandboxPath = $sandboxRelPath; Content = $plannedBody }
 
@@ -493,7 +513,7 @@ Describe "TOD Reliability Dashboards" {
     }
 
     It "sandbox-write and sandbox-list return endpoint payload shape" {
-        $sandboxRelPath = "selftest/tod-sandbox-test.txt"
+        $sandboxRelPath = "projects/tod/docs/selftest/tod-sandbox-test-{0}.txt" -f ([guid]::NewGuid().ToString("N"))
         $sandboxBody = "sandbox smoke write"
 
         $write = Invoke-TodActionJson -Action "sandbox-write" -ExtraArgs @{ SandboxPath = $sandboxRelPath; Content = $sandboxBody }
@@ -511,7 +531,7 @@ Describe "TOD Reliability Dashboards" {
     }
 
     It "sandbox-plan returns non-destructive diff artifact payload" {
-        $sandboxRelPath = "selftest/tod-sandbox-plan.txt"
+        $sandboxRelPath = "projects/tod/docs/selftest/tod-sandbox-plan-{0}.txt" -f ([guid]::NewGuid().ToString("N"))
         $sandboxBody = "planned-only body"
         $sandboxTarget = Join-Path $repoRoot ("tod/sandbox/workspace/" + ($sandboxRelPath -replace "/", "\\"))
 
@@ -532,7 +552,7 @@ Describe "TOD Reliability Dashboards" {
     }
 
     It "sandbox-apply-plan writes planned content with hash integrity" {
-        $sandboxRelPath = "selftest/tod-sandbox-apply.txt"
+        $sandboxRelPath = "projects/tod/docs/selftest/tod-sandbox-apply-{0}.txt" -f ([guid]::NewGuid().ToString("N"))
         $initialBody = "initial"
         $plannedBody = "planned content v2"
 

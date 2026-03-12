@@ -1,0 +1,189 @@
+{
+  "version": "project-registry-v1",
+  "library_root": "E:/",
+  "generated_by": "manual-seed",
+  "global_capabilities": {
+    "project_access_scope": "all-registered-projects",
+    "content_generation": ["images", "video", "audio", "documents"],
+    "mode": "bounded-write",
+    "notes": "TOD can access all registered MIM folders; write operations still follow per-project boundaries and review policy."
+  },
+  "projects": [
+    {
+      "id": "tod",
+      "name": "TOD",
+      "path": "E:/TOD",
+      "type": "operations-engine",
+      "languages": ["powershell", "python", "javascript", "html"],
+      "entry_points": ["scripts/TOD.ps1", "scripts/Start-TOD-UI.ps1", "ui/index.html"],
+      "test_commands": ["./scripts/Invoke-TODTests.ps1", "./scripts/Invoke-TODSmoke.ps1"],
+      "risk_level": "critical",
+      "write_access": "guarded",
+      "boundaries": {
+        "allowed_paths": ["scripts", "tests", "ui", "docs", "tod/config"],
+        "blocked_paths": ["tod/data", "tod/state", "tod/out"],
+        "notes": "Runtime/state artifacts are read-only by default; code/docs require review gates."
+      }
+    },
+    {
+      "id": "comm_app",
+      "name": "comm_app",
+      "path": "E:/comm_app",
+      "type": "business-app",
+      "languages": ["python", "javascript", "html", "css"],
+      "entry_points": ["app.py", "main.py", "routes"],
+      "test_commands": ["pytest"],
+      "risk_level": "high",
+      "write_access": "guarded",
+      "boundaries": {
+        "allowed_paths": ["src", "app", "routes", "templates", "static", "tests"],
+        "blocked_paths": [".env", "secrets", "migrations/versions"],
+        "notes": "Business logic and workflow routes require explicit test plans before write operations."
+      }
+    },
+    {
+      "id": "coachmim",
+      "name": "coachMIM",
+      "path": "E:/coachMIM",
+      "type": "coaching-app",
+      "languages": ["python", "javascript", "html"],
+      "entry_points": ["app.py", "main.py", "routes", "templates"],
+      "test_commands": ["pytest"],
+      "risk_level": "medium",
+      "write_access": "guarded",
+      "boundaries": {
+        "allowed_paths": ["src", "app", "routes", "templates", "tests"],
+        "blocked_paths": [".env", "secrets"],
+        "notes": "Prefer advisory mode first; promote to patch mode after baseline test map is stable."
+      }
+    },
+    {
+      "id": "mim_pulz",
+      "name": "mim_pulz",
+      "path": "E:/mim_pulz",
+      "type": "systems-app",
+      "languages": ["python", "javascript"],
+      "entry_points": ["main.py", "app.py", "src"],
+      "test_commands": ["pytest"],
+      "risk_level": "high",
+      "write_access": "review-only",
+      "boundaries": {
+        "allowed_paths": ["src", "app", "tests"],
+        "blocked_paths": ["deploy", "infra", "secrets"],
+        "notes": "Architecture-sensitive domain; start in read-only and advisory modes."
+      }
+    },
+    {
+      "id": "mim_robotics",
+      "name": "MIM Robotics",
+      "path": "E:/MIM Robotics",
+      "type": "robotics",
+      "languages": ["python", "cpp"],
+      "entry_points": ["main.py", "launch", "src"],
+      "test_commands": ["pytest"],
+      "risk_level": "high",
+      "write_access": "review-only",
+      "boundaries": {
+        "allowed_paths": ["src", "tests", "docs"],
+        "blocked_paths": ["hardware", "firmware", "calibration"],
+        "notes": "Hardware-facing changes should require explicit human approval and rollback plans."
+      }
+    },
+    {
+      "id": "viasion",
+      "name": "Viasion",
+      "path": "E:/Viasion",
+      "type": "vision",
+      "languages": ["python", "cpp"],
+      "entry_points": ["main.py", "vision", "pipelines"],
+      "test_commands": ["pytest"],
+      "risk_level": "high",
+      "write_access": "review-only",
+      "boundaries": {
+        "allowed_paths": ["src", "vision", "tests", "docs"],
+        "blocked_paths": ["models", "weights", "calibration"],
+        "notes": "Model and calibration assets are data-critical and excluded from automated edits."
+      }
+    },
+    {
+      "id": "mimir",
+      "name": "Mimir",
+      "path": "E:/Mimir",
+      "type": "platform-service",
+      "languages": ["python", "javascript"],
+      "entry_points": ["main.py", "app.py", "src"],
+      "test_commands": ["pytest"],
+      "risk_level": "medium",
+      "write_access": "guarded",
+      "boundaries": {
+        "allowed_paths": ["src", "app", "tests", "docs"],
+        "blocked_paths": ["secrets", ".env"],
+        "notes": "Enable controlled implementation once baseline architecture map is generated."
+      }
+    },
+    {
+      "id": "mim_devl",
+      "name": "mim_devl",
+      "path": "E:/mim_devl",
+      "type": "development-lab",
+      "languages": ["python", "javascript"],
+      "entry_points": ["main.py", "src"],
+      "test_commands": ["pytest"],
+      "risk_level": "medium",
+      "write_access": "guarded",
+      "boundaries": {
+        "allowed_paths": ["src", "tests", "docs"],
+        "blocked_paths": ["secrets", ".env"],
+        "notes": "Treat as experimental domain; prioritize architecture summaries and drift tracking."
+      }
+    },
+    {
+      "id": "agent_mim_work",
+      "name": "agent MIM work",
+      "path": "E:/agent MIM work",
+      "type": "agent-workspace",
+      "languages": ["python", "javascript", "powershell"],
+      "entry_points": ["README.md", "main.py", "scripts"],
+      "test_commands": ["pytest"],
+      "risk_level": "medium",
+      "write_access": "review-only",
+      "boundaries": {
+        "allowed_paths": ["src", "scripts", "tests", "docs"],
+        "blocked_paths": ["secrets", ".env"],
+        "notes": "Use as pattern library and experiments workspace; avoid unmanaged refactors."
+      }
+    },
+    {
+      "id": "mim_box",
+      "name": "MIM BOX",
+      "path": "E:/MIM BOX",
+      "type": "content-lab",
+      "languages": ["python", "javascript", "html", "css"],
+      "entry_points": ["README.md", "main.py", "app.py", "src"],
+      "test_commands": ["pytest"],
+      "risk_level": "medium",
+      "write_access": "guarded",
+      "boundaries": {
+        "allowed_paths": ["src", "app", "assets", "media", "tests", "docs"],
+        "blocked_paths": ["secrets", ".env", "prod-keys"],
+        "notes": "Primary domain for generated media/content workflows; keep secret-bearing config out of automated edits."
+      }
+    },
+    {
+      "id": "mim_images",
+      "name": "mim images",
+      "path": "E:/mim images",
+      "type": "media-asset-domain",
+      "languages": ["python", "javascript"],
+      "entry_points": ["README.md", "scripts", "pipelines", "assets"],
+      "test_commands": ["pytest"],
+      "risk_level": "medium",
+      "write_access": "guarded",
+      "boundaries": {
+        "allowed_paths": ["assets", "images", "video", "audio", "pipelines", "scripts", "docs"],
+        "blocked_paths": ["licenses", "secrets", ".env"],
+        "notes": "Dedicated media creation and processing domain for TOD image/video/audio outputs and workflow indexing."
+      }
+    }
+  ]
+}

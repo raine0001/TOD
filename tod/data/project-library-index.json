@@ -1,0 +1,1729 @@
+{
+    "ok":  true,
+    "source":  "tod-project-library-index-v1",
+    "generated_at":  "2026-03-12T05:22:05.7437046Z",
+    "library_root":  "E:/",
+    "registry_path":  "E:/TOD/tod/config/project-registry.json",
+    "registered_project_count":  11,
+    "projects":  [
+                     {
+                         "id":  "tod",
+                         "name":  "TOD",
+                         "type":  "operations-engine",
+                         "path":  "E:/TOD",
+                         "exists":  true,
+                         "risk_level":  "critical",
+                         "write_access":  "guarded",
+                         "language_hint":  [
+                                               "powershell",
+                                               "python",
+                                               "javascript",
+                                               "html"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "scripts/TOD.ps1",
+                                                         "scripts/Start-TOD-UI.ps1",
+                                                         "ui/index.html"
+                                                     ],
+                         "configured_test_commands":  [
+                                                          "./scripts/Invoke-TODTests.ps1",
+                                                          "./scripts/Invoke-TODSmoke.ps1"
+                                                      ],
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "scripts",
+                                                                  "tests",
+                                                                  "ui",
+                                                                  "docs",
+                                                                  "tod/config"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  "tod/data",
+                                                                  "tod/state",
+                                                                  "tod/out"
+                                                              ],
+                                            "notes":  "Runtime/state artifacts are read-only by default; code/docs require review gates."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-03-12T05:22:05.3226139Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 "shared_state/chatgpt_update.md",
+                                                                 "shared_state/chatgpt_update.json",
+                                                                 "shared_state/latest_summary.md",
+                                                                 "shared_state/dev_journal.jsonl",
+                                                                 "shared_state/shared_development_log_plan.json",
+                                                                 "shared_state/next_actions.json",
+                                                                 "shared_state/contracts.json",
+                                                                 "shared_state/objectives.json",
+                                                                 "shared_state/current_build_state.json",
+                                                                 "tod/out/mim-http.log",
+                                                                 "tod/data/state.json",
+                                                                 "tod/state/engineering_memory.json",
+                                                                 "tod/data/engineering-memory.json",
+                                                                 "scripts/TOD.ps1",
+                                                                 "tod/data/project-library-index.json",
+                                                                 "shared_state/approval_reduction_summary.json",
+                                                                 "tests/TOD.Tests.ps1",
+                                                                 "scripts/Invoke-TODSharedStateSync.ps1",
+                                                                 "scripts/Invoke-TODApprovalReductionPass.ps1",
+                                                                 "tod/config/tod-config.test-retention-ceiling-e65d38cbb9064dbfae37bdee84676d57.json",
+                                                                 "tod/config/tod-config.test-drift-e26c45463be8490f93a69b5a3cd98962.json",
+                                                                 "tests/TOD.Retry.Tests.ps1",
+                                                                 "scripts/Invoke-TODSmoke.ps1",
+                                                                 "scripts/Invoke-TODQualityGate.ps1",
+                                                                 "scripts/Invoke-TODTests.ps1"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".code-workspace",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".env",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".gitignore",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".html",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".json",
+                                                                         "count":  46
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jsonl",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".log",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".md",
+                                                                         "count":  23
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ps1",
+                                                                         "count":  36
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".sample",
+                                                                         "count":  14
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".sh",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".yml",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  "\u003cnone\u003e",
+                                                                         "count":  8
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+                                                                           "scripts/Invoke-TODExecutionSelfTest.ps1",
+                                                                           "scripts/Invoke-TODTests.CI.ps1",
+                                                                           "scripts/Invoke-TODTests.ps1",
+                                                                           "scripts/Test-TODProjectAccessPolicy.ps1",
+                                                                           "shared_state/latest_summary.md",
+                                                                           "tests/TOD.Drift.Tests.ps1",
+                                                                           "tests/TOD.Guardrails.Tests.ps1",
+                                                                           "tests/TOD.Retry.Tests.ps1",
+                                                                           "tests/TOD.Tests.ps1",
+                                                                           ".github/workflows/tod-tests.yml"
+                                                                       ],
+                                           "detected_entrypoints":  [
+                                                                        "README.md",
+                                                                        "scripts/TOD.ps1"
+                                                                    ]
+                                       }
+                     },
+                     {
+                         "id":  "comm_app",
+                         "name":  "comm_app",
+                         "type":  "business-app",
+                         "path":  "E:/comm_app",
+                         "exists":  true,
+                         "risk_level":  "high",
+                         "write_access":  "guarded",
+                         "language_hint":  [
+                                               "python",
+                                               "javascript",
+                                               "html",
+                                               "css"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "app.py",
+                                                         "main.py",
+                                                         "routes"
+                                                     ],
+                         "configured_test_commands":  "pytest",
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "src",
+                                                                  "app",
+                                                                  "routes",
+                                                                  "templates",
+                                                                  "static",
+                                                                  "tests"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  ".env",
+                                                                  "secrets",
+                                                                  "migrations/versions"
+                                                              ],
+                                            "notes":  "Business logic and workflow routes require explicit test plans before write operations."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-03-12T05:22:05.4018775Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 ".git/gk/config",
+                                                                 ".git/logs/HEAD",
+                                                                 ".git/COMMIT_EDITMSG",
+                                                                 ".git/index",
+                                                                 "instance/flask_session/2029240f6d1128be89ddc32729463129",
+                                                                 "routes/__pycache__/routes.cpython-311.pyc",
+                                                                 "routes/routes.py",
+                                                                 "app/templates/login.html",
+                                                                 ".gitignore",
+                                                                 ".secrets.baseline",
+                                                                 ".pre-commit-config.yaml",
+                                                                 "routes/__pycache__/marketing_routes.cpython-311.pyc",
+                                                                 "routes/__pycache__/crm_ai_routes.cpython-311.pyc",
+                                                                 "routes/__pycache__/crm_routes.cpython-311.pyc",
+                                                                 "routes/admin/__init__.py",
+                                                                 "routes/__pycache__/mapping_routes.cpython-311.pyc",
+                                                                 "routes/__pycache__/agent_document_routes.cpython-311.pyc",
+                                                                 "routes/__pycache__/data_routes.cpython-311.pyc",
+                                                                 "routes/__pycache__/policy_routes.cpython-311.pyc",
+                                                                 "routes/__pycache__/agent_routes.cpython-311.pyc",
+                                                                 "app/__pycache__/agent_memory.cpython-311.pyc",
+                                                                 "app/__pycache__/agent_ai_tools.cpython-311.pyc",
+                                                                 "routes/__pycache__/agent_api_routes.cpython-311.pyc",
+                                                                 "routes/__pycache__/upload_routes.cpython-311.pyc",
+                                                                 "app/__pycache__/email_service.cpython-311.pyc"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".baseline",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".bat",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".cfg",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".css",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".csv",
+                                                                         "count":  22
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".dockerignore",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".docx",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".env",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".exe",
+                                                                         "count":  25
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".flaskenv",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".gitignore",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".html",
+                                                                         "count":  67
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ico",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ini",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jpg",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".js",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".json",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".mako",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".md",
+                                                                         "count":  7
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pdf",
+                                                                         "count":  74
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".png",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ps1",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".py",
+                                                                         "count":  193
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pyc",
+                                                                         "count":  55
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".sample",
+                                                                         "count":  14
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".sql",
+                                                                         "count":  12
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".TAG",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".txt",
+                                                                         "count":  4
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".xls",
+                                                                         "count":  6
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".xlsx",
+                                                                         "count":  38
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".yaml",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".yml",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  "\u003cnone\u003e",
+                                                                         "count":  27
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+                                                                           "tests/conftest.py",
+                                                                           "tests/test_agent_tools.py",
+                                                                           "tests/test_commission_delete_filtered.py",
+                                                                           "tests/test_commission_upload.py",
+                                                                           ".venv/Scripts/py.test.exe",
+                                                                           ".venv/Scripts/pytest.exe",
+                                                                           "app/templates/upload_test.html",
+                                                                           "tests/__pycache__/conftest.cpython-311-pytest-8.4.2.pyc",
+                                                                           "tests/__pycache__/test_commission_delete_filtered.cpython-311.pyc",
+                                                                           "tests/__pycache__/test_commission_upload.cpython-312-pytest-8.4.2.pyc"
+                                                                       ],
+                                           "detected_entrypoints":  [
+
+                                                                    ]
+                                       }
+                     },
+                     {
+                         "id":  "coachmim",
+                         "name":  "coachMIM",
+                         "type":  "coaching-app",
+                         "path":  "E:/coachMIM",
+                         "exists":  true,
+                         "risk_level":  "medium",
+                         "write_access":  "guarded",
+                         "language_hint":  [
+                                               "python",
+                                               "javascript",
+                                               "html"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "app.py",
+                                                         "main.py",
+                                                         "routes",
+                                                         "templates"
+                                                     ],
+                         "configured_test_commands":  "pytest",
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "src",
+                                                                  "app",
+                                                                  "routes",
+                                                                  "templates",
+                                                                  "tests"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  ".env",
+                                                                  "secrets"
+                                                              ],
+                                            "notes":  "Prefer advisory mode first; promote to patch mode after baseline test map is stable."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-03-12T05:22:05.4407591Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 "app/templates/index.html",
+                                                                 "app/templates/admin_dashboard.html",
+                                                                 "app/routes.py",
+                                                                 "app/templates/base.html",
+                                                                 ".git/logs/HEAD",
+                                                                 ".git/COMMIT_EDITMSG",
+                                                                 ".git/index",
+                                                                 "app/templates/challenges.html",
+                                                                 "app/templates/notifications.html",
+                                                                 ".git/FETCH_HEAD",
+                                                                 ".git/gk/config",
+                                                                 "app/__pycache__/routes.cpython-311.pyc",
+                                                                 ".env.example",
+                                                                 "scripts/__pycache__/benchmark_openai_ttfb.cpython-311.pyc",
+                                                                 "README.md",
+                                                                 "scripts/benchmark_openai_ttfb.py",
+                                                                 "app/__pycache__/ai.cpython-311.pyc",
+                                                                 "requirements.txt",
+                                                                 "app/ai.py",
+                                                                 ".venv/Scripts/openai.exe",
+                                                                 ".gitignore",
+                                                                 "public_key.pem",
+                                                                 ".venv/Scripts/pywebpush.exe",
+                                                                 ".venv/Scripts/vapid.exe",
+                                                                 ".venv/Scripts/normalizer.exe"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".bat",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".cfg",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".db",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".example",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".exe",
+                                                                         "count":  18
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".gitignore",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".html",
+                                                                         "count":  28
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ini",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".js",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".mako",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".md",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pem",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".png",
+                                                                         "count":  6
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ps1",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".py",
+                                                                         "count":  35
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pyc",
+                                                                         "count":  15
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".sample",
+                                                                         "count":  14
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".TAG",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".txt",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".yaml",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  "\u003cnone\u003e",
+                                                                         "count":  12
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+                                                                           "tests/test_data_isolation.py",
+                                                                           "tests/__pycache__/test_data_isolation.cpython-311-pytest-7.4.2.pyc",
+                                                                           "tests/__pycache__/test_data_isolation.cpython-311.pyc"
+                                                                       ],
+                                           "detected_entrypoints":  [
+                                                                        "README.md"
+                                                                    ]
+                                       }
+                     },
+                     {
+                         "id":  "mim_pulz",
+                         "name":  "mim_pulz",
+                         "type":  "systems-app",
+                         "path":  "E:/mim_pulz",
+                         "exists":  true,
+                         "risk_level":  "high",
+                         "write_access":  "review-only",
+                         "language_hint":  [
+                                               "python",
+                                               "javascript"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "main.py",
+                                                         "app.py",
+                                                         "src"
+                                                     ],
+                         "configured_test_commands":  "pytest",
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "src",
+                                                                  "app",
+                                                                  "tests"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  "deploy",
+                                                                  "infra",
+                                                                  "secrets"
+                                                              ],
+                                            "notes":  "Architecture-sensitive domain; start in read-only and advisory modes."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-03-12T05:22:05.5680741Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 ".git/gk/config",
+                                                                 "notebooks/kaggle_submission_v2_bulletproof.py",
+                                                                 "src/kaggle_submit_runner.py",
+                                                                 "release/kaggle/README.md",
+                                                                 "scripts/build_kaggle_runtime_package.py",
+                                                                 "docs/KAGGLE_DATASET_DESCRIPTION_FILLED.md",
+                                                                 "notebooks/kaggle_submission_runner_final.py",
+                                                                 "artifacts/analysis/retrieval_oracc_focused_sweep_tonight.json",
+                                                                 ".venv_pkg_demo/Scripts/numpy-config.exe",
+                                                                 ".venv_pkg_demo/Scripts/f2py.exe",
+                                                                 ".venv_pkg_demo/Scripts/sacrebleu.exe",
+                                                                 ".venv_pkg_demo/Scripts/tabulate.exe",
+                                                                 ".venv_pkg_demo/Scripts/pywin32_postinstall.exe",
+                                                                 ".venv_pkg_demo/Scripts/pywin32_testall.exe",
+                                                                 ".venv_pkg_demo/Scripts/pywin32_testall.py",
+                                                                 ".venv_pkg_demo/Scripts/pywin32_postinstall.py",
+                                                                 "docs/KAGGLE_NOTEBOOK_REFERENCES_FILLED.md",
+                                                                 "docs/KAGGLE_DATASET_DESCRIPTION_TEMPLATE.md",
+                                                                 "docs/KAGGLE_NOTEBOOK_REFERENCES_TEMPLATE.md",
+                                                                 "README.md",
+                                                                 "src/make_submission.py",
+                                                                 "src/mim_pulz/ensemble_submission.py",
+                                                                 "src/sweep_ensemble_router_minprob.py",
+                                                                 "src/train_ensemble_router_ml3.py",
+                                                                 "outputs/submission_ensemble_ml3_release_final_submit.csv.manifest.json"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".bat",
+                                                                         "count":  6
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".bundle",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".cfg",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".csv",
+                                                                         "count":  55
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".db",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".env",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".exe",
+                                                                         "count":  58
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".gitattributes",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".gitignore",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jpg",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".js",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".json",
+                                                                         "count":  260
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jsonl",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".kaggleignore",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".md",
+                                                                         "count":  14
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".parquet",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ps1",
+                                                                         "count":  6
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".py",
+                                                                         "count":  84
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pyc",
+                                                                         "count":  71
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".sample",
+                                                                         "count":  14
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".sh",
+                                                                         "count":  6
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".sha256",
+                                                                         "count":  49
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".txt",
+                                                                         "count":  15
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".yaml",
+                                                                         "count":  8
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".zip",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  "\u003cnone\u003e",
+                                                                         "count":  19
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+                                                                           "scripts/smoke_test.ps1",
+                                                                           "scripts/smoke_test.sh",
+                                                                           ".venv/Scripts/pywin32_testall.exe",
+                                                                           ".venv/Scripts/pywin32_testall.py",
+                                                                           ".venv_pkg_demo/Scripts/pywin32_testall.exe",
+                                                                           ".venv_pkg_demo/Scripts/pywin32_testall.py",
+                                                                           ".venv_pkg_kaggle/Scripts/pywin32_testall.exe",
+                                                                           ".venv_pkg_kaggle/Scripts/pywin32_testall.py",
+                                                                           "artifacts/analysis/seed43_vs_seed44_test_evidence_diff.json",
+                                                                           "artifacts/profiles/test_profiles_cache.json"
+                                                                       ],
+                                           "detected_entrypoints":  [
+                                                                        "README.md"
+                                                                    ]
+                                       }
+                     },
+                     {
+                         "id":  "mim_robotics",
+                         "name":  "MIM Robotics",
+                         "type":  "robotics",
+                         "path":  "E:/MIM Robotics",
+                         "exists":  true,
+                         "risk_level":  "high",
+                         "write_access":  "review-only",
+                         "language_hint":  [
+                                               "python",
+                                               "cpp"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "main.py",
+                                                         "launch",
+                                                         "src"
+                                                     ],
+                         "configured_test_commands":  "pytest",
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "src",
+                                                                  "tests",
+                                                                  "docs"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  "hardware",
+                                                                  "firmware",
+                                                                  "calibration"
+                                                              ],
+                                            "notes":  "Hardware-facing changes should require explicit human approval and rollback plans."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-03-12T05:22:05.6092530Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 "Safety Warning for MIM Arm Use.docx",
+                                                                 "models/DepthAI Tools.url",
+                                                                 "models/yolo11n.pt",
+                                                                 "zoo/depthai-model-zoo/blob_maker.py",
+                                                                 "zoo/depthai-model-zoo/README.md",
+                                                                 "zoo/depthai-model-zoo/LICENSE",
+                                                                 "zoo/depthai-model-zoo/.gitignore",
+                                                                 "zoo/depthai-model-zoo/.gitattributes",
+                                                                 "images/MIM_OAK.jpg",
+                                                                 "MIM Robots Summary.docx",
+                                                                 "images/agenteams.png",
+                                                                 "images/favicon.ico",
+                                                                 "MIM Robots Summary.pdf",
+                                                                 "MIM_financials.xlsx",
+                                                                 "images/MIMrobots_web.jpg",
+                                                                 "images/MIM arms 1.jpg",
+                                                                 "images/20250425_135619.mp4",
+                                                                 "images/20250328_094351.jpg",
+                                                                 "images/mim arm testing.jpg",
+                                                                 "images/MIM arm 14.jpg",
+                                                                 "images/20250306_114742.jpg",
+                                                                 "images/8bbfbe1c-6b1b-4229-bfa7-b996558d82e3.jpg",
+                                                                 "images/05a5d88f-1a40-4af7-97f3-bc6d4c7539ea.jpg",
+                                                                 "images/MIM22.jpg",
+                                                                 "MIM Robotics.docx"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".7z",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".bmp",
+                                                                         "count":  27
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".cfg",
+                                                                         "count":  7
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".csv",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".dae",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".docx",
+                                                                         "count":  10
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".dwg",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".env",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".gitattributes",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".gitignore",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ico",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ini",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jpeg",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jpg",
+                                                                         "count":  380
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".kmodel",
+                                                                         "count":  6
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".mako",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".md",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".mp4",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".mtl",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".obj",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pdf",
+                                                                         "count":  8
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".png",
+                                                                         "count":  51
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pt",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".py",
+                                                                         "count":  15
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pyc",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".rof",
+                                                                         "count":  9
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ryd",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".skb",
+                                                                         "count":  4
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".skp",
+                                                                         "count":  4
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".stl",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".svg",
+                                                                         "count":  4
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".tmp",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".txt",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".url",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".webp",
+                                                                         "count":  4
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".xcf",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".xlsx",
+                                                                         "count":  6
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".zip",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  "\u003cnone\u003e",
+                                                                         "count":  2
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+                                                                           "images/mim arm testing.jpg",
+                                                                           "mimrobots.com/test_db.py"
+                                                                       ],
+                                           "detected_entrypoints":  [
+
+                                                                    ]
+                                       }
+                     },
+                     {
+                         "id":  "viasion",
+                         "name":  "Viasion",
+                         "type":  "vision",
+                         "path":  "E:/Viasion",
+                         "exists":  true,
+                         "risk_level":  "high",
+                         "write_access":  "review-only",
+                         "language_hint":  [
+                                               "python",
+                                               "cpp"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "main.py",
+                                                         "vision",
+                                                         "pipelines"
+                                                     ],
+                         "configured_test_commands":  "pytest",
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "src",
+                                                                  "vision",
+                                                                  "tests",
+                                                                  "docs"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  "models",
+                                                                  "weights",
+                                                                  "calibration"
+                                                              ],
+                                            "notes":  "Model and calibration assets are data-critical and excluded from automated edits."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-03-12T05:22:05.6516410Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 "viasion.app/.git/FETCH_HEAD",
+                                                                 "viasion.app/.git/COMMIT_EDITMSG",
+                                                                 "viasion.app/.git/index",
+                                                                 "viasion.app/.git/config",
+                                                                 "visaion form mapping.mp4",
+                                                                 "visaion golf session.png",
+                                                                 "viasion.app/app.py",
+                                                                 "viasion.app/static/index.html",
+                                                                 "viasion.app/static/login.html",
+                                                                 "viasion.app/static/d_admin.html",
+                                                                 "viasion.app/static/subscriptions.html",
+                                                                 "viasion.app/static/community.html",
+                                                                 "golf/sample_not_catching swing.mp4",
+                                                                 "viasion.app/static/my_sessions.html",
+                                                                 "viasion.app/static/style.css",
+                                                                 "viasion.app/static/user_setup.html",
+                                                                 "viasion.app/static/my_viasion.html",
+                                                                 "viasion.app/__pycache__/app.cpython-311.pyc",
+                                                                 "golf/sample swing.mp4",
+                                                                 "Devl docs/top golf australia.docx",
+                                                                 "viasion.app/support/engine.py",
+                                                                 "Devl docs/~$p golf australia.docx",
+                                                                 "Devl docs/community swing summary recap.jpg",
+                                                                 "Devl docs/swing recap 1.jpg",
+                                                                 "Devl docs/summary screenshot 1.jpg"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".avi",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".avif",
+                                                                         "count":  10
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".bin",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".css",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".diff",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".dockerignore",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".docx",
+                                                                         "count":  5
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".env",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".gitignore",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".html",
+                                                                         "count":  16
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ico",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jpeg",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jpg",
+                                                                         "count":  53
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".js",
+                                                                         "count":  13
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".json",
+                                                                         "count":  19
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jsonl",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jsx",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".md",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".mp4",
+                                                                         "count":  27
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pdf",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".png",
+                                                                         "count":  6
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pt",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".py",
+                                                                         "count":  13
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pyc",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".python-version",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".sqlite3",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".swift",
+                                                                         "count":  9
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ts",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".txt",
+                                                                         "count":  4
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".url",
+                                                                         "count":  5
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".webp",
+                                                                         "count":  22
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".yml",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  "\u003cnone\u003e",
+                                                                         "count":  9
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+                                                                           "viasion.app/session_latest.json",
+                                                                           "viasion.app/session_latest2.json",
+                                                                           "viasion.app/static/canvas_test.html"
+                                                                       ],
+                                           "detected_entrypoints":  [
+
+                                                                    ]
+                                       }
+                     },
+                     {
+                         "id":  "mimir",
+                         "name":  "Mimir",
+                         "type":  "platform-service",
+                         "path":  "E:/Mimir",
+                         "exists":  true,
+                         "risk_level":  "medium",
+                         "write_access":  "guarded",
+                         "language_hint":  [
+                                               "python",
+                                               "javascript"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "main.py",
+                                                         "app.py",
+                                                         "src"
+                                                     ],
+                         "configured_test_commands":  "pytest",
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "src",
+                                                                  "app",
+                                                                  "tests",
+                                                                  "docs"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  "secrets",
+                                                                  ".env"
+                                                              ],
+                                            "notes":  "Enable controlled implementation once baseline architecture map is generated."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-03-12T05:22:05.6826890Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 "DeepSearch/.git/FETCH_HEAD",
+                                                                 "obs-browser/.git/FETCH_HEAD",
+                                                                 "__pycache__/mim_core.cpython-311.pyc",
+                                                                 "__pycache__/mim_prompts.cpython-311.pyc",
+                                                                 "mim_core.py",
+                                                                 "mim_prompts.py",
+                                                                 "__pycache__/obs_assistant.cpython-311.pyc",
+                                                                 "__pycache__/routes.cpython-311.pyc",
+                                                                 "routes.py",
+                                                                 "obs_assistant.py",
+                                                                 "templates/production.html",
+                                                                 "schedule_assistant.py",
+                                                                 ".env",
+                                                                 "templates/test_my_setup.py",
+                                                                 "__pycache__/audio_monitoring.cpython-311.pyc",
+                                                                 "__pycache__/my_speech_recognition.cpython-311.pyc",
+                                                                 "audio_monitoring.py",
+                                                                 "my_speech_recognition.py",
+                                                                 "__pycache__/speech_recognition.cpython-311.pyc",
+                                                                 "__pycache__/obs.cpython-311.pyc",
+                                                                 "test_obs_assistant.py",
+                                                                 "obs.py",
+                                                                 "__pycache__/search.cpython-311.pyc",
+                                                                 "search.py",
+                                                                 "MIM_files/search_results/search_1740092947.html"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".bat",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".cfg",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".clang-format",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".cmake",
+                                                                         "count":  4
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".cpp",
+                                                                         "count":  11
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".docx",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".env",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".exe",
+                                                                         "count":  29
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".gitignore",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".h",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".hpp",
+                                                                         "count":  11
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".html",
+                                                                         "count":  32
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".in",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".json",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".manifest",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".md",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pdf",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".plist",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ps1",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".py",
+                                                                         "count":  20
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pyc",
+                                                                         "count":  20
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".txt",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".url",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".xml",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".zsh",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  "\u003cnone\u003e",
+                                                                         "count":  18
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+                                                                           "test_db.py",
+                                                                           "test_obs_assistant.py",
+                                                                           "templates/test_my_setup.py",
+                                                                           ".venv/Scripts/py.test.exe",
+                                                                           ".venv/Scripts/pytest.exe",
+                                                                           ".venv/Scripts/pywin32_testall.py"
+                                                                       ],
+                                           "detected_entrypoints":  [
+
+                                                                    ]
+                                       }
+                     },
+                     {
+                         "id":  "mim_devl",
+                         "name":  "mim_devl",
+                         "type":  "development-lab",
+                         "path":  "E:/mim_devl",
+                         "exists":  true,
+                         "risk_level":  "medium",
+                         "write_access":  "guarded",
+                         "language_hint":  [
+                                               "python",
+                                               "javascript"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "main.py",
+                                                         "src"
+                                                     ],
+                         "configured_test_commands":  "pytest",
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "src",
+                                                                  "tests",
+                                                                  "docs"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  "secrets",
+                                                                  ".env"
+                                                              ],
+                                            "notes":  "Treat as experimental domain; prioritize architecture summaries and drift tracking."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-03-12T05:22:05.6982715Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 "Who or what is MIM.docx",
+                                                                 "agneteams.docx",
+                                                                 "MIM robots tasking.docx",
+                                                                 "mim_arm_devl.docx",
+                                                                 "mim_arm/.git/FETCH_HEAD",
+                                                                 "mim_arm/app.py",
+                                                                 "mim_arm/requirements.txt",
+                                                                 "mim_arm/mimenv/pyvenv.cfg",
+                                                                 "mim_arm/.git/config",
+                                                                 "mim_arm/serial_arduino.py",
+                                                                 "mim_arm/__pycache__/shared.cpython-311.pyc",
+                                                                 "mim_arm/__pycache__/routes.cpython-311.pyc",
+                                                                 "mimenv/Scripts/flask.exe",
+                                                                 "mimenv/Scripts/pyserial-ports.exe",
+                                                                 "mimenv/Scripts/pyserial-miniterm.exe",
+                                                                 "mim_arm/serial_chk.py",
+                                                                 "requirements.txt",
+                                                                 "mimenv/Scripts/toco_from_protos.exe",
+                                                                 "mimenv/Scripts/toco.exe",
+                                                                 "mimenv/Scripts/tflite_convert.exe",
+                                                                 "mimenv/Scripts/tf_upgrade_v2.exe",
+                                                                 "mimenv/Scripts/tensorboard.exe",
+                                                                 "mimenv/Scripts/saved_model_cli.exe",
+                                                                 "mimenv/Scripts/import_pb_to_tensorboard.exe",
+                                                                 "mimenv/Scripts/estimator_ckpt_converter.exe"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".bac",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".bat",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".cfg",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".css",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".docx",
+                                                                         "count":  4
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".exe",
+                                                                         "count":  28
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".html",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".js",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".json",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ps1",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".py",
+                                                                         "count":  9
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pyc",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".txt",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  "\u003cnone\u003e",
+                                                                         "count":  7
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+                                                                           "mim_arm/templates/test.html",
+                                                                           "mim_arm/vision/serial_test.py"
+                                                                       ],
+                                           "detected_entrypoints":  [
+
+                                                                    ]
+                                       }
+                     },
+                     {
+                         "id":  "agent_mim_work",
+                         "name":  "agent MIM work",
+                         "type":  "agent-workspace",
+                         "path":  "E:/agent MIM work",
+                         "exists":  true,
+                         "risk_level":  "medium",
+                         "write_access":  "review-only",
+                         "language_hint":  [
+                                               "python",
+                                               "javascript",
+                                               "powershell"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "README.md",
+                                                         "main.py",
+                                                         "scripts"
+                                                     ],
+                         "configured_test_commands":  "pytest",
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "src",
+                                                                  "scripts",
+                                                                  "tests",
+                                                                  "docs"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  "secrets",
+                                                                  ".env"
+                                                              ],
+                                            "notes":  "Use as pattern library and experiments workspace; avoid unmanaged refactors."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-03-12T05:22:05.7342633Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 "Training \u0026 content/Presentation - How Independent Agencies Actually Grow in 2026.docx",
+                                                                 "Training \u0026 content/MIM AGL Overview.docx",
+                                                                 "Marketing media/MIM_agl.jpg",
+                                                                 "accounting/MAR-APR-2026-DR/github-raine0001-receipt-2026-03-11.pdf",
+                                                                 "Marketing media/harddrive.png",
+                                                                 "Marketing media/agentmim.com-Performance-on-Search-2026-03-09.xlsx",
+                                                                 "Training \u0026 content/How Agencies Grow/how agencies grow - presentation draft.docx",
+                                                                 "accounting/MAR-APR-2026-DR/Postmark-Invoice-March082026-#LUKMPAJE-0004.pdf",
+                                                                 "accounting/MAR-APR-2026-DR/Render-Invoice-8OOCDD1N-0005.pdf",
+                                                                 "LLC Docs/AGENT MIM INTELLECTUAL PROPERTY OWNERSHIP.docx",
+                                                                 "LLC Docs/AGENT MIM INTELLECTUAL PROPERTY OWNERSHIP.pdf",
+                                                                 "Training \u0026 content/How Agencies Grow/Where Manual Processes Quietly Limit Growth.docx",
+                                                                 "Training \u0026 content/How Agencies Grow/Why Commission Pressure Is Forcing Agencies to Rethink Operations.docx",
+                                                                 "Training \u0026 content/How Agencies Grow/How Automation Helps Without Replacing People.docx",
+                                                                 "Training \u0026 content/How Agencies Grow/Agency Guide.docx",
+                                                                 "Marketing media/MIM for work.png",
+                                                                 "Marketing media/10 days to go.png",
+                                                                 "accounting/JAN-FEB-2026-DR/Gmail - hosting Invoice payment received.pdf",
+                                                                 "accounting/JAN-FEB-2026-DR/Gmail - Your Google Play Order Receipt from Mar 1, 2026.pdf",
+                                                                 "accounting/JAN-FEB-2026-DR/MN_Digital_Sales_Invoice_Final.pdf",
+                                                                 "accounting/JAN-FEB-2026-DR/digital ocean 149537599.pdf",
+                                                                 "accounting/JAN-FEB-2026-DR/bito Receipt-2807-8414.pdf",
+                                                                 "Marketing media/anyone out there - mim.png",
+                                                                 "Marketing media/15 days.png",
+                                                                 "accounting/JAN-FEB-2026-DR/social marketing feb 2026.pdf"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".csv",
+                                                                         "count":  18
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".docx",
+                                                                         "count":  62
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".drp",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jpg",
+                                                                         "count":  23
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".json",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".mp4",
+                                                                         "count":  10
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pdf",
+                                                                         "count":  130
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".png",
+                                                                         "count":  59
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pptx",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".svg",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".tmp",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".txt",
+                                                                         "count":  15
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".url",
+                                                                         "count":  10
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".webp",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".xcf",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".xlsx",
+                                                                         "count":  8
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".zip",
+                                                                         "count":  1
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+
+                                                                       ],
+                                           "detected_entrypoints":  [
+
+                                                                    ]
+                                       }
+                     },
+                     {
+                         "id":  "mim_box",
+                         "name":  "MIM BOX",
+                         "type":  "content-lab",
+                         "path":  "E:/MIM BOX",
+                         "exists":  true,
+                         "risk_level":  "medium",
+                         "write_access":  "guarded",
+                         "language_hint":  [
+                                               "python",
+                                               "javascript",
+                                               "html",
+                                               "css"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "README.md",
+                                                         "main.py",
+                                                         "app.py",
+                                                         "src"
+                                                     ],
+                         "configured_test_commands":  "pytest",
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "src",
+                                                                  "app",
+                                                                  "assets",
+                                                                  "media",
+                                                                  "tests",
+                                                                  "docs"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  "secrets",
+                                                                  ".env",
+                                                                  "prod-keys"
+                                                              ],
+                                            "notes":  "Primary domain for generated media/content workflows; keep secret-bearing config out of automated edits."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-03-12T05:22:05.7373901Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 "OS/ubuntu-24.04.4-desktop-amd64.iso"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".iso",
+                                                                         "count":  1
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+
+                                                                       ],
+                                           "detected_entrypoints":  [
+
+                                                                    ]
+                                       }
+                     },
+                     {
+                         "id":  "mim_images",
+                         "name":  "mim images",
+                         "type":  "media-asset-domain",
+                         "path":  "E:/mim images",
+                         "exists":  true,
+                         "risk_level":  "medium",
+                         "write_access":  "guarded",
+                         "language_hint":  [
+                                               "python",
+                                               "javascript"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "README.md",
+                                                         "scripts",
+                                                         "pipelines",
+                                                         "assets"
+                                                     ],
+                         "configured_test_commands":  "pytest",
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "assets",
+                                                                  "images",
+                                                                  "video",
+                                                                  "audio",
+                                                                  "pipelines",
+                                                                  "scripts",
+                                                                  "docs"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  "licenses",
+                                                                  "secrets",
+                                                                  ".env"
+                                                              ],
+                                            "notes":  "Dedicated media creation and processing domain for TOD image/video/audio outputs and workflow indexing."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-03-12T05:22:05.7426163Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 "MIM_Trade_booth.png",
+                                                                 "MIM_exploring_table.mp4",
+                                                                 "MIM bearings.jpg",
+                                                                 "MIM_servo_setup.jpg",
+                                                                 "MIM_devl1.jpg",
+                                                                 "MIM_arm_Joint.jpg",
+                                                                 "MIM_blocks1.jpg",
+                                                                 "05a5d88f-1a40-4af7-97f3-bc6d4c7539ea.jpg",
+                                                                 "MIM_build_version.jpg",
+                                                                 "MIM pose.png",
+                                                                 "product photos9.png",
+                                                                 "warehouse_MIM.png",
+                                                                 "product_photos1.png",
+                                                                 "MIM_02-Scene_2.png",
+                                                                 "MIM_02-Scene 1.png"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".jpg",
+                                                                         "count":  7
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".mp4",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".png",
+                                                                         "count":  7
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+
+                                                                       ],
+                                           "detected_entrypoints":  [
+
+                                                                    ]
+                                       }
+                     }
+                 ],
+    "unregistered_top_level_directories":  [
+
+                                           ]
+}

@@ -1,0 +1,54 @@
+{
+  "version": "tod-media-runtime-v1",
+  "gpu": {
+    "preferred_device": "cuda",
+    "require_nvidia_smi": true,
+    "notes": "Designed for local RTX workflows (e.g., 4060 Ti 16GB)."
+  },
+  "services": {
+    "comfyui": {
+      "enabled": true,
+      "base_url": "http://127.0.0.1:8188",
+      "queue_endpoint": "/prompt",
+      "health_endpoint": "/system_stats"
+    },
+    "automatic1111": {
+      "enabled": true,
+      "base_url": "http://127.0.0.1:7860",
+      "txt2img_endpoint": "/sdapi/v1/txt2img",
+      "img2img_endpoint": "/sdapi/v1/img2img"
+    },
+    "forge": {
+      "enabled": false,
+      "base_url": "http://127.0.0.1:7861",
+      "txt2img_endpoint": "/sdapi/v1/txt2img"
+    },
+    "python_diffusers": {
+      "enabled": true,
+      "base_url": "http://127.0.0.1:8090",
+      "generate_endpoint": "/generate",
+      "health_endpoint": "/health"
+    }
+  },
+  "routing": {
+    "image-generation": "comfyui",
+    "graphics-creation": "comfyui",
+    "ui-assets": "comfyui",
+    "dynamic-visual-content": "comfyui",
+    "short-video-animation": "python_diffusers",
+    "diagram-dashboard-rendering": "code-svg",
+    "vision-processing": "python_diffusers"
+  },
+  "defaults": {
+    "image": {
+      "width": 1024,
+      "height": 1024,
+      "steps": 28,
+      "guidance": 7.0
+    },
+    "video": {
+      "fps": 12,
+      "seconds": 4
+    }
+  }
+}

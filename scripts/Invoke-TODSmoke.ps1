@@ -2,11 +2,40 @@ param(
     [int]$PreferredPort = 8844,
     [int]$MaxPortSearch = 30,
     [int]$Top = 10,
-    [switch]$FailOnError
+    [switch]$FailOnError,
+    [switch]$SkipSharedStateSync,
+    [string]$SharedStateSyncScript = "scripts/Invoke-TODSharedStateSync.ps1"
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+
+function Invoke-SharedStateSyncIfEnabled {
+    if ($SkipSharedStateSync) {
+        return
+    }
+
+    $syncScriptPath = if ([System.IO.Path]::IsPathRooted($SharedStateSyncScript)) {
+        $SharedStateSyncScript
+    }
+    else {
+        Join-Path $repoRoot $SharedStateSyncScript
+    }
+
+    if (-not (Test-Path -Path $syncScriptPath)) {
+        Write-Warning "Shared state sync script not found: $syncScriptPath"
+        return
+    }
+
+    try {
+        & $syncScriptPath | Out-Null
+    }
+    catch {
+        Write-Warning ("Shared state sync failed after smoke run: {0}" -f $_.Exception.Message)
+    }
+}
 
 function Test-PortFree {
     param([int]$Port)
@@ -50,7 +79,6 @@ function Invoke-Json {
     return Invoke-RestMethod -Uri $Uri -Method $Method -ContentType "application/json" -Body $Body -TimeoutSec 20
 }
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
 $uiScript = Join-Path $PSScriptRoot "Start-TOD-UI.ps1"
 if (-not (Test-Path -Path $uiScript)) {
     throw "Missing UI script: $uiScript"
@@ -98,6 +126,8 @@ try {
 
     $json = $result | ConvertTo-Json -Depth 8
     Write-Output $json
+
+    Invoke-SharedStateSyncIfEnabled
 
     if ($FailOnError -and -not $allOk) {
         throw "TOD smoke checks reported one or more failures."

@@ -87,10 +87,46 @@ Run a lightweight local UI to inspect TOD output and trigger basic actions:
 .\scripts\Start-TOD-UI.ps1
 ```
 
+Open TOD console in a chromeless app window (no browser controls):
+
+```powershell
+.\scripts\Start-TOD-UI.ps1 -OpenAppWindow
+```
+
+Native fullscreen app window launcher (works even when Edge/Chrome app mode is unavailable):
+
+```powershell
+.\scripts\Start-TOD-UI-AppWindow.ps1
+```
+
+Hardcoded PowerShell trigger:
+
+```powershell
+goTOD
+```
+
+Kiosk trigger (no border/menu bar, Esc to exit):
+
+```powershell
+goTOD -Kiosk
+```
+
+Kiosk mode (no border/menu bar, Esc to exit):
+
+```powershell
+.\scripts\Start-TOD-UI-AppWindow.ps1 -HideMenuBar
+```
+
 Safer launcher with automatic free-port selection:
 
 ```powershell
 .\scripts\Start-TOD-UI-Safe.ps1
+```
+
+Safe launcher + app window mode:
+
+```powershell
+.\scripts\Start-TOD-UI-Safe.ps1 -OpenAppWindow
 ```
 
 Then open:
@@ -142,6 +178,162 @@ Fail-fast mode for automation:
 ```powershell
 .\scripts\Invoke-TODExecutionSelfTest.ps1 -TaskId 45 -FailOnError
 ```
+
+### Continuous Training Automation
+
+Generate a structured training report from existing TOD evidence (tests, smoke, state-bus, reliability, engineering loop):
+
+```powershell
+.\scripts\Invoke-TODTrainingLoop.ps1
+```
+
+Include cross-project discovery/indexing from `E:\` (or another root) as part of training:
+
+```powershell
+.\scripts\Invoke-TODTrainingLoop.ps1 -LibraryRoot "E:\\"
+```
+
+Refresh project library index only (read-only discovery, no code edits):
+
+```powershell
+.\scripts\Update-TODProjectLibrary.ps1 -RootPath "E:\\"
+```
+
+Validate whether planned file edits are inside per-project boundaries:
+
+```powershell
+.\scripts\Test-TODProjectAccessPolicy.ps1 -ProjectId "comm_app" -RelativePaths "src/core/service.py"
+```
+
+Build TOD's prioritized cross-project execution queue:
+
+```powershell
+.\scripts\Get-TODProjectExecutionQueue.ps1
+```
+
+Run queue execution routing by mode (plan-only for advisory/review modes, optional guarded writes):
+
+```powershell
+.\scripts\Invoke-TODProjectQueueRunner.ps1 -Top 10 -DryRun
+.\scripts\Invoke-TODProjectQueueRunner.ps1 -Top 5 -ExecuteGuardedWrites
+```
+
+By default, the runner auto-selects a policy-compliant relative path per project from registry `allowed_paths`. Override with `-RelativePath` when needed.
+
+Project-scoped sandbox writes are now policy-gated and required to use:
+
+- `projects/<project_id>/<relative_path>`
+
+Example allowed write:
+
+```powershell
+.\scripts\TOD.ps1 -Action sandbox-write -SandboxPath "projects/comm_app/src/core/service.py" -Content "# draft"
+```
+
+Example blocked write:
+
+```powershell
+.\scripts\TOD.ps1 -Action sandbox-write -SandboxPath "projects/comm_app/secrets/token.txt" -Content "blocked"
+```
+
+Always-on daemon mode (daily full training + idle-time lightweight training):
+
+```powershell
+.\scripts\Start-TODTrainingDaemon.ps1
+```
+
+Useful daemon options:
+
+```powershell
+.\scripts\Start-TODTrainingDaemon.ps1 -IntervalSeconds 300 -IdleCadenceMinutes 30 -FullCadenceHours 24
+.\scripts\Start-TODTrainingDaemon.ps1 -RunOnce
+```
+
+Daemon artifacts:
+- `tod/out/training/training-daemon.log`
+- `tod/out/training/training-daemon-state.json`
+- `tod/out/training/training-report.json`
+- `tod/out/training/training-report.md`
+
+Project library artifacts:
+- `tod/config/project-registry.json`
+- `tod/config/project-priority.json`
+- `tod/config/media-pipeline-profiles.json`
+- `tod/config/media-runtime.json`
+- `tod/data/project-library-index.json`
+
+Media pipeline orchestration (RTX/local-service controller):
+
+```powershell
+.\scripts\Invoke-TODMediaPipeline.ps1 -ProjectId "mim_images" -Capability "image-generation" -Prompt "cyber-green TOD status banner" -DryRun
+.\scripts\Invoke-TODMediaPipeline.ps1 -ProjectId "tod" -Capability "diagram-dashboard-rendering" -Prompt "engineering loop state flow" -Execute
+```
+
+MIM context exchange (shared coordination snapshot + inbound updates):
+
+```powershell
+.\scripts\Invoke-TODContextExchange.ps1 -Action export
+.\scripts\Invoke-TODContextExchange.ps1 -Action status
+.\scripts\Invoke-TODContextExchange.ps1 -Action ingest
+```
+
+Context exchange artifacts:
+- `tod/config/context-exchange.json`
+- `tod/out/context-sync/MIM_CONTEXT_EXPORT.latest.yaml`
+- `tod/out/context-sync/MIM_CONTEXT_EXPORT.latest.json`
+- `tod/inbox/context-sync/updates/*.json`
+- `tod/out/context-sync/context-updates-log.jsonl`
+
+Shared state sync layer (canonical machine-readable collaboration state):
+
+```powershell
+.\scripts\Invoke-TODSharedStateSync.ps1
+```
+
+One-command full share bundle refresh (training + context ingest/export + shared state):
+
+```powershell
+.\scripts\Invoke-TODShareBundleRefresh.ps1
+```
+
+Formal pass to MIM with terminal activity output + share file paths:
+
+```powershell
+.\scripts\Invoke-TODFormalPassToMim.ps1 -Top 10 -SkipProjectDiscovery
+```
+
+Fast visible pass (skip long tests/smoke while validating comms and artifacts):
+
+```powershell
+.\scripts\Invoke-TODFormalPassToMim.ps1 -Top 10 -SkipProjectDiscovery -SkipTests -SkipSmoke
+```
+
+Open the export folder automatically after pass:
+
+```powershell
+.\scripts\Invoke-TODFormalPassToMim.ps1 -Top 10 -SkipProjectDiscovery -OpenOutputFolder
+```
+
+Example (faster run for iterative updates):
+
+```powershell
+.\scripts\Invoke-TODShareBundleRefresh.ps1 -Top 10 -SkipProjectDiscovery
+```
+
+Canonical shared state files:
+- `shared_state/current_build_state.json`
+- `shared_state/objectives.json`
+- `shared_state/contracts.json`
+- `shared_state/next_actions.json`
+- `shared_state/shared_development_log_plan.json`
+- `shared_state/dev_journal.jsonl`
+- `shared_state/latest_summary.md`
+- `shared_state/chatgpt_update.md`
+- `shared_state/chatgpt_update.json`
+
+Formal pass receipt artifacts:
+- `tod/out/context-sync/exports/TOD_FORMAL_PASS_RECEIPT.latest.json`
+- `tod/out/context-sync/exports/TOD_FORMAL_PASS_RECEIPT-*.json`
 
 ### MIM Debug Logging
 

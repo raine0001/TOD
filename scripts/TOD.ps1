@@ -109,6 +109,8 @@ $repoIndexPath = Join-Path $repoRoot "tod/data/repo-index.json"
 $stateRepoIndexPath = Join-Path $repoRoot "tod/state/repo_index.json"
 $engineeringMemoryPath = Join-Path $repoRoot "tod/data/engineering-memory.json"
 $stateEngineeringMemoryPath = Join-Path $repoRoot "tod/state/engineering_memory.json"
+$projectAccessPolicyScript = Join-Path $PSScriptRoot "Test-TODProjectAccessPolicy.ps1"
+$projectPriorityPath = Join-Path $repoRoot "tod/config/project-priority.json"
 
 if (Test-Path -Path $mimClientPath) {
     . $mimClientPath
@@ -133,17 +135,58 @@ function Assert-Exists {
 
 function Load-State {
     Assert-Exists -Path $statePath -Name "State file"
-    $raw = Get-Content -Path $statePath -Raw
-    $state = $raw | ConvertFrom-Json
-    Normalize-State -State $state
-    return $state
+
+    $maxAttempts = 6
+    $baseDelayMs = 90
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            $raw = Get-Content -Path $statePath -Raw -ErrorAction Stop
+            $state = $raw | ConvertFrom-Json
+            Normalize-State -State $state
+            return $state
+        }
+        catch {
+            $message = [string]$_.Exception.Message
+            $isLockContention = (
+                ($message -match "used by another process") -or
+                ($message -match "cannot access the file")
+            )
+
+            if (-not $isLockContention -or $attempt -ge $maxAttempts) {
+                throw
+            }
+
+            Start-Sleep -Milliseconds ($baseDelayMs * $attempt)
+        }
+    }
 }
 
 function Save-State {
     param([Parameter(Mandatory = $true)]$State)
     Normalize-State -State $State
     $json = $State | ConvertTo-Json -Depth 12
-    Set-Content -Path $statePath -Value $json
+
+    $maxAttempts = 6
+    $baseDelayMs = 120
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            Set-Content -Path $statePath -Value $json -ErrorAction Stop
+            return
+        }
+        catch {
+            $message = [string]$_.Exception.Message
+            $isLockContention = (
+                ($message -match "used by another process") -or
+                ($message -match "cannot access the file")
+            )
+
+            if (-not $isLockContention -or $attempt -ge $maxAttempts) {
+                throw
+            }
+
+            Start-Sleep -Milliseconds ($baseDelayMs * $attempt)
+        }
+    }
 }
 
 function Convert-ToStringArray {
@@ -621,6 +664,127 @@ function Convert-ToPagedEngineeringHistory {
     }
 }
 
+function Get-PendingApprovalRuntimeSummary {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [int]$StaleHours = 72
+    )
+
+    $loop = if ($State.PSObject.Properties["engineering_loop"] -and $State.engineering_loop) { $State.engineering_loop } else { $null }
+    $records = if ($loop -and $loop.PSObject.Properties["cycle_records"] -and $null -ne $loop.cycle_records) { @($loop.cycle_records) } else { @() }
+
+    $pending = @($records | Where-Object {
+            ($_.PSObject.Properties["approval_pending"] -and [bool]$_.approval_pending) -or
+            ($_.PSObject.Properties["approval_status"] -and ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply")
+        })
+
+    $now = (Get-Date).ToUniversalTime()
+    $byType = [ordered]@{}
+    $byAge = [ordered]@{
+        lt_24h = 0
+        h24_to_h72 = 0
+        gt_72h = 0
+        unknown = 0
+    }
+    $bySource = [ordered]@{}
+
+    $stale = @()
+    $lowValue = @()
+    $promotable = @()
+
+    foreach ($item in $pending) {
+        $status = if ($item.PSObject.Properties["approval_status"] -and -not [string]::IsNullOrWhiteSpace([string]$item.approval_status)) {
+            ([string]$item.approval_status).ToLowerInvariant()
+        }
+        else {
+            "pending_apply"
+        }
+        if (-not $byType.Contains($status)) {
+            $byType[$status] = 0
+        }
+        $byType[$status] = [int]$byType[$status] + 1
+
+        $source = if ($item.PSObject.Properties["objective_id"] -and -not [string]::IsNullOrWhiteSpace([string]$item.objective_id)) {
+            "objective:{0}" -f [string]$item.objective_id
+        }
+        elseif ($item.PSObject.Properties["task_category"] -and -not [string]::IsNullOrWhiteSpace([string]$item.task_category)) {
+            "task_category:{0}" -f [string]$item.task_category
+        }
+        else {
+            "engineering_loop"
+        }
+        if (-not $bySource.Contains($source)) {
+            $bySource[$source] = 0
+        }
+        $bySource[$source] = [int]$bySource[$source] + 1
+
+        $createdAt = $null
+        if ($item.PSObject.Properties["created_at"] -and -not [string]::IsNullOrWhiteSpace([string]$item.created_at)) {
+            try { $createdAt = ([datetime]$item.created_at).ToUniversalTime() } catch { $createdAt = $null }
+        }
+        $updatedAt = $null
+        if ($item.PSObject.Properties["updated_at"] -and -not [string]::IsNullOrWhiteSpace([string]$item.updated_at)) {
+            try { $updatedAt = ([datetime]$item.updated_at).ToUniversalTime() } catch { $updatedAt = $null }
+        }
+        $anchor = if ($null -ne $createdAt) { $createdAt } else { $updatedAt }
+
+        $ageHours = $null
+        if ($null -eq $anchor) {
+            $byAge["unknown"] = [int]$byAge["unknown"] + 1
+        }
+        else {
+            $ageHours = [math]::Round(($now - $anchor).TotalHours, 2)
+            if ($ageHours -lt 24) {
+                $byAge["lt_24h"] = [int]$byAge["lt_24h"] + 1
+            }
+            elseif ($ageHours -le 72) {
+                $byAge["h24_to_h72"] = [int]$byAge["h24_to_h72"] + 1
+            }
+            else {
+                $byAge["gt_72h"] = [int]$byAge["gt_72h"] + 1
+            }
+        }
+
+        $score = $null
+        if ($item.PSObject.Properties["score_snapshot"] -and $item.score_snapshot -and $item.score_snapshot.PSObject.Properties["overall"] -and $item.score_snapshot.overall.PSObject.Properties["score"] -and $null -ne $item.score_snapshot.overall.score) {
+            $score = [double]$item.score_snapshot.overall.score
+        }
+        $band = if ($item.PSObject.Properties["maturity_band"]) { ([string]$item.maturity_band).ToLowerInvariant() } else { "" }
+
+        $itemId = if ($item.PSObject.Properties["cycle_id"] -and -not [string]::IsNullOrWhiteSpace([string]$item.cycle_id)) {
+            [string]$item.cycle_id
+        }
+        elseif ($item.PSObject.Properties["run_id"] -and -not [string]::IsNullOrWhiteSpace([string]$item.run_id)) {
+            [string]$item.run_id
+        }
+        else {
+            "unknown"
+        }
+
+        if ($null -ne $ageHours -and $ageHours -ge $StaleHours) {
+            $stale += @($itemId)
+        }
+        if ($band -in @("good", "strong") -and $null -ne $score -and $score -ge 0.65) {
+            $promotable += @($itemId)
+        }
+        if ($band -in @("emerging", "early") -or ($null -ne $score -and $score -lt 0.45)) {
+            $lowValue += @($itemId)
+        }
+    }
+
+    return [pscustomobject]@{
+        pending_approvals_total = [int]@($pending).Count
+        pending_approvals_by_type = [pscustomobject]$byType
+        pending_approvals_by_age = [pscustomobject]$byAge
+        pending_approvals_by_source = [pscustomobject]$bySource
+        pending_approvals_stale_count = [int]@($stale).Count
+        pending_approvals_low_value_count = [int]@($lowValue).Count
+        pending_approvals_promotable_count = [int]@($promotable).Count
+        top_promotable_ids = @($promotable | Select-Object -First 10)
+        top_low_value_ids = @($lowValue | Select-Object -First 10)
+    }
+}
+
 function Get-TodEngineeringLoopSummaryPayload {
     param(
         [Parameter(Mandatory = $true)]$State,
@@ -630,6 +794,7 @@ function Get-TodEngineeringLoopSummaryPayload {
 
     $bus = Get-TodStateBusPayload -Config $Config -State $State -Top $Top
     $loop = if ($bus.PSObject.Properties["engineering_loop_state"]) { $bus.engineering_loop_state } else { [pscustomobject]@{} }
+    $approvalSummary = Get-PendingApprovalRuntimeSummary -State $State
 
     return [pscustomobject]@{
         path = "/tod/engineer/summary"
@@ -645,6 +810,15 @@ function Get-TodEngineeringLoopSummaryPayload {
         last_run = if ($loop.PSObject.Properties["last_run"]) { $loop.last_run } else { $null }
         last_scorecard = if ($loop.PSObject.Properties["last_scorecard"]) { $loop.last_scorecard } else { $null }
         confidence = if ($bus.PSObject.Properties["section_confidence"] -and $bus.section_confidence.PSObject.Properties["engineering_loop"]) { [double]$bus.section_confidence.engineering_loop } else { 0.0 }
+        pending_approvals_total = [int]$approvalSummary.pending_approvals_total
+        pending_approvals_by_type = $approvalSummary.pending_approvals_by_type
+        pending_approvals_by_age = $approvalSummary.pending_approvals_by_age
+        pending_approvals_by_source = $approvalSummary.pending_approvals_by_source
+        pending_approvals_stale_count = [int]$approvalSummary.pending_approvals_stale_count
+        pending_approvals_low_value_count = [int]$approvalSummary.pending_approvals_low_value_count
+        pending_approvals_promotable_count = [int]$approvalSummary.pending_approvals_promotable_count
+        top_promotable_ids = @($approvalSummary.top_promotable_ids)
+        top_low_value_ids = @($approvalSummary.top_low_value_ids)
     }
 }
 
@@ -1922,7 +2096,10 @@ function Get-RecoveryQualitySummary {
         $manualIntervention = [int]@($perfEngine | Where-Object {
                 if ($_.PSObject.Properties["manual_intervention_required"] -and $null -ne $_.manual_intervention_required) { [bool]$_.manual_intervention_required } else { -not [bool]$_.success }
             }).Count
-        $unrecoveredFailure = [int]@($perfEngine | Where-Object { (-not [bool]$_.success) -and (-not [bool]$_.manual_intervention_required) }).Count
+        $unrecoveredFailure = [int]@($perfEngine | Where-Object {
+                $manualRequired = if ($_.PSObject.Properties["manual_intervention_required"] -and $null -ne $_.manual_intervention_required) { [bool]$_.manual_intervention_required } else { $false }
+                (-not [bool]$_.success) -and (-not $manualRequired)
+            }).Count
         $guardrailBlock = [int]@($routingEngine | Where-Object {
                 $outcome = ([string]$_.final_outcome).ToLowerInvariant()
                 $outcome -in @("blocked_pre_invocation", "escalated_pre_run")
@@ -2109,6 +2286,161 @@ function Get-AlertSeverityRank {
         "degraded" { return 2 }
         "warning" { return 1 }
         default { return 0 }
+    }
+}
+
+function Get-ReliabilityAlertExplainability {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Dashboard,
+        $RetryTrend,
+        $DriftWarnings,
+        $DriftPenaltyActive,
+        [Parameter(Mandatory = $true)][string]$CurrentAlertState
+    )
+
+    $retryItems = if ($null -eq $RetryTrend) { @() } else { @($RetryTrend) }
+    $warningItems = if ($null -eq $DriftWarnings) { @() } else { @($DriftWarnings) }
+    $penaltyItems = if ($null -eq $DriftPenaltyActive) { @() } else { @($DriftPenaltyActive) }
+
+    $reasons = @()
+    $warningCounts = [ordered]@{}
+    foreach ($warning in @($warningItems)) {
+        $severity = if ($warning.PSObject.Properties["severity"] -and -not [string]::IsNullOrWhiteSpace([string]$warning.severity)) {
+            ([string]$warning.severity).ToLowerInvariant()
+        }
+        else {
+            "unknown"
+        }
+        if (-not $warningCounts.Contains($severity)) {
+            $warningCounts[$severity] = 0
+        }
+        $warningCounts[$severity] = [int]$warningCounts[$severity] + 1
+    }
+
+    $dominantAlert = @($retryItems | Sort-Object @{ Expression = { Get-AlertSeverityRank -State ([string]$_.alert_state) }; Descending = $true } | Select-Object -First 1)
+    if (@($dominantAlert).Count -gt 0) {
+        $dom = $dominantAlert[0]
+        $domAlert = if ($dom.PSObject.Properties["alert_state"]) { [string]$dom.alert_state } else { "stable" }
+        if ((Get-AlertSeverityRank -State $domAlert) -gt 0) {
+            $reasons += [pscustomobject]@{
+                code = "retry_trend_alert"
+                severity = $domAlert
+                message = "Retry/fallback trend elevated reliability alert state."
+                evidence = [pscustomobject]@{
+                    engine = if ($dom.PSObject.Properties["engine"]) { [string]$dom.engine } else { "unknown" }
+                    recent_retry_rate = if ($dom.PSObject.Properties["recent_retry_rate"]) { [double]$dom.recent_retry_rate } else { 0.0 }
+                    baseline_retry_rate = if ($dom.PSObject.Properties["baseline_retry_rate"]) { [double]$dom.baseline_retry_rate } else { 0.0 }
+                    recent_fallback_rate = if ($dom.PSObject.Properties["recent_fallback_rate"]) { [double]$dom.recent_fallback_rate } else { 0.0 }
+                    baseline_fallback_rate = if ($dom.PSObject.Properties["baseline_fallback_rate"]) { [double]$dom.baseline_fallback_rate } else { 0.0 }
+                }
+            }
+        }
+    }
+
+    if (@($penaltyItems).Count -gt 0) {
+        $reasons += [pscustomobject]@{
+            code = "drift_penalty_active"
+            severity = if ([string]::IsNullOrWhiteSpace($CurrentAlertState)) { "warning" } else { $CurrentAlertState }
+            message = "Drift penalties are currently active for one or more engines."
+            evidence = [pscustomobject]@{
+                engines = @($penaltyItems | ForEach-Object { [string]$_.engine } | Select-Object -Unique)
+                count = [int]@($penaltyItems).Count
+            }
+        }
+    }
+
+    if (@($warningItems).Count -gt 0) {
+        $reasons += [pscustomobject]@{
+            code = "drift_warnings_present"
+            severity = if ($warningCounts.Contains("critical")) { "critical" } elseif ($warningCounts.Contains("degraded")) { "degraded" } elseif ($warningCounts.Contains("warning")) { "warning" } else { "warning" }
+            message = "Drift warning signals were emitted by the reliability dashboard."
+            evidence = [pscustomobject]@{
+                total = [int]@($warningItems).Count
+                by_severity = [pscustomobject]$warningCounts
+            }
+        }
+    }
+
+    $approvalSummary = Get-PendingApprovalRuntimeSummary -State $State
+    if ([int]$approvalSummary.pending_approvals_total -gt 0) {
+        $reasons += [pscustomobject]@{
+            code = "pending_approval_backlog"
+            severity = if ([int]$approvalSummary.pending_approvals_total -ge 100) { "degraded" } else { "warning" }
+            message = "Pending approval backlog is adding operational reliability pressure."
+            evidence = [pscustomobject]@{
+                total = [int]$approvalSummary.pending_approvals_total
+                stale_count = [int]$approvalSummary.pending_approvals_stale_count
+                low_value_count = [int]$approvalSummary.pending_approvals_low_value_count
+                promotable_count = [int]$approvalSummary.pending_approvals_promotable_count
+            }
+        }
+    }
+
+    $guardrailTrend = if ($Dashboard.PSObject.Properties["guardrail_trend"] -and $Dashboard.guardrail_trend) { $Dashboard.guardrail_trend } else { $null }
+    if ($guardrailTrend -and $guardrailTrend.PSObject.Properties["trend"] -and ([string]$guardrailTrend.trend).ToLowerInvariant() -eq "up") {
+        $reasons += [pscustomobject]@{
+            code = "guardrail_block_rate_increase"
+            severity = "warning"
+            message = "Guardrail block rate is trending upward in recent routing decisions."
+            evidence = [pscustomobject]@{
+                recent_block_rate = if ($guardrailTrend.PSObject.Properties["recent_block_rate"]) { $guardrailTrend.recent_block_rate } else { $null }
+                prior_block_rate = if ($guardrailTrend.PSObject.Properties["prior_block_rate"]) { $guardrailTrend.prior_block_rate } else { $null }
+                trend = [string]$guardrailTrend.trend
+            }
+        }
+    }
+
+    if (@($reasons).Count -eq 0) {
+        $reasons += [pscustomobject]@{
+            code = "stable_signal"
+            severity = "stable"
+            message = "No elevated reliability pressure detected from retry, drift, guardrail, or approval signals."
+            evidence = [pscustomobject]@{}
+        }
+    }
+
+    $inputs = [pscustomobject]@{
+        alert_state_raw = if ([string]::IsNullOrWhiteSpace($CurrentAlertState)) { "stable" } else { $CurrentAlertState }
+        retry_trend = [pscustomobject]@{
+            engine_count = [int]@($retryItems).Count
+            by_engine = @($retryItems | ForEach-Object {
+                    [pscustomobject]@{
+                        engine = if ($_.PSObject.Properties["engine"]) { [string]$_.engine } else { "unknown" }
+                        alert_state = if ($_.PSObject.Properties["alert_state"]) { [string]$_.alert_state } else { "stable" }
+                        recent_retry_rate = if ($_.PSObject.Properties["recent_retry_rate"]) { [double]$_.recent_retry_rate } else { 0.0 }
+                        baseline_retry_rate = if ($_.PSObject.Properties["baseline_retry_rate"]) { [double]$_.baseline_retry_rate } else { 0.0 }
+                        recent_fallback_rate = if ($_.PSObject.Properties["recent_fallback_rate"]) { [double]$_.recent_fallback_rate } else { 0.0 }
+                        baseline_fallback_rate = if ($_.PSObject.Properties["baseline_fallback_rate"]) { [double]$_.baseline_fallback_rate } else { 0.0 }
+                        confidence_penalty = if ($_.PSObject.Properties["confidence_penalty"]) { [double]$_.confidence_penalty } else { 0.0 }
+                        score_penalty = if ($_.PSObject.Properties["score_penalty"]) { [double]$_.score_penalty } else { 0.0 }
+                    }
+                })
+        }
+        drift_warnings = [pscustomobject]@{
+            total = [int]@($warningItems).Count
+            by_severity = [pscustomobject]$warningCounts
+        }
+        drift_penalties = [pscustomobject]@{
+            active = (@($penaltyItems).Count -gt 0)
+            engines = @($penaltyItems | ForEach-Object { [string]$_.engine } | Select-Object -Unique)
+            count = [int]@($penaltyItems).Count
+        }
+        guardrail_trend = if ($guardrailTrend) { $guardrailTrend } else { $null }
+        pending_approvals = [pscustomobject]@{
+            total = [int]$approvalSummary.pending_approvals_total
+            by_type = $approvalSummary.pending_approvals_by_type
+            by_age = $approvalSummary.pending_approvals_by_age
+            by_source = $approvalSummary.pending_approvals_by_source
+            stale_count = [int]$approvalSummary.pending_approvals_stale_count
+            low_value_count = [int]$approvalSummary.pending_approvals_low_value_count
+            promotable_count = [int]$approvalSummary.pending_approvals_promotable_count
+        }
+    }
+
+    return [pscustomobject]@{
+        reasons = @($reasons)
+        inputs = $inputs
     }
 }
 
@@ -2468,10 +2800,10 @@ function Get-TodEngineerRunPayload {
 
     $timestampSlug = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
     $sandboxPath = if (-not [string]::IsNullOrWhiteSpace($resolvedTaskId)) {
-        "engineer-runs/{0}.md" -f $resolvedTaskId
+        "projects/tod/docs/engineer-runs/{0}.md" -f $resolvedTaskId
     }
     else {
-        "engineer-runs/run-{0}.md" -f $timestampSlug
+        "projects/tod/docs/engineer-runs/run-{0}.md" -f $timestampSlug
     }
 
     $effectiveBody = ""
@@ -2551,6 +2883,7 @@ function Get-TodEngineerScorecardPayload {
     )
 
     $safeTop = if ($Top -lt 1) { 1 } elseif ($Top -gt 200) { 200 } else { $Top }
+    $approvalSummary = Get-PendingApprovalRuntimeSummary -State $State
     $journal = if ($State.PSObject.Properties["journal"]) { @($State.journal | Sort-Object created_at -Descending | Select-Object -First $safeTop) } else { @() }
     $actions = @($journal | ForEach-Object {
             if ($_.PSObject.Properties["action"] -and -not [string]::IsNullOrWhiteSpace([string]$_.action)) {
@@ -2693,6 +3026,15 @@ function Get-TodEngineerScorecardPayload {
             "Run full tests and record outcomes with add-result/review-task."
         )
         recent_actions = @($actions | Select-Object -First 12)
+        pending_approvals_total = [int]$approvalSummary.pending_approvals_total
+        pending_approvals_by_type = $approvalSummary.pending_approvals_by_type
+        pending_approvals_by_age = $approvalSummary.pending_approvals_by_age
+        pending_approvals_by_source = $approvalSummary.pending_approvals_by_source
+        pending_approvals_stale_count = [int]$approvalSummary.pending_approvals_stale_count
+        pending_approvals_low_value_count = [int]$approvalSummary.pending_approvals_low_value_count
+        pending_approvals_promotable_count = [int]$approvalSummary.pending_approvals_promotable_count
+        top_promotable_ids = @($approvalSummary.top_promotable_ids)
+        top_low_value_ids = @($approvalSummary.top_low_value_ids)
     }
 }
 
@@ -2726,6 +3068,115 @@ function Resolve-TodSandboxTargetPath {
     }
 
     return $targetFull
+}
+
+function Get-ProjectScopeFromSandboxPath {
+    param([Parameter(Mandatory = $true)][string]$RelativePath)
+
+    $normalized = (($RelativePath -replace "\\", "/").Trim())
+    while ($normalized.StartsWith("./")) {
+        $normalized = $normalized.Substring(2)
+    }
+    $normalized = $normalized.TrimStart("/")
+
+    if (-not $normalized.StartsWith("projects/", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{
+            is_project_scoped = $false
+            project_id = ""
+            project_relative_path = ""
+            normalized_path = $normalized
+        }
+    }
+
+    $parts = @($normalized.Split("/"))
+    if (@($parts).Count -lt 3) {
+        throw "Project-scoped sandbox paths must follow projects/<project_id>/<relative_path>."
+    }
+
+    $projectId = [string]$parts[1]
+    $projectRelative = (($parts[2..($parts.Length - 1)]) -join "/")
+    if ([string]::IsNullOrWhiteSpace($projectId) -or [string]::IsNullOrWhiteSpace($projectRelative)) {
+        throw "Project-scoped sandbox path is missing project ID or relative path."
+    }
+
+    return [pscustomobject]@{
+        is_project_scoped = $true
+        project_id = $projectId
+        project_relative_path = $projectRelative
+        normalized_path = $normalized
+    }
+}
+
+function Assert-ProjectAccessPolicyForSandboxPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath,
+        [ValidateSet("read", "write", "delete", "rename")]
+        [string]$Operation = "write",
+        [bool]$EnforceExecutionMode = $true
+    )
+
+    $scope = Get-ProjectScopeFromSandboxPath -RelativePath $RelativePath
+    if (-not [bool]$scope.is_project_scoped) {
+        if ($Operation -in @("write", "delete", "rename")) {
+            throw "Project-scoped path required for mutation. Use projects/<project_id>/<relative_path>."
+        }
+
+        return [pscustomobject]@{
+            enforced = $false
+            operation = $Operation
+            project_id = ""
+            project_relative_path = ""
+            ok = $true
+            reason = "non_project_scoped_path"
+        }
+    }
+
+    if (-not (Test-Path -Path $projectAccessPolicyScript)) {
+        throw "Missing project access policy script: $projectAccessPolicyScript"
+    }
+
+    $executionMode = "guarded-write"
+    if (Test-Path -Path $projectPriorityPath) {
+        try {
+            $priority = (Get-Content -Path $projectPriorityPath -Raw | ConvertFrom-Json)
+            if ($priority -and $priority.PSObject.Properties["execution_order"]) {
+                $entry = @($priority.execution_order | Where-Object { [string]$_.project_id -eq [string]$scope.project_id } | Select-Object -First 1)
+                if (@($entry).Count -gt 0 -and $entry[0].PSObject.Properties["mode"] -and -not [string]::IsNullOrWhiteSpace([string]$entry[0].mode)) {
+                    $executionMode = ([string]$entry[0].mode).ToLowerInvariant()
+                }
+            }
+        }
+        catch {
+            throw "Failed to load project priority config: $($_.Exception.Message)"
+        }
+    }
+
+    if ($EnforceExecutionMode -and ($Operation -in @("write", "delete", "rename"))) {
+        if ($executionMode -eq "review-only") {
+            throw "Execution mode blocks mutation for project '$($scope.project_id)': mode=review-only."
+        }
+        if ($executionMode -eq "advisory-first") {
+            throw "Execution mode blocks direct mutation for project '$($scope.project_id)': mode=advisory-first."
+        }
+    }
+
+    $raw = & $projectAccessPolicyScript -ProjectId ([string]$scope.project_id) -RelativePaths @([string]$scope.project_relative_path) -Operation $Operation -RegistryPath "tod/config/project-registry.json"
+    $policy = $raw | ConvertFrom-Json
+    if (-not $policy -or -not $policy.PSObject.Properties["ok"] -or -not [bool]$policy.ok) {
+        $blockedPath = [string]$scope.project_relative_path
+        throw "Project access policy blocked operation '$Operation' for project '$($scope.project_id)' at '$blockedPath'."
+    }
+
+    return [pscustomobject]@{
+        enforced = $true
+        operation = $Operation
+        project_id = [string]$scope.project_id
+        project_relative_path = [string]$scope.project_relative_path
+        ok = [bool]$policy.ok
+        execution_mode = $executionMode
+        write_access = if ($policy.PSObject.Properties["write_access"]) { [string]$policy.write_access } else { "" }
+        risk_level = if ($policy.PSObject.Properties["risk_level"]) { [string]$policy.risk_level } else { "" }
+    }
 }
 
 function Get-TodSandboxListPayload {
@@ -2823,6 +3274,7 @@ function Invoke-TodSandboxPlanWrite {
         [switch]$Append
     )
 
+    $policyCheck = Assert-ProjectAccessPolicyForSandboxPath -RelativePath $RelativePath -Operation "write" -EnforceExecutionMode $false
     $target = Resolve-TodSandboxTargetPath -RelativePath $RelativePath
     $beforeExists = Test-Path -Path $target
     $beforeText = if ($beforeExists) { [string](Get-Content -Path $target -Raw) } else { "" }
@@ -2862,6 +3314,7 @@ function Invoke-TodSandboxPlanWrite {
         planned_content = $afterText
         artifact_path = ("tod/sandbox/artifacts/{0}.json" -f $planId)
         apply_command = (".\\scripts\\TOD.ps1 -Action sandbox-write -SandboxPath `"{0}`" -Content `"<content>`"{1}" -f $targetRelative, $appendArg)
+        policy_check = $policyCheck
     }
 
     $payload | ConvertTo-Json -Depth 20 | Set-Content -Path $artifactFile
@@ -2930,6 +3383,7 @@ function Invoke-TodSandboxApplyPlan {
         throw "Invalid sandbox plan artifact."
     }
 
+    $policyCheck = Assert-ProjectAccessPolicyForSandboxPath -RelativePath ([string]$plan.sandbox_path) -Operation "write"
     $target = Resolve-TodSandboxTargetPath -RelativePath ([string]$plan.sandbox_path)
     $beforeExists = Test-Path -Path $target
     $beforeText = if ($beforeExists) { [string](Get-Content -Path $target -Raw) } else { "" }
@@ -2971,6 +3425,7 @@ function Invoke-TodSandboxApplyPlan {
         artifact_path = (("tod/sandbox/artifacts/{0}" -f ([System.IO.Path]::GetFileName($artifactPath))) -replace "\\", "/")
         bytes = [int]([System.Text.Encoding]::UTF8.GetByteCount($afterText))
         sha256 = $afterHash
+        policy_check = $policyCheck
     }
 }
 
@@ -2981,6 +3436,7 @@ function Invoke-TodSandboxWrite {
         [switch]$Append
     )
 
+    $policyCheck = Assert-ProjectAccessPolicyForSandboxPath -RelativePath $RelativePath -Operation "write"
     $target = Resolve-TodSandboxTargetPath -RelativePath $RelativePath
     $parent = Split-Path -Parent $target
     if (-not (Test-Path -Path $parent)) {
@@ -3008,6 +3464,7 @@ function Invoke-TodSandboxWrite {
         bytes = [int64](Get-Item -Path $target).Length
         sha256 = $hash
         append = [bool]$Append
+        policy_check = $policyCheck
     }
 }
 
@@ -6480,8 +6937,8 @@ switch ($Action) {
 
     "get-reliability" {
         $dashboard = Build-ReliabilityDashboard -State $state -Config $config -Window $Top -CategoryFilter $Category -EngineFilter $Engine
-        $retryTrend = if ($dashboard.PSObject.Properties["retry_trend"]) { @($dashboard.retry_trend) } else { @() }
-        $driftWarnings = if ($dashboard.PSObject.Properties["drift_warnings"]) { @($dashboard.drift_warnings) } else { @() }
+        $retryTrend = if ($dashboard.PSObject.Properties["retry_trend"] -and $null -ne $dashboard.retry_trend) { @($dashboard.retry_trend) } else { @() }
+        $driftWarnings = if ($dashboard.PSObject.Properties["drift_warnings"] -and $null -ne $dashboard.drift_warnings) { @($dashboard.drift_warnings) } else { @() }
 
         $overallAlert = "stable"
         $maxRank = 0
@@ -6509,10 +6966,15 @@ switch ($Action) {
                 }
             })
 
+        $explainability = Get-ReliabilityAlertExplainability -State $state -Dashboard $dashboard -RetryTrend $retryTrend -DriftWarnings $driftWarnings -DriftPenaltyActive $driftPenaltyActive -CurrentAlertState $overallAlert
+
         [pscustomobject]@{
             path = "/tod/reliability"
             generated_at = Get-UtcNow
             current_alert_state = $overallAlert
+            reliability_alert_state_raw = $overallAlert
+            reliability_alert_reasons = @($explainability.reasons)
+            reliability_alert_inputs = $explainability.inputs
             drift_penalties_active = (@($driftPenaltyActive).Count -gt 0)
             drift_penalty_engines = @($driftPenaltyActive | ForEach-Object { [string]$_.engine })
             recovery_state = @($recoveryState)

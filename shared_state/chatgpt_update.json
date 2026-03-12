@@ -1,0 +1,83 @@
+{
+    "generated_at":  "2026-03-12T05:46:10.0234237Z",
+    "source":  "tod-shared-state-sync-v1",
+    "objective":  {
+                      "current_in_progress":  "16",
+                      "latest_completed":  "none",
+                      "next_proposed":  "TOD-17",
+                      "objective_count":  17
+                  },
+    "repo":  {
+                 "root":  "E:\\TOD",
+                 "branch":  "main",
+                 "commit":  "94a13feef4c7321231f0d46ad9fb1fd417ed8cc9",
+                 "release_tag":  ""
+             },
+    "validation":  {
+                       "regression":  {
+                                          "passed_all":  true,
+                                          "passed":  34,
+                                          "failed":  0,
+                                          "total":  34,
+                                          "generated_at":  "2026-03-12T05:42:02.8143313Z"
+                                      },
+                       "quality_gate":  {
+                                            "available":  true,
+                                            "gate_ok":  true,
+                                            "run_success_rate":  1,
+                                            "deterministic_failure_runs":  0,
+                                            "transient_lock_failure_runs":  0,
+                                            "generated_at":  "2026-03-12T05:45:54.0450580Z"
+                                        },
+                       "smoke":  {
+                                     "available":  true,
+                                     "passed_all":  true,
+                                     "generated_at":  "2026-03-12T05:22:02.0352424Z"
+                                 }
+                   },
+    "drift":  {
+                  "trend":  "flat",
+                  "reliability_alert_state":  "critical",
+                  "reliability_alert_state_raw":  "critical",
+                  "pending_approvals":  12
+              },
+    "blockers":  [
+                     "pending approvals (12)"
+                 ],
+    "capabilities":  [
+                         "endpoint:/tod/capabilities",
+                         "endpoint:/tod/engineer/cycle",
+                         "endpoint:/tod/engineer/history",
+                         "endpoint:/tod/engineer/review",
+                         "endpoint:/tod/engineer/run",
+                         "endpoint:/tod/engineer/scorecard",
+                         "endpoint:/tod/engineer/signal",
+                         "endpoint:/tod/engineer/summary",
+                         "endpoint:/tod/reliability",
+                         "endpoint:/tod/research",
+                         "endpoint:/tod/resourcing",
+                         "endpoint:/tod/sandbox/apply",
+                         "endpoint:/tod/sandbox/files",
+                         "endpoint:/tod/sandbox/plan",
+                         "endpoint:/tod/sandbox/write",
+                         "endpoint:/tod/state-bus",
+                         "endpoint:/tod/version",
+                         "engine:codex",
+                         "engine:local"
+                     ],
+    "important_files":  {
+                            "current_build_state":  "E:\\TOD\\shared_state\\current_build_state.json",
+                            "objectives":  "E:\\TOD\\shared_state\\objectives.json",
+                            "contracts":  "E:\\TOD\\shared_state\\contracts.json",
+                            "next_actions":  "E:\\TOD\\shared_state\\next_actions.json",
+                            "integration_status":  "E:\\TOD\\shared_state\\integration_status.json",
+                            "execution_evidence":  "E:\\TOD\\shared_state\\execution_evidence.json",
+                            "tod_objective_roadmap":  "E:\\TOD\\shared_state\\tod_objective_roadmap.json",
+                            "approval_reduction_summary":  "E:\\TOD\\shared_state\\approval_reduction_summary.json",
+                            "shared_development_log_plan":  "E:\\TOD\\shared_state\\shared_development_log_plan.json",
+                            "dev_journal":  "E:\\TOD\\shared_state\\dev_journal.jsonl",
+                            "latest_summary":  "E:\\TOD\\shared_state\\latest_summary.md",
+                            "chatgpt_update":  "E:\\TOD\\shared_state\\chatgpt_update.md",
+                            "chatgpt_update_json":  "E:\\TOD\\shared_state\\chatgpt_update.json"
+                        }
+}

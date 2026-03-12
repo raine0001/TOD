@@ -1,5 +1,7 @@
 param(
-    [int]$Port = 8844
+    [int]$Port = 8844,
+    [switch]$OpenAppWindow,
+    [switch]$NoAutoOpen
 )
 
 Set-StrictMode -Version Latest
@@ -12,12 +14,80 @@ $todScript = Join-Path $PSScriptRoot "TOD.ps1"
 $configPath = Join-Path $repoRoot "tod/config/tod-config.json"
 $defaultLogPath = Join-Path $repoRoot "tod/out/mim-http.log"
 $statePath = Join-Path $repoRoot "tod/data/state.json"
+$shareArtifacts = [ordered]@{
+    "chatgpt_update_md" = [pscustomobject]@{ label = "ChatGPT Update (Markdown)"; path = (Join-Path $repoRoot "shared_state/chatgpt_update.md") }
+    "chatgpt_update_json" = [pscustomobject]@{ label = "ChatGPT Update (JSON)"; path = (Join-Path $repoRoot "shared_state/chatgpt_update.json") }
+    "shared_development_log_plan" = [pscustomobject]@{ label = "Shared Development Log Plan"; path = (Join-Path $repoRoot "shared_state/shared_development_log_plan.json") }
+    "mim_context_export_latest_json" = [pscustomobject]@{ label = "MIM Context Export (Latest JSON)"; path = (Join-Path $repoRoot "tod/out/context-sync/MIM_CONTEXT_EXPORT.latest.json") }
+    "mim_context_export_latest_yaml" = [pscustomobject]@{ label = "MIM Context Export (Latest YAML)"; path = (Join-Path $repoRoot "tod/out/context-sync/MIM_CONTEXT_EXPORT.latest.yaml") }
+    "formal_pass_receipt_latest" = [pscustomobject]@{ label = "Formal Pass Receipt (Latest)"; path = (Join-Path $repoRoot "tod/out/context-sync/exports/TOD_FORMAL_PASS_RECEIPT.latest.json") }
+}
 
 if (-not (Test-Path -Path $indexPath)) {
     throw "UI file not found at $indexPath"
 }
 if (-not (Test-Path -Path $todScript)) {
     throw "TOD script not found at $todScript"
+}
+
+function Resolve-AppBrowserPath {
+    $commandCandidates = @("msedge.exe", "chrome.exe")
+    foreach ($cmdName in $commandCandidates) {
+        try {
+            $cmd = Get-Command -Name $cmdName -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -ne $cmd -and -not [string]::IsNullOrWhiteSpace([string]$cmd.Source)) {
+                return [string]$cmd.Source
+            }
+        }
+        catch {
+        }
+    }
+
+    $candidates = @(
+        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+        "$env:ProgramFiles(x86)\Microsoft\Edge\Application\msedge.exe",
+        "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+        "$env:ProgramFiles(x86)\Google\Chrome\Application\chrome.exe"
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -Path $candidate)) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Open-TodUiClient {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [bool]$AppMode
+    )
+
+    if ($NoAutoOpen) {
+        Write-Host "Auto-open disabled. Browse to $Url"
+        return
+    }
+
+    if ($AppMode) {
+        $browserPath = Resolve-AppBrowserPath
+        if ($null -ne $browserPath) {
+            $args = @(
+                "--app=$Url",
+                "--new-window",
+                "--start-maximized"
+            )
+            Start-Process -FilePath $browserPath -ArgumentList $args | Out-Null
+            Write-Host "Opened TOD UI in app window: $Url"
+            return
+        }
+
+        Write-Host "No app-capable Chromium browser found; opening regular browser window." -ForegroundColor Yellow
+    }
+
+    Start-Process $Url | Out-Null
+    Write-Host "Opened TOD UI in browser: $Url"
 }
 
 $listener = $null
@@ -56,6 +126,9 @@ if ($activePort -ne $Port) {
 Write-Host "TOD UI running at http://localhost:$activePort/"
 Write-Host "Press Ctrl+C to stop."
 
+$uiUrl = "http://localhost:$activePort/"
+Open-TodUiClient -Url $uiUrl -AppMode ([bool]$OpenAppWindow)
+
 function Write-JsonResponse {
     param(
         [Parameter(Mandatory = $true)]
@@ -87,6 +160,58 @@ function Get-RecentLogLines {
 
     $safeTail = if ($Tail -lt 1) { 1 } elseif ($Tail -gt 500) { 500 } else { $Tail }
     return @(Get-Content -Path $LogPath -Tail $safeTail -ErrorAction SilentlyContinue)
+}
+
+function Get-MimeTypeForPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $ext = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
+    switch ($ext) {
+        ".json" { return "application/json; charset=utf-8" }
+        ".yaml" { return "application/x-yaml; charset=utf-8" }
+        ".yml" { return "application/x-yaml; charset=utf-8" }
+        ".md" { return "text/markdown; charset=utf-8" }
+        ".txt" { return "text/plain; charset=utf-8" }
+        default { return "application/octet-stream" }
+    }
+}
+
+function Get-ShareArtifactsPayload {
+    param([int]$ActivePort)
+
+    $items = @()
+    foreach ($entry in $shareArtifacts.GetEnumerator()) {
+        $key = [string]$entry.Key
+        $spec = $entry.Value
+        $fullPath = [string]$spec.path
+        $exists = Test-Path -Path $fullPath
+        $item = [ordered]@{
+            key = $key
+            label = [string]$spec.label
+            path = $fullPath
+            exists = $exists
+            download_url = "/api/share-download?key=$([uri]::EscapeDataString($key))"
+            file_uri = "file:///" + ($fullPath -replace "\\", "/")
+        }
+
+        if ($exists) {
+            $file = Get-Item -Path $fullPath
+            $item.last_write_time_utc = $file.LastWriteTimeUtc.ToString("o")
+            $item.length = [int64]$file.Length
+        }
+
+        $items += [pscustomobject]$item
+    }
+
+    return [pscustomobject]@{
+        ok = $true
+        generated_at = (Get-Date).ToUniversalTime().ToString("o")
+        base_url = "http://localhost:$ActivePort"
+        artifacts = @($items)
+    }
 }
 
 function Get-TaskProgressWeight {
@@ -356,6 +481,64 @@ try {
                 $objectiveId = [string]$request.QueryString["objective_id"]
                 $payload = Get-ProjectStatusPayload -ObjectiveId $objectiveId
                 Write-JsonResponse -Response $response -StatusCode 200 -Json ($payload | ConvertTo-Json -Depth 12)
+            }
+            catch {
+                $errorPayload = [pscustomobject]@{
+                    ok = $false
+                    error = $_.Exception.Message
+                }
+                Write-JsonResponse -Response $response -StatusCode 400 -Json ($errorPayload | ConvertTo-Json -Depth 6)
+            }
+            continue
+        }
+
+        if ($request.HttpMethod -eq "GET" -and $path -eq "/api/share-artifacts") {
+            try {
+                $payload = Get-ShareArtifactsPayload -ActivePort $activePort
+                Write-JsonResponse -Response $response -StatusCode 200 -Json ($payload | ConvertTo-Json -Depth 8)
+            }
+            catch {
+                $errorPayload = [pscustomobject]@{
+                    ok = $false
+                    error = $_.Exception.Message
+                }
+                Write-JsonResponse -Response $response -StatusCode 400 -Json ($errorPayload | ConvertTo-Json -Depth 6)
+            }
+            continue
+        }
+
+        if ($request.HttpMethod -eq "GET" -and $path -eq "/api/share-download") {
+            try {
+                $key = [string]$request.QueryString["key"]
+                if ([string]::IsNullOrWhiteSpace($key) -or -not $shareArtifacts.Contains($key)) {
+                    $response.StatusCode = 404
+                    $response.ContentType = "text/plain; charset=utf-8"
+                    $bytes = [System.Text.Encoding]::UTF8.GetBytes("Unknown artifact key")
+                    $response.ContentLength64 = $bytes.LongLength
+                    $response.OutputStream.Write($bytes, 0, $bytes.Length)
+                    $response.Close()
+                    continue
+                }
+
+                $artifactPath = [string]$shareArtifacts[$key].path
+                if (-not (Test-Path -Path $artifactPath)) {
+                    $response.StatusCode = 404
+                    $response.ContentType = "text/plain; charset=utf-8"
+                    $bytes = [System.Text.Encoding]::UTF8.GetBytes("Artifact not found")
+                    $response.ContentLength64 = $bytes.LongLength
+                    $response.OutputStream.Write($bytes, 0, $bytes.Length)
+                    $response.Close()
+                    continue
+                }
+
+                $fileInfo = Get-Item -Path $artifactPath
+                $bytes = [System.IO.File]::ReadAllBytes($artifactPath)
+                $response.StatusCode = 200
+                $response.ContentType = Get-MimeTypeForPath -Path $artifactPath
+                $response.AddHeader("Content-Disposition", "attachment; filename=`"$($fileInfo.Name)`"")
+                $response.ContentLength64 = $bytes.LongLength
+                $response.OutputStream.Write($bytes, 0, $bytes.Length)
+                $response.Close()
             }
             catch {
                 $errorPayload = [pscustomobject]@{

@@ -1,0 +1,72 @@
+{
+  "version": "project-priority-v1",
+  "library_root": "E:/",
+  "execution_order": [
+    {
+      "project_id": "tod",
+      "priority": 1,
+      "mode": "guarded-write",
+      "notes": "Foundational control plane. Keep strict review/test gates."
+    },
+    {
+      "project_id": "comm_app",
+      "priority": 2,
+      "mode": "guarded-write",
+      "notes": "High-value business app and strong training ground."
+    },
+    {
+      "project_id": "coachmim",
+      "priority": 3,
+      "mode": "guarded-write",
+      "notes": "Interaction and workflow patterns."
+    },
+    {
+      "project_id": "mim_pulz",
+      "priority": 4,
+      "mode": "advisory-first",
+      "notes": "Architecture-heavy and exploratory; elevate write mode only when stable."
+    },
+    {
+      "project_id": "mim_robotics",
+      "priority": 5,
+      "mode": "review-only",
+      "notes": "Hardware-adjacent risk profile."
+    },
+    {
+      "project_id": "viasion",
+      "priority": 6,
+      "mode": "review-only",
+      "notes": "Vision/media complexity."
+    },
+    {
+      "project_id": "mim_box",
+      "priority": 7,
+      "mode": "guarded-write",
+      "notes": "Media/content workflows and reusable generation assets."
+    },
+    {
+      "project_id": "mim_images",
+      "priority": 8,
+      "mode": "guarded-write",
+      "notes": "Image/video/audio asset pipelines and content ops."
+    },
+    {
+      "project_id": "mimir",
+      "priority": 9,
+      "mode": "guarded-write",
+      "notes": "Platform service integration."
+    },
+    {
+      "project_id": "mim_devl",
+      "priority": 10,
+      "mode": "guarded-write",
+      "notes": "Experiment and incubation domain."
+    },
+    {
+      "project_id": "agent_mim_work",
+      "priority": 11,
+      "mode": "review-only",
+      "notes": "Agent experiments and pattern extraction."
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 param(
     [int]$PreferredPort = 8844,
-    [int]$MaxPortSearch = 30
+    [int]$MaxPortSearch = 30,
+    [switch]$OpenAppWindow,
+    [switch]$NoAutoOpen
 )
 
 Set-StrictMode -Version Latest
@@ -43,4 +45,18 @@ $selectedPort = Find-FreePort -Start $PreferredPort -MaxAttempts $MaxPortSearch
 Write-Host "Launching TOD UI on port $selectedPort"
 Write-Host "URL: http://localhost:$selectedPort/"
 
-powershell -NoProfile -ExecutionPolicy Bypass -File $startScript -Port $selectedPort
+$invokeArgs = @(
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-File", $startScript,
+    "-Port", "$selectedPort"
+)
+
+if ($OpenAppWindow) {
+    $invokeArgs += "-OpenAppWindow"
+}
+if ($NoAutoOpen) {
+    $invokeArgs += "-NoAutoOpen"
+}
+
+powershell @invokeArgs
