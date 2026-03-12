@@ -1,5 +1,5 @@
 {
-    "generated_at":  "2026-03-12T05:46:10.0198293Z",
+    "generated_at":  "2026-03-12T05:47:44.6941863Z",
     "source":  "tod-shared-state-sync-v1",
     "current_objective_in_progress":  "16",
     "next_proposed_objective":  "TOD-17",
@@ -21,7 +21,7 @@
 
                                  ],
     "approval_backlog_snapshot":  {
-                                      "generated_at":  "2026-03-12T05:46:09.9975905Z",
+                                      "generated_at":  "2026-03-12T05:47:44.6361257Z",
                                       "total_pending":  12,
                                       "by_type":  {
                                                       "pending_apply":  12
@@ -48,7 +48,7 @@
                                                             "task_id":  "45",
                                                             "status":  "pending_apply",
                                                             "source":  "objective:16",
-                                                            "age_hours":  0.08,
+                                                            "age_hours":  0.11,
                                                             "maturity_band":  "emerging",
                                                             "score":  0.5333
                                                         },
@@ -58,7 +58,7 @@
                                                             "task_id":  "45",
                                                             "status":  "pending_apply",
                                                             "source":  "objective:16",
-                                                            "age_hours":  0.08,
+                                                            "age_hours":  0.11,
                                                             "maturity_band":  "emerging",
                                                             "score":  0.5333
                                                         },
@@ -68,7 +68,7 @@
                                                             "task_id":  "45",
                                                             "status":  "pending_apply",
                                                             "source":  "objective:16",
-                                                            "age_hours":  0.06,
+                                                            "age_hours":  0.09,
                                                             "maturity_band":  "emerging",
                                                             "score":  0.4667
                                                         },
@@ -78,7 +78,7 @@
                                                             "task_id":  "45",
                                                             "status":  "pending_apply",
                                                             "source":  "objective:16",
-                                                            "age_hours":  0.06,
+                                                            "age_hours":  0.09,
                                                             "maturity_band":  "emerging",
                                                             "score":  0.4667
                                                         },
@@ -88,7 +88,7 @@
                                                             "task_id":  "45",
                                                             "status":  "pending_apply",
                                                             "source":  "objective:16",
-                                                            "age_hours":  0.04,
+                                                            "age_hours":  0.07,
                                                             "maturity_band":  "emerging",
                                                             "score":  0.4667
                                                         },
@@ -98,7 +98,7 @@
                                                             "task_id":  "45",
                                                             "status":  "pending_apply",
                                                             "source":  "objective:16",
-                                                            "age_hours":  0.04,
+                                                            "age_hours":  0.07,
                                                             "maturity_band":  "emerging",
                                                             "score":  0.4667
                                                         },
@@ -108,7 +108,7 @@
                                                             "task_id":  "45",
                                                             "status":  "pending_apply",
                                                             "source":  "objective:16",
-                                                            "age_hours":  0.04,
+                                                            "age_hours":  0.06,
                                                             "maturity_band":  "emerging",
                                                             "score":  0.5333
                                                         },
@@ -118,7 +118,7 @@
                                                             "task_id":  "45",
                                                             "status":  "pending_apply",
                                                             "source":  "objective:16",
-                                                            "age_hours":  0.02,
+                                                            "age_hours":  0.05,
                                                             "maturity_band":  "emerging",
                                                             "score":  0.4667
                                                         },
@@ -128,7 +128,7 @@
                                                             "task_id":  "45",
                                                             "status":  "pending_apply",
                                                             "source":  "objective:16",
-                                                            "age_hours":  0.02,
+                                                            "age_hours":  0.05,
                                                             "maturity_band":  "emerging",
                                                             "score":  0.4667
                                                         },
@@ -138,7 +138,7 @@
                                                             "task_id":  "45",
                                                             "status":  "pending_apply",
                                                             "source":  "objective:16",
-                                                            "age_hours":  0.02,
+                                                            "age_hours":  0.04,
                                                             "maturity_band":  "emerging",
                                                             "score":  0.5333
                                                         }
@@ -150,7 +150,7 @@
                                                              "task_id":  "45",
                                                              "status":  "pending_apply",
                                                              "source":  "objective:16",
-                                                             "age_hours":  0.08,
+                                                             "age_hours":  0.11,
                                                              "maturity_band":  "good",
                                                              "score":  0.6667
                                                          },
@@ -160,14 +160,14 @@
                                                              "task_id":  "45",
                                                              "status":  "pending_apply",
                                                              "source":  "objective:16",
-                                                             "age_hours":  0.06,
+                                                             "age_hours":  0.08,
                                                              "maturity_band":  "good",
                                                              "score":  0.7333
                                                          }
                                                      ]
                                   },
     "integration_status":  {
-                               "generated_at":  "2026-03-12T05:46:10.0043753Z",
+                               "generated_at":  "2026-03-12T05:47:44.6539222Z",
                                "source":  "tod-integration-status-v1",
                                "mim_schema":  "2026-03-12-57",
                                "tod_contract":  "2026-03-12-57",

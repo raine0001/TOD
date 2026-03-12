@@ -123,14 +123,14 @@ function Invoke-GraphicsTask {
     $mermaid += ""
     $mermaid += "Generated: $now"
     $mermaid += ""
-    $mermaid += "```mermaid"
+    $mermaid += '```mermaid'
     $mermaid += "flowchart LR"
     $mermaid += "  A[MIM Strategy Update] --> B[TOD Context Ingest]"
     $mermaid += "  B --> C[Engineer Cycle]"
     $mermaid += "  C --> D[Reliability Feedback]"
     $mermaid += "  D --> E[Shared State Sync]"
     $mermaid += "  E --> F[Integration Status]"
-    $mermaid += "```"
+    $mermaid += '```'
     $mermaid += ""
     $mermaid += "This file is simulation-only and does not affect runtime behavior."
     $mermaid -join [Environment]::NewLine | Set-Content -Path $graphicsStoryboardPath
