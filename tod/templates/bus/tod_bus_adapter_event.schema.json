@@ -1,0 +1,59 @@
+{
+  "schema_name": "tod_bus_adapter_event_v1",
+  "version": "1.0.0",
+  "required_fields": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "producer",
+    "correlation",
+    "payload"
+  ],
+  "outbound_event_types": [
+    "execution.requested",
+    "execution.started",
+    "execution.succeeded",
+    "execution.failed",
+    "execution.guardrail_blocked",
+    "execution.retry_scheduled",
+    "execution.recovered",
+    "execution.drift_detected",
+    "execution.fallback_applied",
+    "execution.cancelled"
+  ],
+  "inbound_event_types": [
+    "execution.requested",
+    "execution.cancel_requested",
+    "execution.priority_changed"
+  ],
+  "runtime_allowed_actions": [
+    "get-engineering-loop-summary"
+  ],
+  "reason_codes": [
+    "request_validated",
+    "request_malformed",
+    "request_unknown_type_ignored",
+    "request_duplicate_ignored",
+    "request_out_of_order_ignored",
+    "guardrail_action_not_allowed",
+    "execution_started",
+    "execution_succeeded",
+    "execution_failed",
+    "retry_scheduled",
+    "recovery_completed",
+    "drift_detected",
+    "fallback_applied",
+    "execution_cancelled"
+  ],
+  "correlation_required_fields": [
+    "event_id",
+    "trace_id",
+    "execution_id"
+  ],
+  "correlation_optional_fields": [
+    "goal_id",
+    "plan_id",
+    "action_id",
+    "source_domain"
+  ]
+}

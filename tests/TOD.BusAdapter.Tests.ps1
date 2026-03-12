@@ -1,0 +1,272 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$adapterScript = Join-Path $repoRoot "scripts/Invoke-TODBusAdapter.ps1"
+
+function New-TestPaths {
+    $id = [guid]::NewGuid().ToString("N")
+    $base = Join-Path $repoRoot ("tod/out/tests/bus-adapter-" + $id)
+    $inbox = Join-Path $base "inbox"
+    $processed = Join-Path $base "processed"
+    New-Item -ItemType Directory -Path $inbox -Force | Out-Null
+    New-Item -ItemType Directory -Path $processed -Force | Out-Null
+
+    return [pscustomobject]@{
+        Base = $base
+        Stream = (Join-Path $base "events.jsonl")
+        State = (Join-Path $base "adapter-state.json")
+        ConsumerLog = (Join-Path $base "consumer-log.jsonl")
+        CorrelationLog = (Join-Path $base "correlation-log.jsonl")
+        Status = (Join-Path $base "bus-adapter-status.json")
+        Inbox = $inbox
+        Processed = $processed
+    }
+}
+
+function Invoke-Adapter {
+    param(
+        [Parameter(Mandatory = $true)][pscustomobject]$Paths,
+        [Parameter(Mandatory = $true)][string]$AdapterAction,
+        [hashtable]$InputParams = @{}
+    )
+
+    $invokeMap = @{
+        Action = $AdapterAction
+        EventStreamPath = $Paths.Stream
+        InboundInboxPath = $Paths.Inbox
+        ProcessedInboxPath = $Paths.Processed
+        AdapterStatePath = $Paths.State
+        ConsumerLogPath = $Paths.ConsumerLog
+        CorrelationLogPath = $Paths.CorrelationLog
+        BusStatusPath = $Paths.Status
+    }
+    foreach ($k in $InputParams.Keys) {
+        $invokeMap[$k] = $InputParams[$k]
+    }
+
+    $raw = & $adapterScript @invokeMap
+    return ($raw | ConvertFrom-Json)
+}
+
+function Get-StreamEvents {
+    param([Parameter(Mandatory = $true)][string]$StreamPath)
+    if (-not (Test-Path -Path $StreamPath)) { return @() }
+    return @((Get-Content -Path $StreamPath) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
+}
+
+Describe "TOD Bus Adapter" {
+    It "valid execution request is accepted and executed" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-accept-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-a"; execution_id = "exec-a" }
+            payload = @{ runtime_action = "get-engineering-loop-summary" }
+        } | ConvertTo-Json -Depth 8 -Compress
+
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        [bool]$result.ok | Should Be $true
+        [string]$result.status | Should Be "accepted_executed"
+        (Test-Path -Path $paths.Status) | Should Be $true
+
+        $streamEvents = @((Get-Content -Path $paths.Stream) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
+        @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.started" }).Count | Should Be 1
+        @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.succeeded" }).Count | Should Be 1
+    }
+
+    It "malformed inbound event rejected" {
+        $paths = New-TestPaths
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = "{ bad-json" }
+        [bool]$result.ok | Should Be $false
+        [string]$result.status | Should Be "rejected_malformed"
+    }
+
+    It "unknown inbound event ignored safely" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-unknown-001"
+            event_type = "execution.unmapped"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-u"; execution_id = "exec-u" }
+            payload = @{ note = "unknown" }
+        } | ConvertTo-Json -Depth 8 -Compress
+
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        [bool]$result.ok | Should Be $true
+        [string]$result.status | Should Be "ignored_unknown"
+    }
+
+    It "duplicate inbound event tolerated safely" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-dup-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-d"; execution_id = "exec-d" }
+            payload = @{ runtime_action = "get-engineering-loop-summary" }
+        } | ConvertTo-Json -Depth 8 -Compress
+
+        $first = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        $second = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+
+        [string]$first.status | Should Be "accepted_executed"
+        [string]$second.status | Should Be "duplicate_ignored"
+    }
+
+    It "out-of-order control signal is ignored safely" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-o3-001"
+            event_type = "execution.cancel_requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-o3"; execution_id = "exec-o3" }
+            payload = @{ reason = "user_cancelled" }
+        } | ConvertTo-Json -Depth 8 -Compress
+
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        [bool]$result.ok | Should Be $true
+        [string]$result.status | Should Be "ignored_out_of_order"
+    }
+
+    It "outbound events conform to schema and preserve correlation" {
+        $paths = New-TestPaths
+
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "publish-event" -InputParams @{
+            EventType = "execution.started"
+            EventId = "evt-out-001"
+            TraceId = "trace-o"
+            ExecutionId = "exec-o"
+            GoalId = "goal-o"
+            PlanId = "plan-o"
+            ActionId = "action-o"
+            SourceDomain = "tod"
+            EventJson = (@{ state = "started" } | ConvertTo-Json -Compress)
+            ArtifactPaths = @("shared_state/next_actions.json")
+        }
+
+        [bool]$result.ok | Should Be $true
+        [string]$result.status | Should Be "published"
+        [string]$result.event.event_type | Should Be "execution.started"
+        [string]$result.event.correlation.trace_id | Should Be "trace-o"
+        [string]$result.event.correlation.execution_id | Should Be "exec-o"
+        [string]$result.event.correlation.goal_id | Should Be "goal-o"
+        [string]$result.event.correlation.plan_id | Should Be "plan-o"
+        [string]$result.event.correlation.action_id | Should Be "action-o"
+        [string]$result.event.correlation.source_domain | Should Be "tod"
+
+        (Test-Path -Path $paths.CorrelationLog) | Should Be $true
+    }
+
+    It "retry, fallback, and recovered lifecycle events preserve correlation" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-rch-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-rch"; execution_id = "exec-rch"; goal_id = "goal-rch"; source_domain = "mim" }
+            payload = @{ runtime_action = "get-engineering-loop-summary"; reliability_hints = @{ simulate_retry_once = $true } }
+        } | ConvertTo-Json -Depth 10 -Compress
+
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        [bool]$result.ok | Should Be $true
+        [string]$result.status | Should Be "accepted_executed"
+
+        $streamEvents = Get-StreamEvents -StreamPath $paths.Stream
+        @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.retry_scheduled" }).Count | Should Be 1
+        @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.fallback_applied" }).Count | Should Be 1
+        @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.recovered" }).Count | Should Be 1
+
+        $enriched = @($streamEvents | Where-Object { [string]$_.event_type -in @("execution.retry_scheduled", "execution.fallback_applied", "execution.recovered") })
+        foreach ($evtObj in $enriched) {
+            [string]$evtObj.correlation.trace_id | Should Be "trace-rch"
+            [string]$evtObj.correlation.execution_id | Should Be "exec-rch"
+            [string]$evtObj.correlation.goal_id | Should Be "goal-rch"
+            [string]$evtObj.correlation.source_domain | Should Be "mim"
+        }
+
+        $status = Get-Content -Path $paths.Status -Raw | ConvertFrom-Json
+        [int]$status.lifecycle_feedback.retries_scheduled | Should BeGreaterThan 0
+        [int]$status.lifecycle_feedback.recoveries | Should BeGreaterThan 0
+        [int]$status.lifecycle_feedback.fallback_applied | Should BeGreaterThan 0
+    }
+
+    It "drift detection event is emitted and status snapshot increments" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-drift-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-drift"; execution_id = "exec-drift" }
+            payload = @{ runtime_action = "get-engineering-loop-summary"; reliability_hints = @{ simulate_drift = $true } }
+        } | ConvertTo-Json -Depth 10 -Compress
+
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        [bool]$result.ok | Should Be $true
+
+        $streamEvents = Get-StreamEvents -StreamPath $paths.Stream
+        @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.drift_detected" }).Count | Should BeGreaterThan 0
+
+        $status = Get-Content -Path $paths.Status -Raw | ConvertFrom-Json
+        [int]$status.lifecycle_feedback.drift_detected | Should BeGreaterThan 0
+        [int]$status.lifecycle_feedback.successful_runtime | Should BeGreaterThan 0
+    }
+
+    It "active cancellation emits execution.cancelled" {
+        $paths = New-TestPaths
+
+        [pscustomobject]@{
+            source = "tod-bus-adapter-v1"
+            updated_at = ""
+            processed_event_ids = @()
+            accepted_execution_ids = @("exec-cancel")
+            counters = [pscustomobject]@{
+                inbound_accepted = 0
+                inbound_rejected = 0
+                inbound_ignored = 0
+                inbound_duplicate = 0
+                outbound_published = 0
+                retries_scheduled = 0
+                recoveries = 0
+                drift_detected = 0
+                fallback_applied = 0
+                cancelled = 0
+                guardrail_blocked = 0
+                failed_runtime = 0
+                successful_runtime = 0
+            }
+        } | ConvertTo-Json -Depth 12 | Set-Content -Path $paths.State
+
+        $cancelEvt = @{
+            event_id = "evt-cancel-001"
+            event_type = "execution.cancel_requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-cancel"; execution_id = "exec-cancel" }
+            payload = @{ reason = "operator_requested" }
+        } | ConvertTo-Json -Depth 10 -Compress
+
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $cancelEvt }
+        [bool]$result.ok | Should Be $true
+        [string]$result.status | Should Be "accepted_cancelled"
+
+        $streamEvents = Get-StreamEvents -StreamPath $paths.Stream
+        @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.cancelled" }).Count | Should Be 1
+
+        $status = Get-Content -Path $paths.Status -Raw | ConvertFrom-Json
+        [int]$status.lifecycle_feedback.cancelled | Should BeGreaterThan 0
+    }
+}

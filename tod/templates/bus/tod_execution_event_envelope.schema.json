@@ -1,0 +1,82 @@
+{
+  "schema_name": "tod_execution_event_envelope_v1",
+  "version": "1.0.0",
+  "producer": "TOD",
+  "required_fields": [
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "producer",
+    "correlation",
+    "reasons",
+    "payload"
+  ],
+  "event_types": [
+    "tod.execution.success",
+    "tod.execution.failure",
+    "tod.execution.blocked",
+    "tod.execution.retry",
+    "tod.execution.recovered",
+    "tod.execution.drift_detected"
+  ],
+  "severity_values": [
+    "info",
+    "warning",
+    "error",
+    "critical"
+  ],
+  "reason_categories": [
+    "execution",
+    "guardrail",
+    "retry",
+    "drift",
+    "recovery",
+    "outcome"
+  ],
+  "producer_model": {
+    "required_fields": [
+      "system",
+      "component",
+      "role"
+    ],
+    "constraints": {
+      "system": "TOD",
+      "role": "execution_runtime"
+    }
+  },
+  "correlation_model": {
+    "required_fields": [
+      "trace_id",
+      "execution_id"
+    ],
+    "optional_fields": [
+      "run_id",
+      "cycle_id",
+      "objective_id",
+      "task_id",
+      "upstream_goal_id"
+    ]
+  },
+  "reason_model": {
+    "required_fields": [
+      "code",
+      "severity",
+      "category",
+      "message"
+    ],
+    "optional_fields": [
+      "evidence"
+    ]
+  },
+  "payload_contract": {
+    "description": "Execution facts only. No cognition, strategy meaning, or governance decisions.",
+    "allowed_domains": [
+      "execution_state",
+      "guardrail_state",
+      "retry_state",
+      "drift_state",
+      "recovery_state",
+      "outcome_state"
+    ]
+  }
+}

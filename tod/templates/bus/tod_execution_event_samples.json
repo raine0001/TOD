@@ -1,0 +1,214 @@
+[
+  {
+    "event_id": "evt-2e6f5b8e-5f4c-4d4b-9f44-0fd8a2c1ea01",
+    "event_type": "tod.execution.success",
+    "occurred_at": "2026-03-12T14:00:00Z",
+    "producer": {
+      "system": "TOD",
+      "component": "execution_engine",
+      "role": "execution_runtime"
+    },
+    "correlation": {
+      "trace_id": "trace-9f2d01",
+      "execution_id": "exec_22_0001",
+      "run_id": "ENGRUN-1E30E59FB3",
+      "objective_id": "16",
+      "task_id": "45",
+      "upstream_goal_id": "MIMGOAL-9A1095C6DC"
+    },
+    "reasons": [
+      {
+        "code": "execution_completed",
+        "severity": "info",
+        "category": "outcome",
+        "message": "Execution completed successfully with expected outcome.",
+        "evidence": {
+          "duration_ms": 1820,
+          "retry_count": 0
+        }
+      }
+    ],
+    "payload": {
+      "outcome_state": "success",
+      "guardrail_state": "clear",
+      "retry_state": "none",
+      "drift_state": "none",
+      "recovery_state": "not_required"
+    }
+  },
+  {
+    "event_id": "evt-2e6f5b8e-5f4c-4d4b-9f44-0fd8a2c1ea02",
+    "event_type": "tod.execution.failure",
+    "occurred_at": "2026-03-12T14:01:00Z",
+    "producer": {
+      "system": "TOD",
+      "component": "execution_engine",
+      "role": "execution_runtime"
+    },
+    "correlation": {
+      "trace_id": "trace-9f2d01",
+      "execution_id": "exec_22_0002",
+      "cycle_id": "ENGCYC-ABC1234567",
+      "objective_id": "16",
+      "task_id": "45"
+    },
+    "reasons": [
+      {
+        "code": "unrecovered_execution_error",
+        "severity": "error",
+        "category": "execution",
+        "message": "Execution failed and fallback could not recover.",
+        "evidence": {
+          "error_code": "exec_timeout",
+          "attempts": 3
+        }
+      }
+    ],
+    "payload": {
+      "outcome_state": "failure",
+      "guardrail_state": "clear",
+      "retry_state": "exhausted",
+      "drift_state": "watch",
+      "recovery_state": "failed"
+    }
+  },
+  {
+    "event_id": "evt-2e6f5b8e-5f4c-4d4b-9f44-0fd8a2c1ea03",
+    "event_type": "tod.execution.blocked",
+    "occurred_at": "2026-03-12T14:02:00Z",
+    "producer": {
+      "system": "TOD",
+      "component": "guardrail_gate",
+      "role": "execution_runtime"
+    },
+    "correlation": {
+      "trace_id": "trace-9f2d02",
+      "execution_id": "exec_22_0003",
+      "objective_id": "16",
+      "task_id": "45"
+    },
+    "reasons": [
+      {
+        "code": "guardrail_block_pending_approval",
+        "severity": "warning",
+        "category": "guardrail",
+        "message": "Execution blocked due to pending approval backlog.",
+        "evidence": {
+          "pending_approvals": 10
+        }
+      }
+    ],
+    "payload": {
+      "outcome_state": "blocked",
+      "guardrail_state": "blocked",
+      "retry_state": "none",
+      "drift_state": "none",
+      "recovery_state": "not_started"
+    }
+  },
+  {
+    "event_id": "evt-2e6f5b8e-5f4c-4d4b-9f44-0fd8a2c1ea04",
+    "event_type": "tod.execution.retry",
+    "occurred_at": "2026-03-12T14:03:00Z",
+    "producer": {
+      "system": "TOD",
+      "component": "retry_controller",
+      "role": "execution_runtime"
+    },
+    "correlation": {
+      "trace_id": "trace-9f2d03",
+      "execution_id": "exec_22_0004",
+      "objective_id": "16",
+      "task_id": "45"
+    },
+    "reasons": [
+      {
+        "code": "retry_attempt_scheduled",
+        "severity": "info",
+        "category": "retry",
+        "message": "Retry scheduled after transient execution failure.",
+        "evidence": {
+          "retry_attempt": 1,
+          "max_retries": 2
+        }
+      }
+    ],
+    "payload": {
+      "outcome_state": "in_progress",
+      "guardrail_state": "clear",
+      "retry_state": "scheduled",
+      "drift_state": "none",
+      "recovery_state": "in_progress"
+    }
+  },
+  {
+    "event_id": "evt-2e6f5b8e-5f4c-4d4b-9f44-0fd8a2c1ea05",
+    "event_type": "tod.execution.recovered",
+    "occurred_at": "2026-03-12T14:04:00Z",
+    "producer": {
+      "system": "TOD",
+      "component": "fallback_engine",
+      "role": "execution_runtime"
+    },
+    "correlation": {
+      "trace_id": "trace-9f2d03",
+      "execution_id": "exec_22_0004",
+      "objective_id": "16",
+      "task_id": "45"
+    },
+    "reasons": [
+      {
+        "code": "fallback_recovered_execution",
+        "severity": "warning",
+        "category": "recovery",
+        "message": "Primary execution failed but fallback recovered outcome.",
+        "evidence": {
+          "primary_engine": "codex",
+          "fallback_engine": "local"
+        }
+      }
+    ],
+    "payload": {
+      "outcome_state": "success",
+      "guardrail_state": "clear",
+      "retry_state": "completed",
+      "drift_state": "watch",
+      "recovery_state": "success"
+    }
+  },
+  {
+    "event_id": "evt-2e6f5b8e-5f4c-4d4b-9f44-0fd8a2c1ea06",
+    "event_type": "tod.execution.drift_detected",
+    "occurred_at": "2026-03-12T14:05:00Z",
+    "producer": {
+      "system": "TOD",
+      "component": "reliability_monitor",
+      "role": "execution_runtime"
+    },
+    "correlation": {
+      "trace_id": "trace-9f2d04",
+      "execution_id": "exec_22_0005",
+      "objective_id": "16",
+      "task_id": "45"
+    },
+    "reasons": [
+      {
+        "code": "retry_rate_high",
+        "severity": "warning",
+        "category": "drift",
+        "message": "Retry rate exceeded drift warning threshold.",
+        "evidence": {
+          "recent_retry_rate": 0.5,
+          "threshold": 0.35
+        }
+      }
+    ],
+    "payload": {
+      "outcome_state": "in_progress",
+      "guardrail_state": "clear",
+      "retry_state": "elevated",
+      "drift_state": "warning",
+      "recovery_state": "monitoring"
+    }
+  }
+]
