@@ -1,9 +1,10 @@
 param(
     [string]$ConfigPath,
     [int]$Top = 15,
-    [int]$DurationHours = 4,
+    [double]$DurationHours = 4,
     [int]$CycleDelaySeconds = 90,
-    [int]$ValidationCadence = 12
+    [int]$ValidationCadence = 12,
+    [bool]$ConservativeMode = $true
 )
 
 Set-StrictMode -Version Latest
@@ -12,6 +13,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $todScript = Join-Path $PSScriptRoot "TOD.ps1"
 $sharedSyncScript = Join-Path $PSScriptRoot "Invoke-TODSharedStateSync.ps1"
+$approvalReductionScript = Join-Path $PSScriptRoot "Invoke-TODApprovalReductionPass.ps1"
 $testsScript = Join-Path $PSScriptRoot "Invoke-TODTests.ps1"
 $smokeScript = Join-Path $PSScriptRoot "Invoke-TODSmoke.ps1"
 
@@ -25,6 +27,9 @@ $summaryPath = Join-Path $outDir "simulation-summary.json"
 $layoutDigestPath = Join-Path $outDir "layout-digest.md"
 $graphicsStoryboardPath = Join-Path $outDir "graphics-storyboard.md"
 
+# Start each simulation run with a fresh NDJSON journal to keep summary parsing deterministic.
+Set-Content -Path $journalPath -Value ""
+
 $effectiveConfigPath = if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
     Join-Path $repoRoot "tod/config/tod-config.json"
 }
@@ -34,6 +39,7 @@ else {
 
 if (-not (Test-Path -Path $todScript)) { throw "Missing TOD script: $todScript" }
 if (-not (Test-Path -Path $sharedSyncScript)) { throw "Missing sync script: $sharedSyncScript" }
+if (-not (Test-Path -Path $approvalReductionScript)) { throw "Missing approval reduction script: $approvalReductionScript" }
 if (-not (Test-Path -Path $testsScript)) { throw "Missing tests script: $testsScript" }
 if (-not (Test-Path -Path $smokeScript)) { throw "Missing smoke script: $smokeScript" }
 if (-not (Test-Path -Path $effectiveConfigPath)) { throw "Missing config: $effectiveConfigPath" }
@@ -56,7 +62,7 @@ function Write-Journal {
         validation = $Validation
     }
 
-    ($entry | ConvertTo-Json -Depth 10) + [Environment]::NewLine | Add-Content -Path $journalPath
+    ($entry | ConvertTo-Json -Depth 10 -Compress) + [Environment]::NewLine | Add-Content -Path $journalPath
 }
 
 function Select-WeightedCategory {
@@ -75,11 +81,15 @@ function Invoke-TodJsonAction {
 function Invoke-ProgrammingTask {
     param([int]$Iteration)
 
-    $taskRoll = Get-Random -Minimum 1 -Maximum 6
+    $taskRoll = Get-Random -Minimum 1 -Maximum 10
     if ($taskRoll -eq 1) {
         $signal = Invoke-TodJsonAction -Action "get-engineering-signal"
         $trend = if ($signal.PSObject.Properties["trend_direction"]) { [string]$signal.trend_direction } else { "unknown" }
-        Write-Journal -Category "programming" -Task "engineering-signal snapshot" -Ok $true -Detail ("trend={0}" -f $trend) -Validation "tod:get-engineering-signal"
+        $pending = 0
+        if ($signal.PSObject.Properties["pending_approval_state"] -and $signal.pending_approval_state -and $signal.pending_approval_state.PSObject.Properties["count"]) {
+            $pending = [int]$signal.pending_approval_state.count
+        }
+        Write-Journal -Category "programming" -Task "engineering-signal snapshot" -Ok $true -Detail ("trend={0};pending={1}" -f $trend, $pending) -Validation "tod:get-engineering-signal"
         return
     }
 
@@ -97,14 +107,44 @@ function Invoke-ProgrammingTask {
         return
     }
 
-    if ($taskRoll -eq 4 -and ($Iteration % $ValidationCadence -eq 0)) {
+    if ($taskRoll -eq 4) {
+        $reductionRaw = & $approvalReductionScript -Top $Top -WriteOutputs -AppendJournal
+        $reduction = $reductionRaw | ConvertFrom-Json
+        $pendingTotal = if ($reduction.PSObject.Properties["totals"] -and $reduction.totals.PSObject.Properties["pending"]) { [int]$reduction.totals.pending } else { 0 }
+        $duplicates = if ($reduction.PSObject.Properties["totals"] -and $reduction.totals.PSObject.Properties["duplicate_suppression_candidates"]) { [int]$reduction.totals.duplicate_suppression_candidates } else { 0 }
+        Write-Journal -Category "programming" -Task "approval backlog classification" -Ok ([bool]$reduction.ok) -Detail ("pending={0};duplicate_suppression_candidates={1}" -f $pendingTotal, $duplicates) -Validation "Invoke-TODApprovalReductionPass"
+        return
+    }
+
+    if ($taskRoll -eq 5) {
+        $integrationPath = Join-Path $repoRoot "shared_state/integration_status.json"
+        $integration = Get-Content -Path $integrationPath -Raw | ConvertFrom-Json
+        $detail = "compatible={0};mim_schema={1};tod_contract={2}" -f [bool]$integration.compatible, [string]$integration.mim_schema, [string]$integration.tod_contract
+        Write-Journal -Category "programming" -Task "integration contract visibility" -Ok $true -Detail $detail -Validation "shared_state:integration_status"
+        return
+    }
+
+    if ($taskRoll -eq 6) {
+        $evidencePath = Join-Path $repoRoot "shared_state/execution_evidence.json"
+        $evidence = Get-Content -Path $evidencePath -Raw | ConvertFrom-Json
+        $alert = "unknown"
+        $reasons = 0
+        if ($evidence.PSObject.Properties["execution_reliability"] -and $evidence.execution_reliability) {
+            if ($evidence.execution_reliability.PSObject.Properties["current_alert_state"]) { $alert = [string]$evidence.execution_reliability.current_alert_state }
+            if ($evidence.execution_reliability.PSObject.Properties["reliability_alert_reasons"]) { $reasons = @($evidence.execution_reliability.reliability_alert_reasons).Count }
+        }
+        Write-Journal -Category "programming" -Task "execution evidence inspection" -Ok $true -Detail ("alert={0};reason_count={1}" -f $alert, $reasons) -Validation "shared_state:execution_evidence"
+        return
+    }
+
+    if ($taskRoll -eq 7 -and ($Iteration % $ValidationCadence -eq 0)) {
         $testsRaw = & $testsScript -Path "tests/*.Tests.ps1"
         $tests = $testsRaw | ConvertFrom-Json
         Write-Journal -Category "programming" -Task "light regression validation" -Ok ([bool]$tests.passed_all) -Detail ("passed={0} failed={1} total={2}" -f [int]$tests.passed, [int]$tests.failed, [int]$tests.total) -Validation "Invoke-TODTests"
         return
     }
 
-    if ($taskRoll -eq 5 -and ($Iteration % ($ValidationCadence * 2) -eq 0)) {
+    if ($taskRoll -eq 8 -and ($Iteration % ($ValidationCadence * 2) -eq 0)) {
         $smokeRaw = & $smokeScript -Top $Top
         $smoke = $smokeRaw | ConvertFrom-Json
         Write-Journal -Category "programming" -Task "smoke validation" -Ok ([bool]$smoke.passed_all) -Detail ("checks={0}" -f [int]$smoke.total_checks) -Validation "Invoke-TODSmoke"
@@ -230,6 +270,7 @@ while ((Get-Date).ToUniversalTime() -lt $endAt) {
 $summary = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString("o")
     source = "tod-training-simulation-v1"
+    mode = if ($ConservativeMode) { "conservative" } else { "standard" }
     duration_hours = $DurationHours
     cycle_delay_seconds = $CycleDelaySeconds
     distribution_target = [pscustomobject]@{
@@ -258,7 +299,7 @@ $summary = [pscustomobject]@{
 
 if (Test-Path -Path $journalPath) {
     try {
-        $entries = @(Get-Content -Path $journalPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_ | ConvertFrom-Json })
+        $entries = @(Get-Content -Path $journalPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_.Trim().StartsWith("{") -and $_.Trim().EndsWith("}") } | ForEach-Object { $_ | ConvertFrom-Json })
         $summary.validations_performed = @($entries | ForEach-Object { [string]$_.validation } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
         $summary.failures = @($entries | Where-Object { -not [bool]$_.ok } | Select-Object -First 20)
     }
