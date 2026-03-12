@@ -8,6 +8,10 @@ param(
     [string]$QualityGatePath = "tod/out/training/quality-gate-summary.json",
     [string]$ApprovalReductionPath = "shared_state/approval_reduction_summary.json",
     [string]$ManifestPath = "tod/data/sample-manifest.json",
+    [string]$MimContextExportPath = "tod/out/context-sync/MIM_CONTEXT_EXPORT.latest.json",
+    [string]$MimManifestPath = "tod/out/context-sync/MIM_MANIFEST.latest.json",
+    [string]$ContextSyncInboxPath = "tod/inbox/context-sync/updates",
+    [double]$MimStatusStaleAfterHours = 6,
     [string]$ReleaseTagOverride,
     [string]$NextProposedObjective = "TOD-17"
 )
@@ -327,6 +331,93 @@ function Get-MimSchemaVersionFromContextExport {
     return ""
 }
 
+function Get-MimStatusSnapshot {
+    param(
+        [Parameter(Mandatory = $true)][string]$PathValue,
+        [double]$StaleAfterHours = 6
+    )
+
+    $doc = Get-JsonFileIfExists -PathValue $PathValue
+    if ($null -eq $doc) {
+        return [pscustomobject]@{
+            available = $false
+            source_path = $PathValue
+            generated_at = ""
+            age_hours = $null
+            stale_after_hours = $StaleAfterHours
+            is_stale = $true
+            objective_active = ""
+            phase = ""
+            blockers = ""
+        }
+    }
+
+    $generatedAt = ""
+    if ($doc.PSObject.Properties["generated_at"]) {
+        $generatedAt = [string]$doc.generated_at
+    }
+
+    $objectiveActive = ""
+    $phase = ""
+    $blockers = ""
+    if ($doc.PSObject.Properties["status"] -and $doc.status) {
+        if ($doc.status.PSObject.Properties["objective_active"]) { $objectiveActive = [string]$doc.status.objective_active }
+        if ($doc.status.PSObject.Properties["phase"]) { $phase = [string]$doc.status.phase }
+        if ($doc.status.PSObject.Properties["blockers"]) { $blockers = [string]$doc.status.blockers }
+    }
+
+    $ageHours = $null
+    $isStale = $true
+    $generatedUtc = Convert-ToUtcDateOrNull -Value $generatedAt
+    if ($null -ne $generatedUtc) {
+        $ageHours = [math]::Round(((Get-Date).ToUniversalTime() - $generatedUtc).TotalHours, 2)
+        $isStale = ($ageHours -gt $StaleAfterHours)
+    }
+
+    return [pscustomobject]@{
+        available = $true
+        source_path = $PathValue
+        generated_at = $generatedAt
+        age_hours = $ageHours
+        stale_after_hours = $StaleAfterHours
+        is_stale = [bool]$isStale
+        objective_active = $objectiveActive
+        phase = $phase
+        blockers = $blockers
+    }
+}
+
+function Get-ObjectiveAlignment {
+    param(
+        [Parameter(Mandatory = $true)][string]$TodObjective,
+        $MimStatus
+    )
+
+    $todNumber = Get-IdNumber -Value $TodObjective
+    $mimObjectiveRaw = ""
+    if ($null -ne $MimStatus -and $MimStatus.PSObject.Properties["objective_active"]) {
+        $mimObjectiveRaw = [string]$MimStatus.objective_active
+    }
+    $mimNumber = Get-IdNumber -Value $mimObjectiveRaw
+
+    $alignmentStatus = "unknown"
+    $aligned = $false
+    $delta = $null
+    if ($todNumber -ge 0 -and $mimNumber -ge 0) {
+        $aligned = ($todNumber -eq $mimNumber)
+        $delta = ($todNumber - $mimNumber)
+        $alignmentStatus = if ($aligned) { "in_sync" } else { "mismatch" }
+    }
+
+    return [pscustomobject]@{
+        status = $alignmentStatus
+        aligned = [bool]$aligned
+        tod_current_objective = $TodObjective
+        mim_objective_active = $mimObjectiveRaw
+        delta = $delta
+    }
+}
+
 $sharedDirAbs = Get-LocalPath -PathValue $SharedStateDir
 New-DirectoryIfMissing -PathValue $sharedDirAbs
 
@@ -453,10 +544,12 @@ $todCatchupRoadmap = [pscustomobject]@{
 }
 $todCatchupRoadmap | ConvertTo-Json -Depth 12 | Set-Content -Path $objectiveRoadmapPath
 
-$mimSchemaVersion = Get-MimSchemaVersionFromContextExport -PathValue "tod/out/context-sync/MIM_CONTEXT_EXPORT.latest.json"
+$mimSchemaVersion = Get-MimSchemaVersionFromContextExport -PathValue $MimContextExportPath
 if ([string]::IsNullOrWhiteSpace($mimSchemaVersion)) {
-    $mimSchemaVersion = Get-MimSchemaVersionFromContextExport -PathValue "tod/out/context-sync/MIM_MANIFEST.latest.json"
+    $mimSchemaVersion = Get-MimSchemaVersionFromContextExport -PathValue $MimManifestPath
 }
+$mimStatus = Get-MimStatusSnapshot -PathValue $MimContextExportPath -StaleAfterHours $MimStatusStaleAfterHours
+$objectiveAlignment = Get-ObjectiveAlignment -TodObjective $currentObjective -MimStatus $mimStatus
 $todContractVersion = if ($manifest -and $manifest.PSObject.Properties["schema_version"] -and -not [string]::IsNullOrWhiteSpace([string]$manifest.schema_version)) {
     [string]$manifest.schema_version
 }
@@ -470,6 +563,8 @@ $integrationStatus = [pscustomobject]@{
     mim_schema = if ([string]::IsNullOrWhiteSpace($mimSchemaVersion)) { "unknown" } else { $mimSchemaVersion }
     tod_contract = if ([string]::IsNullOrWhiteSpace($todContractVersion)) { "unknown" } else { $todContractVersion }
     compatible = [bool]$compatibility
+    mim_status = $mimStatus
+    objective_alignment = $objectiveAlignment
 }
 $integrationStatus | ConvertTo-Json -Depth 8 | Set-Content -Path $integrationStatusPath
 
@@ -617,7 +712,7 @@ $contracts = [pscustomobject]@{
 $contracts | ConvertTo-Json -Depth 20 | Set-Content -Path $contractsPath
 
 $pendingInboxCount = 0
-$contextInbox = Join-Path $repoRoot "tod/inbox/context-sync/updates"
+$contextInbox = Get-LocalPath -PathValue $ContextSyncInboxPath
 if (Test-Path -Path $contextInbox) {
     $pendingInboxCount = @((Get-ChildItem -Path $contextInbox -File -Filter "*.json")).Count
 }
@@ -628,6 +723,16 @@ if ($knownLocalDrift.pending_approvals -gt 0) {
 }
 if ($pendingInboxCount -gt 0) {
     $blockers += ("context updates pending ingest ({0})" -f $pendingInboxCount)
+}
+if ($mimStatus.is_stale) {
+    $mimAgeForBlocker = "unknown"
+    if ($null -ne $mimStatus.age_hours) {
+        $mimAgeForBlocker = [string]$mimStatus.age_hours
+    }
+    $blockers += ("mim status stale ({0}h > {1}h)" -f $mimAgeForBlocker, [string]$mimStatus.stale_after_hours)
+}
+if ([string]$objectiveAlignment.status -eq "mismatch") {
+    $blockers += ("objective mismatch tod={0} mim={1}" -f [string]$objectiveAlignment.tod_current_objective, [string]$objectiveAlignment.mim_objective_active)
 }
 if (@($blockers).Count -eq 0) {
     $blockers += "none"
@@ -873,6 +978,8 @@ $chatgptLines += "- Approval triage by age: $(($approvalBacklog.by_age | Convert
 $chatgptLines += "- Approval triage by source: $(($approvalBacklog.by_source | ConvertTo-Json -Compress))"
 $chatgptLines += "- Approval triage counts: stale=$($approvalBacklog.stale_count) low_value=$($approvalBacklog.low_value_count) promotable=$($approvalBacklog.promotable_count)"
 $chatgptLines += "- Integration status: mim_schema=$($integrationStatus.mim_schema) tod_contract=$($integrationStatus.tod_contract) compatible=$([bool]$integrationStatus.compatible)"
+$chatgptLines += "- MIM freshness: available=$([bool]$integrationStatus.mim_status.available) stale=$([bool]$integrationStatus.mim_status.is_stale) age_hours=$($integrationStatus.mim_status.age_hours)"
+$chatgptLines += "- Objective alignment: status=$($integrationStatus.objective_alignment.status) tod=$($integrationStatus.objective_alignment.tod_current_objective) mim=$($integrationStatus.objective_alignment.mim_objective_active)"
 $chatgptLines += "- Catch-up roadmap: $(($todCatchupRoadmap.objectives | ForEach-Object { [string]$_.id }) -join ', ')"
 $chatgptLines += "- Approval reduction snapshot present: $(if ($approvalReduction) { 'true' } else { 'false' })"
 if ($approvalReduction -and $approvalReduction.PSObject.Properties["totals"]) {
