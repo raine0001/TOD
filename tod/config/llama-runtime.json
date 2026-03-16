@@ -1,0 +1,22 @@
+{
+  "provider": "llama.cpp",
+  "install_root": "tools/llama.cpp",
+  "release_api": "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
+  "asset_patterns": [
+    "win-vulkan-x64.zip",
+    "win-cuda-cu12",
+    "win-cuda-cu11",
+    "win-openblas-x64.zip"
+  ],
+  "server_exe": "tools/llama.cpp/llama-server.exe",
+  "default_model_path": "models/tod/Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+  "host": "127.0.0.1",
+  "port": 8008,
+  "context_size": 4096,
+  "gpu_layers": 20,
+  "threads": 8,
+  "chat_format": "chatml",
+  "extra_args": [
+    "--metrics"
+  ]
+}

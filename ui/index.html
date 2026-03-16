@@ -83,6 +83,7 @@
     }
 
     header {
+      position: relative;
       padding: 16px 18px;
       border-bottom: 1px solid var(--line);
       background:
@@ -95,6 +96,16 @@
       align-items: center;
       gap: 12px;
       flex-wrap: wrap;
+      padding-right: 58px;
+    }
+
+    .header-settings {
+      position: absolute;
+      top: 16px;
+      right: 18px;
+      z-index: 35;
+      display: inline-flex;
+      align-items: center;
     }
 
     .kicker {
@@ -116,6 +127,93 @@
       display: inline-flex;
       align-items: center;
       gap: 10px;
+    }
+
+    .title-meta {
+      margin-top: 6px;
+      display: inline-flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .ui-build-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 0.7rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: rgba(4, 18, 16, 0.75);
+      white-space: nowrap;
+    }
+
+    .ui-build-chip.since {
+      border-color: rgba(255, 209, 102, 0.55);
+      color: #ffe7a4;
+      background: rgba(58, 43, 10, 0.42);
+    }
+
+    .ui-build-chip.health-ok {
+      border-color: rgba(45, 255, 157, 0.55);
+      color: #bfffdc;
+      background: rgba(7, 42, 24, 0.6);
+    }
+
+    .ui-build-chip.health-warning {
+      border-color: rgba(255, 209, 102, 0.65);
+      color: #ffe7a4;
+      background: rgba(58, 43, 10, 0.52);
+    }
+
+    .ui-build-chip.health-critical,
+    .ui-build-chip.health-unknown {
+      border-color: rgba(255, 92, 122, 0.65);
+      color: #ffc4d1;
+      background: rgba(56, 14, 24, 0.55);
+    }
+
+    .ui-build-chip.health-scaffold {
+      border-color: rgba(90, 140, 120, 0.40);
+      color: #8ab8aa;
+      background: rgba(5, 22, 18, 0.40);
+    }
+
+    .since-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #2a1a00;
+      background: #ffd166;
+      box-shadow: 0 0 12px rgba(255, 209, 102, 0.35);
+      padding: 0 5px;
+    }
+
+    .ui-help-link {
+      width: auto;
+      margin-top: 0;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(4, 18, 16, 0.75);
+      color: #d8ffea;
+      padding: 5px 10px;
+      font-size: 0.7rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .ui-help-link:hover {
+      border-color: var(--line-strong);
+      box-shadow: 0 0 10px rgba(45, 255, 157, 0.18);
     }
 
     .tod-mark {
@@ -284,6 +382,7 @@
       align-items: center;
       gap: 8px;
       flex-wrap: wrap;
+      position: relative;
     }
 
     .mode-presets {
@@ -353,6 +452,107 @@
     .mim-indicator,
     .loop-indicator {
       white-space: nowrap;
+    }
+
+    .help-modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(1, 8, 7, 0.78);
+      z-index: 40;
+      padding: 18px;
+    }
+
+    .help-modal.open {
+      display: flex;
+    }
+
+    .help-panel {
+      width: min(920px, 100%);
+      max-height: min(86vh, 920px);
+      overflow: auto;
+      border: 1px solid var(--line-strong);
+      border-radius: 14px;
+      background: rgba(2, 15, 12, 0.98);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+      padding: 16px;
+    }
+
+    .help-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .help-title {
+      font-size: 1rem;
+      color: var(--ink);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .help-close {
+      width: auto;
+      margin-top: 0;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(6, 24, 20, 0.95);
+      color: var(--ink);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .help-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(220px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .help-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(3, 16, 13, 0.92);
+      font-size: 0.8rem;
+      line-height: 1.45;
+      color: #c6f6df;
+    }
+
+    .help-card strong {
+      display: block;
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #e6fff3;
+      margin-bottom: 4px;
+    }
+
+    .help-meta {
+      margin-top: 10px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .changelog-version {
+      color: #e6fff3;
+      font-weight: 700;
+    }
+
+    .changelog-note {
+      display: block;
+      margin-left: 8px;
+      color: #c6f6df;
+    }
+
+    .changelog-note.new {
+      color: #ffe9b0;
     }
 
     .mode-btn::before {
@@ -427,6 +627,207 @@
       justify-content: center;
       padding: 7px 8px;
       gap: 0;
+    }
+
+    .settings-anchor {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .settings-btn {
+      border-radius: 12px;
+      border: 1px solid rgba(97, 219, 191, 0.45);
+      background: linear-gradient(145deg, rgba(8, 34, 30, 0.9), rgba(4, 16, 14, 0.95));
+      box-shadow: inset 0 0 0 1px rgba(45, 255, 157, 0.1);
+    }
+
+    .settings-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 12px var(--accent-shadow), inset 0 0 0 1px rgba(45, 255, 157, 0.14);
+    }
+
+    .settings-panel {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      z-index: 30;
+      width: min(320px, calc(100vw - 48px));
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(97, 219, 191, 0.42);
+      background: linear-gradient(160deg, rgba(5, 18, 16, 0.97), rgba(3, 10, 12, 0.98));
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.38), 0 0 18px rgba(45, 255, 157, 0.12);
+      backdrop-filter: blur(12px);
+      display: none;
+    }
+
+    .settings-panel.open {
+      display: block;
+    }
+
+    .settings-panel::before {
+      content: "";
+      position: absolute;
+      top: -7px;
+      right: 14px;
+      width: 12px;
+      height: 12px;
+      border-left: 1px solid rgba(97, 219, 191, 0.42);
+      border-top: 1px solid rgba(97, 219, 191, 0.42);
+      background: rgba(5, 18, 16, 0.98);
+      transform: rotate(45deg);
+    }
+
+    .settings-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .settings-panel-title {
+      font-size: 0.82rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--neon);
+    }
+
+    .settings-panel-subtitle {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    .settings-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .settings-section {
+      border: 1px solid rgba(97, 219, 191, 0.18);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(5, 20, 18, 0.72);
+    }
+
+    .settings-section-label {
+      margin-bottom: 8px;
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #bfffdc;
+    }
+
+    .settings-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .settings-action-btn {
+      flex: 1 1 120px;
+      border: 1px solid rgba(97, 219, 191, 0.35);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: rgba(6, 23, 19, 0.85);
+      color: #d9ffe9;
+      font: inherit;
+      font-size: 0.74rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    .settings-action-btn:hover,
+    .settings-action-btn:focus-visible {
+      border-color: var(--line-strong);
+      box-shadow: 0 0 12px rgba(45, 255, 157, 0.14);
+      outline: none;
+    }
+
+    .settings-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 7px 0;
+      color: #d7ffe8;
+      font-size: 0.78rem;
+    }
+
+    .settings-toggle + .settings-toggle {
+      border-top: 1px solid rgba(97, 219, 191, 0.12);
+    }
+
+    .settings-toggle-copy {
+      display: grid;
+      gap: 3px;
+    }
+
+    .settings-toggle-copy strong {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #d7ffe8;
+    }
+
+    .settings-toggle-copy span {
+      font-size: 0.68rem;
+      color: var(--muted);
+    }
+
+    .settings-toggle input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--neon);
+      cursor: pointer;
+      flex: 0 0 18px;
+    }
+
+    .settings-preset-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .settings-preset-btn {
+      flex: 1 1 82px;
+      min-width: 0;
+      border: 1px solid rgba(97, 219, 191, 0.3);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: rgba(6, 23, 19, 0.84);
+      color: #d7ffe8;
+      font: inherit;
+      font-size: 0.74rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    .settings-preset-btn:hover,
+    .settings-preset-btn:focus-visible {
+      border-color: var(--line-strong);
+      outline: none;
+    }
+
+    .settings-preset-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 12px var(--accent-shadow);
+    }
+
+    @media (max-width: 760px) {
+      .header-row {
+        padding-right: 0;
+      }
+
+      .header-settings {
+        position: static;
+        margin-left: auto;
+        margin-bottom: 8px;
+      }
     }
 
     .sr-only {
@@ -596,6 +997,117 @@
 
     .status.error { color: var(--danger); }
 
+    .action-live-status {
+      margin: 4px 0 8px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 6px 10px;
+      background: rgba(2, 18, 14, 0.72);
+    }
+
+    .action-timeline {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      max-height: 160px;
+      overflow: auto;
+      background: rgba(1, 12, 10, 0.82);
+    }
+
+    .action-timeline-row {
+      display: grid;
+      grid-template-columns: 82px 1fr;
+      gap: 8px;
+      font-size: 0.8rem;
+      padding: 2px 0;
+      color: #bdebd8;
+      border-bottom: 1px dashed rgba(76, 132, 112, 0.22);
+    }
+
+    .action-timeline-row:last-child {
+      border-bottom: none;
+    }
+
+    .action-timeline-time {
+      color: var(--muted);
+    }
+
+    .action-pending {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      max-height: 150px;
+      overflow: auto;
+      background: rgba(1, 12, 10, 0.82);
+      font-size: 0.78rem;
+      line-height: 1.38;
+      color: #bdebd8;
+    }
+
+    .action-pending-meta {
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .action-pending-row {
+      padding: 2px 0;
+      border-bottom: 1px dashed rgba(76, 132, 112, 0.22);
+    }
+
+    .action-pending-row:last-child {
+      border-bottom: none;
+    }
+
+    .voice-adapter-panel {
+      margin: 4px 0 8px;
+      font-size: 0.76rem;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 6px 10px;
+      background: rgba(2, 18, 14, 0.72);
+    }
+
+    .voice-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: baseline;
+    }
+
+    .voice-key {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 0.7rem;
+    }
+
+    .voice-val {
+      color: #bdebd8;
+    }
+
+    .voice-val.voice-enabled {
+      color: #5affaa;
+    }
+
+    .voice-val.voice-disabled {
+      color: var(--muted);
+    }
+
+    .voice-val.voice-locked {
+      color: rgba(255, 195, 211, 0.72);
+    }
+
     .project-wrap {
       display: grid;
       grid-template-columns: 96px 1fr;
@@ -612,6 +1124,11 @@
       place-items: center;
     }
 
+    .progress-ring.live {
+      animation: progressLivePulse 1.8s ease-in-out infinite;
+      box-shadow: 0 0 0 1px rgba(90, 255, 170, 0.24), 0 0 14px rgba(90, 255, 170, 0.18);
+    }
+
     .progress-ring-inner {
       width: 74px;
       height: 74px;
@@ -623,6 +1140,18 @@
       font-weight: 700;
     }
 
+    .progress-ring.live .progress-ring-inner {
+      border-color: rgba(90, 255, 170, 0.58);
+      color: #c6ffe3;
+      text-shadow: 0 0 9px rgba(90, 255, 170, 0.36);
+    }
+
+    @keyframes progressLivePulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.03); }
+      100% { transform: scale(1); }
+    }
+
     .project-meta {
       font-size: 0.84rem;
       line-height: 1.45;
@@ -632,6 +1161,61 @@
     .project-meta strong {
       color: var(--ink);
       font-size: 0.94rem;
+    }
+
+    .progress-dual {
+      margin-top: 8px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .progress-track {
+      display: grid;
+      gap: 4px;
+    }
+
+    .progress-track-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .progress-track-bar {
+      height: 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(5, 20, 18, 0.78);
+      overflow: hidden;
+    }
+
+    .progress-track-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      transition: width 240ms ease;
+    }
+
+    .progress-track-fill.base {
+      background: linear-gradient(90deg, rgba(84, 255, 168, 0.82), rgba(39, 216, 139, 0.95));
+    }
+
+    .progress-track-fill.live {
+      background: linear-gradient(90deg, rgba(88, 211, 255, 0.78), rgba(76, 160, 255, 0.95));
+    }
+
+    .project-exec-summary {
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(3, 16, 13, 0.94);
+      color: #d2ffe7;
+      padding: 8px;
+      font-size: 0.81rem;
+      line-height: 1.45;
     }
 
     .trend { margin-left: 8px; font-weight: 700; }
@@ -735,6 +1319,100 @@
       padding: 8px;
       font-size: 0.82rem;
       line-height: 1.4;
+    }
+
+    .posture-inset {
+      margin: 10px 0 16px 0;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .posture-inset-label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--dim);
+      margin-bottom: 6px;
+    }
+
+    .query-console-card {
+      padding: 8px;
+    }
+
+    .query-console-card h2 {
+      margin-bottom: 6px;
+    }
+
+    .query-hint {
+      margin: 0 0 6px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+
+    .query-console-layout {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 8px;
+      align-items: start;
+    }
+    .query-presets {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin: 0;
+    }
+    .btn-query {
+      width: 42px;
+      height: 30px;
+      background: rgba(0, 200, 150, 0.08);
+      border: 1px solid rgba(0, 200, 150, 0.28);
+      color: var(--accent);
+      padding: 0;
+      font-size: 0.66rem;
+      line-height: 1;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      letter-spacing: 0.03em;
+      font-weight: 700;
+    }
+    .btn-query:hover { background: rgba(0, 200, 150, 0.18); }
+    .btn-query:disabled { opacity: 0.4; cursor: not-allowed; }
+    .query-result {
+      min-width: 0;
+    }
+    .query-meta {
+      min-height: 0;
+      margin: 0 0 4px;
+      font-size: 0.72rem;
+    }
+    .query-output {
+      font-size: 0.71rem;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.07);
+      padding: 8px;
+      border-radius: 4px;
+      min-height: 72px;
+      max-height: 150px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--dim);
+      margin-top: 0;
+    }
+
+    @media (max-width: 700px) {
+      .query-console-layout {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .query-presets {
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
     }
 
     .bus-grid {
@@ -1115,6 +1793,58 @@
 <body>
   <main class="shell">
     <header>
+      <div class="header-settings">
+        <div class="settings-anchor">
+          <button id="uiSettingsBtn" class="probe-btn icon-only settings-btn" type="button" aria-label="Console settings" aria-haspopup="dialog" aria-expanded="false" title="Console settings">
+            <span class="probe-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20"><path d="M10 2.7L11.4 4.7L13.8 4.6L14.5 6.9L16.7 7.9L16 10L16.7 12.1L14.5 13.1L13.8 15.4L11.4 15.3L10 17.3L8.6 15.3L6.2 15.4L5.5 13.1L3.3 12.1L4 10L3.3 7.9L5.5 6.9L6.2 4.6L8.6 4.7Z"></path><circle cx="10" cy="10" r="2.3"></circle></svg>
+            </span>
+            <span class="sr-only">Open console settings</span>
+          </button>
+          <div id="uiSettingsPanel" class="settings-panel" aria-hidden="true">
+            <div class="settings-panel-header">
+              <div>
+                <div class="settings-panel-title">Console Settings</div>
+                <div class="settings-panel-subtitle">Quick controls for the live deck.</div>
+              </div>
+            </div>
+            <div class="settings-grid">
+              <div class="settings-section">
+                <div class="settings-section-label">Quick Actions</div>
+                <div class="settings-actions">
+                  <button id="settingsRefreshBtn" class="settings-action-btn" type="button">Refresh Now</button>
+                  <button id="settingsHelpBtn" class="settings-action-btn" type="button">UI Help</button>
+                </div>
+              </div>
+              <div class="settings-section">
+                <div class="settings-section-label">Live Polling</div>
+                <label class="settings-toggle">
+                  <span class="settings-toggle-copy">
+                    <strong>Log stream polling</strong>
+                    <span>Keep API log snapshots refreshing every 3 seconds.</span>
+                  </span>
+                  <input id="settingsLogsToggle" type="checkbox">
+                </label>
+                <label class="settings-toggle">
+                  <span class="settings-toggle-copy">
+                    <strong>Project status polling</strong>
+                    <span>Keep marker, cadence, voice, and steady-state cards updating live.</span>
+                  </span>
+                  <input id="settingsProjectToggle" type="checkbox">
+                </label>
+              </div>
+              <div class="settings-section">
+                <div class="settings-section-label">View Preset</div>
+                <div class="settings-preset-row">
+                  <button id="settingsPresetFull" class="settings-preset-btn" type="button">Full</button>
+                  <button id="settingsPresetMim" class="settings-preset-btn" type="button">MIM</button>
+                  <button id="settingsPresetOps" class="settings-preset-btn" type="button">Ops</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="header-row">
         <div>
           <div class="kicker">TOD // Neural Ops Deck</div>
@@ -1128,6 +1858,17 @@
             </span>
             <span>TOD Command Console</span>
           </h1>
+          <div class="title-meta">
+            <span id="uiBuildChip" class="ui-build-chip">UI build: loading</span>
+            <span id="uiSinceChip" class="ui-build-chip since">Since last build: --</span>
+            <span id="uiPortChip" class="ui-build-chip">Port: --</span>
+            <span id="cadenceHealthChip" class="ui-build-chip">Cadence: --</span>
+            <span id="steadyStateChip" class="ui-build-chip">Steady: --</span>
+            <span id="regressionChip" class="ui-build-chip">Regression: --</span>
+            <span id="requestChip" class="ui-build-chip">Latest Req: --</span>
+            <span id="voiceChip" class="ui-build-chip health-scaffold">Voice: --</span>
+            <button id="uiHelpBtn" class="ui-help-link" type="button">UI Help</button>
+          </div>
         </div>
         <div class="probe-wrap">
           <div class="mode-presets" aria-label="Display presets">
@@ -1166,7 +1907,7 @@
             </span>
             <span class="sr-only">Are You Awake?</span>
           </button>
-          <div id="probeReadout" class="probe-readout">status: unknown</div>
+          <div id="probeReadout" class="probe-readout">MIM probe: unknown</div>
           <div id="todIndicator" class="tod-indicator" aria-live="polite">
             <span class="status-glyph" aria-hidden="true">
               <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.1"></circle><path d="M10 5.6v8.8M5.6 10h8.8"></path></svg>
@@ -1189,22 +1930,26 @@
     </header>
 
     <section class="grid">
-      <div class="card span-3">
-        <h2>System Posture</h2>
-        <div class="posture-grid">
-          <div class="summary-item"><span class="k">Agent</span><span id="postureAgent" class="v">-</span></div>
-          <div class="summary-item"><span class="k">Alert</span><span id="postureAlert" class="v">-</span></div>
-          <div class="summary-item"><span class="k">Active Goals</span><span id="postureGoals" class="v">0</span></div>
-          <div class="summary-item"><span class="k">Active Executions</span><span id="postureExecutions" class="v">0</span></div>
-          <div class="summary-item"><span class="k">Pending Confirmations</span><span id="posturePending" class="v">0</span></div>
-          <div class="summary-item"><span class="k">Blocked Items</span><span id="postureBlocked" class="v">0</span></div>
-          <div class="summary-item"><span class="k">Capabilities</span><span id="postureCapabilities" class="v">0</span></div>
-          <div class="summary-item"><span class="k">Executor Health</span><span id="postureHealth" class="v">-</span></div>
+      <div class="card query-console-card">
+        <h2>TOD Query Console</h2>
+        <div class="query-hint">Read-only snapshots. Free-form query is a future add-on.</div>
+        <div class="query-console-layout">
+          <div class="query-presets" aria-label="TOD query shortcuts">
+            <button class="btn-query" type="button" title="Reliability" aria-label="Reliability" onclick="runQueryConsole('get-reliability','Reliability')">REL</button>
+            <button class="btn-query" type="button" title="Engineering Loop" aria-label="Engineering Loop" onclick="runQueryConsole('get-engineering-loop-summary','Engineering Loop')">LOOP</button>
+            <button class="btn-query" type="button" title="Research" aria-label="Research" onclick="runQueryConsole('get-research','Research')">RCH</button>
+            <button class="btn-query" type="button" title="Journal" aria-label="Journal" onclick="runQueryConsole('show-journal','Journal')">JRNL</button>
+            <button class="btn-query" type="button" title="Capabilities" aria-label="Capabilities" onclick="runQueryConsole('get-capabilities','Capabilities')">CAP</button>
+            <button class="btn-query" type="button" title="Version" aria-label="Version" onclick="runQueryConsole('get-version','Version')">VER</button>
+          </div>
+          <div class="query-result">
+            <div id="queryMeta" class="log-meta query-meta"></div>
+            <pre id="queryOutput" class="query-output">Select a query above to view a live TOD diagnostic snapshot.</pre>
+          </div>
         </div>
-        <div id="postureSummary" class="posture-summary">SYSTEM POSTURE | Awaiting state bus snapshot...</div>
       </div>
 
-      <div class="card span-3">
+      <div class="card span-2">
         <h2>Current Project Marker</h2>
         <div class="project-wrap">
           <div id="progressRing" class="progress-ring">
@@ -1213,7 +1958,18 @@
           <div>
             <label for="objectiveSelect">Tracked Objective</label>
             <select id="objectiveSelect"></select>
+            <div id="progressDual" class="progress-dual">
+              <div class="progress-track">
+                <div class="progress-track-head"><span>Base Funnel Progress</span><span id="baseProgressLabel">--</span></div>
+                <div class="progress-track-bar"><div id="baseProgressFill" class="progress-track-fill base"></div></div>
+              </div>
+              <div class="progress-track">
+                <div class="progress-track-head"><span>Live Cadence Throughput</span><span id="liveThroughputLabel">--</span></div>
+                <div class="progress-track-bar"><div id="liveThroughputFill" class="progress-track-fill live"></div></div>
+              </div>
+            </div>
             <div id="projectMeta" class="project-meta">Loading project telemetry...</div>
+            <div id="todExecutiveSummary" class="project-exec-summary">Building live executive summary...</div>
             <div id="engineeringSignalMeta" class="project-meta">Engineering signal: loading...</div>
             <div id="taskFunnel" class="funnel"></div>
           </div>
@@ -1292,6 +2048,10 @@
               <h3>Action Output</h3>
               <button id="togglePromptBtn" class="pane-toggle" type="button">Hide Prompt</button>
             </div>
+            <div id="actionLiveStatus" class="action-live-status">Live: waiting for telemetry...</div>
+            <div id="actionTimeline" class="action-timeline">No recent listener timeline yet.</div>
+            <div id="actionPending" class="action-pending">Pending task queue unavailable.</div>
+            <div id="voiceAdapterPanel" class="voice-adapter-panel">Voice adapter: loading...</div>
             <pre id="output">No output yet.</pre>
           </div>
         </div>
@@ -1301,6 +2061,23 @@
         <h2>Shared State Bus</h2>
         <button id="loadBusBtn" class="btn-secondary">Refresh State Bus</button>
         <div id="busMeta" class="log-meta"></div>
+        <div class="log-meta">Refresh reads a state snapshot only (no writes), but it can be heavy while tasks are actively executing.</div>
+
+        <div class="posture-inset">
+          <div class="posture-inset-label">System Posture</div>
+          <div class="posture-grid">
+            <div class="summary-item"><span class="k">Agent</span><span id="postureAgent" class="v">-</span></div>
+            <div class="summary-item"><span class="k">Alert</span><span id="postureAlert" class="v">-</span></div>
+            <div class="summary-item"><span class="k">Active Goals</span><span id="postureGoals" class="v">0</span></div>
+            <div class="summary-item"><span class="k">Active Executions</span><span id="postureExecutions" class="v">0</span></div>
+            <div class="summary-item"><span class="k">Pending Confirmations</span><span id="posturePending" class="v">0</span></div>
+            <div class="summary-item"><span class="k">Blocked Items</span><span id="postureBlocked" class="v">0</span></div>
+            <div class="summary-item"><span class="k">Capabilities</span><span id="postureCapabilities" class="v">0</span></div>
+            <div class="summary-item"><span class="k">Executor Health</span><span id="postureHealth" class="v">-</span></div>
+          </div>
+          <div id="postureSummary" class="posture-summary">SYSTEM POSTURE | Refresh state bus to populate.</div>
+          <div id="postureLegend" class="log-meta">Zeros between tasks are normal — refresh state bus for a live snapshot.</div>
+        </div>
 
         <div class="bus-grid">
           <div class="bus-card"><span class="bus-k">Mode</span><span id="busMode" class="bus-v">-</span></div>
@@ -1335,6 +2112,7 @@
         <div id="busEngineerRunHistory" class="bus-list">No engineer runs recorded.</div>
 
         <label>Scorecard Trend</label>
+        <div class="log-meta">Trend line is oldest to latest; values come from engineering scorecard history.</div>
         <div class="sparkline-wrap">
           <svg id="busScoreSparkline" class="sparkline" viewBox="0 0 260 70" preserveAspectRatio="none" role="img" aria-label="Score trend sparkline">
             <text x="8" y="38">No score trend yet.</text>
@@ -1345,6 +2123,7 @@
 
       <div class="card span-3">
         <h2>Engineering Loop</h2>
+        <div class="log-meta">Shows engineering-cycle health, maturity, approval pressure, and top penalties affecting delivery speed.</div>
         <div class="summary-grid">
           <div class="summary-item"><span class="k">Current Run</span><span id="loopCurrentRun" class="v">-</span></div>
           <div class="summary-item"><span class="k">Last Cycle</span><span id="loopLastCycle" class="v">-</span></div>
@@ -1389,26 +2168,52 @@
 
         <label>Execution Events</label>
         <div id="execEvents" class="exec-events">No execution events in current window.</div>
+        <div class="log-meta">Time is your local timestamp. Latency ms is request round-trip duration.</div>
 
         <table>
           <thead>
             <tr>
-              <th>Time</th>
+              <th>Time (Local)</th>
               <th>Method</th>
               <th>Endpoint</th>
               <th>Status</th>
-              <th>Ms</th>
+              <th>Latency ms</th>
               <th>Error</th>
             </tr>
           </thead>
           <tbody id="callsBody"></tbody>
         </table>
 
-        <label for="logs" style="margin-top:10px;">Raw Log Stream</label>
+        <label for="logs" style="margin-top:10px;">Raw Log Stream (Newest First)</label>
         <pre id="logs">No logs loaded yet.</pre>
       </div>
     </section>
   </main>
+
+  <div id="uiHelpModal" class="help-modal" aria-hidden="true">
+    <div class="help-panel" role="dialog" aria-modal="true" aria-labelledby="uiHelpTitle">
+      <div class="help-header">
+        <div id="uiHelpTitle" class="help-title">TOD Console Help</div>
+        <button id="uiHelpCloseBtn" class="help-close" type="button">Close [Esc]</button>
+      </div>
+      <div class="help-grid">
+        <div class="help-card"><strong>Current Actions</strong>Action Output shows live request id, execution status, gate and validator, plus comms state (active/frozen) from heartbeat age versus stall threshold.</div>
+        <div class="help-card"><strong>System Posture</strong>Counters are live workload pressure: goals, active executions, pending confirmations, blocked items, capabilities, and executor health. All zeros often means steady idle between handoffs.</div>
+        <div class="help-card"><strong>Top Probe Bar</strong>MIM probe reflects ping reachability only. TOD Active reflects local UI/API activity. They can differ and both may still be healthy.</div>
+        <div class="help-card"><strong>Action Output + Pending</strong>Timeline is newest-first. Pending queue predicts upcoming objective task ids and shrinks as completions are recorded.</div>
+        <div class="help-card"><strong>Shared State Bus</strong>Refresh reads a snapshot only. It does not write commands, but can be heavy during active execution windows.</div>
+        <div class="help-card"><strong>Scorecard Trend</strong>Sparkline is oldest to latest scorecard samples from the engineering loop; direction summarizes improving/flat/declining trend.</div>
+        <div class="help-card"><strong>Engineering Loop</strong>Shows run/cycle state, maturity band, approval pressure, penalties, and phase trends that affect delivery velocity.</div>
+        <div class="help-card"><strong>MIM Call Telemetry</strong>Time is local timestamp when request completed. Latency ms is round-trip request duration.</div>
+        <div class="help-card"><strong>Raw Log Stream</strong>Rendered newest-first for fast triage; table and execution events summarize the same telemetry window.</div>
+        <div class="help-card"><strong>Quick Refresh Reliability</strong>Safe refresh mode now reloads status panels without dispatching a heavy TOD action run.</div>
+        <div class="help-card"><strong>Share Artifacts</strong>Open uses inline preview endpoint; Download keeps attachment behavior. Refresh updates available artifacts and timestamps.</div>
+        <div class="help-card"><strong>Executive Summary</strong>Narrative under Current Project Marker includes objective, percent complete, tasks remaining, ETA estimate, purpose text, and health signal.</div>
+        <div class="help-card"><strong>UI Changelog</strong><div id="uiChangelog">Loading build history...</div></div>
+      </div>
+      <div id="uiHelpMeta" class="help-meta">Build metadata loading...</div>
+    </div>
+  </div>
 
   <script>
     const runBtn = document.getElementById('runBtn');
@@ -1419,6 +2224,32 @@
     const refreshShareBtn = document.getElementById('refreshShareBtn');
     const shareMetaEl = document.getElementById('shareMeta');
     const shareLinksEl = document.getElementById('shareLinks');
+    const actionLiveStatusEl = document.getElementById('actionLiveStatus');
+    const actionTimelineEl = document.getElementById('actionTimeline');
+    const actionPendingEl = document.getElementById('actionPending');
+    const uiBuildChipEl = document.getElementById('uiBuildChip');
+    const uiSinceChipEl = document.getElementById('uiSinceChip');
+    const uiPortChipEl = document.getElementById('uiPortChip');
+    const cadenceHealthChipEl = document.getElementById('cadenceHealthChip');
+    const steadyStateChipEl = document.getElementById('steadyStateChip');
+    const regressionChipEl = document.getElementById('regressionChip');
+    const requestChipEl = document.getElementById('requestChip');
+    const voiceChipEl = document.getElementById('voiceChip');
+    const voiceAdapterPanelEl = document.getElementById('voiceAdapterPanel');
+    const uiHelpBtnEl = document.getElementById('uiHelpBtn');
+    const uiSettingsBtnEl = document.getElementById('uiSettingsBtn');
+    const uiSettingsPanelEl = document.getElementById('uiSettingsPanel');
+    const settingsRefreshBtnEl = document.getElementById('settingsRefreshBtn');
+    const settingsHelpBtnEl = document.getElementById('settingsHelpBtn');
+    const settingsLogsToggleEl = document.getElementById('settingsLogsToggle');
+    const settingsProjectToggleEl = document.getElementById('settingsProjectToggle');
+    const settingsPresetFullEl = document.getElementById('settingsPresetFull');
+    const settingsPresetMimEl = document.getElementById('settingsPresetMim');
+    const settingsPresetOpsEl = document.getElementById('settingsPresetOps');
+    const uiHelpModalEl = document.getElementById('uiHelpModal');
+    const uiHelpCloseBtnEl = document.getElementById('uiHelpCloseBtn');
+    const uiHelpMetaEl = document.getElementById('uiHelpMeta');
+    const uiChangelogEl = document.getElementById('uiChangelog');
     const outputEl = document.getElementById('output');
     const loadBusBtn = document.getElementById('loadBusBtn');
     const busMetaEl = document.getElementById('busMeta');
@@ -1456,6 +2287,7 @@
     const postureCapabilitiesEl = document.getElementById('postureCapabilities');
     const postureHealthEl = document.getElementById('postureHealth');
     const postureSummaryEl = document.getElementById('postureSummary');
+    const postureLegendEl = document.getElementById('postureLegend');
     const loopCurrentRunEl = document.getElementById('loopCurrentRun');
     const loopLastCycleEl = document.getElementById('loopLastCycle');
     const loopThresholdStateEl = document.getElementById('loopThresholdState');
@@ -1470,7 +2302,12 @@
     const autoRefreshEl = document.getElementById('autoRefresh');
     const progressRingEl = document.getElementById('progressRing');
     const progressPctEl = document.getElementById('progressPct');
+    const baseProgressFillEl = document.getElementById('baseProgressFill');
+    const baseProgressLabelEl = document.getElementById('baseProgressLabel');
+    const liveThroughputFillEl = document.getElementById('liveThroughputFill');
+    const liveThroughputLabelEl = document.getElementById('liveThroughputLabel');
     const projectMetaEl = document.getElementById('projectMeta');
+    const todExecutiveSummaryEl = document.getElementById('todExecutiveSummary');
     const engineeringSignalMetaEl = document.getElementById('engineeringSignalMeta');
     const taskFunnelEl = document.getElementById('taskFunnel');
     const callsBodyEl = document.getElementById('callsBody');
@@ -1507,8 +2344,387 @@
     let todActiveUntilMs = 0;
     let compactModeEnabled = false;
     let compactProfile = 'mim';
+    let projectAutoRefreshEnabled = true;
     let actionPaneState = 'expanded';
     let actionPaneStateBeforeCompact = 'expanded';
+    let lastKnownTaskState = 'idle';
+    const UI_BUILD_VERSION = '2026.03.14-b9';
+    const UI_CHANGELOG = [
+      {
+        version: '2026.03.14-b5',
+        notes: [
+          'Added server-side cadence health telemetry (severity, idle time, p50/p95 cycle time, retry rate) to /api/project-status.',
+          'Action Live Status now includes cadence health signal for faster slow-vs-normal diagnosis while TOD is running.',
+          'Project Marker now shows Cadence Health line with severity, p95 cycle, idle seconds, and retry percent.'
+        ]
+      },
+      {
+        version: '2026.03.13-b4',
+        notes: [
+          'Live cadence visibility: detects TOD activity beyond the 200-entry journal funnel and surfaces it in executive summary and project meta.',
+          'MIM/TOD sync signal: compares latest MIM task request ID against TOD result ID; shows sync aligned or sync pending (N) in live status bar and pending queue.',
+          'Stability: fixed Write-JsonResponse ContentLength64 crash on committed responses; suppressed engineering-signal call in listener-only mode to prevent OutOfMemoryException on large state.json.'
+        ]
+      },
+      {
+        version: '2026.03.13-b3',
+        notes: [
+          'Replaced empty System Posture card with TOD Query Console (REL, LOOP, RCH, JRNL, CAP, VER presets).',
+          'System Posture moved inside Shared State Bus — populates on Refresh State Bus.',
+          'Query Console uses compact vertical icon rail + side results panel to minimize footprint.'
+        ]
+      },
+      {
+        version: '2026.03.13-b2',
+        notes: [
+          'Added in-app UI Help modal with panel-by-panel semantics.',
+          'Added header chips for active UI build and runtime port.',
+          'Added this changelog block for at-a-glance release deltas.'
+        ]
+      },
+      {
+        version: '2026.03.13-b1',
+        notes: [
+          'Action timeline switched to newest-first ordering.',
+          'Added pending queue under Action Output.',
+          'Made Quick Refresh Reliability run safe dashboard refresh instead of heavy action execution.',
+          'Added executive summary and state-bus refresh confirmation.',
+          'Fixed share Open links by adding inline preview endpoint.'
+        ]
+      }
+    ];
+
+    function renderUiChangelog() {
+      if (!uiChangelogEl) {
+        return;
+      }
+      const previousEntry = UI_CHANGELOG.length > 1 ? UI_CHANGELOG[1] : null;
+      const previousNotes = new Set(Array.isArray(previousEntry && previousEntry.notes) ? previousEntry.notes.map(item => String(item)) : []);
+      const rows = UI_CHANGELOG.map((item, idx) => {
+        const notes = Array.isArray(item.notes) ? item.notes : [];
+        const safeVersion = escapeHtml(item.version || 'unknown');
+        const noteRows = notes.map(note => {
+          const text = String(note);
+          const isNew = idx === 0 && !previousNotes.has(text);
+          return `<span class="changelog-note${isNew ? ' new' : ''}">- ${escapeHtml(text)}${isNew ? ' <span class="since-count">new</span>' : ''}</span>`;
+        }).join('');
+        return `<div style="margin-bottom:8px;"><span class="changelog-version">${safeVersion}</span>${noteRows}</div>`;
+      });
+      uiChangelogEl.innerHTML = rows.join('');
+    }
+
+    function computeSinceLastBuildDelta() {
+      const current = UI_CHANGELOG.length > 0 ? UI_CHANGELOG[0] : null;
+      const previous = UI_CHANGELOG.length > 1 ? UI_CHANGELOG[1] : null;
+      const currentNotes = Array.isArray(current && current.notes) ? current.notes.map(item => String(item)) : [];
+      const previousSet = new Set(Array.isArray(previous && previous.notes) ? previous.notes.map(item => String(item)) : []);
+      const added = currentNotes.filter(note => !previousSet.has(note));
+      return {
+        addedCount: added.length,
+        hasPrevious: Boolean(previous)
+      };
+    }
+
+    function initUiBuildMeta() {
+      const port = window.location && window.location.port ? window.location.port : '--';
+      if (uiBuildChipEl) {
+        uiBuildChipEl.textContent = `UI build: ${UI_BUILD_VERSION}`;
+      }
+      if (uiSinceChipEl) {
+        const delta = computeSinceLastBuildDelta();
+        if (!delta.hasPrevious) {
+          uiSinceChipEl.textContent = 'Since last build: baseline';
+        } else {
+          uiSinceChipEl.innerHTML = `Since last build: <span class="since-count">${delta.addedCount}</span> new`;
+        }
+      }
+      if (uiPortChipEl) {
+        uiPortChipEl.textContent = `Port: ${port}`;
+      }
+      if (cadenceHealthChipEl) {
+        cadenceHealthChipEl.textContent = 'Cadence: loading';
+        cadenceHealthChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-unknown');
+      }
+      if (steadyStateChipEl) {
+        steadyStateChipEl.textContent = 'Steady: loading';
+        steadyStateChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-unknown');
+      }
+      if (regressionChipEl) {
+        regressionChipEl.textContent = 'Regression: --';
+        regressionChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-unknown');
+      }
+      if (requestChipEl) {
+        requestChipEl.textContent = 'Latest Req: --';
+        requestChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-unknown');
+      }
+      if (voiceChipEl) {
+        voiceChipEl.classList.remove('health-ok', 'health-warning', 'health-scaffold');
+        voiceChipEl.classList.add('health-scaffold');
+        voiceChipEl.textContent = 'Voice: --';
+      }
+      if (uiHelpMetaEl) {
+        uiHelpMetaEl.textContent = `TOD Command Console build ${UI_BUILD_VERSION} on localhost:${port}.`; 
+      }
+      renderUiChangelog();
+    }
+
+    function renderCadenceHealthChip(cadenceHealth) {
+      if (!cadenceHealthChipEl) {
+        return;
+      }
+
+      const severityRaw = cadenceHealth && cadenceHealth.available
+        ? String(cadenceHealth.severity || 'unknown').toLowerCase()
+        : 'unknown';
+      const severity = ['ok', 'warning', 'critical'].includes(severityRaw) ? severityRaw : 'unknown';
+
+      cadenceHealthChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-unknown');
+      cadenceHealthChipEl.classList.add(`health-${severity}`);
+
+      const p95 = cadenceHealth && cadenceHealth.cadence && Number.isFinite(Number(cadenceHealth.cadence.p95_sec))
+        ? `${Number(cadenceHealth.cadence.p95_sec)}s`
+        : '-';
+
+      cadenceHealthChipEl.textContent = `Cadence: ${severity.toUpperCase()} p95:${p95}`;
+    }
+
+    function renderSteadyStateChip(steadyState) {
+      if (!steadyStateChipEl) {
+        return;
+      }
+
+      const statusRaw = steadyState && steadyState.available
+        ? String(steadyState.status || 'unknown').toLowerCase()
+        : 'unknown';
+      const status = ['ok', 'warning', 'critical'].includes(statusRaw) ? statusRaw : 'unknown';
+      const passed = Number(steadyState && steadyState.passed);
+      const total = Number(steadyState && steadyState.total);
+      const score = Number.isFinite(passed) && Number.isFinite(total) && total > 0
+        ? `${passed}/${total}`
+        : '--';
+
+      steadyStateChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-unknown');
+      steadyStateChipEl.classList.add(`health-${status}`);
+      steadyStateChipEl.textContent = `Steady: ${status.toUpperCase()} ${score}`;
+      steadyStateChipEl.title = steadyState && steadyState.summary ? String(steadyState.summary) : 'Steady-state signal unavailable';
+    }
+
+    function renderRegressionChip(steadyState) {
+      if (!regressionChipEl) {
+        return;
+      }
+
+      const available = Boolean(steadyState && steadyState.available);
+      const passed = Number(steadyState && steadyState.passed);
+      const total = Number(steadyState && steadyState.total);
+      const failed = Number(steadyState && steadyState.failed);
+      const hasScore = available && Number.isFinite(passed) && Number.isFinite(total) && total > 0;
+      const status = hasScore
+        ? (Number.isFinite(failed) && failed <= 0 ? 'ok' : 'critical')
+        : 'unknown';
+
+      regressionChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-unknown');
+      regressionChipEl.classList.add(`health-${status}`);
+      regressionChipEl.textContent = hasScore ? `Regression: ${passed}/${total}` : 'Regression: --';
+      const generatedAt = steadyState && steadyState.regression_generated_at
+        ? formatRelativeAge(String(steadyState.regression_generated_at))
+        : 'n/a';
+      regressionChipEl.title = hasScore
+        ? `Failed: ${Number.isFinite(failed) ? failed : '-'} | generated ${generatedAt}`
+        : 'Regression score unavailable';
+    }
+
+    function renderRequestChip(listenerActivity) {
+      if (!requestChipEl) {
+        return;
+      }
+
+      const latestRequest = listenerActivity && listenerActivity.latest_request_id
+        ? String(listenerActivity.latest_request_id)
+        : '';
+      const isAvailable = latestRequest.length > 0;
+
+      requestChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-unknown');
+      requestChipEl.classList.add(isAvailable ? 'health-ok' : 'health-unknown');
+      requestChipEl.textContent = isAvailable ? `Latest Req: ${latestRequest}` : 'Latest Req: --';
+
+      const latestAge = listenerActivity && listenerActivity.latest_timestamp
+        ? formatRelativeAge(String(listenerActivity.latest_timestamp))
+        : 'n/a';
+      requestChipEl.title = isAvailable
+        ? `Last update: ${latestAge}`
+        : 'No listener request id available';
+    }
+
+    function renderVoiceChip(voiceAdapter) {
+      if (!voiceChipEl) return;
+      const available = voiceAdapter && voiceAdapter.available;
+      const enabled = available && voiceAdapter.enabled;
+      const micActive = enabled && voiceAdapter.microphone_active;
+      const mode = voiceAdapter && voiceAdapter.mode ? voiceAdapter.mode : 'dry_run';
+      voiceChipEl.classList.remove('health-ok', 'health-warning', 'health-scaffold');
+      if (!available) {
+        voiceChipEl.classList.add('health-scaffold');
+        voiceChipEl.textContent = 'Voice: --';
+      } else if (!enabled) {
+        voiceChipEl.classList.add('health-scaffold');
+        voiceChipEl.textContent = `Voice: ${mode}`;
+      } else if (micActive) {
+        voiceChipEl.classList.add('health-ok');
+        voiceChipEl.textContent = 'Voice: LIVE';
+      } else {
+        voiceChipEl.classList.add('health-ok');
+        voiceChipEl.textContent = 'Voice: ON (start listener)';
+      }
+    }
+
+    function renderVoiceAdapterPanel(voiceAdapter) {
+      if (!voiceAdapterPanelEl) return;
+      if (!voiceAdapter || !voiceAdapter.available) {
+        voiceAdapterPanelEl.innerHTML = '<span class="voice-key">Voice Adapter</span> <span class="voice-val voice-disabled">scaffold unavailable</span>';
+        return;
+      }
+      const mode = voiceAdapter.mode || 'dry_run';
+      const enabledLabel = voiceAdapter.enabled ? 'enabled' : 'scaffold (disabled)';
+      const microphone = voiceAdapter.microphone_active
+        ? 'LIVE'
+        : (voiceAdapter.allow_microphone ? 'ready (start listener)' : 'locked');
+      const camera = voiceAdapter.allow_camera
+        ? (voiceAdapter.camera_active ? 'active' : 'allowed')
+        : 'locked';
+      const ptt = voiceAdapter.require_push_to_talk ? 'PTT:required' : 'PTT:off';
+      const wake = voiceAdapter.wake_phrase ? `wake:"${escapeHtml(voiceAdapter.wake_phrase)}"` : '';
+      const queued = Number(voiceAdapter.queued_events) || 0;
+      const lastIntent = voiceAdapter.last_intent ? `last-intent:${escapeHtml(voiceAdapter.last_intent)}` : 'last-intent:none';
+      const lastTranscript = voiceAdapter.last_transcript ? `"${escapeHtml(voiceAdapter.last_transcript)}"` : '';
+      const micClass = voiceAdapter.allow_microphone ? 'voice-val' : 'voice-val voice-locked';
+      const camClass = voiceAdapter.allow_camera ? 'voice-val' : 'voice-val voice-locked';
+      voiceAdapterPanelEl.innerHTML =
+        `<div class="voice-row">` +
+        `<span class="voice-key">Voice Adapter</span>` +
+        `<span class="voice-val ${voiceAdapter.enabled ? 'voice-enabled' : 'voice-disabled'}">${escapeHtml(enabledLabel)}</span>` +
+        `<span class="voice-val">mode:${escapeHtml(mode)}</span>` +
+        `<span class="${micClass}">mic:${escapeHtml(microphone)}</span>` +
+        `<span class="${camClass}">cam:${escapeHtml(camera)}</span>` +
+        `<span class="voice-val">${ptt}</span>` +
+        (wake ? `<span class="voice-val">${wake}</span>` : '') +
+        `<span class="voice-val">queued:${queued}</span>` +
+        `<span class="voice-val">${lastIntent}</span>` +
+        (lastTranscript ? `<span class="voice-val">${lastTranscript}</span>` : '') +
+        `</div>`;
+    }
+
+    function openUiHelp() {
+      if (!uiHelpModalEl) {
+        return;
+      }
+      uiHelpModalEl.classList.add('open');
+      uiHelpModalEl.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeUiHelp() {
+      if (!uiHelpModalEl) {
+        return;
+      }
+      uiHelpModalEl.classList.remove('open');
+      uiHelpModalEl.setAttribute('aria-hidden', 'true');
+    }
+
+    function syncSettingsPanelState() {
+      if (settingsLogsToggleEl && autoRefreshEl) {
+        settingsLogsToggleEl.checked = String(autoRefreshEl.value || 'on') === 'on';
+      }
+      if (settingsProjectToggleEl) {
+        settingsProjectToggleEl.checked = projectAutoRefreshEnabled;
+      }
+      if (settingsPresetFullEl) {
+        settingsPresetFullEl.classList.toggle('active', !compactModeEnabled);
+      }
+      if (settingsPresetMimEl) {
+        settingsPresetMimEl.classList.toggle('active', compactModeEnabled && compactProfile === 'mim');
+      }
+      if (settingsPresetOpsEl) {
+        settingsPresetOpsEl.classList.toggle('active', compactModeEnabled && compactProfile === 'ops');
+      }
+    }
+
+    function openSettingsPanel() {
+      if (!uiSettingsPanelEl || !uiSettingsBtnEl) {
+        return;
+      }
+      syncSettingsPanelState();
+      uiSettingsPanelEl.classList.add('open');
+      uiSettingsPanelEl.setAttribute('aria-hidden', 'false');
+      uiSettingsBtnEl.classList.add('active');
+      uiSettingsBtnEl.setAttribute('aria-expanded', 'true');
+    }
+
+    function closeSettingsPanel() {
+      if (!uiSettingsPanelEl || !uiSettingsBtnEl) {
+        return;
+      }
+      uiSettingsPanelEl.classList.remove('open');
+      uiSettingsPanelEl.setAttribute('aria-hidden', 'true');
+      uiSettingsBtnEl.classList.remove('active');
+      uiSettingsBtnEl.setAttribute('aria-expanded', 'false');
+    }
+
+    function toggleSettingsPanel() {
+      if (!uiSettingsPanelEl || !uiSettingsBtnEl) {
+        return;
+      }
+      if (uiSettingsPanelEl.classList.contains('open')) {
+        closeSettingsPanel();
+        return;
+      }
+      openSettingsPanel();
+    }
+
+    function setLogsAutoRefreshPreference(enabled, persist = true) {
+      if (autoRefreshEl) {
+        autoRefreshEl.value = enabled ? 'on' : 'off';
+      }
+      if (persist) {
+        try {
+          localStorage.setItem('tod.logsAutoRefresh', enabled ? 'on' : 'off');
+        } catch {
+        }
+      }
+      setLogsAutoRefresh();
+      syncSettingsPanelState();
+    }
+
+    function setProjectAutoRefreshPreference(enabled, persist = true) {
+      projectAutoRefreshEnabled = enabled === true;
+      if (persist) {
+        try {
+          localStorage.setItem('tod.projectAutoRefresh', projectAutoRefreshEnabled ? 'on' : 'off');
+        } catch {
+        }
+      }
+      setProjectAutoRefresh();
+      syncSettingsPanelState();
+    }
+
+    function initializeConsoleSettings() {
+      try {
+        const savedLogs = localStorage.getItem('tod.logsAutoRefresh');
+        if (savedLogs === 'on' || savedLogs === 'off') {
+          setLogsAutoRefreshPreference(savedLogs === 'on', false);
+        }
+      } catch {
+      }
+
+      try {
+        const savedProject = localStorage.getItem('tod.projectAutoRefresh');
+        if (savedProject === 'off') {
+          projectAutoRefreshEnabled = false;
+        }
+      } catch {
+      }
+
+      syncSettingsPanelState();
+    }
 
     function focusMimTelemetryCard() {
       if (!mimTelemetryCardEl || window.innerWidth > 980) {
@@ -1635,6 +2851,16 @@
       if (evt.defaultPrevented || evt.ctrlKey || evt.metaKey || evt.altKey) {
         return;
       }
+      if (String(evt.key || '') === 'Escape' && uiSettingsPanelEl && uiSettingsPanelEl.classList.contains('open')) {
+        evt.preventDefault();
+        closeSettingsPanel();
+        return;
+      }
+      if (String(evt.key || '') === 'Escape' && uiHelpModalEl && uiHelpModalEl.classList.contains('open')) {
+        evt.preventDefault();
+        closeUiHelp();
+        return;
+      }
       if (isTypingTarget(evt.target)) {
         return;
       }
@@ -1695,6 +2921,7 @@
       }
       applyCompactProfileClass();
       updateCompactPresetButtons();
+      syncSettingsPanelState();
     }
 
     function applyCompactPreset(preset) {
@@ -1851,12 +3078,26 @@
       return 'var(--danger)';
     }
 
-    function setProgressRing(percent, status) {
+    function setProgressRing(percent, status, cadence = null) {
       const safe = Math.max(0, Math.min(100, Number(percent) || 0));
+      const cadenceLive = Boolean(cadence && cadence.beyondFunnel && cadence.recent);
+      if (cadenceLive) {
+        const phase = (Date.now() / 1000) % 6;
+        const livePercent = Math.round(92 + ((phase / 6) * 6));
+        const deg = Math.round((livePercent / 100) * 360);
+        progressRingEl.classList.add('live');
+        progressRingEl.style.background = `conic-gradient(var(--neon) ${deg}deg, rgba(90,180,140,0.2) ${deg}deg 360deg)`;
+        progressPctEl.textContent = 'LIVE';
+        progressPctEl.title = `Base funnel complete at ${safe}%. Autonomous listener cadence active.`;
+        return;
+      }
+
       const deg = Math.round((safe / 100) * 360);
       const color = resolveRingColor(safe, status);
+      progressRingEl.classList.remove('live');
       progressRingEl.style.background = `conic-gradient(${color} ${deg}deg, rgba(90,180,140,0.2) ${deg}deg 360deg)`;
       progressPctEl.textContent = `${safe}%`;
+      progressPctEl.title = '';
     }
 
     function formatTrend(percent) {
@@ -1870,6 +3111,423 @@
       if (delta > 0) return `<span class="trend up">^ +${delta}%</span>`;
       if (delta < 0) return `<span class="trend down">v ${delta}%</span>`;
       return '<span class="trend flat">-> no change</span>';
+    }
+
+    function formatRelativeAge(isoText) {
+      if (!isoText) return 'n/a';
+      const ts = Date.parse(isoText);
+      if (!Number.isFinite(ts)) return 'n/a';
+      const ageSec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+      if (ageSec < 60) return `${ageSec}s ago`;
+      return `${Math.round(ageSec / 60)}m ago`;
+    }
+
+    function computeLiveThroughput(listenerActivity, objectiveId) {
+      const entries = listenerActivity && Array.isArray(listenerActivity.recent_entries)
+        ? listenerActivity.recent_entries
+        : [];
+      if (!entries.length) {
+        return null;
+      }
+
+      const objectiveDigits = String(objectiveId || '').match(/(\d+)/);
+      const objectiveToken = objectiveDigits ? objectiveDigits[1] : '';
+      const now = Date.now();
+      const cutoff = now - (30 * 60 * 1000);
+
+      const done = entries
+        .filter(item => {
+          if (!item || String(item.execution_status || '').toLowerCase() !== 'completed') {
+            return false;
+          }
+          if (objectiveToken && String(item.objective_id || '') !== objectiveToken) {
+            return false;
+          }
+          const ts = Date.parse(String(item.timestamp || ''));
+          return Number.isFinite(ts) && ts >= cutoff;
+        })
+        .slice()
+        .sort((a, b) => Date.parse(String(a.timestamp || '')) - Date.parse(String(b.timestamp || '')));
+
+      if (!done.length) {
+        return { perHour: 0, utilizationPct: 0 };
+      }
+
+      const seen = new Set();
+      let uniqueCount = 0;
+      for (const item of done) {
+        const rid = String(item.request_id || '');
+        if (!rid || seen.has(rid)) {
+          continue;
+        }
+        seen.add(rid);
+        uniqueCount += 1;
+      }
+
+      const perHour = Math.round(uniqueCount * 2);
+      const utilizationPct = Math.max(0, Math.min(100, Math.round((perHour / 30) * 100)));
+      return { perHour, utilizationPct };
+    }
+
+    function renderProgressDual(progress, cadence, listenerActivity, objectiveId) {
+      const basePct = Math.max(0, Math.min(100, Number(progress && progress.percent) || 0));
+      if (baseProgressFillEl) {
+        baseProgressFillEl.style.width = `${basePct}%`;
+      }
+      if (baseProgressLabelEl) {
+        const total = Number(progress && progress.task_count) || 0;
+        const done = Math.min(total, Math.max(0, Number(progress && progress.completed_equivalent) || 0));
+        baseProgressLabelEl.textContent = total > 0 ? `${done.toFixed(0)}/${total} (${basePct}%)` : `${basePct}%`;
+      }
+
+      const tp = computeLiveThroughput(listenerActivity, objectiveId);
+      if (liveThroughputFillEl) {
+        const tpPct = cadence && cadence.beyondFunnel && cadence.recent
+          ? (tp ? tp.utilizationPct : 20)
+          : (tp ? Math.min(35, tp.utilizationPct) : 0);
+        liveThroughputFillEl.style.width = `${tpPct}%`;
+      }
+      if (liveThroughputLabelEl) {
+        if (!tp) {
+          liveThroughputLabelEl.textContent = '--';
+        } else {
+          const liveTag = cadence && cadence.beyondFunnel && cadence.recent ? 'live' : 'baseline';
+          liveThroughputLabelEl.textContent = `${tp.perHour}/hr (${liveTag})`;
+        }
+      }
+    }
+
+    function getIsoAgeSeconds(isoText) {
+      if (!isoText) return NaN;
+      const ts = Date.parse(isoText);
+      if (!Number.isFinite(ts)) return NaN;
+      return Math.max(0, Math.round((Date.now() - ts) / 1000));
+    }
+
+    function parseRequestTaskInfo(requestId) {
+      const raw = String(requestId || '');
+      const match = raw.match(/objective-(\d+)-task-(\d+)/i);
+      if (!match) {
+        return null;
+      }
+      return {
+        objective: match[1],
+        taskNumber: Number.parseInt(match[2], 10)
+      };
+    }
+
+    function buildCadenceSnapshot(listenerActivity, totalTasks) {
+      if (!listenerActivity) {
+        return null;
+      }
+
+      const taskId = listenerActivity.request_task_id || listenerActivity.latest_request_id || listenerActivity.result_request_id || '';
+      const info = parseRequestTaskInfo(taskId);
+      if (!info) {
+        return null;
+      }
+
+      const requestAgeSec = getIsoAgeSeconds(listenerActivity.request_generated_at || listenerActivity.latest_timestamp);
+      const resultAgeSec = getIsoAgeSeconds(listenerActivity.result_generated_at || listenerActivity.latest_timestamp);
+      const freshestAgeSec = [requestAgeSec, resultAgeSec].filter(Number.isFinite).sort((a, b) => a - b)[0];
+      const recent = Number.isFinite(freshestAgeSec) ? freshestAgeSec <= 300 : false;
+      const beyondFunnel = Number.isFinite(Number(totalTasks)) && Number(totalTasks) > 0 && info.taskNumber > Number(totalTasks);
+      const syncPending = Boolean(listenerActivity.sync && listenerActivity.sync.is_mim_ahead);
+
+      return {
+        taskId,
+        taskNumber: info.taskNumber,
+        objective: info.objective,
+        recent,
+        beyondFunnel,
+        syncPending,
+        requestAgeText: formatRelativeAge(listenerActivity.request_generated_at || listenerActivity.latest_timestamp),
+        resultAgeText: formatRelativeAge(listenerActivity.result_generated_at || listenerActivity.latest_timestamp)
+      };
+    }
+
+    function estimateMinutesRemaining(entries, totalTasks, completedEquivalent) {
+      const total = Number(totalTasks);
+      const done = Number(completedEquivalent);
+      if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(done)) {
+        return null;
+      }
+
+      const remaining = Math.max(0, total - done);
+      if (remaining === 0) {
+        return 0;
+      }
+
+      const list = Array.isArray(entries) ? entries : [];
+      const completed = list
+        .filter(item => String(item && item.execution_status || '').toLowerCase() === 'completed' && item && item.timestamp)
+        .slice()
+        .sort((a, b) => Date.parse(a.timestamp || '') - Date.parse(b.timestamp || ''));
+
+      const uniqueTimestamps = [];
+      const seenRequestIds = new Set();
+      for (const item of completed) {
+        const rid = String(item.request_id || '');
+        if (!rid || seenRequestIds.has(rid)) {
+          continue;
+        }
+        const ts = Date.parse(item.timestamp || '');
+        if (!Number.isFinite(ts)) {
+          continue;
+        }
+        seenRequestIds.add(rid);
+        uniqueTimestamps.push(ts);
+      }
+
+      if (uniqueTimestamps.length < 2) {
+        return null;
+      }
+
+      const deltas = [];
+      for (let i = 1; i < uniqueTimestamps.length; i += 1) {
+        const deltaSec = Math.max(0, (uniqueTimestamps[i] - uniqueTimestamps[i - 1]) / 1000);
+        if (deltaSec > 0) {
+          deltas.push(deltaSec);
+        }
+      }
+      if (deltas.length === 0) {
+        return null;
+      }
+
+      const avgSec = deltas.reduce((sum, v) => sum + v, 0) / deltas.length;
+      if (!Number.isFinite(avgSec) || avgSec <= 0) {
+        return null;
+      }
+      return Math.max(1, Math.round((remaining * avgSec) / 60));
+    }
+
+    function renderPendingQueue(listenerActivity, progress, objectiveId, syncStatus = null, cadence = null) {
+      if (!actionPendingEl) {
+        return;
+      }
+
+      const total = Number(progress && progress.task_count);
+      if (!Number.isFinite(total) || total <= 0) {
+        actionPendingEl.textContent = 'Pending queue unavailable (task count unknown).';
+        return;
+      }
+
+      const isMimAhead = Boolean(syncStatus && syncStatus.is_mim_ahead === true);
+      if (isMimAhead) {
+        const pendingSync = Number(syncStatus && syncStatus.pending_request_count);
+        const requestTaskId = syncStatus && syncStatus.request_task_id ? String(syncStatus.request_task_id) : 'unknown';
+        const resultReqId = syncStatus && syncStatus.result_request_id ? String(syncStatus.result_request_id) : 'unknown';
+        const pendingLabel = Number.isFinite(pendingSync) && pendingSync > 0 ? pendingSync : 1;
+        actionPendingEl.innerHTML =
+          `<div class="action-pending-meta">Pending sync ${pendingLabel}: MIM has newer task requests not yet reflected in TOD results.</div>` +
+          `<div class="action-pending-row">latest-mim-request: ${escapeHtml(requestTaskId)}</div>` +
+          `<div class="action-pending-row">latest-tod-result: ${escapeHtml(resultReqId)}</div>`;
+        return;
+      }
+
+      const completedEquivalent = Math.max(0, Number(progress && progress.completed_equivalent) || 0);
+      const percent = Math.max(0, Math.min(100, Number(progress && progress.percent) || 0));
+      const progressIndicatesDone = completedEquivalent >= total || percent >= 100;
+      if (progressIndicatesDone) {
+        if (cadence && cadence.beyondFunnel && cadence.recent) {
+          actionPendingEl.innerHTML =
+            `<div class="action-pending-meta">Base funnel complete (${Math.min(completedEquivalent, total)} / ${total}). Autonomous listener cadence still active.</div>` +
+            `<div class="action-pending-row">latest cadence task: ${escapeHtml(cadence.taskId)}</div>` +
+            `<div class="action-pending-row">MIM request: ${escapeHtml(cadence.requestAgeText)} ago &nbsp;|&nbsp; TOD result: ${escapeHtml(cadence.resultAgeText)} ago</div>`;
+        } else {
+          actionPendingEl.textContent = `No pending tasks in queue (objective complete: ${Math.min(completedEquivalent, total)} / ${total}).`;
+        }
+        return;
+      }
+
+      const all = listenerActivity && Array.isArray(listenerActivity.recent_entries)
+        ? listenerActivity.recent_entries
+        : [];
+
+      const objectiveDigits = String(objectiveId || '').match(/(\d+)/);
+      const objectiveToken = objectiveDigits ? objectiveDigits[1] : '';
+      const scoped = objectiveToken
+        ? all.filter(item => String(item && item.objective_id || '') === objectiveToken)
+        : all;
+
+      let latestTaskNumber = NaN;
+      const latestInfo = parseRequestTaskInfo(listenerActivity && listenerActivity.latest_request_id);
+      if (latestInfo && Number.isFinite(latestInfo.taskNumber)) {
+        if (!objectiveToken || latestInfo.objective === objectiveToken) {
+          latestTaskNumber = latestInfo.taskNumber;
+        }
+      }
+
+      if (!Number.isFinite(latestTaskNumber)) {
+        const taskNums = scoped
+          .map(item => parseRequestTaskInfo(item && item.request_id))
+          .filter(info => info && Number.isFinite(info.taskNumber) && (!objectiveToken || info.objective === objectiveToken))
+          .map(info => info.taskNumber);
+        if (taskNums.length > 0) {
+          latestTaskNumber = Math.max(...taskNums);
+        }
+      }
+
+      if (!Number.isFinite(latestTaskNumber)) {
+        actionPendingEl.textContent = 'Pending queue will appear after first recognized task id (objective-XX-task-NNN).';
+        return;
+      }
+
+      const start = latestTaskNumber + 1;
+      if (start > total) {
+        actionPendingEl.textContent = `No pending tasks in queue (last completed task ${latestTaskNumber} / ${total}).`;
+        return;
+      }
+
+      const queue = [];
+      const maxRows = 24;
+      for (let i = start; i <= total && queue.length < maxRows; i += 1) {
+        const taskNumText = String(i).padStart(3, '0');
+        const prefix = objectiveToken ? `objective-${objectiveToken}` : 'objective-?';
+        queue.push(`${prefix}-task-${taskNumText}`);
+      }
+
+      const pendingFromTaskIds = total - latestTaskNumber;
+      const pendingFromProgress = Math.max(0, total - completedEquivalent);
+      const pendingTotal = Math.min(pendingFromTaskIds, pendingFromProgress);
+      if (pendingTotal <= 0) {
+        actionPendingEl.textContent = `No pending tasks in queue (objective complete: ${Math.min(completedEquivalent, total)} / ${total}).`;
+        return;
+      }
+      const hidden = Math.max(0, pendingTotal - queue.length);
+      const metaText = hidden > 0
+        ? `Pending ${pendingTotal}. Showing next ${queue.length}; ${hidden} additional tasks queued.`
+        : `Pending ${pendingTotal}. Tasks are removed automatically as completions arrive.`;
+
+      actionPendingEl.innerHTML = `<div class="action-pending-meta">${escapeHtml(metaText)}</div>` +
+        queue.map(item => `<div class="action-pending-row">${escapeHtml(item)}</div>`).join('');
+    }
+
+    function renderExecutiveSummary(marker, progress, listenerActivity, recoveryWatchdog, syncStatus = null) {
+      if (!todExecutiveSummaryEl) {
+        return;
+      }
+
+      if (!marker) {
+        todExecutiveSummaryEl.textContent = 'Waiting for objective marker to build live summary.';
+        return;
+      }
+
+      const objectiveId = marker.objective_id || '?';
+      const title = String(marker.title || '').trim();
+      const percent = Math.max(0, Math.min(100, Number(progress && progress.percent) || 0));
+      const totalTasks = Number(progress && progress.task_count) || 0;
+      const completedEq = Number(progress && progress.completed_equivalent) || 0;
+      const remaining = Math.max(0, totalTasks - completedEq);
+      const cadence = buildCadenceSnapshot(listenerActivity, totalTasks);
+      const scopedEntries = listenerActivity && Array.isArray(listenerActivity.recent_entries)
+        ? listenerActivity.recent_entries.filter(item => String(item.objective_id || '') === String(objectiveId))
+        : [];
+      const etaMinutes = estimateMinutesRemaining(scopedEntries, totalTasks, completedEq);
+      const etaText = etaMinutes === null
+        ? 'ETA is stabilizing as more completions are sampled.'
+        : (etaMinutes === 0
+          ? 'ETA: objective queue is complete.'
+          : `ETA: about ${etaMinutes} minute${etaMinutes === 1 ? '' : 's'} to finish at current pace.`);
+
+      const watchdogState = String(recoveryWatchdog && recoveryWatchdog.state || 'unknown').toLowerCase();
+      const healthText = watchdogState === 'healthy'
+        ? 'No reliability issues are currently detected.'
+        : `Watchdog state is ${watchdogState}; monitoring for recovery actions.`;
+      const purpose = title && title !== '(untitled objective)'
+        ? `Project purpose: ${title}.`
+        : 'Project purpose text is not populated for this objective yet.';
+
+      if (cadence && cadence.beyondFunnel && cadence.recent) {
+        const syncText = syncStatus && syncStatus.is_mim_ahead
+          ? `MIM is ahead by ${String(syncStatus.pending_request_count || 1)} task${Number(syncStatus.pending_request_count || 1) === 1 ? '' : 's'}.`
+          : 'MIM and TOD are aligned on the latest cadence task.';
+        todExecutiveSummaryEl.textContent = `Objective ${objectiveId} base funnel is complete, but autonomous listener cadence is still active. Latest task is ${cadence.taskId}; MIM request ${cadence.requestAgeText}; TOD result ${cadence.resultAgeText}. ${syncText} ${purpose} ${healthText}`;
+        return;
+      }
+
+      todExecutiveSummaryEl.textContent = `TOD is working objective ${objectiveId} assigned by MIM. Progress is ${percent}% with ${remaining} tasks remaining out of ${totalTasks}. ${etaText} ${purpose} ${healthText}`;
+    }
+
+    function renderActionLiveStatus(listenerActivity, progress, recoveryWatchdog, syncStatus = null, cadenceHealth = null) {
+      if (!actionLiveStatusEl) return;
+
+      const req = listenerActivity && listenerActivity.latest_request_id ? String(listenerActivity.latest_request_id) : '-';
+      const exec = listenerActivity && listenerActivity.latest_execution_status ? String(listenerActivity.latest_execution_status) : '-';
+      const gate = listenerActivity && listenerActivity.latest_review_gate_passed !== null && listenerActivity.latest_review_gate_passed !== undefined
+        ? String(listenerActivity.latest_review_gate_passed)
+        : '-';
+      const validator = listenerActivity && listenerActivity.latest_validator_passed !== null && listenerActivity.latest_validator_passed !== undefined
+        ? String(listenerActivity.latest_validator_passed)
+        : '-';
+      const age = listenerActivity ? formatRelativeAge(listenerActivity.latest_timestamp) : 'n/a';
+      const source = progress && progress.source ? String(progress.source) : 'objective_status';
+      const watchdog = recoveryWatchdog && recoveryWatchdog.available
+        ? `${String(recoveryWatchdog.state || 'unknown')}`
+        : 'n/a';
+      const taskState = recoveryWatchdog && recoveryWatchdog.task_state
+        ? String(recoveryWatchdog.task_state)
+        : 'idle';
+      const classification = recoveryWatchdog && recoveryWatchdog.progress_classification
+        ? String(recoveryWatchdog.progress_classification)
+        : 'no_progress_but_heartbeats_present';
+      const hbAge = recoveryWatchdog && Number.isFinite(Number(recoveryWatchdog.heartbeat_age_seconds))
+        ? String(recoveryWatchdog.heartbeat_age_seconds)
+        : '-';
+      const stallSec = recoveryWatchdog && Number.isFinite(Number(recoveryWatchdog.stall_threshold_seconds))
+        ? String(recoveryWatchdog.stall_threshold_seconds)
+        : '-';
+      const ageSec = listenerActivity ? getIsoAgeSeconds(listenerActivity.latest_timestamp) : NaN;
+      const stallThreshold = recoveryWatchdog && Number.isFinite(Number(recoveryWatchdog.stall_threshold_seconds))
+        ? Number(recoveryWatchdog.stall_threshold_seconds)
+        : NaN;
+      const commState = Number.isFinite(ageSec) && Number.isFinite(stallThreshold)
+        ? (ageSec > stallThreshold ? 'frozen' : 'active')
+        : 'unknown';
+      const syncText = syncStatus && syncStatus.is_mim_ahead
+        ? `pending (${String(syncStatus.pending_request_count || 1)})`
+        : 'aligned';
+      const cadenceSeverity = cadenceHealth && cadenceHealth.available
+        ? String(cadenceHealth.severity || 'unknown')
+        : 'n/a';
+      const cadenceP95 = cadenceHealth && cadenceHealth.available && cadenceHealth.cadence && Number.isFinite(Number(cadenceHealth.cadence.p95_sec))
+        ? String(cadenceHealth.cadence.p95_sec)
+        : '-';
+      const cadenceRetryPct = cadenceHealth && cadenceHealth.available && cadenceHealth.cadence && Number.isFinite(Number(cadenceHealth.cadence.retry_rate))
+        ? String(Math.round(Number(cadenceHealth.cadence.retry_rate) * 100))
+        : '-';
+
+      actionLiveStatusEl.textContent = `Live | comms ${commState} | state ${taskState} | class ${classification} | req ${req} | exec ${exec} | gate ${gate} | validator ${validator} | sync ${syncText} | cadence ${cadenceSeverity} p95:${cadenceP95}s retry:${cadenceRetryPct}% | update ${age} | hb ${hbAge}s/${stallSec}s | source ${source} | watchdog ${watchdog}`;
+    }
+
+    function renderActionTimeline(listenerActivity, objectiveId) {
+      if (!actionTimelineEl) return;
+
+      const all = listenerActivity && Array.isArray(listenerActivity.recent_entries)
+        ? listenerActivity.recent_entries
+        : [];
+
+      const scoped = objectiveId
+        ? all.filter(e => String(e.objective_id || '') === String(objectiveId))
+        : all;
+
+      const items = scoped
+        .slice()
+        .sort((a, b) => Date.parse(b.timestamp || '') - Date.parse(a.timestamp || ''))
+        .slice(0, 12);
+      if (items.length === 0) {
+        actionTimelineEl.textContent = 'No recent listener timeline yet.';
+        return;
+      }
+
+      actionTimelineEl.innerHTML = items.map(item => {
+        const ts = item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : '--:--:--';
+        const rid = escapeHtml(item.request_id || '-');
+        const status = escapeHtml(item.execution_status || 'unknown');
+        const gate = item.review_gate_passed === null || item.review_gate_passed === undefined ? '-' : String(item.review_gate_passed);
+        const validator = item.validator_passed === null || item.validator_passed === undefined ? '-' : String(item.validator_passed);
+        return `<div class="action-timeline-row"><span class="action-timeline-time">${ts}</span><span>${rid} | ${status} | gate:${gate} | validator:${validator}</span></div>`;
+      }).join('');
     }
 
     async function fetchJsonSafe(url, options = undefined) {
@@ -1966,11 +3624,35 @@
 
         const marker = data.marker || null;
         const progress = data.progress || {};
+        const listenerActivity = data.listener_activity || null;
+        const syncStatus = listenerActivity && listenerActivity.sync ? listenerActivity.sync : null;
+        const recoveryWatchdog = data.recovery_watchdog || null;
+        const cadenceHealth = data.cadence_health || null;
         const engineeringSignal = data.engineering_signal || null;
+        const steadyState = data.steady_state || null;
+        const dataSources = data.data_sources || null;
+        const voiceAdapter = data.voice_adapter || null;
+        renderCadenceHealthChip(cadenceHealth);
+        renderSteadyStateChip(steadyState);
+        renderRegressionChip(steadyState);
+        renderRequestChip(listenerActivity);
+        renderVoiceChip(voiceAdapter);
+        renderVoiceAdapterPanel(voiceAdapter);
+        lastKnownTaskState = recoveryWatchdog && recoveryWatchdog.task_state
+          ? String(recoveryWatchdog.task_state)
+          : 'idle';
+        renderActionLiveStatus(listenerActivity, progress, recoveryWatchdog, syncStatus, cadenceHealth);
         const percent = Number(progress.percent) || 0;
         const status = marker && marker.status ? marker.status : 'unknown';
-        setProgressRing(percent, status);
+        const objectiveId = marker && marker.objective_id ? marker.objective_id : '';
+        const taskCount = Number(progress.task_count) || 0;
+        const cadence = buildCadenceSnapshot(listenerActivity, taskCount);
+        renderProgressDual(progress, cadence, listenerActivity, objectiveId);
+        renderActionTimeline(listenerActivity, objectiveId);
+        renderPendingQueue(listenerActivity, progress, objectiveId, syncStatus, cadence);
+        setProgressRing(percent, status, cadence);
         const trendHtml = formatTrend(percent);
+        renderExecutiveSummary(marker, progress, listenerActivity, recoveryWatchdog, syncStatus);
 
         if (engineeringSignal && engineeringSignal.current_engineering_loop_status) {
           const approval = engineeringSignal.pending_approval_state || {};
@@ -1990,11 +3672,50 @@
         }
 
         const title = marker.title || '(untitled objective)';
-        const objectiveId = marker.objective_id || '';
         const remoteId = marker.remote_objective_id ? ` | MIM ${marker.remote_objective_id}` : '';
-        const taskCount = Number(progress.task_count) || 0;
-        projectMetaEl.innerHTML = `<strong>${title}</strong><br>ID: ${objectiveId}${remoteId}<br>Status: ${status} | Tasks: ${taskCount} | Progress: ${percent}% ${trendHtml}`;
+        const syncLine = syncStatus && syncStatus.is_mim_ahead
+          ? `<br>Sync: pending (${escapeHtml(String(syncStatus.pending_request_count || 1))}) | MIM:${escapeHtml(String(syncStatus.request_task_id || '-'))} | TOD:${escapeHtml(String(syncStatus.result_request_id || '-'))}`
+          : '<br>Sync: aligned (MIM and TOD request streams match)';
+        const cadenceLine = cadence && cadence.recent
+          ? `<br>Live Cadence: ${escapeHtml(cadence.beyondFunnel ? 'active beyond base funnel' : 'active')} | latest:${escapeHtml(cadence.taskId)} | MIM:${escapeHtml(cadence.requestAgeText)} | TOD:${escapeHtml(cadence.resultAgeText)}`
+          : '';
+        const progressSource = progress.source ? ` | Source: ${escapeHtml(progress.source)}` : '';
+        const recoveryLine = recoveryWatchdog && recoveryWatchdog.available && recoveryWatchdog.state !== 'healthy'
+          ? `<br>Watchdog: ${escapeHtml(recoveryWatchdog.state)} | issue:${escapeHtml(recoveryWatchdog.last_issue || '-')}`
+          : '';
+        const steadyStateLine = steadyState && steadyState.available
+          ? `<br>Steady State: ${escapeHtml(String(steadyState.status || 'unknown'))} | ${escapeHtml(String(steadyState.summary || '-'))}`
+          : '';
+        const cadenceHealthLine = cadenceHealth && cadenceHealth.available
+          ? `<br>Cadence Health: ${escapeHtml(String(cadenceHealth.severity || 'unknown'))} | p95:${escapeHtml(String((cadenceHealth.cadence && cadenceHealth.cadence.p95_sec !== undefined) ? cadenceHealth.cadence.p95_sec : '-'))}s | idle:${escapeHtml(String((cadenceHealth.stream && cadenceHealth.stream.loop_idle_sec !== undefined) ? cadenceHealth.stream.loop_idle_sec : '-'))}s | retry:${escapeHtml(String(Math.round((Number(cadenceHealth.cadence && cadenceHealth.cadence.retry_rate) || 0) * 100)))}%`
+          : '';
+        const sourceLine = dataSources && dataSources.project_status_mode
+          ? `<br>Data Sources: ${escapeHtml(String(dataSources.project_status_mode))}${dataSources.state_warning ? ` | ${escapeHtml(String(dataSources.state_warning))}` : ''}`
+          : '';
+        const taskStateLine = recoveryWatchdog && recoveryWatchdog.available
+          ? `<br>Task State: ${escapeHtml(recoveryWatchdog.task_state || 'idle')} | class:${escapeHtml(recoveryWatchdog.progress_classification || 'no_progress_but_heartbeats_present')}` +
+            ` | hb:${escapeHtml(String(recoveryWatchdog.heartbeat_age_seconds ?? '-'))}s/${escapeHtml(String(recoveryWatchdog.stall_threshold_seconds ?? '-'))}s` +
+            ` | recoveries:${escapeHtml(String(recoveryWatchdog.recovery_attempts ?? 0))} | freezes:${escapeHtml(String(recoveryWatchdog.consecutive_freezes ?? 0))}`
+          : '';
+        const listenerLine = listenerActivity && listenerActivity.latest_request_id
+          ? `<br>Listener: ${escapeHtml(listenerActivity.latest_request_id)} | exec:${escapeHtml(listenerActivity.latest_execution_status || '-')}` +
+            ` | gate:${String(listenerActivity.latest_review_gate_passed)}` +
+            ` | validator:${String(listenerActivity.latest_validator_passed)}`
+          : '';
+        const statusText = syncStatus && syncStatus.is_mim_ahead
+          ? `${status} (sync pending)`
+          : (cadence && cadence.beyondFunnel && cadence.recent ? `${status} (live cadence active)` : status);
+        const progressHeadline = cadence && cadence.beyondFunnel && cadence.recent
+          ? `Base Funnel: ${taskCount}/${taskCount} | Live Task: ${escapeHtml(String(cadence.taskNumber || '-'))} (active)`
+          : `Progress: ${percent}%`;
+        projectMetaEl.innerHTML = `<strong>${title}</strong><br>ID: ${objectiveId}${remoteId}<br>Status: ${statusText} | Tasks: ${taskCount} | ${progressHeadline} ${trendHtml}${progressSource}${cadenceLine}${syncLine}${steadyStateLine}${sourceLine}${taskStateLine}${listenerLine}${cadenceHealthLine}${recoveryLine}`;
       } catch (err) {
+        renderCadenceHealthChip(null);
+        renderSteadyStateChip(null);
+        renderRegressionChip(null);
+        renderRequestChip(null);
+        renderVoiceChip(null);
+        renderVoiceAdapterPanel(null);
         projectMetaEl.textContent = err.message;
       }
     }
@@ -2046,7 +3767,8 @@
           const fullPath = escapeHtml(item && item.path ? item.path : '');
           const updated = escapeHtml(item && item.last_write_time_utc ? item.last_write_time_utc : 'missing');
           const sizeText = Number.isFinite(Number(item && item.length)) ? `${Number(item.length)} bytes` : 'n/a';
-          const href = escapeHtml(item && item.download_url ? item.download_url : '#');
+          const downloadHref = escapeHtml(item && item.download_url ? item.download_url : '#');
+          const openHref = escapeHtml(item && item.preview_url ? item.preview_url : (item && item.download_url ? item.download_url : '#'));
 
           if (!exists) {
             return `
@@ -2063,8 +3785,8 @@
               <div class="share-title">${title}</div>
               <div class="share-path">${fullPath}</div>
               <div class="share-actions">
-                <a href="${href}" download>download</a>
-                <a href="${href}" target="_blank" rel="noopener">open</a>
+                <a href="${downloadHref}" download>download</a>
+                <a href="${openHref}" target="_blank" rel="noopener">open</a>
                 <span>updated: ${updated}</span>
                 <span>size: ${sizeText}</span>
               </div>
@@ -2187,6 +3909,40 @@
       `;
     }
 
+    async function runQueryConsole(action, label) {
+      const outputEl = document.getElementById('queryOutput');
+      const metaEl = document.getElementById('queryMeta');
+      outputEl.textContent = `Running ${label}...`;
+      metaEl.textContent = '';
+      const btns = document.querySelectorAll('.btn-query');
+      btns.forEach(b => { b.disabled = true; });
+      try {
+        const payload = {
+          action,
+          top: document.getElementById('top').value,
+          category: document.getElementById('category').value,
+          engine: document.getElementById('engine').value,
+          configPath: document.getElementById('configPath').value
+        };
+        const { res, data } = await fetchJsonSafe('/api/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok || !data.ok) {
+          outputEl.textContent = data.error || `Query failed (${res.status})`;
+          return;
+        }
+        const result = data.result;
+        outputEl.textContent = typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result);
+        metaEl.textContent = `${label} snapshot at ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        outputEl.textContent = `Error: ${err.message}`;
+      } finally {
+        btns.forEach(b => { b.disabled = false; });
+      }
+    }
+
     function renderSystemPosture(posture) {
       const data = posture || {};
       setAlertTone(data.current_alert_state);
@@ -2199,6 +3955,17 @@
       setStateBusValue(postureCapabilitiesEl, Number.isFinite(Number(data.registered_capabilities)) ? Number(data.registered_capabilities) : 0, '0');
       setStateBusValue(postureHealthEl, data.current_executor_health);
       postureSummaryEl.textContent = data.summary || 'SYSTEM POSTURE | No summary available.';
+      if (postureLegendEl) {
+        const goals = Number.isFinite(Number(data.active_goal_count)) ? Number(data.active_goal_count) : 0;
+        const executions = Number.isFinite(Number(data.active_execution_count)) ? Number(data.active_execution_count) : 0;
+        const pending = Number.isFinite(Number(data.pending_confirmations)) ? Number(data.pending_confirmations) : 0;
+        const blocked = Number.isFinite(Number(data.blocked_items)) ? Number(data.blocked_items) : 0;
+        if (goals === 0 && executions === 0 && pending === 0 && blocked === 0) {
+          postureLegendEl.textContent = 'All counters are zero: system is likely between task handoffs (idle/steady state).';
+        } else {
+          postureLegendEl.textContent = 'Counters represent live workload pressure: goals, executions, confirmations waiting, and blocked items.';
+        }
+      }
     }
 
     function renderEngineeringLoopPanel(loop) {
@@ -2418,7 +4185,7 @@
 
     async function runAwakeProbe() {
       probeBtn.disabled = true;
-      setProbeReadout('', 'status: probing...');
+      setProbeReadout('', 'MIM probe: probing...');
 
       try {
         const start = performance.now();
@@ -2433,20 +4200,20 @@
         const timestamp = new Date().toLocaleTimeString();
 
         if (!res.ok || !data.ok) {
-          setProbeReadout('offline', `status: offline | ${elapsedMs}ms | ${timestamp}`);
+          setProbeReadout('offline', `MIM probe: offline | ${elapsedMs}ms | ${timestamp}`);
           return;
         }
 
         const reachable = data.result && data.result.reachable === true;
         if (reachable) {
-          setProbeReadout('awake', `status: awake | ${elapsedMs}ms | ${timestamp}`);
+          setProbeReadout('awake', `MIM probe: awake | ${elapsedMs}ms | ${timestamp}`);
           markMimActivity();
         } else {
-          setProbeReadout('degraded', `status: degraded | ${elapsedMs}ms | ${timestamp}`);
+          setProbeReadout('degraded', `MIM probe: degraded | ${elapsedMs}ms | ${timestamp}`);
         }
       } catch {
         const timestamp = new Date().toLocaleTimeString();
-        setProbeReadout('offline', `status: offline | ${timestamp}`);
+        setProbeReadout('offline', `MIM probe: offline | ${timestamp}`);
       } finally {
         probeBtn.disabled = false;
       }
@@ -2588,7 +4355,9 @@
         renderCallsTable(entries);
         computeApiHealth(entries);
         renderExecutionEvents(entries);
-        logsEl.textContent = JSON.stringify(entries, null, 2);
+        const newestFirstEntries = entries.slice().reverse();
+        logsEl.textContent = JSON.stringify(newestFirstEntries, null, 2);
+        logsEl.scrollTop = 0;
         const now = new Date().toLocaleTimeString();
         logMetaEl.textContent = `Loaded ${data.count || 0} entries from ${data.log_path} at ${now}`;
       } catch (err) {
@@ -2607,6 +4376,7 @@
       if (autoRefreshEl.value === 'on') {
         logsTimer = setInterval(loadLogs, 3000);
       }
+      syncSettingsPanelState();
     }
 
     function setProjectAutoRefresh() {
@@ -2614,7 +4384,40 @@
         clearInterval(projectTimer);
         projectTimer = null;
       }
-      projectTimer = setInterval(loadProjectStatus, 5000);
+      if (projectAutoRefreshEnabled) {
+        projectTimer = setInterval(loadProjectStatus, 5000);
+      }
+      syncSettingsPanelState();
+    }
+
+    async function quickRefreshDashboard() {
+      refreshBtn.disabled = true;
+      setStatus('Refreshing dashboard snapshots...');
+      try {
+        await Promise.all([
+          loadProjectStatus(),
+          loadLogs(),
+          loadShareArtifacts()
+        ]);
+        setStatus('Dashboard refreshed (safe mode, no TOD action run).');
+      } catch (err) {
+        setStatus(err && err.message ? err.message : 'Dashboard refresh failed.', true);
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    }
+
+    async function safeLoadStateBus() {
+      const state = String(lastKnownTaskState || 'idle').toLowerCase();
+      const maybeBusy = state.includes('run') || state.includes('exec') || state.includes('progress') || state.includes('active') || state.includes('queue');
+      const prompt = maybeBusy
+        ? `Task state is ${state}. State bus refresh is read-only but can be heavy while work is active. Continue?`
+        : 'Refresh shared state bus snapshot now?';
+      if (!window.confirm(prompt)) {
+        busMetaEl.textContent = 'State bus refresh cancelled by operator.';
+        return;
+      }
+      await loadStateBus();
     }
 
     objectiveSelectEl.addEventListener('change', () => {
@@ -2624,11 +4427,48 @@
     });
 
     runBtn.addEventListener('click', () => run(buildPayload(false)));
-    refreshBtn.addEventListener('click', () => run(buildPayload(true)));
+    refreshBtn.addEventListener('click', () => quickRefreshDashboard());
     loadLogsBtn.addEventListener('click', () => loadLogs());
-    loadBusBtn.addEventListener('click', () => loadStateBus());
-    autoRefreshEl.addEventListener('change', setLogsAutoRefresh);
+    loadBusBtn.addEventListener('click', () => safeLoadStateBus());
+    autoRefreshEl.addEventListener('change', () => {
+      const enabled = String(autoRefreshEl.value || 'on') === 'on';
+      setLogsAutoRefreshPreference(enabled);
+    });
     refreshShareBtn.addEventListener('click', () => loadShareArtifacts());
+    uiHelpBtnEl.addEventListener('click', () => openUiHelp());
+    uiSettingsBtnEl.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      toggleSettingsPanel();
+    });
+    settingsRefreshBtnEl.addEventListener('click', () => {
+      closeSettingsPanel();
+      quickRefreshDashboard();
+    });
+    settingsHelpBtnEl.addEventListener('click', () => {
+      closeSettingsPanel();
+      openUiHelp();
+    });
+    settingsLogsToggleEl.addEventListener('change', () => setLogsAutoRefreshPreference(settingsLogsToggleEl.checked));
+    settingsProjectToggleEl.addEventListener('change', () => setProjectAutoRefreshPreference(settingsProjectToggleEl.checked));
+    settingsPresetFullEl.addEventListener('click', () => applyCompactPreset('off'));
+    settingsPresetMimEl.addEventListener('click', () => applyCompactPreset('mim'));
+    settingsPresetOpsEl.addEventListener('click', () => applyCompactPreset('ops'));
+    uiHelpCloseBtnEl.addEventListener('click', () => closeUiHelp());
+    uiHelpModalEl.addEventListener('click', (evt) => {
+      if (evt.target === uiHelpModalEl) {
+        closeUiHelp();
+      }
+    });
+    document.addEventListener('click', (evt) => {
+      if (!uiSettingsPanelEl || !uiSettingsPanelEl.classList.contains('open')) {
+        return;
+      }
+      if (evt.target && evt.target.closest && evt.target.closest('.settings-anchor')) {
+        return;
+      }
+      closeSettingsPanel();
+    });
     probeBtn.addEventListener('click', (evt) => {
       evt.preventDefault();
       runAwakeProbe();
@@ -2639,13 +4479,12 @@
     quickShareBtn.addEventListener('click', () => jumpToShareArtifacts());
     window.addEventListener('keydown', handleKeyboardShortcuts);
 
-    run(buildPayload(true));
-    loadLogs();
-    loadShareArtifacts();
+    quickRefreshDashboard();
     loadStateBus();
     setLogsAutoRefresh();
-    loadProjectStatus();
     setProjectAutoRefresh();
+    initializeConsoleSettings();
+    initUiBuildMeta();
     runAwakeProbe();
     initializeCompactMode();
     initializeActionWorkspaceSplit();

@@ -17,6 +17,9 @@ $todScript = Join-Path $PSScriptRoot "TOD.ps1"
 $testsScript = Join-Path $PSScriptRoot "Invoke-TODTests.ps1"
 $smokeScript = Join-Path $PSScriptRoot "Invoke-TODSmoke.ps1"
 $projectLibraryScript = Join-Path $PSScriptRoot "Update-TODProjectLibrary.ps1"
+$lightweightStateBusScript = Join-Path $PSScriptRoot "Get-TODLightweightStateBus.ps1"
+$statePath = Join-Path $repoRoot "tod/data/state.json"
+$maxStateReadBytes = 256MB
 
 if (-not (Test-Path -Path $todScript)) {
     throw "Missing TOD script: $todScript"
@@ -29,6 +32,9 @@ if (-not (Test-Path -Path $smokeScript)) {
 }
 if (-not (Test-Path -Path $projectLibraryScript)) {
     throw "Missing project library script: $projectLibraryScript"
+}
+if (-not (Test-Path -Path $lightweightStateBusScript)) {
+    throw "Missing lightweight state bus script: $lightweightStateBusScript"
 }
 
 $effectiveConfigPath = if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
@@ -110,16 +116,36 @@ function Test-StateFileWritable {
     }
 }
 
+function Test-ShouldUseLightweightStateBus {
+    if (-not (Test-Path -Path $statePath)) {
+        return $true
+    }
+
+    try {
+        $item = Get-Item -Path $statePath -ErrorAction Stop
+        return ([int64]$item.Length -gt [int64]$maxStateReadBytes)
+    }
+    catch {
+        return $true
+    }
+}
+
+function Get-LightweightStateBus {
+    $raw = & $lightweightStateBusScript -AsJson
+    return ($raw | ConvertFrom-Json)
+}
+
 $testSummary = $null
 $smokeSummary = $null
 $projectLibrary = $null
 $errors = @()
+$warnings = @()
 
 if (-not $SkipTests) {
     try {
         $statePath = Join-Path $repoRoot "tod/data/state.json"
         if (-not (Test-StateFileWritable -Path $statePath)) {
-            $errors += "tests: skipped because tod/data/state.json is locked (stop TOD UI or rerun with -SkipTests)"
+            $warnings += "tests: skipped because tod/data/state.json is locked during active runtime"
             $SkipTests = $true
         }
     }
@@ -168,14 +194,56 @@ $taxonomy = $null
 $loopSummary = $null
 $signal = $null
 $history = $null
+$lightweightEvidence = $null
 
-try { $stateBus = Invoke-TodJsonAction -Action "get-state-bus" } catch { $errors += "state-bus: $($_.Exception.Message)" }
-try { $reliability = Invoke-TodJsonAction -Action "get-reliability" } catch { $errors += "reliability: $($_.Exception.Message)" }
-try { $dashboard = Invoke-TodJsonAction -Action "show-reliability-dashboard" } catch { $errors += "dashboard: $($_.Exception.Message)" }
-try { $taxonomy = Invoke-TodJsonAction -Action "show-failure-taxonomy" } catch { $errors += "taxonomy: $($_.Exception.Message)" }
-try { $loopSummary = Invoke-TodJsonAction -Action "get-engineering-loop-summary" } catch { $errors += "loop-summary: $($_.Exception.Message)" }
-try { $signal = Invoke-TodJsonAction -Action "get-engineering-signal" } catch { $errors += "signal: $($_.Exception.Message)" }
-try { $history = Invoke-TodJsonAction -Action "get-engineering-loop-history" -ExtraArgs @{ HistoryKind = "scorecard_history"; Page = 1; PageSize = 25 } } catch { $errors += "history: $($_.Exception.Message)" }
+$useLightweightEvidence = Test-ShouldUseLightweightStateBus
+
+if ($useLightweightEvidence) {
+    try {
+        $lightweightEvidence = Get-LightweightStateBus
+        $stateBus = $lightweightEvidence
+        $reliability = if ($lightweightEvidence.PSObject.Properties['reliability']) { $lightweightEvidence.reliability } else { $null }
+        $dashboard = if ($lightweightEvidence.PSObject.Properties['reliability_dashboard']) { $lightweightEvidence.reliability_dashboard } else { $null }
+        $taxonomy = if ($lightweightEvidence.PSObject.Properties['failure_taxonomy']) { $lightweightEvidence.failure_taxonomy } else { $null }
+        $loopSummary = if ($lightweightEvidence.PSObject.Properties['engineering_summary']) { $lightweightEvidence.engineering_summary } else { $null }
+        $signal = if ($lightweightEvidence.PSObject.Properties['engineering_signal']) { $lightweightEvidence.engineering_signal } else { $null }
+        $history = if ($lightweightEvidence.PSObject.Properties['scorecard_history']) { $lightweightEvidence.scorecard_history } else { $null }
+    }
+    catch {
+        $errors += "lightweight-telemetry: $($_.Exception.Message)"
+    }
+}
+
+if (-not $useLightweightEvidence) {
+    try {
+        $stateBus = Invoke-TodJsonAction -Action "get-state-bus"
+    }
+    catch {
+        try {
+            $lightweightEvidence = Get-LightweightStateBus
+            $stateBus = $lightweightEvidence
+            $reliability = $lightweightEvidence.reliability
+            $dashboard = $lightweightEvidence.reliability_dashboard
+            $taxonomy = $lightweightEvidence.failure_taxonomy
+            $loopSummary = $lightweightEvidence.engineering_summary
+            $signal = $lightweightEvidence.engineering_signal
+            $history = $lightweightEvidence.scorecard_history
+            $useLightweightEvidence = $true
+        }
+        catch {
+            $errors += "state-bus: $($_.Exception.Message)"
+        }
+    }
+}
+
+if (-not $useLightweightEvidence) {
+    try { $reliability = Invoke-TodJsonAction -Action "get-reliability" } catch { $errors += "reliability: $($_.Exception.Message)" }
+    try { $dashboard = Invoke-TodJsonAction -Action "show-reliability-dashboard" } catch { $errors += "dashboard: $($_.Exception.Message)" }
+    try { $taxonomy = Invoke-TodJsonAction -Action "show-failure-taxonomy" } catch { $errors += "taxonomy: $($_.Exception.Message)" }
+    try { $loopSummary = Invoke-TodJsonAction -Action "get-engineering-loop-summary" } catch { $errors += "loop-summary: $($_.Exception.Message)" }
+    try { $signal = Invoke-TodJsonAction -Action "get-engineering-signal" } catch { $errors += "signal: $($_.Exception.Message)" }
+    try { $history = Invoke-TodJsonAction -Action "get-engineering-loop-history" -ExtraArgs @{ HistoryKind = "scorecard_history"; Page = 1; PageSize = 25 } } catch { $errors += "history: $($_.Exception.Message)" }
+}
 
 $resources = @()
 $seedFiles = @(
@@ -304,6 +372,7 @@ $report = [pscustomobject]@{
         tests = if ($null -ne $testSummary) { $testSummary } else { [pscustomobject]@{ skipped = [bool]$SkipTests } }
         smoke = if ($null -ne $smokeSummary) { $smokeSummary } else { [pscustomobject]@{ skipped = [bool]$SkipSmoke } }
         project_discovery = if ($null -ne $projectLibrary) { [pscustomobject]@{ skipped = $false; projects = @($projectLibrary.projects).Count; unregistered = @($projectLibrary.unregistered_top_level_directories).Count } } else { [pscustomobject]@{ skipped = [bool]$SkipProjectDiscovery } }
+        warnings = @($warnings)
         errors = @($errors)
     }
     resources = [pscustomobject]@{
@@ -361,6 +430,12 @@ if ($null -ne $projectLibrary) {
 } else {
     $md += "- Project discovery: skipped"
 }
+if (@($warnings).Count -gt 0) {
+    $md += "- Warnings:"
+    foreach ($w in $warnings) {
+        $md += "  - $w"
+    }
+}
 if (@($errors).Count -gt 0) {
     $md += "- Errors:"
     foreach ($e in $errors) {
@@ -384,6 +459,7 @@ $result = [pscustomobject]@{
     report_markdown = $mdPath
     competency_snapshot = $competency
     resources_count = @($resources).Count
+    warnings = @($warnings)
     errors = @($errors)
 }
 

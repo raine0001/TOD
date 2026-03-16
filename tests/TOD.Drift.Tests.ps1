@@ -4,7 +4,45 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $todScript = Join-Path $repoRoot "scripts/TOD.ps1"
 $baseConfigPath = Join-Path $repoRoot "tod/config/tod-config.json"
-$statePath = Join-Path $repoRoot "tod/data/state.json"
+
+function New-DriftTestStatePath {
+    $state = [pscustomobject]@{
+        source = "tod-state-test-fixture-v1"
+        updated_at = ""
+        objectives = @(
+            [pscustomobject]@{
+                id = "75"
+                title = "Objective 75 test fixture"
+                status = "in_progress"
+                constraints = @()
+                success_criteria = @()
+            }
+        )
+        tasks = @(
+            [pscustomobject]@{
+                id = "45"
+                objective_id = "75"
+                title = "Drift fixture task"
+                type = "implementation"
+                task_category = "refactor"
+                assigned_executor = "codex"
+                status = "pending"
+                dependencies = @()
+                acceptance_criteria = @()
+            }
+        )
+        execution_results = @()
+        review_decisions = @()
+        journal = @()
+        sync_state = [pscustomobject]@{ last_comparison = [pscustomobject]@{ status = "ok" } }
+        engine_performance = [pscustomobject]@{ records = @(); updated_at = "" }
+        routing_decisions = [pscustomobject]@{ records = @(); updated_at = "" }
+    }
+
+    $path = Join-Path $repoRoot ("tod/out/tests/drift-state-{0}.json" -f ([guid]::NewGuid().ToString("N")))
+    $state | ConvertTo-Json -Depth 30 | Set-Content $path
+    return $path
+}
 
 function New-DriftTestConfig {
     $cfg = Get-Content $baseConfigPath -Raw | ConvertFrom-Json
@@ -72,10 +110,11 @@ function New-PerfRecord {
 
 function Get-DriftTrendSnapshot {
     param(
-        [Parameter(Mandatory = $true)][string]$ConfigPath
+        [Parameter(Mandatory = $true)][string]$ConfigPath,
+        [Parameter(Mandatory = $true)][string]$StatePath
     )
 
-    $reliabilityRaw = & $todScript -Action "get-reliability" -Top 20 -ConfigPath $ConfigPath -Engine "codex"
+    $reliabilityRaw = & $todScript -Action "get-reliability" -Top 20 -ConfigPath $ConfigPath -Engine "codex" -StatePath $StatePath
     $reliability = $reliabilityRaw | ConvertFrom-Json
     return @($reliability.retry_trend | Select-Object -First 1)
 }
@@ -115,10 +154,10 @@ function Set-ScenarioState {
 
 Describe "TOD Drift Penalties" {
     It "applies drift confidence penalty and emits warnings in reliability endpoint" {
-        $originalState = Get-Content $statePath -Raw
         $cfgPath = New-DriftTestConfig
+        $testStatePath = New-DriftTestStatePath
         try {
-            $state = $originalState | ConvertFrom-Json
+            $state = Get-Content $testStatePath -Raw | ConvertFrom-Json
             $task = @($state.tasks | Where-Object { [string]$_.id -eq "45" } | Select-Object -First 1)
             if (@($task).Count -eq 0) {
                 throw "Task 45 not found in state; cannot run drift test."
@@ -137,11 +176,9 @@ Describe "TOD Drift Penalties" {
             $state.engine_performance.updated_at = (Get-Date).ToUniversalTime().ToString("o")
             $state.routing_decisions.records = @()
             $state.routing_decisions.updated_at = (Get-Date).ToUniversalTime().ToString("o")
-            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
+            $state | ConvertTo-Json -Depth 30 | Set-Content $testStatePath
 
-            $null = & $todScript -Action "run-task" -TaskId "45" -ConfigPath $cfgPath
-
-            $reliabilityRaw = & $todScript -Action "get-reliability" -Top 20 -ConfigPath $cfgPath -Engine "codex"
+            $reliabilityRaw = & $todScript -Action "get-reliability" -Top 20 -ConfigPath $cfgPath -Engine "codex" -StatePath $testStatePath
             $reliability = $reliabilityRaw | ConvertFrom-Json
             @($reliability.drift_warnings).Count | Should BeGreaterThan 0
             $trend = @($reliability.retry_trend | Select-Object -First 1)
@@ -152,21 +189,21 @@ Describe "TOD Drift Penalties" {
             ([string]$trend[0].alert_state).Length | Should BeGreaterThan 0
         }
         finally {
-            $originalState | Set-Content $statePath
             if (Test-Path $cfgPath) { Remove-Item $cfgPath -Force }
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
         }
     }
 
     It "decays penalties when drift signals are old" {
-        $originalState = Get-Content $statePath -Raw
         $cfgPath = New-DriftTestConfig
+        $testStatePath = New-DriftTestStatePath
         try {
             $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
             $cfg.execution_engine.routing_policy.drift_detection.decay_half_life_days = 1
             $cfg.execution_engine.routing_policy.drift_detection.decay_floor = 0.1
             $cfg | ConvertTo-Json -Depth 30 | Set-Content $cfgPath
 
-            $state = $originalState | ConvertFrom-Json
+            $state = Get-Content $testStatePath -Raw | ConvertFrom-Json
             $task = @($state.tasks | Where-Object { [string]$_.id -eq "45" } | Select-Object -First 1)
             if (@($task).Count -eq 0) {
                 throw "Task 45 not found in state; cannot run drift decay test."
@@ -190,9 +227,9 @@ Describe "TOD Drift Penalties" {
             $state.engine_performance.updated_at = (Get-Date).ToUniversalTime().AddDays(-10).ToString("o")
             $state.routing_decisions.records = @()
             $state.routing_decisions.updated_at = (Get-Date).ToUniversalTime().AddDays(-10).ToString("o")
-            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
+            $state | ConvertTo-Json -Depth 30 | Set-Content $testStatePath
 
-            $reliabilityRaw = & $todScript -Action "get-reliability" -Top 20 -ConfigPath $cfgPath -Engine "codex"
+            $reliabilityRaw = & $todScript -Action "get-reliability" -Top 20 -ConfigPath $cfgPath -Engine "codex" -StatePath $testStatePath
             $reliability = $reliabilityRaw | ConvertFrom-Json
             $trend = @($reliability.retry_trend | Select-Object -First 1)
 
@@ -203,20 +240,20 @@ Describe "TOD Drift Penalties" {
             [double]$trend[0].confidence_penalty | Should BeLessThan 0.6
         }
         finally {
-            $originalState | Set-Content $statePath
             if (Test-Path $cfgPath) { Remove-Item $cfgPath -Force }
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
         }
     }
 
     It "reports critical drift alert state for severe degradation" {
-        $originalState = Get-Content $statePath -Raw
         $cfgPath = New-DriftTestConfig
+        $testStatePath = New-DriftTestStatePath
         try {
             $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
             $cfg.execution_engine.routing_policy.drift_detection.guardrail_rate_threshold = 0.05
             $cfg | ConvertTo-Json -Depth 30 | Set-Content $cfgPath
 
-            $state = $originalState | ConvertFrom-Json
+            $state = Get-Content $testStatePath -Raw | ConvertFrom-Json
             $task = @($state.tasks | Where-Object { [string]$_.id -eq "45" } | Select-Object -First 1)
             if (@($task).Count -eq 0) {
                 throw "Task 45 not found in state; cannot run drift quarantine test."
@@ -240,9 +277,9 @@ Describe "TOD Drift Penalties" {
                 [pscustomobject]@{ id = "R3"; task_id = "45"; task_category = "refactor"; selected_engine = "codex"; final_outcome = "pass"; created_at = (Get-Date).ToUniversalTime().AddMinutes(-20).ToString("o") }
             )
             $state.routing_decisions.updated_at = (Get-Date).ToUniversalTime().ToString("o")
-            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
+            $state | ConvertTo-Json -Depth 30 | Set-Content $testStatePath
 
-            $reliabilityRaw = & $todScript -Action "get-reliability" -Top 20 -ConfigPath $cfgPath -Engine "codex"
+            $reliabilityRaw = & $todScript -Action "get-reliability" -Top 20 -ConfigPath $cfgPath -Engine "codex" -StatePath $testStatePath
             $reliability = $reliabilityRaw | ConvertFrom-Json
             $trend = @($reliability.retry_trend | Select-Object -First 1)
 
@@ -250,14 +287,14 @@ Describe "TOD Drift Penalties" {
             [string]$trend[0].alert_state | Should Be "critical"
         }
         finally {
-            $originalState | Set-Content $statePath
             if (Test-Path $cfgPath) { Remove-Item $cfgPath -Force }
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
         }
     }
 
     It "manual sanity transition follows stable-warning-degraded-warning-stable" {
-        $originalState = Get-Content $statePath -Raw
         $cfgPath = New-DriftTestConfig
+        $testStatePath = New-DriftTestStatePath
         try {
             $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
             $cfg.execution_engine.routing_policy.drift_detection.quarantine_enabled = $false
@@ -271,30 +308,30 @@ Describe "TOD Drift Penalties" {
             $recoveryWarning = (1..3 | ForEach-Object { @{ success = $true; retry = $true; fallback = $false; review = "pass" } }) + (1..7 | ForEach-Object { @{ success = $true; retry = $false; fallback = $false; review = "pass" } })
             $recoveryStable = 1..10 | ForEach-Object { @{ success = $true; retry = $false; fallback = $false; review = "pass" } }
 
-            $state = $originalState | ConvertFrom-Json
+            $state = Get-Content $testStatePath -Raw | ConvertFrom-Json
             Set-ScenarioState -StateObject $state -Recent $stable -Baseline $stable
-            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
-            $stableTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath
+            $state | ConvertTo-Json -Depth 30 | Set-Content $testStatePath
+            $stableTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath -StatePath $testStatePath
 
-            $state = $originalState | ConvertFrom-Json
+            $state = Get-Content $testStatePath -Raw | ConvertFrom-Json
             Set-ScenarioState -StateObject $state -Recent $warning -Baseline $stable
-            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
-            $warningTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath
+            $state | ConvertTo-Json -Depth 30 | Set-Content $testStatePath
+            $warningTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath -StatePath $testStatePath
 
-            $state = $originalState | ConvertFrom-Json
+            $state = Get-Content $testStatePath -Raw | ConvertFrom-Json
             Set-ScenarioState -StateObject $state -Recent $degraded -Baseline $warning
-            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
-            $degradedTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath
+            $state | ConvertTo-Json -Depth 30 | Set-Content $testStatePath
+            $degradedTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath -StatePath $testStatePath
 
-            $state = $originalState | ConvertFrom-Json
+            $state = Get-Content $testStatePath -Raw | ConvertFrom-Json
             Set-ScenarioState -StateObject $state -Recent $recoveryWarning -Baseline $degraded
-            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
-            $recoveryWarningTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath
+            $state | ConvertTo-Json -Depth 30 | Set-Content $testStatePath
+            $recoveryWarningTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath -StatePath $testStatePath
 
-            $state = $originalState | ConvertFrom-Json
+            $state = Get-Content $testStatePath -Raw | ConvertFrom-Json
             Set-ScenarioState -StateObject $state -Recent $recoveryStable -Baseline $recoveryWarning
-            $state | ConvertTo-Json -Depth 30 | Set-Content $statePath
-            $recoveryStableTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath
+            $state | ConvertTo-Json -Depth 30 | Set-Content $testStatePath
+            $recoveryStableTrend = Get-DriftTrendSnapshot -ConfigPath $cfgPath -StatePath $testStatePath
 
             [string]$stableTrend[0].alert_state | Should Be "stable"
             [string]$warningTrend[0].alert_state | Should Be "warning"
@@ -308,8 +345,8 @@ Describe "TOD Drift Penalties" {
             [double]$recoveryStableTrend[0].confidence_penalty | Should Be 0
         }
         finally {
-            $originalState | Set-Content $statePath
             if (Test-Path $cfgPath) { Remove-Item $cfgPath -Force }
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
         }
     }
 }

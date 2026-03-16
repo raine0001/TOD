@@ -1,0 +1,106 @@
+{
+  "enabled": true,
+  "mode": "live",
+  "allow_microphone": true,
+  "allow_camera": false,
+  "require_push_to_talk": false,
+  "wake_phrase": "tod",
+  "wake_variants": ["tod", "todd", "hey tod", "hi tod", "okay tod", "hello tod", "hey todd", "hi todd", "hello todd"],
+  "min_confidence": 0.55,
+  "wake_min_confidence": 0.40,
+  "direct_query_min_confidence": 0.40,
+  "follow_up_window_sec": 180,
+  "follow_up_min_confidence": 0.52,
+  "command_confidence_thresholds": {
+    "query.status": 0.55,
+    "query.progress": 0.48,
+    "query.eta": 0.38,
+    "query.health": 0.55,
+    "query.summary": 0.55,
+    "query.help": 0.50,
+    "command.refresh": 0.70,
+    "command.stop": 0.82,
+    "command.resume": 0.75,
+    "command.request": 0.58
+  },
+  "listener_pid_path": "shared_state/voice_listener.pid",
+  "auto_execute_queries": true,
+  "status_api_url": "http://localhost:8844/api/project-status",
+  "speak_responses": true,
+  "quiet_mode": false,
+  "conversation": {
+    "provider": "local_first",
+    "fallback_to_builtin": true,
+    "allow_third_party_helpers": false,
+    "local": {
+      "enabled": true,
+      "endpoint": "http://localhost:8008/v1/chat/completions",
+      "model": "tod-local-chat",
+      "temperature": 0.35,
+      "max_tokens": 220,
+      "timeout_sec": 20,
+      "api_key_env": ""
+    },
+    "openai": {
+      "enabled": false,
+      "api_key_env": "OPENAI_API_KEY",
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "model": "gpt-4o-mini",
+      "temperature": 0.35,
+      "max_tokens": 220,
+      "timeout_sec": 20
+    }
+  },
+  "grammar": {
+    "commands": [
+      "status", "check status", "what are you working on",
+      "what are you working on right now", "what is your status", "what's your status", "status right now",
+      "where are you in the current task", "where are you in the project", "where are you in the current project", "where are you currently",
+      "how much longer", "how much longer do you anticipate", "what is the eta", "what's the eta", "when will you be done", "estimated time remaining",
+      "are you awake", "hello", "how are you doing", "health check",
+      "are you there", "you awake",
+      "give me a summary", "summary", "summarize", "quick summary", "what is the summary", "what's the summary",
+      "refresh", "quick refresh",
+      "refresh now",
+      "stop", "pause",
+      "hold",
+      "resume", "continue",
+      "carry on",
+      "help", "what can you do"
+    ]
+  },
+  "capture": {
+    "provider": "none",
+    "sample_rate_hz": 16000,
+    "channels": 1
+  },
+  "stt": {
+    "provider": "none",
+    "language": "en-US"
+  },
+  "tts": {
+    "provider": "system.speech",
+    "voice": "Microsoft Zira Desktop",
+    "culture": "en-US",
+    "rate": -1,
+    "volume": 100,
+    "pitch": "+0st",
+    "sentence_break_ms": 220,
+    "use_ssml": true
+  },
+  "privacy": {
+    "log_transcripts": true,
+    "retain_days": 7,
+    "redact_patterns": [
+      "password",
+      "token",
+      "secret"
+    ]
+  },
+  "paths": {
+    "voice_inbox": "tod/inbox/voice/events",
+    "voice_out": "tod/out/voice",
+    "telemetry": "shared_state/voice_adapter_status.json",
+    "conversation_health": "shared_state/voice_conversation_provider_status.json"
+  }
+}

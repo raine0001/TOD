@@ -14,10 +14,13 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $todScript = Join-Path $PSScriptRoot "TOD.ps1"
 $trainingScript = Join-Path $PSScriptRoot "Invoke-TODTrainingLoop.ps1"
+$lightweightStateBusScript = Join-Path $PSScriptRoot "Get-TODLightweightStateBus.ps1"
 $outDir = Join-Path $repoRoot "tod/out/training"
 $statePath = Join-Path $outDir "training-daemon-state.json"
 $lockPath = Join-Path $outDir "training-daemon.lock"
 $logPath = Join-Path $outDir "training-daemon.log"
+$todStatePath = Join-Path $repoRoot "tod/data/state.json"
+$maxStateReadBytes = 256MB
 
 if (-not (Test-Path -Path $outDir)) {
     New-Item -ItemType Directory -Path $outDir -Force | Out-Null
@@ -35,6 +38,9 @@ if (-not (Test-Path -Path $todScript)) {
 }
 if (-not (Test-Path -Path $trainingScript)) {
     throw "Missing training script: $trainingScript"
+}
+if (-not (Test-Path -Path $lightweightStateBusScript)) {
+    throw "Missing lightweight state bus script: $lightweightStateBusScript"
 }
 if (-not (Test-Path -Path $effectiveConfigPath)) {
     throw "Missing config file: $effectiveConfigPath"
@@ -94,13 +100,39 @@ function Release-Lock {
 }
 
 function Get-StateBus {
+    $useLightweight = $false
+    if (-not (Test-Path -Path $todStatePath)) {
+        $useLightweight = $true
+    }
+    else {
+        try {
+            $item = Get-Item -Path $todStatePath -ErrorAction Stop
+            $useLightweight = ([int64]$item.Length -gt [int64]$maxStateReadBytes)
+        }
+        catch {
+            $useLightweight = $true
+        }
+    }
+
     try {
-        $raw = & $todScript -Action "get-state-bus" -ConfigPath $effectiveConfigPath -Top $Top
+        if ($useLightweight) {
+            $raw = & $lightweightStateBusScript -AsJson
+        }
+        else {
+            $raw = & $todScript -Action "get-state-bus" -ConfigPath $effectiveConfigPath -Top $Top
+        }
         return ($raw | ConvertFrom-Json)
     }
     catch {
-        Write-DaemonLog "state-bus query failed: $($_.Exception.Message)"
-        return $null
+        try {
+            $raw = & $lightweightStateBusScript -AsJson
+            Write-DaemonLog "state-bus fallback active (listener telemetry)"
+            return ($raw | ConvertFrom-Json)
+        }
+        catch {
+            Write-DaemonLog "state-bus query failed: $($_.Exception.Message)"
+            return $null
+        }
     }
 }
 

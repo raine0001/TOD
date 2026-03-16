@@ -161,6 +161,29 @@ Watch mode (prints only first run, failures, and deltas by default):
 .\scripts\Invoke-TODSmokeWatch.ps1 -IntervalSeconds 180
 ```
 
+Voice adapter scaffold (dry-run only, no mic/camera capture):
+
+```powershell
+.\scripts\Invoke-TODVoiceAdapter.ps1 -Action status
+.\scripts\Invoke-TODVoiceAdapter.ps1 -Action describe-contract
+.\scripts\Invoke-TODVoiceAdapter.ps1 -Action simulate-intent -Transcript "tod refresh reliability" -Intent "command.request"
+```
+
+Local-first conversational model ramp via `llama.cpp`:
+
+```powershell
+.\scripts\Setup-TODLlamaCpp.ps1
+.\scripts\Get-TODLocalChatModel.ps1
+.\scripts\Start-TODLlamaCppServer.ps1
+.\scripts\Invoke-TODConversationProvider.ps1 -Action status
+```
+
+Notes:
+- `Setup-TODLlamaCpp.ps1` downloads a prebuilt Windows `llama.cpp` release into `tools/llama.cpp`.
+- `Get-TODLocalChatModel.ps1` downloads a practical starter model: `Qwen2.5-3B-Instruct-Q4_K_M.gguf`.
+- The default local model path is `models/tod/Qwen2.5-3B-Instruct-Q4_K_M.gguf`.
+- TOD voice conversation is already configured for `local_first` and will use `http://localhost:8008/v1/chat/completions` when the local server is up.
+
 Run a short local watch sample:
 
 ```powershell
@@ -586,6 +609,38 @@ Optional convenience command:
 Import-Module TODTools -DisableNameChecking -Force
 Start-TOD-UI -Port 8844
 ```
+
+UI quick guide (build-aware):
+
+- Header chips show the active UI build tag and active localhost port.
+- `MIM probe` indicates ping reachability to MIM only.
+- `TOD Active` indicates local TOD/API activity seen by the console.
+- `Live | comms active/frozen` in Action Output is derived from heartbeat age versus stall threshold.
+- Action timeline is newest-first.
+- Pending queue under Action Output shows projected upcoming objective tasks and shrinks as completions land.
+- `Quick Refresh Reliability` uses safe dashboard refresh (status/log/share reload) instead of running a heavy TOD action.
+- `Refresh State Bus` is read-only snapshot loading; it does not dispatch tasks, but can be expensive under active load.
+- Share artifact `open` uses inline preview; `download` keeps attachment behavior.
+
+UI Help panel:
+
+- Open from the header `UI Help` button.
+- Close with `Esc` or the `Close` button.
+- The panel documents System Posture, Engineering Loop, Scorecard Trend, telemetry timestamps, and executive summary semantics.
+
+UI changelog (operator-facing):
+
+- `2026.03.13-b2`
+	- Added header chips showing active UI build and runtime port.
+	- Added in-app UI Help overlay.
+	- Added in-app UI changelog block for quick release delta visibility.
+- `2026.03.13-b1`
+	- Switched Action Output timeline to newest-first ordering.
+	- Added pending queue under Action Output.
+	- Converted Quick Refresh Reliability to safe dashboard refresh mode.
+	- Added executive summary under Current Project Marker.
+	- Added state-bus refresh confirmation guard.
+	- Fixed Share Artifact `open` link behavior with inline preview endpoint.
 
 ### Debug Logs
 

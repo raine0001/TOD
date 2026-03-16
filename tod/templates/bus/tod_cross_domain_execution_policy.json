@@ -9,7 +9,11 @@
     "domain_policy_blocked",
     "domain_policy_deferred",
     "domain_policy_dry_run_only",
-    "request_unsupported_domain_ignored"
+    "request_unsupported_domain_ignored",
+    "perception_workspace_action_allowed",
+    "perception_context_uncertain_dry_run",
+    "perception_context_uncertain_deferred",
+    "perception_unsafe_action_blocked"
   ],
   "domains": [
     {
@@ -47,11 +51,76 @@
       "dry_run_only_actions": [
         "get-engineering-loop-summary"
       ]
+    },
+    {
+      "domain": "workspace.perception",
+      "allowed_actions": [
+        "get-engineering-loop-summary"
+      ],
+      "blocked_actions": [],
+      "deferred_actions": [],
+      "dry_run_only_actions": []
+    },
+    {
+      "domain": "workspace.perception.uncertain",
+      "allowed_actions": [],
+      "blocked_actions": [],
+      "deferred_actions": [
+        "get-engineering-loop-summary"
+      ],
+      "dry_run_only_actions": []
+    },
+    {
+      "domain": "workspace.perception.replay",
+      "allowed_actions": [],
+      "blocked_actions": [],
+      "deferred_actions": [],
+      "dry_run_only_actions": [
+        "get-engineering-loop-summary"
+      ]
+    },
+    {
+      "domain": "workspace.perception.unsafe",
+      "allowed_actions": [],
+      "blocked_actions": [
+        "get-engineering-loop-summary"
+      ],
+      "deferred_actions": [],
+      "dry_run_only_actions": []
+    }
+  ],
+  "perception_context_rules": [
+    {
+      "domain": "workspace.perception",
+      "runtime_actions": [
+        "get-engineering-loop-summary"
+      ],
+      "context_states": [
+        "uncertain"
+      ],
+      "context_safety": [],
+      "decision": "dry_run_only",
+      "reason_code": "perception_context_uncertain_dry_run",
+      "message": "Perception context is uncertain; execution is restricted to dry-run mode."
+    },
+    {
+      "domain": "workspace.perception",
+      "runtime_actions": [
+        "get-engineering-loop-summary"
+      ],
+      "context_states": [],
+      "context_safety": [
+        "unsafe"
+      ],
+      "decision": "blocked",
+      "reason_code": "perception_unsafe_action_blocked",
+      "message": "Perception context is marked unsafe; execution is blocked."
     }
   ],
   "boundary_notes": [
     "TOD accepts bounded execution requests only.",
     "MIM remains owner of cognition, planning, meaning, and governance.",
+    "MIM remains owner of perception normalization, memory, and spatial meaning.",
     "Policy outcomes are execution guardrails, not strategic interpretation."
   ]
 }

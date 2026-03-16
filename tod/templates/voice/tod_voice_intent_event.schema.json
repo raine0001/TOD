@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tod_voice_intent_event.schema.json",
+  "title": "TOD Voice Intent Event",
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_id",
+    "timestamp_utc",
+    "source",
+    "payload"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "voice.intent"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "tod-voice-adapter-v1"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "transcript",
+        "intent",
+        "confidence",
+        "objective_hint",
+        "camera_used"
+      ],
+      "properties": {
+        "transcript": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "objective_hint": {
+          "type": "string"
+        },
+        "camera_used": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

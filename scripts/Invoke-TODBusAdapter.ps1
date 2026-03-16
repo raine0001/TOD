@@ -355,6 +355,38 @@ function Build-CorrelationFromEvent {
     return [pscustomobject]$corr
 }
 
+function Get-LightweightEngineeringLoopSummary {
+    $buildStatePath = Join-Path $repoRoot "shared_state/current_build_state.json"
+    $summary = [ordered]@{
+        runtime_action = "get-engineering-loop-summary"
+        status = "ok"
+        generated_at = (Get-Date).ToUniversalTime().ToString("o")
+        source = "tod-bus-adapter-lightweight-summary-v1"
+    }
+
+    if (Test-Path -Path $buildStatePath) {
+        try {
+            $build = Get-Content -Path $buildStatePath -Raw | ConvertFrom-Json
+            $summary["path"] = (Get-RepoRelativePath -AbsolutePath $buildStatePath)
+            if ($build.PSObject.Properties["generated_at"] -and -not [string]::IsNullOrWhiteSpace([string]$build.generated_at)) {
+                $summary["generated_at"] = [string]$build.generated_at
+            }
+            if ($build.PSObject.Properties["regression"] -and $build.regression) {
+                $summary["regression"] = $build.regression
+            }
+        }
+        catch {
+            $summary["status"] = "warning"
+            $summary["note"] = "current_build_state_unreadable"
+        }
+    }
+    else {
+        $summary["note"] = "current_build_state_missing"
+    }
+
+    return [pscustomobject]$summary
+}
+
 function Get-ReliabilitySignal {
     param(
         [Parameter(Mandatory = $true)][string]$FinalOutcome,
@@ -1215,11 +1247,17 @@ switch ($Action) {
                         throw "Simulated transient failure before bounded retry"
                     }
 
-                    if (-not (Test-Path -Path $todScriptAbs)) { throw "TOD runtime script not found" }
-                    if (-not (Test-Path -Path $todConfigAbs)) { throw "TOD runtime config not found" }
+                    $runtimePayload = $null
+                    if ($runtimeAction -eq "get-engineering-loop-summary") {
+                        $runtimePayload = Get-LightweightEngineeringLoopSummary
+                    }
+                    else {
+                        if (-not (Test-Path -Path $todScriptAbs)) { throw "TOD runtime script not found" }
+                        if (-not (Test-Path -Path $todConfigAbs)) { throw "TOD runtime config not found" }
+                        $runtimeRaw = & $todScriptAbs -Action $runtimeAction -ConfigPath $todConfigAbs -Top 10
+                        $runtimePayload = $runtimeRaw | ConvertFrom-Json
+                    }
 
-                    $runtimeRaw = & $todScriptAbs -Action $runtimeAction -ConfigPath $todConfigAbs -Top 10
-                    $runtimePayload = $runtimeRaw | ConvertFrom-Json
                     $runtimeOk = $true
                     if ($runtimePayload -and $runtimePayload.PSObject.Properties["path"]) {
                         $runtimeSummary | Add-Member -NotePropertyName path -NotePropertyValue ([string]$runtimePayload.path) -Force

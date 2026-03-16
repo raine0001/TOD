@@ -4,15 +4,54 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $todScript = Join-Path $repoRoot "scripts/TOD.ps1"
 $baseConfigPath = Join-Path $repoRoot "tod/config/tod-config.json"
-$statePath = Join-Path $repoRoot "tod/data/state.json"
+
+function New-GuardrailTestStatePath {
+    $state = [pscustomobject]@{
+        source = "tod-state-test-fixture-v1"
+        updated_at = ""
+        objectives = @(
+            [pscustomobject]@{
+                id = "75"
+                title = "Objective 75 test fixture"
+                status = "in_progress"
+                constraints = @()
+                success_criteria = @()
+            }
+        )
+        tasks = @(
+            [pscustomobject]@{
+                id = "45"
+                objective_id = "75"
+                title = "Guardrail fixture task"
+                type = "implementation"
+                task_category = "code_change"
+                assigned_executor = "codex"
+                status = "pending"
+                dependencies = @()
+                acceptance_criteria = @()
+            }
+        )
+        execution_results = @()
+        review_decisions = @()
+        journal = @()
+        sync_state = [pscustomobject]@{ last_comparison = [pscustomobject]@{ status = "ok" } }
+        engine_performance = [pscustomobject]@{ records = @(); updated_at = "" }
+        routing_decisions = [pscustomobject]@{ records = @(); updated_at = "" }
+    }
+
+    $path = Join-Path $repoRoot ("tod/out/tests/guardrails-state-{0}.json" -f ([guid]::NewGuid().ToString("N")))
+    $state | ConvertTo-Json -Depth 30 | Set-Content $path
+    return $path
+}
 
 function Invoke-TodRunTaskJson {
     param(
         [Parameter(Mandatory = $true)][string]$ConfigPath,
-        [Parameter(Mandatory = $true)][string]$TaskId
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        [Parameter(Mandatory = $true)][string]$StatePath
     )
 
-    $raw = & $todScript -Action "run-task" -TaskId $TaskId -ConfigPath $ConfigPath
+    $raw = & $todScript -Action "run-task" -TaskId $TaskId -ConfigPath $ConfigPath -StatePath $StatePath
     return ($raw | ConvertFrom-Json)
 }
 
@@ -67,31 +106,31 @@ function New-PerfRecord {
 
 Describe "TOD Guardrail Scenarios" {
     It "blocks run-task when sync status is breaking" {
-        $originalState = Get-Content $statePath -Raw
         $cfgPath = New-GuardrailTestConfig -RecentFailureThreshold 2
+        $testStatePath = New-GuardrailTestStatePath
         try {
-            $state = $originalState | ConvertFrom-Json
+            $state = Get-Content $testStatePath -Raw | ConvertFrom-Json
             if (-not $state.PSObject.Properties["sync_state"] -or $null -eq $state.sync_state) {
                 $state | Add-Member -NotePropertyName sync_state -NotePropertyValue ([pscustomobject]@{}) -Force
             }
             $state.sync_state.last_comparison = [pscustomobject]@{ status = "breaking" }
-            $state | ConvertTo-Json -Depth 20 | Set-Content $statePath
+            $state | ConvertTo-Json -Depth 20 | Set-Content $testStatePath
 
-            $result = Invoke-TodRunTaskJson -ConfigPath $cfgPath -TaskId "45"
+            $result = Invoke-TodRunTaskJson -ConfigPath $cfgPath -TaskId "45" -StatePath $testStatePath
             ([bool]$result.blocked) | Should Be $true
             ([string]$result.routing_decision.routing.reason -eq "contract_drift_breaking") | Should Be $true
         }
         finally {
-            $originalState | Set-Content $statePath
             if (Test-Path $cfgPath) { Remove-Item $cfgPath -Force }
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
         }
     }
 
     It "blocks run-task when all candidate engines are guardrail-blocked" {
-        $originalState = Get-Content $statePath -Raw
         $cfgPath = New-GuardrailTestConfig -RecentFailureThreshold 1
+        $testStatePath = New-GuardrailTestStatePath
         try {
-            $state = $originalState | ConvertFrom-Json
+            $state = Get-Content $testStatePath -Raw | ConvertFrom-Json
             $state.sync_state.last_comparison = [pscustomobject]@{ status = "ok" }
 
             $task = @($state.tasks | Where-Object { [string]$_.id -eq "45" } | Select-Object -First 1)
@@ -105,15 +144,15 @@ Describe "TOD Guardrail Scenarios" {
                 (New-PerfRecord -TaskId "45" -Engine "local" -TaskCategory "code_change" -Success $false)
             )
 
-            $state | ConvertTo-Json -Depth 20 | Set-Content $statePath
+            $state | ConvertTo-Json -Depth 20 | Set-Content $testStatePath
 
-            $result = Invoke-TodRunTaskJson -ConfigPath $cfgPath -TaskId "45"
+            $result = Invoke-TodRunTaskJson -ConfigPath $cfgPath -TaskId "45" -StatePath $testStatePath
             ([bool]$result.blocked) | Should Be $true
             ([string]$result.routing_decision.routing.reason -eq "guardrail_all_candidates_blocked") | Should Be $true
         }
         finally {
-            $originalState | Set-Content $statePath
             if (Test-Path $cfgPath) { Remove-Item $cfgPath -Force }
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
         }
     }
 }

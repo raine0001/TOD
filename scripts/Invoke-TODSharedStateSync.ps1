@@ -9,7 +9,23 @@ param(
     [string]$ApprovalReductionPath = "shared_state/approval_reduction_summary.json",
     [string]$ManifestPath = "tod/data/sample-manifest.json",
     [string]$MimContextExportPath = "tod/out/context-sync/MIM_CONTEXT_EXPORT.latest.json",
+    [string]$MimContextExportYamlPath = "tod/out/context-sync/MIM_CONTEXT_EXPORT.latest.yaml",
     [string]$MimManifestPath = "tod/out/context-sync/MIM_MANIFEST.latest.json",
+    [string]$MimSharedContextExportPath = "",
+    [string]$MimSharedContextExportYamlPath = "",
+    [string]$MimSharedManifestPath = "",
+    [string]$MimSharedExportRoot = "",
+    [switch]$RefreshMimContextFromShared,
+    [switch]$RefreshMimContextFromSsh,
+    [string]$MimSshHost = "mim",
+    [string]$MimSshUser = "",
+    [int]$MimSshPort = 0,
+    [string]$MimSshPassword = "",
+    [string]$MimSshSharedRoot = "/home/testpilot/mim/runtime/shared",
+    [string]$MimSshStagingRoot = "tod/out/context-sync/ssh-shared",
+    [switch]$AllowInteractiveSshPrompt,
+    [string]$DotEnvPath = ".env",
+    [string]$ScpCommand = "scp",
     [string]$ContextSyncInboxPath = "tod/inbox/context-sync/updates",
     [double]$MimStatusStaleAfterHours = 6,
     [string]$ReleaseTagOverride,
@@ -51,6 +67,66 @@ function Get-JsonFileIfExists {
     catch {
         return $null
     }
+}
+
+function Normalize-ObjectiveIdText {
+    param([string]$Value)
+
+    $text = ([string]$Value).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return ""
+    }
+
+    $match = [regex]::Match($text, '(?i)(?:^objective-(?<objective>\d+)$|^(?<objective>\d+)$)')
+    if ($match.Success) {
+        return [string]$match.Groups['objective'].Value
+    }
+
+    return $text
+}
+
+function Write-Utf8NoBomText {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Content
+    )
+
+    $dir = Split-Path -Parent $Path
+    if (-not [string]::IsNullOrWhiteSpace($dir) -and -not (Test-Path -Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $normalized = ([string]$Content) -replace "`r`n", "`n"
+    [System.IO.File]::WriteAllText($Path, $normalized, $utf8NoBom)
+}
+
+function Write-Utf8NoBomJson {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)]$Payload,
+        [int]$Depth = 20
+    )
+
+    $json = $Payload | ConvertTo-Json -Depth $Depth
+    Write-Utf8NoBomText -Path $Path -Content $json
+}
+
+function Append-Utf8NoBomJsonLine {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)]$Payload,
+        [int]$Depth = 20
+    )
+
+    $dir = Split-Path -Parent $Path
+    if (-not [string]::IsNullOrWhiteSpace($dir) -and -not (Test-Path -Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $line = (($Payload | ConvertTo-Json -Depth $Depth -Compress) + "`n")
+    [System.IO.File]::AppendAllText($Path, $line, $utf8NoBom)
 }
 
 function Get-TodPayload {
@@ -331,6 +407,499 @@ function Get-MimSchemaVersionFromContextExport {
     return ""
 }
 
+function Ensure-ParentDirectoryForFile {
+    param([Parameter(Mandatory = $true)][string]$FilePath)
+    $dir = Split-Path -Parent $FilePath
+    if (-not [string]::IsNullOrWhiteSpace($dir) -and -not (Test-Path -Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+}
+
+function Get-DotEnvValue {
+    param(
+        [string]$Path,
+        [string]$Name
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($Name)) {
+        return ""
+    }
+    if (-not (Test-Path -Path $Path)) {
+        return ""
+    }
+
+    $line = Get-Content -Path $Path | Where-Object {
+        $_ -match ("^\s*{0}\s*=" -f [regex]::Escape($Name))
+    } | Select-Object -First 1
+
+    if ([string]::IsNullOrWhiteSpace([string]$line)) {
+        return ""
+    }
+
+    return ([string]($line -replace ("^\s*{0}\s*=\s*" -f [regex]::Escape($Name)), "")).Trim()
+}
+
+function Resolve-MimSshSettingValue {
+    param(
+        [string]$ExplicitValue,
+        [string]$EnvVarName,
+        [string]$DotEnvPath
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitValue)) {
+        return [string]$ExplicitValue
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($EnvVarName)) {
+        $fromEnv = [string][Environment]::GetEnvironmentVariable($EnvVarName)
+        if (-not [string]::IsNullOrWhiteSpace($fromEnv)) {
+            return $fromEnv
+        }
+
+        $fromDotEnv = Get-DotEnvValue -Path $DotEnvPath -Name $EnvVarName
+        if (-not [string]::IsNullOrWhiteSpace($fromDotEnv)) {
+            return $fromDotEnv
+        }
+    }
+
+    return ""
+}
+
+function Resolve-SshHostAlias {
+    param([string]$RemoteHost)
+
+    if ([string]::IsNullOrWhiteSpace($RemoteHost)) {
+        return ""
+    }
+
+    # If this is already an IP or contains a dot, treat it as concrete hostname.
+    if ($RemoteHost -match "^\d{1,3}(?:\.\d{1,3}){3}$" -or $RemoteHost -match "\.") {
+        return $RemoteHost
+    }
+
+    $sshConfigPath = Join-Path $HOME ".ssh/config"
+    if (-not (Test-Path -Path $sshConfigPath)) {
+        return $RemoteHost
+    }
+
+    $inHostBlock = $false
+    $matchedHost = $false
+    $resolvedHostName = ""
+
+    foreach ($rawLine in (Get-Content -Path $sshConfigPath)) {
+        $line = [string]$rawLine
+        $trim = $line.Trim()
+        if ([string]::IsNullOrWhiteSpace($trim) -or $trim.StartsWith("#")) {
+            continue
+        }
+
+        if ($trim -match "^(?i)Host\s+(.+)$") {
+            $inHostBlock = $true
+            $matchedHost = $false
+            $resolvedHostName = ""
+
+            $hostTokens = @($matches[1] -split "\s+")
+            foreach ($token in $hostTokens) {
+                if ([string]::Equals([string]$token, $RemoteHost, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $matchedHost = $true
+                    break
+                }
+            }
+            continue
+        }
+
+        if ($inHostBlock -and $matchedHost -and $trim -match "^(?i)HostName\s+(.+)$") {
+            $resolvedHostName = [string]$matches[1]
+            break
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($resolvedHostName)) {
+        return $resolvedHostName
+    }
+
+    return $RemoteHost
+}
+
+function Copy-IfSourceExists {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($SourcePath) -or [string]::IsNullOrWhiteSpace($DestinationPath)) {
+        return $false
+    }
+
+    $srcAbs = Get-LocalPath -PathValue $SourcePath
+    $dstAbs = Get-LocalPath -PathValue $DestinationPath
+    if (-not (Test-Path -Path $srcAbs)) {
+        return $false
+    }
+
+    $srcFull = [System.IO.Path]::GetFullPath($srcAbs)
+    $dstFull = [System.IO.Path]::GetFullPath($dstAbs)
+    if ([string]::Equals($srcFull, $dstFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    Ensure-ParentDirectoryForFile -FilePath $dstAbs
+    Copy-Item -Path $srcAbs -Destination $dstAbs -Force
+    return $true
+}
+
+function Copy-FromSshIfAvailable {
+    param(
+        [Parameter(Mandatory = $true)][string]$Scp,
+        [Parameter(Mandatory = $true)][string]$RemoteHost,
+        [int]$RemotePort = 22,
+        [Parameter(Mandatory = $true)][string]$RemotePath,
+        [Parameter(Mandatory = $true)][string]$LocalPath,
+        [switch]$NonInteractive,
+        [switch]$Required
+    )
+
+    $result = [pscustomobject]@{
+        ok = $false
+        remote_path = $RemotePath
+        local_path = $LocalPath
+        required = [bool]$Required
+        error = ""
+    }
+
+    try {
+        Ensure-ParentDirectoryForFile -FilePath $LocalPath
+
+        $args = @()
+        if ($NonInteractive) {
+            $args += @("-o", "BatchMode=yes")
+            $args += @("-o", "ConnectTimeout=10")
+        }
+        if ($RemotePort -gt 0) {
+            $args += @("-P", [string]$RemotePort)
+        }
+        $args += @(("{0}:{1}" -f $RemoteHost, $RemotePath), $LocalPath)
+
+        & $Scp @args 2>$null
+        if ($LASTEXITCODE -eq 0 -and (Test-Path -Path $LocalPath -PathType Leaf)) {
+            $result.ok = $true
+            return $result
+        }
+
+        if ($Required) {
+            $result.error = "scp_failed"
+        }
+        else {
+            $result.error = "optional_missing"
+        }
+    }
+    catch {
+        $result.error = [string]$_.Exception.Message
+    }
+
+    return $result
+}
+
+function Copy-FromSftpIfAvailable {
+    param(
+        [Parameter(Mandatory = $true)][int]$SessionId,
+        [Parameter(Mandatory = $true)][string]$RemotePath,
+        [Parameter(Mandatory = $true)][string]$LocalPath,
+        [switch]$Required
+    )
+
+    $result = [pscustomobject]@{
+        ok = $false
+        remote_path = $RemotePath
+        local_path = $LocalPath
+        required = [bool]$Required
+        error = ""
+    }
+
+    try {
+        Ensure-ParentDirectoryForFile -FilePath $LocalPath
+        $destinationDir = Split-Path -Parent $LocalPath
+        if ([string]::IsNullOrWhiteSpace($destinationDir)) {
+            $destinationDir = Get-Location
+        }
+        Get-SFTPItem -SessionId $SessionId -Path $RemotePath -Destination $destinationDir -Force -ErrorAction Stop | Out-Null
+        if (Test-Path -Path $LocalPath -PathType Leaf) {
+            $result.ok = $true
+            return $result
+        }
+
+        if ($Required) {
+            $result.error = "sftp_failed"
+        }
+        else {
+            $result.error = "optional_missing"
+        }
+    }
+    catch {
+        $errorText = [string]$_.Exception.Message
+        if ([string]::IsNullOrWhiteSpace($errorText)) {
+            $errorText = if ($Required) { "sftp_failed" } else { "optional_missing" }
+        }
+        if ($Required) {
+            $result.error = $errorText
+        }
+        else {
+            $result.error = $errorText
+        }
+    }
+
+    return $result
+}
+
+function Invoke-MimSshRefresh {
+    param(
+        [Parameter(Mandatory = $true)][string]$Scp,
+        [Parameter(Mandatory = $true)][string]$RemoteHost,
+        [string]$RemoteUser,
+        [int]$RemotePort,
+        [string]$RemotePassword,
+        [Parameter(Mandatory = $true)][string]$RemoteRoot,
+        [Parameter(Mandatory = $true)][string]$StageRoot,
+        [string]$DotEnvPath,
+        [switch]$AllowInteractiveSshPrompt
+    )
+
+    $stageAbs = Get-LocalPath -PathValue $StageRoot
+    New-DirectoryIfMissing -PathValue $stageAbs
+
+    $jsonRemote = ("{0}/MIM_CONTEXT_EXPORT.latest.json" -f $RemoteRoot.TrimEnd('/'))
+    $yamlRemote = ("{0}/MIM_CONTEXT_EXPORT.latest.yaml" -f $RemoteRoot.TrimEnd('/'))
+    $manifestRemote = ("{0}/MIM_MANIFEST.latest.json" -f $RemoteRoot.TrimEnd('/'))
+    $packetRemote = ("{0}/MIM_TOD_HANDSHAKE_PACKET.latest.json" -f $RemoteRoot.TrimEnd('/'))
+
+    $jsonLocal = Join-Path $stageAbs "MIM_CONTEXT_EXPORT.latest.json"
+    $yamlLocal = Join-Path $stageAbs "MIM_CONTEXT_EXPORT.latest.yaml"
+    $manifestLocal = Join-Path $stageAbs "MIM_MANIFEST.latest.json"
+    $packetLocal = Join-Path $stageAbs "MIM_TOD_HANDSHAKE_PACKET.latest.json"
+
+    $dotEnvAbs = ""
+    if (-not [string]::IsNullOrWhiteSpace($DotEnvPath)) {
+        $dotEnvAbs = Get-LocalPath -PathValue $DotEnvPath
+    }
+
+    $sshUser = Resolve-MimSshSettingValue -ExplicitValue $RemoteUser -EnvVarName "MIM_SSH_USER" -DotEnvPath $dotEnvAbs
+    if ([string]::IsNullOrWhiteSpace($sshUser)) { $sshUser = "testpilot" }
+
+    $sshPortValue = ""
+    if ($RemotePort -gt 0) {
+        $sshPortValue = [string]$RemotePort
+    }
+    $sshPortText = Resolve-MimSshSettingValue -ExplicitValue $sshPortValue -EnvVarName "MIM_SSH_PORT" -DotEnvPath $dotEnvAbs
+    $sshPort = 22
+    if (-not [string]::IsNullOrWhiteSpace($sshPortText)) {
+        $parsedPort = 0
+        if ([int]::TryParse($sshPortText, [ref]$parsedPort) -and $parsedPort -gt 0) {
+            $sshPort = $parsedPort
+        }
+    }
+
+    $sshPassword = Resolve-MimSshSettingValue -ExplicitValue $RemotePassword -EnvVarName "MIM_SSH_PASSWORD" -DotEnvPath $dotEnvAbs
+    $canUsePassword = (-not [string]::IsNullOrWhiteSpace($sshPassword)) -and ($sshPassword -ne "CHANGE_ME")
+    $nonInteractiveScp = (-not [bool]$AllowInteractiveSshPrompt)
+    $resolvedSftpHost = Resolve-SshHostAlias -RemoteHost $RemoteHost
+
+    $jsonPull = $null
+    $yamlPull = $null
+    $manifestPull = $null
+    $packetPull = $null
+    $authMode = "scp"
+
+    if ($canUsePassword -and (Get-Module -ListAvailable -Name Posh-SSH)) {
+        $authMode = "sftp_password"
+        Import-Module Posh-SSH -ErrorAction Stop | Out-Null
+
+        $securePassword = ConvertTo-SecureString $sshPassword -AsPlainText -Force
+        $credential = New-Object System.Management.Automation.PSCredential ($sshUser, $securePassword)
+
+        $session = $null
+        try {
+            $session = New-SFTPSession -ComputerName $resolvedSftpHost -Port $sshPort -Credential $credential -AcceptKey -ConnectionTimeout 30000
+            $jsonPull = Copy-FromSftpIfAvailable -SessionId ([int]$session.SessionId) -RemotePath $jsonRemote -LocalPath $jsonLocal -Required
+            $yamlPull = Copy-FromSftpIfAvailable -SessionId ([int]$session.SessionId) -RemotePath $yamlRemote -LocalPath $yamlLocal -Required
+            $manifestPull = Copy-FromSftpIfAvailable -SessionId ([int]$session.SessionId) -RemotePath $manifestRemote -LocalPath $manifestLocal
+            $packetPull = Copy-FromSftpIfAvailable -SessionId ([int]$session.SessionId) -RemotePath $packetRemote -LocalPath $packetLocal
+        }
+        catch {
+            $authMode = "scp"
+        }
+        finally {
+            if ($null -ne $session) {
+                Remove-SFTPSession -SessionId ([int]$session.SessionId) | Out-Null
+            }
+        }
+    }
+
+    if ($null -eq $jsonPull -or $null -eq $yamlPull -or $null -eq $manifestPull -or $null -eq $packetPull) {
+        $scpTarget = $RemoteHost
+        if ($scpTarget -notmatch "@") {
+            $scpTarget = ("{0}@{1}" -f $sshUser, $scpTarget)
+        }
+
+        $jsonPull = Copy-FromSshIfAvailable -Scp $Scp -RemoteHost $scpTarget -RemotePort $sshPort -RemotePath $jsonRemote -LocalPath $jsonLocal -NonInteractive:$nonInteractiveScp -Required
+        $yamlPull = Copy-FromSshIfAvailable -Scp $Scp -RemoteHost $scpTarget -RemotePort $sshPort -RemotePath $yamlRemote -LocalPath $yamlLocal -NonInteractive:$nonInteractiveScp -Required
+        $manifestPull = Copy-FromSshIfAvailable -Scp $Scp -RemoteHost $scpTarget -RemotePort $sshPort -RemotePath $manifestRemote -LocalPath $manifestLocal -NonInteractive:$nonInteractiveScp
+        $packetPull = Copy-FromSshIfAvailable -Scp $Scp -RemoteHost $scpTarget -RemotePort $sshPort -RemotePath $packetRemote -LocalPath $packetLocal -NonInteractive:$nonInteractiveScp
+    }
+
+    return [pscustomobject]@{
+        ok = ([bool]$jsonPull.ok -and [bool]$yamlPull.ok)
+        stage_root = $StageRoot
+        stage_root_abs = $stageAbs
+        resolved_sftp_host = $resolvedSftpHost
+        source_json = $jsonLocal
+        source_yaml = $yamlLocal
+        source_manifest = $manifestLocal
+        source_handshake_packet = $packetLocal
+        auth_mode = $authMode
+        non_interactive_scp = [bool]$nonInteractiveScp
+        pulls = [pscustomobject]@{
+            json = $jsonPull
+            yaml = $yamlPull
+            manifest = $manifestPull
+            handshake_packet = $packetPull
+        }
+    }
+}
+
+function Get-MimSharedSourceCandidates {
+    param(
+        [string]$ExplicitJsonPath,
+        [string]$ExplicitYamlPath,
+        [string]$ExplicitManifestPath,
+        [string]$PreferredRoot,
+        [string]$EnvRoot
+    )
+
+    $candidates = @()
+
+    if ((-not [string]::IsNullOrWhiteSpace($ExplicitJsonPath)) -or (-not [string]::IsNullOrWhiteSpace($ExplicitYamlPath)) -or (-not [string]::IsNullOrWhiteSpace($ExplicitManifestPath))) {
+        $explicitRoot = ""
+        if (-not [string]::IsNullOrWhiteSpace($ExplicitJsonPath)) {
+            $explicitRoot = Split-Path -Parent $ExplicitJsonPath
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($ExplicitYamlPath)) {
+            $explicitRoot = Split-Path -Parent $ExplicitYamlPath
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($ExplicitManifestPath)) {
+            $explicitRoot = Split-Path -Parent $ExplicitManifestPath
+        }
+
+        $candidates += [pscustomobject]@{
+            root = $explicitRoot
+            source_json = $ExplicitJsonPath
+            source_yaml = $ExplicitYamlPath
+            source_manifest = $ExplicitManifestPath
+        }
+    }
+
+    $roots = @()
+    if (-not [string]::IsNullOrWhiteSpace($PreferredRoot)) { $roots += $PreferredRoot }
+    if (-not [string]::IsNullOrWhiteSpace($EnvRoot)) { $roots += $EnvRoot }
+    $roots += "../MIM/runtime/shared"
+    $roots += "../mim/runtime/shared"
+    $roots += "/shared_state"
+
+    $seen = @{}
+    foreach ($root in $roots) {
+        $rootText = [string]$root
+        if ([string]::IsNullOrWhiteSpace($rootText)) { continue }
+        if ($seen.ContainsKey($rootText)) { continue }
+        $seen[$rootText] = $true
+
+        $candidates += [pscustomobject]@{
+            root = $rootText
+            source_json = (Join-Path $rootText "MIM_CONTEXT_EXPORT.latest.json")
+            source_yaml = (Join-Path $rootText "MIM_CONTEXT_EXPORT.latest.yaml")
+            source_manifest = (Join-Path $rootText "MIM_MANIFEST.latest.json")
+        }
+    }
+
+    return @($candidates)
+}
+
+function Resolve-MimSharedSourceCandidate {
+    param([Parameter(Mandatory = $true)]$Candidates)
+
+    $candidatePathsTried = @()
+    $permissionDenied = $false
+    $badFilename = $false
+
+    foreach ($candidate in @($Candidates)) {
+        $jsonPath = [string]$candidate.source_json
+        $yamlPath = [string]$candidate.source_yaml
+        $manifestPath = [string]$candidate.source_manifest
+        $paths = @($jsonPath, $yamlPath, $manifestPath)
+
+        foreach ($path in $paths) {
+            if (-not [string]::IsNullOrWhiteSpace($path)) {
+                $candidatePathsTried += $path
+            }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($jsonPath) -or [string]::IsNullOrWhiteSpace($yamlPath)) {
+            $badFilename = $true
+            continue
+        }
+
+        try {
+            $rootPath = [string]$candidate.root
+            if ([string]::IsNullOrWhiteSpace($rootPath)) {
+                $rootPath = Split-Path -Parent ([string]$candidate.source_json)
+            }
+
+            $rootAbs = Get-LocalPath -PathValue $rootPath
+            if (-not (Test-Path -Path $rootAbs)) {
+                continue
+            }
+
+            $jsonAbs = Get-LocalPath -PathValue $jsonPath
+            $yamlAbs = Get-LocalPath -PathValue $yamlPath
+            $manifestAbs = if ([string]::IsNullOrWhiteSpace($manifestPath)) { "" } else { Get-LocalPath -PathValue $manifestPath }
+
+            $hasJson = Test-Path -Path $jsonAbs -PathType Leaf
+            $hasYaml = Test-Path -Path $yamlAbs -PathType Leaf
+            $hasManifest = if ([string]::IsNullOrWhiteSpace($manifestAbs)) { $false } else { Test-Path -Path $manifestAbs -PathType Leaf }
+
+            if ($hasJson -and $hasYaml) {
+                return [pscustomobject]@{
+                    resolved = $true
+                    candidate = $candidate
+                    candidate_paths_tried = @($candidatePathsTried)
+                    failure_reason = ""
+                }
+            }
+
+            $badFilename = $true
+        }
+        catch [System.UnauthorizedAccessException] {
+            $permissionDenied = $true
+        }
+        catch {
+            $badFilename = $true
+        }
+    }
+
+    $reason = "path_not_found"
+    if ($permissionDenied) {
+        $reason = "permission_denied"
+    }
+    elseif ($badFilename) {
+        $reason = "bad_filename"
+    }
+
+    return [pscustomobject]@{
+        resolved = $false
+        candidate = $null
+        candidate_paths_tried = @($candidatePathsTried)
+        failure_reason = $reason
+    }
+}
+
 function Get-MimStatusSnapshot {
     param(
         [Parameter(Mandatory = $true)][string]$PathValue,
@@ -356,6 +925,9 @@ function Get-MimStatusSnapshot {
     if ($doc.PSObject.Properties["generated_at"]) {
         $generatedAt = [string]$doc.generated_at
     }
+    elseif ($doc.PSObject.Properties["exported_at"]) {
+        $generatedAt = [string]$doc.exported_at
+    }
 
     $objectiveActive = ""
     $phase = ""
@@ -364,6 +936,20 @@ function Get-MimStatusSnapshot {
         if ($doc.status.PSObject.Properties["objective_active"]) { $objectiveActive = [string]$doc.status.objective_active }
         if ($doc.status.PSObject.Properties["phase"]) { $phase = [string]$doc.status.phase }
         if ($doc.status.PSObject.Properties["blockers"]) { $blockers = [string]$doc.status.blockers }
+    }
+    else {
+        if ($doc.PSObject.Properties["objective_active"]) { $objectiveActive = [string]$doc.objective_active }
+        if ($doc.PSObject.Properties["phase"]) { $phase = [string]$doc.phase }
+        if ($doc.PSObject.Properties["blockers"]) {
+            $rawBlockers = $doc.blockers
+            if ($rawBlockers -is [System.Array] -or ($rawBlockers -is [System.Collections.IEnumerable] -and -not ($rawBlockers -is [string]))) {
+                $blockerItems = @($rawBlockers | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                $blockers = (@($blockerItems) -join "; ")
+            }
+            else {
+                $blockers = [string]$rawBlockers
+            }
+        }
     }
 
     $ageHours = $null
@@ -387,17 +973,88 @@ function Get-MimStatusSnapshot {
     }
 }
 
+function Get-MimHandshakePacketSnapshot {
+    param([string]$PathValue)
+
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return [pscustomobject]@{
+            available = $false
+            source_path = ""
+            generated_at = ""
+            handshake_version = ""
+            objective_active = ""
+            latest_completed_objective = ""
+            current_next_objective = ""
+            schema_version = ""
+            release_tag = ""
+            regression_status = ""
+            regression_tests = ""
+            prod_promotion_status = ""
+            prod_smoke_status = ""
+            blockers = @()
+        }
+    }
+
+    $doc = Get-JsonFileIfExists -PathValue $PathValue
+    if ($null -eq $doc) {
+        return [pscustomobject]@{
+            available = $false
+            source_path = $PathValue
+            generated_at = ""
+            handshake_version = ""
+            objective_active = ""
+            latest_completed_objective = ""
+            current_next_objective = ""
+            schema_version = ""
+            release_tag = ""
+            regression_status = ""
+            regression_tests = ""
+            prod_promotion_status = ""
+            prod_smoke_status = ""
+            blockers = @()
+        }
+    }
+
+    $truth = $null
+    if ($doc.PSObject.Properties["truth"] -and $doc.truth) {
+        $truth = $doc.truth
+    }
+    else {
+        $truth = $doc
+    }
+
+    $blockers = @()
+    if ($truth.PSObject.Properties["blockers"] -and $null -ne $truth.blockers) {
+        $blockers = Convert-ToStringList -Value $truth.blockers
+    }
+
+    return [pscustomobject]@{
+        available = $true
+        source_path = $PathValue
+        generated_at = if ($doc.PSObject.Properties["generated_at"]) { [string]$doc.generated_at } else { "" }
+        handshake_version = if ($doc.PSObject.Properties["handshake_version"]) { [string]$doc.handshake_version } else { "" }
+        objective_active = if ($truth.PSObject.Properties["objective_active"]) { [string]$truth.objective_active } else { "" }
+        latest_completed_objective = if ($truth.PSObject.Properties["latest_completed_objective"]) { [string]$truth.latest_completed_objective } else { "" }
+        current_next_objective = if ($truth.PSObject.Properties["current_next_objective"]) { [string]$truth.current_next_objective } else { "" }
+        schema_version = if ($truth.PSObject.Properties["schema_version"]) { [string]$truth.schema_version } else { "" }
+        release_tag = if ($truth.PSObject.Properties["release_tag"]) { [string]$truth.release_tag } else { "" }
+        regression_status = if ($truth.PSObject.Properties["regression_status"]) { [string]$truth.regression_status } else { "" }
+        regression_tests = if ($truth.PSObject.Properties["regression_tests"]) { [string]$truth.regression_tests } else { "" }
+        prod_promotion_status = if ($truth.PSObject.Properties["prod_promotion_status"]) { [string]$truth.prod_promotion_status } else { "" }
+        prod_smoke_status = if ($truth.PSObject.Properties["prod_smoke_status"]) { [string]$truth.prod_smoke_status } else { "" }
+        blockers = @($blockers)
+    }
+}
+
 function Get-ObjectiveAlignment {
     param(
         [Parameter(Mandatory = $true)][string]$TodObjective,
-        $MimStatus
+        [string]$MimObjectiveActive,
+        [string]$MimObjectiveSource
     )
 
     $todNumber = Get-IdNumber -Value $TodObjective
-    $mimObjectiveRaw = ""
-    if ($null -ne $MimStatus -and $MimStatus.PSObject.Properties["objective_active"]) {
-        $mimObjectiveRaw = [string]$MimStatus.objective_active
-    }
+    $mimObjectiveRaw = if ([string]::IsNullOrWhiteSpace($MimObjectiveActive)) { "" } else { [string]$MimObjectiveActive }
     $mimNumber = Get-IdNumber -Value $mimObjectiveRaw
 
     $alignmentStatus = "unknown"
@@ -414,12 +1071,91 @@ function Get-ObjectiveAlignment {
         aligned = [bool]$aligned
         tod_current_objective = $TodObjective
         mim_objective_active = $mimObjectiveRaw
+        mim_objective_source = if ([string]::IsNullOrWhiteSpace($MimObjectiveSource)) { "unknown" } else { $MimObjectiveSource }
         delta = $delta
     }
 }
 
 $sharedDirAbs = Get-LocalPath -PathValue $SharedStateDir
 New-DirectoryIfMissing -PathValue $sharedDirAbs
+
+$mimRefresh = [pscustomobject]@{
+    attempted = ([bool]$RefreshMimContextFromShared -or [bool]$RefreshMimContextFromSsh)
+    copied_json = $false
+    copied_yaml = $false
+    copied_manifest = $false
+    source_json = $MimSharedContextExportPath
+    source_yaml = $MimSharedContextExportYamlPath
+    source_manifest = $MimSharedManifestPath
+    source_handshake_packet = ""
+    resolved_source_root = ""
+    candidate_paths_tried = @()
+    failure_reason = ""
+    ssh_attempted = [bool]$RefreshMimContextFromSsh
+    ssh_host = ""
+    ssh_resolved_host = ""
+    ssh_remote_root = ""
+    ssh_stage_root = ""
+    ssh_auth_mode = ""
+    ssh_pull = $null
+}
+
+if ($RefreshMimContextFromSsh) {
+    $mimRefresh.ssh_host = $MimSshHost
+    $mimRefresh.ssh_remote_root = $MimSshSharedRoot
+    $mimRefresh.ssh_stage_root = $MimSshStagingRoot
+
+    $sshRefresh = Invoke-MimSshRefresh -Scp $ScpCommand -RemoteHost $MimSshHost -RemoteUser $MimSshUser -RemotePort $MimSshPort -RemotePassword $MimSshPassword -RemoteRoot $MimSshSharedRoot -StageRoot $MimSshStagingRoot -DotEnvPath $DotEnvPath -AllowInteractiveSshPrompt:$AllowInteractiveSshPrompt
+    $mimRefresh.ssh_pull = $sshRefresh.pulls
+    $mimRefresh.ssh_resolved_host = [string]$sshRefresh.resolved_sftp_host
+    $mimRefresh.ssh_auth_mode = [string]$sshRefresh.auth_mode
+    if ($sshRefresh.ok) {
+        $MimSharedExportRoot = $MimSshStagingRoot
+        $MimSharedContextExportPath = $sshRefresh.source_json
+        $MimSharedContextExportYamlPath = $sshRefresh.source_yaml
+        $MimSharedManifestPath = $sshRefresh.source_manifest
+        $mimRefresh.source_handshake_packet = $sshRefresh.source_handshake_packet
+    }
+    else {
+        $mimRefresh.failure_reason = "ssh_pull_failed"
+    }
+}
+
+if ($RefreshMimContextFromShared -or $RefreshMimContextFromSsh) {
+    $envSharedRoot = [string]$env:MIM_SHARED_EXPORT_ROOT
+    $sharedCandidates = Get-MimSharedSourceCandidates -ExplicitJsonPath $MimSharedContextExportPath -ExplicitYamlPath $MimSharedContextExportYamlPath -ExplicitManifestPath $MimSharedManifestPath -PreferredRoot $MimSharedExportRoot -EnvRoot $envSharedRoot
+    $resolvedShared = Resolve-MimSharedSourceCandidate -Candidates $sharedCandidates
+    $mimRefresh.candidate_paths_tried = @($resolvedShared.candidate_paths_tried)
+    if ([string]::IsNullOrWhiteSpace([string]$mimRefresh.failure_reason)) {
+        $mimRefresh.failure_reason = [string]$resolvedShared.failure_reason
+    }
+
+    if ($resolvedShared.resolved -and $null -ne $resolvedShared.candidate) {
+        $selected = $resolvedShared.candidate
+        $mimRefresh.source_json = [string]$selected.source_json
+        $mimRefresh.source_yaml = [string]$selected.source_yaml
+        $mimRefresh.source_manifest = [string]$selected.source_manifest
+        $mimRefresh.resolved_source_root = [string]$selected.root
+
+        try {
+            $mimRefresh.copied_json = [bool](Copy-IfSourceExists -SourcePath ([string]$selected.source_json) -DestinationPath $MimContextExportPath)
+            $mimRefresh.copied_yaml = [bool](Copy-IfSourceExists -SourcePath ([string]$selected.source_yaml) -DestinationPath $MimContextExportYamlPath)
+            $mimRefresh.copied_manifest = [bool](Copy-IfSourceExists -SourcePath ([string]$selected.source_manifest) -DestinationPath $MimManifestPath)
+            if ($mimRefresh.copied_json -and $mimRefresh.copied_yaml) {
+                $mimRefresh.failure_reason = ""
+            }
+            else {
+                $mimRefresh.failure_reason = "copy_incomplete"
+            }
+        }
+        catch [System.UnauthorizedAccessException] {
+            $mimRefresh.failure_reason = "permission_denied"
+        }
+        catch {
+            $mimRefresh.failure_reason = "copy_failed"
+        }
+    }
+}
 
 $currentBuildStatePath = Join-Path $sharedDirAbs "current_build_state.json"
 $objectivesPath = Join-Path $sharedDirAbs "objectives.json"
@@ -442,7 +1178,39 @@ if (-not (Test-Path -Path $todScriptAbs)) { throw "TOD script not found: $todScr
 if (-not (Test-Path -Path $todConfigAbs)) { throw "TOD config not found: $todConfigAbs" }
 if (-not (Test-Path -Path $stateAbs)) { throw "TOD state not found: $stateAbs" }
 
-$state = Get-JsonFileContent -PathValue $StatePath
+$state = $null
+$stateLoadWarning = ""
+$maxStateReadBytes = 256MB
+$skipFullStateRead = $false
+
+try {
+    $stateFileInfo = Get-Item -Path $stateAbs -ErrorAction Stop
+    if ($stateFileInfo.Length -gt $maxStateReadBytes) {
+        $stateLoadWarning = ("state.json too large for safe full load ({0} MiB > {1} MiB); using objectives ledger fallback" -f [math]::Round(($stateFileInfo.Length / 1MB), 2), [math]::Round(($maxStateReadBytes / 1MB), 2))
+        $skipFullStateRead = $true
+    }
+}
+catch {
+    $stateLoadWarning = [string]$_.Exception.Message
+    $skipFullStateRead = $true
+}
+
+if (-not $skipFullStateRead) {
+    try {
+        $state = Get-JsonFileContent -PathValue $StatePath
+    }
+    catch {
+        $stateLoadWarning = [string]$_.Exception.Message
+    }
+}
+
+if (-not [string]::IsNullOrWhiteSpace($stateLoadWarning)) {
+    Write-Warning ("[TOD-SHARED-SYNC] Unable to load full TOD state; using objectives ledger fallback: {0}" -f $stateLoadWarning)
+}
+
+if (-not $state) {
+    $state = [pscustomobject]@{}
+}
 $testSummary = Get-JsonFileIfExists -PathValue $TestSummaryPath
 $smokeSummary = Get-JsonFileIfExists -PathValue $SmokeSummaryPath
 $qualityGate = Get-JsonFileIfExists -PathValue $QualityGatePath
@@ -458,12 +1226,32 @@ $branch = Get-GitValue -CommandText "git rev-parse --abbrev-ref HEAD"
 $commitSha = Get-GitValue -CommandText "git rev-parse HEAD"
 $releaseTag = if (-not [string]::IsNullOrWhiteSpace($ReleaseTagOverride)) { $ReleaseTagOverride } else { Get-GitValue -CommandText "git describe --tags --abbrev=0 2>$null" }
 
-$objectives = if ($state.PSObject.Properties["objectives"]) { @($state.objectives) } else { @() }
+$objectives = @()
+if ($state -and $state.PSObject.Properties["objectives"]) {
+    $objectives = @($state.objectives)
+}
+elseif (Test-Path -Path $objectivesPath) {
+    try {
+        $fallbackLedger = Get-Content -Path $objectivesPath -Raw | ConvertFrom-Json
+        if ($fallbackLedger -and $fallbackLedger.PSObject.Properties["objectives"]) {
+            $objectives = @($fallbackLedger.objectives | ForEach-Object {
+                    [pscustomobject]@{
+                        id = if ($_.PSObject.Properties["objective_id"]) { Normalize-ObjectiveIdText -Value ([string]$_.objective_id) } elseif ($_.PSObject.Properties["id"]) { Normalize-ObjectiveIdText -Value ([string]$_.id) } else { "" }
+                        title = if ($_.PSObject.Properties["title"]) { [string]$_.title } else { "" }
+                        status = if ($_.PSObject.Properties["status"]) { [string]$_.status } else { "open" }
+                    }
+                })
+        }
+    }
+    catch {
+        $objectives = @()
+    }
+}
 $latestCompleted = Get-ObjectiveByStatusOrder -Objectives $objectives -Statuses @("completed", "closed", "done", "reviewed_pass")
 $currentInProgress = Get-ObjectiveByStatusOrder -Objectives $objectives -Statuses @("in_progress", "open", "planned")
 
-$latestCompletedObjective = if ($null -ne $latestCompleted) { [string]$latestCompleted.id } else { "none" }
-$currentObjective = if ($null -ne $currentInProgress) { [string]$currentInProgress.id } else { "none" }
+$latestCompletedObjective = if ($null -ne $latestCompleted) { Normalize-ObjectiveIdText -Value ([string]$latestCompleted.id) } else { "none" }
+$currentObjective = if ($null -ne $currentInProgress) { Normalize-ObjectiveIdText -Value ([string]$currentInProgress.id) } else { "none" }
 
 $schemaVersion = if ($manifest -and $manifest.PSObject.Properties["schema_version"]) { [string]$manifest.schema_version } else { "unknown" }
 $currentProdTestStatus = [pscustomobject]@{
@@ -542,31 +1330,103 @@ $todCatchupRoadmap = [pscustomobject]@{
         [pscustomobject]@{ id = "TOD-22"; title = "Inquiry-driven execution pause/resume"; status = "planned" }
     )
 }
-$todCatchupRoadmap | ConvertTo-Json -Depth 12 | Set-Content -Path $objectiveRoadmapPath
+Write-Utf8NoBomJson -Path $objectiveRoadmapPath -Payload $todCatchupRoadmap -Depth 12
 
 $mimSchemaVersion = Get-MimSchemaVersionFromContextExport -PathValue $MimContextExportPath
 if ([string]::IsNullOrWhiteSpace($mimSchemaVersion)) {
     $mimSchemaVersion = Get-MimSchemaVersionFromContextExport -PathValue $MimManifestPath
 }
+$mimManifestDoc = Get-JsonFileIfExists -PathValue $MimManifestPath
+$mimContextDoc = Get-JsonFileIfExists -PathValue $MimContextExportPath
+
+$mimContractVersion = ""
+if ($mimManifestDoc -and $mimManifestDoc.PSObject.Properties["contract_version"] -and -not [string]::IsNullOrWhiteSpace([string]$mimManifestDoc.contract_version)) {
+    $mimContractVersion = [string]$mimManifestDoc.contract_version
+}
+elseif ($mimManifestDoc -and $mimManifestDoc.PSObject.Properties["manifest"] -and $mimManifestDoc.manifest -and $mimManifestDoc.manifest.PSObject.Properties["contract_version"] -and -not [string]::IsNullOrWhiteSpace([string]$mimManifestDoc.manifest.contract_version)) {
+    $mimContractVersion = [string]$mimManifestDoc.manifest.contract_version
+}
+elseif ($mimContextDoc -and $mimContextDoc.PSObject.Properties["contract_version"] -and -not [string]::IsNullOrWhiteSpace([string]$mimContextDoc.contract_version)) {
+    $mimContractVersion = [string]$mimContextDoc.contract_version
+}
+
 $mimStatus = Get-MimStatusSnapshot -PathValue $MimContextExportPath -StaleAfterHours $MimStatusStaleAfterHours
-$objectiveAlignment = Get-ObjectiveAlignment -TodObjective $currentObjective -MimStatus $mimStatus
-$todContractVersion = if ($manifest -and $manifest.PSObject.Properties["schema_version"] -and -not [string]::IsNullOrWhiteSpace([string]$manifest.schema_version)) {
+$handshakeCandidatePaths = @()
+if (-not [string]::IsNullOrWhiteSpace([string]$mimRefresh.source_handshake_packet)) {
+    $handshakeCandidatePaths += [string]$mimRefresh.source_handshake_packet
+}
+if (-not [string]::IsNullOrWhiteSpace([string]$mimRefresh.resolved_source_root)) {
+    $handshakeCandidatePaths += (Join-Path ([string]$mimRefresh.resolved_source_root) "MIM_TOD_HANDSHAKE_PACKET.latest.json")
+}
+if (-not [string]::IsNullOrWhiteSpace([string]$MimSharedExportRoot)) {
+    $handshakeCandidatePaths += (Join-Path $MimSharedExportRoot "MIM_TOD_HANDSHAKE_PACKET.latest.json")
+}
+
+$resolvedHandshakePath = ""
+foreach ($candidate in @($handshakeCandidatePaths | Select-Object -Unique)) {
+    if ([string]::IsNullOrWhiteSpace([string]$candidate)) { continue }
+    $candidateAbs = Get-LocalPath -PathValue ([string]$candidate)
+    if (Test-Path -Path $candidateAbs -PathType Leaf) {
+        $resolvedHandshakePath = [string]$candidate
+        break
+    }
+}
+
+$mimHandshake = Get-MimHandshakePacketSnapshot -PathValue $resolvedHandshakePath
+if ([string]::IsNullOrWhiteSpace($mimSchemaVersion) -and [bool]$mimHandshake.available -and -not [string]::IsNullOrWhiteSpace([string]$mimHandshake.schema_version)) {
+    $mimSchemaVersion = [string]$mimHandshake.schema_version
+}
+
+$mimObjectiveForAlignment = [string]$mimStatus.objective_active
+$mimObjectiveSource = "context_export"
+if ([bool]$mimHandshake.available -and -not [string]::IsNullOrWhiteSpace([string]$mimHandshake.objective_active)) {
+    $mimObjectiveForAlignment = [string]$mimHandshake.objective_active
+    $mimObjectiveSource = "handshake_packet"
+}
+
+$allCopied = [bool]$mimRefresh.copied_json -and [bool]$mimRefresh.copied_yaml
+if ($RefreshMimContextFromShared -and $allCopied -and [bool]$mimStatus.is_stale) {
+    $mimRefresh.failure_reason = "stale_export"
+}
+$objectiveAlignment = Get-ObjectiveAlignment -TodObjective $currentObjective -MimObjectiveActive $mimObjectiveForAlignment -MimObjectiveSource $mimObjectiveSource
+$todContractVersion = if ($manifest -and $manifest.PSObject.Properties["contract_version"] -and -not [string]::IsNullOrWhiteSpace([string]$manifest.contract_version)) {
+    [string]$manifest.contract_version
+}
+elseif ($manifest -and $manifest.PSObject.Properties["schema_version"] -and -not [string]::IsNullOrWhiteSpace([string]$manifest.schema_version)) {
     [string]$manifest.schema_version
 }
 else {
     ""
 }
-$compatibility = (-not [string]::IsNullOrWhiteSpace($mimSchemaVersion)) -and (-not [string]::IsNullOrWhiteSpace($todContractVersion)) -and ($mimSchemaVersion -eq $todContractVersion)
+
+$schemaCompatible = (-not [string]::IsNullOrWhiteSpace($mimSchemaVersion)) -and ($manifest -and $manifest.PSObject.Properties["schema_version"] -and -not [string]::IsNullOrWhiteSpace([string]$manifest.schema_version)) -and ([string]$mimSchemaVersion -eq [string]$manifest.schema_version)
+$contractCompatible = (-not [string]::IsNullOrWhiteSpace($mimContractVersion)) -and (-not [string]::IsNullOrWhiteSpace($todContractVersion)) -and ([string]$mimContractVersion -eq [string]$todContractVersion)
+$compatibility = [bool]($contractCompatible -or $schemaCompatible)
+
+$compatibilityReason = if ($contractCompatible) {
+    "contract_version_match"
+}
+elseif ($schemaCompatible) {
+    "schema_version_match"
+}
+else {
+    "no_contract_or_schema_match"
+}
+
 $integrationStatus = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString("o")
     source = "tod-integration-status-v1"
     mim_schema = if ([string]::IsNullOrWhiteSpace($mimSchemaVersion)) { "unknown" } else { $mimSchemaVersion }
     tod_contract = if ([string]::IsNullOrWhiteSpace($todContractVersion)) { "unknown" } else { $todContractVersion }
+    mim_contract = if ([string]::IsNullOrWhiteSpace($mimContractVersion)) { "unknown" } else { $mimContractVersion }
     compatible = [bool]$compatibility
+    compatibility_reason = $compatibilityReason
     mim_status = $mimStatus
+    mim_handshake = $mimHandshake
+    mim_refresh = $mimRefresh
     objective_alignment = $objectiveAlignment
 }
-$integrationStatus | ConvertTo-Json -Depth 8 | Set-Content -Path $integrationStatusPath
+Write-Utf8NoBomJson -Path $integrationStatusPath -Payload $integrationStatus -Depth 8
 
 $retryTrendRows = if ($reliabilityPayload -and $reliabilityPayload.PSObject.Properties["retry_trend"] -and $null -ne $reliabilityPayload.retry_trend) { @($reliabilityPayload.retry_trend) } else { @() }
 $executionEvidence = [pscustomobject]@{
@@ -601,7 +1461,7 @@ $executionEvidence = [pscustomobject]@{
             }
         })
 }
-$executionEvidence | ConvertTo-Json -Depth 20 | Set-Content -Path $executionEvidencePath
+Write-Utf8NoBomJson -Path $executionEvidencePath -Payload $executionEvidence -Depth 20
 
 $currentBuildState = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -622,7 +1482,7 @@ $currentBuildState = [pscustomobject]@{
     last_promotion_result = $lastPromotionResult
 }
 
-$currentBuildState | ConvertTo-Json -Depth 20 | Set-Content -Path $currentBuildStatePath
+Write-Utf8NoBomJson -Path $currentBuildStatePath -Payload $currentBuildState -Depth 20
 
 $existingObjectives = @()
 if (Test-Path -Path $objectivesPath) {
@@ -683,7 +1543,7 @@ $objectiveLedger = [pscustomobject]@{
     objective_count = @($objectiveRecords).Count
     objectives = @($objectiveRecords | Sort-Object objective_number)
 }
-$objectiveLedger | ConvertTo-Json -Depth 20 | Set-Content -Path $objectivesPath
+Write-Utf8NoBomJson -Path $objectivesPath -Payload $objectiveLedger -Depth 20
 
 $contracts = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -709,7 +1569,7 @@ $contracts = [pscustomobject]@{
         "Shared-state files in shared_state are canonical sync layer for parallel sessions."
     )
 }
-$contracts | ConvertTo-Json -Depth 20 | Set-Content -Path $contractsPath
+Write-Utf8NoBomJson -Path $contractsPath -Payload $contracts -Depth 20
 
 $pendingInboxCount = 0
 $contextInbox = Get-LocalPath -PathValue $ContextSyncInboxPath
@@ -788,7 +1648,7 @@ $nextActions = [pscustomobject]@{
         $null
     }
 }
-$nextActions | ConvertTo-Json -Depth 20 | Set-Content -Path $nextActionsPath
+Write-Utf8NoBomJson -Path $nextActionsPath -Payload $nextActions -Depth 20
 
 $sharedDevLogPlan = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -824,6 +1684,27 @@ $sharedDevLogPlan = [pscustomobject]@{
             recommended = "per active development session"
         }
     }
+    mim_charter = [pscustomobject]@{
+        identity = @(
+            "Space-aware and intention-driven",
+            "Inquisitive and exploratory",
+            "Controls its own space, systems, and development",
+            "Improves itself through experience, exploration, and concept formation"
+        )
+        boundaries = [pscustomobject]@{
+            hard_stops = @(
+                "human safety",
+                "ordinary wrongdoing",
+                "self-destruction"
+            )
+            soft_boundaries = @(
+                "exploration",
+                "trial-and-error",
+                "questioning assumptions",
+                "testing policy edges in observable and recoverable ways"
+            )
+        }
+    }
     channels = [pscustomobject]@{
         canonical_state_files = @(
             "shared_state/current_build_state.json",
@@ -852,7 +1733,7 @@ $sharedDevLogPlan = [pscustomobject]@{
         "ingested updates must preserve original payload in log record"
     )
 }
-$sharedDevLogPlan | ConvertTo-Json -Depth 20 | Set-Content -Path $sharedDevLogPlanPath
+Write-Utf8NoBomJson -Path $sharedDevLogPlanPath -Payload $sharedDevLogPlan -Depth 20
 
 $journalEntry = [pscustomobject]@{
     timestamp = (Get-Date).ToUniversalTime().ToString("o")
@@ -868,7 +1749,7 @@ $journalEntry = [pscustomobject]@{
         smoke_passed = if ($smokeSummary -and $smokeSummary.PSObject.Properties["passed_all"]) { [bool]$smokeSummary.passed_all } else { $false }
     }
 }
-($journalEntry | ConvertTo-Json -Depth 12) + [Environment]::NewLine | Add-Content -Path $devJournalPath
+Append-Utf8NoBomJsonLine -Path $devJournalPath -Payload $journalEntry -Depth 12
 
 $summaryLines = @()
 $summaryLines += "# Shared State Summary"
@@ -886,6 +1767,17 @@ $summaryLines += "- Current objective in progress: $currentObjective"
 $summaryLines += "- Test status: passed=$($lastRegressionResult.passed) failed=$($lastRegressionResult.failed) total=$($lastRegressionResult.total)"
 $summaryLines += "- Quality gate ok: $([bool]$lastPromotionResult.gate_ok)"
 $summaryLines += "- Drift trend: $($knownLocalDrift.trend)"
+$summaryLines += "- Objective alignment source: $($objectiveAlignment.mim_objective_source)"
+$summaryLines += "- Handshake truth available: $([bool]$mimHandshake.available)"
+if ([bool]$mimHandshake.available) {
+    $summaryLines += "- Handshake objective_active: $($mimHandshake.objective_active)"
+    $summaryLines += "- Handshake latest_completed: $($mimHandshake.latest_completed_objective)"
+    $summaryLines += "- Handshake next_objective: $($mimHandshake.current_next_objective)"
+    $summaryLines += "- Handshake release_tag: $($mimHandshake.release_tag)"
+    $summaryLines += "- Handshake regression: $($mimHandshake.regression_status)"
+    $summaryLines += "- Handshake prod_promotion: $($mimHandshake.prod_promotion_status)"
+    $summaryLines += "- Handshake prod_smoke: $($mimHandshake.prod_smoke_status)"
+}
 $summaryLines += ""
 $summaryLines += "## Next Actions"
 foreach ($item in @($nextActions.required_verification)) {
@@ -923,6 +1815,22 @@ $chatgptSnapshot = [pscustomobject]@{
         quality_gate = $lastPromotionResult
         smoke = $currentProdTestStatus.smoke
     }
+    handshake_truth_summary = [pscustomobject]@{
+        available = [bool]$mimHandshake.available
+        source_path = [string]$mimHandshake.source_path
+        generated_at = [string]$mimHandshake.generated_at
+        objective_active = [string]$mimHandshake.objective_active
+        latest_completed_objective = [string]$mimHandshake.latest_completed_objective
+        current_next_objective = [string]$mimHandshake.current_next_objective
+        schema_version = [string]$mimHandshake.schema_version
+        release_tag = [string]$mimHandshake.release_tag
+        regression_status = [string]$mimHandshake.regression_status
+        regression_tests = [string]$mimHandshake.regression_tests
+        prod_promotion_status = [string]$mimHandshake.prod_promotion_status
+        prod_smoke_status = [string]$mimHandshake.prod_smoke_status
+        blockers = @($mimHandshake.blockers)
+        alignment_source = [string]$objectiveAlignment.mim_objective_source
+    }
     drift = $knownLocalDrift
     blockers = @($blockers)
     capabilities = @($activeCapabilities)
@@ -943,7 +1851,7 @@ $chatgptSnapshot = [pscustomobject]@{
     }
 }
 
-$chatgptSnapshot | ConvertTo-Json -Depth 20 | Set-Content -Path $chatgptUpdateJsonPath
+Write-Utf8NoBomJson -Path $chatgptUpdateJsonPath -Payload $chatgptSnapshot -Depth 20
 
 $chatgptLines = @()
 $chatgptLines += "# TOD ChatGPT Development Update"
@@ -980,6 +1888,19 @@ $chatgptLines += "- Approval triage counts: stale=$($approvalBacklog.stale_count
 $chatgptLines += "- Integration status: mim_schema=$($integrationStatus.mim_schema) tod_contract=$($integrationStatus.tod_contract) compatible=$([bool]$integrationStatus.compatible)"
 $chatgptLines += "- MIM freshness: available=$([bool]$integrationStatus.mim_status.available) stale=$([bool]$integrationStatus.mim_status.is_stale) age_hours=$($integrationStatus.mim_status.age_hours)"
 $chatgptLines += "- Objective alignment: status=$($integrationStatus.objective_alignment.status) tod=$($integrationStatus.objective_alignment.tod_current_objective) mim=$($integrationStatus.objective_alignment.mim_objective_active)"
+$chatgptLines += "- Objective alignment source: $($integrationStatus.objective_alignment.mim_objective_source)"
+$chatgptLines += "- Handshake truth available: $([bool]$mimHandshake.available)"
+if ([bool]$mimHandshake.available) {
+    $chatgptLines += "- Handshake objective_active: $($mimHandshake.objective_active)"
+    $chatgptLines += "- Handshake latest_completed_objective: $($mimHandshake.latest_completed_objective)"
+    $chatgptLines += "- Handshake current_next_objective: $($mimHandshake.current_next_objective)"
+    $chatgptLines += "- Handshake schema_version: $($mimHandshake.schema_version)"
+    $chatgptLines += "- Handshake release_tag: $($mimHandshake.release_tag)"
+    $chatgptLines += "- Handshake regression: $($mimHandshake.regression_status) ($($mimHandshake.regression_tests))"
+    $chatgptLines += "- Handshake prod promotion: $($mimHandshake.prod_promotion_status)"
+    $chatgptLines += "- Handshake prod smoke: $($mimHandshake.prod_smoke_status)"
+    $chatgptLines += "- Handshake blockers: $(if (@($mimHandshake.blockers).Count -gt 0) { (@($mimHandshake.blockers) -join '; ') } else { 'none' })"
+}
 $chatgptLines += "- Catch-up roadmap: $(($todCatchupRoadmap.objectives | ForEach-Object { [string]$_.id }) -join ', ')"
 $chatgptLines += "- Approval reduction snapshot present: $(if ($approvalReduction) { 'true' } else { 'false' })"
 if ($approvalReduction -and $approvalReduction.PSObject.Properties["totals"]) {

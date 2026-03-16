@@ -2,7 +2,10 @@ param(
     [string]$AdapterScriptPath = "scripts/Invoke-TODBusAdapter.ps1",
     [string]$OutputPath = "shared_state/bus_adapter_integration_sample.json",
     [string]$HandoffOutputPath = "shared_state/bus_execution_handoff_integration_sample.json",
-    [string]$SourceDomain = "mim"
+    [string]$SourceDomain = "mim",
+    [string]$SourceContext = "",
+    [string]$PerceptionState = "",
+    [string]$PerceptionSafety = ""
 )
 
 Set-StrictMode -Version Latest
@@ -27,13 +30,42 @@ $goalId = "MIMGOAL-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 8).ToUp
 
 $steps = @()
 
+$correlation = @{
+    trace_id = $traceId
+    execution_id = $executionId
+    goal_id = $goalId
+    source_domain = $SourceDomain
+}
+if (-not [string]::IsNullOrWhiteSpace($SourceContext)) {
+    $correlation.source_context = $SourceContext
+}
+
+$perceptionContext = @{}
+if (-not [string]::IsNullOrWhiteSpace($PerceptionState)) {
+    $perceptionContext.state = $PerceptionState
+}
+if (-not [string]::IsNullOrWhiteSpace($PerceptionSafety)) {
+    $perceptionContext.safety = $PerceptionSafety
+}
+if (-not [string]::IsNullOrWhiteSpace($SourceContext)) {
+    $perceptionContext.context_id = $SourceContext
+}
+
+$payload = @{
+    runtime_action = "get-engineering-loop-summary"
+    reliability_hints = @{ simulate_retry_once = $true; simulate_drift = $true }
+}
+if (@($perceptionContext.Keys).Count -gt 0) {
+    $payload.perception_context = $perceptionContext
+}
+
 $requestedRaw = & $adapterAbs -Action "consume-event" -EventJson (@{
         event_id = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 10))
         event_type = "execution.requested"
         occurred_at = (Get-Date).ToUniversalTime().ToString("o")
         producer = @{ system = "MIM"; component = "ingestion_service"; role = "reasoning_runtime" }
-    correlation = @{ trace_id = $traceId; execution_id = $executionId; goal_id = $goalId; source_domain = $SourceDomain }
-    payload = @{ runtime_action = "get-engineering-loop-summary"; reliability_hints = @{ simulate_retry_once = $true; simulate_drift = $true } }
+    correlation = $correlation
+    payload = $payload
     } | ConvertTo-Json -Depth 10 -Compress)
 $steps += ($requestedRaw | ConvertFrom-Json)
 
@@ -92,6 +124,7 @@ $result = [pscustomobject]@{
     execution_id = $executionId
     goal_id = $goalId
     source_domain = $SourceDomain
+    source_context = $SourceContext
     steps = @($steps)
     execution_summary = $executionSummaryEntry
     execution_summary_artifact = [string]$summaryObj.summary_path
@@ -104,6 +137,7 @@ $result = [pscustomobject]@{
         discovery_pointer_path = [string]$summaryObj.discovery_pointer_path
         contract_path = [string]$summaryObj.contract_path
         source_domain = if ($executionSummaryEntry -and $executionSummaryEntry.PSObject.Properties["source_domain"]) { [string]$executionSummaryEntry.source_domain } else { $SourceDomain }
+        source_context = if ($executionSummaryEntry -and $executionSummaryEntry.PSObject.Properties["source_context"]) { [string]$executionSummaryEntry.source_context } else { $SourceContext }
         pointer = $pointerObj
     }
     lifecycle = [pscustomobject]@{
@@ -149,6 +183,7 @@ $handoffArtifact = [pscustomobject]@{
     execution_summary = $result.execution_summary
     handoff = $result.execution_summary_handoff
     source_domain = $SourceDomain
+    source_context = $SourceContext
 }
 $handoffArtifact | ConvertTo-Json -Depth 20 | Set-Content -Path $handoffOutputAbs
 $result | ConvertTo-Json -Depth 20 | Write-Output

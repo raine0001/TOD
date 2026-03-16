@@ -73,6 +73,7 @@ param(
     [string]$ManifestPath,
     [string]$PackagePath,
     [string]$ExecutionId,
+    [string]$StatePath,
     [string]$SandboxPath,
     [string]$SandboxPlanPath,
     [string]$Content,
@@ -93,7 +94,17 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$statePath = Join-Path $repoRoot "tod/data/state.json"
+$statePath = if ([string]::IsNullOrWhiteSpace($StatePath)) {
+    Join-Path $repoRoot "tod/data/state.json"
+}
+else {
+    if ([System.IO.Path]::IsPathRooted($StatePath)) {
+        $StatePath
+    }
+    else {
+        Join-Path $repoRoot $StatePath
+    }
+}
 $configPath = if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
     Join-Path $repoRoot "tod/config/tod-config.json"
 }
@@ -6835,7 +6846,7 @@ switch ($Action) {
         $failuresCsv = (@($resultPayload.failures) | ForEach-Object { [string]$_ }) -join ","
         $recommendationsCsv = (@($resultPayload.recommendations) | ForEach-Object { [string]$_ }) -join ","
 
-        $addResultResponse = (& $PSCommandPath -Action add-result -ConfigPath $configPath -TaskId $TaskId -Summary ([string]$resultPayload.summary) -FilesChanged $filesChangedCsv -TestsRun $testsRunCsv -TestResults $testResultsCsv -Failures $failuresCsv -Recommendations $recommendationsCsv) | ConvertFrom-Json
+        $addResultResponse = (& $PSCommandPath -Action add-result -ConfigPath $configPath -StatePath $statePath -TaskId $TaskId -Summary ([string]$resultPayload.summary) -FilesChanged $filesChangedCsv -TestsRun $testsRunCsv -TestResults $testResultsCsv -Failures $failuresCsv -Recommendations $recommendationsCsv) | ConvertFrom-Json
 
         $reviewDecision = "pass"
         if ([bool]$resultPayload.needs_escalation) {
@@ -6859,7 +6870,7 @@ switch ($Action) {
         }
 
         $unresolvedCsv = (@($resultPayload.failures) + @($precheckWarnings) | ForEach-Object { [string]$_ }) -join ","
-        $reviewResponse = (& $PSCommandPath -Action review-task -ConfigPath $configPath -TaskId $TaskId -Decision $reviewDecision -Rationale $rationale -UnresolvedIssues $unresolvedCsv) | ConvertFrom-Json
+        $reviewResponse = (& $PSCommandPath -Action review-task -ConfigPath $configPath -StatePath $statePath -TaskId $TaskId -Decision $reviewDecision -Rationale $rationale -UnresolvedIssues $unresolvedCsv) | ConvertFrom-Json
 
         $attemptedEngines = @($invokeResult.attempted_engines)
         $attemptRecords = @($invokeResult.attempts)

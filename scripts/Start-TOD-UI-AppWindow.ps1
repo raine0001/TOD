@@ -1,7 +1,8 @@
 param(
     [int]$PreferredPort = 8844,
     [int]$MaxPortSearch = 30,
-    [switch]$HideMenuBar
+    [switch]$HideMenuBar,
+    [switch]$CleanStalePortOwner
 )
 
 Set-StrictMode -Version Latest
@@ -43,6 +44,79 @@ function Find-FreePort {
     }
 
     throw "No free port found from $Start to $($Start + $MaxAttempts - 1)."
+}
+
+function Get-HttpSysAttachedProcessIdsForPort {
+    param([int]$Port)
+
+    $needle = "HTTP://LOCALHOST:$Port/"
+    $pids = @()
+
+    try {
+        $lines = @((netsh http show servicestate) -split "`r?`n")
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -notmatch [regex]::Escape($needle)) {
+                continue
+            }
+
+            $start = [Math]::Max(0, $i - 40)
+            for ($j = $i; $j -ge $start; $j--) {
+                if ($lines[$j] -match "ID:\s*(\d+)") {
+                    $pid = [int]$matches[1]
+                    if ($pid -gt 0) {
+                        $pids += $pid
+                    }
+                    break
+                }
+            }
+        }
+    }
+    catch {
+        return @()
+    }
+
+    return @($pids | Select-Object -Unique)
+}
+
+function Remove-StalePortOwners {
+    param(
+        [int]$Port,
+        [string]$UiScriptPath
+    )
+
+    $attachedPids = @(Get-HttpSysAttachedProcessIdsForPort -Port $Port)
+    if (@($attachedPids).Count -eq 0) {
+        return
+    }
+
+    foreach ($pid in $attachedPids) {
+        if ($pid -eq $PID) {
+            continue
+        }
+
+        $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $pid" -ErrorAction SilentlyContinue
+        if ($null -eq $proc) {
+            continue
+        }
+
+        $cmd = [string]$proc.CommandLine
+        $isKnownUi = (-not [string]::IsNullOrWhiteSpace($cmd)) -and ($cmd -match [regex]::Escape($UiScriptPath))
+        if ($isKnownUi) {
+            continue
+        }
+
+        try {
+            Write-Host "Stopping stale HTTP owner PID $pid for localhost:$Port" -ForegroundColor Yellow
+            Stop-Process -Id $pid -Force -ErrorAction Stop
+        }
+        catch {
+            Write-Warning ("Could not stop stale owner PID {0}: {1}" -f $pid, [string]$_.Exception.Message)
+        }
+    }
+}
+
+if ($CleanStalePortOwner) {
+    Remove-StalePortOwners -Port $PreferredPort -UiScriptPath $startUiScript
 }
 
 $port = Find-FreePort -Start $PreferredPort -MaxAttempts $MaxPortSearch
