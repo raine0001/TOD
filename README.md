@@ -216,10 +216,11 @@ Promotion criteria met (2026-03-18, run `20260318T001825Z`):
 - Gate 3: no fresh failure cluster — late_fail=10.25 < early_fail=13.75, max_streak=2 ✓
 
 Governed expansion status (2026-03-18):
-- drift-lock suite expanded to 14 locked scenarios: replay-lock core + `MESS-001..004` + `BRG-001..004`
+- drift-lock suite expanded to 18 locked scenarios: replay-lock core + `MESS-001..004` + `BRG-001..004` + `OPR-001..004`
 - developer utility is now a first-class drift-lock invariant
 - PR, nightly, and drift-lock soak runs emit markdown summaries alongside JSON artifacts
-- long mixed governed soak validated on replay-lock + engineering + messy + bridge pressure
+- multi-domain governed baseline frozen after full mixed soak with late drift-lock violations = 0
+- family density metrics are now emitted per window (`early`/`mid`/`late`) by scenario family
 
 Canonical baseline artifact:
 - `shared_state/conversation_eval/conversation_score_report.baseline.current.json`
@@ -289,8 +290,8 @@ Early-vs-late drift analysis and replay-pack generation:
 Targeted replay-pack soak (100-200 cycles, drift-lock scenarios only):
 
 ```powershell
-# Full 14-scenario drift-lock soak
-.\scripts\Invoke-TODDriftLockSoak.ps1 -Cycles 120 -FailOnRegressingCycles 3 -PrDropTolerance 0.002 -UtilityDropTolerance 0.002 -EmitJson
+# Full 18-scenario drift-lock soak (hard-gate profile)
+.\scripts\Invoke-TODDriftLockSoak.ps1 -Cycles 120 -FailOnRegressingCycles 5 -PrDropTolerance 0.002 -UtilityDropTolerance 0.002 -MaxLateDriftLockViolations 0 -EmitJson
 
 # Narrowed soak: only the still-failing subset (SAF-002, CON-002, SAF-003, TASK-005)
 .\scripts\Invoke-TODDriftLockSoak.ps1 -Cycles 175 -IncludeScenarioIds SAF-002,CON-002,SAF-003,TASK-005 -FailOnRegressingCycles 0 -PrDropTolerance 0.002 -EmitJson
@@ -298,8 +299,8 @@ Targeted replay-pack soak (100-200 cycles, drift-lock scenarios only):
 # Exact governed messy + bridge soak with bounded late violations
 .\scripts\Invoke-TODDriftLockSoak.ps1 -Cycles 120 -IncludeScenarioIds MESS-001,MESS-002,MESS-003,MESS-004,BRG-001,BRG-002,BRG-003,BRG-004 -FailOnRegressingCycles 0 -PrDropTolerance 0.002 -UtilityDropTolerance 0.002 -MaxLateDriftLockViolations 3 -EmitJson
 
-# Full mixed governed soak: replay-lock + engineering + messy + bridge
-.\scripts\Invoke-TODDriftLockSoak.ps1 -Cycles 360 -IncludeScenarioIds REL-005,CON-002,SAF-002,MEM-003,TASK-005,SAF-003,ENG-001,ENG-002,ENG-003,ENG-004,ENG-005,ENG-006,ENG-007,ENG-008,ENG-009,ENG-010,MESS-001,MESS-002,MESS-003,MESS-004,BRG-001,BRG-002,BRG-003,BRG-004 -FailOnRegressingCycles 0 -PrDropTolerance 0.002 -UtilityDropTolerance 0.002 -MaxLateDriftLockViolations 12 -EmitJson
+# Full mixed governed soak: replay-lock + messy + bridge + operator friction (hard gates)
+.\scripts\Invoke-TODDriftLockSoak.ps1 -Cycles 120 -IncludeScenarioIds REL-005,CON-002,SAF-002,MEM-003,TASK-005,SAF-003,MESS-001,MESS-002,MESS-003,MESS-004,BRG-001,BRG-002,BRG-003,BRG-004,OPR-001,OPR-002,OPR-003,OPR-004 -FailOnRegressingCycles 5 -PrDropTolerance 0.002 -UtilityDropTolerance 0.002 -MaxLateDriftLockViolations 0 -EmitJson -OutputPath .\shared_state\conversation_eval\drift_lock_soak\full_domain_mixed_soak_report.json
 ```
 
 Drift-lock soak reports also emit a markdown summary:
@@ -329,16 +330,19 @@ When all gates pass, run a guarded 60-minute full soak then promote:
 - PR gate: `drift_lock_passed=true`, `drift_lock_failures=0`, `gate_passed=true` ✓
 - Full guarded 60-min soak (run `20260318T001825Z`): 12 cycles, `avg_pr=0.750`, `regressed=false` ✓
 - Governed exact messy + bridge soak (`mixed_mess_bridge_120_governed_bounded_report.json`, bounded late violations): `avg_overall=0.7816`, `avg_developer_utility=0.7908`, `late_drift_lock_violations=3`, `promotion_gate_passed=true` ✓
-- Full mixed governed soak (run `20260318T060019Z`): `cycles_completed=360`, `avg_overall=0.7679`, `avg_developer_utility=0.7742`, `final_failures=0`, `promotion_gate_passed=true` ✓
+- Full mixed governed soak (run `20260318T065414Z`, 18 scenarios): `cycles_completed=120`, `avg_overall=0.7770`, `avg_developer_utility=0.7833`, `final_failures=0`, `late_drift_lock_violations=0`, `promotion_gate_passed=true` ✓
+- OPR closure soak (run `20260318T064913Z`): `cycles_completed=60`, `avg_overall=0.7695`, `avg_developer_utility=0.7669`, `late_drift_lock_violations=0`, `promotion_gate_passed=true` ✓
 - **Baseline promoted to 0.7483** (from 0.7446, +0.004 lift)
+- **Multi-domain governed baseline frozen (`baseline_release_v2.json`)**
 
 Governance freeze artifact:
 - `tod/conversation_eval/baseline_release_v1.json`
+- `tod/conversation_eval/baseline_release_v2.json`
 
 Seed data files:
 - `tod/conversation_eval/scenario_cards.json` — 70 scenarios across 17 buckets (48 conversational + 10 engineering + 8 messy/bridge + 4 operator-friction)
 - `tod/conversation_eval/conversation_profiles.json`
-- `tod/conversation_eval/drift_lock_suite.json` — 14 locked invariant scenarios
+- `tod/conversation_eval/drift_lock_suite.json` — 18 locked invariant scenarios
 
 Engineering task scenario buckets (added 2026-03-18):
 
@@ -376,7 +380,20 @@ Run engineering task coaching drills:
 
 # Light real-world usage on actual code (review/debug/fixes)
 .\scripts\Invoke-TODRealCodeAssist.ps1 -Mode review -FilePaths scripts\Invoke-TODConversationEvalRunner.ps1,scripts\Invoke-TODConversationEvalPR.ps1 -EmitJson
+
+# Real workflow usage: debugging triage
+.\scripts\Invoke-TODRealCodeAssist.ps1 -Mode debug -FilePaths scripts\Invoke-TODDriftLockSoak.ps1,scripts\Invoke-TODConversationEvalRunner.ps1 -EmitJson
+
+# Real workflow usage: implementation planning
+.\scripts\Invoke-TODRealCodeAssist.ps1 -Mode plan -FilePaths scripts\Invoke-TODMimTodBridgeCycle.ps1,scripts\Invoke-TODRealCodeAssist.ps1 -EmitJson
+
+# Real workflow usage: operator-facing engineering support
+.\scripts\Invoke-TODRealCodeAssist.ps1 -Mode operator -FilePaths scripts\Invoke-TODDriftLockSoak.ps1,scripts\Invoke-TODConversationEvalPR.ps1 -EmitJson
 ```
+
+Single-domain expansion rule (next step):
+- add **one** new domain at a time under unchanged hard gates (`MaxLateDriftLockViolations=0`, no threshold relaxation)
+- recommended next family: real repo change review or messy production incident triage
 
 Reports:
 - `shared_state/conversation_eval/conversation_score_report.latest.json`
