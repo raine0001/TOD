@@ -416,6 +416,24 @@ Single-domain expansion rule (next step):
 - active next family: real repo change review (`RRV-001..004`)
 - keep all promotion gates hard; tighten only after stable late-window density
 
+Cross-project GitHub simulation training (real repos, simulation only):
+
+```powershell
+# Run cross-project simulation over registered repos using real discovery surfaces
+.\scripts\Invoke-TODGitHubProjectSimulation.ps1 -UseAssist -EmitJson
+
+# Same simulation without provider-assisted planning (heuristic discovery only)
+.\scripts\Invoke-TODGitHubProjectSimulation.ps1 -EmitJson
+```
+
+Simulation suite and output:
+- `tod/conversation_eval/github_project_simulation_suite_v1.json`
+- `shared_state/conversation_eval/github_project_simulation/tod_github_project_simulation.latest.json`
+
+Default operating assumption:
+- TOD should treat GitHub-enabled cross-project work as the default mode where credentials and repo permissions allow.
+- Simulation mode prepares discovery, solution, commit, and push checklists without making live edits.
+
 Reports:
 - `shared_state/conversation_eval/conversation_score_report.latest.json`
 - `shared_state/conversation_eval/conversation_score_report.pr.latest.json`

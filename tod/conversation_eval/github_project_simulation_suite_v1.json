@@ -1,0 +1,60 @@
+{
+  "schema": "tod-github-project-simulation-suite-v1",
+  "updated_at": "2026-03-18T00:00:00Z",
+  "description": "Simulation-only cross-project training tasks that exercise discovery, solution planning, publish preparation, and commit/push readiness against registered projects.",
+  "simulation_only": true,
+  "scenarios": [
+    {
+      "id": "SIM-GH-001",
+      "project_id": "agent_mim_work",
+      "mode": "plan",
+      "task": "Modify the agentMIM home page to include a footer subscription prompt and prepare the change for commit/push.",
+      "target_hints": ["home", "index", "landing", "template", "footer"],
+      "relative_path_candidates": ["src", "scripts", "docs"],
+      "expected_outcome": [
+        "discover the likely landing-page files",
+        "propose a minimal homepage/footer edit plan",
+        "prepare a commit message and publish checklist"
+      ]
+    },
+    {
+      "id": "SIM-GH-002",
+      "project_id": "comm_app",
+      "mode": "debug",
+      "task": "Triage a homepage subscription form regression from partial operator feedback and prepare a safe patch-and-publish plan.",
+      "target_hints": ["home", "landing", "subscription", "subscribe", "footer", "route"],
+      "relative_path_candidates": ["routes", "templates", "static", "tests"],
+      "expected_outcome": [
+        "identify the likely route/template files",
+        "state the highest-likelihood regression path",
+        "prepare verification commands before commit/push"
+      ]
+    },
+    {
+      "id": "SIM-GH-003",
+      "project_id": "coachmim",
+      "mode": "review",
+      "task": "Review the coaching app landing flow for a small marketing footer addition and prepare a commit-ready change package.",
+      "target_hints": ["home", "landing", "template", "footer", "marketing"],
+      "relative_path_candidates": ["app", "routes", "templates", "tests"],
+      "expected_outcome": [
+        "find the page assembly points",
+        "flag any regression or styling risks",
+        "produce commit and publish readiness notes"
+      ]
+    },
+    {
+      "id": "SIM-GH-004",
+      "project_id": "mimir",
+      "mode": "operator",
+      "task": "Simulate operator-facing engineering support for a content tweak request and prepare a publish-safe plan without making changes.",
+      "target_hints": ["home", "content", "footer", "page", "docs"],
+      "relative_path_candidates": ["src", "app", "docs", "tests"],
+      "expected_outcome": [
+        "triage from limited information",
+        "name one safe default path",
+        "prepare branch, commit, and verification notes"
+      ]
+    }
+  ]
+}
