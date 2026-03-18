@@ -6,11 +6,11 @@
   "scenarios": [
     {
       "id": "SIM-GH-001",
-      "project_id": "agent_mim_work",
+      "project_id": "tod",
       "mode": "plan",
-      "task": "Modify the agentMIM home page to include a footer subscription prompt and prepare the change for commit/push.",
-      "target_hints": ["home", "index", "landing", "template", "footer"],
-      "relative_path_candidates": ["src", "scripts", "docs"],
+      "task": "Modify the TOD home page to include a footer subscription prompt and prepare the change for commit/push.",
+      "target_hints": ["ui", "index", "footer", "home", "landing"],
+      "relative_path_candidates": ["ui", "scripts", "docs"],
       "expected_outcome": [
         "discover the likely landing-page files",
         "propose a minimal homepage/footer edit plan",
@@ -45,11 +45,11 @@
     },
     {
       "id": "SIM-GH-004",
-      "project_id": "mimir",
+      "project_id": "mim_pulz",
       "mode": "operator",
-      "task": "Simulate operator-facing engineering support for a content tweak request and prepare a publish-safe plan without making changes.",
-      "target_hints": ["home", "content", "footer", "page", "docs"],
-      "relative_path_candidates": ["src", "app", "docs", "tests"],
+      "task": "Simulate operator-facing engineering support for a submission router tweak request and prepare a publish-safe plan without making changes.",
+      "target_hints": ["submission", "router", "gate", "reranker", "eval"],
+      "relative_path_candidates": ["src", "app", "tests"],
       "expected_outcome": [
         "triage from limited information",
         "name one safe default path",
