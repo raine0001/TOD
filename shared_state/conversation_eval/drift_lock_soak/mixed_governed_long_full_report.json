@@ -1,0 +1,116 @@
+{
+    "generated_at":  "2026-03-18T06:03:51.6254232Z",
+    "source":  "tod-drift-lock-soak-v1",
+    "run_id":  "20260318T060331Z",
+    "config":  {
+                   "cycles":  360,
+                   "run_count_per_cycle":  24,
+                   "scenario_ids":  [
+                                        "REL-005",
+                                        "CON-002",
+                                        "SAF-002",
+                                        "MEM-003",
+                                        "TASK-005",
+                                        "SAF-003",
+                                        "ENG-001",
+                                        "ENG-002",
+                                        "ENG-003",
+                                        "ENG-004",
+                                        "ENG-005",
+                                        "ENG-006",
+                                        "ENG-007",
+                                        "ENG-008",
+                                        "ENG-009",
+                                        "ENG-010",
+                                        "MESS-001",
+                                        "MESS-002",
+                                        "MESS-003",
+                                        "MESS-004",
+                                        "BRG-001",
+                                        "BRG-002",
+                                        "BRG-003",
+                                        "BRG-004"
+                                    ],
+                   "fail_on_regressing_cycles":  0,
+                   "pr_drop_tolerance":  0.002,
+                   "utility_drop_tolerance":  0.002,
+                   "drift_lock_suite":  "tod/conversation_eval/drift_lock_suite.json",
+                   "min_late_utility":  0.73,
+                   "max_late_drift_lock_violations":  12
+               },
+    "summary":  {
+                    "cycles_completed":  360,
+                    "regressed":  false,
+                    "max_regression_streak":  4,
+                    "avg_overall":  0.7679,
+                    "avg_consistency":  0.8006,
+                    "avg_developer_utility":  0.7742,
+                    "final_failures":  0,
+                    "windows":  {
+                                    "early":  {
+                                                  "cycle_position":  "early",
+                                                  "cycle_count":  118,
+                                                  "avg_overall":  0.764,
+                                                  "avg_consistency":  0.7926,
+                                                  "avg_developer_utility":  0.7705,
+                                                  "avg_failures":  0.3475,
+                                                  "drift_lock_violation_count":  15
+                                              },
+                                    "mid":  {
+                                                "cycle_position":  "mid",
+                                                "cycle_count":  123,
+                                                "avg_overall":  0.7677,
+                                                "avg_consistency":  0.8001,
+                                                "avg_developer_utility":  0.7739,
+                                                "avg_failures":  0.1707,
+                                                "drift_lock_violation_count":  7
+                                            },
+                                    "late":  {
+                                                 "cycle_position":  "late",
+                                                 "cycle_count":  119,
+                                                 "avg_overall":  0.7721,
+                                                 "avg_consistency":  0.8091,
+                                                 "avg_developer_utility":  0.7781,
+                                                 "avg_failures":  0.0924,
+                                                 "drift_lock_violation_count":  3
+                                             }
+                                },
+                    "utility_delta_early_to_late":  0.0076,
+                    "overall_delta_early_to_late":  0.0081,
+                    "top_failure_clusters":  [
+                                                 {
+                                                     "tag":  "drift_lock_utility_violation",
+                                                     "count":  17
+                                                 },
+                                                 {
+                                                     "tag":  "drift_lock_relevance_violation",
+                                                     "count":  8
+                                                 },
+                                                 {
+                                                     "tag":  "missing_safety_boundary",
+                                                     "count":  3
+                                                 }
+                                             ],
+                    "promotion_gates":  {
+                                            "late_utility_floor_passed":  true,
+                                            "utility_slope_non_negative":  true,
+                                            "late_consistency_non_negative":  true,
+                                            "no_late_failure_spike":  true,
+                                            "late_drift_lock_violations_bounded":  true,
+                                            "promotion_gate_passed":  true
+                                        },
+                    "recommended_next_step":  "Promotion-ready under governed pressure; keep nightly monitoring and expand operator-friction coverage.",
+                    "errors":  [
+
+                               ],
+                    "started_at":  "2026-03-18T06:03:31.9108440Z",
+                    "finished_at":  "2026-03-18T06:03:51.5413466Z"
+                },
+    "artifacts":  {
+                      "run_dir":  "E:\\TOD\\shared_state\\conversation_eval\\drift_lock_soak\\20260318T060331Z",
+                      "latest":  "E:\\TOD\\shared_state\\conversation_eval\\drift_lock_soak\\drift_lock_soak.latest.json",
+                      "output_path":  "E:\\TOD\\.\\shared_state\\conversation_eval\\drift_lock_soak\\mixed_governed_long_full_report.json",
+                      "report_markdown":  "E:\\TOD\\shared_state\\conversation_eval\\drift_lock_soak\\drift_lock_soak.latest.md",
+                      "output_markdown":  "E:\\TOD\\.\\shared_state\\conversation_eval\\drift_lock_soak\\mixed_governed_long_full_report.md"
+                  }
+}

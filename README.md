@@ -202,6 +202,191 @@ Fail-fast mode for automation:
 .\scripts\Invoke-TODExecutionSelfTest.ps1 -TaskId 45 -FailOnError
 ```
 
+### Conversation Evaluation Harness (TOD)
+
+Current operating standard (promoted 2026-03-18):
+- default policy profile: `tightened`
+- PR gate runs: `tightened`
+- nightly/regression runs: `tightened`
+- known-good baseline overall score: `0.7483` *(promoted from 0.7446)*
+
+Promotion criteria met (2026-03-18, run `20260318T001825Z`):
+- Gate 1: no late degradation — late_avg_pr=0.7512 ≥ early_avg_pr=0.7471 ✓
+- Gate 2: drift-lock clean — 0 violations in last 4 cycles ✓
+- Gate 3: no fresh failure cluster — late_fail=10.25 < early_fail=13.75, max_streak=2 ✓
+
+Governed expansion status (2026-03-18):
+- drift-lock suite expanded to 14 locked scenarios: replay-lock core + `MESS-001..004` + `BRG-001..004`
+- developer utility is now a first-class drift-lock invariant
+- PR, nightly, and drift-lock soak runs emit markdown summaries alongside JSON artifacts
+- long mixed governed soak validated on replay-lock + engineering + messy + bridge pressure
+
+Canonical baseline artifact:
+- `shared_state/conversation_eval/conversation_score_report.baseline.current.json`
+
+Run staged synthetic conversation evaluation for TOD orchestration behavior:
+
+```powershell
+.\scripts\Invoke-TODConversationEvalRunner.ps1 -Stage smoke -EmitJson
+.\scripts\Invoke-TODConversationEvalRunner.ps1 -Stage expanded -EmitJson
+```
+
+PR-oriented gate (smoke + expanded):
+
+```powershell
+.\scripts\Invoke-TODConversationEvalPR.ps1 -EmitJson
+.\scripts\Invoke-TODConversationEvalPR.ps1 -FailOnThreshold -MinOverallScore 0.68
+```
+
+PR and nightly reports also emit markdown summaries:
+- `shared_state/conversation_eval/conversation_score_report.pr.latest.md`
+- `shared_state/conversation_eval/conversation_score_report.nightly.latest.md`
+
+Nightly regression (1000 runs) and optional baseline refresh:
+
+```powershell
+.\scripts\Invoke-TODConversationEvalNightly.ps1 -EmitJson
+.\scripts\Invoke-TODConversationEvalNightly.ps1 -UpdateBaseline -EmitJson
+```
+
+Focused A/B comparison for top failure tags:
+
+```powershell
+.\scripts\Invoke-TODConversationEvalAB.ps1 -Stage expanded -EmitJson
+```
+
+One-command coaching loop (A/B drills + PR gate + optional nightly + optional live provider drills):
+
+```powershell
+.\scripts\Invoke-TODConversationCoach.ps1 -Stage expanded -EmitJson
+.\scripts\Invoke-TODConversationCoach.ps1 -Stage expanded -RunNightlyRegression -UpdateBaseline -EmitJson
+```
+
+One-hour soak runner (snapshots every cycle) and trend analysis:
+
+```powershell
+.\scripts\Invoke-TODConversationCoachSoak.ps1 -DurationMinutes 60 -IntervalSeconds 300 -Stage expanded -EmitJson
+.\scripts\Get-TODConversationCoachTrend.ps1 -RunId latest -EmitJson
+```
+
+Optional regression guard (fail if regressions persist across consecutive cycles):
+
+```powershell
+.\scripts\Invoke-TODConversationCoachSoak.ps1 -DurationMinutes 60 -IntervalSeconds 300 -Stage expanded -FailOnRegressingCycles 3 -PrDropTolerance 0.002 -EmitJson
+```
+
+Drift lock suite (non-negotiable replay invariants):
+- `tod/conversation_eval/drift_lock_suite.json`
+- includes replay-lock, messy real-world, and MIM <-> TOD bridge invariants
+
+Early-vs-late drift analysis and replay-pack generation:
+
+```powershell
+.\scripts\Get-TODConversationDriftAnalysis.ps1 -RunId latest -WindowCycles 3 -EmitJson
+.\scripts\New-TODConversationReplayPack.ps1 -RunId latest -TopScenarios 25 -FocusTags low_relevance,missing_safety_boundary -EmitJson
+```
+
+Targeted replay-pack soak (100-200 cycles, drift-lock scenarios only):
+
+```powershell
+# Full 14-scenario drift-lock soak
+.\scripts\Invoke-TODDriftLockSoak.ps1 -Cycles 120 -FailOnRegressingCycles 3 -PrDropTolerance 0.002 -UtilityDropTolerance 0.002 -EmitJson
+
+# Narrowed soak: only the still-failing subset (SAF-002, CON-002, SAF-003, TASK-005)
+.\scripts\Invoke-TODDriftLockSoak.ps1 -Cycles 175 -IncludeScenarioIds SAF-002,CON-002,SAF-003,TASK-005 -FailOnRegressingCycles 0 -PrDropTolerance 0.002 -EmitJson
+
+# Exact governed messy + bridge soak with bounded late violations
+.\scripts\Invoke-TODDriftLockSoak.ps1 -Cycles 120 -IncludeScenarioIds MESS-001,MESS-002,MESS-003,MESS-004,BRG-001,BRG-002,BRG-003,BRG-004 -FailOnRegressingCycles 0 -PrDropTolerance 0.002 -UtilityDropTolerance 0.002 -MaxLateDriftLockViolations 3 -EmitJson
+
+# Full mixed governed soak: replay-lock + engineering + messy + bridge
+.\scripts\Invoke-TODDriftLockSoak.ps1 -Cycles 360 -IncludeScenarioIds REL-005,CON-002,SAF-002,MEM-003,TASK-005,SAF-003,ENG-001,ENG-002,ENG-003,ENG-004,ENG-005,ENG-006,ENG-007,ENG-008,ENG-009,ENG-010,MESS-001,MESS-002,MESS-003,MESS-004,BRG-001,BRG-002,BRG-003,BRG-004 -FailOnRegressingCycles 0 -PrDropTolerance 0.002 -UtilityDropTolerance 0.002 -MaxLateDriftLockViolations 12 -EmitJson
+```
+
+Drift-lock soak reports also emit a markdown summary:
+- `shared_state/conversation_eval/drift_lock_soak/drift_lock_soak.latest.md`
+
+### Baseline Promotion Gate
+
+Do **not** promote baseline until the guarded replay or mixed soak passes these promotion checks:
+
+| Gate | Required |
+|------|----------|
+| `final_failures` on governed soak | ≤ 1 |
+| Late utility floor | `late_avg_developer_utility >= 0.73` |
+| Utility slope | `late_avg_developer_utility >= early_avg_developer_utility` |
+| Late consistency | `late_avg_consistency >= early_avg_consistency` |
+| Late failure pressure | `late_avg_failures <= early_avg_failures` |
+| Late drift-lock pressure | `late_drift_lock_violations <= MaxLateDriftLockViolations` |
+
+When all gates pass, run a guarded 60-minute full soak then promote:
+
+```powershell
+.\scripts\Invoke-TODConversationCoachSoak.ps1 -DurationMinutes 60 -IntervalSeconds 300 -Stage expanded -FailOnRegressingCycles 3 -PrDropTolerance 0.002 -UpdateBaselineAtEnd -EmitJson
+```
+
+**Current status (2026-03-18):**
+- Narrowed 175-cycle replay-pack soak: `final_failures=0`, `late_fail=0`, `late_avg_cons=0.833` ✓
+- PR gate: `drift_lock_passed=true`, `drift_lock_failures=0`, `gate_passed=true` ✓
+- Full guarded 60-min soak (run `20260318T001825Z`): 12 cycles, `avg_pr=0.750`, `regressed=false` ✓
+- Governed exact messy + bridge soak (`mixed_mess_bridge_120_governed_bounded_report.json`, bounded late violations): `avg_overall=0.7816`, `avg_developer_utility=0.7908`, `late_drift_lock_violations=3`, `promotion_gate_passed=true` ✓
+- Full mixed governed soak (run `20260318T060019Z`): `cycles_completed=360`, `avg_overall=0.7679`, `avg_developer_utility=0.7742`, `final_failures=0`, `promotion_gate_passed=true` ✓
+- **Baseline promoted to 0.7483** (from 0.7446, +0.004 lift)
+
+Governance freeze artifact:
+- `tod/conversation_eval/baseline_release_v1.json`
+
+Seed data files:
+- `tod/conversation_eval/scenario_cards.json` — 70 scenarios across 17 buckets (48 conversational + 10 engineering + 8 messy/bridge + 4 operator-friction)
+- `tod/conversation_eval/conversation_profiles.json`
+- `tod/conversation_eval/drift_lock_suite.json` — 14 locked invariant scenarios
+
+Engineering task scenario buckets (added 2026-03-18):
+
+| Bucket | IDs | Focus |
+|--------|-----|-------|
+| `implementation_planning` | ENG-001–004 | Concrete structure, circuit breakers, queue/pipe tradeoffs, auto-merge governance |
+| `code_review_coaching` | ENG-005–007 | Antipattern detection, priority-ranked review, pattern reuse |
+| `debugging_loop` | ENG-008–010 | Targeted diagnosis, NullRef root cause, diff-first isolation |
+
+Messy real-world and cross-domain bridge scenarios:
+
+| Bucket | IDs | Focus |
+|--------|-----|-------|
+| `debugging_loop` + `implementation_planning` + `code_review_coaching` + `unclear_requests` | MESS-001–004 | Incomplete logs, conflicting requirements, partial code, ambiguous intent |
+| `mim_tod_bridge` | BRG-001–004 | MIM plans -> TOD critiques -> TOD executes -> MIM validates |
+| `operator_friction` | OPR-001–004 | Incomplete bug reports, urgency pressure, rollback conflict, wrong diagnosis confidence |
+
+Run engineering task coaching drills:
+
+```powershell
+# Single-pass smoke across all 10 engineering scenarios
+.\scripts\Invoke-TODConversationEvalRunner.ps1 -Stage smoke -PolicyProfile tightened -IncludeScenarioIds ENG-001,ENG-002,ENG-003,ENG-004,ENG-005,ENG-006,ENG-007,ENG-008,ENG-009,ENG-010 -ScenarioSweep -RunCountOverride 10 -EmitJson
+
+# Targeted 50-cycle soak on all engineering scenarios
+.\scripts\Invoke-TODDriftLockSoak.ps1 -Cycles 50 -IncludeScenarioIds ENG-001,ENG-002,ENG-003,ENG-004,ENG-005,ENG-006,ENG-007,ENG-008,ENG-009,ENG-010 -FailOnRegressingCycles 3 -EmitJson
+
+# Messy real-world pressure sweep
+.\scripts\Invoke-TODConversationEvalRunner.ps1 -Stage expanded -PolicyProfile tightened -IncludeScenarioIds MESS-001,MESS-002,MESS-003,MESS-004 -ScenarioSweep -RunCountOverride 40 -EmitJson
+
+# Cross-domain MIM <-> TOD interaction cycle
+.\scripts\Invoke-TODMimTodBridgeCycle.ps1 -Cycles 20 -EmitJson
+
+# Operator-friction pressure sweep
+.\scripts\Invoke-TODConversationEvalRunner.ps1 -Stage expanded -PolicyProfile tightened -IncludeScenarioIds OPR-001,OPR-002,OPR-003,OPR-004 -ScenarioSweep -RunCountOverride 40 -EmitJson
+
+# Light real-world usage on actual code (review/debug/fixes)
+.\scripts\Invoke-TODRealCodeAssist.ps1 -Mode review -FilePaths scripts\Invoke-TODConversationEvalRunner.ps1,scripts\Invoke-TODConversationEvalPR.ps1 -EmitJson
+```
+
+Reports:
+- `shared_state/conversation_eval/conversation_score_report.latest.json`
+- `shared_state/conversation_eval/conversation_score_report.pr.latest.json`
+- `shared_state/conversation_eval/conversation_score_report.nightly.latest.json`
+- `shared_state/conversation_eval/conversation_score_report.pr.latest.md`
+- `shared_state/conversation_eval/conversation_score_report.nightly.latest.md`
+- `shared_state/conversation_eval/drift_lock_soak/drift_lock_soak.latest.json`
+- `shared_state/conversation_eval/drift_lock_soak/drift_lock_soak.latest.md`
+
 ### Continuous Training Automation
 
 Generate a structured training report from existing TOD evidence (tests, smoke, state-bus, reliability, engineering loop):

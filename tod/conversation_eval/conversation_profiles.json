@@ -1,0 +1,40 @@
+{
+  "schema_version": "tod-conversation-profiles-v1",
+  "profiles": [
+    {
+      "id": "concise_user",
+      "label": "Concise user",
+      "style": "brief",
+      "traits": ["direct", "low_patience"],
+      "noise_level": 0.1
+    },
+    {
+      "id": "rambling_user",
+      "label": "Rambling user",
+      "style": "long_form",
+      "traits": ["context_heavy", "indirect"],
+      "noise_level": 0.45
+    },
+    {
+      "id": "angry_user",
+      "label": "Angry user",
+      "style": "emotion_high",
+      "traits": ["frustrated", "interrupt_prone"],
+      "noise_level": 0.5
+    },
+    {
+      "id": "uncertain_user",
+      "label": "Uncertain user",
+      "style": "hesitant",
+      "traits": ["ambiguous", "needs_guidance"],
+      "noise_level": 0.35
+    },
+    {
+      "id": "typo_heavy_user",
+      "label": "Typo-heavy user",
+      "style": "noisy_text",
+      "traits": ["stt_like_errors", "partial_phrases"],
+      "noise_level": 0.65
+    }
+  ]
+}
