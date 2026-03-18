@@ -23,10 +23,12 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          if (-not (Get-Module -ListAvailable -Name Pester)) {
-            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-            Install-Module -Name Pester -Scope CurrentUser -Force -SkipPublisherCheck
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          $legacyPester = @(Get-Module -ListAvailable -Name Pester | Where-Object { $_.Version.Major -eq 4 })
+          if (@($legacyPester).Count -eq 0) {
+            Install-Module -Name Pester -RequiredVersion 4.10.1 -Scope CurrentUser -Force -SkipPublisherCheck
           }
+          Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 5 Name,Version,Path
 
       - name: Run TOD Test Suite
         shell: pwsh

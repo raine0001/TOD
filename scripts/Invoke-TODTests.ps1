@@ -53,11 +53,22 @@ if (-not (Test-Path -Path $testPath)) {
     throw "Test file not found: $testPath"
 }
 
-$pesterModule = Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 1
-if ($null -eq $pesterModule) {
+$availablePester = @(Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending)
+if (@($availablePester).Count -eq 0) {
     throw "Pester is not installed. Install with: Install-Module -Name Pester -Scope CurrentUser"
 }
 
+# The test suite currently relies on legacy assertion/scoping behavior; prefer Pester 4 when available.
+$pesterModule = $availablePester | Where-Object { $_.Version.Major -eq 4 } | Select-Object -First 1
+if ($null -eq $pesterModule) {
+    $pesterModule = $availablePester | Where-Object { $_.Version.Major -lt 5 } | Select-Object -First 1
+}
+if ($null -eq $pesterModule) {
+    $pesterModule = $availablePester | Select-Object -First 1
+    Write-Warning ("Using Pester {0}; some legacy tests may fail under this version." -f $pesterModule.Version)
+}
+
+Write-Host ("Using Pester {0}" -f $pesterModule.Version)
 Import-Module Pester -RequiredVersion $pesterModule.Version -ErrorAction Stop | Out-Null
 
 $invokePester = Get-Command -Name Invoke-Pester -ErrorAction Stop
