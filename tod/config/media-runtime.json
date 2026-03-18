@@ -1,5 +1,5 @@
 {
-  "version": "tod-media-runtime-v1",
+  "version": "tod-media-runtime-v2",
   "gpu": {
     "preferred_device": "cuda",
     "require_nvidia_smi": true,
@@ -28,6 +28,72 @@
       "base_url": "http://127.0.0.1:8090",
       "generate_endpoint": "/generate",
       "health_endpoint": "/health"
+    },
+    "fooocus": {
+      "enabled": true,
+      "base_url": "http://127.0.0.1:7865",
+      "txt2img_endpoint": "/v1/generation/text-to-image",
+      "health_endpoint": "/",
+      "notes": "Run Fooocus with: python launch.py --listen --port 7865 --always-high-vram",
+      "defaults": {
+        "performance": "Quality",
+        "style_selections": ["Fooocus V2", "Fooocus Photograph", "Fooocus Realistic"],
+        "base_model": "juggernautXL_v8Rundiffusion.safetensors",
+        "refiner_model": "None",
+        "guidance_scale": 7.0,
+        "sharpness": 2.0,
+        "steps": 30
+      }
+    },
+    "sadtalker": {
+      "enabled": true,
+      "install_path": "C:/AI/SadTalker",
+      "python_exe": "python",
+      "inference_script": "inference.py",
+      "notes": "Clone from https://github.com/OpenTalker/SadTalker",
+      "defaults": {
+        "preprocess": "full",
+        "still_mode": true,
+        "enhancer": "gfpgan",
+        "size": 256,
+        "pose_style": 0,
+        "expression_scale": 1.0,
+        "batch_size": 1
+      }
+    },
+    "liveportrait": {
+      "enabled": false,
+      "install_path": "C:/AI/LivePortrait",
+      "python_exe": "python",
+      "inference_script": "inference.py",
+      "notes": "pip install liveportrait OR clone from https://github.com/KwaiVGI/LivePortrait",
+      "defaults": {
+        "flag_crop_driving_video": false,
+        "flag_normalize_lip": true,
+        "flag_source_video_eye_retargeting": false,
+        "flag_eye_retargeting": false,
+        "flag_lip_retargeting": false,
+        "flag_relative_motion": true,
+        "flag_pasteback": true
+      }
+    },
+    "edge_tts": {
+      "enabled": true,
+      "type": "python-subprocess",
+      "voice_defaults": {
+        "primary": "en-US-GuyNeural",
+        "alternate": "en-US-AriaNeural",
+        "rate": "+0%",
+        "pitch": "+0Hz",
+        "volume": "+0%"
+      },
+      "notes": "pip install edge-tts  — free, offline-capable neural TTS via Microsoft"
+    },
+    "rembg": {
+      "enabled": true,
+      "type": "python-subprocess",
+      "model": "u2net",
+      "notes": "pip install rembg[gpu] onnxruntime-gpu — GPU-accelerated background removal"
     }
   },
   "routing": {
@@ -37,7 +103,11 @@
     "dynamic-visual-content": "comfyui",
     "short-video-animation": "python_diffusers",
     "diagram-dashboard-rendering": "code-svg",
-    "vision-processing": "python_diffusers"
+    "vision-processing": "python_diffusers",
+    "spokesperson-video": "sadtalker",
+    "background-scene-generation": "fooocus",
+    "avatar-isolation": "rembg",
+    "text-to-speech": "edge_tts"
   },
   "defaults": {
     "image": {
@@ -47,8 +117,21 @@
       "guidance": 7.0
     },
     "video": {
-      "fps": 12,
-      "seconds": 4
+      "fps": 25,
+      "seconds": 4,
+      "width": 1280,
+      "height": 720
+    },
+    "spokesperson": {
+      "avatar_width": 640,
+      "avatar_height": 720,
+      "frame_width": 1280,
+      "frame_height": 720,
+      "avatar_x_offset": 80,
+      "avatar_y_offset": 0,
+      "color_grade": true,
+      "add_shadow": true,
+      "add_vignette": true
     }
   }
 }

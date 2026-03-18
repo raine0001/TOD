@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ProjectId,
     [Parameter(Mandatory = $true)]
-    [ValidateSet("image-generation", "graphics-creation", "ui-assets", "dynamic-visual-content", "short-video-animation", "diagram-dashboard-rendering", "vision-processing")]
+    [ValidateSet("image-generation", "graphics-creation", "ui-assets", "dynamic-visual-content", "short-video-animation", "diagram-dashboard-rendering", "vision-processing", "spokesperson-video")]
     [string]$Capability,
     [Parameter(Mandatory = $true)]
     [string]$Prompt,
@@ -166,7 +166,10 @@ $outputSandboxPath = "projects/{0}/{1}" -f $ProjectId, $resolvedOutputRelativePa
 $plannedActions = @()
 $plannedActions += [pscustomobject]@{ action = "write-manifest"; sandbox_path = $manifestSandboxPath }
 
-if ($Capability -eq "diagram-dashboard-rendering" -and $routeTarget -eq "code-svg") {
+if ($Capability -eq "spokesperson-video") {
+    $plannedActions += [pscustomobject]@{ action = "delegate-spokesperson-pipeline"; sandbox_path = $outputSandboxPath }
+}
+elseif ($Capability -eq "diagram-dashboard-rendering" -and $routeTarget -eq "code-svg") {
     $plannedActions += [pscustomobject]@{ action = "render-svg"; sandbox_path = $outputSandboxPath }
 }
 else {
@@ -179,7 +182,18 @@ $writes += [pscustomobject]@{
     content = $manifestJson
 }
 
-if ($Capability -eq "diagram-dashboard-rendering" -and $routeTarget -eq "code-svg") {
+if ($Capability -eq "spokesperson-video") {
+    # Delegate to the dedicated spokesperson pipeline with prompt as script override
+    if (-not $effectiveDryRun) {
+        $spokespersonScript = Join-Path $PSScriptRoot "Invoke-TODSpokesperson.ps1"
+        if (Test-Path $spokespersonScript) {
+            & $spokespersonScript -Script $Prompt
+        } else {
+            throw "Spokesperson pipeline not found: $spokespersonScript"
+        }
+    }
+}
+elseif ($Capability -eq "diagram-dashboard-rendering" -and $routeTarget -eq "code-svg") {
     $svg = New-DiagramSvg -Title "TOD Diagram: $ProjectId" -BodyText $Prompt
     $writes += [pscustomobject]@{
         sandbox_path = $outputSandboxPath

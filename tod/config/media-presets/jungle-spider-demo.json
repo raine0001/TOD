@@ -1,0 +1,77 @@
+{
+  "id": "jungle-spider-demo",
+  "description": "TOD jungle spider AI capabilities spokesperson demo",
+  "version": "1.0",
+
+  "avatar": {
+    "source_path": "tod/data/avatars/user-avatar.jpg",
+    "rembg_model": "u2net_human_seg",
+    "post_process_alpha": true,
+    "alpha_matting": true
+  },
+
+  "background": {
+    "service": "fooocus",
+    "prompt": "photorealistic tropical rainforest interior, dense emerald canopy, hanging moss vines, shafts of golden morning sunlight filtering through leaves, lush ferns and giant palm fronds, soft volumetric fog near ground, vibrant greens, cinematic depth of field, jungle floor, bokeh background, 8K high resolution, award-winning nature photography, National Geographic style",
+    "negative_prompt": "blurry, cartoon, illustration, watermark, text, logo, artificial, plastic, dark, cave, murky, night, nsfw, anime, painting, drawing, sketch",
+    "style": "photorealism",
+    "width": 1280,
+    "height": 720,
+    "guidance_scale": 7.5,
+    "steps": 35,
+    "model": "juggernautXL_v8Rundiffusion.safetensors",
+    "fooocus_styles": ["Fooocus V2", "Fooocus Photograph", "Fooocus Realistic", "SAI 8K Resolution"]
+  },
+
+  "spider_prop": {
+    "enabled": true,
+    "prompt_addition": "a large photorealistic tropical spider perched on a leaf in the foreground, sharp focus on spider, natural spider silk",
+    "notes": "Spider appears in-scene via background prompt — no separate compositing needed"
+  },
+
+  "tts": {
+    "service": "edge_tts",
+    "voice": "en-US-GuyNeural",
+    "rate": "-5%",
+    "pitch": "+0Hz",
+    "volume": "+5%",
+    "script": "Hey there! Welcome to the jungle. I'm here talking to my eight-legged friend about AI capabilities. Artificial intelligence is transforming the way we work, communicate, and solve complex problems. From natural language processing that understands context and nuance, to computer vision systems that see the world, to autonomous agents that can plan and execute multi-step tasks — AI is no longer science fiction. It's the operating system of the future. And just like this incredible ecosystem around us, AI thrives on interconnectedness, adaptability, and evolution. Pretty cool, right?"
+  },
+
+  "animation": {
+    "service": "sadtalker",
+    "enhancer": "gfpgan",
+    "size": 512,
+    "preprocess": "full",
+    "still": true,
+    "pose_style": 0,
+    "expression_scale": 1.0
+  },
+
+  "composite": {
+    "avatar_height": 680,
+    "x_offset": 95,
+    "y_offset": 0,
+    "color_match": true,
+    "shadow": true,
+    "vignette": true,
+    "jpeg_quality": 95
+  },
+
+  "output": {
+    "filename": "jungle-spider-ai-demo.mp4",
+    "subfolder": "spokesperson",
+    "fps": 25
+  },
+
+  "quality_preset": "95pct_realism",
+  "quality_notes": [
+    "GFPGAN face enhancement on SadTalker output — sharpens facial detail significantly",
+    "size=512 mode for higher internal resolution processing",
+    "Alpha matting for clean hair/edge separation from background",
+    "Color temperature matching to blend avatar lighting with jungle scene",
+    "Subtle ground shadow for depth/grounding",
+    "Cinematic vignette for professional look",
+    "Neural voice en-US-GuyNeural at slightly slowed rate for gravitas"
+  ]
+}
