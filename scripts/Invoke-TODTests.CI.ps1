@@ -145,7 +145,7 @@ function Get-HistoryWindowTrend {
     }
 }
 
-$result = & $runnerPath -Path $TestPath -JsonOutputPath $SummaryPath -FailOnTestFailure
+$result = & $runnerPath -Path $TestPath -JsonOutputPath $SummaryPath -FailOnTestFailure -SkipSharedStateSync
 $summaryObj = $result | ConvertFrom-Json
 
 $metrics = Get-StateMetricsSnapshot -RepoRoot $repoRoot
