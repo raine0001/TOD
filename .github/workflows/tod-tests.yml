@@ -23,13 +23,9 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          $legacyPester = @(Get-Module -ListAvailable -Name Pester | Where-Object { $_.Version.Major -eq 4 })
-          if (@($legacyPester).Count -eq 0) {
-            Install-Module -Name Pester -RequiredVersion 4.10.1 -Repository PSGallery -Scope CurrentUser -Force -SkipPublisherCheck -AllowClobber
-          }
-          Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending | Select-Object -First 5 Name,Version,Path
+          $pester = @(Get-Module -ListAvailable -Name Pester | Sort-Object Version -Descending)
+          if (@($pester).Count -eq 0) { throw "Pester module is not available on this runner." }
+          $pester | Select-Object -First 5 Name,Version,Path
 
       - name: Run TOD Test Suite
         shell: powershell
