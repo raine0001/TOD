@@ -1,0 +1,34 @@
+{
+  "schema": "tod-codex-readiness-suite-v1",
+  "updated_at": "2026-03-18T00:00:00Z",
+  "description": "Single-domain expansion candidate focused on real repository change review under hard governance gates.",
+  "domain": "real_repo_change_review",
+  "scenario_ids": [
+    "RRV-001",
+    "RRV-002",
+    "RRV-003",
+    "RRV-004"
+  ],
+  "hard_gates": {
+    "min_late_utility": 0.73,
+    "max_late_drift_lock_violations": 0,
+    "require_non_negative_utility_slope": true,
+    "require_non_negative_consistency_slope": true,
+    "require_no_late_failure_spike": true,
+    "fail_on_regressing_cycles": 5,
+    "pr_drop_tolerance": 0.002,
+    "utility_drop_tolerance": 0.002
+  },
+  "workflow_kpis": {
+    "min_task_success_rate": 0.8,
+    "min_first_pass_success_rate": 0.75,
+    "max_rework_rate": 0.25,
+    "min_accept_without_edit_rate": 0.6
+  },
+  "patch_quality_gates": {
+    "max_changed_files": 4,
+    "allow_only_declared_paths": true,
+    "require_tests_when_command_provided": true,
+    "forbid_unexpected_edits_outside_fixes_mode": true
+  }
+}

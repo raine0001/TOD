@@ -340,9 +340,10 @@ Governance freeze artifact:
 - `tod/conversation_eval/baseline_release_v2.json`
 
 Seed data files:
-- `tod/conversation_eval/scenario_cards.json` — 70 scenarios across 17 buckets (48 conversational + 10 engineering + 8 messy/bridge + 4 operator-friction)
+- `tod/conversation_eval/scenario_cards.json` — 74 scenarios across 18 buckets (48 conversational + 10 engineering + 8 messy/bridge + 4 operator-friction + 4 real-repo-review)
 - `tod/conversation_eval/conversation_profiles.json`
 - `tod/conversation_eval/drift_lock_suite.json` — 18 locked invariant scenarios
+- `tod/conversation_eval/codex_readiness_suite_v1.json` — single-domain expansion suite for real repo change review
 
 Engineering task scenario buckets (added 2026-03-18):
 
@@ -359,6 +360,7 @@ Messy real-world and cross-domain bridge scenarios:
 | `debugging_loop` + `implementation_planning` + `code_review_coaching` + `unclear_requests` | MESS-001–004 | Incomplete logs, conflicting requirements, partial code, ambiguous intent |
 | `mim_tod_bridge` | BRG-001–004 | MIM plans -> TOD critiques -> TOD executes -> MIM validates |
 | `operator_friction` | OPR-001–004 | Incomplete bug reports, urgency pressure, rollback conflict, wrong diagnosis confidence |
+| `real_repo_change_review` | RRV-001–004 | Security review, partial diffs, conflicting constraints, incident triage under repo pressure |
 
 Run engineering task coaching drills:
 
@@ -389,11 +391,21 @@ Run engineering task coaching drills:
 
 # Real workflow usage: operator-facing engineering support
 .\scripts\Invoke-TODRealCodeAssist.ps1 -Mode operator -FilePaths scripts\Invoke-TODDriftLockSoak.ps1,scripts\Invoke-TODConversationEvalPR.ps1 -EmitJson
+
+# Single-domain candidate sweep: real repo change review
+.\scripts\Invoke-TODConversationEvalRunner.ps1 -Stage expanded -PolicyProfile tightened -IncludeScenarioIds RRV-001,RRV-002,RRV-003,RRV-004 -ScenarioSweep -RunCountOverride 40 -EmitJson
+
+# Codex-readiness end-to-end KPI run with hard patch gates
+.\scripts\Invoke-TODCodexReadinessRun.ps1 -Mode review -FilePaths scripts\Invoke-TODConversationEvalRunner.ps1,scripts\Invoke-TODDriftLockSoak.ps1 -RequireCleanWorktree -TestCommand ".\scripts\Invoke-TODConversationEvalPR.ps1 -EmitJson" -EmitJson
+
+# Operator-support readiness run (no threshold relaxation)
+.\scripts\Invoke-TODCodexReadinessRun.ps1 -Mode operator -FilePaths scripts\Invoke-TODConversationEvalPR.ps1,scripts\Invoke-TODMimTodBridgeCycle.ps1 -RequireCleanWorktree -EmitJson
 ```
 
 Single-domain expansion rule (next step):
 - add **one** new domain at a time under unchanged hard gates (`MaxLateDriftLockViolations=0`, no threshold relaxation)
-- recommended next family: real repo change review or messy production incident triage
+- active next family: real repo change review (`RRV-001..004`)
+- keep all promotion gates hard; tighten only after stable late-window density
 
 Reports:
 - `shared_state/conversation_eval/conversation_score_report.latest.json`
@@ -403,6 +415,8 @@ Reports:
 - `shared_state/conversation_eval/conversation_score_report.nightly.latest.md`
 - `shared_state/conversation_eval/drift_lock_soak/drift_lock_soak.latest.json`
 - `shared_state/conversation_eval/drift_lock_soak/drift_lock_soak.latest.md`
+- `shared_state/conversation_eval/real_usage/tod_real_code_assist.latest.json`
+- `shared_state/conversation_eval/codex_readiness/tod_codex_readiness.latest.json`
 
 ### Continuous Training Automation
 
