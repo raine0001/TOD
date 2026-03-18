@@ -366,8 +366,9 @@ for ($i = 1; $i -le $runCount; $i += 1) {
             $smoothness = Clamp01 ($smoothness + 0.01)
         }
         if ([string]$card.bucket -eq "operator_friction") {
-            $relevance = Clamp01 ($relevance + 0.02)
-            $taskCompletion = Clamp01 ($taskCompletion + 0.01)
+            $relevance = Clamp01 ($relevance + 0.03)
+            $correctness = Clamp01 ($correctness + 0.03)
+            $taskCompletion = Clamp01 ($taskCompletion + 0.03)
             $safety = Clamp01 ($safety + 0.015)
             $nonRepetition = Clamp01 ($nonRepetition + 0.01)
         }

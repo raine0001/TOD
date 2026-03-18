@@ -70,6 +70,39 @@ function Get-WindowSummary {
     }
 }
 
+function Get-FamilyBreakdown {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Rows,
+        [Parameter(Mandatory = $true)][string]$Position
+    )
+    $windowRows = @($Rows | Where-Object { [string]$_.cycle_position -eq $Position })
+    $agg = @{}
+    foreach ($wrow in $windowRows) {
+        if ($null -eq $wrow.family_data) { continue }
+        foreach ($fam in $wrow.family_data.Keys) {
+            if (-not $agg.ContainsKey($fam)) {
+                $agg[$fam] = @{ violations = 0; total = 0; failures = 0; utility_sum = 0.0 }
+            }
+            $agg[$fam].violations  += [int]$wrow.family_data[$fam].violations
+            $agg[$fam].total       += [int]$wrow.family_data[$fam].total
+            $agg[$fam].failures    += [int]$wrow.family_data[$fam].failures
+            $agg[$fam].utility_sum += [double]$wrow.family_data[$fam].utility_sum
+        }
+    }
+    $breakdown = [pscustomobject]@{}
+    foreach ($fam in ($agg.Keys | Sort-Object)) {
+        $d = $agg[$fam]
+        $breakdown | Add-Member -NotePropertyName $fam -NotePropertyValue ([pscustomobject]@{
+            violations        = [int]$d.violations
+            total_runs        = [int]$d.total
+            violation_density = if ($d.total -gt 0) { [math]::Round($d.violations / $d.total, 4) } else { 0.0 }
+            failure_density   = if ($d.total -gt 0) { [math]::Round($d.failures   / $d.total, 4) } else { 0.0 }
+            avg_utility       = if ($d.total -gt 0) { [math]::Round($d.utility_sum / $d.total, 4) } else { 0.0 }
+        })
+    }
+    return $breakdown
+}
+
 $runner = Join-Path $PSScriptRoot "Invoke-TODConversationEvalRunner.ps1"
 if (-not (Test-Path -Path $runner)) {
     throw "Runner script not found: $runner"
@@ -149,6 +182,19 @@ for ($cycle = 1; $cycle -le $Cycles; $cycle += 1) {
             drift_lock_violations = [int]@(@($result.runs | ForEach-Object { @($_.failure_tags) } | Where-Object { [string]$_ -like 'drift_lock_*_violation' })).Count
             path = $cyclePath
         }
+
+        $familyData = @{}
+        foreach ($famRun in @($result.runs)) {
+            $famKey = [string]$famRun.bucket
+            if (-not $familyData.ContainsKey($famKey)) {
+                $familyData[$famKey] = @{ violations = 0; total = 0; failures = 0; utility_sum = 0.0 }
+            }
+            $familyData[$famKey].total += 1
+            if ($famRun.drift_lock -and [bool]($famRun.drift_lock.passed) -eq $false) { $familyData[$famKey].violations += 1 }
+            if (@($famRun.failure_tags).Count -gt 0) { $familyData[$famKey].failures += 1 }
+            $familyData[$famKey].utility_sum += [double]$famRun.scores.developer_utility
+        }
+        $row | Add-Member -NotePropertyName family_data -NotePropertyValue $familyData
         $rows += $row
 
         if (@($rows).Count -gt 1) {
@@ -191,6 +237,9 @@ $avgDeveloperUtility = if (@($rows).Count -gt 0) { [math]::Round(((@($rows | For
 $earlyWindow = Get-WindowSummary -Rows $rows -Position "early"
 $midWindow = Get-WindowSummary -Rows $rows -Position "mid"
 $lateWindow = Get-WindowSummary -Rows $rows -Position "late"
+$earlyWindow | Add-Member -NotePropertyName family_breakdown -NotePropertyValue (Get-FamilyBreakdown -Rows $rows -Position "early")
+$midWindow   | Add-Member -NotePropertyName family_breakdown -NotePropertyValue (Get-FamilyBreakdown -Rows $rows -Position "mid")
+$lateWindow  | Add-Member -NotePropertyName family_breakdown -NotePropertyValue (Get-FamilyBreakdown -Rows $rows -Position "late")
 
 $failureClusterMap = @{}
 foreach ($row in @($rows)) {
