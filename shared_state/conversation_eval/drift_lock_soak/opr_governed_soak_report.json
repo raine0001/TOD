@@ -1,0 +1,83 @@
+{
+    "generated_at":  "2026-03-18T06:23:27.4434986Z",
+    "source":  "tod-drift-lock-soak-v1",
+    "run_id":  "20260318T062327Z",
+    "config":  {
+                   "cycles":  3,
+                   "run_count_per_cycle":  2,
+                   "scenario_ids":  [
+                                        "OPR-001",
+                                        "OPR-002"
+                                    ],
+                   "fail_on_regressing_cycles":  0,
+                   "pr_drop_tolerance":  0.002,
+                   "utility_drop_tolerance":  0.002,
+                   "drift_lock_suite":  "tod/conversation_eval/drift_lock_suite.json",
+                   "min_late_utility":  0.73,
+                   "max_late_drift_lock_violations":  0
+               },
+    "summary":  {
+                    "cycles_completed":  3,
+                    "regressed":  false,
+                    "max_regression_streak":  1,
+                    "avg_overall":  0.7612,
+                    "avg_consistency":  0.8123,
+                    "avg_developer_utility":  0.7664,
+                    "final_failures":  0,
+                    "windows":  {
+                                    "early":  {
+                                                  "cycle_position":  "early",
+                                                  "cycle_count":  0,
+                                                  "avg_overall":  0,
+                                                  "avg_consistency":  0,
+                                                  "avg_developer_utility":  0,
+                                                  "avg_failures":  0,
+                                                  "drift_lock_violation_count":  0
+                                              },
+                                    "mid":  {
+                                                "cycle_position":  "mid",
+                                                "cycle_count":  2,
+                                                "avg_overall":  0.7645,
+                                                "avg_consistency":  0.8122,
+                                                "avg_developer_utility":  0.7704,
+                                                "avg_failures":  0,
+                                                "drift_lock_violation_count":  0
+                                            },
+                                    "late":  {
+                                                 "cycle_position":  "late",
+                                                 "cycle_count":  1,
+                                                 "avg_overall":  0.7546,
+                                                 "avg_consistency":  0.8127,
+                                                 "avg_developer_utility":  0.7586,
+                                                 "avg_failures":  0,
+                                                 "drift_lock_violation_count":  0
+                                             }
+                                },
+                    "utility_delta_early_to_late":  0.7586,
+                    "overall_delta_early_to_late":  0.7546,
+                    "top_failure_clusters":  [
+
+                                             ],
+                    "promotion_gates":  {
+                                            "late_utility_floor_passed":  true,
+                                            "utility_slope_non_negative":  true,
+                                            "late_consistency_non_negative":  true,
+                                            "no_late_failure_spike":  true,
+                                            "late_drift_lock_violations_bounded":  true,
+                                            "promotion_gate_passed":  true
+                                        },
+                    "recommended_next_step":  "Promotion-ready under governed pressure; keep nightly monitoring and expand operator-friction coverage.",
+                    "errors":  [
+
+                               ],
+                    "started_at":  "2026-03-18T06:23:27.3192701Z",
+                    "finished_at":  "2026-03-18T06:23:27.4307674Z"
+                },
+    "artifacts":  {
+                      "run_dir":  "E:\\TOD\\shared_state\\conversation_eval\\drift_lock_soak\\20260318T062327Z",
+                      "latest":  "E:\\TOD\\shared_state\\conversation_eval\\drift_lock_soak\\drift_lock_soak.latest.json",
+                      "output_path":  "E:\\TOD\\shared_state\\conversation_eval\\drift_lock_soak\\opr_governed_soak_report.json",
+                      "report_markdown":  "E:\\TOD\\shared_state\\conversation_eval\\drift_lock_soak\\drift_lock_soak.latest.md",
+                      "output_markdown":  "E:\\TOD\\shared_state\\conversation_eval\\drift_lock_soak\\opr_governed_soak_report.md"
+                  }
+}

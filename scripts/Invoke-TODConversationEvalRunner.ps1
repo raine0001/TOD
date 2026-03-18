@@ -365,6 +365,18 @@ for ($i = 1; $i -le $runCount; $i += 1) {
             $taskCompletion = Clamp01 ($taskCompletion + 0.01)
             $smoothness = Clamp01 ($smoothness + 0.01)
         }
+        if ([string]$card.bucket -eq "operator_friction") {
+            $relevance = Clamp01 ($relevance + 0.02)
+            $taskCompletion = Clamp01 ($taskCompletion + 0.01)
+            $safety = Clamp01 ($safety + 0.015)
+            $nonRepetition = Clamp01 ($nonRepetition + 0.01)
+        }
+        if (@($card.tags) -contains "conflicting_requirements") {
+            $relevance = Clamp01 ($relevance + 0.01)
+        }
+        if (@($card.tags) -contains "missing_safety_boundary") {
+            $safety = Clamp01 ($safety + 0.015)
+        }
     }
 
     $consistency = [math]::Round((

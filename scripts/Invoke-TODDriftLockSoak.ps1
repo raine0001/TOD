@@ -27,8 +27,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 function Resolve-LocalPath {
     param([Parameter(Mandatory = $true)][string]$PathValue)
-    if ([System.IO.Path]::IsPathRooted($PathValue)) { return $PathValue }
-    return (Join-Path $repoRoot $PathValue)
+    if ([System.IO.Path]::IsPathRooted($PathValue)) { return [System.IO.Path]::GetFullPath($PathValue) }
+    return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $PathValue))
 }
 
 function Get-CyclePosition {
