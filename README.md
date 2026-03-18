@@ -400,6 +400,15 @@ Run engineering task coaching drills:
 
 # Operator-support readiness run (no threshold relaxation)
 .\scripts\Invoke-TODCodexReadinessRun.ps1 -Mode operator -FilePaths scripts\Invoke-TODConversationEvalPR.ps1,scripts\Invoke-TODMimTodBridgeCycle.ps1 -RequireCleanWorktree -EmitJson
+
+# Daily codex-readiness run profile (hard gates, practical defaults)
+.\scripts\Invoke-TODCodexReadinessDaily.ps1 -Mode review -EmitJson
+
+# Register daily schedule at 09:00 and trigger immediately
+.\scripts\Register-TODCodexReadinessDailyTask.ps1 -DailyAt 09:00 -Mode review -RunNow
+
+# Remove daily schedule if needed
+.\scripts\Unregister-TODCodexReadinessDailyTask.ps1
 ```
 
 Single-domain expansion rule (next step):
