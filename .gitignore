@@ -22,3 +22,15 @@ tod/data/test-summary.json
 
 # Ephemeral test configs
 tod/config/tod-config.test-*.json
+
+# Generated local model/runtime assets
+models/
+tools/llama.cpp/
+
+# Python cache artifacts
+__pycache__/
+*.pyc
+*.pyo
+
+# Local archive bundles
+runpod-job-*.zip
