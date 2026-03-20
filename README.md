@@ -422,17 +422,37 @@ Cross-project GitHub simulation training (real repos, simulation only):
 # Run cross-project simulation over registered repos using real discovery surfaces
 .\scripts\Invoke-TODGitHubProjectSimulation.ps1 -UseAssist -EmitJson
 
+# Daily wrapper with the standard output location
+.\scripts\Invoke-TODGitHubProjectSimulationDaily.ps1 -UseAssist -EmitJson
+
+# Register daily schedule at 09:15 and trigger immediately
+.\scripts\Register-TODGitHubProjectSimulationDailyTask.ps1 -UseAssist -RunNow
+
+# Remove the daily simulation schedule
+.\scripts\Unregister-TODGitHubProjectSimulationDailyTask.ps1
+
 # Same simulation without provider-assisted planning (heuristic discovery only)
 .\scripts\Invoke-TODGitHubProjectSimulation.ps1 -EmitJson
+
+# Build a rolling trend report from recent simulation runs
+.\scripts\Get-TODGitHubProjectSimulationTrend.ps1 -EmitJson
+
+# Prepare a single project task packet without making edits
+.\scripts\Invoke-TODGitHubProjectTask.ps1 -ProjectId tod -Task "review drift-lock scorer" -Mode review -TargetHints runner,drift,score
+
+# Refresh TOD.md project status files across the registered library
+.\scripts\Update-TODProjectStatusFiles.ps1 -EmitJson
 ```
 
 Simulation suite and output:
 - `tod/conversation_eval/github_project_simulation_suite_v1.json`
 - `shared_state/conversation_eval/github_project_simulation/tod_github_project_simulation.latest.json`
+- `shared_state/conversation_eval/github_project_simulation/tod_github_project_simulation.trend.latest.json`
 
 Default operating assumption:
 - TOD should treat GitHub-enabled cross-project work as the default mode where credentials and repo permissions allow.
 - Simulation mode prepares discovery, solution, commit, and push checklists without making live edits.
+- Each registered project now carries a local `TOD.md` status file as the default familiarization and handoff surface for future TOD work.
 
 Reports:
 - `shared_state/conversation_eval/conversation_score_report.latest.json`
