@@ -31,14 +31,21 @@
       "path": "E:/comm_app",
       "type": "business-app",
       "languages": ["python", "javascript", "html", "css"],
-      "entry_points": ["app.py", "main.py", "routes"],
-      "test_commands": ["pytest"],
+      "entry_points": ["app.py", "main.py", "routes", "routes/marketing_routes.py", "app/templates/admin/marketing.html", "app/services/animation_provider.py", "worker/app.py"],
+      "test_commands": ["powershell -NoProfile -ExecutionPolicy Bypass -File E:/TOD/scripts/Invoke-TODCommAppVerification.ps1 -ProjectRoot E:/comm_app", "pytest"],
       "risk_level": "high",
       "write_access": "guarded",
       "boundaries": {
-        "allowed_paths": ["src", "app", "routes", "templates", "static", "tests"],
+        "allowed_paths": ["src", "app", "routes", "templates", "static", "tests", "worker", "docs"],
         "blocked_paths": [".env", "secrets", "migrations/versions"],
-        "notes": "Business logic and workflow routes require explicit test plans before write operations."
+        "notes": "Business logic and workflow routes require explicit test plans before write operations. Feature-scoped verification should start with the AgentMIM admin marketing avatar/video surface before broader app edits. Use the TOD comm_app managed-work command to separate product patch scope from QA/support artifacts before live edits."
+      },
+      "managed_work": {
+        "path_classification": {
+          "qa_artifact_patterns": ["scripts/qa_"],
+          "asset_candidate_patterns": ["static/images/"],
+          "root_doc_names": ["README.md", "TOD.md"]
+        }
       }
     },
     {
