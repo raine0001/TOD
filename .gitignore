@@ -19,6 +19,7 @@ tod/out/
 state.json
 tod/data/state.json
 tod/data/test-summary.json
+tod/state/engineering_memory.json
 
 # Ephemeral test configs
 tod/config/tod-config.test-*.json
@@ -34,3 +35,13 @@ __pycache__/
 
 # Local archive bundles
 runpod-job-*.zip
+
+# Generated coordination and evaluation outputs
+shared_state/agentmim/
+shared_state/archive/
+shared_state/project_briefs/
+shared_state/conversation_eval/
+shared_state/cadence_monitor_ongoing.jsonl
+shared_state/cadence_reliability_baseline.current.json
+shared_state/tod_recovery_watchdog.log.jsonl
+shared_state/voice_listener.pid
