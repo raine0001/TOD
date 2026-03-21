@@ -24,6 +24,7 @@ $listenerRequestPath = Join-Path $listenerStagePath "MIM_TOD_TASK_REQUEST.latest
 $coordinationEscalationPath = Join-Path $listenerStagePath "TOD_MIM_COORDINATION_ESCALATION_STATE.latest.json"
 $regressionStallStatePath = Join-Path $listenerStagePath "TOD_REGRESSION_STALL_STATE.latest.json"
 $currentBuildStatePath = Join-Path $repoRoot "shared_state/current_build_state.json"
+$nextActionsPath = Join-Path $repoRoot "shared_state/next_actions.json"
 $recoveryWatchdogStatePath = Join-Path $repoRoot "shared_state/tod_recovery_watchdog.latest.json"
 $voiceAdapterConfigPath = Join-Path $repoRoot "tod/config/voice-adapter.json"
 $voiceAdapterTelemetryPath = Join-Path $repoRoot "shared_state/voice_adapter_status.json"
@@ -88,12 +89,12 @@ function Open-TodUiClient {
     if ($AppMode) {
         $browserPath = Resolve-AppBrowserPath
         if ($null -ne $browserPath) {
-            $args = @(
+            $launchArgs = @(
                 "--app=$Url",
                 "--new-window",
                 "--start-maximized"
             )
-            Start-Process -FilePath $browserPath -ArgumentList $args | Out-Null
+            Start-Process -FilePath $browserPath -ArgumentList $launchArgs | Out-Null
             Write-Host "Opened TOD UI in app window: $Url"
             return
         }
@@ -698,7 +699,21 @@ function Get-ListenerActivity {
     }
 
     $latest = if (@($normalizedEntries).Count -gt 0) { @($normalizedEntries)[-1] } else { $null }
-    $recentEntries = @($normalizedEntries | Select-Object -Last 30)
+    # Use the authoritative current_objective_in_progress from next_actions.json as the filter key
+    # so that cadence metrics reset immediately on objective rollover without waiting for a new journal entry.
+    $nextActions = Read-JsonFileIfExists -Path $nextActionsPath
+    $activeObjectiveId = if ($nextActions -and $nextActions.PSObject.Properties['current_objective_in_progress'] -and -not [string]::IsNullOrWhiteSpace([string]$nextActions.current_objective_in_progress)) {
+        [string]$nextActions.current_objective_in_progress
+    } elseif ($latest) {
+        [string]$latest.objective_id
+    } else { "" }
+    # Scope recent_entries to the current objective so stale history from prior objectives
+    # does not contaminate cadence health metrics (retry_rate, intervals) after an objective rollover.
+    $recentEntries = if (-not [string]::IsNullOrWhiteSpace($activeObjectiveId)) {
+        @($normalizedEntries | Where-Object { [string]$_.objective_id -eq $activeObjectiveId } | Select-Object -Last 30)
+    } else {
+        @($normalizedEntries | Select-Object -Last 30)
+    }
     $resultRequestId = if ($resultPacket -and $resultPacket.PSObject.Properties['request_id']) { [string]$resultPacket.request_id } else { "" }
     $resultObjectiveId = Get-ObjectiveIdFromRequestId -RequestId $resultRequestId
     $resultRef = Get-TaskRefInfo -Value $resultRequestId
@@ -1110,7 +1125,18 @@ function Get-ProjectStatusPayload {
     if (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) {
         $selectedObjectiveId = [string]$ObjectiveId
     }
-    elseif ($listenerActivity -and -not [string]::IsNullOrWhiteSpace([string]$listenerActivity.latest_objective_id)) {
+    elseif (Test-Path -Path $nextActionsPath) {
+        try {
+            $nextActionsRaw = Get-Content -Path $nextActionsPath -Raw -ErrorAction Stop
+            $nextActions = $nextActionsRaw | ConvertFrom-Json
+            if ($nextActions -and $nextActions.PSObject.Properties['current_objective_in_progress'] -and -not [string]::IsNullOrWhiteSpace([string]$nextActions.current_objective_in_progress)) {
+                $selectedObjectiveId = [string]$nextActions.current_objective_in_progress
+            }
+        }
+        catch {
+        }
+    }
+    elseif ((@($objectives).Count -eq 0) -and $listenerActivity -and -not [string]::IsNullOrWhiteSpace([string]$listenerActivity.latest_objective_id)) {
         $selectedObjectiveId = [string]$listenerActivity.latest_objective_id
     }
 
