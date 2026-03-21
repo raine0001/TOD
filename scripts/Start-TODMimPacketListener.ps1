@@ -7,6 +7,9 @@ param(
     [string]$ValidatorScriptPath = "scripts/Invoke-TODMimListenerValidator.ps1",
     [int]$PollSeconds = 2,
     [int]$RegressionNoDeltaThreshold = 4,
+    [int]$QuarantineFailCycleThreshold = 5,
+    [int]$IdleWakeupSeconds = 120,
+    [int]$IdleWakeupCooldownSeconds = 300,
     [switch]$RunOnce,
     [switch]$ProcessWithoutGoOrder,
     [switch]$PublishIntegrationStatus,
@@ -100,6 +103,7 @@ function New-ListenerState {
         last_processed_request_signature = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_processed_request_signature"]) { [string]$ExistingState.last_processed_request_signature } else { "" }
         last_trigger_event_signature = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_trigger_event_signature"]) { [string]$ExistingState.last_trigger_event_signature } else { "" }
         last_cycle_at = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_cycle_at"]) { [string]$ExistingState.last_cycle_at } else { "" }
+        last_execution_at = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_execution_at"]) { [string]$ExistingState.last_execution_at } else { "" }
     }
 }
 
@@ -206,6 +210,196 @@ function Clear-CoordinationEscalationState {
     }
 }
 
+function Get-IdleSeconds {
+    param([string]$Since)
+    if ([string]::IsNullOrWhiteSpace($Since)) { return 99999 }
+    [datetime]$dt = [datetime]::MinValue
+    if ([datetime]::TryParse($Since, [ref]$dt)) {
+        $utc = $dt.ToUniversalTime()
+        return [int][math]::Floor(([DateTime]::UtcNow - $utc).TotalSeconds)
+    }
+    return 99999
+}
+
+function New-IdleWakeupState {
+    param($ExistingState)
+    return [pscustomobject]@{
+        last_wakeup_at          = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_wakeup_at"])          { [string]$ExistingState.last_wakeup_at }          else { "" }
+        last_wakeup_reason      = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_wakeup_reason"])      { [string]$ExistingState.last_wakeup_reason }      else { "" }
+        last_self_task_id       = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_self_task_id"])       { [string]$ExistingState.last_self_task_id }       else { "" }
+        last_objective_advanced = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_objective_advanced"]) { [string]$ExistingState.last_objective_advanced } else { "" }
+        wakeup_count            = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["wakeup_count"])            { [int]$ExistingState.wakeup_count }                else { 0 }
+    }
+}
+
+# Self-improvement task catalog — rotated through when MIM has no pending work.
+$script:SelfImprovementTasks = @(
+    [pscustomobject]@{ title = "Run full regression suite and document any new failures or flakiness";                    scope = "scripts/TOD.ps1, tod/tests";                                              criteria = "Regression report produced; any failures triaged and recorded in failure taxonomy." }
+    [pscustomobject]@{ title = "Review engineering loop history and identify top-3 reliability gaps";                    scope = "scripts/Start-TODMimPacketListener.ps1, tod/data/state.json";             criteria = "Gap analysis written to journal; at least one concrete improvement task proposed." }
+    [pscustomobject]@{ title = "Audit MIM-TOD packet protocol for latency, retry, and edge-case coverage";              scope = "scripts/Start-TODMimPacketListener.ps1, scripts/Push-SyntheticResult.ps1"; criteria = "Protocol audit complete; any gaps filed as follow-on tasks." }
+    [pscustomobject]@{ title = "Verify quarantine, cadence-reset, and idle-wakeup improvements end-to-end";             scope = "scripts/Start-TODMimPacketListener.ps1, scripts/Start-TOD-UI.ps1";        criteria = "All three mechanisms exercised and pass a manual smoke check." }
+    [pscustomobject]@{ title = "Review failure taxonomy and propose routing-confidence penalty updates";                 scope = "scripts/TOD.ps1, tod/config/tod-config.json";                               criteria = "Taxonomy reviewed; penalty update either applied or documented as future work." }
+    [pscustomobject]@{ title = "Scan state.json for OOM risk and apply compaction if size exceeds 2 MiB";               scope = "tod/data/state.json, scripts/TOD.ps1";                                      criteria = "state.json size confirmed below 2 MiB or compacted; no data loss." }
+)
+
+function Invoke-IdleWakeupIfNeeded {
+    param(
+        [Parameter(Mandatory=$true)]$ListenerState,
+        [Parameter(Mandatory=$true)]$IdleWakeupState,
+        [Parameter(Mandatory=$true)][string]$IdleWakeupStatePath,
+        [Parameter(Mandatory=$true)][string]$TodScript,
+        [Parameter(Mandatory=$true)][string]$SyncScript,
+        [Parameter(Mandatory=$true)][int]$IdleThreshold,
+        [Parameter(Mandatory=$true)][int]$Cooldown,
+        [switch]$RunOnce
+    )
+
+    if ($RunOnce) { return }
+
+    # Gate 1: has it been idle long enough?
+    $idleSec = Get-IdleSeconds -Since ([string]$ListenerState.last_execution_at)
+    if ($idleSec -lt $IdleThreshold) { return }
+
+    # Gate 2: cooldown since last wakeup action?
+    $cooldownSec = Get-IdleSeconds -Since ([string]$IdleWakeupState.last_wakeup_at)
+    if ($cooldownSec -lt $Cooldown) { return }
+
+    Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] Idle for {0}s (threshold={1}s). Running proactive wake-up." -f $idleSec, $IdleThreshold)
+
+    # Refresh shared state before evaluating
+    try { & $SyncScript 2>&1 | Out-Null } catch { }
+
+    $nextActionsPath = Get-LocalPath -PathValue "shared_state/next_actions.json"
+    $statePath       = Get-LocalPath -PathValue "tod/data/state.json"
+    $nextActions     = Read-JsonFileIfExists -PathValue $nextActionsPath
+    $state           = Read-JsonFileIfExists -PathValue $statePath
+
+    $currentObjId = if ($nextActions -and $nextActions.PSObject.Properties["current_objective_in_progress"]) { [string]$nextActions.current_objective_in_progress } else { "" }
+    $roadmap      = if ($nextActions -and $nextActions.PSObject.Properties["tod_catchup_roadmap"])           { @($nextActions.tod_catchup_roadmap) } else { @() }
+    $wakeupReason = "idle_check"
+    $actionTaken  = ""
+
+    if ($null -ne $state) {
+        $terminalStatuses = @("pass", "reviewed_pass", "completed", "closed", "cancelled")
+        $currentTasks = @($state.tasks | Where-Object { [string]$_.objective_id -eq $currentObjId })
+        $pendingTasks = @($currentTasks | Where-Object { [string]$_.status -notin $terminalStatuses })
+        $openObjective = $state.objectives | Where-Object { [string]$_.status -eq "open" } | Select-Object -First 1
+
+        if ($currentTasks.Count -gt 0 -and $pendingTasks.Count -eq 0) {
+            # Current objective fully done — advance to next roadmap entry
+            $wakeupReason  = "objective_complete_advance"
+            $advanceTarget = $null
+            foreach ($item in $roadmap) {
+                $rid   = if ($item.PSObject.Properties["id"])     { [string]$item.id     } else { "" }
+                $rstat = if ($item.PSObject.Properties["status"]) { [string]$item.status } else { "" }
+                if ([string]::IsNullOrWhiteSpace($rid) -or $rstat -eq "completed") { continue }
+                $alreadyExists = $null -ne ($state.objectives | Where-Object { [string]$_.title -like "*$rid*" -and [string]$_.status -ne "completed" })
+                if (-not $alreadyExists) { $advanceTarget = $item; break }
+            }
+
+            if ($null -ne $advanceTarget) {
+                $rtitle = if ($advanceTarget.PSObject.Properties["title"]) { [string]$advanceTarget.title } else { "Self-improvement" }
+                $rid    = if ($advanceTarget.PSObject.Properties["id"])    { [string]$advanceTarget.id    } else { "SELF" }
+                Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] Advancing to roadmap item: {0} - {1}" -f $rid, $rtitle)
+                try {
+                    $newObjRaw = & $TodScript new-objective `
+                        -Title "${rid}: ${rtitle}" `
+                        -Description "Autonomous advance from idle wake-up. Previous objective complete. Roadmap: $rid." `
+                        -SuccessCriteria "First task in new objective reaches reviewed_pass." 2>&1
+                    $newObj   = ($newObjRaw -join "") | ConvertFrom-Json -ErrorAction SilentlyContinue
+                    $newObjId = if ($newObj -and $newObj.PSObject.Properties["id"]) { [string]$newObj.id } `
+                                elseif ($newObj -and $newObj.PSObject.Properties["local"]) { [string]$newObj.local.id } `
+                                else { "" }
+                    if (-not [string]::IsNullOrWhiteSpace($newObjId)) {
+                        $null = & $TodScript add-task `
+                            -ObjectiveId $newObjId `
+                            -Title "Initial scoping and planning for $rid" `
+                            -Description "Decompose '$rtitle' into steps. Review existing code, identify gaps, plan implementation." `
+                            -Scope "scripts/, tod/" `
+                            -AcceptanceCriteria "Scoping complete; at least one follow-on implementation task added to this objective." 2>&1
+                        $actionTaken = "created_objective_$newObjId"
+                        $IdleWakeupState.last_objective_advanced = $rid
+                        Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] Created objective {0} and first task for {1}." -f $newObjId, $rid)
+                    }
+                } catch {
+                    Write-Warning ("[TOD-LISTENER][IDLE-WAKEUP] Failed to create roadmap objective: {0}" -f $_.Exception.Message)
+                }
+            } else {
+                $wakeupReason = "self_improve_roadmap_exhausted"
+            }
+        }
+
+        # Self-improvement when no MIM work is pending
+        if ([string]::IsNullOrWhiteSpace($actionTaken) -and $null -ne $openObjective) {
+            $existingTitles = @($state.tasks | Where-Object { [string]$_.objective_id -eq [string]$openObjective.id } | ForEach-Object { [string]$_.title })
+            $selfTask = $script:SelfImprovementTasks | Where-Object {
+                $t = [string]$_.title
+                -not ($existingTitles | Where-Object { [string]$_ -like "*$($t.Substring(0, [math]::Min(40, $t.Length)))*" })
+            } | Select-Object -First 1
+
+            if ($null -ne $selfTask -and -not [string]::IsNullOrWhiteSpace([string]$IdleWakeupState.last_self_task_id)) {
+                $lastCreatedTitle = ($state.tasks | Where-Object { [string]$_.id -eq [string]$IdleWakeupState.last_self_task_id } | Select-Object -ExpandProperty title -First 1)
+                if ([string]::Equals([string]$selfTask.title, $lastCreatedTitle, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $selfTask = $null
+                }
+            }
+
+            if ($null -ne $selfTask) {
+                $wakeupReason = "self_improve"
+                Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] No pending MIM work. Creating self-improvement task: {0}" -f [string]$selfTask.title)
+                try {
+                    $taskRaw = & $TodScript add-task `
+                        -ObjectiveId ([string]$openObjective.id) `
+                        -Title ([string]$selfTask.title) `
+                        -Description ("Autonomous self-improvement task created by idle wake-up after {0}s of inactivity." -f $idleSec) `
+                        -Scope ([string]$selfTask.scope) `
+                        -AcceptanceCriteria ([string]$selfTask.criteria) 2>&1
+                    $newTask   = ($taskRaw -join "") | ConvertFrom-Json -ErrorAction SilentlyContinue
+                    $newTaskId = if ($newTask -and $newTask.PSObject.Properties["id"]) { [string]$newTask.id } else { "" }
+                    if (-not [string]::IsNullOrWhiteSpace($newTaskId)) {
+                        $IdleWakeupState.last_self_task_id = $newTaskId
+                        $actionTaken = "created_self_task_$newTaskId"
+                        Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] Self-improvement task created: {0}" -f $newTaskId)
+                    }
+                } catch {
+                    Write-Warning ("[TOD-LISTENER][IDLE-WAKEUP] Failed to create self-improvement task: {0}" -f $_.Exception.Message)
+                }
+            } else {
+                $wakeupReason = "self_improve_no_candidates"
+                Write-Host "[TOD-LISTENER][IDLE-WAKEUP] No eligible self-improvement tasks remaining. Waiting for MIM."
+            }
+        }
+    }
+
+    # Persist wakeup state and emit event file
+    $IdleWakeupState.last_wakeup_at     = (Get-Date).ToUniversalTime().ToString("o")
+    $IdleWakeupState.last_wakeup_reason = $wakeupReason
+    $IdleWakeupState.wakeup_count       = [int]$IdleWakeupState.wakeup_count + 1
+    Write-JsonFile -PathValue $IdleWakeupStatePath -Payload $IdleWakeupState
+
+    $idleEventPath = [System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($IdleWakeupStatePath), "TOD_IDLE_WAKEUP_EVENT.latest.json")
+    Write-JsonFile -PathValue $idleEventPath -Payload ([pscustomobject]@{
+        generated_at  = (Get-Date).ToUniversalTime().ToString("o")
+        source        = "tod-idle-wakeup-v1"
+        idle_sec      = $idleSec
+        threshold_sec = $IdleThreshold
+        reason        = $wakeupReason
+        action_taken  = $actionTaken
+        wakeup_count  = [int]$IdleWakeupState.wakeup_count
+    })
+}
+
+function New-QuarantineState {
+    param($ExistingState)
+
+    return [pscustomobject]@{
+        quarantined_request_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["quarantined_request_id"]) { [string]$ExistingState.quarantined_request_id } else { "" }
+        quarantine_applied_at  = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["quarantine_applied_at"])  { [string]$ExistingState.quarantine_applied_at  } else { "" }
+        fail_cycle_count       = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["fail_cycle_count"])       { [int]$ExistingState.fail_cycle_count           } else { 0 }
+        last_fail_request_id   = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_fail_request_id"])   { [string]$ExistingState.last_fail_request_id    } else { "" }
+    }
+}
+
 function Get-CoordinationPriority {
     param([Parameter(Mandatory = $true)][int]$EscalationLevel)
 
@@ -249,6 +443,7 @@ function Update-ListenerHeartbeat {
         if (-not [string]::IsNullOrWhiteSpace($RequestSignature)) {
             $State.last_processed_request_signature = $RequestSignature
         }
+        $State.last_execution_at = (Get-Date).ToUniversalTime().ToString("o")
     }
 
     $State.last_cycle_at = $CycleStartedAt
@@ -301,6 +496,20 @@ function Sync-LocalObjectiveFromRequest {
             changed = $false
             objective_id = ""
             reason = "request_objective_missing"
+        }
+    }
+
+    $nextActionsPath = Get-LocalPath -PathValue "shared_state/next_actions.json"
+    $nextActions = Read-JsonFileIfExists -PathValue $nextActionsPath
+    $currentObjectiveInProgress = ""
+    if ($nextActions -and $nextActions.PSObject.Properties["current_objective_in_progress"] -and -not [string]::IsNullOrWhiteSpace([string]$nextActions.current_objective_in_progress)) {
+        $currentObjectiveInProgress = Get-ExpectedObjectiveFromRequest -Request ([pscustomobject]@{ objective_id = [string]$nextActions.current_objective_in_progress })
+    }
+    if (-not [string]::IsNullOrWhiteSpace($currentObjectiveInProgress) -and -not [string]::Equals($requestedObjective, $currentObjectiveInProgress, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{
+            changed = $false
+            objective_id = $requestedObjective
+            reason = "objective_mismatch_ignored"
         }
     }
 
@@ -368,8 +577,11 @@ function Sync-LocalObjectiveFromRequest {
     else {
         $objective = $existing[0]
         if ($objective.PSObject.Properties["status"] -and [string]::Equals([string]$objective.status, "completed", [System.StringComparison]::OrdinalIgnoreCase)) {
-            $objective.status = "open"
-            $changed = $true
+            return [pscustomobject]@{
+                changed = $false
+                objective_id = $requestedObjective
+                reason = "objective_completed_ignored"
+            }
         }
         if (-not [string]::Equals([string]$objective.title, $title, [System.StringComparison]::Ordinal)) {
             $objective.title = $title
@@ -829,6 +1041,8 @@ $localStallAlertPath = Join-Path $stageAbs "TOD_MIM_STALL_ALERT.latest.json"
 $localCoordinationRequestPath = Join-Path $stageAbs "TOD_MIM_COORDINATION_REQUEST.latest.json"
 $localCoordinationAckPath = Join-Path $stageAbs "MIM_TOD_COORDINATION_ACK.latest.json"
 $localCoordinationEscalationStatePath = Join-Path $stageAbs "TOD_MIM_COORDINATION_ESCALATION_STATE.latest.json"
+$localQuarantineStatePath = Join-Path $stageAbs "TOD_MIM_QUARANTINE_STATE.latest.json"
+$localIdleWakeupStatePath  = Join-Path $stageAbs "TOD_IDLE_WAKEUP_STATE.latest.json"
 $currentBuildStatePath = Get-LocalPath -PathValue "shared_state/current_build_state.json"
 
 $remoteRequestPath = ("{0}/MIM_TOD_TASK_REQUEST.latest.json" -f $RemoteRoot.TrimEnd('/'))
@@ -846,6 +1060,8 @@ $remoteCoordinationAckPath = ("{0}/MIM_TOD_COORDINATION_ACK.latest.json" -f $Rem
 $listenerState = New-ListenerState -ExistingState (Read-JsonFileIfExists -PathValue $listenerStatePath)
 $regressionStallState = New-RegressionStallState -ExistingState (Read-JsonFileIfExists -PathValue $localRegressionStallPath)
 $coordinationEscalationState = New-CoordinationEscalationState -ExistingState (Read-JsonFileIfExists -PathValue $localCoordinationEscalationStatePath)
+$quarantineState = New-QuarantineState -ExistingState (Read-JsonFileIfExists -PathValue $localQuarantineStatePath)
+$idleWakeupState  = New-IdleWakeupState  -ExistingState (Read-JsonFileIfExists -PathValue $localIdleWakeupStatePath)
 
 Write-Host ("[TOD-LISTENER] Started. version={0} host={1} root={2} poll={3}s run_once={4}" -f $scriptVersion, $hostAlias, $RemoteRoot, $PollSeconds, [bool]$RunOnce)
 $lastSkipLogId = ""
@@ -973,6 +1189,7 @@ while ($true) {
         if (-not $requestExists) {
             Write-Host "[TOD-LISTENER] No task request packet found."
             Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
+            Invoke-IdleWakeupIfNeeded -ListenerState $listenerState -IdleWakeupState $idleWakeupState -IdleWakeupStatePath $localIdleWakeupStatePath -TodScript $todScriptAbs -SyncScript $syncScriptAbs -IdleThreshold $IdleWakeupSeconds -Cooldown $IdleWakeupCooldownSeconds -RunOnce:$RunOnce
             if ($RunOnce) { break }
             Start-Sleep -Seconds $PollSeconds
             continue
@@ -1013,18 +1230,29 @@ while ($true) {
             Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
         }
 
+        # Quarantine guard: if this request_id has been quarantined after repeated failures, skip execution entirely.
+        if (-not [string]::IsNullOrWhiteSpace([string]$quarantineState.quarantined_request_id) -and
+            [string]::Equals($requestId, [string]$quarantineState.quarantined_request_id, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host ("[TOD-LISTENER] Request {0} is QUARANTINED after {1} consecutive fail cycles. Skipping." -f $requestId, [int]$quarantineState.fail_cycle_count)
+            Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
+            Invoke-IdleWakeupIfNeeded -ListenerState $listenerState -IdleWakeupState $idleWakeupState -IdleWakeupStatePath $localIdleWakeupStatePath -TodScript $todScriptAbs -SyncScript $syncScriptAbs -IdleThreshold $IdleWakeupSeconds -Cooldown $IdleWakeupCooldownSeconds -RunOnce:$RunOnce
+            if ($RunOnce) { break }
+            Start-Sleep -Seconds $PollSeconds
+            continue
+        }
+
         $lastProcessedSignature = if ($listenerState.PSObject.Properties["last_processed_request_signature"]) { [string]$listenerState.last_processed_request_signature } else { "" }
 
         if ([string]::Equals($requestId, [string]$listenerState.last_processed_request_id, [System.StringComparison]::OrdinalIgnoreCase) -and
             -not [string]::IsNullOrWhiteSpace($requestSignature) -and
             [string]::Equals($requestSignature, $lastProcessedSignature, [System.StringComparison]::OrdinalIgnoreCase) -and
-            -not [bool]$objectiveSync.changed -and
-            -not [bool]$triggerEventChanged) {
+            -not [bool]$objectiveSync.changed) {
             if (-not [string]::Equals($lastSkipLogId, $requestId, [System.StringComparison]::OrdinalIgnoreCase)) {
                 Write-Host ("[TOD-LISTENER] Request {0} already processed. Skipping." -f $requestId)
                 $lastSkipLogId = $requestId
             }
             Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
+            Invoke-IdleWakeupIfNeeded -ListenerState $listenerState -IdleWakeupState $idleWakeupState -IdleWakeupStatePath $localIdleWakeupStatePath -TodScript $todScriptAbs -SyncScript $syncScriptAbs -IdleThreshold $IdleWakeupSeconds -Cooldown $IdleWakeupCooldownSeconds -RunOnce:$RunOnce
             if ($RunOnce) { break }
             Start-Sleep -Seconds $PollSeconds
             continue
@@ -1350,6 +1578,30 @@ while ($true) {
 
         $journalJson = Get-Content -Path $localJournalPath -Raw
         Write-RemoteFileFromText -Connections $connections -RemotePath $remoteJournalPath -Content $journalJson
+
+        # Quarantine fail-cycle tracking: increment counter on fail; apply quarantine after threshold; clear on success.
+        if ([string]$resultPacket.status -eq "failed") {
+            if ([string]::Equals($requestId, [string]$quarantineState.last_fail_request_id, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $quarantineState.fail_cycle_count = [int]$quarantineState.fail_cycle_count + 1
+            } else {
+                $quarantineState.last_fail_request_id = $requestId
+                $quarantineState.fail_cycle_count = 1
+            }
+            if ([int]$quarantineState.fail_cycle_count -ge [int]$QuarantineFailCycleThreshold) {
+                $quarantineState.quarantined_request_id = $requestId
+                $quarantineState.quarantine_applied_at = (Get-Date).ToUniversalTime().ToString("o")
+                Write-Host ("[TOD-LISTENER] QUARANTINE applied to request {0} after {1} consecutive fail cycles." -f $requestId, [int]$quarantineState.fail_cycle_count)
+            }
+        } else {
+            if ([string]::Equals($requestId, [string]$quarantineState.quarantined_request_id, [System.StringComparison]::OrdinalIgnoreCase) -or
+                [string]::Equals($requestId, [string]$quarantineState.last_fail_request_id, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $quarantineState.quarantined_request_id = ""
+                $quarantineState.quarantine_applied_at = ""
+                $quarantineState.fail_cycle_count = 0
+                $quarantineState.last_fail_request_id = ""
+            }
+        }
+        Write-JsonFile -PathValue $localQuarantineStatePath -Payload $quarantineState
 
         Write-Host ("[TOD-LISTENER] Processed request {0} status={1}" -f $requestId, [string]$resultPacket.status)
 

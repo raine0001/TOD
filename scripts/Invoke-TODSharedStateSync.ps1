@@ -29,7 +29,8 @@ param(
     [string]$ContextSyncInboxPath = "tod/inbox/context-sync/updates",
     [double]$MimStatusStaleAfterHours = 6,
     [string]$ReleaseTagOverride,
-    [string]$NextProposedObjective = "TOD-17"
+    [string]$NextProposedObjective = "TOD-17",
+    [switch]$RefreshAgentMimReadiness
 )
 
 Set-StrictMode -Version Latest
@@ -1253,6 +1254,15 @@ $currentInProgress = Get-ObjectiveByStatusOrder -Objectives $objectives -Statuse
 $latestCompletedObjective = if ($null -ne $latestCompleted) { Normalize-ObjectiveIdText -Value ([string]$latestCompleted.id) } else { "none" }
 $currentObjective = if ($null -ne $currentInProgress) { Normalize-ObjectiveIdText -Value ([string]$currentInProgress.id) } else { "none" }
 
+# Honor explicit lane pinning from shared_state/next_actions.json when present.
+$nextActionsExisting = Get-JsonFileIfExists -PathValue $nextActionsPath
+if ($nextActionsExisting -and $nextActionsExisting.PSObject.Properties["current_objective_in_progress"]) {
+    $pinnedObjective = Normalize-ObjectiveIdText -Value ([string]$nextActionsExisting.current_objective_in_progress)
+    if (-not [string]::IsNullOrWhiteSpace($pinnedObjective) -and $pinnedObjective -ne "none") {
+        $currentObjective = $pinnedObjective
+    }
+}
+
 $schemaVersion = if ($manifest -and $manifest.PSObject.Properties["schema_version"]) { [string]$manifest.schema_version } else { "unknown" }
 $currentProdTestStatus = [pscustomobject]@{
     tests = [pscustomobject]@{
@@ -1598,6 +1608,29 @@ if (@($blockers).Count -eq 0) {
     $blockers += "none"
 }
 
+$mimFreshnessAlert = $null
+$recommendedRecoveryActions = @()
+if ([bool]$mimStatus.is_stale) {
+    $mimAgeText = "unknown"
+    if ($null -ne $mimStatus.age_hours) {
+        $mimAgeText = [string]$mimStatus.age_hours
+    }
+
+    $mimFreshnessAlert = [pscustomobject]@{
+        severity = "critical"
+        reason = "mim_context_stale"
+        stale_age_hours = $mimAgeText
+        stale_after_hours = [string]$mimStatus.stale_after_hours
+        detected_at = (Get-Date).ToUniversalTime().ToString("o")
+    }
+
+    $recommendedRecoveryActions = @(
+        "Run TOD sync with SSH pull: .\\scripts\\Invoke-TODSharedStateSync.ps1 -RefreshMimContextFromSsh -RefreshAgentMimReadiness",
+        "If still stale, regenerate MIM export at source: .venv/bin/python scripts/export_mim_context.py --output-dir runtime/shared",
+        "Verify remote export timestamp advanced: /home/testpilot/mim/runtime/shared/MIM_CONTEXT_EXPORT.latest.json"
+    )
+}
+
 $failedRegressionTestNames = @()
 if ($testSummary -and $testSummary.PSObject.Properties["failed_tests"] -and $null -ne $testSummary.failed_tests) {
     $failedRegressionTestNames = @($testSummary.failed_tests | ForEach-Object {
@@ -1611,6 +1644,8 @@ $nextActions = [pscustomobject]@{
     current_objective_in_progress = $currentObjective
     next_proposed_objective = $NextProposedObjective
     blockers = @($blockers)
+    mim_freshness_alert = $mimFreshnessAlert
+    recommended_recovery_actions = @($recommendedRecoveryActions)
     required_verification = @(
         "focused quality gate",
         "full regression suite",
@@ -1766,6 +1801,7 @@ $summaryLines += "- Latest objective completed: $latestCompletedObjective"
 $summaryLines += "- Current objective in progress: $currentObjective"
 $summaryLines += "- Test status: passed=$($lastRegressionResult.passed) failed=$($lastRegressionResult.failed) total=$($lastRegressionResult.total)"
 $summaryLines += "- Quality gate ok: $([bool]$lastPromotionResult.gate_ok)"
+$summaryLines += "- MIM freshness alert: $(if ([bool]$mimStatus.is_stale) { 'CRITICAL' } else { 'OK' }) (age_hours=$($mimStatus.age_hours), threshold=$($mimStatus.stale_after_hours))"
 $summaryLines += "- Drift trend: $($knownLocalDrift.trend)"
 $summaryLines += "- Objective alignment source: $($objectiveAlignment.mim_objective_source)"
 $summaryLines += "- Handshake truth available: $([bool]$mimHandshake.available)"
@@ -1945,6 +1981,20 @@ $result = [pscustomobject]@{
         current_objective_in_progress = $currentObjective
         regression_passed = [bool]$lastRegressionResult.passed_all
         quality_gate_ok = [bool]$lastPromotionResult.gate_ok
+    }
+}
+
+if ($RefreshAgentMimReadiness) {
+    $agentMimReadiness = $null
+    try {
+        $agentMimReadiness = & (Join-Path $PSScriptRoot "Invoke-TODAgentMimReadinessCycle.ps1") -EmitJson | ConvertFrom-Json
+        $result.files | Add-Member -NotePropertyName "agentmim_readiness" -NotePropertyValue "shared_state/agentmim/MIM_TOD_AGENTMIM_READINESS.latest.json" -Force
+        $result.quick_status | Add-Member -NotePropertyName "agentmim_status" -NotePropertyValue ([string]$agentMimReadiness.status) -Force
+        $result.quick_status | Add-Member -NotePropertyName "agentmim_strict_passed" -NotePropertyValue ([int]$agentMimReadiness.summary.strict_gate_passed) -Force
+        $result.quick_status | Add-Member -NotePropertyName "agentmim_strict_failed" -NotePropertyValue ([int]$agentMimReadiness.summary.strict_gate_failed) -Force
+    }
+    catch {
+        $result | Add-Member -NotePropertyName "agentmim_readiness_error" -NotePropertyValue $_.Exception.Message -Force
     }
 }
 
