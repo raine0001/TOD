@@ -69,6 +69,8 @@ shared_state/shared_development_log_plan.json
 shared_state/tod_objective_roadmap.json
 shared_state/*.latest.json
 shared_state/*.latest.md
+shared_state/PROTOCOL_FREEZE_PLAN.md
+shared_state/protocol_freeze_config.json
 shared_state/tod_recovery_watchdog.log.jsonl
 shared_state/voice_listener.pid
 shared_state/recovery_drill_proof.json
@@ -80,6 +82,10 @@ shared_state/voice_conversation_provider_status.json
 # Local inbox and avatar intake artifacts
 tod/inbox/
 tod/data/avatars/uploads/
+tod/data/avatars/*.jpg
+tod/data/avatars/*.jpeg
+tod/data/avatars/*.png
+tod/data/avatars/*.webp
 tod/data/avatars/user-avatar.jpg
 
 # Local state backups
