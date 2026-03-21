@@ -1,10 +1,10 @@
 {
-  "id": "jungle-spider-demo",
-  "description": "TOD jungle spider AI capabilities spokesperson demo",
+  "id": "gloria-cowell",
+  "description": "Gloria Cowell AI spokesperson demo with female voice",
   "version": "1.0",
 
   "avatar": {
-    "source_path": "tod/data/avatars/user-avatar.jpg",
+    "source_path": "tod/data/avatars/gloria cowell.png",
     "rembg_model": "u2net_human_seg",
     "post_process_alpha": true,
     "alpha_matting": true
@@ -31,7 +31,7 @@
 
   "tts": {
     "service": "edge_tts",
-    "voice": "en-US-GuyNeural",
+    "voice": "en-US-AriaNeural",
     "rate": "-5%",
     "pitch": "+0Hz",
     "volume": "+5%",
@@ -45,12 +45,12 @@
     "preprocess": "full",
     "still": true,
     "pose_style": 0,
-    "expression_scale": 0.8
+    "expression_scale": 0.9
   },
 
   "composite": {
-    "avatar_height": 680,
-    "x_offset": 95,
+    "avatar_height": 500,
+    "x_offset": 180,
     "y_offset": 0,
     "color_match": true,
     "shadow": true,
@@ -59,7 +59,7 @@
   },
 
   "output": {
-    "filename": "jungle-spider-ai-demo.mp4",
+    "filename": "gloria-cowell-ai-demo.mp4",
     "subfolder": "spokesperson",
     "fps": 25,
     "smoothing": {
@@ -69,19 +69,21 @@
       "mc_mode": "aobmc",
       "me_mode": "bidir",
       "vsbmc": 1,
-      "crf": 18,
-      "preset": "medium"
+      "crf": 16,
+      "preset": "slow"
     }
   },
 
   "quality_preset": "95pct_realism",
   "quality_notes": [
+    "Gloria Cowell avatar with female voice (en-US-AriaNeural)",
     "GFPGAN face enhancement on SadTalker output — sharpens facial detail significantly",
     "size=512 mode for higher internal resolution processing",
+    "Composited source frame preserved as PNG to avoid pre-animation JPEG loss",
+    "Smaller on-frame avatar keeps the subject farther back and preserves more original framing",
     "Alpha matting for clean hair/edge separation from background",
     "Color temperature matching to blend avatar lighting with jungle scene",
     "Subtle ground shadow for depth/grounding",
-    "Cinematic vignette for professional look",
-    "Neural voice en-US-GuyNeural at slightly slowed rate for gravitas"
+    "Cinematic vignette for professional look"
   ]
 }

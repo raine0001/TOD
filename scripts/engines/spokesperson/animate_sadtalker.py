@@ -34,6 +34,71 @@ import shutil
 SADTALKER_DEFAULT_PATH = "C:/AI/SadTalker"
 
 
+def collect_ffmpeg_dirs() -> list[str]:
+    """Collect likely ffmpeg/ffprobe directories on Windows and current PATH."""
+    dirs: list[str] = []
+
+    def add_dir(path_value: str):
+        if path_value and os.path.isdir(path_value) and path_value not in dirs:
+            dirs.append(path_value)
+
+    # Current PATH entries first.
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        add_dir(entry)
+
+    # Common locations.
+    add_dir(r"C:\Program Files\FFmpeg\bin")
+
+    # WinGet package location used on this machine.
+    winget_glob = glob.glob(
+        os.path.expandvars(
+            r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg_*\ffmpeg-*\bin"
+        )
+    )
+    for candidate in winget_glob:
+        add_dir(candidate)
+
+    return dirs
+
+
+def find_executable(exe_name: str, search_dirs: list[str]) -> str | None:
+    for directory in search_dirs:
+        candidate = os.path.join(directory, exe_name)
+        if os.path.isfile(candidate):
+            return candidate
+    return shutil.which(exe_name)
+
+
+def with_ffmpeg_env(base_env: dict[str, str]) -> dict[str, str]:
+    """Return env with discovered ffmpeg directories prepended to PATH."""
+    env = dict(base_env)
+    ffmpeg_dirs = collect_ffmpeg_dirs()
+    if ffmpeg_dirs:
+        existing_path = env.get("PATH", "")
+        env["PATH"] = os.pathsep.join(ffmpeg_dirs + [existing_path]) if existing_path else os.pathsep.join(ffmpeg_dirs)
+    return env
+
+
+def mux_with_ffmpeg(video_path: str, audio_path: str, output_path: str, env: dict[str, str]) -> bool:
+    ffmpeg_exe = find_executable("ffmpeg.exe", collect_ffmpeg_dirs())
+    if not ffmpeg_exe:
+        return False
+
+    cmd = [
+        ffmpeg_exe,
+        "-y",
+        "-i", video_path,
+        "-i", audio_path,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-shortest",
+        output_path,
+    ]
+    print(f"  Recovery mux: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=False, text=True, env=env)
+    return result.returncode == 0 and os.path.exists(output_path)
+
+
 def parse_args():
     p = argparse.ArgumentParser(description="SadTalker talking-head animator")
     p.add_argument("--source-image",    required=True,  help="Composited portrait JPG/PNG")
@@ -102,24 +167,54 @@ def run_inference(args) -> str:
     print(f"  SadTalker cmd: {' '.join(cmd)}")
     print(f"  Working dir: {args.sadtalker_path}")
 
+    run_env = with_ffmpeg_env(os.environ)
     result = subprocess.run(
         cmd,
         cwd=args.sadtalker_path,
         capture_output=False,   # Let SadTalker print progress to console
-        text=True
+        text=True,
+        env=run_env,
     )
 
     if result.returncode != 0:
+        # Recovery path: SadTalker sometimes fails only during final audio mux when ffmpeg is missing,
+        # while rendered silent video already exists in result_dir.
+        recovery_candidates = sorted(
+            glob.glob(os.path.join(args.output_dir, "**", "temp_*.mp4"), recursive=True),
+            key=os.path.getmtime,
+            reverse=True,
+        )
+        target = os.path.join(args.output_dir, args.output_name)
+        if recovery_candidates and os.path.exists(args.driven_audio):
+            recovered = mux_with_ffmpeg(
+                video_path=recovery_candidates[0],
+                audio_path=os.path.abspath(args.driven_audio),
+                output_path=target,
+                env=run_env,
+            )
+            if recovered:
+                size_mb = os.path.getsize(target) / (1024 * 1024)
+                print(f"WARN: SadTalker exited with code {result.returncode}, but recovered output via ffmpeg mux")
+                print(f"OK output={target} size={size_mb:.1f}MB")
+                return target
+
         print(f"ERROR: SadTalker exited with code {result.returncode}", file=sys.stderr)
         sys.exit(result.returncode)
 
-    # SadTalker saves output under result_dir with auto-named file
-    # Find the most recent MP4 in output_dir
-    mp4_files = sorted(
+    # SadTalker saves both temp and final mp4 files; prefer non-temp outputs.
+    all_mp4_files = sorted(
         glob.glob(os.path.join(args.output_dir, "**/*.mp4"), recursive=True),
         key=os.path.getmtime,
         reverse=True
     )
+
+    mp4_files = [
+        f for f in all_mp4_files
+        if not os.path.basename(f).lower().startswith("temp_")
+    ]
+
+    if not mp4_files:
+        mp4_files = all_mp4_files
 
     if not mp4_files:
         print(f"ERROR: No MP4 found in {args.output_dir} after SadTalker run", file=sys.stderr)

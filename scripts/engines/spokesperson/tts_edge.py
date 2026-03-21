@@ -54,14 +54,16 @@ async def generate(text: str, voice: str, rate: str, pitch: str, volume: str, ou
             os.remove(mp3_path)
             converted = True
         else:
-            print(f"WARN: ffmpeg conversion failed: {result.stderr}", file=sys.stderr)
+            print(f"WARN: ffmpeg conversion failed: {result.stderr}")
     except FileNotFoundError:
-        print("WARN: ffmpeg not in PATH, keeping MP3 output", file=sys.stderr)
+        print("WARN: ffmpeg not in PATH, keeping MP3 output")
 
     if not converted:
         # Rename mp3 as wav — SadTalker/librosa will handle it
         if os.path.exists(mp3_path) and mp3_path != out_path:
-            os.rename(mp3_path, out_path)
+            if os.path.exists(out_path):
+                os.remove(out_path)
+            os.replace(mp3_path, out_path)
 
     if not os.path.exists(out_path):
         print(f"ERROR: output file not created: {out_path}", file=sys.stderr)

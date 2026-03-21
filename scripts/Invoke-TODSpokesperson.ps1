@@ -125,6 +125,22 @@ $ttsScript  = if ($Script -ne "")    { $Script }      else { [string]$cfg.tts.sc
 $bgPrompt   = if ($BackgroundPrompt -ne "") { $BackgroundPrompt } else { [string]$cfg.background.prompt }
 
 if (-not (Test-Path $avatarSrc)) {
+    if ($AvatarPath -eq "") {
+        $avatarDir = Join-Path $repoRoot "tod\data\avatars"
+        if (Test-Path $avatarDir) {
+            $fallback = @(Get-ChildItem -Path (Join-Path $avatarDir "*") -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Extension -in @('.jpg', '.jpeg', '.png') } |
+                Where-Object { $_.Name -ne "README.md" } |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1)
+            if ($fallback.Count -gt 0) {
+                $avatarSrc = $fallback[0].FullName
+                Write-Host "Avatar fallback selected: $($fallback[0].Name)" -ForegroundColor Yellow
+            }
+        }
+    }
+}
+
+if (-not (Test-Path $avatarSrc)) {
     throw "Avatar image not found: $avatarSrc`n`nSolution: Copy your portrait photo to: $avatarSrc"
 }
 
@@ -150,7 +166,7 @@ $paths = @{
     audio     = Join-Path $WorkDir "tts_audio.wav"
     avatarBg  = Join-Path $WorkDir "avatar_nobg.png"
     bg        = Join-Path $WorkDir "background.png"
-    composite = Join-Path $WorkDir "composited.jpg"
+    composite = Join-Path $WorkDir "composited.png"
     output    = $OutputPath
 }
 
@@ -174,9 +190,9 @@ Write-Step "1" "Generating TTS audio ($($cfg.tts.voice))"
 Invoke-PythonEngine "tts_edge.py" @(
     "--text",   $ttsScript,
     "--voice",  [string]$cfg.tts.voice,
-    "--rate",   [string]$cfg.tts.rate,
-    "--pitch",  [string]$cfg.tts.pitch,
-    "--volume", [string]$cfg.tts.volume,
+    "--rate=$([string]$cfg.tts.rate)",
+    "--pitch=$([string]$cfg.tts.pitch)",
+    "--volume=$([string]$cfg.tts.volume)",
     "--output", $paths.audio
 )
 
@@ -263,6 +279,7 @@ Invoke-PythonEngine "animate_sadtalker.py" $animArgs
 Write-Step "6" "Finalizing output"
 
 $animatedMp4 = Join-Path $WorkDir "animated.mp4"
+$finalSourceMp4 = $animatedMp4
 
 if (-not $DryRun) {
     if (-not (Test-Path $animatedMp4)) {
@@ -272,9 +289,103 @@ if (-not $DryRun) {
         else { throw "No output MP4 found in $WorkDir" }
     }
 
+    # Optional temporal smoothing to reduce visible micro-jitter in motion.
+    if ($cfg.output -and $cfg.output.PSObject.Properties["smoothing"] -and [bool]$cfg.output.smoothing.enabled) {
+        $ffmpegExe = $null
+        $ffmpegCandidates = @(
+            "ffmpeg",
+            "C:\Program Files\FFmpeg\bin\ffmpeg.exe"
+        )
+        $wingetFfmpeg = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Directory -Filter "Gyan.FFmpeg_*" -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName "ffmpeg-8.1-full_build\bin\ffmpeg.exe" } |
+            Where-Object { Test-Path $_ } |
+            Select-Object -First 1
+        if ($wingetFfmpeg) { $ffmpegCandidates += $wingetFfmpeg }
+
+        foreach ($candidate in $ffmpegCandidates) {
+            $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+            if ($cmd) { $ffmpegExe = $cmd.Source; break }
+            if (Test-Path $candidate) { $ffmpegExe = $candidate; break }
+        }
+
+        if ($ffmpegExe) {
+            $smoothMp4 = Join-Path $WorkDir "animated_smooth.mp4"
+            $targetFps = if ($cfg.output.smoothing.PSObject.Properties["target_fps"]) { [int]$cfg.output.smoothing.target_fps } else { 30 }
+            $miMode = if ($cfg.output.smoothing.PSObject.Properties["mode"]) { [string]$cfg.output.smoothing.mode } else { "mci" }
+            $mcMode = if ($cfg.output.smoothing.PSObject.Properties["mc_mode"]) { [string]$cfg.output.smoothing.mc_mode } else { "aobmc" }
+            $meMode = if ($cfg.output.smoothing.PSObject.Properties["me_mode"]) { [string]$cfg.output.smoothing.me_mode } else { "bidir" }
+            $vsbmc = if ($cfg.output.smoothing.PSObject.Properties["vsbmc"]) { [int]$cfg.output.smoothing.vsbmc } else { 1 }
+            $crf = if ($cfg.output.smoothing.PSObject.Properties["crf"]) { [int]$cfg.output.smoothing.crf } else { 18 }
+            $preset = if ($cfg.output.smoothing.PSObject.Properties["preset"]) { [string]$cfg.output.smoothing.preset } else { "medium" }
+
+            $vf = "minterpolate=fps=$targetFps`:mi_mode=$miMode`:mc_mode=$mcMode`:me_mode=$meMode`:vsbmc=$vsbmc"
+            Write-Host "  Applying temporal smoothing with ffmpeg ($targetFps fps)..." -ForegroundColor DarkGray
+            & $ffmpegExe -y -i $animatedMp4 -vf $vf -c:v libx264 -preset $preset -crf $crf -c:a copy $smoothMp4 | Out-Null
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $smoothMp4)) {
+                $finalSourceMp4 = $smoothMp4
+                Write-Host "  Smoothing complete: $smoothMp4" -ForegroundColor DarkGray
+            } else {
+                Write-Host "  WARN: ffmpeg smoothing failed; using original animation output" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "  WARN: ffmpeg not found; skipping smoothing stage" -ForegroundColor Yellow
+        }
+    }
+
+    # Ensure the final deliverable has an audio stream; if missing, mux from TTS source.
+    $probeExe = $null
+    $probeCandidates = @(
+        "ffprobe",
+        "C:\Program Files\FFmpeg\bin\ffprobe.exe"
+    )
+    $wingetProbe = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Directory -Filter "Gyan.FFmpeg_*" -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName "ffmpeg-8.1-full_build\bin\ffprobe.exe" } |
+        Where-Object { Test-Path $_ } |
+        Select-Object -First 1
+    if ($wingetProbe) { $probeCandidates += $wingetProbe }
+
+    foreach ($candidate in $probeCandidates) {
+        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($cmd) { $probeExe = $cmd.Source; break }
+        if (Test-Path $candidate) { $probeExe = $candidate; break }
+    }
+
+    if ($probeExe) {
+        $hasAudio = & $probeExe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 $finalSourceMp4 2>$null
+        if ([string]::IsNullOrWhiteSpace([string]$hasAudio) -and (Test-Path $paths.audio)) {
+            $ffmpegExe = $null
+            $ffmpegCandidates = @(
+                "ffmpeg",
+                "C:\Program Files\FFmpeg\bin\ffmpeg.exe"
+            )
+            $wingetFfmpeg = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Directory -Filter "Gyan.FFmpeg_*" -ErrorAction SilentlyContinue |
+                ForEach-Object { Join-Path $_.FullName "ffmpeg-8.1-full_build\bin\ffmpeg.exe" } |
+                Where-Object { Test-Path $_ } |
+                Select-Object -First 1
+            if ($wingetFfmpeg) { $ffmpegCandidates += $wingetFfmpeg }
+
+            foreach ($candidate in $ffmpegCandidates) {
+                $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+                if ($cmd) { $ffmpegExe = $cmd.Source; break }
+                if (Test-Path $candidate) { $ffmpegExe = $candidate; break }
+            }
+
+            if ($ffmpegExe) {
+                $muxedMp4 = Join-Path $WorkDir "animated_with_audio.mp4"
+                Write-Host "  Final audio stream missing; muxing TTS audio into output..." -ForegroundColor DarkGray
+                & $ffmpegExe -y -i $finalSourceMp4 -i $paths.audio -c:v copy -c:a aac -shortest $muxedMp4 | Out-Null
+                if ($LASTEXITCODE -eq 0 -and (Test-Path $muxedMp4)) {
+                    $finalSourceMp4 = $muxedMp4
+                } else {
+                    Write-Host "  WARN: final audio mux failed; output may be silent" -ForegroundColor Yellow
+                }
+            }
+        }
+    }
+
     $outDir = Split-Path -Parent $OutputPath
     if ($outDir -and -not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
-    Copy-Item -Path $animatedMp4 -Destination $OutputPath -Force
+    Copy-Item -Path $finalSourceMp4 -Destination $OutputPath -Force
 
     $sizeMb = [math]::Round((Get-Item $OutputPath).Length / 1MB, 1)
     Write-Host ""

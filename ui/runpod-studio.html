@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TOD RunPod Studio</title>
+  <style>
+    :root {
+      --bg: #0b1116;
+      --panel: #111a21;
+      --panel-2: #16222c;
+      --line: #274255;
+      --text: #e6f1f5;
+      --muted: #8ea4b2;
+      --accent: #77e6a5;
+      --warn: #ffd166;
+      --danger: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: var(--text);
+      background: linear-gradient(180deg, #081017, #0f1820 35%, #11161c);
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+    .sub {
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 18px;
+    }
+    .card {
+      background: rgba(17, 26, 33, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 18px 48px rgba(0,0,0,0.24);
+    }
+    .card h2 {
+      margin: 0 0 14px;
+      font-size: 16px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+    }
+    textarea {
+      width: 100%;
+      min-height: 110px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      resize: vertical;
+      font: inherit;
+    }
+    input[type="file"] {
+      padding: 8px;
+      background: transparent;
+    }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      background: var(--accent);
+      color: #06220f;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #213240;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #1b2833;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .pill.running { color: var(--warn); }
+    .pill.completed { color: var(--accent); }
+    .pill.failed { color: var(--danger); }
+    .log {
+      height: 440px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      background: #0a1015;
+      border: 1px solid #1d3444;
+      border-radius: 12px;
+      padding: 14px;
+      line-height: 1.5;
+      font-size: 12px;
+    }
+    .progress-wrap {
+      margin-bottom: 14px;
+    }
+    .progress-track {
+      height: 10px;
+      border-radius: 999px;
+      background: #0a1015;
+      border: 1px solid #1d3444;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #77e6a5, #b8f28b);
+      transition: width 220ms ease;
+    }
+    .progress-meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .kv {
+      background: #0d141a;
+      border: 1px solid #1d2c37;
+      border-radius: 10px;
+      padding: 10px;
+    }
+    .kv .k {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 5px;
+    }
+    .kv .v {
+      font-size: 13px;
+      word-break: break-word;
+    }
+    @media (max-width: 960px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>TOD RunPod Studio</h1>
+    <div class="sub">Small local control panel for endpoint updates, RunPod renders, and live log review. Avatar images stay local: use an existing repo path, upload one here, or rely on the spokesperson fallback in tod/data/avatars.</div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Endpoint</h2>
+        <label for="host">RunPod Host</label>
+        <input id="host" placeholder="195.26.233.43">
+        <label for="port">Direct TCP Port</label>
+        <input id="port" placeholder="28457">
+        <label for="user">SSH User</label>
+        <input id="user" placeholder="root">
+        <div class="row">
+          <button id="saveEndpoint">Save Endpoint</button>
+          <button class="secondary" id="refreshStatus">Refresh</button>
+        </div>
+
+        <h2 style="margin-top:22px;">Render</h2>
+        <label for="preset">Preset</label>
+        <input id="preset" value="tod/config/media-presets/gloria-cowell.json">
+        <label for="avatarPath">Avatar Image</label>
+        <input id="avatarPath" placeholder="tod/data/avatars/user-avatar.jpg (optional)">
+        <label for="avatarUpload">Upload New Avatar</label>
+        <input id="avatarUpload" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+        <div class="meta" id="avatarUploadStatus" style="margin-top:8px;">Use an existing repo path or upload a new portrait image here.</div>
+        <label for="speechScript">Speech Text</label>
+        <textarea id="speechScript" placeholder="Paste the spoken script here."></textarea>
+        <label for="backgroundPrompt">Background Prompt</label>
+        <textarea id="backgroundPrompt" placeholder="Optional override for the generated background prompt."></textarea>
+        <div class="row">
+          <button id="startRender">Start Render</button>
+        </div>
+        <div class="meta" style="margin-top:12px;">
+          The runner calls the PowerShell RunPod pipeline directly. Best results require:
+          pod bootstrapped, ffmpeg installed, and SSH auth already working without an interactive surprise.
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Status</h2>
+        <div class="row" style="margin-top:0; margin-bottom:14px;">
+          <span id="statePill" class="pill">idle</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+          <div id="progressText" class="progress-meta">Waiting to start.</div>
+        </div>
+        <div class="status-grid">
+          <div class="kv"><div class="k">Started</div><div class="v" id="startedAt">-</div></div>
+          <div class="kv"><div class="k">Finished</div><div class="v" id="finishedAt">-</div></div>
+          <div class="kv"><div class="k">Output</div><div class="v" id="outputPath">-</div></div>
+          <div class="kv"><div class="k">Error</div><div class="v" id="errorText">-</div></div>
+        </div>
+        <div class="log" id="logBox">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const hostEl = document.getElementById('host');
+    const portEl = document.getElementById('port');
+    const userEl = document.getElementById('user');
+    const presetEl = document.getElementById('preset');
+    const avatarPathEl = document.getElementById('avatarPath');
+    const avatarUploadEl = document.getElementById('avatarUpload');
+    const avatarUploadStatusEl = document.getElementById('avatarUploadStatus');
+    const speechScriptEl = document.getElementById('speechScript');
+    const backgroundPromptEl = document.getElementById('backgroundPrompt');
+    const startRenderButton = document.getElementById('startRender');
+    const statePill = document.getElementById('statePill');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const startedAt = document.getElementById('startedAt');
+    const finishedAt = document.getElementById('finishedAt');
+    const outputPath = document.getElementById('outputPath');
+    const errorText = document.getElementById('errorText');
+    const logBox = document.getElementById('logBox');
+    let uploadInProgress = false;
+
+    function syncRenderButtonState() {
+      if (uploadInProgress) {
+        startRenderButton.disabled = true;
+        startRenderButton.textContent = 'Upload In Progress...';
+        return;
+      }
+
+      if (startRenderButton.textContent === 'Starting...') {
+        return;
+      }
+
+      startRenderButton.disabled = false;
+      startRenderButton.textContent = 'Start Render';
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.error || `Request failed: ${response.status}`);
+      }
+      return payload;
+    }
+
+    function normalizeLogLines(logValue) {
+      if (Array.isArray(logValue)) {
+        return logValue;
+      }
+      if (typeof logValue === 'string' && logValue.trim()) {
+        return [logValue];
+      }
+      if (logValue && typeof logValue === 'object') {
+        return Object.values(logValue)
+          .filter(value => typeof value === 'string' && value.trim());
+      }
+      return [];
+    }
+
+    function inferProgress(status, logLines) {
+      const state = status.state || 'idle';
+      if (state === 'completed') {
+        return { percent: 100, text: 'Render completed.' };
+      }
+      if (state === 'failed') {
+        return { percent: 100, text: 'Render failed. Check the log below.' };
+      }
+      if (state === 'starting') {
+        return { percent: 8, text: 'Worker starting.' };
+      }
+
+      let currentStep = 0;
+      let totalSteps = 7;
+      for (const line of logLines) {
+        const match = line.match(/\[(\d+)\/(\d+)\]/);
+        if (match) {
+          currentStep = Math.max(currentStep, Number(match[1]));
+          totalSteps = Number(match[2]);
+        }
+      }
+
+      if (currentStep > 0) {
+        const percent = Math.min(95, Math.max(12, Math.round((currentStep / totalSteps) * 100)));
+        return { percent, text: `Step ${currentStep} of ${totalSteps}` };
+      }
+
+      if (state === 'running') {
+        return { percent: 12, text: 'Render running.' };
+      }
+
+      return { percent: 0, text: 'Waiting to start.' };
+    }
+
+    function renderStatus(data) {
+      hostEl.value = data.config.host || '';
+      portEl.value = data.config.port || '';
+      userEl.value = data.config.user || 'root';
+
+      const status = data.status || {};
+      if (!avatarPathEl.value && status.avatar_path) {
+        avatarPathEl.value = status.avatar_path;
+      }
+      if (!speechScriptEl.value && status.script) {
+        speechScriptEl.value = status.script;
+      }
+      if (!backgroundPromptEl.value && status.background_prompt) {
+        backgroundPromptEl.value = status.background_prompt;
+      }
+      statePill.textContent = status.state || 'idle';
+      statePill.className = `pill ${status.state || 'idle'}`;
+      startedAt.textContent = status.started_at || '-';
+      finishedAt.textContent = status.finished_at || '-';
+      outputPath.textContent = status.output || '-';
+      errorText.textContent = status.error || '-';
+      const logLines = normalizeLogLines(data.log);
+      const progress = inferProgress(status, logLines);
+      progressFill.style.width = `${progress.percent}%`;
+      progressText.textContent = progress.text;
+      logBox.textContent = logLines.join('\n') || 'No log output yet.';
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    async function refresh() {
+      try {
+        const data = await api('/api/status');
+        renderStatus(data);
+      } catch (error) {
+        logBox.textContent = error.message;
+      }
+    }
+
+    async function fileToBase64(file) {
+      const bytes = await file.arrayBuffer();
+      let binary = '';
+      const view = new Uint8Array(bytes);
+      const chunkSize = 0x8000;
+      for (let index = 0; index < view.length; index += chunkSize) {
+        binary += String.fromCharCode(...view.subarray(index, index + chunkSize));
+      }
+      return btoa(binary);
+    }
+
+    document.getElementById('saveEndpoint').addEventListener('click', async () => {
+      try {
+        await api('/api/endpoint', {
+          method: 'POST',
+          body: JSON.stringify({ host: hostEl.value.trim(), port: Number(portEl.value), user: userEl.value.trim() || 'root' })
+        });
+        await refresh();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    avatarUploadEl.addEventListener('change', async () => {
+      const file = avatarUploadEl.files && avatarUploadEl.files[0];
+      if (!file) {
+        return;
+      }
+
+      uploadInProgress = true;
+      syncRenderButtonState();
+      avatarUploadStatusEl.textContent = `Uploading ${file.name}...`;
+      try {
+        const contentBase64 = await fileToBase64(file);
+        const response = await api('/api/upload-avatar', {
+          method: 'POST',
+          body: JSON.stringify({ file_name: file.name, content_base64: contentBase64 })
+        });
+        avatarPathEl.value = response.avatar.relative_path;
+        avatarUploadStatusEl.textContent = `Uploaded to ${response.avatar.relative_path}`;
+      } catch (error) {
+        avatarUploadStatusEl.textContent = error.message;
+      } finally {
+        uploadInProgress = false;
+        syncRenderButtonState();
+      }
+    });
+
+    document.getElementById('startRender').addEventListener('click', async () => {
+      if (uploadInProgress) {
+        logBox.textContent = 'Wait for the avatar upload to finish before starting the render.';
+        return;
+      }
+      startRenderButton.disabled = true;
+      startRenderButton.textContent = 'Starting...';
+      logBox.textContent = 'Submitting render request...';
+      statePill.textContent = 'starting';
+      statePill.className = 'pill running';
+      progressFill.style.width = '5%';
+      progressText.textContent = 'Submitting render request...';
+      try {
+        const response = await api('/api/render', {
+          method: 'POST',
+          body: JSON.stringify({
+            preset: presetEl.value.trim(),
+            avatarPath: avatarPathEl.value.trim(),
+            script: speechScriptEl.value.trim(),
+            backgroundPrompt: backgroundPromptEl.value.trim()
+          })
+        });
+        if (response.status) {
+          renderStatus(response.status);
+        }
+        await refresh();
+      } catch (error) {
+        logBox.textContent = error.message;
+        alert(error.message);
+      } finally {
+        syncRenderButtonState();
+      }
+    });
+
+    document.getElementById('refreshStatus').addEventListener('click', refresh);
+    refresh();
+    syncRenderButtonState();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

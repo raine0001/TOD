@@ -555,6 +555,33 @@ Media pipeline orchestration (RTX/local-service controller):
 .\scripts\Invoke-TODMediaPipeline.ps1 -ProjectId "tod" -Capability "diagram-dashboard-rendering" -Prompt "engineering loop state flow" -Execute
 ```
 
+### Spokesperson / RunPod Workflow
+
+Local spokesperson setup and validation:
+
+```powershell
+.\scripts\Setup-TODSpokesperson.ps1
+.\scripts\Test-TODSpokesperson.ps1
+.\scripts\Invoke-TODSpokesperson.ps1
+```
+
+RunPod offload and helper flows:
+
+```powershell
+.\scripts\Set-TODRunPodEndpoint.ps1 -RunPodHost "1.2.3.4" -RunPodPort 22 -RunPodUser "root"
+.\scripts\Invoke-TODSpokesperson-RunPod.ps1 -Preset "tod/config/media-presets/gloria-cowell.json"
+.\scripts\goTODRunPodGloria.ps1
+.\scripts\New-TODRunPodJobPack.ps1 -Preset "tod/config/media-presets/gloria-cowell.json"
+.\scripts\New-TODRunPodBootstrapPack.ps1
+.\scripts\Start-TOD-RunPodStudio.ps1
+```
+
+Notes:
+- Avatar images are local inputs and are not expected to be committed.
+- Preferred local slot: `tod/data/avatars/user-avatar.jpg`.
+- If a preset avatar path is missing, the spokesperson scripts fall back to the most recent image under `tod/data/avatars/`.
+- RunPod Studio can upload a portrait into `tod/data/avatars/uploads/` and then use that path for renders.
+
 MIM context exchange (shared coordination snapshot + inbound updates):
 
 ```powershell

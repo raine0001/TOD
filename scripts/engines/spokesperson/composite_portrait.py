@@ -159,10 +159,14 @@ def main():
     if args.vignette:
         canvas = add_vignette(canvas)
 
-    # Save
+    # Save. Prefer PNG when requested to avoid introducing extra compression before animation.
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     final = canvas.convert("RGB")
-    final.save(args.output, "JPEG", quality=args.jpeg_quality, subsampling=0)
+    output_ext = os.path.splitext(args.output)[1].lower()
+    if output_ext == ".png":
+        final.save(args.output, "PNG")
+    else:
+        final.save(args.output, "JPEG", quality=args.jpeg_quality, subsampling=0)
 
     size_kb = os.path.getsize(args.output) / 1024
     print(f"OK composite={args.output} size={size_kb:.0f}KB dims={args.frame_width}x{args.frame_height}")

@@ -21,11 +21,22 @@ def parse_args():
     p.add_argument("--output",          required=True, help="Output PNG with alpha")
     p.add_argument("--model",           default="u2net", choices=["u2net", "u2net_human_seg", "isnet-general-use", "birefnet-general"],
                    help="rembg model. u2net_human_seg or birefnet-general for best portrait results")
+    p.add_argument("--execution-provider", default="cpu", choices=["cpu", "cuda", "auto"],
+                   help="ONNX execution provider for rembg. Default is cpu to avoid local CUDA runtime dependency issues.")
     p.add_argument("--post-process",    action="store_true", help="Apply alpha matting post-process for cleaner edges")
     p.add_argument("--foreground-threshold", type=int, default=240, help="Alpha matting foreground threshold")
     p.add_argument("--background-threshold", type=int, default=10,  help="Alpha matting background threshold")
     p.add_argument("--erode-size",       type=int, default=10,  help="Alpha matting erode size")
     return p.parse_args()
+
+
+def get_provider_sets(provider_mode: str):
+    provider_mode = (provider_mode or "cpu").lower()
+    if provider_mode == "cuda":
+        return [["CUDAExecutionProvider", "CPUExecutionProvider"], ["CPUExecutionProvider"]]
+    if provider_mode == "auto":
+        return [["CUDAExecutionProvider", "CPUExecutionProvider"], ["CPUExecutionProvider"]]
+    return [["CPUExecutionProvider"]]
 
 
 def main():
@@ -48,13 +59,33 @@ def main():
         sys.exit(1)
 
     print(f"  Loading model: {args.model}")
-    # birefnet-general gives best portrait edge quality if available
     model_name = args.model
-    try:
-        session = new_session(model_name)
-    except Exception as e:
-        print(f"  WARN: Could not load model '{model_name}': {e}. Falling back to u2net.", file=sys.stderr)
-        session = new_session("u2net")
+    provider_sets = get_provider_sets(args.execution_provider)
+    session = None
+    last_error = None
+
+    for provider_list in provider_sets:
+        try:
+            print(f"  Using providers: {', '.join(provider_list)}")
+            session = new_session(model_name, providers=provider_list)
+            break
+        except Exception as e:
+            last_error = e
+            print(f"  WARN: Could not load model '{model_name}' with providers {provider_list}: {e}", file=sys.stderr)
+
+    if session is None and model_name != "u2net":
+        for provider_list in provider_sets:
+            try:
+                print(f"  Falling back to u2net with providers: {', '.join(provider_list)}")
+                session = new_session("u2net", providers=provider_list)
+                break
+            except Exception as e:
+                last_error = e
+                print(f"  WARN: Could not load fallback model 'u2net' with providers {provider_list}: {e}", file=sys.stderr)
+
+    if session is None:
+        print(f"ERROR: Failed to initialize rembg session: {last_error}", file=sys.stderr)
+        sys.exit(1)
 
     print(f"  Processing: {args.input}")
     with open(args.input, "rb") as f:

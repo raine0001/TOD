@@ -50,6 +50,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 
 $repoRoot   = Split-Path -Parent $PSScriptRoot
 $engineRoot = Join-Path $PSScriptRoot "engines\spokesperson"
@@ -57,6 +60,7 @@ $testOutDir = Join-Path $repoRoot "tod\out\spokesperson\test"
 New-Item -ItemType Directory -Force -Path $testOutDir | Out-Null
 
 $pass = 0; $fail = 0; $skip = 0
+$script:LastPyOutput = @()
 
 function Write-TestResult([string]$id, [string]$name, [bool]$ok, [string]$detail = "", [bool]$skipped = $false) {
     if ($skipped) {
@@ -75,10 +79,17 @@ function Write-TestResult([string]$id, [string]$name, [bool]$ok, [string]$detail
     }
 }
 
-function Invoke-Py([string]$Script, [string[]]$Args) {
+function Invoke-Py([string]$Script, [string[]]$ArgList) {
     $p = Join-Path $engineRoot $Script
-    & $PythonExe $p @Args 2>&1
-    return $LASTEXITCODE
+    $prevEA = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $script:LastPyOutput = @(& $PythonExe $p @ArgList 2>&1)
+    }
+    finally {
+        $ErrorActionPreference = $prevEA
+    }
+    return [int]$LASTEXITCODE
 }
 
 # --- Header -------------------------------------------------------------------
@@ -102,8 +113,14 @@ $packages = @(
     @{ name = "requests";  import = "requests" }
 )
 foreach ($pkg in $packages) {
-    $r = & $PythonExe -c "import $($pkg.import); print('ok')" 2>&1
-    Write-TestResult "T02" "import $($pkg.import)" ($r -match "^ok") ($r -join " ")
+    $probe = @"
+import importlib.util
+import sys
+sys.exit(0 if importlib.util.find_spec('$($pkg.import)') else 1)
+"@
+    & $PythonExe -c $probe *> $null
+    $ok = ($LASTEXITCODE -eq 0)
+    Write-TestResult "T02" "import $($pkg.import)" $ok $(if ($ok) { "available" } else { "missing" })
 }
 
 # --- T03: TTS audio generation ------------------------------------------------
@@ -111,12 +128,13 @@ $ttsOut = Join-Path $testOutDir "t03_tts_test.wav"
 $ttsEc  = Invoke-Py "tts_edge.py" @(
     "--text",   "AI capabilities are transforming the world. Test complete.",
     "--voice",  "en-US-GuyNeural",
-    "--rate",   "-5%",
+    "--rate=-5%",
     "--output", $ttsOut
 )
 $ttsOk = ($ttsEc -eq 0) -and (Test-Path $ttsOut) -and ((Get-Item $ttsOut).Length -gt 5000)
 $ttsSz = if (Test-Path $ttsOut) { "$([math]::Round((Get-Item $ttsOut).Length/1KB,1))KB" } else { "no file" }
-Write-TestResult "T03" "TTS audio generation" $ttsOk "en-US-GuyNeural - $ttsSz"
+$ttsErr = if (-not $ttsOk -and $script:LastPyOutput.Count -gt 0) { " | $($script:LastPyOutput[0])" } else { "" }
+Write-TestResult "T03" "TTS audio generation" $ttsOk "en-US-GuyNeural - $ttsSz$ttsErr"
 
 # --- T04: Avatar background removal ------------------------------------------
 $avatarSrc = Join-Path $repoRoot "tod\data\avatars\user-avatar.jpg"
@@ -133,7 +151,8 @@ if (-not (Test-Path $avatarSrc)) {
     )
     $rmbgOk = ($rmbgEc -eq 0) -and (Test-Path $avatarOut) -and ((Get-Item $avatarOut).Length -gt 10000)
     $rmbgSz = if (Test-Path $avatarOut) { "$([math]::Round((Get-Item $avatarOut).Length/1KB,0))KB PNG" } else { "no file" }
-    Write-TestResult "T04" "Avatar background removal" $rmbgOk "u2net_human_seg - $rmbgSz"
+    $rmbgErr = if (-not $rmbgOk -and $script:LastPyOutput.Count -gt 0) { " | $($script:LastPyOutput[0])" } else { "" }
+    Write-TestResult "T04" "Avatar background removal" $rmbgOk "u2net_human_seg - $rmbgSz$rmbgErr"
 }
 
 # --- T05: Background generation -----------------------------------------------
@@ -153,7 +172,8 @@ if ($SkipBgGen) {
     )
     $bgOk = ($bgEc -eq 0) -and (Test-Path $bgOut) -and ((Get-Item $bgOut).Length -gt 50000)
     $bgSz = if (Test-Path $bgOut) { "$([math]::Round((Get-Item $bgOut).Length/1KB,0))KB PNG" } else { "no file" }
-    Write-TestResult "T05" "Background generation" $bgOk "- $bgSz"
+    $bgErr = if (-not $bgOk -and $script:LastPyOutput.Count -gt 0) { " | $($script:LastPyOutput[0])" } else { "" }
+    Write-TestResult "T05" "Background generation" $bgOk "- $bgSz$bgErr"
     $bgResult = $bgOk
 }
 
@@ -178,7 +198,8 @@ if (-not $avatarNobgForComp -or -not $bgForComp) {
     )
     $compOk = ($compEc -eq 0) -and (Test-Path $compOut) -and ((Get-Item $compOut).Length -gt 20000)
     $compSz = if (Test-Path $compOut) { "$([math]::Round((Get-Item $compOut).Length/1KB,0))KB JPEG" } else { "no file" }
-    Write-TestResult "T06" "Composite portrait (color+shadow+vignette)" $compOk "- $compSz"
+    $compErr = if (-not $compOk -and $script:LastPyOutput.Count -gt 0) { " | $($script:LastPyOutput[0])" } else { "" }
+    Write-TestResult "T06" "Composite portrait (color+shadow+vignette)" $compOk "- $compSz$compErr"
 }
 
 # --- T07: Preset integrity ----------------------------------------------------
@@ -186,7 +207,7 @@ $presetPath = Join-Path $repoRoot "tod\config\media-presets\jungle-spider-demo.j
 try {
     $preset = Get-Content $presetPath -Raw -ErrorAction Stop | ConvertFrom-Json
     $fields = @("id", "avatar", "background", "tts", "animation", "composite", "output")
-    $missing = $fields | Where-Object { -not $preset.PSObject.Properties[$_] }
+    $missing = @($fields | Where-Object { -not $preset.PSObject.Properties[$_] })
     $presetOk = ($missing.Count -eq 0)
     Write-TestResult "T07" "Preset integrity (jungle-spider-demo.json)" $presetOk $(if ($missing) { "Missing: $($missing -join ', ')" } else { "all $($fields.Count) fields present" })
 } catch {

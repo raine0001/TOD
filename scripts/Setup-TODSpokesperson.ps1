@@ -49,6 +49,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $pass = 0
@@ -62,13 +65,25 @@ function Write-INFO([string]$msg) { Write-Host "  --  $msg" -ForegroundColor Dar
 
 function Test-PythonPackage([string]$Package, [string]$ImportName = "") {
     $imp = if ($ImportName -ne "") { $ImportName } else { $Package -replace "\[.*\]","" -replace "-","_" }
-    $result = & $PythonExe -c "import $imp; print('ok')" 2>&1
-    return ($result -match "^ok")
+    $probe = @"
+import importlib.util
+import sys
+sys.exit(0 if importlib.util.find_spec('$imp') else 1)
+"@
+    & $PythonExe -c $probe *> $null
+    return ($LASTEXITCODE -eq 0)
 }
 
 function Install-PipPackage([string]$Package, [string]$ImportName = "") {
     Write-INFO "Installing $Package..."
-    & $PythonExe -m pip install --quiet --no-input $Package 2>&1 | Out-Null
+    $prevEA = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $PythonExe -m pip install --quiet --no-input $Package 2>&1 | Out-Null
+    }
+    finally {
+        $ErrorActionPreference = $prevEA
+    }
     return Test-PythonPackage $Package $ImportName
 }
 
@@ -160,12 +175,20 @@ $ttsTestPath = Join-Path $env:TEMP "tod_tts_test.wav"
 $ttsTestScript = "Testing one two three. TOD spokesperson voice check."
 Write-INFO "Testing neural voice synthesis (en-US-GuyNeural)..."
 
-$ttsResult = & $PythonExe (Join-Path $PSScriptRoot "engines\spokesperson\tts_edge.py") `
-    --text $ttsTestScript `
-    --voice "en-US-GuyNeural" `
-    --output $ttsTestPath 2>&1
+$ttsPrevEA = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $ttsResult = & $PythonExe (Join-Path $PSScriptRoot "engines\spokesperson\tts_edge.py") `
+        --text $ttsTestScript `
+        --voice "en-US-GuyNeural" `
+        --output $ttsTestPath 2>&1
+    $ttsExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $ttsPrevEA
+}
 
-if ($LASTEXITCODE -eq 0 -and (Test-Path $ttsTestPath)) {
+if ($ttsExitCode -eq 0 -and (Test-Path $ttsTestPath)) {
     $sz = [math]::Round((Get-Item $ttsTestPath).Length / 1KB, 1)
     Remove-Item $ttsTestPath -Force -ErrorAction SilentlyContinue
     Write-OK "TTS en-US-GuyNeural  audio generated ($($sz)KB)"
@@ -218,9 +241,19 @@ if ($SkipSadTalker) {
         if (-not $gitCheck) {
             Write-FAIL "git not found  install git and re-run: https://git-scm.com/downloads"
         } else {
-            git clone --depth 1 https://github.com/OpenTalker/SadTalker $SadTalkerPath 2>&1 | Out-Null
+            $gitPrevEA = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                git clone --depth 1 https://github.com/OpenTalker/SadTalker $SadTalkerPath 2>&1 | Out-Null
+                $gitCloneExitCode = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $gitPrevEA
+            }
             if (Test-Path $sadInference) {
                 Write-OK "SadTalker cloned to $SadTalkerPath"
+            } elseif ($gitCloneExitCode -ne 0) {
+                Write-FAIL "SadTalker clone failed with exit code $gitCloneExitCode"
             } else {
                 Write-FAIL "SadTalker clone failed. Check git output above."
             }
@@ -230,8 +263,16 @@ if ($SkipSadTalker) {
     # Install SadTalker requirements
     if (Test-Path $sadReqs) {
         Write-INFO "Installing SadTalker requirements (this may take a few minutes)..."
-        & $PythonExe -m pip install --quiet --no-input -r $sadReqs 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) { Write-OK "SadTalker requirements installed" }
+        $pipPrevEA = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & $PythonExe -m pip install --quiet --no-input -r $sadReqs 2>&1 | Out-Null
+            $sadReqExitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $pipPrevEA
+        }
+        if ($sadReqExitCode -eq 0) { Write-OK "SadTalker requirements installed" }
         else { Write-WARN "Some SadTalker requirements may have failed  check manually" }
     }
 
@@ -252,7 +293,14 @@ if ($SkipSadTalker) {
     $gfpganCheck = Test-PythonPackage "gfpgan" "gfpgan"
     if (-not $gfpganCheck) {
         Write-INFO "Installing GFPGAN..."
-        & $PythonExe -m pip install --quiet --no-input gfpgan 2>&1 | Out-Null
+        $pipPrevEA = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & $PythonExe -m pip install --quiet --no-input gfpgan 2>&1 | Out-Null
+        }
+        finally {
+            $ErrorActionPreference = $pipPrevEA
+        }
         if (Test-PythonPackage "gfpgan" "gfpgan") { Write-OK "GFPGAN installed" }
         else { Write-WARN "GFPGAN install failed  face enhancement won't be available" }
     } else {
@@ -261,7 +309,14 @@ if ($SkipSadTalker) {
 
     # basicsr (SadTalker dependency)
     if (-not (Test-PythonPackage "basicsr" "basicsr")) {
-        & $PythonExe -m pip install --quiet --no-input basicsr 2>&1 | Out-Null
+        $pipPrevEA = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & $PythonExe -m pip install --quiet --no-input basicsr 2>&1 | Out-Null
+        }
+        finally {
+            $ErrorActionPreference = $pipPrevEA
+        }
         if (Test-PythonPackage "basicsr" "basicsr") { Write-OK "basicsr installed" }
         else { Write-WARN "basicsr install failed  SadTalker may not work" }
     } else {
@@ -300,20 +355,35 @@ if ($SkipFooocusCheck) {
 Write-Host ""
 Write-Host "[7] Avatar Photo" -ForegroundColor White
 
+$avatarDir = Join-Path $repoRoot "tod\data\avatars"
 $avatarPath = Join-Path $repoRoot "tod\data\avatars\user-avatar.jpg"
 if (Test-Path $avatarPath) {
     $sz = [math]::Round((Get-Item $avatarPath).Length / 1KB, 1)
     Write-OK "Avatar found: $avatarPath ($($sz)KB)"
 } else {
-    Write-WARN "Avatar photo not found: $avatarPath"
-    Write-INFO ""
-    Write-INFO "  ACTION REQUIRED:"
-    Write-INFO "  1. Copy your portrait photo to: $avatarPath"
-    Write-INFO "  2. Name it exactly: user-avatar.jpg"
-    Write-INFO "  3. Requirements: JPG, min 512x512, face clearly visible, well-lit"
-    Write-INFO ""
-    Write-INFO "  The jungle-spider demo preset references this exact path."
-    $fail++  # count as failure since pipeline won't run without it
+    $candidates = @()
+    if (Test-Path $avatarDir) {
+        $candidates = @(Get-ChildItem -Path (Join-Path $avatarDir "*") -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in @('.jpg', '.jpeg', '.png') } |
+            Where-Object { $_.Name -ne "user-avatar.jpg" } |
+            Sort-Object LastWriteTime -Descending)
+    }
+
+    if ($candidates.Count -gt 0) {
+        Copy-Item -Path $candidates[0].FullName -Destination $avatarPath -Force
+        $sz = [math]::Round((Get-Item $avatarPath).Length / 1KB, 1)
+        Write-OK "Avatar auto-selected: $($candidates[0].Name) -> user-avatar.jpg ($($sz)KB)"
+    } else {
+        Write-WARN "Avatar photo not found: $avatarPath"
+        Write-INFO ""
+        Write-INFO "  ACTION REQUIRED:"
+        Write-INFO "  1. Copy your portrait photo to: $avatarPath"
+        Write-INFO "  2. Name it exactly: user-avatar.jpg"
+        Write-INFO "  3. Requirements: JPG, min 512x512, face clearly visible, well-lit"
+        Write-INFO ""
+        Write-INFO "  The jungle-spider demo preset references this exact path."
+        $fail++  # count as failure since pipeline won't run without it
+    }
 }
 
 # 
