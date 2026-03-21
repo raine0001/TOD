@@ -99,17 +99,20 @@
     {
       "id": "viasion",
       "name": "Viasion",
-      "path": "E:/Viasion",
-      "type": "vision",
-      "languages": ["python", "cpp"],
-      "entry_points": ["main.py", "vision", "pipelines"],
-      "test_commands": ["pytest"],
+      "path": "E:/Viasion/viasion.app",
+      "type": "vision-app",
+      "languages": ["python", "javascript", "html", "css"],
+      "entry_points": ["app.py", "src", "static", "scripts"],
+      "test_commands": ["pytest", "npx playwright test"],
       "risk_level": "high",
       "write_access": "review-only",
+      "github_remote": "https://github.com/raine0001/viasion_app.git",
+      "deploy_url": "https://dashboard.render.com/project/prj-d3u0stfdiees73dte0o0",
+      "default_branch": "golf_wip",
       "boundaries": {
-        "allowed_paths": ["src", "vision", "tests", "docs"],
-        "blocked_paths": ["models", "weights", "calibration"],
-        "notes": "Model and calibration assets are data-critical and excluded from automated edits."
+        "allowed_paths": ["src", "static", "scripts", "tests", "tools", "prompts", "support"],
+        "blocked_paths": ["weights", "training_output", "datasets", "frames", "frame_cache", "runs", "uploads", "node_modules", "__pycache__", ".env"],
+        "notes": "ML model weights, training outputs and frame caches are data-critical and excluded from automated edits. Deployed on Render — validate changes against Dockerfile before push."
       }
     },
     {
