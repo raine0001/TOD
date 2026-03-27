@@ -7,6 +7,7 @@ Audience: MIM / AgentMIM operators and collaborators
 
 - TOD is operational as the coordination and managed-work layer across registered MIM projects.
 - TOD remains in `guarded` write mode for its own repo and uses per-project boundaries from [tod/config/project-registry.json](e:/TOD/tod/config/project-registry.json).
+- A final live MIM listener confirmation smoke on `2026-03-26` completed successfully for `objective-90-task-smoke-20260326215121`, with execution-readiness metadata propagated through the emitted result, command-status, and loop-journal artifacts.
 - The most recent completed cross-project work was the `comm_app` marketing docs-capture workflow, including code changes, runbook updates, screenshot generation, commit, and push.
 - The `comm_app` marketing/docs work is complete and published.
 - TOD itself still has unrelated local working-tree churn from runtime artifacts, experimental scripts, and state outputs; low-risk cleanup has started by removing tracked Python cache files and tightening ignore rules for local cache/archive artifacts.
@@ -72,6 +73,7 @@ Current behavior:
 - checks critical docs presence
 - checks whether suggested verification commands are available
 - blocks strict live updates when required gates fail
+- now has a first-class execution-readiness signal backed by the operator-chat sweep artifact smoke result, so downstream execution can block or degrade when the local environment is not stable
 
 This is the main safety mechanism behind the policy:
 
@@ -149,8 +151,15 @@ Today it is strongest at:
 
 - project discovery and status tracking
 - local verification before live edits
+- artifact-backed execution readiness certification for TOD operator-chat stability
 - scoped managed-work execution in `comm_app`
 - docs/help capture workflows
 - commit/push execution for tightly scoped changes
+
+Latest live certification note:
+
+- on 2026-03-27 the direct operator-chat sweep artifact smoke run completed with process exit code `0`
+- the persisted certification artifact `shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json` recorded `passed_all = true` with `13/13` checks passing
+- this is the clean proof surface for operator-chat stability on the current host, rather than the Pester wrapper output that can truncate after the `Describe` header
 
 TOD is not yet fully tidy on its own repo, but that does not block its current ability to access, update, and manage downstream projects under guarded rules.
