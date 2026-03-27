@@ -569,11 +569,6 @@ function Register-OperatorChatQueryCacheEntry {
 
     $primaryKey = Get-OperatorChatQueryCacheKey -Query $Query -Intent $Intent -ObjectiveId $ObjectiveId -WindowMinutes $WindowMinutes -ValidationHarness $ValidationHarness
     $operatorChatQueryCache[$primaryKey] = $entry
-
-    if (-not [string]::IsNullOrWhiteSpace($ValidationHarness)) {
-        $fallbackKey = Get-OperatorChatQueryCacheKey -Query $Query -Intent $Intent -ObjectiveId $ObjectiveId -WindowMinutes $WindowMinutes
-        $operatorChatQueryCache[$fallbackKey] = $entry
-    }
 }
 
 function Get-CachedOperatorChatQueryResult {
@@ -586,23 +581,12 @@ function Get-CachedOperatorChatQueryResult {
     )
 
     Clear-ExpiredOperatorChatQueryCache
-    $keys = New-Object System.Collections.Generic.List[string]
-    if (-not [string]::IsNullOrWhiteSpace($ValidationHarness)) {
-        [void]$keys.Add((Get-OperatorChatQueryCacheKey -Query $Query -Intent $Intent -ObjectiveId $ObjectiveId -WindowMinutes $WindowMinutes -ValidationHarness $ValidationHarness))
-    }
-    [void]$keys.Add((Get-OperatorChatQueryCacheKey -Query $Query -Intent $Intent -ObjectiveId $ObjectiveId -WindowMinutes $WindowMinutes))
-
-    foreach ($key in @($keys.ToArray())) {
-        if (-not $operatorChatQueryCache.ContainsKey($key)) {
-            continue
-        }
-
+    $key = Get-OperatorChatQueryCacheKey -Query $Query -Intent $Intent -ObjectiveId $ObjectiveId -WindowMinutes $WindowMinutes -ValidationHarness $ValidationHarness
+    if ($operatorChatQueryCache.ContainsKey($key)) {
         $entry = $operatorChatQueryCache[$key]
-        if ($null -eq $entry -or -not $entry.PSObject.Properties['result']) {
-            continue
+        if ($null -ne $entry -and $entry.PSObject.Properties['result']) {
+            return $entry.result
         }
-
-        return $entry.result
     }
 
     return $null
@@ -4029,6 +4013,104 @@ function Invoke-OperatorChatGovernedAction {
     }
 }
 
+function Get-OperatorChatExecutionReadinessGate {
+    param(
+        [Parameter(Mandatory = $true)][string]$ActionName,
+        [string]$ConfigPath,
+        [switch]$ApplyPlan
+    )
+
+    $payload = $null
+    try {
+        $resolvedConfigPath = if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $configPath } else { $ConfigPath }
+        $raw = & $todScript -Action "get-execution-readiness" -ConfigPath $resolvedConfigPath -Top 1 2>&1
+        $payload = $raw | ConvertFrom-Json
+    }
+    catch {
+        $payload = $null
+    }
+
+    if ($null -eq $payload -or -not $payload.PSObject.Properties['readiness']) {
+        return [pscustomobject]@{
+            blocked = $true
+            degraded = $false
+            signal = $payload
+            trace = [pscustomobject]@{
+                status = 'unknown'
+                source = 'readiness_unavailable'
+                detail = 'Execution readiness payload is unavailable.'
+                valid = $false
+                execution_allowed = $false
+                authoritative = $true
+                freshness_state = 'unknown'
+                signal_name = 'execution-readiness'
+                evaluated_action = $ActionName
+                policy_outcome = 'block'
+                decision_path = @(
+                    'signal:execution-readiness',
+                    'status:unknown',
+                    'source:readiness_unavailable',
+                    "action:$ActionName",
+                    'policy_outcome:block'
+                )
+            }
+        }
+    }
+
+    $readiness = $payload.readiness
+    $status = if ($readiness.PSObject.Properties['status']) { ([string]$readiness.status).ToLowerInvariant() } else { 'unknown' }
+    $blockActions = if ($payload.PSObject.Properties['policy'] -and $payload.policy.PSObject.Properties['block_actions']) { @($payload.policy.block_actions | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @('run-task') }
+    $degradeActions = if ($payload.PSObject.Properties['policy'] -and $payload.policy.PSObject.Properties['degrade_actions']) { @($payload.policy.degrade_actions | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @('engineer-run') }
+    $blockStates = if ($payload.PSObject.Properties['policy'] -and $payload.policy.PSObject.Properties['block_states']) { @($payload.policy.block_states | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @('stale', 'invalid', 'unknown') }
+    $degradeStates = if ($payload.PSObject.Properties['policy'] -and $payload.policy.PSObject.Properties['degrade_states']) { @($payload.policy.degrade_states | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @('degraded', 'stale', 'invalid', 'unknown') }
+    $actionNameLower = ([string]$ActionName).ToLowerInvariant()
+    $effectiveApplyPlan = [bool]$ApplyPlan
+
+    $blocked = (($blockActions -contains $actionNameLower) -and ($blockStates -contains $status))
+    $degraded = (-not $blocked) -and (($degradeActions -contains $actionNameLower) -and ($degradeStates -contains $status))
+    if ($degraded -and $effectiveApplyPlan -and $payload.PSObject.Properties['policy'] -and $payload.policy.PSObject.Properties['degrade_apply_plan'] -and [bool]$payload.policy.degrade_apply_plan) {
+        $effectiveApplyPlan = $false
+    }
+    $policyOutcome = if ($blocked) { 'block' } elseif ($degraded) { 'degrade' } else { 'allow' }
+
+    $decisionPath = @(
+        'signal:execution-readiness',
+        "status:$(if ($readiness.PSObject.Properties['status']) { [string]$readiness.status } else { 'unknown' })",
+        "source:$(if ($readiness.PSObject.Properties['reason']) { [string]$readiness.reason } else { 'unknown' })",
+        "action:$ActionName",
+        "policy_outcome:$policyOutcome"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($resolvedConfigPath)) {
+        $decisionPath += "config_path:$resolvedConfigPath"
+    }
+    if ($ApplyPlan.IsPresent) {
+        $decisionPath += 'apply_plan_requested:true'
+        $decisionPath += "apply_plan_effective:$([bool]$effectiveApplyPlan)"
+    }
+
+    return [pscustomobject]@{
+        blocked = $blocked
+        degraded = $degraded
+        effective_apply_plan = [bool]$effectiveApplyPlan
+        signal = $payload
+        trace = [pscustomobject]@{
+            status = if ($readiness.PSObject.Properties['status']) { [string]$readiness.status } else { 'unknown' }
+            source = if ($readiness.PSObject.Properties['reason']) { [string]$readiness.reason } else { 'unknown' }
+            detail = if ($readiness.PSObject.Properties['detail']) { [string]$readiness.detail } else { '' }
+            valid = if ($readiness.PSObject.Properties['valid']) { [bool]$readiness.valid } else { $false }
+            execution_allowed = if ($readiness.PSObject.Properties['execution_allowed']) { [bool]$readiness.execution_allowed } else { $false }
+            authoritative = if ($readiness.PSObject.Properties['authoritative']) { [bool]$readiness.authoritative } else { $true }
+            freshness_state = if ($readiness.PSObject.Properties['freshness_state']) { [string]$readiness.freshness_state } else { 'unknown' }
+            signal_name = if ($payload.PSObject.Properties['signal_name']) { [string]$payload.signal_name } else { 'execution-readiness' }
+            evaluated_action = $ActionName
+            policy_outcome = $policyOutcome
+            config_path = $resolvedConfigPath
+            effective_apply_plan = [bool]$effectiveApplyPlan
+            decision_path = @($decisionPath)
+        }
+    }
+}
+
 function Invoke-OperatorChatActionRequest {
     param(
         [string]$Phase,
@@ -4041,6 +4123,7 @@ function Invoke-OperatorChatActionRequest {
         [string]$SuggestedReason,
         [string]$Mode,
         [string]$PreviewId,
+        [string]$ConfigPath,
         [string]$RemoteEndpoint,
         [string]$ValidationHarness = ''
     )
@@ -4268,6 +4351,36 @@ function Invoke-OperatorChatActionRequest {
         }
     }
 
+    $executionReadinessGate = Get-OperatorChatExecutionReadinessGate -ActionName 'run-task' -ConfigPath $ConfigPath
+    if ($executionReadinessGate.blocked) {
+        $auditEntry = [pscustomobject]($baseAudit + [ordered]@{
+            execution_readiness_status = if ($executionReadinessGate.trace.PSObject.Properties['status']) { [string]$executionReadinessGate.trace.status } else { 'unknown' }
+            execution_readiness_source = if ($executionReadinessGate.trace.PSObject.Properties['source']) { [string]$executionReadinessGate.trace.source } else { 'unknown' }
+            execution_readiness_policy_outcome = if ($executionReadinessGate.trace.PSObject.Properties['policy_outcome']) { [string]$executionReadinessGate.trace.policy_outcome } else { 'block' }
+            execution_readiness_config_path = if ($executionReadinessGate.trace.PSObject.Properties['config_path']) { [string]$executionReadinessGate.trace.config_path } else { '' }
+            outcome_status = 'blocked'
+            outcome_summary = 'Execution blocked by the authoritative certification gate.'
+        })
+        Write-OperatorChatActionAuditEntry -Entry $auditEntry
+
+        return [pscustomobject]@{
+            ok = $true
+            phase = 'confirm'
+            action_status = 'blocked'
+            action = [string]$policy.action
+            action_label = [string]$policy.label
+            summary = 'Execution blocked by the authoritative certification gate.'
+            evidence = @($operatorResponse.response.evidence)
+            flags = @(@($operatorResponse.response.flags) + @('execution_readiness_blocked') | Select-Object -Unique)
+            limitations = @($operatorResponse.response.limitations)
+            citations = @($operatorResponse.response.citations)
+            alternative_actions = @($policy.alternative_actions)
+            recommended_next_step = 'Run .\scripts\Test-TODOperatorChatSweepArtifact.ps1 and restore a current passing certification artifact before confirming governed actions.'
+            execution_readiness = $executionReadinessGate.trace
+            audit = $auditEntry
+        }
+    }
+
     $commitment = Get-OperatorChatCommitmentForPreview -PreviewId $resolvedPreviewId
 
     [void](Mark-OperatorChatActionPreviewConsumed -PreviewId $resolvedPreviewId)
@@ -4303,6 +4416,7 @@ function Invoke-OperatorChatActionRequest {
             action_label = [string]$policy.label
             reasoning_bundle = if ($reasoningBundle) { $reasoningBundle } else { (Get-OperatorChatReasoningPayload -Limit 1 -BundleId $reasoningBundleId).entries[0] }
             summary = [string]$execution.summary
+            execution_readiness = $executionReadinessGate.trace
             evidence = @($executionEvidence)
             flags = @($executionFlags | Select-Object -Unique)
             limitations = @($operatorResponse.response.limitations)
@@ -5059,8 +5173,8 @@ function Invoke-OperatorChatQuery {
     )
 
     $resolvedObjectiveId = if (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) { [string]$ObjectiveId } else { Get-OperatorChatObjectiveIdFromQuery -Query $Query }
-    $projectStatus = Get-ProjectStatusPayload -ObjectiveId $resolvedObjectiveId -ValidationHarness $ValidationHarness
     $resolvedIntent = Resolve-OperatorChatIntent -Query $Query -Intent $Intent
+    $projectStatus = Get-ProjectStatusPayload -ObjectiveId $resolvedObjectiveId -ValidationHarness $ValidationHarness
     $marker = if ($projectStatus) { $projectStatus.marker } else { $null }
     $progress = if ($projectStatus) { $projectStatus.progress } else { $null }
     $listener = if ($projectStatus) { $projectStatus.listener_activity } else { $null }
@@ -5498,7 +5612,7 @@ function Invoke-OperatorChatQuery {
         }
     }
 
-    Register-OperatorChatQueryCacheEntry -Query $Query -Intent $resolvedIntent -ObjectiveId ([string]$result.objective_id) -WindowMinutes $WindowMinutes -ValidationHarness $resolvedValidationHarness -Result $result
+    Register-OperatorChatQueryCacheEntry -Query $Query -Intent $resolvedIntent -ObjectiveId $resolvedObjectiveId -WindowMinutes $WindowMinutes -ValidationHarness $resolvedValidationHarness -Result $result
     return $result
 }
 
@@ -7844,6 +7958,21 @@ try {
                 if ($payload.PSObject.Properties["configPath"] -and -not [string]::IsNullOrWhiteSpace([string]$payload.configPath)) {
                     $invokeParams.ConfigPath = [string]$payload.configPath
                 }
+                if ($payload.PSObject.Properties["taskId"] -and -not [string]::IsNullOrWhiteSpace([string]$payload.taskId)) {
+                    $invokeParams.TaskId = [string]$payload.taskId
+                }
+                if ($payload.PSObject.Properties["statePath"] -and -not [string]::IsNullOrWhiteSpace([string]$payload.statePath)) {
+                    $invokeParams.StatePath = [string]$payload.statePath
+                }
+                if ($payload.PSObject.Properties["objectiveId"] -and -not [string]::IsNullOrWhiteSpace([string]$payload.objectiveId)) {
+                    $invokeParams.ObjectiveId = [string]$payload.objectiveId
+                }
+                if ($payload.PSObject.Properties["applyPlan"] -and [bool]$payload.applyPlan) {
+                    $invokeParams.ApplyPlan = $true
+                }
+                if ($payload.PSObject.Properties["allowContractDrift"] -and [bool]$payload.allowContractDrift) {
+                    $invokeParams.AllowContractDrift = $true
+                }
 
                 $lightweightActions = @(
                     "get-state-bus",
@@ -7866,9 +7995,63 @@ try {
                     continue
                 }
 
+                $applyPlanRequested = ($invokeParams.ContainsKey('ApplyPlan') -and [bool]$invokeParams.ApplyPlan)
+                $gateConfigPath = if ($invokeParams.ContainsKey('ConfigPath')) { [string]$invokeParams.ConfigPath } else { '' }
+                $executionReadinessGate = Get-OperatorChatExecutionReadinessGate -ActionName $action -ConfigPath $gateConfigPath -ApplyPlan:$applyPlanRequested
+
+                if ([bool]$executionReadinessGate.blocked) {
+                    $blockedPayload = [pscustomobject]@{
+                        task_id = if ($invokeParams.ContainsKey('TaskId')) { [string]$invokeParams.TaskId } else { '' }
+                        decision = 'blocked'
+                        blocked = $true
+                        execution_readiness = $executionReadinessGate.trace
+                        execution_trace = [pscustomobject]@{
+                            action = $action
+                            execution_readiness = $executionReadinessGate.trace
+                        }
+                        message = "$action blocked by execution-readiness policy before child invocation."
+                    }
+                    $result = [pscustomobject]@{
+                        ok = $true
+                        result = $blockedPayload
+                    }
+                    Write-JsonResponse -Response $response -StatusCode 200 -Json ($result | ConvertTo-Json -Depth 22)
+                    continue
+                }
+
+                if ([bool]$executionReadinessGate.degraded -and [string]::Equals($action, 'engineer-run', [System.StringComparison]::OrdinalIgnoreCase) -and $applyPlanRequested -and -not [bool]$executionReadinessGate.effective_apply_plan) {
+                    $degradedPayload = [pscustomobject]@{
+                        execution_readiness = $executionReadinessGate.signal.readiness
+                        execution_readiness_degraded = $true
+                        apply_plan_effective = $false
+                        execution_trace = [pscustomobject]@{
+                            action = $action
+                            execution_readiness = $executionReadinessGate.trace
+                        }
+                        phases = [pscustomobject]@{
+                            implement = [pscustomobject]@{
+                                status = 'planned_only'
+                                apply_requested = $false
+                            }
+                        }
+                    }
+                    $result = [pscustomobject]@{
+                        ok = $true
+                        result = $degradedPayload
+                    }
+                    Write-JsonResponse -Response $response -StatusCode 200 -Json ($result | ConvertTo-Json -Depth 22)
+                    continue
+                }
+
                 # Run TOD action as child process to isolate OOM and other fatal errors
                 $invokeArgList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $todScript)
                 foreach ($k in $invokeParams.Keys) {
+                    if ($invokeParams[$k] -is [bool]) {
+                        if ([bool]$invokeParams[$k]) {
+                            $invokeArgList += "-$k"
+                        }
+                        continue
+                    }
                     $invokeArgList += "-$k"
                     $invokeArgList += [string]$invokeParams[$k]
                 }
@@ -7952,6 +8135,7 @@ try {
                 $suggestedReason = if ($payload.PSObject.Properties['suggested_reason']) { [string]$payload.suggested_reason } else { '' }
                 $mode = if ($payload.PSObject.Properties['mode']) { [string]$payload.mode } else { '' }
                 $previewId = if ($payload.PSObject.Properties['preview_id']) { [string]$payload.preview_id } else { '' }
+                $configPathOverride = if ($payload.PSObject.Properties['configPath']) { [string]$payload.configPath } else { '' }
                 $validationHarness = if ($payload.PSObject.Properties['validation_harness']) { [string]$payload.validation_harness } else { '' }
                 $remoteEndpoint = if ($request.RemoteEndPoint) { [string]$request.RemoteEndPoint } else { '' }
 
@@ -7959,7 +8143,7 @@ try {
                     throw 'action is required'
                 }
 
-                $result = Invoke-OperatorChatActionRequest -Phase $phase -Action $action -Intent $intent -ObjectiveId $objectiveId -Query $query -WindowMinutes $windowMinutes -OperatorId $operatorId -SuggestedReason $suggestedReason -Mode $mode -PreviewId $previewId -RemoteEndpoint $remoteEndpoint -ValidationHarness $validationHarness
+                $result = Invoke-OperatorChatActionRequest -Phase $phase -Action $action -Intent $intent -ObjectiveId $objectiveId -Query $query -WindowMinutes $windowMinutes -OperatorId $operatorId -SuggestedReason $suggestedReason -Mode $mode -PreviewId $previewId -ConfigPath $configPathOverride -RemoteEndpoint $remoteEndpoint -ValidationHarness $validationHarness
                 Write-JsonResponse -Response $response -StatusCode 200 -Json ($result | ConvertTo-Json -Depth 20)
             }
             catch {

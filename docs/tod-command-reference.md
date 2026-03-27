@@ -42,6 +42,7 @@ Quick command cheatsheet for operating TOD and the TOD Command Console.
 .\scripts\TOD.ps1 -Action show-routing-feedback
 .\scripts\TOD.ps1 -Action show-failure-taxonomy
 .\scripts\TOD.ps1 -Action get-capabilities
+.\scripts\TOD.ps1 -Action get-execution-readiness
 .\scripts\TOD.ps1 -Action get-research -Top 10
 .\scripts\TOD.ps1 -Action get-resourcing -ObjectiveId <ID> -Top 10
 .\scripts\TOD.ps1 -Action engineer-run -Top 10
@@ -55,6 +56,28 @@ Quick command cheatsheet for operating TOD and the TOD Command Console.
 .\scripts\TOD.ps1 -Action get-version
 ```
 
+Execution-readiness policy notes:
+
+- `get-execution-readiness` returns the normalized TOD sweep certification signal from `shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json`.
+- operational certification on this host comes from `scripts/Test-TODOperatorChatSweepArtifact.ps1` writing `shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json`.
+- extended validation comes from the slower full operator-chat sweep and is not the primary host certification gate.
+- wrapper launch surfaces must evaluate readiness before child execution and must use a supplied request `configPath` instead of silently reverting to the host default config.
+- direct `/api/operator-chat` must not use generic response caching because commitment and sweep state changes have to remain visible immediately.
+- the sweep `-ArtifactOnly` ineffective branch must remain live-derived and self-contained.
+- `run-task` can be blocked when the readiness artifact is stale or invalid.
+- `engineer-run -ApplyPlan` can be degraded to advisory-only mode when readiness policy is not satisfied.
+- readiness states are standardized as `valid`, `degraded`, `stale`, `invalid`, and `unknown`.
+- `POST /api/run` with `action = get-execution-readiness` returns the current readiness payload plus recent transition history.
+
+Operator-chat cache rule:
+
+- safe to cache: helper query resolution, harness-isolated query caches, preview reuse when the shared preview state is intentional.
+- unsafe to cache: generic direct `/api/operator-chat` responses, commitment-history-sensitive recommendation paths, sweep-sensitive stateful chat branches.
+
+Readiness history notes:
+
+- `shared_state/tod_execution_readiness_history.latest.json` records prior/new status, reason, timestamp, artifact path, and host/session metadata for each transition.
+
 ## TOD Command Console (UI)
 
 ```powershell
@@ -62,6 +85,7 @@ Quick command cheatsheet for operating TOD and the TOD Command Console.
 ```
 
 Notes:
+
 - If the requested port is busy, TOD auto-falls forward to the next available port.
 - Open the printed URL in browser.
 
