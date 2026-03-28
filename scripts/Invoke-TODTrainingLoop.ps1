@@ -19,6 +19,7 @@ $smokeScript = Join-Path $PSScriptRoot "Invoke-TODSmoke.ps1"
 $projectLibraryScript = Join-Path $PSScriptRoot "Update-TODProjectLibrary.ps1"
 $lightweightStateBusScript = Join-Path $PSScriptRoot "Get-TODLightweightStateBus.ps1"
 $reliabilityRecoveryDrillScript = Join-Path $PSScriptRoot "Invoke-TODReliabilityRecoveryDrill.ps1"
+$runtimeSafeSubsetScript = Join-Path $PSScriptRoot "Invoke-TODRuntimeSafeValidationSubset.ps1"
 $statePath = Join-Path $repoRoot "tod/data/state.json"
 $maxStateReadBytes = 256MB
 
@@ -39,6 +40,9 @@ if (-not (Test-Path -Path $lightweightStateBusScript)) {
 }
 if (-not (Test-Path -Path $reliabilityRecoveryDrillScript)) {
     throw "Missing reliability recovery drill script: $reliabilityRecoveryDrillScript"
+}
+if (-not (Test-Path -Path $runtimeSafeSubsetScript)) {
+    throw "Missing runtime-safe subset script: $runtimeSafeSubsetScript"
 }
 
 $effectiveConfigPath = if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
@@ -62,6 +66,21 @@ else {
 if (-not (Test-Path -Path $effectiveOutputDir)) {
     New-Item -ItemType Directory -Path $effectiveOutputDir -Force | Out-Null
 }
+
+$trainingTracePath = Join-Path $effectiveOutputDir 'training-trace.log'
+
+function Write-TrainingTrace {
+    param([Parameter(Mandatory = $true)][string]$Message)
+
+    try {
+        $timestamp = (Get-Date).ToUniversalTime().ToString('o')
+        Add-Content -Path $trainingTracePath -Value ("[{0}] {1}" -f $timestamp, $Message)
+    }
+    catch {
+    }
+}
+
+Write-TrainingTrace -Message 'training-loop-started'
 
 function Invoke-TodJsonAction {
     param(
@@ -139,17 +158,108 @@ function Get-LightweightStateBus {
     return ($raw | ConvertFrom-Json)
 }
 
+function Read-JsonFileIfExists {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -Path $Path)) {
+        return $null
+    }
+
+    try {
+        return (Get-Content -Path $Path -Raw | ConvertFrom-Json)
+    }
+    catch {
+        return $null
+    }
+}
+
+function Invoke-ChildPowerShellJsonScript {
+    param(
+        [Parameter(Mandatory = $true)][string]$ScriptPath,
+        [hashtable]$Arguments = @{}
+    )
+
+    $powershellExe = Join-Path $PSHOME 'powershell.exe'
+    if (-not (Test-Path -Path $powershellExe)) {
+        $powershellExe = 'powershell.exe'
+    }
+
+    $invocationArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath)
+    foreach ($entry in $Arguments.GetEnumerator() | Sort-Object Key) {
+        $name = [string]$entry.Key
+        $value = $entry.Value
+
+        if ($value -is [System.Management.Automation.SwitchParameter]) {
+            if ([bool]$value.IsPresent) {
+                $invocationArgs += ('-' + $name)
+            }
+            continue
+        }
+
+        if ($value -is [bool]) {
+            if ([bool]$value) {
+                $invocationArgs += ('-' + $name)
+            }
+            continue
+        }
+
+        if ($null -eq $value) {
+            continue
+        }
+
+        $invocationArgs += ('-' + $name)
+        $invocationArgs += [string]$value
+    }
+
+    $stdoutPath = Join-Path $env:TEMP ("tod-child-" + [guid]::NewGuid().ToString('N') + ".stdout.log")
+    $stderrPath = Join-Path $env:TEMP ("tod-child-" + [guid]::NewGuid().ToString('N') + ".stderr.log")
+
+    try {
+        $process = Start-Process -FilePath $powershellExe -ArgumentList $invocationArgs -PassThru -Wait -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+        $stdout = if (Test-Path -Path $stdoutPath) { [string](Get-Content -Path $stdoutPath -Raw) } else { '' }
+        $stderr = if (Test-Path -Path $stderrPath) { [string](Get-Content -Path $stderrPath -Raw) } else { '' }
+        if ($process.ExitCode -ne 0) {
+            $detail = if (-not [string]::IsNullOrWhiteSpace($stderr)) { $stderr.Trim() } elseif (-not [string]::IsNullOrWhiteSpace($stdout)) { $stdout.Trim() } else { 'no child output captured' }
+            throw "Child script failed with exit code $($process.ExitCode): $ScriptPath :: $detail"
+        }
+
+        return $stdout
+    }
+    finally {
+        foreach ($tempPath in @($stdoutPath, $stderrPath)) {
+            if (Test-Path -Path $tempPath) {
+                Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
 $testSummary = $null
 $smokeSummary = $null
 $projectLibrary = $null
 $reliabilityRecovery = $null
+$runtimeSafeSubset = $null
 $errors = @()
 $warnings = @()
+$stateFileWritable = $true
+$preferBoundedRuntimeSubset = $false
+
+try {
+    $preferBoundedRuntimeSubset = (Test-ShouldUseLightweightStateBus)
+}
+catch {
+    $preferBoundedRuntimeSubset = $false
+}
 
 if (-not $SkipTests) {
     try {
         $statePath = Join-Path $repoRoot "tod/data/state.json"
-        if (-not (Test-StateFileWritable -Path $statePath)) {
+        $stateFileWritable = (Test-StateFileWritable -Path $statePath)
+        if ($preferBoundedRuntimeSubset) {
+            $warnings += "tests: skipped because lightweight-state-bus mode prefers bounded under-lock runtime-safe validation"
+            $SkipTests = $true
+        }
+        elseif (-not $stateFileWritable) {
             $warnings += "tests: skipped because tod/data/state.json is locked during active runtime"
             $SkipTests = $true
         }
@@ -159,46 +269,119 @@ if (-not $SkipTests) {
     }
 }
 
+if (-not $SkipSmoke -and ($preferBoundedRuntimeSubset -or -not $stateFileWritable)) {
+    $warnings += "smoke: skipped because bounded under-lock runtime-safe subset is preferred during lightweight-state-bus or locked-state execution"
+    $SkipSmoke = $true
+}
+
 if (-not $SkipTests) {
     try {
+        Write-TrainingTrace -Message 'tests-start'
         $testsOut = Join-Path $effectiveOutputDir "test-summary.json"
-        $testsRaw = & $testsScript -Path "tests/*.Tests.ps1" -JsonOutputPath $testsOut
+        $testsRaw = Invoke-ChildPowerShellJsonScript -ScriptPath $testsScript -Arguments @{
+            Path = 'tests/*.Tests.ps1'
+            JsonOutputPath = $testsOut
+        }
         $testSummary = $testsRaw | ConvertFrom-Json
+        Write-TrainingTrace -Message 'tests-complete'
     }
     catch {
+        Write-TrainingTrace -Message ("tests-error: {0}" -f $_.Exception.Message)
         $errors += "tests: $($_.Exception.Message)"
     }
 }
 
 if (-not $SkipSmoke) {
     try {
-        $smokeRaw = & $smokeScript -Top $Top
+        Write-TrainingTrace -Message 'smoke-start'
+        $smokeRaw = Invoke-ChildPowerShellJsonScript -ScriptPath $smokeScript -Arguments @{ Top = $Top }
         $smokeSummary = $smokeRaw | ConvertFrom-Json
         $smokeOut = Join-Path $effectiveOutputDir "smoke-summary.json"
         $smokeSummary | ConvertTo-Json -Depth 12 | Set-Content -Path $smokeOut
+        Write-TrainingTrace -Message 'smoke-complete'
     }
     catch {
+        Write-TrainingTrace -Message ("smoke-error: {0}" -f $_.Exception.Message)
         $errors += "smoke: $($_.Exception.Message)"
     }
 }
 
-try {
-    $recoveryRaw = & $reliabilityRecoveryDrillScript -ConfigPath $effectiveConfigPath -OutputDir $effectiveOutputDir -StatePath $statePath -Port 8844 -EmitJson
-    $reliabilityRecovery = $recoveryRaw | ConvertFrom-Json
-    if ($SkipTests -and $reliabilityRecovery.PSObject.Properties['summary'] -and [bool]$reliabilityRecovery.summary.runtime_safe_validation) {
-        $warnings += "reliability-drill: executed runtime-safe readiness recovery validation while full tests were skipped"
+if ($preferBoundedRuntimeSubset) {
+    Write-TrainingTrace -Message 'reliability-recovery-deferred-to-subset'
+}
+else {
+    try {
+        Write-TrainingTrace -Message 'reliability-recovery-start'
+        $recoveryRaw = Invoke-ChildPowerShellJsonScript -ScriptPath $reliabilityRecoveryDrillScript -Arguments @{
+            ConfigPath = $effectiveConfigPath
+            OutputDir = $effectiveOutputDir
+            StatePath = $statePath
+            Port = 8844
+            EmitJson = $true
+        }
+        $reliabilityRecovery = Read-JsonFileIfExists -Path (Join-Path $effectiveOutputDir 'readiness-recovery.latest.json')
+        if ($null -eq $reliabilityRecovery -and -not [string]::IsNullOrWhiteSpace($recoveryRaw)) {
+            $reliabilityRecovery = $recoveryRaw | ConvertFrom-Json
+        }
+        if ($null -eq $reliabilityRecovery) {
+            throw 'Reliability recovery artifact was not produced.'
+        }
+        if ($SkipTests -and $reliabilityRecovery.PSObject.Properties['summary'] -and [bool]$reliabilityRecovery.summary.runtime_safe_validation) {
+            $warnings += "reliability-drill: executed runtime-safe readiness recovery validation while full tests were skipped"
+        }
+        Write-TrainingTrace -Message 'reliability-recovery-complete'
+    }
+    catch {
+        Write-TrainingTrace -Message ("reliability-recovery-error: {0}" -f $_.Exception.Message)
+        $errors += "reliability-recovery: $($_.Exception.Message)"
     }
 }
+
+try {
+    Write-TrainingTrace -Message 'runtime-safe-subset-start'
+    $runtimeSafeSubsetArgs = @{
+        ConfigPath = $effectiveConfigPath
+        OutputDir = $effectiveOutputDir
+        StatePath = $statePath
+        Port = 8844
+        EmitJson = $true
+    }
+    if ($null -ne $reliabilityRecovery) {
+        $runtimeSafeSubsetArgs['RecoveryArtifactPath'] = (Join-Path $effectiveOutputDir 'readiness-recovery.latest.json')
+    }
+    $runtimeSafeSubsetRaw = Invoke-ChildPowerShellJsonScript -ScriptPath $runtimeSafeSubsetScript -Arguments $runtimeSafeSubsetArgs
+    $runtimeSafeSubset = Read-JsonFileIfExists -Path (Join-Path $effectiveOutputDir 'runtime-safe-validation-subset.latest.json')
+    if ($null -eq $runtimeSafeSubset -and -not [string]::IsNullOrWhiteSpace($runtimeSafeSubsetRaw)) {
+        $runtimeSafeSubset = $runtimeSafeSubsetRaw | ConvertFrom-Json
+    }
+    if ($null -eq $runtimeSafeSubset) {
+        throw 'Runtime-safe validation subset artifact was not produced.'
+    }
+    if ($null -eq $reliabilityRecovery -and $runtimeSafeSubset.PSObject.Properties['artifacts'] -and $runtimeSafeSubset.artifacts.PSObject.Properties['readiness_recovery']) {
+        $reliabilityRecovery = Read-JsonFileIfExists -Path ([string]$runtimeSafeSubset.artifacts.readiness_recovery)
+    }
+    if ($null -ne $reliabilityRecovery -and $SkipTests -and $reliabilityRecovery.PSObject.Properties['summary'] -and [bool]$reliabilityRecovery.summary.runtime_safe_validation) {
+        $warnings += "reliability-drill: executed runtime-safe readiness recovery validation while full tests were skipped"
+    }
+    if ($SkipTests -and $runtimeSafeSubset.PSObject.Properties['summary'] -and [bool]$runtimeSafeSubset.summary.runtime_safe_validation) {
+        $warnings += "runtime-safe-subset: executed bounded under-lock validation while full tests were skipped"
+    }
+    Write-TrainingTrace -Message 'runtime-safe-subset-complete'
+}
 catch {
-    $errors += "reliability-recovery: $($_.Exception.Message)"
+    Write-TrainingTrace -Message ("runtime-safe-subset-error: {0}" -f $_.Exception.Message)
+    $errors += "runtime-safe-subset: $($_.Exception.Message)"
 }
 
 if (-not $SkipProjectDiscovery) {
     try {
-        $projectLibraryRaw = & $projectLibraryScript -RootPath $LibraryRoot -RegistryPath "tod/config/project-registry.json" -OutputPath "tod/data/project-library-index.json"
+        Write-TrainingTrace -Message 'project-discovery-start'
+        $projectLibraryRaw = & $projectLibraryScript -RootPath $LibraryRoot -RegistryPath 'tod/config/project-registry.json' -OutputPath 'tod/data/project-library-index.json'
         $projectLibrary = $projectLibraryRaw | ConvertFrom-Json
+        Write-TrainingTrace -Message 'project-discovery-complete'
     }
     catch {
+        Write-TrainingTrace -Message ("project-discovery-error: {0}" -f $_.Exception.Message)
         $errors += "project-discovery: $($_.Exception.Message)"
     }
 }
@@ -330,7 +513,12 @@ if ($stateBus -and $stateBus.PSObject.Properties["system_posture"]) { $workflowS
 if ($history -and $history.PSObject.Properties["paging"]) { $workflowScore += 1 }
 
 $runtimeScore = 0
-if ($smokeSummary -and $smokeSummary.PSObject.Properties["passed_all"] -and [bool]$smokeSummary.passed_all) { $runtimeScore += 3 }
+if ($smokeSummary -and $smokeSummary.PSObject.Properties["passed_all"] -and [bool]$smokeSummary.passed_all) {
+    $runtimeScore += 3
+}
+elseif ($runtimeSafeSubset -and $runtimeSafeSubset.PSObject.Properties['summary'] -and [bool]$runtimeSafeSubset.summary.passed_all) {
+    $runtimeScore += 3
+}
 if ($testSummary -and $testSummary.PSObject.Properties["passed_all"] -and [bool]$testSummary.passed_all) { $runtimeScore += 2 }
 if ($reliabilityRecovery -and $reliabilityRecovery.PSObject.Properties['summary'] -and [bool]$reliabilityRecovery.summary.recovered) { $runtimeScore += 1 }
 
@@ -389,6 +577,7 @@ $report = [pscustomobject]@{
         tests = if ($null -ne $testSummary) { $testSummary } else { [pscustomobject]@{ skipped = [bool]$SkipTests } }
         smoke = if ($null -ne $smokeSummary) { $smokeSummary } else { [pscustomobject]@{ skipped = [bool]$SkipSmoke } }
         reliability_recovery = if ($null -ne $reliabilityRecovery) { $reliabilityRecovery.summary } else { [pscustomobject]@{ skipped = $false; ok = $false } }
+        runtime_safe_subset = if ($null -ne $runtimeSafeSubset) { $runtimeSafeSubset.summary } else { [pscustomobject]@{ skipped = $false; ok = $false } }
         project_discovery = if ($null -ne $projectLibrary) { [pscustomobject]@{ skipped = $false; projects = @($projectLibrary.projects).Count; unregistered = @($projectLibrary.unregistered_top_level_directories).Count } } else { [pscustomobject]@{ skipped = [bool]$SkipProjectDiscovery } }
         warnings = @($warnings)
         errors = @($errors)
@@ -404,6 +593,7 @@ $report = [pscustomobject]@{
         reliability = $reliability
         reliability_dashboard = $dashboard
         reliability_recovery = $reliabilityRecovery
+        runtime_safe_subset = $runtimeSafeSubset
         failure_taxonomy = $taxonomy
         scorecard_history = $history
         project_library = $projectLibrary
@@ -414,6 +604,7 @@ $report = [pscustomobject]@{
 
 $jsonPath = Join-Path $effectiveOutputDir "training-report.json"
 $mdPath = Join-Path $effectiveOutputDir "training-report.md"
+Write-TrainingTrace -Message 'report-write-start'
 $report | ConvertTo-Json -Depth 30 | Set-Content -Path $jsonPath
 
 $md = @()
@@ -449,6 +640,11 @@ if ($null -ne $reliabilityRecovery) {
 } else {
     $md += "- Reliability recovery drill: unavailable"
 }
+if ($null -ne $runtimeSafeSubset) {
+    $md += "- Runtime-safe validation subset: passed=$([bool]$runtimeSafeSubset.summary.passed_all) recovery_ok=$([bool]$runtimeSafeSubset.summary.recovery_ok) sweep_ok=$([bool]$runtimeSafeSubset.summary.sweep_artifact_ok)"
+} else {
+    $md += "- Runtime-safe validation subset: unavailable"
+}
 if ($null -ne $projectLibrary) {
     $md += "- Project discovery: projects=$(@($projectLibrary.projects).Count) unregistered_top_level=$(@($projectLibrary.unregistered_top_level_directories).Count)"
 } else {
@@ -473,6 +669,7 @@ foreach ($drill in $nextDrills) {
 }
 
 $md -join [Environment]::NewLine | Set-Content -Path $mdPath
+Write-TrainingTrace -Message 'report-write-complete'
 
 $result = [pscustomobject]@{
     ok = (@($errors).Count -eq 0)
@@ -488,6 +685,7 @@ $result = [pscustomobject]@{
 }
 
 $result | ConvertTo-Json -Depth 10 | Write-Output
+Write-TrainingTrace -Message 'training-loop-complete'
 
 if ($FailOnError -and @($errors).Count -gt 0) {
     throw "Training loop completed with errors."

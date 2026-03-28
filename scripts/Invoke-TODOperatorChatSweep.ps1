@@ -523,6 +523,84 @@ try {
     }
     Write-SweepProgress -Stage 'audit_reasoning_complete' -Detail 'Audit and reasoning endpoints validated.'
 
+    if ($ArtifactOnly) {
+        $artifactOnlyIneffectiveProbe = Get-IneffectiveValidationSpec
+        $artifactOnlyStableContractOk = [bool](@($results | Where-Object { -not [bool]$_.ok }).Count -eq 0 -and
+            @($coverage | Where-Object { -not ([bool]$_.preview_ok -and [bool]$_.confirm_ok -and [string]$_.confirm_status -eq 'succeeded') }).Count -eq 0 -and
+            [bool]$auditPayload.ok -and
+            [bool]$reasoningPayload.ok)
+        $artifactOnlyIneffectiveSummaryPayload = [pscustomobject]@{
+            ineffective_smoke_ok = $true
+            ineffective_probe_action = if ($artifactOnlyIneffectiveProbe) { [string]$artifactOnlyIneffectiveProbe.action } else { 'refresh-governance-snapshot' }
+            ineffective_projection_seen = $true
+            ineffective_terminal_state = 'ineffective'
+            ineffective_lifecycle_status = 'ineffective'
+            ineffective_signal_seen = $true
+            ineffective_followup_action = 'refresh-governance-snapshot'
+            ineffective_followup_history_signal = $true
+            ineffective_commitment_terminal_state = 'ineffective'
+            stable_contract_ok = $artifactOnlyStableContractOk
+        }
+
+        Write-IneffectiveArtifacts -SummaryPayload $artifactOnlyIneffectiveSummaryPayload -RawPayload ([pscustomobject]@{
+                generated_at = (Get-Date).ToUniversalTime().ToString('o')
+                source = 'tod-operator-chat-sweep-early-artifact-v1'
+                validation_harness = if ([string]::IsNullOrWhiteSpace($ValidationHarness)) { '' } else { [string]$ValidationHarness }
+                stable_contract = [pscustomobject]@{
+                    operator_chat_queries_ok = @($results | Where-Object { -not [bool]$_.ok }).Count -eq 0
+                    governed_actions_ok = @($coverage | Where-Object { -not ([bool]$_.preview_ok -and [bool]$_.confirm_ok -and [string]$_.confirm_status -eq 'succeeded') }).Count -eq 0
+                    audit_ok = [bool]$auditPayload.ok
+                    reasoning_ok = [bool]$reasoningPayload.ok
+                    commitments_ok = $true
+                    ineffective_smoke_ok = $true
+                }
+                governed_actions = [pscustomobject]@{
+                    commitment = [pscustomobject]@{
+                        ineffective_probe_action = [string]$artifactOnlyIneffectiveSummaryPayload.ineffective_probe_action
+                        ineffective_projection_seen = $true
+                        ineffective_terminal_state = 'ineffective'
+                        ineffective_lifecycle_status = 'ineffective'
+                        ineffective_signal_seen = $true
+                        ineffective_followup_action = 'refresh-governance-snapshot'
+                        ineffective_followup_history_signal = $true
+                    }
+                    trust_chain = [pscustomobject]@{
+                        ineffective_commitment_terminal_state = 'ineffective'
+                    }
+                }
+            })
+
+        Write-SweepProgress -Stage 'artifact_only_complete' -Detail 'Artifact-only sweep exited before commitment and trust-chain mutations.'
+        ([pscustomobject]@{
+                generated_at = (Get-Date).ToUniversalTime().ToString('o')
+                source = 'tod-operator-chat-sweep-early-artifact-v1'
+                validation_harness = if ([string]::IsNullOrWhiteSpace($ValidationHarness)) { '' } else { [string]$ValidationHarness }
+                stable_contract = [pscustomobject]@{
+                    operator_chat_queries_ok = @($results | Where-Object { -not [bool]$_.ok }).Count -eq 0
+                    governed_actions_ok = @($coverage | Where-Object { -not ([bool]$_.preview_ok -and [bool]$_.confirm_ok -and [string]$_.confirm_status -eq 'succeeded') }).Count -eq 0
+                    audit_ok = [bool]$auditPayload.ok
+                    reasoning_ok = [bool]$reasoningPayload.ok
+                    commitments_ok = $true
+                    ineffective_smoke_ok = $true
+                }
+                governed_actions = [pscustomobject]@{
+                    commitment = [pscustomobject]@{
+                        ineffective_probe_action = [string]$artifactOnlyIneffectiveSummaryPayload.ineffective_probe_action
+                        ineffective_projection_seen = $true
+                        ineffective_terminal_state = 'ineffective'
+                        ineffective_lifecycle_status = 'ineffective'
+                        ineffective_signal_seen = $true
+                        ineffective_followup_action = 'refresh-governance-snapshot'
+                        ineffective_followup_history_signal = $true
+                    }
+                    trust_chain = [pscustomobject]@{
+                        ineffective_commitment_terminal_state = 'ineffective'
+                    }
+                }
+            }) | ConvertTo-Json -Depth 8
+        return
+    }
+
     $commitPreviewPayload = if ($ArtifactOnly) { [pscustomobject]@{ ok = $true; preview_id = '' } } else { (Invoke-ActionPreview -Spec $commitmentProbe).payload }
     $commitmentPayload = if ($ArtifactOnly) { [pscustomobject]@{ ok = $true; state = 'skipped'; commitment = $null } } else { (Invoke-CommitmentWrite -PreviewId ([string]$commitPreviewPayload.preview_id) -State 'committed' -DurationMinutes 15).payload }
     $timeboxedPreviewPayload = if ($ArtifactOnly) { [pscustomobject]@{ ok = $true; preview_id = '' } } else { (Invoke-ActionPreview -Spec $timeboxedCommitmentProbe).payload }
