@@ -27,6 +27,7 @@ param(
     [string]$DotEnvPath = ".env",
     [string]$ScpCommand = "scp",
     [string]$ContextSyncInboxPath = "tod/inbox/context-sync/updates",
+    [string]$ListenerRequestPath = "tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json",
     [double]$MimStatusStaleAfterHours = 6,
     [string]$ReleaseTagOverride,
     [string]$NextProposedObjective = "TOD-17",
@@ -1047,6 +1048,60 @@ function Get-MimHandshakePacketSnapshot {
     }
 }
 
+function Get-LiveTaskRequestSnapshot {
+    param([string]$PathValue)
+
+    $doc = Get-JsonFileIfExists -PathValue $PathValue
+    if ($null -eq $doc) {
+        return [pscustomobject]@{
+            available = $false
+            source_path = $PathValue
+            generated_at = ""
+            request_id = ""
+            task_id = ""
+            objective_id = ""
+            normalized_objective_id = ""
+            correlation_id = ""
+            promotion_applied = $false
+            promotion_reason = ""
+        }
+    }
+
+    $requestId = if ($doc.PSObject.Properties["request_id"] -and -not [string]::IsNullOrWhiteSpace([string]$doc.request_id)) {
+        [string]$doc.request_id
+    }
+    elseif ($doc.PSObject.Properties["task_id"] -and -not [string]::IsNullOrWhiteSpace([string]$doc.task_id)) {
+        [string]$doc.task_id
+    }
+    else {
+        ""
+    }
+
+    $objectiveId = ""
+    if ($doc.PSObject.Properties["objective_id"] -and -not [string]::IsNullOrWhiteSpace([string]$doc.objective_id)) {
+        $objectiveId = [string]$doc.objective_id
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($requestId)) {
+        $requestMatch = [regex]::Match($requestId, '^objective-(?<objective>\d+)-task-\d+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if ($requestMatch.Success) {
+            $objectiveId = [string]$requestMatch.Groups['objective'].Value
+        }
+    }
+
+    return [pscustomobject]@{
+        available = $true
+        source_path = $PathValue
+        generated_at = if ($doc.PSObject.Properties["generated_at"]) { [string]$doc.generated_at } else { "" }
+        request_id = $requestId
+        task_id = if ($doc.PSObject.Properties["task_id"]) { [string]$doc.task_id } else { "" }
+        objective_id = $objectiveId
+        normalized_objective_id = Normalize-ObjectiveIdText -Value $objectiveId
+        correlation_id = if ($doc.PSObject.Properties["correlation_id"]) { [string]$doc.correlation_id } else { "" }
+        promotion_applied = $false
+        promotion_reason = ""
+    }
+}
+
 function Get-ObjectiveAlignment {
     param(
         [Parameter(Mandatory = $true)][string]$TodObjective,
@@ -1170,6 +1225,9 @@ $sharedDevLogPlanPath = Join-Path $sharedDirAbs "shared_development_log_plan.jso
 $integrationStatusPath = Join-Path $sharedDirAbs "integration_status.json"
 $executionEvidencePath = Join-Path $sharedDirAbs "execution_evidence.json"
 $objectiveRoadmapPath = Join-Path $sharedDirAbs "tod_objective_roadmap.json"
+$executionReadinessSignalPath = Join-Path $sharedDirAbs "tod_operator_chat_sweep_artifact_smoke.latest.json"
+$defaultSharedStateAbs = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "shared_state"))
+$allowAmbientObjectivePromotion = [string]::Equals($sharedDirAbs, $defaultSharedStateAbs, [System.StringComparison]::OrdinalIgnoreCase)
 
 $todScriptAbs = Get-LocalPath -PathValue $TodScriptPath
 $todConfigAbs = Get-LocalPath -PathValue $TodConfigPath
@@ -1219,6 +1277,7 @@ $approvalReduction = Get-JsonFileIfExists -PathValue $ApprovalReductionPath
 $manifest = Get-JsonFileIfExists -PathValue $ManifestPath
 
 $capabilities = Get-TodPayload -TodScript $todScriptAbs -TodConfig $todConfigAbs -ActionName "get-capabilities"
+$executionReadinessPayload = Get-TodPayload -TodScript $todScriptAbs -TodConfig $todConfigAbs -ActionName "get-execution-readiness"
 $engineeringSignal = Get-TodPayload -TodScript $todScriptAbs -TodConfig $todConfigAbs -ActionName "get-engineering-signal"
 $reliabilityPayload = Get-TodPayload -TodScript $todScriptAbs -TodConfig $todConfigAbs -ActionName "get-reliability"
 $reliabilityDashboard = Get-TodPayload -TodScript $todScriptAbs -TodConfig $todConfigAbs -ActionName "show-reliability-dashboard"
@@ -1387,11 +1446,54 @@ if ([string]::IsNullOrWhiteSpace($mimSchemaVersion) -and [bool]$mimHandshake.ava
     $mimSchemaVersion = [string]$mimHandshake.schema_version
 }
 
+$liveTaskRequest = Get-LiveTaskRequestSnapshot -PathValue $ListenerRequestPath
+
 $mimObjectiveForAlignment = [string]$mimStatus.objective_active
 $mimObjectiveSource = "context_export"
 if ([bool]$mimHandshake.available -and -not [string]::IsNullOrWhiteSpace([string]$mimHandshake.objective_active)) {
     $mimObjectiveForAlignment = [string]$mimHandshake.objective_active
     $mimObjectiveSource = "handshake_packet"
+}
+
+$normalizedCurrentObjective = Normalize-ObjectiveIdText -Value $currentObjective
+$normalizedMimObjectiveForAlignment = Normalize-ObjectiveIdText -Value $mimObjectiveForAlignment
+$normalizedHandshakeNextObjective = if ([bool]$mimHandshake.available) { Normalize-ObjectiveIdText -Value ([string]$mimHandshake.current_next_objective) } else { "" }
+$normalizedLiveRequestObjective = if ($liveTaskRequest) { [string]$liveTaskRequest.normalized_objective_id } else { "" }
+
+if ($allowAmbientObjectivePromotion -and -not [string]::IsNullOrWhiteSpace($normalizedLiveRequestObjective) -and $normalizedLiveRequestObjective -ne "none") {
+    $promoteFromLiveRequest = $false
+    $promotionReason = ""
+
+    if (-not [string]::IsNullOrWhiteSpace($normalizedHandshakeNextObjective) -and [string]::Equals($normalizedLiveRequestObjective, $normalizedHandshakeNextObjective, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $promoteFromLiveRequest = $true
+        $promotionReason = "request_matches_handshake_next_objective"
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($normalizedMimObjectiveForAlignment)) {
+        $liveRequestNumber = Get-IdNumber -Value $normalizedLiveRequestObjective
+        $canonicalObjectiveNumber = Get-IdNumber -Value $normalizedMimObjectiveForAlignment
+        if ($liveRequestNumber -ge 0 -and $canonicalObjectiveNumber -ge 0 -and $liveRequestNumber -gt $canonicalObjectiveNumber) {
+            $promoteFromLiveRequest = $true
+            $promotionReason = "request_objective_ahead_of_canonical_export"
+        }
+    }
+
+    if ($promoteFromLiveRequest) {
+        $currentObjective = $normalizedLiveRequestObjective
+        $normalizedCurrentObjective = $normalizedLiveRequestObjective
+        $mimObjectiveForAlignment = $normalizedLiveRequestObjective
+        $normalizedMimObjectiveForAlignment = $normalizedLiveRequestObjective
+        $mimObjectiveSource = "live_task_request"
+        $liveTaskRequest.promotion_applied = $true
+        $liveTaskRequest.promotion_reason = $promotionReason
+    }
+}
+
+if ($allowAmbientObjectivePromotion -and -not [string]::IsNullOrWhiteSpace($normalizedMimObjectiveForAlignment) -and $normalizedMimObjectiveForAlignment -ne "none") {
+    if ([string]::IsNullOrWhiteSpace($normalizedCurrentObjective) -or $normalizedCurrentObjective -eq "none" -or $normalizedCurrentObjective -ne $normalizedMimObjectiveForAlignment) {
+        # Canonical live MIM objective should win over stale local pins/open-objective fallbacks.
+        $currentObjective = $normalizedMimObjectiveForAlignment
+        $normalizedCurrentObjective = $normalizedMimObjectiveForAlignment
+    }
 }
 
 $allCopied = [bool]$mimRefresh.copied_json -and [bool]$mimRefresh.copied_yaml
@@ -1433,6 +1535,7 @@ $integrationStatus = [pscustomobject]@{
     compatibility_reason = $compatibilityReason
     mim_status = $mimStatus
     mim_handshake = $mimHandshake
+    live_task_request = $liveTaskRequest
     mim_refresh = $mimRefresh
     objective_alignment = $objectiveAlignment
 }
@@ -1442,6 +1545,29 @@ $retryTrendRows = if ($reliabilityPayload -and $reliabilityPayload.PSObject.Prop
 $executionEvidence = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString("o")
     source = "tod-execution-evidence-v1"
+    execution_readiness = [pscustomobject]@{
+        signal_name = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["signal_name"]) { [string]$executionReadinessPayload.signal_name } else { "execution-readiness" }
+        capability_name = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["capability_name"]) { [string]$executionReadinessPayload.capability_name } else { "TOD Sweep Certification Capability" }
+        artifact_path = [string]$executionReadinessSignalPath
+        status = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["status"]) { [string]$executionReadinessPayload.readiness.status } else { "unknown" }
+        valid = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["valid"]) { [bool]$executionReadinessPayload.readiness.valid } else { $false }
+        execution_allowed = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["execution_allowed"]) { [bool]$executionReadinessPayload.readiness.execution_allowed } else { $false }
+        authoritative = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["authoritative"]) { [bool]$executionReadinessPayload.readiness.authoritative } else { $true }
+        reason = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["reason"]) { [string]$executionReadinessPayload.readiness.reason } else { "unknown" }
+        detail = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["detail"]) { [string]$executionReadinessPayload.readiness.detail } else { "" }
+        freshness_state = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["freshness_state"]) { [string]$executionReadinessPayload.readiness.freshness_state } else { "unknown" }
+        artifact_generated_at = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["artifact_generated_at"]) { [string]$executionReadinessPayload.readiness.artifact_generated_at } else { "" }
+        artifact_age_minutes = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["artifact_age_minutes"]) { $executionReadinessPayload.readiness.artifact_age_minutes } else { $null }
+        execution_max_artifact_age_minutes = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["execution_max_artifact_age_minutes"]) { [int]$executionReadinessPayload.readiness.execution_max_artifact_age_minutes } else { $null }
+        display_max_artifact_age_minutes = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["display_max_artifact_age_minutes"]) { [int]$executionReadinessPayload.readiness.display_max_artifact_age_minutes } else { $null }
+        authoritative_surface = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["authoritative_surface"]) { [string]$executionReadinessPayload.authoritative_surface } else { "direct_artifact_smoke" }
+        non_authoritative_surfaces = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["non_authoritative_surfaces"]) { @($executionReadinessPayload.non_authoritative_surfaces) } else { @("wrapper_pester_output") }
+        block_actions = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["policy"] -and $executionReadinessPayload.policy.PSObject.Properties["block_actions"]) { @($executionReadinessPayload.policy.block_actions) } else { @() }
+        degrade_actions = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["policy"] -and $executionReadinessPayload.policy.PSObject.Properties["degrade_actions"]) { @($executionReadinessPayload.policy.degrade_actions) } else { @() }
+        block_states = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["policy"] -and $executionReadinessPayload.policy.PSObject.Properties["block_states"]) { @($executionReadinessPayload.policy.block_states) } else { @() }
+        degrade_states = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["policy"] -and $executionReadinessPayload.policy.PSObject.Properties["degrade_states"]) { @($executionReadinessPayload.policy.degrade_states) } else { @() }
+        history = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["history"]) { $executionReadinessPayload.history } else { $null }
+    }
     execution_reliability = [pscustomobject]@{
         current_alert_state = if ($reliabilityPayload -and $reliabilityPayload.PSObject.Properties["current_alert_state"]) { [string]$reliabilityPayload.current_alert_state } else { "unknown" }
         reliability_alert_reasons = if ($reliabilityPayload -and $reliabilityPayload.PSObject.Properties["reliability_alert_reasons"]) { @($reliabilityPayload.reliability_alert_reasons) } else { @() }
@@ -1486,6 +1612,8 @@ $currentBuildState = [pscustomobject]@{
     current_schema_version = $schemaVersion
     current_release_tag = $releaseTag
     current_prod_test_status = $currentProdTestStatus
+    execution_readiness = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"]) { $executionReadinessPayload.readiness } else { [pscustomobject]@{ status = "unknown"; valid = $false } }
+    execution_readiness_history = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["history"]) { $executionReadinessPayload.history } else { $null }
     active_capabilities = @($activeCapabilities)
     known_local_drift = $knownLocalDrift
     last_regression_result = $lastRegressionResult
@@ -1569,6 +1697,20 @@ $contracts = [pscustomobject]@{
         contract_doc = "docs/tod-shared-development-log-contract-v1.md"
         plan_file = "shared_state/shared_development_log_plan.json"
     }
+    capability_registry = @(
+        [pscustomobject]@{
+            name = "TOD Sweep Certification Capability"
+            signal_name = "execution-readiness"
+            source_artifact = "shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json"
+            command = ".\\scripts\\TOD.ps1 -Action get-execution-readiness"
+            authoritative_surface = "direct_artifact_smoke"
+            non_authoritative_surfaces = @("wrapper_pester_output")
+            objective_anchor = "Objective 87"
+            policy_target = "Objective 90"
+            purpose = @("gating task execution", "validating environment stability", "triggering fallback or degrade mode")
+            status = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"] -and $executionReadinessPayload.readiness.PSObject.Properties["status"]) { [string]$executionReadinessPayload.readiness.status } else { "unknown" }
+        }
+    )
     exposed_capabilities = @($activeCapabilities)
     important_endpoints = if ($capabilities -and $capabilities.PSObject.Properties["endpoints"]) { @($capabilities.endpoints) } else { @() }
     shared_models = @("Objective", "Task", "Result", "Review", "JournalEntry", "Manifest")

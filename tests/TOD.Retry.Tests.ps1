@@ -5,6 +5,45 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $todScript = Join-Path $repoRoot "scripts/TOD.ps1"
 $baseConfigPath = Join-Path $repoRoot "tod/config/tod-config.json"
 
+function Set-ValidExecutionReadinessPolicy {
+    param(
+        [Parameter(Mandatory = $true)]$Config,
+        [Parameter(Mandatory = $true)][string]$ArtifactPath,
+        [Parameter(Mandatory = $true)][string]$HistoryPath
+    )
+
+    if (-not $Config.execution_engine.PSObject.Properties["readiness_policy"] -or $null -eq $Config.execution_engine.readiness_policy) {
+        $Config.execution_engine | Add-Member -NotePropertyName readiness_policy -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+
+    $artifact = [pscustomobject]@{
+        source = 'tod-operator-chat-sweep-artifact-smoke-v1'
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        summary = [pscustomobject]@{
+            total = 13
+            passed = 13
+            failed = 0
+            passed_all = $true
+            exit_code = 0
+        }
+    }
+
+    $artifact | ConvertTo-Json -Depth 10 | Set-Content -Path $ArtifactPath
+    $Config.execution_engine.readiness_policy = [pscustomobject]@{
+        enabled = $true
+        signal_path = $ArtifactPath
+        history_path = $HistoryPath
+        history_max_entries = 20
+        max_artifact_age_minutes = 30
+        display_max_artifact_age_minutes = 10
+        block_actions = @('run-task')
+        degrade_actions = @('engineer-run')
+        block_states = @('stale', 'invalid', 'unknown')
+        degrade_states = @('degraded', 'stale', 'invalid', 'unknown')
+        degrade_apply_plan = $true
+    }
+}
+
 function New-RetryTestStatePath {
     $state = [pscustomobject]@{
         source = "tod-state-test-fixture-v1"
@@ -60,7 +99,11 @@ function New-RetryTestConfig {
     $cfg.execution_engine.retry_policy.max_attempts_per_engine = 2
     $cfg.execution_engine.retry_policy.max_attempts_by_category.refactor = $RefactorMaxAttempts
 
-    $tempPath = Join-Path $repoRoot ("tod/config/tod-config.test-retry-{0}.json" -f ([guid]::NewGuid().ToString("N")))
+    $id = [guid]::NewGuid().ToString('N')
+    $tempPath = Join-Path $repoRoot ("tod/config/tod-config.test-retry-{0}.json" -f $id)
+    $artifactPath = Join-Path $repoRoot ("tod/out/tests/retry-readiness-{0}.json" -f $id)
+    $historyPath = Join-Path $repoRoot ("tod/out/tests/retry-readiness-history-{0}.json" -f $id)
+    Set-ValidExecutionReadinessPolicy -Config $cfg -ArtifactPath $artifactPath -HistoryPath $historyPath
     $cfg | ConvertTo-Json -Depth 20 | Set-Content $tempPath
     return $tempPath
 }
