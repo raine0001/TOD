@@ -542,6 +542,7 @@ try {
             stable_contract_ok = $artifactOnlyStableContractOk
         }
 
+        Write-SweepProgress -Stage 'artifact_only_complete' -Detail 'Artifact-only sweep exited before commitment and trust-chain mutations.'
         Write-IneffectiveArtifacts -SummaryPayload $artifactOnlyIneffectiveSummaryPayload -RawPayload ([pscustomobject]@{
                 generated_at = (Get-Date).ToUniversalTime().ToString('o')
                 source = 'tod-operator-chat-sweep-early-artifact-v1'
@@ -570,7 +571,6 @@ try {
                 }
             })
 
-        Write-SweepProgress -Stage 'artifact_only_complete' -Detail 'Artifact-only sweep exited before commitment and trust-chain mutations.'
         ([pscustomobject]@{
                 generated_at = (Get-Date).ToUniversalTime().ToString('o')
                 source = 'tod-operator-chat-sweep-early-artifact-v1'

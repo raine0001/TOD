@@ -33,6 +33,80 @@ Outputs:
 - `tod/out/training/smoke-summary.json` (when smoke checks are enabled)
 - `tod/data/project-library-index.json` (when project discovery is enabled)
 
+## Validation Levels
+
+TOD training currently has three distinct validation levels. Do not treat them as interchangeable.
+
+### Full Validation
+
+Used when the runtime allows full tests and smoke to execute normally.
+
+What it proves:
+
+- full automated test coverage configured for the loop
+- smoke-path runtime viability
+- reliability recovery behavior alongside normal runtime evidence
+
+What it does not prove:
+
+- that the same result is available under state-lock or oversized-state constraints
+
+Authoritative artifacts:
+
+- `training-report.json`
+- `training-report.md`
+- `test-summary.json`
+- `smoke-summary.json`
+- `readiness-recovery.latest.json`
+
+### Bounded-Under-Lock Lightweight Validation
+
+Used when `state.json` is locked, oversized, or the training loop intentionally prefers the bounded runtime-safe subset.
+
+What it proves:
+
+- bounded runtime-safe recovery behavior still completes under lock-sensitive conditions
+- artifact-only operator-chat validation completes without entering heavy mutation flows
+- the training loop can still emit authoritative runtime evidence while full tests or smoke are skipped
+
+What it does not prove:
+
+- full-test-equivalent runtime strength under the current rubric
+- broader runtime coverage outside the bounded subset
+
+Authoritative artifacts:
+
+- `training-report.json`
+- `training-report.md`
+- `readiness-recovery.latest.json`
+- `runtime-safe-sweep-raw.latest.json`
+- `runtime-safe-sweep-ineffective-summary.latest.json`
+- `runtime-safe-sweep-validation.latest.json`
+- `runtime-safe-validation-subset.latest.json`
+
+Reference note:
+
+- `docs/tod-bounded-under-lock-hardening-checkpoint-2026-03-28.md`
+
+### Recovery-Only Validation
+
+Used when only the readiness recovery drill is available or when a narrower runtime-safe check is needed before broader validation resumes.
+
+What it proves:
+
+- readiness policy transitions from blocked or degraded states are enforced and recover correctly
+
+What it does not prove:
+
+- end-to-end operator-chat bounded validation
+- smoke-path runtime behavior
+- full test coverage
+
+Authoritative artifacts:
+
+- `readiness-recovery.latest.json`
+- `training-report.json` when the recovery drill is run from the training loop
+
 ## Project Registry and Discovery
 
 The project registry defines each managed domain, boundaries, risk tier, and default interaction commands.
@@ -87,6 +161,8 @@ The report emits a simple 0-5 snapshot in four dimensions:
 - Runtime interaction
 
 Use this as a gate signal, not a vanity metric.
+
+Under the current rubric, bounded-under-lock lightweight validation can close a runtime blocker and still remain below full-runtime credit. That distinction is deliberate until full and bounded paths have been compared directly.
 
 ## Suggested Operating Cadence
 
