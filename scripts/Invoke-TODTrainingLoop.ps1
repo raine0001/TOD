@@ -18,6 +18,7 @@ $testsScript = Join-Path $PSScriptRoot "Invoke-TODTests.ps1"
 $smokeScript = Join-Path $PSScriptRoot "Invoke-TODSmoke.ps1"
 $projectLibraryScript = Join-Path $PSScriptRoot "Update-TODProjectLibrary.ps1"
 $lightweightStateBusScript = Join-Path $PSScriptRoot "Get-TODLightweightStateBus.ps1"
+$reliabilityRecoveryDrillScript = Join-Path $PSScriptRoot "Invoke-TODReliabilityRecoveryDrill.ps1"
 $statePath = Join-Path $repoRoot "tod/data/state.json"
 $maxStateReadBytes = 256MB
 
@@ -35,6 +36,9 @@ if (-not (Test-Path -Path $projectLibraryScript)) {
 }
 if (-not (Test-Path -Path $lightweightStateBusScript)) {
     throw "Missing lightweight state bus script: $lightweightStateBusScript"
+}
+if (-not (Test-Path -Path $reliabilityRecoveryDrillScript)) {
+    throw "Missing reliability recovery drill script: $reliabilityRecoveryDrillScript"
 }
 
 $effectiveConfigPath = if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
@@ -138,6 +142,7 @@ function Get-LightweightStateBus {
 $testSummary = $null
 $smokeSummary = $null
 $projectLibrary = $null
+$reliabilityRecovery = $null
 $errors = @()
 $warnings = @()
 
@@ -175,6 +180,17 @@ if (-not $SkipSmoke) {
     catch {
         $errors += "smoke: $($_.Exception.Message)"
     }
+}
+
+try {
+    $recoveryRaw = & $reliabilityRecoveryDrillScript -ConfigPath $effectiveConfigPath -OutputDir $effectiveOutputDir -StatePath $statePath -Port 8844 -EmitJson
+    $reliabilityRecovery = $recoveryRaw | ConvertFrom-Json
+    if ($SkipTests -and $reliabilityRecovery.PSObject.Properties['summary'] -and [bool]$reliabilityRecovery.summary.runtime_safe_validation) {
+        $warnings += "reliability-drill: executed runtime-safe readiness recovery validation while full tests were skipped"
+    }
+}
+catch {
+    $errors += "reliability-recovery: $($_.Exception.Message)"
 }
 
 if (-not $SkipProjectDiscovery) {
@@ -316,6 +332,7 @@ if ($history -and $history.PSObject.Properties["paging"]) { $workflowScore += 1 
 $runtimeScore = 0
 if ($smokeSummary -and $smokeSummary.PSObject.Properties["passed_all"] -and [bool]$smokeSummary.passed_all) { $runtimeScore += 3 }
 if ($testSummary -and $testSummary.PSObject.Properties["passed_all"] -and [bool]$testSummary.passed_all) { $runtimeScore += 2 }
+if ($reliabilityRecovery -and $reliabilityRecovery.PSObject.Properties['summary'] -and [bool]$reliabilityRecovery.summary.recovered) { $runtimeScore += 1 }
 
 $competency = [pscustomobject]@{
     governance_and_control = [Math]::Min($governanceScore, 5)
@@ -371,6 +388,7 @@ $report = [pscustomobject]@{
     run = [pscustomobject]@{
         tests = if ($null -ne $testSummary) { $testSummary } else { [pscustomobject]@{ skipped = [bool]$SkipTests } }
         smoke = if ($null -ne $smokeSummary) { $smokeSummary } else { [pscustomobject]@{ skipped = [bool]$SkipSmoke } }
+        reliability_recovery = if ($null -ne $reliabilityRecovery) { $reliabilityRecovery.summary } else { [pscustomobject]@{ skipped = $false; ok = $false } }
         project_discovery = if ($null -ne $projectLibrary) { [pscustomobject]@{ skipped = $false; projects = @($projectLibrary.projects).Count; unregistered = @($projectLibrary.unregistered_top_level_directories).Count } } else { [pscustomobject]@{ skipped = [bool]$SkipProjectDiscovery } }
         warnings = @($warnings)
         errors = @($errors)
@@ -385,6 +403,7 @@ $report = [pscustomobject]@{
         state_bus = $stateBus
         reliability = $reliability
         reliability_dashboard = $dashboard
+        reliability_recovery = $reliabilityRecovery
         failure_taxonomy = $taxonomy
         scorecard_history = $history
         project_library = $projectLibrary
@@ -424,6 +443,11 @@ if ($null -ne $smokeSummary) {
     $md += "- Smoke checks passed: $([bool]$smokeSummary.passed_all)"
 } else {
     $md += "- Smoke checks: skipped"
+}
+if ($null -ne $reliabilityRecovery) {
+    $md += "- Reliability recovery drill: recovered=$([bool]$reliabilityRecovery.summary.recovered) blocked=$([bool]$reliabilityRecovery.summary.blocked_enforced) degraded=$([bool]$reliabilityRecovery.summary.degraded_enforced)"
+} else {
+    $md += "- Reliability recovery drill: unavailable"
 }
 if ($null -ne $projectLibrary) {
     $md += "- Project discovery: projects=$(@($projectLibrary.projects).Count) unregistered_top_level=$(@($projectLibrary.unregistered_top_level_directories).Count)"
