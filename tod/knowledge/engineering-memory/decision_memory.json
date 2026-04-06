@@ -1,0 +1,98 @@
+[
+    {
+        "id":  "MEM-CE4E974E",
+        "title":  "sync-mim ok",
+        "note":  "sync-mim recorded metadata update only (recent_changes/last_updated_at).",
+        "tags":  [
+                     "sync",
+                     "mim",
+                     "manifest",
+                     "ok",
+                     "none"
+                 ],
+        "recommended_actions":  [
+
+                                ],
+        "created_at":  "2026-03-10T01:40:44.9907610Z"
+    },
+    {
+        "id":  "MEM-591778D2",
+        "title":  "sync-mim warn",
+        "note":  "sync-mim decision=warn status=warn actions=trigger-reindex.",
+        "tags":  [
+                     "sync",
+                     "mim",
+                     "manifest",
+                     "warn",
+                     "warn"
+                 ],
+        "recommended_actions":  [
+                                    "trigger-reindex"
+                                ],
+        "created_at":  "2026-03-10T01:41:11.5688317Z"
+    },
+    {
+        "id":  "MEM-8F5C043B",
+        "title":  "sync-mim ok",
+        "note":  "sync-mim recorded metadata update only (recent_changes/last_updated_at).",
+        "tags":  [
+                     "sync",
+                     "mim",
+                     "manifest",
+                     "ok",
+                     "none"
+                 ],
+        "recommended_actions":  [
+
+                                ],
+        "created_at":  "2026-03-10T01:41:51.3716374Z"
+    },
+    {
+        "id":  "MEM-7F0A1569",
+        "title":  "sync-mim ok",
+        "note":  "sync-mim recorded metadata update only (recent_changes/last_updated_at).",
+        "tags":  [
+                     "sync",
+                     "mim",
+                     "manifest",
+                     "ok",
+                     "none"
+                 ],
+        "recommended_actions":  [
+
+                                ],
+        "created_at":  "2026-03-10T01:44:13.9524362Z"
+    },
+    {
+        "id":  "MEM-ADC5F8A2",
+        "title":  "sync-mim warn",
+        "note":  "sync-mim decision=warn status=warn actions=trigger-reindex.",
+        "tags":  [
+                     "sync",
+                     "mim",
+                     "manifest",
+                     "warn",
+                     "warn"
+                 ],
+        "recommended_actions":  [
+                                    "trigger-reindex"
+                                ],
+        "created_at":  "2026-03-10T01:44:48.7977642Z"
+    },
+    {
+        "id":  "MEM-AD5AD69A",
+        "title":  "sync-mim ok",
+        "note":  "sync-mim recorded metadata update only (recent_changes/last_updated_at).",
+        "tags":  [
+                     "sync",
+                     "mim",
+                     "manifest",
+                     "ok",
+                     "none"
+                 ],
+        "recommended_actions":  [
+
+                                ],
+        "created_at":  "2026-03-10T01:45:14.2092319Z"
+    }
+]

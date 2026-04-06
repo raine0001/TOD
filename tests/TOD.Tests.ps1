@@ -55,6 +55,30 @@ function New-ReliabilityTestStatePath {
     return $path
 }
 
+function Get-EngineeringLoopHistoryPath {
+    param([Parameter(Mandatory = $true)][string]$StatePath)
+
+    return [System.IO.Path]::ChangeExtension($StatePath, 'engineering-loop-history.json')
+}
+
+function Get-JournalHistoryPath {
+    param([Parameter(Mandatory = $true)][string]$StatePath)
+
+    return [System.IO.Path]::ChangeExtension($StatePath, 'journal-history.json')
+}
+
+function Get-ReliabilityHistoryPath {
+    param([Parameter(Mandatory = $true)][string]$StatePath)
+
+    return [System.IO.Path]::ChangeExtension($StatePath, 'reliability-history.json')
+}
+
+function Get-ExecutionHistoryPath {
+    param([Parameter(Mandatory = $true)][string]$StatePath)
+
+    return [System.IO.Path]::ChangeExtension($StatePath, 'execution-history.json')
+}
+
 function Initialize-EngineeringLoopState {
     param(
         [Parameter(Mandatory = $true)][object]$State
@@ -596,6 +620,104 @@ Describe "TOD Reliability Dashboards" {
         }
         finally {
             if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+        }
+    }
+
+    It "externalizes engineering loop history from state.json while preserving retrieval" {
+        $testStatePath = New-ReliabilityTestStatePath
+        $historyPath = Get-EngineeringLoopHistoryPath -StatePath $testStatePath
+        try {
+            $null = Invoke-TodActionJson -Action "engineer-run" -ExtraArgs @{ Top = "5"; StatePath = $testStatePath }
+
+            (Test-Path -Path $historyPath) | Should Be $true
+
+            $storedState = (Get-Content -Path $testStatePath -Raw) | ConvertFrom-Json
+            @($storedState.engineering_loop.run_history).Count | Should Be 0
+            @($storedState.engineering_loop.scorecard_history).Count | Should Be 0
+            @($storedState.engineering_loop.cycle_records).Count | Should Be 0
+            @($storedState.engineering_loop.review_actions).Count | Should Be 0
+
+            $bus = Invoke-TodActionJson -Action "get-state-bus" -ExtraArgs @{ Top = "10"; StatePath = $testStatePath }
+            [int]$bus.engineering_loop_state.run_history_count | Should BeGreaterThan 0
+
+            $history = Invoke-TodActionJson -Action "get-engineering-loop-history" -ExtraArgs @{ HistoryKind = "run_history"; Page = "1"; PageSize = "5"; StatePath = $testStatePath }
+            (@($history.items).Count -ge 1) | Should Be $true
+        }
+        finally {
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+            if (Test-Path $historyPath) { Remove-Item $historyPath -Force }
+        }
+    }
+
+    It "externalizes journal history from state.json while preserving recent journal retrieval" {
+        $testStatePath = New-ReliabilityTestStatePath
+        $journalPath = Get-JournalHistoryPath -StatePath $testStatePath
+        try {
+            $null = Invoke-TodActionJson -Action "engineer-run" -ExtraArgs @{ Top = "5"; StatePath = $testStatePath }
+
+            (Test-Path -Path $journalPath) | Should Be $true
+
+            $storedState = (Get-Content -Path $testStatePath -Raw) | ConvertFrom-Json
+            @($storedState.journal).Count | Should Be 0
+
+            $bus = Invoke-TodActionJson -Action "get-state-bus" -ExtraArgs @{ Top = "10"; StatePath = $testStatePath }
+            [int]$bus.world_state.journal_total | Should BeGreaterThan 0
+            (@($bus.execution_state.recent_journal).Count -ge 1) | Should Be $true
+        }
+        finally {
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+            if (Test-Path $journalPath) { Remove-Item $journalPath -Force }
+        }
+    }
+
+    It "externalizes reliability history from state.json while preserving dashboard retrieval" {
+        $testStatePath = New-ReliabilityTestStatePath
+        $historyPath = Get-ReliabilityHistoryPath -StatePath $testStatePath
+        try {
+            $null = Invoke-TodActionJson -Action "engineer-run" -ExtraArgs @{ Top = "5"; StatePath = $testStatePath }
+
+            (Test-Path -Path $historyPath) | Should Be $true
+
+            $storedState = (Get-Content -Path $testStatePath -Raw) | ConvertFrom-Json
+            @($storedState.routing_decisions.records).Count | Should Be 0
+            @($storedState.engine_performance.records).Count | Should Be 0
+
+            $bus = Invoke-TodActionJson -Action "get-state-bus" -ExtraArgs @{ Top = "10"; StatePath = $testStatePath }
+            (@($bus.execution_state.recent_routing).Count -ge 1) | Should Be $true
+
+            $dashboard = Invoke-TodActionJson -Action "show-reliability-dashboard" -ExtraArgs @{ Top = "10"; Category = "refactor"; StatePath = $testStatePath }
+            (@($dashboard.engine_reliability.by_engine).Count -ge 1) | Should Be $true
+            (@($dashboard.recent_routing_decisions).Count -ge 1) | Should Be $true
+        }
+        finally {
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+            if (Test-Path $historyPath) { Remove-Item $historyPath -Force }
+        }
+    }
+
+    It "externalizes execution history from state.json while preserving state-bus retrieval" {
+        $testStatePath = New-ReliabilityTestStatePath
+        $historyPath = Get-ExecutionHistoryPath -StatePath $testStatePath
+        try {
+            $null = Invoke-TodActionJson -Action "add-result" -ExtraArgs @{ TaskId = "45"; Summary = "Implemented fixture change"; FilesChanged = "scripts/TOD.ps1"; TestsRun = "tests/TOD.Tests.ps1"; TestResults = "pass"; StatePath = $testStatePath }
+            $null = Invoke-TodActionJson -Action "review-task" -ExtraArgs @{ TaskId = "45"; Decision = "pass"; Rationale = "Looks correct"; StatePath = $testStatePath }
+
+            (Test-Path -Path $historyPath) | Should Be $true
+
+            $storedState = (Get-Content -Path $testStatePath -Raw) | ConvertFrom-Json
+            @($storedState.execution_results).Count | Should Be 0
+            @($storedState.review_decisions).Count | Should Be 0
+
+            $bus = Invoke-TodActionJson -Action "get-state-bus" -ExtraArgs @{ Top = "10"; StatePath = $testStatePath }
+            [int]$bus.world_state.results_total | Should Be 1
+
+            $report = Invoke-TodActionJson -Action "run-task-report" -ExtraArgs @{ TaskId = "45"; StatePath = $testStatePath }
+            (($report.PSObject.Properties.Name) -contains "review_decision") | Should Be $true
+            [string]$report.review_decision | Should Be "pass"
+        }
+        finally {
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+            if (Test-Path $historyPath) { Remove-Item $historyPath -Force }
         }
     }
 

@@ -38,6 +38,7 @@ param(
         "sandbox-apply-plan",
         "sandbox-write",
         "repair-state",
+        "rewrite-state-history",
         "get-state-bus",
         "get-version",
         "add-result",
@@ -128,6 +129,8 @@ $stateRepoIndexPath = Join-Path $repoRoot "tod/state/repo_index.json"
 $executionReadinessSignalPath = Join-Path $repoRoot "shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json"
 $engineeringMemoryPath = Join-Path $repoRoot "tod/data/engineering-memory.json"
 $stateEngineeringMemoryPath = Join-Path $repoRoot "tod/state/engineering_memory.json"
+$engineeringKnowledgeDir = Join-Path $repoRoot "tod/knowledge/engineering-memory"
+$rewriteStateHistoryScript = Join-Path $PSScriptRoot "Rewrite-TODOperationalState.ps1"
 $projectAccessPolicyScript = Join-Path $PSScriptRoot "Test-TODProjectAccessPolicy.ps1"
 $projectPriorityPath = Join-Path $repoRoot "tod/config/project-priority.json"
 $bridgeRequestPacketPath = Join-Path $repoRoot "tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json"
@@ -697,6 +700,10 @@ function Load-State {
             $raw = Get-Content -Path $statePath -Raw -ErrorAction Stop
             $state = $raw | ConvertFrom-Json
             Normalize-State -State $state
+            Sync-ExecutionHistoryToState -State $state | Out-Null
+            Sync-JournalHistoryToState -State $state | Out-Null
+            Sync-ReliabilityHistoryToState -State $state | Out-Null
+            Sync-EngineeringLoopHistoryToState -State $state | Out-Null
             return $state
         }
         catch {
@@ -735,29 +742,542 @@ function Save-State {
         Compress-StateForOperationalUse -State $State -Config $effectiveConfig | Out-Null
     }
 
+    $historyLoop = if ($State.PSObject.Properties['engineering_loop']) { $State.engineering_loop } else { $null }
+    if ($State.PSObject.Properties['journal']) {
+        $null = Save-JournalHistoryStore -State $State
+    }
+    if ($State.PSObject.Properties['execution_results'] -or $State.PSObject.Properties['review_decisions']) {
+        $null = Save-ExecutionHistoryStore -State $State
+    }
+    if ($State.PSObject.Properties['routing_decisions'] -or $State.PSObject.Properties['engine_performance']) {
+        $null = Save-ReliabilityHistoryStore -State $State
+    }
+    if ($historyLoop) {
+        $null = Save-EngineeringLoopHistoryStore -State $State
+    }
+
+    $savedJournal = if ($State.PSObject.Properties['journal']) { @($State.journal) } else { @() }
+    $savedExecutionResults = if ($State.PSObject.Properties['execution_results']) { @($State.execution_results) } else { @() }
+    $savedReviewDecisions = if ($State.PSObject.Properties['review_decisions']) { @($State.review_decisions) } else { @() }
+    $savedRoutingDecisionRecords = if ($State.PSObject.Properties['routing_decisions'] -and $State.routing_decisions -and $State.routing_decisions.PSObject.Properties['records']) { @($State.routing_decisions.records) } else { @() }
+    $savedEnginePerformanceRecords = if ($State.PSObject.Properties['engine_performance'] -and $State.engine_performance -and $State.engine_performance.PSObject.Properties['records']) { @($State.engine_performance.records) } else { @() }
+    $savedRunHistory = if ($historyLoop -and $historyLoop.PSObject.Properties['run_history']) { @($historyLoop.run_history) } else { @() }
+    $savedScorecardHistory = if ($historyLoop -and $historyLoop.PSObject.Properties['scorecard_history']) { @($historyLoop.scorecard_history) } else { @() }
+    $savedCycleRecords = if ($historyLoop -and $historyLoop.PSObject.Properties['cycle_records']) { @($historyLoop.cycle_records) } else { @() }
+    $savedReviewActions = if ($historyLoop -and $historyLoop.PSObject.Properties['review_actions']) { @($historyLoop.review_actions) } else { @() }
+
+    if ($State.PSObject.Properties['journal']) {
+        $State.journal = @()
+    }
+    if ($State.PSObject.Properties['execution_results']) {
+        $State.execution_results = @()
+    }
+    if ($State.PSObject.Properties['review_decisions']) {
+        $State.review_decisions = @()
+    }
+    if ($State.PSObject.Properties['routing_decisions'] -and $State.routing_decisions -and $State.routing_decisions.PSObject.Properties['records']) {
+        $State.routing_decisions.records = @()
+    }
+    if ($State.PSObject.Properties['engine_performance'] -and $State.engine_performance -and $State.engine_performance.PSObject.Properties['records']) {
+        $State.engine_performance.records = @()
+    }
+    if ($historyLoop) {
+        $historyLoop.run_history = @()
+        $historyLoop.scorecard_history = @()
+        $historyLoop.cycle_records = @()
+        $historyLoop.review_actions = @()
+    }
+
     $json = $State | ConvertTo-Json -Depth 12
 
     $maxAttempts = 6
     $baseDelayMs = 120
-    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-        try {
-            Set-Content -Path $statePath -Value $json -ErrorAction Stop
-            return
-        }
-        catch {
-            $message = [string]$_.Exception.Message
-            $isLockContention = (
-                ($message -match "used by another process") -or
-                ($message -match "cannot access the file")
-            )
-
-            if (-not $isLockContention -or $attempt -ge $maxAttempts) {
-                throw
+    try {
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            try {
+                Set-Content -Path $statePath -Value $json -ErrorAction Stop
+                return
             }
+            catch {
+                $message = [string]$_.Exception.Message
+                $isLockContention = (
+                    ($message -match "used by another process") -or
+                    ($message -match "cannot access the file")
+                )
 
-            Start-Sleep -Milliseconds ($baseDelayMs * $attempt)
+                if (-not $isLockContention -or $attempt -ge $maxAttempts) {
+                    throw
+                }
+
+                Start-Sleep -Milliseconds ($baseDelayMs * $attempt)
+            }
         }
     }
+    finally {
+        if ($State.PSObject.Properties['journal']) {
+            $State.journal = @($savedJournal)
+        }
+        if ($State.PSObject.Properties['execution_results']) {
+            $State.execution_results = @($savedExecutionResults)
+        }
+        if ($State.PSObject.Properties['review_decisions']) {
+            $State.review_decisions = @($savedReviewDecisions)
+        }
+        if ($State.PSObject.Properties['routing_decisions'] -and $State.routing_decisions) {
+            $State.routing_decisions.records = @($savedRoutingDecisionRecords)
+        }
+        if ($State.PSObject.Properties['engine_performance'] -and $State.engine_performance) {
+            $State.engine_performance.records = @($savedEnginePerformanceRecords)
+        }
+        if ($historyLoop) {
+            $historyLoop.run_history = @($savedRunHistory)
+            $historyLoop.scorecard_history = @($savedScorecardHistory)
+            $historyLoop.cycle_records = @($savedCycleRecords)
+            $historyLoop.review_actions = @($savedReviewActions)
+        }
+    }
+}
+
+function Resolve-JournalHistoryPath {
+    param([string]$StateFilePath = "")
+
+    $targetStatePath = if ([string]::IsNullOrWhiteSpace($StateFilePath)) { $statePath } else { $StateFilePath }
+    return [System.IO.Path]::ChangeExtension($targetStatePath, 'journal-history.json')
+}
+
+function New-JournalHistoryStore {
+    return [pscustomobject]@{
+        journal = @()
+        updated_at = ""
+    }
+}
+
+function Get-JournalHistoryStateSnapshot {
+    param([AllowNull()]$State = $null)
+
+    $snapshot = New-JournalHistoryStore
+    if ($null -eq $State -or -not $State.PSObject.Properties['journal']) {
+        return $snapshot
+    }
+
+    $snapshot.journal = @($State.journal | Where-Object { $null -ne $_ })
+    $snapshot.updated_at = Get-UtcNow
+    return $snapshot
+}
+
+function Read-JournalHistoryStore {
+    param(
+        [AllowNull()]$State = $null,
+        [switch]$PreferState
+    )
+
+    $stateSnapshot = Get-JournalHistoryStateSnapshot -State $State
+    if ($PreferState -and @($stateSnapshot.journal).Count -gt 0) {
+        return $stateSnapshot
+    }
+
+    $path = Resolve-JournalHistoryPath
+    if (Test-Path -Path $path) {
+        try {
+            $raw = Get-Content -Path $path -Raw -ErrorAction Stop
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $parsed = $raw | ConvertFrom-Json
+                $store = New-JournalHistoryStore
+                if ($parsed -is [System.Array]) {
+                    $store.journal = @($parsed | Where-Object { $null -ne $_ })
+                }
+                elseif ($parsed.PSObject.Properties['journal']) {
+                    $store.journal = @($parsed.journal | Where-Object { $null -ne $_ })
+                    $store.updated_at = if ($parsed.PSObject.Properties['updated_at']) { [string]$parsed.updated_at } else { "" }
+                }
+                return $store
+            }
+        }
+        catch {
+        }
+    }
+
+    return $stateSnapshot
+}
+
+function Sync-JournalHistoryToState {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [AllowNull()]$HistoryStore = $null
+    )
+
+    $store = if ($null -ne $HistoryStore) { $HistoryStore } else { Read-JournalHistoryStore -State $State }
+    if (-not $State.PSObject.Properties['journal']) {
+        $State | Add-Member -NotePropertyName journal -NotePropertyValue @() -Force
+    }
+    $State.journal = @($store.journal)
+    return $State.journal
+}
+
+function Save-JournalHistoryStore {
+    param([Parameter(Mandatory = $true)]$State)
+
+    $snapshot = Get-JournalHistoryStateSnapshot -State $State
+    $path = Resolve-JournalHistoryPath
+    $dir = Split-Path -Parent $path
+    if (-not [string]::IsNullOrWhiteSpace($dir) -and -not (Test-Path -Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $json = $snapshot | ConvertTo-Json -Depth 20
+    Set-Content -Path $path -Value $json -ErrorAction Stop
+    return $path
+}
+
+function Resolve-ExecutionHistoryPath {
+    param([string]$StateFilePath = "")
+
+    $targetStatePath = if ([string]::IsNullOrWhiteSpace($StateFilePath)) { $statePath } else { $StateFilePath }
+    return [System.IO.Path]::ChangeExtension($targetStatePath, 'execution-history.json')
+}
+
+function New-ExecutionHistoryStore {
+    return [pscustomobject]@{
+        execution_results = @()
+        review_decisions = @()
+    }
+}
+
+function Get-ExecutionHistoryStateSnapshot {
+    param([AllowNull()]$State = $null)
+
+    $snapshot = New-ExecutionHistoryStore
+    if ($null -eq $State) {
+        return $snapshot
+    }
+
+    $snapshot.execution_results = if ($State.PSObject.Properties['execution_results']) { @($State.execution_results | Where-Object { $null -ne $_ }) } else { @() }
+    $snapshot.review_decisions = if ($State.PSObject.Properties['review_decisions']) { @($State.review_decisions | Where-Object { $null -ne $_ }) } else { @() }
+    return $snapshot
+}
+
+function Read-ExecutionHistoryStore {
+    param(
+        [AllowNull()]$State = $null,
+        [switch]$PreferState
+    )
+
+    $stateSnapshot = Get-ExecutionHistoryStateSnapshot -State $State
+    $stateHasCollections = (
+        @($stateSnapshot.execution_results).Count -gt 0 -or
+        @($stateSnapshot.review_decisions).Count -gt 0
+    )
+    if ($PreferState -and $stateHasCollections) {
+        return $stateSnapshot
+    }
+
+    $path = Resolve-ExecutionHistoryPath
+    if (Test-Path -Path $path) {
+        try {
+            $raw = Get-Content -Path $path -Raw -ErrorAction Stop
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $parsed = $raw | ConvertFrom-Json
+                $store = New-ExecutionHistoryStore
+                $store.execution_results = if ($parsed.PSObject.Properties['execution_results']) { @($parsed.execution_results | Where-Object { $null -ne $_ }) } else { @() }
+                $store.review_decisions = if ($parsed.PSObject.Properties['review_decisions']) { @($parsed.review_decisions | Where-Object { $null -ne $_ }) } else { @() }
+                return $store
+            }
+        }
+        catch {
+        }
+    }
+
+    return $stateSnapshot
+}
+
+function Sync-ExecutionHistoryToState {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [AllowNull()]$HistoryStore = $null
+    )
+
+    $store = if ($null -ne $HistoryStore) { $HistoryStore } else { Read-ExecutionHistoryStore -State $State }
+    if (-not $State.PSObject.Properties['execution_results']) {
+        $State | Add-Member -NotePropertyName execution_results -NotePropertyValue @() -Force
+    }
+    if (-not $State.PSObject.Properties['review_decisions']) {
+        $State | Add-Member -NotePropertyName review_decisions -NotePropertyValue @() -Force
+    }
+    $State.execution_results = @($store.execution_results)
+    $State.review_decisions = @($store.review_decisions)
+    return $State
+}
+
+function Save-ExecutionHistoryStore {
+    param([Parameter(Mandatory = $true)]$State)
+
+    $snapshot = Get-ExecutionHistoryStateSnapshot -State $State
+    $path = Resolve-ExecutionHistoryPath
+    $dir = Split-Path -Parent $path
+    if (-not [string]::IsNullOrWhiteSpace($dir) -and -not (Test-Path -Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $json = $snapshot | ConvertTo-Json -Depth 20
+    Set-Content -Path $path -Value $json -ErrorAction Stop
+    return $path
+}
+
+function Resolve-ReliabilityHistoryPath {
+    param([string]$StateFilePath = "")
+
+    $targetStatePath = if ([string]::IsNullOrWhiteSpace($StateFilePath)) { $statePath } else { $StateFilePath }
+    return [System.IO.Path]::ChangeExtension($targetStatePath, 'reliability-history.json')
+}
+
+function New-ReliabilityHistoryStore {
+    return [pscustomobject]@{
+        engine_performance = [pscustomobject]@{
+            records = @()
+            updated_at = ""
+        }
+        routing_decisions = [pscustomobject]@{
+            records = @()
+            updated_at = ""
+        }
+    }
+}
+
+function Get-ReliabilityHistoryStateSnapshot {
+    param([AllowNull()]$State = $null)
+
+    $snapshot = New-ReliabilityHistoryStore
+    if ($null -eq $State) {
+        return $snapshot
+    }
+
+    if ($State.PSObject.Properties['engine_performance'] -and $State.engine_performance) {
+        $snapshot.engine_performance.records = if ($State.engine_performance.PSObject.Properties['records']) { @($State.engine_performance.records | Where-Object { $null -ne $_ }) } else { @() }
+        $snapshot.engine_performance.updated_at = if ($State.engine_performance.PSObject.Properties['updated_at']) { [string]$State.engine_performance.updated_at } else { "" }
+    }
+    if ($State.PSObject.Properties['routing_decisions'] -and $State.routing_decisions) {
+        $snapshot.routing_decisions.records = if ($State.routing_decisions.PSObject.Properties['records']) { @($State.routing_decisions.records | Where-Object { $null -ne $_ }) } else { @() }
+        $snapshot.routing_decisions.updated_at = if ($State.routing_decisions.PSObject.Properties['updated_at']) { [string]$State.routing_decisions.updated_at } else { "" }
+    }
+    return $snapshot
+}
+
+function Read-ReliabilityHistoryStore {
+    param(
+        [AllowNull()]$State = $null,
+        [switch]$PreferState
+    )
+
+    $stateSnapshot = Get-ReliabilityHistoryStateSnapshot -State $State
+    $stateHasCollections = (
+        @($stateSnapshot.engine_performance.records).Count -gt 0 -or
+        @($stateSnapshot.routing_decisions.records).Count -gt 0
+    )
+    if ($PreferState -and $stateHasCollections) {
+        return $stateSnapshot
+    }
+
+    $path = Resolve-ReliabilityHistoryPath
+    if (Test-Path -Path $path) {
+        try {
+            $raw = Get-Content -Path $path -Raw -ErrorAction Stop
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $parsed = $raw | ConvertFrom-Json
+                $store = New-ReliabilityHistoryStore
+                if ($parsed.PSObject.Properties['engine_performance'] -and $parsed.engine_performance) {
+                    $store.engine_performance.records = if ($parsed.engine_performance.PSObject.Properties['records']) { @($parsed.engine_performance.records | Where-Object { $null -ne $_ }) } else { @() }
+                    $store.engine_performance.updated_at = if ($parsed.engine_performance.PSObject.Properties['updated_at']) { [string]$parsed.engine_performance.updated_at } else { "" }
+                }
+                if ($parsed.PSObject.Properties['routing_decisions'] -and $parsed.routing_decisions) {
+                    $store.routing_decisions.records = if ($parsed.routing_decisions.PSObject.Properties['records']) { @($parsed.routing_decisions.records | Where-Object { $null -ne $_ }) } else { @() }
+                    $store.routing_decisions.updated_at = if ($parsed.routing_decisions.PSObject.Properties['updated_at']) { [string]$parsed.routing_decisions.updated_at } else { "" }
+                }
+                return $store
+            }
+        }
+        catch {
+        }
+    }
+
+    return $stateSnapshot
+}
+
+function Sync-ReliabilityHistoryToState {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [AllowNull()]$HistoryStore = $null
+    )
+
+    $store = if ($null -ne $HistoryStore) { $HistoryStore } else { Read-ReliabilityHistoryStore -State $State }
+    if (-not $State.PSObject.Properties['engine_performance'] -or $null -eq $State.engine_performance) {
+        $State | Add-Member -NotePropertyName engine_performance -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+    if (-not $State.PSObject.Properties['routing_decisions'] -or $null -eq $State.routing_decisions) {
+        $State | Add-Member -NotePropertyName routing_decisions -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+    $State.engine_performance | Add-Member -NotePropertyName records -NotePropertyValue @($store.engine_performance.records) -Force
+    $State.engine_performance | Add-Member -NotePropertyName updated_at -NotePropertyValue ([string]$store.engine_performance.updated_at) -Force
+    $State.routing_decisions | Add-Member -NotePropertyName records -NotePropertyValue @($store.routing_decisions.records) -Force
+    $State.routing_decisions | Add-Member -NotePropertyName updated_at -NotePropertyValue ([string]$store.routing_decisions.updated_at) -Force
+    return $State
+}
+
+function Save-ReliabilityHistoryStore {
+    param([Parameter(Mandatory = $true)]$State)
+
+    $snapshot = Get-ReliabilityHistoryStateSnapshot -State $State
+    $path = Resolve-ReliabilityHistoryPath
+    $dir = Split-Path -Parent $path
+    if (-not [string]::IsNullOrWhiteSpace($dir) -and -not (Test-Path -Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $json = $snapshot | ConvertTo-Json -Depth 20
+    Set-Content -Path $path -Value $json -ErrorAction Stop
+    return $path
+}
+
+function Resolve-EngineeringLoopHistoryPath {
+    param([string]$StateFilePath = "")
+
+    $targetStatePath = if ([string]::IsNullOrWhiteSpace($StateFilePath)) { $statePath } else { $StateFilePath }
+    return [System.IO.Path]::ChangeExtension($targetStatePath, 'engineering-loop-history.json')
+}
+
+function New-EngineeringLoopHistoryStore {
+    return [pscustomobject]@{
+        run_history = @()
+        scorecard_history = @()
+        cycle_records = @()
+        review_actions = @()
+        last_run = $null
+        last_scorecard = $null
+        last_cycle = $null
+        pending_approval_count = 0
+        updated_at = ""
+    }
+}
+
+function Get-EngineeringLoopHistoryStateSnapshot {
+    param([AllowNull()]$State = $null)
+
+    $snapshot = New-EngineeringLoopHistoryStore
+    if ($null -eq $State -or -not $State.PSObject.Properties['engineering_loop'] -or $null -eq $State.engineering_loop) {
+        return $snapshot
+    }
+
+    $loop = $State.engineering_loop
+    $snapshot.run_history = if ($loop.PSObject.Properties['run_history']) { @($loop.run_history | Where-Object { $null -ne $_ }) } else { @() }
+    $snapshot.scorecard_history = if ($loop.PSObject.Properties['scorecard_history']) { @($loop.scorecard_history | Where-Object { $null -ne $_ }) } else { @() }
+    $snapshot.cycle_records = if ($loop.PSObject.Properties['cycle_records']) { @($loop.cycle_records | Where-Object { $null -ne $_ }) } else { @() }
+    $snapshot.review_actions = if ($loop.PSObject.Properties['review_actions']) { @($loop.review_actions | Where-Object { $null -ne $_ }) } else { @() }
+    $snapshot.last_run = if ($loop.PSObject.Properties['last_run']) { $loop.last_run } else { $null }
+    $snapshot.last_scorecard = if ($loop.PSObject.Properties['last_scorecard']) { $loop.last_scorecard } else { $null }
+    $snapshot.last_cycle = if ($loop.PSObject.Properties['last_cycle']) { $loop.last_cycle } else { $null }
+    $snapshot.pending_approval_count = if ($loop.PSObject.Properties['pending_approval_count']) { [int]$loop.pending_approval_count } else { [int]@($snapshot.cycle_records | Where-Object { $_.PSObject.Properties['approval_status'] -and ([string]$_.approval_status).ToLowerInvariant() -eq 'pending_apply' }).Count }
+    $snapshot.updated_at = if ($loop.PSObject.Properties['updated_at']) { [string]$loop.updated_at } else { "" }
+    return $snapshot
+}
+
+function Test-EngineeringLoopHistoryStoreHasData {
+    param([AllowNull()]$HistoryStore)
+
+    if ($null -eq $HistoryStore) {
+        return $false
+    }
+
+    return (
+        @($HistoryStore.run_history).Count -gt 0 -or
+        @($HistoryStore.scorecard_history).Count -gt 0 -or
+        @($HistoryStore.cycle_records).Count -gt 0 -or
+        @($HistoryStore.review_actions).Count -gt 0 -or
+        $null -ne $HistoryStore.last_run -or
+        $null -ne $HistoryStore.last_scorecard -or
+        $null -ne $HistoryStore.last_cycle
+    )
+}
+
+function Read-EngineeringLoopHistoryStore {
+    param(
+        [AllowNull()]$State = $null,
+        [switch]$PreferState
+    )
+
+    $stateSnapshot = Get-EngineeringLoopHistoryStateSnapshot -State $State
+    $stateHasCollections = (
+        @($stateSnapshot.run_history).Count -gt 0 -or
+        @($stateSnapshot.scorecard_history).Count -gt 0 -or
+        @($stateSnapshot.cycle_records).Count -gt 0 -or
+        @($stateSnapshot.review_actions).Count -gt 0
+    )
+    $stateHasData = Test-EngineeringLoopHistoryStoreHasData -HistoryStore $stateSnapshot
+    if ($PreferState -and $stateHasCollections) {
+        return $stateSnapshot
+    }
+
+    $path = Resolve-EngineeringLoopHistoryPath
+    if (Test-Path -Path $path) {
+        try {
+            $raw = Get-Content -Path $path -Raw -ErrorAction Stop
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $parsed = $raw | ConvertFrom-Json
+                $store = New-EngineeringLoopHistoryStore
+                $store.run_history = if ($parsed.PSObject.Properties['run_history']) { @($parsed.run_history | Where-Object { $null -ne $_ }) } else { @() }
+                $store.scorecard_history = if ($parsed.PSObject.Properties['scorecard_history']) { @($parsed.scorecard_history | Where-Object { $null -ne $_ }) } else { @() }
+                $store.cycle_records = if ($parsed.PSObject.Properties['cycle_records']) { @($parsed.cycle_records | Where-Object { $null -ne $_ }) } else { @() }
+                $store.review_actions = if ($parsed.PSObject.Properties['review_actions']) { @($parsed.review_actions | Where-Object { $null -ne $_ }) } else { @() }
+                $store.last_run = if ($parsed.PSObject.Properties['last_run']) { $parsed.last_run } else { $null }
+                $store.last_scorecard = if ($parsed.PSObject.Properties['last_scorecard']) { $parsed.last_scorecard } else { $null }
+                $store.last_cycle = if ($parsed.PSObject.Properties['last_cycle']) { $parsed.last_cycle } else { $null }
+                $store.pending_approval_count = if ($parsed.PSObject.Properties['pending_approval_count']) { [int]$parsed.pending_approval_count } else { [int]@($store.cycle_records | Where-Object { $_.PSObject.Properties['approval_status'] -and ([string]$_.approval_status).ToLowerInvariant() -eq 'pending_apply' }).Count }
+                $store.updated_at = if ($parsed.PSObject.Properties['updated_at']) { [string]$parsed.updated_at } else { "" }
+                return $store
+            }
+        }
+        catch {
+        }
+    }
+
+    return $stateSnapshot
+}
+
+function Sync-EngineeringLoopHistoryToState {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [AllowNull()]$HistoryStore = $null
+    )
+
+    if (-not $State.PSObject.Properties['engineering_loop'] -or $null -eq $State.engineering_loop) {
+        $State | Add-Member -NotePropertyName engineering_loop -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+
+    $loop = $State.engineering_loop
+    $store = if ($null -ne $HistoryStore) { $HistoryStore } else { Read-EngineeringLoopHistoryStore -State $State }
+    $loop | Add-Member -NotePropertyName run_history -NotePropertyValue @($store.run_history) -Force
+    $loop | Add-Member -NotePropertyName scorecard_history -NotePropertyValue @($store.scorecard_history) -Force
+    $loop | Add-Member -NotePropertyName cycle_records -NotePropertyValue @($store.cycle_records) -Force
+    $loop | Add-Member -NotePropertyName review_actions -NotePropertyValue @($store.review_actions) -Force
+    $loop | Add-Member -NotePropertyName last_run -NotePropertyValue $store.last_run -Force
+    $loop | Add-Member -NotePropertyName last_scorecard -NotePropertyValue $store.last_scorecard -Force
+    $loop | Add-Member -NotePropertyName last_cycle -NotePropertyValue $store.last_cycle -Force
+    $loop | Add-Member -NotePropertyName pending_approval_count -NotePropertyValue ([int]$store.pending_approval_count) -Force
+    $loop | Add-Member -NotePropertyName updated_at -NotePropertyValue ([string]$store.updated_at) -Force
+    return $loop
+}
+
+function Save-EngineeringLoopHistoryStore {
+    param([Parameter(Mandatory = $true)]$State)
+
+    $snapshot = Get-EngineeringLoopHistoryStateSnapshot -State $State
+    $path = Resolve-EngineeringLoopHistoryPath
+    $dir = Split-Path -Parent $path
+    if (-not [string]::IsNullOrWhiteSpace($dir) -and -not (Test-Path -Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $json = $snapshot | ConvertTo-Json -Depth 20
+    Set-Content -Path $path -Value $json -ErrorAction Stop
+    return $path
 }
 
 function Repair-OversizedStateStringLine {
@@ -1007,6 +1527,7 @@ function Test-ActionRequiresState {
         "get-version" { return $false }
         "ping-mim" { return $false }
         "repair-state" { return $false }
+        "rewrite-state-history" { return $false }
         "run-bridge-request" { return $false }
         "safe_home" { return $false }
         "scan_pose" { return $false }
@@ -1156,19 +1677,58 @@ function Normalize-State {
         if (-not $task.PSObject.Properties["task_category"] -or [string]::IsNullOrWhiteSpace([string]$task.task_category)) {
             $task | Add-Member -NotePropertyName task_category -NotePropertyValue "code_change" -Force
         }
+        if (-not $task.PSObject.Properties["updated_at"]) {
+            $task | Add-Member -NotePropertyName updated_at -NotePropertyValue "" -Force
+        }
     }
 
+    $normalizedExecutionResults = @()
     foreach ($result in @($State.execution_results)) {
+        if ($null -eq $result) {
+            continue
+        }
+        if (-not $result.PSObject.Properties["task_id"]) {
+            $result | Add-Member -NotePropertyName task_id -NotePropertyValue "" -Force
+        }
+        if (-not $result.PSObject.Properties["files_changed"]) {
+            $result | Add-Member -NotePropertyName files_changed -NotePropertyValue @() -Force
+        }
+        if (-not $result.PSObject.Properties["tests_run"]) {
+            $result | Add-Member -NotePropertyName tests_run -NotePropertyValue @() -Force
+        }
+        if (-not $result.PSObject.Properties["test_results"]) {
+            $result | Add-Member -NotePropertyName test_results -NotePropertyValue @() -Force
+        }
+        if (-not $result.PSObject.Properties["failures"]) {
+            $result | Add-Member -NotePropertyName failures -NotePropertyValue @() -Force
+        }
+        if (-not $result.PSObject.Properties["recommendations"]) {
+            $result | Add-Member -NotePropertyName recommendations -NotePropertyValue @() -Force
+        }
         $result.files_changed = Convert-ToStringArray -Value $result.files_changed
         $result.tests_run = Convert-ToStringArray -Value $result.tests_run
         $result.test_results = Convert-ToStringArray -Value $result.test_results
         $result.failures = Convert-ToStringArray -Value $result.failures
         $result.recommendations = Convert-ToStringArray -Value $result.recommendations
+        $normalizedExecutionResults += $result
     }
+    $State.execution_results = @($normalizedExecutionResults)
 
+    $normalizedReviewDecisions = @()
     foreach ($review in @($State.review_decisions)) {
+        if ($null -eq $review) {
+            continue
+        }
+        if (-not $review.PSObject.Properties["task_id"]) {
+            $review | Add-Member -NotePropertyName task_id -NotePropertyValue "" -Force
+        }
+        if (-not $review.PSObject.Properties["unresolved_issues"]) {
+            $review | Add-Member -NotePropertyName unresolved_issues -NotePropertyValue @() -Force
+        }
         $review.unresolved_issues = Convert-ToStringArray -Value $review.unresolved_issues
+        $normalizedReviewDecisions += $review
     }
+    $State.review_decisions = @($normalizedReviewDecisions)
 }
 
 function New-Id {
@@ -1287,6 +1847,10 @@ function Add-EngineeringRunHistoryRecord {
     }
 
     $history = @($State.engineering_loop.run_history)
+    if (@($history).Count -eq 0) {
+        $storedHistory = Read-EngineeringLoopHistoryStore -State $State
+        $history = @($storedHistory.run_history)
+    }
     $history += $entry
     if (@($history).Count -gt $MaxEntries) {
         $history = @($history | Select-Object -Last $MaxEntries)
@@ -1318,6 +1882,10 @@ function Add-EngineeringScorecardHistoryRecord {
     }
 
     $history = @($State.engineering_loop.scorecard_history)
+    if (@($history).Count -eq 0) {
+        $storedHistory = Read-EngineeringLoopHistoryStore -State $State
+        $history = @($storedHistory.scorecard_history)
+    }
     $history += $entry
     if (@($history).Count -gt $MaxEntries) {
         $history = @($history | Select-Object -Last $MaxEntries)
@@ -1337,6 +1905,10 @@ function Add-EngineeringCycleRecord {
     )
 
     $history = @($State.engineering_loop.cycle_records)
+    if (@($history).Count -eq 0) {
+        $storedHistory = Read-EngineeringLoopHistoryStore -State $State
+        $history = @($storedHistory.cycle_records)
+    }
     $history += $CycleRecord
     if (@($history).Count -gt $MaxEntries) {
         $history = @($history | Select-Object -Last $MaxEntries)
@@ -1345,6 +1917,7 @@ function Add-EngineeringCycleRecord {
     $State.engineering_loop.cycle_records = @($history)
     $State.engineering_loop.last_cycle = $CycleRecord
     $pending = @($history | Where-Object {
+            $null -ne $_ -and
             $_.PSObject.Properties["approval_status"] -and
             ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply"
         }).Count
@@ -1361,6 +1934,10 @@ function Add-EngineeringReviewActionRecord {
     )
 
     $history = @($State.engineering_loop.review_actions)
+    if (@($history).Count -eq 0) {
+        $storedHistory = Read-EngineeringLoopHistoryStore -State $State
+        $history = @($storedHistory.review_actions)
+    }
     $history += $ReviewAction
     if (@($history).Count -gt $MaxEntries) {
         $history = @($history | Select-Object -Last $MaxEntries)
@@ -1495,12 +2072,15 @@ function Get-PendingApprovalRuntimeSummary {
         [int]$StaleHours = 72
     )
 
-    $loop = if ($State.PSObject.Properties["engineering_loop"] -and $State.engineering_loop) { $State.engineering_loop } else { $null }
-    $records = if ($loop -and $loop.PSObject.Properties["cycle_records"] -and $null -ne $loop.cycle_records) { @($loop.cycle_records) } else { @() }
+    $historyStore = Read-EngineeringLoopHistoryStore -State $State -PreferState
+    $records = @($historyStore.cycle_records)
 
     $pending = @($records | Where-Object {
-            ($_.PSObject.Properties["approval_pending"] -and [bool]$_.approval_pending) -or
-            ($_.PSObject.Properties["approval_status"] -and ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply")
+            $null -ne $_ -and ((
+                $_.PSObject.Properties["approval_pending"] -and [bool]$_.approval_pending
+            ) -or (
+                $_.PSObject.Properties["approval_status"] -and ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply"
+            ))
         })
 
     $now = (Get-Date).ToUniversalTime()
@@ -1743,19 +2323,19 @@ function Get-TodEngineeringLoopHistoryPayload {
         [int]$PageSize = 25
     )
 
-    $loop = if ($State.PSObject.Properties["engineering_loop"]) { $State.engineering_loop } else { $null }
+    $historyStore = Read-EngineeringLoopHistoryStore -State $State -PreferState
     $records = @()
     if ($HistoryKind -eq "scorecard_history") {
-        $records = if ($loop -and $loop.PSObject.Properties["scorecard_history"]) { @($loop.scorecard_history | Sort-Object generated_at -Descending) } else { @() }
+        $records = @($historyStore.scorecard_history | Sort-Object generated_at -Descending)
     }
     elseif ($HistoryKind -eq "cycle_records") {
-        $records = if ($loop -and $loop.PSObject.Properties["cycle_records"]) { @($loop.cycle_records | Sort-Object created_at -Descending) } else { @() }
+        $records = @($historyStore.cycle_records | Sort-Object created_at -Descending)
     }
     elseif ($HistoryKind -eq "review_actions") {
-        $records = if ($loop -and $loop.PSObject.Properties["review_actions"]) { @($loop.review_actions | Sort-Object created_at -Descending) } else { @() }
+        $records = @($historyStore.review_actions | Sort-Object created_at -Descending)
     }
     else {
-        $records = if ($loop -and $loop.PSObject.Properties["run_history"]) { @($loop.run_history | Sort-Object generated_at -Descending) } else { @() }
+        $records = @($historyStore.run_history | Sort-Object generated_at -Descending)
     }
 
     $paged = Convert-ToPagedEngineeringHistory -Items $records -Page $Page -PageSize $PageSize
@@ -1795,14 +2375,10 @@ function Get-TodEngineerCyclePayload {
 
     $safeContinue = if ($Config.PSObject.Properties["engineering_loop"] -and $Config.engineering_loop -and $Config.engineering_loop.PSObject.Properties["safe_continue"]) { $Config.engineering_loop.safe_continue } else { $null }
     $requireNoPendingApproval = if ($safeContinue -and $safeContinue.PSObject.Properties["require_no_pending_approval"] -and $null -ne $safeContinue.require_no_pending_approval) { [bool]$safeContinue.require_no_pending_approval } else { $true }
-    $pendingApprovalCount = if ($State.PSObject.Properties["engineering_loop"] -and $State.engineering_loop.PSObject.Properties["cycle_records"]) {
-        [int]@($State.engineering_loop.cycle_records | Where-Object {
-                $_.PSObject.Properties["approval_status"] -and ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply"
+    $historyStore = Read-EngineeringLoopHistoryStore -State $State -PreferState
+    $pendingApprovalCount = [int]@($historyStore.cycle_records | Where-Object {
+                $null -ne $_ -and $_.PSObject.Properties["approval_status"] -and ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply"
             }).Count
-    }
-    else {
-        0
-    }
     if (-not $BypassSafeContinue -and $requireNoPendingApproval -and $pendingApprovalCount -gt 0) {
         return [pscustomobject]@{
             path = "/tod/engineer/cycle"
@@ -1840,10 +2416,15 @@ function Get-TodEngineerCyclePayload {
 
         $score = if ($scorePayload.PSObject.Properties["overall"] -and $scorePayload.overall.PSObject.Properties["score"]) { [double]$scorePayload.overall.score } else { 0.0 }
         $band = if ($scorePayload.PSObject.Properties["overall"] -and $scorePayload.overall.PSObject.Properties["band"]) { [string]$scorePayload.overall.band } else { "early" }
-        $trend = if ($State.engineering_loop.PSObject.Properties["scorecard_history"] -and @($State.engineering_loop.scorecard_history).Count -ge 2) {
-            $history = @($State.engineering_loop.scorecard_history | Sort-Object generated_at -Descending | Select-Object -First 2)
+        $trend = if ($State.engineering_loop.PSObject.Properties["scorecard_history"]) {
+            $history = @($State.engineering_loop.scorecard_history | Where-Object { $null -ne $_ -and $_.PSObject.Properties['generated_at'] } | Sort-Object generated_at -Descending | Select-Object -First 2)
+            if (@($history).Count -lt 2) {
+                "flat"
+            }
+            else {
             $delta = [double]$history[0].score - [double]$history[1].score
             if ($delta -gt 0.03) { "improving" } elseif ($delta -lt -0.03) { "declining" } else { "flat" }
+            }
         }
         else {
             "flat"
@@ -1930,8 +2511,10 @@ function Invoke-TodEngineeringCycleReview {
         [bool]$DangerousApproved = $false
     )
 
-    $records = if ($State.PSObject.Properties["engineering_loop"] -and $State.engineering_loop.PSObject.Properties["cycle_records"]) { @($State.engineering_loop.cycle_records) } else { @() }
-    $target = @($records | Where-Object { $_.PSObject.Properties["cycle_id"] -and [string]$_.cycle_id -eq [string]$CycleId } | Select-Object -First 1)
+    $historyStore = Read-EngineeringLoopHistoryStore -State $State -PreferState
+    $null = Sync-EngineeringLoopHistoryToState -State $State -HistoryStore $historyStore
+    $records = @($State.engineering_loop.cycle_records)
+    $target = @($records | Where-Object { $null -ne $_ -and $_.PSObject.Properties["cycle_id"] -and [string]$_.cycle_id -eq [string]$CycleId } | Select-Object -First 1)
     if (@($target).Count -eq 0) {
         throw "Cycle record not found: $CycleId"
     }
@@ -2019,8 +2602,8 @@ function Invoke-TodEngineeringCycleReview {
 
     Add-Journal -State $State -Actor "operator" -ActionName "engineering_cycle_review" -EntityType "cycle" -EntityId ([string]$CycleId) -Payload $reviewRecord
 
-    $pending = @($State.engineering_loop.cycle_records | Where-Object {
-            $_.PSObject.Properties["approval_status"] -and
+        $pending = @($State.engineering_loop.cycle_records | Where-Object {
+            $null -ne $_ -and $_.PSObject.Properties["approval_status"] -and
             ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply"
         }).Count
     $State.engineering_loop.pending_approval_count = [int]$pending
@@ -3358,7 +3941,7 @@ function Get-TodCapabilitiesPayload {
         }
         research = [pscustomobject]@{
             repository_index_available = (Test-Path -Path $repoIndexPath)
-            engineering_memory_available = (Test-Path -Path $engineeringMemoryPath)
+            engineering_memory_available = (Test-EngineeringMemoryAvailable)
             supports_related_file_exploration = $true
         }
         resourcing = [pscustomobject]@{
@@ -3530,7 +4113,11 @@ function Update-ExecutionReadinessHistory {
         recent_transitions = @($recentTransitions)
     }
 
-    $historyPayload | ConvertTo-Json -Depth 20 | Set-Content -Path $historyPath -Encoding utf8
+    try {
+        $historyPayload | ConvertTo-Json -Depth 20 | Set-Content -Path $historyPath -Encoding utf8 -ErrorAction Stop
+    }
+    catch [System.IO.IOException] {
+    }
     return $historyPayload
 }
 
@@ -3725,13 +4312,8 @@ function Get-TodResearchPayload {
     }
 
     $memory = $null
-    if (Test-Path -Path $engineeringMemoryPath) {
-        try {
-            $memory = (Get-Content -Path $engineeringMemoryPath -Raw) | ConvertFrom-Json
-        }
-        catch {
-            $memory = $null
-        }
+    if (Test-EngineeringMemoryAvailable) {
+        $memory = Load-EngineeringMemory
     }
 
     $memoryTags = @()
@@ -4736,17 +5318,18 @@ function Get-TodStateBusPayload {
         }).Count
 
     $engineeringLoop = if ($State.PSObject.Properties["engineering_loop"]) { $State.engineering_loop } else { $null }
-    $runHistory = if ($engineeringLoop -and $engineeringLoop.PSObject.Properties["run_history"]) { @($engineeringLoop.run_history) } else { @() }
-    $scorecardHistory = if ($engineeringLoop -and $engineeringLoop.PSObject.Properties["scorecard_history"]) { @($engineeringLoop.scorecard_history) } else { @() }
-    $cycleRecords = if ($engineeringLoop -and $engineeringLoop.PSObject.Properties["cycle_records"]) { @($engineeringLoop.cycle_records) } else { @() }
-    $reviewActions = if ($engineeringLoop -and $engineeringLoop.PSObject.Properties["review_actions"]) { @($engineeringLoop.review_actions) } else { @() }
+    $engineeringHistory = Read-EngineeringLoopHistoryStore -State $State -PreferState
+    $runHistory = @($engineeringHistory.run_history)
+    $scorecardHistory = @($engineeringHistory.scorecard_history)
+    $cycleRecords = @($engineeringHistory.cycle_records)
+    $reviewActions = @($engineeringHistory.review_actions)
     $recentRuns = @($runHistory | Sort-Object generated_at -Descending | Select-Object -First 5)
     $recentScorecards = @($scorecardHistory | Sort-Object generated_at -Descending | Select-Object -First 5)
     $recentCycles = @($cycleRecords | Sort-Object created_at -Descending | Select-Object -First 5)
     $recentReviews = @($reviewActions | Sort-Object created_at -Descending | Select-Object -First 5)
-    $lastRun = if (@($recentRuns).Count -gt 0) { $recentRuns[0] } elseif ($engineeringLoop -and $engineeringLoop.PSObject.Properties["last_run"]) { $engineeringLoop.last_run } else { $null }
-    $lastScorecard = if (@($recentScorecards).Count -gt 0) { $recentScorecards[0] } elseif ($engineeringLoop -and $engineeringLoop.PSObject.Properties["last_scorecard"]) { $engineeringLoop.last_scorecard } else { $null }
-    $lastCycle = if (@($recentCycles).Count -gt 0) { $recentCycles[0] } elseif ($engineeringLoop -and $engineeringLoop.PSObject.Properties["last_cycle"]) { $engineeringLoop.last_cycle } else { $null }
+    $lastRun = if (@($recentRuns).Count -gt 0) { $recentRuns[0] } elseif ($null -ne $engineeringHistory.last_run) { $engineeringHistory.last_run } elseif ($engineeringLoop -and $engineeringLoop.PSObject.Properties["last_run"]) { $engineeringLoop.last_run } else { $null }
+    $lastScorecard = if (@($recentScorecards).Count -gt 0) { $recentScorecards[0] } elseif ($null -ne $engineeringHistory.last_scorecard) { $engineeringHistory.last_scorecard } elseif ($engineeringLoop -and $engineeringLoop.PSObject.Properties["last_scorecard"]) { $engineeringLoop.last_scorecard } else { $null }
+    $lastCycle = if (@($recentCycles).Count -gt 0) { $recentCycles[0] } elseif ($null -ne $engineeringHistory.last_cycle) { $engineeringHistory.last_cycle } elseif ($engineeringLoop -and $engineeringLoop.PSObject.Properties["last_cycle"]) { $engineeringLoop.last_cycle } else { $null }
 
     $latestScore = if ($lastScorecard -and $lastScorecard.PSObject.Properties["score"] -and $null -ne $lastScorecard.score) { [double]$lastScorecard.score } else { $null }
     $trendDirection = "flat"
@@ -4775,8 +5358,8 @@ function Get-TodStateBusPayload {
     else {
         "warming"
     }
-    $pendingApprovalCount = [int]@($cycleRecords | Where-Object {
-            $_.PSObject.Properties["approval_status"] -and
+        $pendingApprovalCount = [int]@($cycleRecords | Where-Object {
+            $null -ne $_ -and $_.PSObject.Properties["approval_status"] -and
             ([string]$_.approval_status).ToLowerInvariant() -eq "pending_apply"
         }).Count
 
@@ -5138,10 +5721,8 @@ function Sync-RoutingDecisionToEngineeringMemory {
         [Parameter(Mandatory = $true)]$DecisionRecord
     )
 
-    if (-not (Test-Path -Path $engineeringMemoryPath)) { return }
-
     try {
-        $memory = (Get-Content -Path $engineeringMemoryPath -Raw) | ConvertFrom-Json
+        $memory = Load-EngineeringMemory
         if (-not $memory.PSObject.Properties["routing_decision_memory"]) {
             $memory | Add-Member -NotePropertyName routing_decision_memory -NotePropertyValue @() -Force
         }
@@ -5156,10 +5737,7 @@ function Sync-RoutingDecisionToEngineeringMemory {
         }
 
         $memory.routing_decision_memory += $entry
-        $memory | ConvertTo-Json -Depth 20 | Set-Content -Path $engineeringMemoryPath
-        if (Test-Path -Path $stateEngineeringMemoryPath) {
-            $memory | ConvertTo-Json -Depth 20 | Set-Content -Path $stateEngineeringMemoryPath
-        }
+        Save-EngineeringMemory -Memory $memory | Out-Null
     }
     catch {
         Write-Warning "Failed to sync routing decision memory: $($_.Exception.Message)"
@@ -5209,10 +5787,8 @@ function Sync-EnginePerformanceToEngineeringMemory {
         [Parameter(Mandatory = $true)]$LatestRecord
     )
 
-    if (-not (Test-Path -Path $engineeringMemoryPath)) { return }
-
     try {
-        $memory = (Get-Content -Path $engineeringMemoryPath -Raw) | ConvertFrom-Json
+        $memory = Load-EngineeringMemory
         if (-not $memory.PSObject.Properties["engine_performance_memory"]) {
             $memory | Add-Member -NotePropertyName engine_performance_memory -NotePropertyValue @() -Force
         }
@@ -5231,10 +5807,7 @@ function Sync-EnginePerformanceToEngineeringMemory {
         }
 
         $memory.engine_performance_memory += $entry
-        $memory | ConvertTo-Json -Depth 20 | Set-Content -Path $engineeringMemoryPath
-        if (Test-Path -Path $stateEngineeringMemoryPath) {
-            $memory | ConvertTo-Json -Depth 20 | Set-Content -Path $stateEngineeringMemoryPath
-        }
+        Save-EngineeringMemory -Memory $memory | Out-Null
     }
     catch {
         Write-Warning "Failed to sync engine performance memory: $($_.Exception.Message)"
@@ -5413,9 +5986,9 @@ function Build-RunTaskReport {
             [string]$_.action -eq "invoke_engine" -and $taskKeys -contains [string]$_.entity_id
         } | Sort-Object -Property created_at -Descending | Select-Object -First 1)
 
-    $latestResult = @($State.execution_results | Where-Object { $taskKeys -contains [string]$_.task_id } | Sort-Object -Property created_at -Descending | Select-Object -First 1)
-    $latestReview = @($State.review_decisions | Where-Object { $taskKeys -contains [string]$_.task_id } | Sort-Object -Property created_at -Descending | Select-Object -First 1)
-    $latestRouting = @($State.routing_decisions.records | Where-Object { $taskKeys -contains [string]$_.task_id } | Sort-Object -Property created_at -Descending | Select-Object -First 1)
+    $latestResult = @($State.execution_results | Where-Object { $null -ne $_ -and $_.PSObject.Properties['task_id'] -and $taskKeys -contains [string]$_.task_id } | Sort-Object -Property created_at -Descending | Select-Object -First 1)
+    $latestReview = @($State.review_decisions | Where-Object { $null -ne $_ -and $_.PSObject.Properties['task_id'] -and $taskKeys -contains [string]$_.task_id } | Sort-Object -Property created_at -Descending | Select-Object -First 1)
+    $latestRouting = @($State.routing_decisions.records | Where-Object { $null -ne $_ -and $_.PSObject.Properties['task_id'] -and $taskKeys -contains [string]$_.task_id } | Sort-Object -Property created_at -Descending | Select-Object -First 1)
     $latestRoutingRecord = if (@($latestRouting).Count -gt 0) { $latestRouting[0] } else { $null }
 
     $engineName = ""
@@ -7267,6 +7840,121 @@ function Save-JsonObject {
     $Object | ConvertTo-Json -Depth 16 | Set-Content -Path $Path
 }
 
+function Get-EngineeringMemoryBuckets {
+    return @(
+        "architecture_memory",
+        "repo_memory",
+        "decision_memory",
+        "failure_memory",
+        "pattern_memory",
+        "test_memory",
+        "packaging_lessons",
+        "engine_performance_memory",
+        "routing_decision_memory"
+    )
+}
+
+function New-EngineeringMemoryDocument {
+    $document = [pscustomobject]@{}
+    foreach ($bucket in @(Get-EngineeringMemoryBuckets)) {
+        $document | Add-Member -NotePropertyName $bucket -NotePropertyValue @() -Force
+    }
+    return $document
+}
+
+function Resolve-EngineeringMemoryBucketPath {
+    param([Parameter(Mandatory = $true)][string]$BucketName)
+
+    return (Join-Path $engineeringKnowledgeDir ($BucketName + ".json"))
+}
+
+function Test-EngineeringMemoryAvailable {
+    if (Test-Path -Path $engineeringMemoryPath) {
+        return $true
+    }
+
+    foreach ($bucket in @(Get-EngineeringMemoryBuckets)) {
+        if (Test-Path -Path (Resolve-EngineeringMemoryBucketPath -BucketName $bucket)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Load-EngineeringMemory {
+    $document = New-EngineeringMemoryDocument
+    $loadedFromBuckets = $false
+
+    foreach ($bucket in @(Get-EngineeringMemoryBuckets)) {
+        $bucketPath = Resolve-EngineeringMemoryBucketPath -BucketName $bucket
+        if (-not (Test-Path -Path $bucketPath)) {
+            continue
+        }
+
+        try {
+            $raw = Get-Content -Path $bucketPath -Raw -ErrorAction Stop
+            if ([string]::IsNullOrWhiteSpace($raw)) {
+                continue
+            }
+
+            $parsed = $raw | ConvertFrom-Json
+            $document.$bucket = @($parsed | Where-Object { $null -ne $_ })
+            $loadedFromBuckets = $true
+        }
+        catch {
+        }
+    }
+
+    if ($loadedFromBuckets) {
+        return $document
+    }
+
+    if (-not (Test-Path -Path $engineeringMemoryPath)) {
+        return $document
+    }
+
+    try {
+        $raw = Get-Content -Path $engineeringMemoryPath -Raw -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            return $document
+        }
+
+        $parsed = $raw | ConvertFrom-Json
+        foreach ($bucket in @(Get-EngineeringMemoryBuckets)) {
+            if ($parsed.PSObject.Properties[$bucket]) {
+                $document.$bucket = @($parsed.$bucket | Where-Object { $null -ne $_ })
+            }
+        }
+    }
+    catch {
+    }
+
+    return $document
+}
+
+function Save-EngineeringMemory {
+    param([Parameter(Mandatory = $true)]$Memory)
+
+    if (-not (Test-Path -Path $engineeringKnowledgeDir)) {
+        New-Item -ItemType Directory -Path $engineeringKnowledgeDir -Force | Out-Null
+    }
+
+    $document = New-EngineeringMemoryDocument
+    foreach ($bucket in @(Get-EngineeringMemoryBuckets)) {
+        $values = @()
+        if ($Memory -and $Memory.PSObject.Properties[$bucket]) {
+            $values = @($Memory.$bucket | Where-Object { $null -ne $_ })
+        }
+        $document.$bucket = @($values)
+        Save-JsonObject -Object @($values) -Path (Resolve-EngineeringMemoryBucketPath -BucketName $bucket)
+    }
+
+    Save-JsonObject -Object $document -Path $engineeringMemoryPath
+    Save-JsonObject -Object $document -Path $stateEngineeringMemoryPath
+    return $document
+}
+
 function Update-RepoIndexSyncState {
     param(
         [bool]$Stale,
@@ -7300,9 +7988,7 @@ function Add-EngineeringMemorySyncNote {
         [string]$Summary
     )
 
-    if (-not (Test-Path -Path $engineeringMemoryPath)) { return }
-
-    $memory = (Get-Content -Path $engineeringMemoryPath -Raw) | ConvertFrom-Json
+    $memory = Load-EngineeringMemory
     if (-not $memory.PSObject.Properties["decision_memory"]) {
         $memory | Add-Member -NotePropertyName decision_memory -NotePropertyValue @() -Force
     }
@@ -7317,7 +8003,7 @@ function Add-EngineeringMemorySyncNote {
     }
 
     $memory.decision_memory += $entry
-    Save-JsonObject -Object $memory -Path $engineeringMemoryPath
+    Save-EngineeringMemory -Memory $memory | Out-Null
 }
 
 function Try-LogSyncToMimJournal {
@@ -8925,6 +9611,15 @@ switch ($Action) {
             compaction = $compaction
             final_state_bytes = [int64]$finalBytes
         } | ConvertTo-Json -Depth 12
+    }
+
+    "rewrite-state-history" {
+        if (-not (Test-Path -Path $rewriteStateHistoryScript)) {
+            throw "Rewrite state history script not found at $rewriteStateHistoryScript"
+        }
+
+        $payload = & $rewriteStateHistoryScript -StatePath $statePath
+        $payload | ConvertTo-Json -Depth 12
     }
 
     "get-state-bus" {
