@@ -72,7 +72,7 @@ if (-not $SkipContextExport) {
 }
 
 $steps += Invoke-JsonScript -ScriptPath $contextScript -Params @{ Action = "status" } -StepName "context_status_after"
-$steps += Invoke-JsonScript -ScriptPath $sharedSyncScript -Params @{} -StepName "shared_state_sync"
+$steps += Invoke-JsonScript -ScriptPath $sharedSyncScript -Params @{ PublishTodStatusToMimArm = $true } -StepName "shared_state_sync"
 
 $failedSteps = @($steps | Where-Object { -not [bool]$_.ok })
 $sharedStateStep = @($steps | Where-Object { [string]$_.step -eq "shared_state_sync" } | Select-Object -First 1)

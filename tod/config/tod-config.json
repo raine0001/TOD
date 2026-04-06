@@ -108,6 +108,32 @@
         "review_corrections": 0.05,
         "latency": 0.05
       }
+    },
+    "readiness_policy": {
+      "enabled": true,
+      "signal_path": "shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json",
+      "history_path": "shared_state/tod_execution_readiness_history.latest.json",
+      "history_max_entries": 50,
+      "max_artifact_age_minutes": 30,
+      "display_max_artifact_age_minutes": 10,
+      "block_actions": [
+        "run-task"
+      ],
+      "degrade_actions": [
+        "engineer-run"
+      ],
+      "block_states": [
+        "stale",
+        "invalid",
+        "unknown"
+      ],
+      "degrade_states": [
+        "degraded",
+        "stale",
+        "invalid",
+        "unknown"
+      ],
+      "degrade_apply_plan": true
     }
   }
 }

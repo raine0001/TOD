@@ -282,7 +282,10 @@ if (-not $SkipTests) {
             Path = 'tests/*.Tests.ps1'
             JsonOutputPath = $testsOut
         }
-        $testSummary = $testsRaw | ConvertFrom-Json
+        $testSummary = Read-JsonFileIfExists -Path $testsOut
+        if ($null -eq $testSummary) {
+            $testSummary = $testsRaw | ConvertFrom-Json
+        }
         Write-TrainingTrace -Message 'tests-complete'
     }
     catch {
@@ -294,10 +297,16 @@ if (-not $SkipTests) {
 if (-not $SkipSmoke) {
     try {
         Write-TrainingTrace -Message 'smoke-start'
-        $smokeRaw = Invoke-ChildPowerShellJsonScript -ScriptPath $smokeScript -Arguments @{ Top = $Top }
-        $smokeSummary = $smokeRaw | ConvertFrom-Json
         $smokeOut = Join-Path $effectiveOutputDir "smoke-summary.json"
-        $smokeSummary | ConvertTo-Json -Depth 12 | Set-Content -Path $smokeOut
+        $smokeRaw = Invoke-ChildPowerShellJsonScript -ScriptPath $smokeScript -Arguments @{
+            Top = $Top
+            JsonOutputPath = $smokeOut
+        }
+        $smokeSummary = Read-JsonFileIfExists -Path $smokeOut
+        if ($null -eq $smokeSummary) {
+            $smokeSummary = $smokeRaw | ConvertFrom-Json
+            $smokeSummary | ConvertTo-Json -Depth 12 | Set-Content -Path $smokeOut
+        }
         Write-TrainingTrace -Message 'smoke-complete'
     }
     catch {
@@ -357,7 +366,7 @@ try {
     if ($null -eq $runtimeSafeSubset) {
         throw 'Runtime-safe validation subset artifact was not produced.'
     }
-    if ($null -eq $reliabilityRecovery -and $runtimeSafeSubset.PSObject.Properties['artifacts'] -and $runtimeSafeSubset.artifacts.PSObject.Properties['readiness_recovery']) {
+    if ($null -eq $reliabilityRecovery -and $runtimeSafeSubset.PSObject.Properties['artifacts'] -and $runtimeSafeSubset.artifacts.PSObject.Properties['readiness_recovery'] -and -not [string]::IsNullOrWhiteSpace([string]$runtimeSafeSubset.artifacts.readiness_recovery)) {
         $reliabilityRecovery = Read-JsonFileIfExists -Path ([string]$runtimeSafeSubset.artifacts.readiness_recovery)
     }
     if ($null -ne $reliabilityRecovery -and $SkipTests -and $reliabilityRecovery.PSObject.Properties['summary'] -and [bool]$reliabilityRecovery.summary.runtime_safe_validation) {

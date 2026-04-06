@@ -463,6 +463,7 @@ function Build-PackageV2 {
     $content += "- test_results"
     $content += "- failures"
     $content += "- recommendations"
+    $content += "- structured_findings (optional but preferred)"
     $content += "- needs_escalation"
     $content += ""
     $content += "## escalation_triggers"
@@ -1183,6 +1184,39 @@ switch ($Action) {
         $loopDecision = if ($reviewReport.decision -eq "pass") { "continue" } elseif ($reviewReport.decision -eq "revise") { "revise" } else { "escalate" }
         Add-MemoryEntry -Bucket "packaging_lessons" -EntryTitle "Task loop feedback" -EntryNote ("Task {0} decision {1}; outcome {2}." -f $TaskId, $reviewReport.decision, $loopDecision) -EntryTags @("loop", "task:$TaskId", "decision:$($reviewReport.decision)") | Out-Null
 
+        $nextStepsArtifact = $null
+        $nextStepConsensus = $null
+        $nextStepPolicy = $null
+        $nextStepsError = ""
+
+        try {
+            $nextStepsScriptPath = Join-Path $PSScriptRoot "New-TODCodexNextSteps.ps1"
+            $consensusScriptPath = Join-Path $PSScriptRoot "Resolve-TODNextStepConsensus.ps1"
+            $policyScriptPath = Join-Path $PSScriptRoot "Invoke-TODNextStepPolicy.ps1"
+
+            if ((Test-Path -Path $nextStepsScriptPath) -and (Test-Path -Path $consensusScriptPath) -and (Test-Path -Path $policyScriptPath)) {
+                $nextStepsArtifact = (& $nextStepsScriptPath `
+                        -TaskId ([string]$TaskId) `
+                        -ObjectiveId ([string]$task.objective_id) `
+                        -ResultJsonPath $ResultJsonPath `
+                        -ReviewDecision ([string]$reviewReport.decision) `
+                        -ReviewRationale ([string]$reviewReport.rationale) `
+                        -LoopDecision ([string]$loopDecision) |
+                    ConvertFrom-Json)
+
+                $nextStepConsensus = (& $consensusScriptPath `
+                        -FindingsPath ([string]$nextStepsArtifact.output_path) |
+                    ConvertFrom-Json)
+
+                $nextStepPolicy = (& $policyScriptPath `
+                        -ConsensusPath ([string]$nextStepConsensus.output_path) |
+                    ConvertFrom-Json)
+            }
+        }
+        catch {
+            $nextStepsError = [string]$_.Exception.Message
+        }
+
         [pscustomobject]@{
             task_id = $TaskId
             package = $package
@@ -1191,6 +1225,10 @@ switch ($Action) {
             review_report = $reviewReport
             review_response = $reviewResponse
             loop_decision = $loopDecision
+            next_steps_artifact = $nextStepsArtifact
+            next_step_consensus = $nextStepConsensus
+            next_step_policy = $nextStepPolicy
+            next_steps_error = $nextStepsError
         } | ConvertTo-Json -Depth 12
     }
 }

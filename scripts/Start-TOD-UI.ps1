@@ -23,6 +23,7 @@ $contextSyncSshSharedPath = Join-Path $contextSyncPath "ssh-shared"
 $listenerJournalPath = Join-Path $listenerStagePath "TOD_LOOP_JOURNAL.latest.json"
 $listenerResultPath = Join-Path $listenerStagePath "TOD_MIM_TASK_RESULT.latest.json"
 $listenerRequestPath = Join-Path $listenerStagePath "MIM_TOD_TASK_REQUEST.latest.json"
+$listenerCommandStatusPath = Join-Path $listenerStagePath "TOD_MIM_COMMAND_STATUS.latest.json"
 $mimExportCanonicalPath = Join-Path $contextSyncSshSharedPath "MIM_CONTEXT_EXPORT.latest.json"
 $mimExportFallbackPath = Join-Path $contextSyncPath "MIM_CONTEXT_EXPORT.latest.json"
 $mimHandshakeCanonicalPath = Join-Path $contextSyncSshSharedPath "MIM_TOD_HANDSHAKE_PACKET.latest.json"
@@ -33,6 +34,7 @@ $listenerStatePath = Join-Path $listenerStagePath "listener_state.json"
 $coordinationEscalationPath = Join-Path $listenerStagePath "TOD_MIM_COORDINATION_ESCALATION_STATE.latest.json"
 $regressionStallStatePath = Join-Path $listenerStagePath "TOD_REGRESSION_STALL_STATE.latest.json"
 $currentBuildStatePath = Join-Path $repoRoot "shared_state/current_build_state.json"
+$sharedObjectivesPath = Join-Path $repoRoot "shared_state/objectives.json"
 $nextActionsPath = Join-Path $repoRoot "shared_state/next_actions.json"
 $recoveryWatchdogStatePath = Join-Path $repoRoot "shared_state/tod_recovery_watchdog.latest.json"
 $selfHealthMaintenanceReportPath = Join-Path $repoRoot "shared_state/TOD_SELF_HEALTH_RUN.latest.json"
@@ -44,9 +46,16 @@ $operatorChatCommitmentLogPath = Join-Path $repoRoot "shared_state/tod_operator_
 $operatorChatCommitmentLatestPath = Join-Path $repoRoot "shared_state/tod_operator_chat_commitment.latest.json"
 $operatorChatFeedbackLogPath = Join-Path $repoRoot "shared_state/tod_operator_chat_feedback.log.jsonl"
 $operatorChatFeedbackLatestPath = Join-Path $repoRoot "shared_state/tod_operator_chat_feedback.latest.json"
+$dialogDirPath = Join-Path $repoRoot "shared_state/dialog"
+$dialogSessionIndexPath = Join-Path $dialogDirPath "MIM_TOD_DIALOG.sessions.latest.json"
+$dialogChannelPath = Join-Path $dialogDirPath "MIM_TOD_DIALOG.latest.jsonl"
+$mimDialogScriptPath = Join-Path $PSScriptRoot "Invoke-TODMimDialog.ps1"
 $operatorChatActionPreviewTtlMinutes = 10
 $operatorChatActionPreviewRegistry = @{}
 $operatorChatQueryCacheTtlSeconds = 120
+$operatorChatMimReplyTimeoutSeconds = 4
+$operatorChatMimReplyPollIntervalMilliseconds = 1000
+$operatorChatMimRemoteConnectionTimeoutMilliseconds = 3000
 $operatorChatQueryCache = @{}
 $operatorChatParsedLogCache = @{}
 $uiCrashLogDedupeWindowSeconds = 300
@@ -158,6 +167,37 @@ function Resolve-AppBrowserPath {
     return $null
 }
 
+function Wait-TodUiReady {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [int]$TimeoutSeconds = 5
+    )
+
+    $deadline = (Get-Date).ToUniversalTime().AddSeconds($TimeoutSeconds)
+    while ((Get-Date).ToUniversalTime() -lt $deadline) {
+        try {
+            $request = [System.Net.WebRequest]::Create($Url)
+            $request.Method = "GET"
+            $request.Timeout = 1000
+            $request.ReadWriteTimeout = 1000
+            $response = $request.GetResponse()
+            try {
+                return $true
+            }
+            finally {
+                if ($response) {
+                    $response.Close()
+                }
+            }
+        }
+        catch {
+            Start-Sleep -Milliseconds 200
+        }
+    }
+
+    return $false
+}
+
 function Open-TodUiClient {
     param(
         [Parameter(Mandatory = $true)][string]$Url,
@@ -167,6 +207,11 @@ function Open-TodUiClient {
     if ($NoAutoOpen) {
         Write-Host "Auto-open disabled. Browse to $Url"
         return
+    }
+
+    if (-not (Wait-TodUiReady -Url $Url)) {
+        Write-UiCrashLogDeduped -Key "ui-not-ready-$Url" -Message "[AUTO-OPEN-DEFERRED] UI endpoint did not report ready before launch timeout: $Url" -WindowSeconds 60
+        Write-Host "UI endpoint did not confirm readiness before launch timeout; opening anyway: $Url" -ForegroundColor Yellow
     }
 
     if ($AppMode) {
@@ -303,6 +348,64 @@ function Write-JsonResponse {
     }
 }
 
+function Write-BytesResponse {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Net.HttpListenerResponse]$Response,
+        [Parameter(Mandatory = $true)]
+        [int]$StatusCode,
+        [Parameter(Mandatory = $true)]
+        [byte[]]$Bytes,
+        [Parameter(Mandatory = $true)]
+        [string]$ContentType,
+        [hashtable]$Headers = $null
+    )
+
+    try {
+        $Response.StatusCode = $StatusCode
+        $Response.ContentType = $ContentType
+        if ($Headers) {
+            foreach ($headerName in $Headers.Keys) {
+                $Response.AddHeader([string]$headerName, [string]$Headers[$headerName])
+            }
+        }
+        $Response.ContentLength64 = $Bytes.LongLength
+        $Response.OutputStream.Write($Bytes, 0, $Bytes.Length)
+    }
+    catch {
+        Write-UiCrashLog ("[WRITE-BYTES-ERROR] " + $_.Exception.Message)
+    }
+    finally {
+        try {
+            if ($Response -and $Response.OutputStream) {
+                $Response.OutputStream.Close()
+            }
+        }
+        catch {
+        }
+        try {
+            $Response.Close()
+        }
+        catch {
+        }
+    }
+}
+
+function Write-TextResponse {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Net.HttpListenerResponse]$Response,
+        [Parameter(Mandatory = $true)]
+        [int]$StatusCode,
+        [Parameter(Mandatory = $true)]
+        [string]$Text,
+        [string]$ContentType = "text/plain; charset=utf-8"
+    )
+
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+    Write-BytesResponse -Response $Response -StatusCode $StatusCode -Bytes $bytes -ContentType $ContentType
+}
+
 function Test-ShouldUseLightweightStateBus {
     if (-not (Test-Path -Path $statePath)) {
         return $true
@@ -355,7 +458,42 @@ function Get-RecentLogLines {
     }
 
     $safeTail = if ($Tail -lt 1) { 1 } elseif ($Tail -gt 500) { 500 } else { $Tail }
-    return @(Get-Content -Path $LogPath -Tail $safeTail -ErrorAction SilentlyContinue)
+    $content = ''
+    for ($attempt = 0; $attempt -lt 6; $attempt++) {
+        try {
+            $stream = [System.IO.File]::Open($LogPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+            try {
+                $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8, $true)
+                try {
+                    $content = $reader.ReadToEnd()
+                }
+                finally {
+                    $reader.Dispose()
+                }
+            }
+            finally {
+                $stream.Dispose()
+            }
+            break
+        }
+        catch {
+            if ($attempt -ge 5) {
+                return @()
+            }
+            Start-Sleep -Milliseconds 40
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($content)) {
+        return @()
+    }
+
+    $lines = $content -split "`r?`n"
+    if ($lines.Count -le $safeTail) {
+        return @($lines)
+    }
+
+    return @($lines[($lines.Count - $safeTail)..($lines.Count - 1)])
 }
 
 function Get-RecentParsedLogEntries {
@@ -417,8 +555,62 @@ function Write-OperatorChatJsonArtifactEntry {
     }
 
     $json = $Entry | ConvertTo-Json -Depth 20 -Compress
-    Add-Content -Path $LogPath -Value $json -Encoding UTF8
-    Set-Content -Path $LatestPath -Value ($Entry | ConvertTo-Json -Depth 20) -Encoding UTF8
+
+    function Write-OperatorChatUtf8File {
+        param(
+            [Parameter(Mandatory = $true)][string]$Path,
+            [Parameter(Mandatory = $true)][string]$Content,
+            [switch]$Append
+        )
+
+        $targetDirectory = Split-Path -Parent $Path
+        if (-not [string]::IsNullOrWhiteSpace($targetDirectory)) {
+            [void][System.IO.Directory]::CreateDirectory($targetDirectory)
+        }
+
+        $encoding = New-Object System.Text.UTF8Encoding($false)
+        for ($attempt = 0; $attempt -lt 6; $attempt++) {
+            try {
+                $mode = if ($Append) { [System.IO.FileMode]::Append } else { [System.IO.FileMode]::Create }
+                $stream = [System.IO.File]::Open($Path, $mode, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+                try {
+                    $writer = New-Object System.IO.StreamWriter($stream, $encoding)
+                    try {
+                        if ($Append) {
+                            $writer.WriteLine($Content)
+                        }
+                        else {
+                            $writer.Write($Content)
+                        }
+                        $writer.Flush()
+                        $stream.Flush()
+                    }
+                    finally {
+                        $writer.Dispose()
+                    }
+                }
+                finally {
+                    $stream.Dispose()
+                }
+                return
+            }
+            catch {
+                if ($attempt -ge 5) {
+                    throw
+                }
+                Start-Sleep -Milliseconds 40
+            }
+        }
+    }
+
+    Write-OperatorChatUtf8File -Path $LogPath -Content $json -Append
+    Write-OperatorChatUtf8File -Path $LatestPath -Content ($Entry | ConvertTo-Json -Depth 20)
+
+    foreach ($cacheKey in @($operatorChatParsedLogCache.Keys)) {
+        if ([string]$cacheKey -like ("{0}|*" -f $LogPath)) {
+            $operatorChatParsedLogCache.Remove($cacheKey)
+        }
+    }
 }
 
 function Get-OperatorChatCapabilities {
@@ -471,6 +663,13 @@ function Write-OperatorChatCommitmentEntry {
     )
 
     Write-OperatorChatJsonArtifactEntry -LogPath $operatorChatCommitmentLogPath -LatestPath $operatorChatCommitmentLatestPath -Entry $Entry
+    Clear-OperatorChatQueryCache
+}
+
+function Clear-OperatorChatQueryCache {
+    foreach ($key in @($operatorChatQueryCache.Keys)) {
+        $operatorChatQueryCache.Remove($key)
+    }
 }
 
 function Clear-ExpiredOperatorChatActionPreviews {
@@ -586,6 +785,33 @@ function Get-CachedOperatorChatQueryResult {
         $entry = $operatorChatQueryCache[$key]
         if ($null -ne $entry -and $entry.PSObject.Properties['result']) {
             return $entry.result
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($ValidationHarness)) {
+        $matchingEntries = @(
+            $operatorChatQueryCache.Values | Where-Object {
+                $entry = $_
+                $null -ne $entry -and
+                [string]::Equals([string]$entry.query, [string]$Query, [System.StringComparison]::OrdinalIgnoreCase) -and
+                [string]::Equals([string]$entry.intent, [string]$Intent, [System.StringComparison]::OrdinalIgnoreCase) -and
+                [string]::Equals([string]$entry.objective_id, [string]$ObjectiveId, [System.StringComparison]::OrdinalIgnoreCase) -and
+                [int]$entry.window_minutes -eq [int]$WindowMinutes
+            }
+        ) | Sort-Object {
+            if ($_.PSObject.Properties['created_at']) {
+                [datetime]::Parse([string]$_.created_at)
+            }
+            else {
+                [datetime]::MinValue
+            }
+        } -Descending
+
+        if (@($matchingEntries).Count -gt 0) {
+            $fallbackEntry = $matchingEntries[0]
+            if ($fallbackEntry -and $fallbackEntry.PSObject.Properties['result']) {
+                return $fallbackEntry.result
+            }
         }
     }
 
@@ -2109,9 +2335,8 @@ function Write-OperatorChatFeedbackEntry {
         return $null
     }
 
-    $json = $Entry | ConvertTo-Json -Depth 20 -Compress
-    Add-Content -Path $operatorChatFeedbackLogPath -Value $json
-    $Entry | ConvertTo-Json -Depth 20 | Set-Content -Path $operatorChatFeedbackLatestPath
+    Write-OperatorChatJsonArtifactEntry -LogPath $operatorChatFeedbackLogPath -LatestPath $operatorChatFeedbackLatestPath -Entry $Entry
+    Clear-OperatorChatQueryCache
     return $Entry
 }
 
@@ -2804,7 +3029,7 @@ function Resolve-OperatorChatCommitmentScope {
             $influenceSummary = 'Objective-wide commitment is retained as background context, but proposal-specific scope takes precedence for active arbitration and recommit decisions.'
         }
         else {
-            $status = 'objective_scope_active'
+            $status = 'in_scope'
             $summary = 'Commitment remains objective-wide and in scope for the current objective.'
             $overlapStatus = 'exact'
             $conflictReason = ''
@@ -2883,7 +3108,8 @@ function Get-OperatorChatCommitmentPayload {
         [string]$ObjectiveId = '',
         [string]$State = '',
         $ProjectStatusOverrides = $null,
-        [string]$ValidationHarness = ''
+        [string]$ValidationHarness = '',
+        [switch]$SkipLifecycleEvaluation
     )
 
     $safeLimit = if ($Limit -lt 1) { 1 } elseif ($Limit -gt 50) { 50 } else { $Limit }
@@ -2922,6 +3148,65 @@ function Get-OperatorChatCommitmentPayload {
     }
 
     $sorted = @($entries | Sort-Object timestamp_utc -Descending | Select-Object -First $safeLimit)
+    if ($SkipLifecycleEvaluation) {
+        $quickEntries = @()
+        foreach ($entry in $sorted) {
+            if ($null -eq $entry) {
+                continue
+            }
+
+            $stateValue = if ($entry.PSObject.Properties['state']) { ([string]$entry.state).Trim().ToLowerInvariant() } else { '' }
+            $isTerminal = @('satisfied', 'abandoned', 'superseded', 'ineffective') -contains $stateValue
+            $active = @('committed', 'timeboxed', 'until_evidence_change') -contains $stateValue
+            if ($stateValue -eq 'cleared') {
+                $active = $false
+            }
+
+            $merged = [ordered]@{}
+            foreach ($property in $entry.PSObject.Properties) {
+                $merged[$property.Name] = $property.Value
+            }
+            $merged['active'] = [bool]$active
+            $merged['lifecycle_status'] = if ($isTerminal -or $stateValue -eq 'cleared') { $stateValue } else { if ($active) { 'active' } else { 'inactive' } }
+            $merged['is_terminal'] = [bool]$isTerminal
+            $merged['revalidation_required'] = $false
+            $merged['lifecycle_detail'] = ''
+            $merged['escalation_reason'] = ''
+            $merged['terminal_state'] = if ($isTerminal) { $stateValue } else { '' }
+            $merged['terminal_detail'] = ''
+            $merged['scope_status'] = 'in_scope'
+            $merged['scope_summary'] = 'Fast-path scope evaluation defaults to objective-wide active scope.'
+            $merged['scope_kind'] = 'objective_wide'
+            $merged['current_scope_kind'] = 'objective_wide'
+            $merged['scope_overlap_status'] = 'exact'
+            $merged['scope_conflict_reason'] = ''
+            $merged['scope_conflict_resolution'] = 'active'
+            $merged['scope_influence_summary'] = 'Fast-path commitment scope is objective-wide unless full lifecycle evaluation is requested.'
+            $merged['scope_in_scope'] = $true
+            $merged['scope_blocks_activation'] = $false
+            $merged['scope_precedence_rank'] = 1
+            $quickEntries += ,([pscustomobject]$merged)
+        }
+
+        return [pscustomobject]@{
+            ok = $true
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            count = @($quickEntries).Count
+            latest_path = $operatorChatCommitmentLatestPath
+            log_path = $operatorChatCommitmentLogPath
+            filters = [pscustomobject]@{
+                commitment_id = [string]$CommitmentId
+                preview_id = [string]$PreviewId
+                reasoning_bundle_id = [string]$ReasoningBundleId
+                objective_id = [string]$ObjectiveId
+                state = [string]$State
+                limit = $safeLimit
+                mode = 'skip_lifecycle_evaluation'
+            }
+            entries = @($quickEntries)
+        }
+    }
+
     $evaluatedEntries = New-Object System.Collections.Generic.List[object]
     $statusCache = @{}
     $historyCache = @{}
@@ -3085,7 +3370,7 @@ function Get-OperatorChatCommitmentPayload {
             $currentScopeKind = if ($currentScope -and $currentScope.PSObject.Properties['scope_kind']) { [string]$currentScope.scope_kind } else { $scopeKind }
             $isProposalSpecific = [string]::Equals($scopeKind, 'proposal_specific', [System.StringComparison]::OrdinalIgnoreCase)
             $merged['scope_in_scope'] = $true
-            $merged['scope_status'] = if ($isProposalSpecific) { 'proposal_nested_match' } else { 'objective_scope_active' }
+            $merged['scope_status'] = if ($isProposalSpecific) { 'proposal_nested_match' } else { 'in_scope' }
             $merged['scope_summary'] = if ($isProposalSpecific) { 'Commitment remains in exact proposal-specific scope under the current objective and proposal posture.' } else { 'Commitment remains objective-wide and in scope for the current objective.' }
             $merged['scope_kind'] = $scopeKind
             $merged['current_scope_kind'] = $currentScopeKind
@@ -3152,7 +3437,7 @@ function Get-OperatorChatLatestCommitment {
     if ($ProjectStatus -and -not [string]::IsNullOrWhiteSpace($ObjectiveId)) {
         $projectStatusOverrides = @{ ([string]$ObjectiveId) = $ProjectStatus }
     }
-    $payload = Get-OperatorChatCommitmentPayload -Limit 20 -ObjectiveId $ObjectiveId -ProjectStatusOverrides $projectStatusOverrides -ValidationHarness $ValidationHarness
+    $payload = Get-OperatorChatCommitmentPayload -Limit 8 -ObjectiveId $ObjectiveId -ProjectStatusOverrides $projectStatusOverrides -ValidationHarness $ValidationHarness -SkipLifecycleEvaluation
     $entries = @($payload.entries)
     if (@($entries).Count -eq 0) {
         return $null
@@ -3812,10 +4097,12 @@ function Invoke-OperatorChatGovernedAction {
         [string]$Intent,
         [string]$Query,
         [int]$WindowMinutes = 10,
-        $ProjectStatus
+        $ProjectStatus,
+        [string]$ValidationHarness = ''
     )
 
     $resolvedObjectiveId = [string]$ObjectiveId
+    $resolvedProjectStatus = if ($ProjectStatus) { $ProjectStatus } else { Get-ProjectStatusPayload -ObjectiveId $resolvedObjectiveId -ValidationHarness $ValidationHarness }
 
     switch ([string]$Action) {
         'get-reliability' {
@@ -3903,7 +4190,7 @@ function Invoke-OperatorChatGovernedAction {
             }
         }
         'refresh-project-status' {
-            $payload = Get-ProjectStatusPayload -ObjectiveId $resolvedObjectiveId
+            $payload = $resolvedProjectStatus
             $marker = if ($payload) { $payload.marker } else { $null }
             $bridge = if ($payload) { $payload.bridge_status } else { $null }
             return [pscustomobject]@{
@@ -3917,7 +4204,7 @@ function Invoke-OperatorChatGovernedAction {
             }
         }
         'recheck-bridge-diagnostics' {
-            $payload = Invoke-OperatorChatQuery -Query $(if ([string]::IsNullOrWhiteSpace($Query)) { 'What is the current bridge mismatch?' } else { $Query }) -Intent 'explain_bridge_status' -ObjectiveId $resolvedObjectiveId -WindowMinutes $WindowMinutes
+            $payload = Invoke-OperatorChatQuery -Query $(if ([string]::IsNullOrWhiteSpace($Query)) { 'What is the current bridge mismatch?' } else { $Query }) -Intent 'explain_bridge_status' -ObjectiveId $resolvedObjectiveId -WindowMinutes $WindowMinutes -ValidationHarness $ValidationHarness
             return [pscustomobject]@{
                 status = 'succeeded'
                 summary = "Bridge diagnostics re-checked. $([string]$payload.response.summary)"
@@ -3929,7 +4216,7 @@ function Invoke-OperatorChatGovernedAction {
             }
         }
         'quick-refresh-reliability' {
-            $statusPayload = Get-ProjectStatusPayload -ObjectiveId $resolvedObjectiveId
+            $statusPayload = $resolvedProjectStatus
             $sharePayload = Get-ShareArtifactsPayload -ActivePort $activePort
             $reliabilityPayload = Invoke-LightweightUiAction -Action 'get-reliability'
             $marker = if ($statusPayload) { $statusPayload.marker } else { $null }
@@ -3953,7 +4240,7 @@ function Invoke-OperatorChatGovernedAction {
             }
         }
         'refresh-governance-snapshot' {
-            $statusPayload = Get-ProjectStatusPayload -ObjectiveId $resolvedObjectiveId
+            $statusPayload = $resolvedProjectStatus
             $sharePayload = Get-ShareArtifactsPayload -ActivePort $activePort
             $stateBusPayload = Invoke-LightweightUiAction -Action 'get-state-bus'
             $marker = if ($statusPayload) { $statusPayload.marker } else { $null }
@@ -3982,10 +4269,10 @@ function Invoke-OperatorChatGovernedAction {
             }
         }
         'refresh-bridge-alignment-bundle' {
-            $statusPayload = Get-ProjectStatusPayload -ObjectiveId $resolvedObjectiveId
+            $statusPayload = $resolvedProjectStatus
             $sharePayload = Get-ShareArtifactsPayload -ActivePort $activePort
             $stateBusPayload = Invoke-LightweightUiAction -Action 'get-state-bus'
-            $bridgePayload = Invoke-OperatorChatQuery -Query $(if ([string]::IsNullOrWhiteSpace($Query)) { 'What is the current bridge mismatch?' } else { $Query }) -Intent 'explain_bridge_status' -ObjectiveId $resolvedObjectiveId -WindowMinutes $WindowMinutes
+            $bridgePayload = Invoke-OperatorChatQuery -Query $(if ([string]::IsNullOrWhiteSpace($Query)) { 'What is the current bridge mismatch?' } else { $Query }) -Intent 'explain_bridge_status' -ObjectiveId $resolvedObjectiveId -WindowMinutes $WindowMinutes -ValidationHarness $ValidationHarness
             $artifactsAvailable = if ($sharePayload -and $sharePayload.PSObject.Properties['artifacts']) { @($sharePayload.artifacts | Where-Object { $_.exists -eq $true }).Count } else { 0 }
             $agentMode = if ($stateBusPayload -and $stateBusPayload.PSObject.Properties['agent_state'] -and $stateBusPayload.agent_state.PSObject.Properties['mode']) { [string]$stateBusPayload.agent_state.mode } else { 'unknown' }
             return [pscustomobject]@{
@@ -4017,7 +4304,8 @@ function Get-OperatorChatExecutionReadinessGate {
     param(
         [Parameter(Mandatory = $true)][string]$ActionName,
         [string]$ConfigPath,
-        [switch]$ApplyPlan
+        [switch]$ApplyPlan,
+        [switch]$GovernedConfirm
     )
 
     $payload = $null
@@ -4066,7 +4354,8 @@ function Get-OperatorChatExecutionReadinessGate {
     $actionNameLower = ([string]$ActionName).ToLowerInvariant()
     $effectiveApplyPlan = [bool]$ApplyPlan
 
-    $blocked = (($blockActions -contains $actionNameLower) -and ($blockStates -contains $status))
+    $applyGovernedConfirmBlockPolicy = [bool]$GovernedConfirm
+    $blocked = (((($blockActions -contains $actionNameLower) -or $applyGovernedConfirmBlockPolicy) -and ($blockStates -contains $status)))
     $degraded = (-not $blocked) -and (($degradeActions -contains $actionNameLower) -and ($degradeStates -contains $status))
     if ($degraded -and $effectiveApplyPlan -and $payload.PSObject.Properties['policy'] -and $payload.policy.PSObject.Properties['degrade_apply_plan'] -and [bool]$payload.policy.degrade_apply_plan) {
         $effectiveApplyPlan = $false
@@ -4086,6 +4375,9 @@ function Get-OperatorChatExecutionReadinessGate {
     if ($ApplyPlan.IsPresent) {
         $decisionPath += 'apply_plan_requested:true'
         $decisionPath += "apply_plan_effective:$([bool]$effectiveApplyPlan)"
+    }
+    if ($GovernedConfirm.IsPresent) {
+        $decisionPath += 'governed_confirm:true'
     }
 
     return [pscustomobject]@{
@@ -4142,6 +4434,17 @@ function Invoke-OperatorChatActionRequest {
     }
     else {
         ''
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedValidationHarness) -and -not [string]::IsNullOrWhiteSpace($resolvedObjectiveId)) {
+        $recentCommitmentPayload = Get-OperatorChatCommitmentPayload -Limit 6 -ObjectiveId $resolvedObjectiveId
+        $recentHarnessEntry = @($recentCommitmentPayload.entries | Where-Object {
+                $_ -and
+                $_.PSObject.Properties['validation_harness'] -and
+                -not [string]::IsNullOrWhiteSpace([string]$_.validation_harness)
+            } | Select-Object -First 1)
+        if (@($recentHarnessEntry).Count -gt 0) {
+            $resolvedValidationHarness = [string]$recentHarnessEntry[0].validation_harness
+        }
     }
     $projectStatus = Get-ProjectStatusPayload -ObjectiveId $resolvedObjectiveId -ValidationHarness $resolvedValidationHarness
     if ($null -eq $operatorResponse) {
@@ -4351,7 +4654,8 @@ function Invoke-OperatorChatActionRequest {
         }
     }
 
-    $executionReadinessGate = Get-OperatorChatExecutionReadinessGate -ActionName 'run-task' -ConfigPath $ConfigPath
+    $executionActionName = if ([string]::IsNullOrWhiteSpace([string]$policy.action)) { 'run-task' } else { [string]$policy.action }
+    $executionReadinessGate = Get-OperatorChatExecutionReadinessGate -ActionName $executionActionName -ConfigPath $ConfigPath -GovernedConfirm
     if ($executionReadinessGate.blocked) {
         $auditEntry = [pscustomobject]($baseAudit + [ordered]@{
             execution_readiness_status = if ($executionReadinessGate.trace.PSObject.Properties['status']) { [string]$executionReadinessGate.trace.status } else { 'unknown' }
@@ -4386,7 +4690,7 @@ function Invoke-OperatorChatActionRequest {
     [void](Mark-OperatorChatActionPreviewConsumed -PreviewId $resolvedPreviewId)
 
     try {
-        $execution = Invoke-OperatorChatGovernedAction -Action $policy.action -ObjectiveId $resolvedObjectiveId -Intent $resolvedIntent -Query $Query -WindowMinutes $WindowMinutes -ProjectStatus $projectStatus
+        $execution = Invoke-OperatorChatGovernedAction -Action $policy.action -ObjectiveId $resolvedObjectiveId -Intent $resolvedIntent -Query $Query -WindowMinutes $WindowMinutes -ProjectStatus $projectStatus -ValidationHarness $resolvedValidationHarness
         $executionFlags = New-Object System.Collections.Generic.List[string]
         foreach ($flag in @($operatorResponse.response.flags)) {
             [void]$executionFlags.Add([string]$flag)
@@ -4484,8 +4788,11 @@ function Resolve-OperatorChatIntent {
 
     $normalized = $q.Trim().ToLowerInvariant()
 
-    if ($normalized -match 'what changed|last\s+\d+\s+minute|recent changes|since the last successful completion') {
+    if ($normalized -match 'what did .* just work on|what was .* just working on|what did tod do|what just happened|what changed|last\s+\d+\s+minute|recent changes|since the last successful completion|last task you worked on|last task|what have you been working on') {
         return 'summarize_recent_changes'
+    }
+    if ($normalized -match 'what are you currently working on|currently working on|current task|what are you working on|what is tod working on') {
+        return 'summarize_current_objective'
     }
     if ($normalized -match 'what should i do next|action should i run next|run next|next action|resync|restart|just patience|just wait|what now') {
         return 'suggest_next_action'
@@ -4787,6 +5094,35 @@ function Get-OperatorChatRecentChanges {
     }
 }
 
+function Get-OperatorChatProjectStatus {
+    param(
+        [string]$ObjectiveId,
+        [string]$Intent,
+        [string]$ValidationHarness = ''
+    )
+
+    $listenerOnlyIntents = @(
+        'summarize_recent_changes',
+        'summarize_current_objective'
+    )
+
+    if ($listenerOnlyIntents -contains [string]$Intent) {
+        $validationHarnessProfile = Get-OperatorChatValidationHarnessProfile -ValidationHarness $ValidationHarness
+        $listenerActivity = Get-ListenerActivity
+        $recoveryWatchdog = Get-RecoveryWatchdogStatus
+        $cadenceHealth = Get-CadenceHealth -ListenerActivity $listenerActivity -RecoveryWatchdog $recoveryWatchdog
+        $voiceAdapterStatus = Get-VoiceAdapterStatus
+        $mimProposal = Get-MimProposalFromListenerRequest
+        $listenerOnlyPayload = Get-ProjectStatusFromListenerOnly -ObjectiveId $ObjectiveId -ListenerActivity $listenerActivity -RecoveryWatchdog $recoveryWatchdog -CadenceHealth $cadenceHealth -VoiceAdapterStatus $voiceAdapterStatus -StateWarning 'operator chat listener-only fast path' -MimProposal $mimProposal
+        if ($validationHarnessProfile) {
+            return Apply-OperatorChatValidationHarnessToStatus -ProjectStatus $listenerOnlyPayload -ValidationHarnessProfile $validationHarnessProfile -RequestedObjectiveId $ObjectiveId
+        }
+        return $listenerOnlyPayload
+    }
+
+    return Get-ProjectStatusPayload -ObjectiveId $ObjectiveId -ValidationHarness $ValidationHarness
+}
+
 function Get-OperatorChatRecommendedActions {
     param(
         $ProjectStatus,
@@ -5032,7 +5368,37 @@ function Get-OperatorChatRecommendedActions {
         Write-UiCrashLogDeduped -Key 'RECOMMENDED-ACTIONS-SCORING-FALLBACK' -Message ("[RECOMMENDED-ACTIONS-SCORING-FALLBACK] " + $_.Exception.ToString())
     }
 
-    if ($resolvedActiveCommitment -and -not [string]::IsNullOrWhiteSpace([string]$resolvedActiveCommitment.action)) {
+    $terminalFollowupCommitment = $resolvedRecentCommitment
+    try {
+        $recentCommitmentPayload = Get-OperatorChatCommitmentPayload -Limit 12 -ObjectiveId $commitmentObjectiveId -ValidationHarness $ValidationHarness
+        $recentIneffectiveCommitment = @($recentCommitmentPayload.entries | Where-Object {
+                $_ -and
+                $_.PSObject.Properties['terminal_state'] -and
+                [string]::Equals([string]$_.terminal_state, 'ineffective', [System.StringComparison]::OrdinalIgnoreCase)
+            } | Select-Object -First 1)
+        if (@($recentIneffectiveCommitment).Count -gt 0) {
+            $useIneffectiveCommitment = $true
+            if ($resolvedActiveCommitment -and $resolvedActiveCommitment.PSObject.Properties['timestamp_utc'] -and $recentIneffectiveCommitment[0].PSObject.Properties['timestamp_utc']) {
+                try {
+                    $activeTimestamp = [datetime]::Parse([string]$resolvedActiveCommitment.timestamp_utc)
+                    $ineffectiveTimestamp = [datetime]::Parse([string]$recentIneffectiveCommitment[0].timestamp_utc)
+                    $useIneffectiveCommitment = $ineffectiveTimestamp -ge $activeTimestamp
+                }
+                catch {
+                }
+            }
+            if ($useIneffectiveCommitment) {
+                $terminalFollowupCommitment = $recentIneffectiveCommitment[0]
+            }
+        }
+    }
+    catch {
+    }
+
+    $terminalFollowup = if ($terminalFollowupCommitment) { Get-OperatorChatCommitmentTerminalFollowup -Commitment $terminalFollowupCommitment } else { $null }
+    $preferTerminalFollowup = $terminalFollowup -and [string]::Equals([string]$terminalFollowup.state, 'ineffective', [System.StringComparison]::OrdinalIgnoreCase)
+
+    if ($resolvedActiveCommitment -and -not [string]::IsNullOrWhiteSpace([string]$resolvedActiveCommitment.action) -and -not $preferTerminalFollowup) {
         $committedAction = [string]$resolvedActiveCommitment.action
         $filtered = New-Object System.Collections.Generic.List[object]
         foreach ($item in $unique) {
@@ -5054,7 +5420,6 @@ function Get-OperatorChatRecommendedActions {
         }
     }
     else {
-        $terminalFollowup = if ($resolvedRecentCommitment) { Get-OperatorChatCommitmentTerminalFollowup -Commitment $resolvedRecentCommitment } else { $null }
         if ($terminalFollowup) {
             if ([string]::Equals([string]$terminalFollowup.state, 'satisfied', [System.StringComparison]::OrdinalIgnoreCase) -and -not [string]::IsNullOrWhiteSpace([string]$terminalFollowup.action)) {
                 try {
@@ -5163,6 +5528,360 @@ function Get-OperatorChatGovernedActionAlternatives {
     return @($unique | Select-Object -First 3)
 }
 
+function Invoke-OperatorChatMimDialogCommand {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Arguments
+    )
+
+    if (-not (Test-Path -Path $mimDialogScriptPath)) {
+        throw "MIM dialog script not found at $mimDialogScriptPath"
+    }
+
+    try {
+        $invokeParams = @{}
+        foreach ($key in @($Arguments.Keys)) {
+            $invokeParams[[string]$key] = $Arguments[$key]
+        }
+        if (-not $invokeParams.ContainsKey('RemoteConnectionTimeoutMilliseconds')) {
+            $invokeParams['RemoteConnectionTimeoutMilliseconds'] = $operatorChatMimRemoteConnectionTimeoutMilliseconds
+        }
+        $invokeParams['EmitJson'] = $true
+        $raw = (& $mimDialogScriptPath @invokeParams 2>&1 | Out-String)
+    }
+    catch {
+        throw $_.Exception
+    }
+
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        throw 'MIM dialog command returned no payload.'
+    }
+
+    try {
+        return ($raw | ConvertFrom-Json)
+    }
+    catch {
+        throw ("Unable to parse MIM dialog payload: {0}" -f $_.Exception.Message)
+    }
+}
+
+function New-OperatorChatMimSessionId {
+    param(
+        [string]$Intent,
+        [string]$ObjectiveId
+    )
+
+    $intentToken = if ([string]::IsNullOrWhiteSpace($Intent)) { 'status' } else { ([string]$Intent -replace '[^a-zA-Z0-9._-]', '-').Trim('-').ToLowerInvariant() }
+    if ([string]::IsNullOrWhiteSpace($intentToken)) {
+        $intentToken = 'status'
+    }
+    $objectiveToken = if ([string]::IsNullOrWhiteSpace($ObjectiveId)) { 'unscoped' } else { ([string]$ObjectiveId -replace '[^a-zA-Z0-9._-]', '-').Trim('-').ToLowerInvariant() }
+    $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')
+    $nonce = ([guid]::NewGuid().ToString('N')).Substring(0, 8)
+    return ("tod-operator-chat-{0}-{1}-{2}-{3}" -f $intentToken, $objectiveToken, $stamp, $nonce)
+}
+
+function ConvertTo-OperatorChatSuggestedActionArray {
+    param([AllowNull()]$Value)
+
+    $items = @()
+    foreach ($entry in @($Value)) {
+        if ($null -eq $entry) {
+            continue
+        }
+
+        if ($entry -is [string]) {
+            continue
+        }
+
+        $actionName = if ($entry.PSObject.Properties['action']) { [string]$entry.action } else { '' }
+        if ([string]::IsNullOrWhiteSpace($actionName)) {
+            continue
+        }
+
+        $items += [pscustomobject]@{
+            action = $actionName
+            label = if ($entry.PSObject.Properties['label']) { [string]$entry.label } else { '' }
+            reason = if ($entry.PSObject.Properties['reason']) { [string]$entry.reason } else { '' }
+            mode = if ($entry.PSObject.Properties['mode']) { [string]$entry.mode } else { 'read_only' }
+        }
+    }
+
+    return @($items)
+}
+
+function ConvertTo-OperatorChatCitationArray {
+    param([AllowNull()]$Value)
+
+    $items = @()
+    foreach ($entry in @($Value)) {
+        if ($null -eq $entry) {
+            continue
+        }
+
+        $section = if ($entry.PSObject.Properties['section']) { [string]$entry.section } else { '' }
+        $field = if ($entry.PSObject.Properties['field']) { [string]$entry.field } else { '' }
+        if ([string]::IsNullOrWhiteSpace($section) -or [string]::IsNullOrWhiteSpace($field)) {
+            continue
+        }
+
+        $items += [pscustomobject]@{
+            section = $section
+            field = $field
+        }
+    }
+
+    return @($items)
+}
+
+function Get-OperatorChatMimPrimaryResult {
+    param(
+        [string]$Query,
+        [string]$ResolvedIntent,
+        [string]$ResolvedObjectiveId,
+        [int]$WindowMinutes,
+        [AllowNull()]$ProjectStatus,
+        [AllowNull()]$Marker,
+        [AllowNull()]$Progress,
+        [AllowNull()]$Listener,
+        [AllowNull()]$Bridge,
+        [AllowNull()]$Maintenance,
+        [AllowNull()]$Cadence,
+        [AllowNull()]$Steady,
+        [AllowNull()]$Watchdog,
+        [string]$ValidationHarness
+    )
+
+    if (-not (Test-Path -Path $mimDialogScriptPath)) {
+        return [pscustomobject]@{
+            ok = $false
+            error = 'mim_dialog_script_missing'
+            detail = "MIM dialog script not found at $mimDialogScriptPath"
+        }
+    }
+
+    $sessionId = New-OperatorChatMimSessionId -Intent $ResolvedIntent -ObjectiveId $ResolvedObjectiveId
+    $taskId = if ($Listener -and $Listener.PSObject.Properties['latest_request_id']) { [string]$Listener.latest_request_id } else { '' }
+    $requestSummary = if ([string]::IsNullOrWhiteSpace($Query)) {
+        "TOD operator chat needs MIM-owned guidance for $ResolvedIntent."
+    }
+    else {
+        "TOD operator chat asks MIM: $Query"
+    }
+
+    $requestPayload = [ordered]@{
+        request_kind = 'operator_chat'
+        primary_source = 'MIM'
+        instruction = 'MIM is the primary source for updates, continued development, natural next steps, tasks, and bounded operational guidance. Reply on this session with a concise status-owned answer for TOD to render.'
+        query = [string]$Query
+        intent = [string]$ResolvedIntent
+        objective_id = [string]$ResolvedObjectiveId
+        window_minutes = [int]$WindowMinutes
+        validation_harness = [string]$ValidationHarness
+        project_status = [ordered]@{
+            objective_id = if ($Marker -and $Marker.PSObject.Properties['objective_id']) { [string]$Marker.objective_id } else { [string]$ResolvedObjectiveId }
+            objective_status = if ($Marker -and $Marker.PSObject.Properties['status']) { [string]$Marker.status } else { 'unknown' }
+            progress_summary = if ($Progress -and $Progress.PSObject.Properties['summary']) { [string]$Progress.summary } else { '' }
+            latest_request_id = if ($Listener -and $Listener.PSObject.Properties['latest_request_id']) { [string]$Listener.latest_request_id } else { '' }
+            latest_execution_status = if ($Listener -and $Listener.PSObject.Properties['latest_execution_status']) { [string]$Listener.latest_execution_status } else { '' }
+            bridge_status = if ($Bridge -and $Bridge.PSObject.Properties['status']) { [string]$Bridge.status } else { 'unknown' }
+            bridge_summary = if ($Bridge -and $Bridge.PSObject.Properties['summary']) { [string]$Bridge.summary } else { '' }
+            cadence_severity = if ($Cadence -and $Cadence.PSObject.Properties['severity']) { [string]$Cadence.severity } else { 'unknown' }
+            steady_state = if ($Steady -and $Steady.PSObject.Properties['status']) { [string]$Steady.status } else { 'unknown' }
+            maintenance_status = if ($Maintenance -and $Maintenance.PSObject.Properties['overall_status']) { [string]$Maintenance.overall_status } else { 'unknown' }
+            maintenance_severity = if ($Maintenance -and $Maintenance.PSObject.Properties['overall_severity']) { [string]$Maintenance.overall_severity } else { 'unknown' }
+            watchdog_state = if ($Watchdog -and $Watchdog.PSObject.Properties['state']) { [string]$Watchdog.state } else { 'unknown' }
+        }
+        requested_fields = @('summary', 'recommended_next_step', 'updates', 'continued_development', 'natural_next_steps', 'tasks', 'confidence', 'limitations', 'flags')
+    }
+
+    $sendResult = $null
+    try {
+        $sendResult = Invoke-OperatorChatMimDialogCommand -Arguments @{
+            Action = 'send'
+            SessionId = $sessionId
+            Actor = 'TOD'
+            PeerActor = 'MIM'
+            MessageType = 'status_request'
+            Intent = $ResolvedIntent
+            TaskId = $taskId
+            Summary = $requestSummary
+            PayloadJson = ($requestPayload | ConvertTo-Json -Depth 14 -Compress)
+            PublishRemote = $true
+            RequiresReply = $true
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            ok = $false
+            error = 'mim_dialog_send_failed'
+            detail = [string]$_.Exception.Message
+            session_id = $sessionId
+        }
+    }
+
+    $sendRemoteStatus = if ($sendResult -and $sendResult.PSObject.Properties['remote'] -and $sendResult.remote -and $sendResult.remote.PSObject.Properties['status']) { [string]$sendResult.remote.status } else { '' }
+    if (-not [string]::IsNullOrWhiteSpace($sendRemoteStatus) -and -not [string]::Equals($sendRemoteStatus, 'uploaded', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $sendRemoteError = if ($sendResult.remote.PSObject.Properties['error']) { [string]$sendResult.remote.error } else { '' }
+        $sendRemoteDetail = if (-not [string]::IsNullOrWhiteSpace($sendRemoteError)) {
+            "MIM primary-source handoff could not publish remotely ({0}: {1})." -f $sendRemoteStatus, $sendRemoteError
+        }
+        else {
+            "MIM primary-source handoff could not publish remotely ({0})." -f $sendRemoteStatus
+        }
+        return [pscustomobject]@{
+            ok = $false
+            error = 'mim_dialog_remote_unavailable'
+            detail = $sendRemoteDetail
+            session_id = $sessionId
+        }
+    }
+
+    $deadline = (Get-Date).ToUniversalTime().AddSeconds($operatorChatMimReplyTimeoutSeconds)
+    $replyMessage = $null
+    $lastSessionState = $null
+    $pollCount = 0
+
+    while ((Get-Date).ToUniversalTime() -lt $deadline) {
+        try {
+            $refreshFromRemote = ($pollCount -eq 0) -or ((Get-Date).ToUniversalTime().AddMilliseconds($operatorChatMimReplyPollIntervalMilliseconds) -ge $deadline)
+            $sessionDoc = Invoke-OperatorChatMimDialogCommand -Arguments @{
+                Action = 'read-session'
+                SessionId = $sessionId
+                RefreshFromRemote = $refreshFromRemote
+                Tail = 12
+            }
+        }
+        catch {
+            return [pscustomobject]@{
+                ok = $false
+                error = 'mim_dialog_read_failed'
+                detail = [string]$_.Exception.Message
+                session_id = $sessionId
+            }
+        }
+
+        $lastSessionState = if ($sessionDoc.PSObject.Properties['session_state']) { $sessionDoc.session_state } else { $null }
+    $sessionRemoteStatus = if ($sessionDoc.PSObject.Properties['remote'] -and $sessionDoc.remote -and $sessionDoc.remote.PSObject.Properties['status']) { [string]$sessionDoc.remote.status } else { '' }
+        $matchingReplyMessages = @($sessionDoc.messages | Where-Object {
+                $_ -and
+                $_.PSObject.Properties['from'] -and
+                $_.PSObject.Properties['to'] -and
+                [string]::Equals([string]$_.from, 'MIM', [System.StringComparison]::OrdinalIgnoreCase) -and
+                [string]::Equals([string]$_.to, 'TOD', [System.StringComparison]::OrdinalIgnoreCase) -and
+                $_.PSObject.Properties['message_type'] -and
+                @('status_reply', 'diagnostic_reply', 'handoff_response', 'resolution_notice') -contains [string]$_.message_type
+            })
+
+        if (@($matchingReplyMessages).Count -gt 0) {
+            $replyMessage = @($matchingReplyMessages)[-1]
+            break
+        }
+
+        if (@('remote_not_configured', 'refresh_failed') -contains $sessionRemoteStatus) {
+            $sessionRemoteError = if ($sessionDoc.remote.PSObject.Properties['error']) { [string]$sessionDoc.remote.error } else { '' }
+            $sessionRemoteDetail = if (-not [string]::IsNullOrWhiteSpace($sessionRemoteError)) {
+                "MIM primary-source reply refresh became unavailable ({0}: {1})." -f $sessionRemoteStatus, $sessionRemoteError
+            }
+            else {
+                "MIM primary-source reply refresh became unavailable ({0})." -f $sessionRemoteStatus
+            }
+            return [pscustomobject]@{
+                ok = $false
+                error = 'mim_dialog_remote_unavailable'
+                detail = $sessionRemoteDetail
+                session_id = $sessionId
+                session_state = $lastSessionState
+            }
+        }
+
+        $pollCount++
+        Start-Sleep -Milliseconds $operatorChatMimReplyPollIntervalMilliseconds
+    }
+
+    if ($null -eq $replyMessage) {
+        return [pscustomobject]@{
+            ok = $false
+            error = 'mim_dialog_timeout'
+            detail = "MIM did not reply within $operatorChatMimReplyTimeoutSeconds seconds."
+            session_id = $sessionId
+            session_state = $lastSessionState
+        }
+    }
+
+    $replyPayload = if ($replyMessage.PSObject.Properties['payload']) { $replyMessage.payload } else { $null }
+    $summary = if ($replyPayload -and $replyPayload.PSObject.Properties['summary'] -and -not [string]::IsNullOrWhiteSpace([string]$replyPayload.summary)) {
+        [string]$replyPayload.summary
+    }
+    elseif ($replyMessage -and $replyMessage.PSObject.Properties['summary'] -and -not [string]::IsNullOrWhiteSpace([string]$replyMessage.summary)) {
+        [string]$replyMessage.summary
+    }
+    else {
+        'MIM replied without summary text.'
+    }
+    $recommendedNextStep = if ($replyPayload -and $replyPayload.PSObject.Properties['recommended_next_step'] -and -not [string]::IsNullOrWhiteSpace([string]$replyPayload.recommended_next_step)) {
+        [string]$replyPayload.recommended_next_step
+    }
+    elseif ($replyPayload -and $replyPayload.PSObject.Properties['natural_next_steps'] -and @($replyPayload.natural_next_steps).Count -gt 0) {
+        [string]@($replyPayload.natural_next_steps)[0]
+    }
+    elseif ($replyPayload -and $replyPayload.PSObject.Properties['tasks'] -and @($replyPayload.tasks).Count -gt 0) {
+        [string]@($replyPayload.tasks)[0]
+    }
+    else {
+        'Continue with the MIM-provided guidance on this dialog session and refresh bounded TOD evidence after each material change.'
+    }
+
+    $evidence = New-Object System.Collections.Generic.List[object]
+    [void]$evidence.Add((New-OperatorChatEvidence -Label 'MIM Session' -Value $sessionId -Section 'dialog' -Field 'session_id'))
+    [void]$evidence.Add((New-OperatorChatEvidence -Label 'MIM Reply Type' -Value $(if ($replyMessage.PSObject.Properties['message_type']) { [string]$replyMessage.message_type } else { 'status_reply' }) -Section 'dialog' -Field 'message_type'))
+    [void]$evidence.Add((New-OperatorChatEvidence -Label 'MIM Reply Intent' -Value $(if ($replyMessage.PSObject.Properties['intent']) { [string]$replyMessage.intent } else { $ResolvedIntent }) -Section 'dialog' -Field 'intent'))
+
+    foreach ($update in @($(if ($replyPayload -and $replyPayload.PSObject.Properties['updates']) { @($replyPayload.updates) } else { @() }) | Select-Object -First 3)) {
+        [void]$evidence.Add((New-OperatorChatEvidence -Label 'MIM Update' -Value $update -Section 'dialog' -Field 'updates'))
+    }
+    foreach ($task in @($(if ($replyPayload -and $replyPayload.PSObject.Properties['tasks']) { @($replyPayload.tasks) } else { @() }) | Select-Object -First 3)) {
+        [void]$evidence.Add((New-OperatorChatEvidence -Label 'MIM Task' -Value $task -Section 'dialog' -Field 'tasks'))
+    }
+    foreach ($developmentItem in @($(if ($replyPayload -and $replyPayload.PSObject.Properties['continued_development']) { @($replyPayload.continued_development) } else { @() }) | Select-Object -First 2)) {
+        [void]$evidence.Add((New-OperatorChatEvidence -Label 'Continued Development' -Value $developmentItem -Section 'dialog' -Field 'continued_development'))
+    }
+
+    $limitations = @()
+    if ($replyPayload -and $replyPayload.PSObject.Properties['limitations']) {
+        $limitations = @(Convert-ToStringArray -Value $replyPayload.limitations)
+    }
+
+    $result = [pscustomobject]@{
+        ok = $true
+        query = [string]$Query
+        intent = $ResolvedIntent
+        objective_id = if ($Marker -and $Marker.PSObject.Properties['objective_id']) { [string]$Marker.objective_id } else { [string]$ResolvedObjectiveId }
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        validation_harness = if ($ProjectStatus -and $ProjectStatus.PSObject.Properties['validation_harness']) { $ProjectStatus.validation_harness } else { $null }
+        source = 'mim_dialog'
+        source_label = 'MIM via TOD'
+        dialog_session_id = $sessionId
+        dialog_message_type = if ($replyMessage.PSObject.Properties['message_type']) { [string]$replyMessage.message_type } else { 'status_reply' }
+        capabilities = Get-OperatorChatCapabilities
+        response = [pscustomobject]@{
+            summary = $summary
+            evidence = @($evidence | Select-Object -First 8)
+            recommended_next_step = $recommendedNextStep
+            suggested_actions = @(ConvertTo-OperatorChatSuggestedActionArray -Value $(if ($replyPayload -and $replyPayload.PSObject.Properties['suggested_actions']) { $replyPayload.suggested_actions } else { @() }))
+            confidence = if ($replyPayload -and $replyPayload.PSObject.Properties['confidence']) { [string]$replyPayload.confidence } else { 'medium' }
+            flags = @(@('mim_primary_response') + @(Convert-ToStringArray -Value $(if ($replyPayload -and $replyPayload.PSObject.Properties['flags']) { $replyPayload.flags } else { @() })) | Select-Object -Unique)
+            limitations = @($limitations)
+            citations = @(ConvertTo-OperatorChatCitationArray -Value $(if ($replyPayload -and $replyPayload.PSObject.Properties['citations']) { $replyPayload.citations } else { @() }))
+        }
+    }
+
+    return [pscustomobject]@{
+        ok = $true
+        result = $result
+        session_id = $sessionId
+    }
+}
+
 function Invoke-OperatorChatQuery {
     param(
         [string]$Query,
@@ -5174,7 +5893,7 @@ function Invoke-OperatorChatQuery {
 
     $resolvedObjectiveId = if (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) { [string]$ObjectiveId } else { Get-OperatorChatObjectiveIdFromQuery -Query $Query }
     $resolvedIntent = Resolve-OperatorChatIntent -Query $Query -Intent $Intent
-    $projectStatus = Get-ProjectStatusPayload -ObjectiveId $resolvedObjectiveId -ValidationHarness $ValidationHarness
+    $projectStatus = Get-OperatorChatProjectStatus -ObjectiveId $resolvedObjectiveId -Intent $resolvedIntent -ValidationHarness $ValidationHarness
     $marker = if ($projectStatus) { $projectStatus.marker } else { $null }
     $progress = if ($projectStatus) { $projectStatus.progress } else { $null }
     $listener = if ($projectStatus) { $projectStatus.listener_activity } else { $null }
@@ -5197,17 +5916,36 @@ function Invoke-OperatorChatQuery {
     $confidence = 'medium'
     $resolvedValidationHarness = if ($projectStatus -and $projectStatus.PSObject.Properties['validation_harness'] -and $projectStatus.validation_harness -and $projectStatus.validation_harness.PSObject.Properties['name']) { [string]$projectStatus.validation_harness.name } else { '' }
     $commitmentContext = $null
-    try {
-        $commitmentContext = Get-OperatorChatLatestCommitment -ObjectiveId $resolvedObjectiveId -ProjectStatus $projectStatus -ValidationHarness $resolvedValidationHarness -IncludeInactive
-    }
-    catch {
-        Write-UiCrashLog ("[OPERATOR-CHAT-COMMITMENT-FALLBACK] " + $_.Exception.ToString())
+    $commitmentContextEnabled = $false
+    if ($commitmentContextEnabled) {
+        try {
+            $commitmentContext = Get-OperatorChatLatestCommitment -ObjectiveId $resolvedObjectiveId -ProjectStatus $projectStatus -ValidationHarness $resolvedValidationHarness -IncludeInactive
+        }
+        catch {
+            Write-UiCrashLog ("[OPERATOR-CHAT-COMMITMENT-FALLBACK] " + $_.Exception.ToString())
+        }
     }
     $activeCommitment = if ($commitmentContext -and $commitmentContext.PSObject.Properties['active'] -and [bool]$commitmentContext.active) { $commitmentContext } else { $null }
 
     if ($projectStatus -and $projectStatus.data_sources -and [string]::Equals([string]$projectStatus.data_sources.project_status_mode, 'listener_telemetry_fallback', [System.StringComparison]::OrdinalIgnoreCase)) {
         [void]$limitations.Add('Dashboard is operating in listener_telemetry_fallback mode because full state.json is too large or unavailable.')
         [void]$flags.Add('listener_telemetry_fallback')
+    }
+
+    if ([string]::IsNullOrWhiteSpace($resolvedValidationHarness)) {
+        $mimPrimaryAttempt = Get-OperatorChatMimPrimaryResult -Query $Query -ResolvedIntent $resolvedIntent -ResolvedObjectiveId $resolvedObjectiveId -WindowMinutes $WindowMinutes -ProjectStatus $projectStatus -Marker $marker -Progress $progress -Listener $listener -Bridge $bridge -Maintenance $maintenance -Cadence $cadence -Steady $steady -Watchdog $watchdog -ValidationHarness $resolvedValidationHarness
+        if ($mimPrimaryAttempt -and $mimPrimaryAttempt.PSObject.Properties['ok'] -and [bool]$mimPrimaryAttempt.ok -and $mimPrimaryAttempt.PSObject.Properties['result']) {
+            Register-OperatorChatQueryCacheEntry -Query $Query -Intent $resolvedIntent -ObjectiveId $resolvedObjectiveId -WindowMinutes $WindowMinutes -ValidationHarness $resolvedValidationHarness -Result $mimPrimaryAttempt.result
+            return $mimPrimaryAttempt.result
+        }
+        if ($mimPrimaryAttempt -and $mimPrimaryAttempt.PSObject.Properties['detail'] -and -not [string]::IsNullOrWhiteSpace([string]$mimPrimaryAttempt.detail)) {
+            [void]$limitations.Add(("MIM primary-source path unavailable; TOD used bounded local fallback. {0}" -f [string]$mimPrimaryAttempt.detail))
+            [void]$flags.Add('mim_primary_fallback')
+        }
+        elseif ($mimPrimaryAttempt -and $mimPrimaryAttempt.PSObject.Properties['error']) {
+            [void]$limitations.Add('MIM primary-source path unavailable; TOD used bounded local fallback.')
+            [void]$flags.Add('mim_primary_fallback')
+        }
     }
 
     if ($activeCommitment) {
@@ -5307,18 +6045,47 @@ function Invoke-OperatorChatQuery {
         }
         'explain_maintenance' {
             $summary = if ($maintenance -and $maintenance.available) {
-                "Maintenance is $([string]$maintenance.overall_status) with operational severity $([string]$maintenance.overall_severity) because $([string]$maintenance.severity_reason)."
+                $maintenanceStatus = if ($maintenance.PSObject.Properties['overall_status']) { [string]$maintenance.overall_status } else { 'unknown' }
+                $maintenanceSeverity = if ($maintenance.PSObject.Properties['overall_severity']) { [string]$maintenance.overall_severity } else { 'unknown' }
+                $maintenanceReason = if ($maintenance.PSObject.Properties['severity_reason']) { [string]$maintenance.severity_reason } else { 'unknown reason' }
+                $maintenancePostflight = if ($maintenance.PSObject.Properties['postflight']) { $maintenance.postflight } else { $null }
+                $maintenanceSummary = "Maintenance is $maintenanceStatus with operational severity $maintenanceSeverity because $maintenanceReason."
+                $blockCount = if ($maintenancePostflight -and $maintenancePostflight.PSObject.Properties['block_count']) { [int]$maintenancePostflight.block_count } else { 0 }
+                $watchdogSuffix = ''
+                if ($watchdog -and -not [string]::IsNullOrWhiteSpace([string]$watchdog.state) -and -not [string]::Equals([string]$watchdog.state, 'healthy', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $watchdogSummary = if ($watchdog.PSObject.Properties['last_issue_detail'] -and -not [string]::IsNullOrWhiteSpace([string]$watchdog.last_issue_detail)) {
+                        [string]$watchdog.last_issue_detail
+                    }
+                    elseif ($watchdog.PSObject.Properties['last_issue'] -and -not [string]::IsNullOrWhiteSpace([string]$watchdog.last_issue)) {
+                        [string]$watchdog.last_issue
+                    }
+                    else {
+                        'watchdog is not healthy'
+                    }
+                    $watchdogSuffix = " Recovery watchdog is $([string]$watchdog.state): $watchdogSummary."
+                }
+                $blockSuffix = if ($blockCount -gt 0) {
+                    " Active blockers remaining: $blockCount."
+                } else {
+                    ''
+                }
+                "$maintenanceSummary$blockSuffix$watchdogSuffix"
             } else {
                 'Maintenance report is unavailable, so the console cannot explain the current fallback posture.'
             }
-            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Maintenance Status' -Value $(if ($maintenance) { $maintenance.overall_status } else { 'unknown' }) -Section 'self_health_maintenance' -Field 'overall_status'))
-            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Operational Severity' -Value $(if ($maintenance) { $maintenance.overall_severity } else { 'unknown' }) -Section 'self_health_maintenance' -Field 'overall_severity'))
-            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Source Severity' -Value $(if ($maintenance) { $maintenance.source_severity } else { 'unknown' }) -Section 'self_health_maintenance' -Field 'source_severity'))
-            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Reason' -Value $(if ($maintenance) { $maintenance.severity_reason } else { 'unknown' }) -Section 'self_health_maintenance' -Field 'severity_reason'))
-            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Invocation Mode' -Value $(if ($maintenance) { $maintenance.invocation_mode } else { 'unknown' }) -Section 'self_health_maintenance' -Field 'invocation_mode'))
-            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Scheduled Fallback Count' -Value $(if ($maintenance) { "{0}/{1}" -f $maintenance.history.scheduled_fallback_runs_including_current, $maintenance.history.threshold_runs } else { '-' }) -Section 'self_health_maintenance' -Field 'history.scheduled_fallback_runs_including_current'))
-            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Threshold Window' -Value $(if ($maintenance) { "{0}h" -f $maintenance.history.window_hours } else { '-' }) -Section 'self_health_maintenance' -Field 'history.window_hours'))
-            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Last Report' -Value $(if ($maintenance) { $maintenance.generated_at } else { '' }) -Section 'self_health_maintenance' -Field 'generated_at'))
+            $maintenancePostflight = if ($maintenance -and $maintenance.PSObject.Properties['postflight']) { $maintenance.postflight } else { $null }
+            $maintenanceHistory = if ($maintenance -and $maintenance.PSObject.Properties['history']) { $maintenance.history } else { $null }
+            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Maintenance Status' -Value $(if ($maintenance -and $maintenance.PSObject.Properties['overall_status']) { $maintenance.overall_status } else { 'unknown' }) -Section 'self_health_maintenance' -Field 'overall_status'))
+            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Operational Severity' -Value $(if ($maintenance -and $maintenance.PSObject.Properties['overall_severity']) { $maintenance.overall_severity } else { 'unknown' }) -Section 'self_health_maintenance' -Field 'overall_severity'))
+            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Source Severity' -Value $(if ($maintenance -and $maintenance.PSObject.Properties['source_severity']) { $maintenance.source_severity } else { 'unknown' }) -Section 'self_health_maintenance' -Field 'source_severity'))
+            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Reason' -Value $(if ($maintenance -and $maintenance.PSObject.Properties['severity_reason']) { $maintenance.severity_reason } else { 'unknown' }) -Section 'self_health_maintenance' -Field 'severity_reason'))
+            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Block Count' -Value $(if ($maintenancePostflight -and $maintenancePostflight.PSObject.Properties['block_count']) { $maintenancePostflight.block_count } else { $null }) -Section 'self_health_maintenance' -Field 'postflight.block_count'))
+            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Invocation Mode' -Value $(if ($maintenance -and $maintenance.PSObject.Properties['invocation_mode']) { $maintenance.invocation_mode } else { 'unknown' }) -Section 'self_health_maintenance' -Field 'invocation_mode'))
+            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Scheduled Fallback Count' -Value $(if ($maintenanceHistory) { "{0}/{1}" -f $maintenanceHistory.scheduled_fallback_runs_including_current, $maintenanceHistory.threshold_runs } else { '-' }) -Section 'self_health_maintenance' -Field 'history.scheduled_fallback_runs_including_current'))
+            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Threshold Window' -Value $(if ($maintenanceHistory) { "{0}h" -f $maintenanceHistory.window_hours } else { '-' }) -Section 'self_health_maintenance' -Field 'history.window_hours'))
+            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Last Report' -Value $(if ($maintenance -and $maintenance.PSObject.Properties['generated_at']) { $maintenance.generated_at } else { '' }) -Section 'self_health_maintenance' -Field 'generated_at'))
+            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Watchdog State' -Value $(if ($watchdog -and $watchdog.PSObject.Properties['state']) { $watchdog.state } else { 'unknown' }) -Section 'recovery_watchdog' -Field 'state'))
+            [void]$evidence.Add((New-OperatorChatEvidence -Label 'Watchdog Issue' -Value $(if ($watchdog -and $watchdog.PSObject.Properties['last_issue_detail']) { $watchdog.last_issue_detail } else { '' }) -Section 'recovery_watchdog' -Field 'last_issue_detail'))
             $nextStep = 'If fallback remains bounded and below threshold, observe or refresh state bus; escalation is justified only when the persistence threshold or other health signals worsen.'
             $confidence = if ($maintenance -and $maintenance.available) { 'high' } else { 'low' }
         }
@@ -5331,6 +6098,13 @@ function Invoke-OperatorChatQuery {
                 throw
             }
             $firstAction = if (@($suggestedActions).Count -gt 0) { $suggestedActions[0] } else { $null }
+            if ($firstAction -and $firstAction.PSObject.Properties['history_ineffective_signal'] -and [bool]$firstAction.history_ineffective_signal) {
+                [void]$flags.Add('operator_commitment_terminal')
+                [void]$flags.Add('operator_commitment_ineffective')
+                if ($firstAction.PSObject.Properties['history_ineffective_basis'] -and -not [string]::IsNullOrWhiteSpace([string]$firstAction.history_ineffective_basis)) {
+                    [void]$limitations.Add([string]$firstAction.history_ineffective_basis)
+                }
+            }
             $summary = if ($firstAction) {
                 "The next bounded step is $([string]$firstAction.label) because $([string]$firstAction.reason)"
             } else {
@@ -5504,29 +6278,53 @@ function Invoke-OperatorChatQuery {
         }
         if ($resolvedIntent -in @('summarize_status', 'summarize_current_objective', 'suggest_next_action')) {
             $proposalSummary = if ([string]::IsNullOrWhiteSpace([string]$mimProposal.scope)) { [string]$mimProposal.notes } else { [string]$mimProposal.scope }
-            $proposalSentence = if ([string]::IsNullOrWhiteSpace($proposalObjectiveId)) {
+            $useCompactProposalSummary = (
+                $resolvedIntent -in @('summarize_status', 'summarize_current_objective') -and
+                $mimProposalClosure -and [bool]$mimProposalClosure.available -and
+                [string]::Equals([string]$mimProposalClosure.disposition, 'fulfilled', [System.StringComparison]::OrdinalIgnoreCase) -and
+                $mimProposalArbitration -and [bool]$mimProposalArbitration.available -and
+                [string]::Equals([string]$mimProposalArbitration.winner, 'shared', [System.StringComparison]::OrdinalIgnoreCase)
+            )
+            $proposalSentence = if ($useCompactProposalSummary) {
+                if ([string]::IsNullOrWhiteSpace($proposalObjectiveId)) {
+                    ' Bounded MIM context remains aligned and fulfilled; unattended cadence stays under strict suite checkpoints.'
+                }
+                else {
+                    ' Bounded MIM context for objective {0} remains aligned around {1}; the linked proposal is fulfilled and unattended cadence stays under strict suite checkpoints.' -f $proposalObjectiveId, ([string]$mimProposal.title)
+                }
+            }
+            elseif ([string]::IsNullOrWhiteSpace($proposalObjectiveId)) {
                 " MIM also has a live proposal in scope: $([string]$mimProposal.title)."
             }
             else {
                 ' MIM also has a live proposal in scope for objective {0}: {1}.' -f $proposalObjectiveId, ([string]$mimProposal.title)
             }
-            if ($mimProposalConflict -and [bool]$mimProposalConflict.available -and [bool]$mimProposalConflict.conflict_detected) {
-                $proposalSentence = "$proposalSentence Conflict detected: $([string]$mimProposalConflict.summary)"
-            }
-            if ($mimProposalArbitration -and [bool]$mimProposalArbitration.available) {
-                $proposalSentence = "$proposalSentence Arbitration: $([string]$mimProposalArbitration.summary)"
-            }
-            if ($mimProposalMergePolicy -and [bool]$mimProposalMergePolicy.available) {
-                $proposalSentence = "$proposalSentence Merge policy: $([string]$mimProposalMergePolicy.summary)"
-            }
-            if ($mimProposalClosure -and [bool]$mimProposalClosure.available) {
-                $proposalSentence = "$proposalSentence Closure: $([string]$mimProposalClosure.summary)"
-            }
-            if (-not [string]::IsNullOrWhiteSpace($proposalSummary)) {
-                $proposalSentence = "$proposalSentence $proposalSummary"
+            if (-not $useCompactProposalSummary) {
+                if ($mimProposalConflict -and [bool]$mimProposalConflict.available -and [bool]$mimProposalConflict.conflict_detected) {
+                    $proposalSentence = "$proposalSentence Conflict detected: $([string]$mimProposalConflict.summary)"
+                }
+                if ($mimProposalArbitration -and [bool]$mimProposalArbitration.available) {
+                    $proposalSentence = "$proposalSentence Arbitration: $([string]$mimProposalArbitration.summary)"
+                }
+                if ($mimProposalMergePolicy -and [bool]$mimProposalMergePolicy.available) {
+                    $proposalSentence = "$proposalSentence Merge policy: $([string]$mimProposalMergePolicy.summary)"
+                }
+                if ($mimProposalClosure -and [bool]$mimProposalClosure.available) {
+                    $proposalSentence = "$proposalSentence Closure: $([string]$mimProposalClosure.summary)"
+                }
+                if (-not [string]::IsNullOrWhiteSpace($proposalSummary)) {
+                    $proposalSentence = "$proposalSentence $proposalSummary"
+                }
             }
             $summary = "$summary$proposalSentence"
-            $nextStep = if ($mimProposalClosure -and [bool]$mimProposalClosure.available -and -not [string]::IsNullOrWhiteSpace([string]$mimProposalClosure.recommended_action)) {
+            $nextStep = if (
+                $mimProposalArbitration -and [bool]$mimProposalArbitration.available -and [string]::Equals([string]$mimProposalArbitration.winner, 'shared', [System.StringComparison]::OrdinalIgnoreCase) -and
+                $mimProposalMergePolicy -and [bool]$mimProposalMergePolicy.available -and [string]::Equals([string]$mimProposalMergePolicy.status, 'merge_ready', [System.StringComparison]::OrdinalIgnoreCase) -and
+                $mimProposalClosure -and [bool]$mimProposalClosure.available -and [string]::Equals([string]$mimProposalClosure.status, 'open', [System.StringComparison]::OrdinalIgnoreCase)
+            ) {
+                'Use MIM-TOD bounded context to determine implementation, then refresh bounded status before confirming or recommitting.'
+            }
+            elseif ($mimProposalClosure -and [bool]$mimProposalClosure.available -and -not [string]::IsNullOrWhiteSpace([string]$mimProposalClosure.recommended_action)) {
                 [string]$mimProposalClosure.recommended_action
             }
             elseif ($mimProposalMergePolicy -and [bool]$mimProposalMergePolicy.available -and -not [string]::IsNullOrWhiteSpace([string]$mimProposalMergePolicy.recommended_action)) {
@@ -5691,6 +6489,28 @@ function Get-TaskProgressWeight {
     }
 }
 
+function Convert-ListenerExecutionStatusToProgressStatus {
+    param([string]$Status)
+
+    $normalized = ([string]$Status).Trim().ToLowerInvariant()
+    switch ($normalized) {
+        'succeeded' { return 'completed' }
+        'pass' { return 'completed' }
+        'reviewed_pass' { return 'completed' }
+        'done' { return 'completed' }
+        'completed' { return 'completed' }
+        'already_processed' { return 'completed' }
+        'in_progress' { return 'in_progress' }
+        'active' { return 'in_progress' }
+        'running' { return 'in_progress' }
+        'failed' { return 'failed' }
+        'contract_violation_rejected' { return 'failed' }
+        'quarantined' { return 'failed' }
+        'invalid_request' { return 'failed' }
+        default { return '' }
+    }
+}
+
 function Read-JsonFileIfExists {
     param([string]$Path)
 
@@ -5699,10 +6519,153 @@ function Read-JsonFileIfExists {
     }
 
     try {
-        return (Get-Content -Path $Path -Raw | ConvertFrom-Json)
+        $text = Read-TextFileIfExists -Path $Path
+        if ([string]::IsNullOrWhiteSpace($text)) {
+            return $null
+        }
+        return ($text | ConvertFrom-Json)
     }
     catch {
         return $null
+    }
+}
+
+function Read-TextFileIfExists {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -Path $Path)) {
+        return $null
+    }
+
+    $stream = $null
+    $reader = $null
+    try {
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $reader = New-Object System.IO.StreamReader($stream)
+        return $reader.ReadToEnd()
+    }
+    catch {
+        return $null
+    }
+    finally {
+        if ($null -ne $reader) {
+            $reader.Dispose()
+        }
+        elseif ($null -ne $stream) {
+            $stream.Dispose()
+        }
+    }
+}
+
+function Read-JsonLinesFileIfExists {
+    param(
+        [string]$Path,
+        [int]$Tail = 40
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -Path $Path)) {
+        return @()
+    }
+
+    $entries = New-Object System.Collections.Generic.List[object]
+    foreach ($line in @(Get-RecentLogLines -LogPath $Path -Tail $Tail)) {
+        if ([string]::IsNullOrWhiteSpace([string]$line)) {
+            continue
+        }
+
+        try {
+            $entry = $line | ConvertFrom-Json
+            if ($null -ne $entry) {
+                [void]$entries.Add($entry)
+            }
+        }
+        catch {
+        }
+    }
+
+    return @($entries.ToArray())
+}
+
+function Get-DialogSessionsPayload {
+    param(
+        [int]$Limit = 8,
+        [string]$Actor = 'TOD'
+    )
+
+    $safeLimit = if ($Limit -lt 1) { 1 } elseif ($Limit -gt 30) { 30 } else { $Limit }
+    $actorName = if ([string]::IsNullOrWhiteSpace($Actor)) { 'TOD' } else { [string]$Actor.Trim().ToUpperInvariant() }
+    $indexDoc = Read-JsonFileIfExists -Path $dialogSessionIndexPath
+    $sessions = @()
+
+    if ($indexDoc -and $indexDoc.PSObject.Properties['sessions']) {
+        $sessions = @($indexDoc.sessions)
+    }
+    elseif (Test-Path -Path $dialogDirPath) {
+        $states = Get-ChildItem -Path $dialogDirPath -Filter 'MIM_TOD_DIALOG.session-*.latest.json' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending
+        foreach ($stateFile in @($states)) {
+            $state = Read-JsonFileIfExists -Path $stateFile.FullName
+            if ($null -ne $state) {
+                $sessions += $state
+            }
+        }
+    }
+
+    $sortedSessions = @($sessions | Sort-Object {
+        if ($_.PSObject.Properties['updated_at']) { [string]$_.updated_at } else { '' }
+    } -Descending)
+
+    $openCount = 0
+    $timedOutCount = 0
+    $closedCount = 0
+    foreach ($session in @($sortedSessions)) {
+        $status = if ($session.PSObject.Properties['status']) { [string]$session.status } else { '' }
+        switch -Regex ($status) {
+            'awaiting_reply' { $openCount++ }
+            'timed_out' { $timedOutCount++ }
+            'closed' { $closedCount++ }
+        }
+    }
+
+    return [pscustomobject]@{
+        ok = $true
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        actor = $actorName
+        available = (Test-Path -Path $dialogDirPath)
+        channel_path = $dialogChannelPath
+        session_index_path = $dialogSessionIndexPath
+        open_count = $openCount
+        timed_out_count = $timedOutCount
+        closed_count = $closedCount
+        total_count = @($sortedSessions).Count
+        sessions = @($sortedSessions | Select-Object -First $safeLimit)
+    }
+}
+
+function Get-DialogSessionPayload {
+    param(
+        [Parameter(Mandatory = $true)][string]$SessionId,
+        [int]$Tail = 12
+    )
+
+    $trimmedSessionId = [string]$SessionId.Trim()
+    if ([string]::IsNullOrWhiteSpace($trimmedSessionId)) {
+        throw 'session_id is required.'
+    }
+
+    $safeSessionId = $trimmedSessionId -replace '[^a-zA-Z0-9._-]', '_'
+    $sessionLogPath = Join-Path $dialogDirPath ("MIM_TOD_DIALOG.session-{0}.jsonl" -f $safeSessionId)
+    $sessionStatePath = Join-Path $dialogDirPath ("MIM_TOD_DIALOG.session-{0}.latest.json" -f $safeSessionId)
+    $sessionState = Read-JsonFileIfExists -Path $sessionStatePath
+    $messages = Read-JsonLinesFileIfExists -Path $sessionLogPath -Tail $Tail
+
+    return [pscustomobject]@{
+        ok = $true
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        session_id = $trimmedSessionId
+        session_state = $sessionState
+        message_count = @($messages).Count
+        messages = @($messages)
+        session_path = $sessionLogPath
     }
 }
 
@@ -5713,7 +6676,7 @@ function Get-ObjectiveIdFromRequestId {
         return ""
     }
 
-    $match = [regex]::Match([string]$RequestId, '^objective-(?<objective>\d+)-task-\d+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    $match = [regex]::Match([string]$RequestId, '^objective-(?<objective>\d+)-task-.+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
     if (-not $match.Success) {
         return ""
     }
@@ -5843,13 +6806,24 @@ function Resolve-ProjectSelectedObjectiveId {
         $nextActionsObjectiveId = [string]$NextActions.current_objective_in_progress
     }
 
-    if ($BridgeStatus -and $BridgeStatus.PSObject.Properties['objective_mismatch'] -and [bool]$BridgeStatus.objective_mismatch -and -not [string]::IsNullOrWhiteSpace($bridgeTaskRequestObjectiveId)) {
-        return $bridgeTaskRequestObjectiveId
-    }
-
     $listenerObjectiveNumber = Get-ObjectiveNumericValue -Value $listenerObjectiveId
     $bridgeCanonicalObjectiveNumber = Get-ObjectiveNumericValue -Value $bridgeCanonicalObjectiveId
     $bridgeTaskRequestObjectiveNumber = Get-ObjectiveNumericValue -Value $bridgeTaskRequestObjectiveId
+    if ($BridgeStatus -and $BridgeStatus.PSObject.Properties['objective_mismatch'] -and [bool]$BridgeStatus.objective_mismatch) {
+        if ($bridgeCanonicalObjectiveNumber -ge 0 -and $bridgeTaskRequestObjectiveNumber -ge 0) {
+            if ($bridgeCanonicalObjectiveNumber -gt $bridgeTaskRequestObjectiveNumber) {
+                return $bridgeCanonicalObjectiveId
+            }
+
+            if ($bridgeTaskRequestObjectiveNumber -gt $bridgeCanonicalObjectiveNumber -and -not [string]::IsNullOrWhiteSpace($bridgeTaskRequestObjectiveId)) {
+                return $bridgeTaskRequestObjectiveId
+            }
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($bridgeTaskRequestObjectiveId)) {
+            return $bridgeTaskRequestObjectiveId
+        }
+    }
+
     if ($bridgeTaskRequestObjectiveNumber -ge 0 -and $bridgeCanonicalObjectiveNumber -ge 0 -and $bridgeTaskRequestObjectiveNumber -gt $bridgeCanonicalObjectiveNumber) {
         if ([string]::Equals($listenerObjectiveId, $bridgeTaskRequestObjectiveId, [System.StringComparison]::OrdinalIgnoreCase) -or $listenerObjectiveNumber -eq $bridgeTaskRequestObjectiveNumber) {
             return $bridgeTaskRequestObjectiveId
@@ -5897,14 +6871,19 @@ function Get-TaskRefInfo {
         return $null
     }
 
-    $match = [regex]::Match([string]$Value, '^objective-(?<objective>\d+)-task-(?<task>\d+)$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    $match = [regex]::Match([string]$Value, '^objective-(?<objective>\d+)-task-(?<tail>.+)$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
     if (-not $match.Success) {
+        return $null
+    }
+
+    $ordinalMatch = [regex]::Match([string]$match.Groups['tail'].Value, '(?<task>\d+)(?!.*\d)')
+    if (-not $ordinalMatch.Success) {
         return $null
     }
 
     return [pscustomobject]@{
         objective = [string]$match.Groups['objective'].Value
-        task_number = [int]$match.Groups['task'].Value
+        task_number = [long]$ordinalMatch.Groups['task'].Value
         raw = [string]$Value
     }
 }
@@ -6028,19 +7007,25 @@ function Get-CadenceHealth {
         }
 
         $retryReason = if ($entry.PSObject.Properties['retry_reason']) { ([string]$entry.retry_reason).Trim().ToLowerInvariant() } else { "none" }
-        if ($retryReason -ne 'none') {
+        $isCadenceNoise = $false
+        if ($entry.PSObject.Properties['cadence_noise']) {
+            try { $isCadenceNoise = [bool]$entry.cadence_noise } catch { $isCadenceNoise = $false }
+        }
+        if ($retryReason -ne 'none' -and -not $isCadenceNoise) {
             $retryCount += 1
         }
         $retryWeight = 0.0
         if ($entry.PSObject.Properties['retry_weight']) {
             try { $retryWeight = [double]$entry.retry_weight } catch { $retryWeight = 0.0 }
         }
-        $retryWeightTotal += $retryWeight
-        switch ($retryReason) {
-            'failure' { $failureRetryCount += 1 }
-            'no_new_work' { $noNewWorkRetryCount += 1 }
-            'duplicate_seen' { $duplicateRetryCount += 1 }
-            'waiting_go_order' { $waitingGoOrderRetryCount += 1 }
+        if (-not $isCadenceNoise) {
+            $retryWeightTotal += $retryWeight
+            switch ($retryReason) {
+                'failure' { $failureRetryCount += 1 }
+                'no_new_work' { $noNewWorkRetryCount += 1 }
+                'duplicate_seen' { $duplicateRetryCount += 1 }
+                'waiting_go_order' { $waitingGoOrderRetryCount += 1 }
+            }
         }
 
         $timestampValue = ""
@@ -6100,11 +7085,11 @@ function Get-CadenceHealth {
         $loopIdleSec = [double]([int]$RecoveryWatchdog.heartbeat_age_seconds)
     }
 
-    $syncTaskDelta = 0
+    $syncTaskDelta = 0L
     $sync = if ($ListenerActivity.PSObject.Properties['sync']) { $ListenerActivity.sync } else { $null }
     if ($sync -and $sync.PSObject.Properties['request_task_number'] -and $sync.PSObject.Properties['result_task_number']) {
-        $reqTask = [int]$sync.request_task_number
-        $resTask = [int]$sync.result_task_number
+        $reqTask = [long]$sync.request_task_number
+        $resTask = [long]$sync.result_task_number
         if ($reqTask -ge 0 -and $resTask -ge 0) {
             $syncTaskDelta = [math]::Abs($reqTask - $resTask)
         }
@@ -6302,6 +7287,7 @@ function Get-ListenerActivity {
     $journal = Read-JsonFileIfExists -Path $listenerJournalPath
     $resultPacket = Read-JsonFileIfExists -Path $listenerResultPath
     $requestPacket = Read-JsonFileIfExists -Path $listenerRequestPath
+    $commandStatusPacket = Read-JsonFileIfExists -Path $listenerCommandStatusPath
     $listenerState = Read-JsonFileIfExists -Path $listenerStatePath
 
     $entries = @()
@@ -6340,8 +7326,70 @@ function Get-ListenerActivity {
         }
     }
 
-    $objectiveStats = @{}
+    $requestExecutionStats = [ordered]@{}
     foreach ($entry in $normalizedEntries) {
+        $objectiveId = [string]$entry.objective_id
+        if ([string]::IsNullOrWhiteSpace($objectiveId)) {
+            continue
+        }
+
+        $requestKey = [string]$entry.request_id
+        if ([string]::IsNullOrWhiteSpace($requestKey)) {
+            $requestKey = ('__entry__|' + [string]$entry.timestamp + '|' + [guid]::NewGuid().ToString('N'))
+        }
+
+        $aggregateKey = "$objectiveId|$requestKey"
+        $mappedStatus = Convert-ListenerExecutionStatusToProgressStatus -Status ([string]$entry.execution_status)
+        if ([string]::IsNullOrWhiteSpace($mappedStatus)) {
+            continue
+        }
+
+        if (-not $requestExecutionStats.Contains($aggregateKey)) {
+            $requestExecutionStats[$aggregateKey] = [ordered]@{
+                objective_id = $objectiveId
+                request_id = [string]$entry.request_id
+                execution_status = $mappedStatus
+                raw_execution_status = [string]$entry.execution_status
+                timestamp = [string]$entry.timestamp
+                review_gate_passed = $entry.review_gate_passed
+                validator_passed = $entry.validator_passed
+                integration_compatible = $entry.integration_compatible
+            }
+            continue
+        }
+
+        $aggregate = $requestExecutionStats[$aggregateKey]
+        $rawStatusKey = ([string]$entry.execution_status).Trim().ToLowerInvariant()
+        if ($rawStatusKey -ne 'already_processed') {
+            $aggregate.execution_status = $mappedStatus
+            $aggregate.raw_execution_status = [string]$entry.execution_status
+        }
+        elseif ([string]::IsNullOrWhiteSpace([string]$aggregate.raw_execution_status)) {
+            $aggregate.execution_status = $mappedStatus
+            $aggregate.raw_execution_status = [string]$entry.execution_status
+        }
+
+        $aggregate.timestamp = [string]$entry.timestamp
+        $aggregate.review_gate_passed = $entry.review_gate_passed
+        $aggregate.validator_passed = $entry.validator_passed
+        $aggregate.integration_compatible = $entry.integration_compatible
+    }
+
+    $aggregatedEntries = @($requestExecutionStats.Values | ForEach-Object {
+            [pscustomobject]@{
+                objective_id = [string]$_.objective_id
+                request_id = [string]$_.request_id
+                execution_status = [string]$_.execution_status
+                raw_execution_status = [string]$_.raw_execution_status
+                timestamp = [string]$_.timestamp
+                review_gate_passed = $_.review_gate_passed
+                validator_passed = $_.validator_passed
+                integration_compatible = $_.integration_compatible
+            }
+        })
+
+    $objectiveStats = @{}
+    foreach ($entry in $aggregatedEntries) {
         $statusKey = ([string]$entry.execution_status).Trim().ToLowerInvariant()
         if (@('completed', 'failed', 'in_progress') -notcontains $statusKey) {
             continue
@@ -6385,15 +7433,55 @@ function Get-ListenerActivity {
     }
 
     $latest = if (@($normalizedEntries).Count -gt 0) { @($normalizedEntries)[-1] } else { $null }
-    $latestExecution = if (@($normalizedEntries | Where-Object { @('completed', 'failed', 'in_progress') -contains ([string]$_.execution_status).Trim().ToLowerInvariant() }).Count -gt 0) { @($normalizedEntries | Where-Object { @('completed', 'failed', 'in_progress') -contains ([string]$_.execution_status).Trim().ToLowerInvariant() })[-1] } else { $latest }
+    $latestExecution = if (@($aggregatedEntries | Where-Object { @('completed', 'failed', 'in_progress') -contains ([string]$_.execution_status).Trim().ToLowerInvariant() }).Count -gt 0) { @($aggregatedEntries | Where-Object { @('completed', 'failed', 'in_progress') -contains ([string]$_.execution_status).Trim().ToLowerInvariant() } | Sort-Object timestamp)[-1] } else { $latest }
+    $effectiveLatestExecution = $latestExecution
+    $effectiveLatestRef = if ($latestExecution) { Get-TaskRefInfo -Value ([string]$latestExecution.request_id) } else { $null }
+    foreach ($entry in $normalizedEntries) {
+        $entryRef = Get-TaskRefInfo -Value ([string]$entry.request_id)
+        if ($null -eq $entryRef) {
+            continue
+        }
+
+        if ($null -eq $effectiveLatestRef -or [long]$entryRef.task_number -gt [long]$effectiveLatestRef.task_number) {
+            $effectiveLatestExecution = $entry
+            $effectiveLatestRef = $entryRef
+        }
+    }
+    $bridgeCurrentTaskId = ""
+    if ($commandStatusPacket -and $commandStatusPacket.PSObject.Properties['bridge_runtime'] -and $commandStatusPacket.bridge_runtime -and $commandStatusPacket.bridge_runtime.PSObject.Properties['current_processing'] -and $commandStatusPacket.bridge_runtime.current_processing -and $commandStatusPacket.bridge_runtime.current_processing.PSObject.Properties['task_id']) {
+        $bridgeCurrentTaskId = [string]$commandStatusPacket.bridge_runtime.current_processing.task_id
+    }
+    $bridgeCurrentRef = Get-TaskRefInfo -Value $bridgeCurrentTaskId
+    if ($bridgeCurrentRef -and ($null -eq $effectiveLatestRef -or [long]$bridgeCurrentRef.task_number -gt [long]$effectiveLatestRef.task_number)) {
+        $effectiveLatestExecution = [pscustomobject]@{
+            timestamp = if ($commandStatusPacket -and $commandStatusPacket.PSObject.Properties['generated_at']) { [string]$commandStatusPacket.generated_at } else { "" }
+            request_id = [string]$bridgeCurrentTaskId
+            objective_id = [string]$bridgeCurrentRef.objective
+            execution_status = if ($commandStatusPacket -and $commandStatusPacket.PSObject.Properties['status']) { [string]$commandStatusPacket.status } else { "" }
+            cycle_classification = if ($commandStatusPacket -and $commandStatusPacket.PSObject.Properties['status']) { [string]$commandStatusPacket.status } else { "" }
+            retry_reason = if ($listenerState -and $listenerState.PSObject.Properties['last_retry_reason']) { [string]$listenerState.last_retry_reason } else { "none" }
+            review_gate_passed = $null
+            validator_passed = $null
+            integration_compatible = $null
+        }
+        $effectiveLatestRef = $bridgeCurrentRef
+    }
     # Use the authoritative current_objective_in_progress from next_actions.json as the filter key
     # so that cadence metrics reset immediately on objective rollover without waiting for a new journal entry.
     $nextActions = Read-JsonFileIfExists -Path $nextActionsPath
-    $resultRequestId = if ($resultPacket -and $resultPacket.PSObject.Properties['request_id']) { [string]$resultPacket.request_id } else { "" }
+    $resultRequestId = if ($effectiveLatestExecution) { [string]$effectiveLatestExecution.request_id } elseif ($resultPacket -and $resultPacket.PSObject.Properties['request_id']) { [string]$resultPacket.request_id } else { "" }
     $resultObjectiveId = Get-ObjectiveIdFromRequestId -RequestId $resultRequestId
-    $resultRef = Get-TaskRefInfo -Value $resultRequestId
+    $resultRef = if ($effectiveLatestExecution) { Get-TaskRefInfo -Value ([string]$effectiveLatestExecution.request_id) } else { Get-TaskRefInfo -Value $resultRequestId }
     $requestTaskId = if ($requestPacket -and $requestPacket.PSObject.Properties['task_id']) { [string]$requestPacket.task_id } else { "" }
     $requestRef = Get-TaskRefInfo -Value $requestTaskId
+    $requestSyncRef = $requestRef
+    $commandStatusValue = if ($commandStatusPacket -and $commandStatusPacket.PSObject.Properties['status']) { ([string]$commandStatusPacket.status).Trim().ToLowerInvariant() } else { '' }
+    $staleGuard = if ($commandStatusPacket -and $commandStatusPacket.PSObject.Properties['stale_guard']) { $commandStatusPacket.stale_guard } elseif ($listenerState -and $listenerState.PSObject.Properties['last_stale_guard']) { $listenerState.last_stale_guard } else { $null }
+    if ([string]::Equals($commandStatusValue, 'stale_request_ignored', [System.StringComparison]::OrdinalIgnoreCase) -and $bridgeCurrentRef -and $requestSyncRef) {
+        if ([string]::Equals([string]$bridgeCurrentRef.objective, [string]$requestSyncRef.objective, [System.StringComparison]::OrdinalIgnoreCase) -and [long]$requestSyncRef.task_number -lt [long]$bridgeCurrentRef.task_number) {
+            $requestSyncRef = $bridgeCurrentRef
+        }
+    }
     $nextActionsObjectiveId = if ($nextActions -and $nextActions.PSObject.Properties['current_objective_in_progress'] -and -not [string]::IsNullOrWhiteSpace([string]$nextActions.current_objective_in_progress)) { [string]$nextActions.current_objective_in_progress } else { "" }
     $requestObjectiveId = if ($requestRef) { [string]$requestRef.objective } else { "" }
     $activeObjectiveId = ""
@@ -6424,28 +7512,42 @@ function Get-ListenerActivity {
     $isMimAhead = $false
     $pendingCount = 0
 
-    if ($requestRef -and $resultRef) {
-        if ([string]$requestRef.objective -eq [string]$resultRef.objective -and [int]$requestRef.task_number -gt [int]$resultRef.task_number) {
+    if ($requestSyncRef -and $resultRef) {
+        if ([string]$requestSyncRef.objective -eq [string]$resultRef.objective -and [long]$requestSyncRef.task_number -gt [long]$resultRef.task_number) {
             $isMimAhead = $true
-            $pendingCount = [int]$requestRef.task_number - [int]$resultRef.task_number
+            $pendingCount = [long]$requestSyncRef.task_number - [long]$resultRef.task_number
         }
     }
-    elseif ($requestRef -and -not $resultRef) {
+    elseif ($requestSyncRef -and -not $resultRef) {
         $isMimAhead = $true
-        $pendingCount = [int]$requestRef.task_number
+        $pendingCount = [long]$requestSyncRef.task_number
     }
+
+    $latestRequestId = if ($effectiveLatestExecution) { [string]$effectiveLatestExecution.request_id } else { "" }
+    $latestCycleClassification = if ($latest) { [string]$latest.cycle_classification } else { "" }
+    $latestUsesDuplicateTelemetry =
+        [string]::Equals($latestCycleClassification, 'duplicate_seen', [System.StringComparison]::OrdinalIgnoreCase) -or
+        [string]::Equals($commandStatusValue, 'already_processed', [System.StringComparison]::OrdinalIgnoreCase)
+    $latestMatchesResultPacket =
+        -not [string]::IsNullOrWhiteSpace($latestRequestId) -and
+        -not [string]::IsNullOrWhiteSpace($resultRequestId) -and
+        [string]::Equals($latestRequestId, $resultRequestId, [System.StringComparison]::OrdinalIgnoreCase)
+    $preferResultPacketForLatestChecks = $latestUsesDuplicateTelemetry -and $latestMatchesResultPacket
+    $latestReviewGatePassed = if ($preferResultPacketForLatestChecks -and $resultPacket -and $resultPacket.PSObject.Properties['review_gate'] -and $resultPacket.review_gate.PSObject.Properties['passed']) { [bool]$resultPacket.review_gate.passed } elseif ($latestExecution -and $null -ne $latestExecution.review_gate_passed) { $latestExecution.review_gate_passed } elseif ($resultPacket -and $resultPacket.PSObject.Properties['review_gate'] -and $resultPacket.review_gate.PSObject.Properties['passed']) { [bool]$resultPacket.review_gate.passed } else { $null }
+    $latestValidatorPassed = if ($preferResultPacketForLatestChecks -and $resultPacket -and $resultPacket.PSObject.Properties['validator'] -and $resultPacket.validator.PSObject.Properties['passed']) { [bool]$resultPacket.validator.passed } elseif ($latestExecution -and $null -ne $latestExecution.validator_passed) { $latestExecution.validator_passed } elseif ($resultPacket -and $resultPacket.PSObject.Properties['validator'] -and $resultPacket.validator.PSObject.Properties['passed']) { [bool]$resultPacket.validator.passed } else { $null }
+    $latestIntegrationCompatible = if ($preferResultPacketForLatestChecks -and $resultPacket -and $resultPacket.PSObject.Properties['integration'] -and $resultPacket.integration.PSObject.Properties['compatible']) { [bool]$resultPacket.integration.compatible } elseif ($latestExecution -and $null -ne $latestExecution.integration_compatible) { $latestExecution.integration_compatible } elseif ($resultPacket -and $resultPacket.PSObject.Properties['integration'] -and $resultPacket.integration.PSObject.Properties['compatible']) { [bool]$resultPacket.integration.compatible } else { $null }
 
     return [pscustomobject]@{
         entry_count = @($normalizedEntries).Count
-        latest_objective_id = if ($latestExecution) { [string]$latestExecution.objective_id } else { "" }
-        latest_request_id = if ($latestExecution) { [string]$latestExecution.request_id } else { "" }
-        latest_execution_status = if ($latestExecution) { [string]$latestExecution.execution_status } else { "" }
+        latest_objective_id = if ($effectiveLatestExecution) { [string]$effectiveLatestExecution.objective_id } else { "" }
+        latest_request_id = $latestRequestId
+        latest_execution_status = if ($effectiveLatestExecution) { [string]$effectiveLatestExecution.execution_status } else { "" }
         latest_timestamp = if ($latest) { [string]$latest.timestamp } else { "" }
-        latest_cycle_classification = if ($latest) { [string]$latest.cycle_classification } else { "" }
+        latest_cycle_classification = $latestCycleClassification
         latest_retry_reason = if ($latest) { [string]$latest.retry_reason } else { "none" }
-        latest_review_gate_passed = if ($latestExecution) { $latestExecution.review_gate_passed } else { $null }
-        latest_validator_passed = if ($latestExecution) { $latestExecution.validator_passed } else { $null }
-        latest_integration_compatible = if ($latestExecution) { $latestExecution.integration_compatible } else { $null }
+        latest_review_gate_passed = $latestReviewGatePassed
+        latest_validator_passed = $latestValidatorPassed
+        latest_integration_compatible = $latestIntegrationCompatible
         result_request_id = $resultRequestId
         result_objective_id = $resultObjectiveId
         result_status = if ($resultPacket -and $resultPacket.PSObject.Properties['status']) { [string]$resultPacket.status } else { "" }
@@ -6462,13 +7564,16 @@ function Get-ListenerActivity {
         request_task_id = $requestTaskId
         request_objective_id = if ($requestRef) { [string]$requestRef.objective } else { "" }
         request_generated_at = if ($requestPacket -and $requestPacket.PSObject.Properties['generated_at']) { [string]$requestPacket.generated_at } else { "" }
+        command_status = if ($commandStatusPacket -and $commandStatusPacket.PSObject.Properties['status']) { [string]$commandStatusPacket.status } else { "" }
+        command_status_detail = if ($commandStatusPacket -and $commandStatusPacket.PSObject.Properties['detail']) { [string]$commandStatusPacket.detail } else { "" }
+        stale_guard = $staleGuard
         sync = [pscustomobject]@{
             is_mim_ahead = $isMimAhead
             pending_request_count = $pendingCount
             result_request_id = $resultRequestId
             request_task_id = $requestTaskId
-            result_task_number = if ($resultRef) { [int]$resultRef.task_number } else { -1 }
-            request_task_number = if ($requestRef) { [int]$requestRef.task_number } else { -1 }
+            result_task_number = if ($resultRef) { [long]$resultRef.task_number } else { -1L }
+            request_task_number = if ($requestSyncRef) { [long]$requestSyncRef.task_number } else { -1L }
         }
         cadence_runtime = [pscustomobject]@{
             retry_streak = if ($listenerState -and $listenerState.PSObject.Properties['cadence_retry_streak']) { [int]$listenerState.cadence_retry_streak } else { 0 }
@@ -6496,6 +7601,7 @@ function Get-IsoAgeSeconds {
 function Get-BridgeStatus {
     $triggerAck = Read-JsonFileIfExists -Path $listenerTriggerAckPath
     $pingResponse = Read-JsonFileIfExists -Path $listenerPingResponsePath
+    $commandStatusPacket = Read-JsonFileIfExists -Path $listenerCommandStatusPath
     $listenerState = Read-JsonFileIfExists -Path $listenerStatePath
 
     $available = ($null -ne $triggerAck) -or ($null -ne $pingResponse) -or ($null -ne $listenerState)
@@ -6522,6 +7628,12 @@ function Get-BridgeStatus {
     $pingObservedAt = ""
     $lastCycleAt = if ($listenerState -and $listenerState.PSObject.Properties['last_cycle_at']) { [string]$listenerState.last_cycle_at } else { "" }
     $listenerCycleAgeSeconds = Get-IsoAgeSeconds -Value $lastCycleAt
+    $listenerPlannedSleepSeconds = if ($listenerState -and $listenerState.PSObject.Properties['cadence_planned_sleep_seconds']) {
+        try { [int]$listenerState.cadence_planned_sleep_seconds } catch { 0 }
+    }
+    else {
+        0
+    }
     $missingArtifacts = New-Object System.Collections.Generic.List[string]
 
     if ($triggerAck) {
@@ -6568,8 +7680,30 @@ function Get-BridgeStatus {
         [void]$missingArtifacts.Add('listener_state')
     }
 
+    if ($commandStatusPacket -and $commandStatusPacket.PSObject.Properties['bridge_runtime'] -and $commandStatusPacket.bridge_runtime -and $commandStatusPacket.bridge_runtime.PSObject.Properties['current_processing'] -and $commandStatusPacket.bridge_runtime.current_processing) {
+        if ([string]::IsNullOrWhiteSpace($currentTaskId) -and $commandStatusPacket.bridge_runtime.current_processing.PSObject.Properties['task_id']) {
+            $currentTaskId = [string]$commandStatusPacket.bridge_runtime.current_processing.task_id
+        }
+        elseif ($commandStatusPacket.bridge_runtime.current_processing.PSObject.Properties['task_id']) {
+            $commandCurrentTaskId = [string]$commandStatusPacket.bridge_runtime.current_processing.task_id
+            $commandTaskRef = Get-TaskRefInfo -Value $commandCurrentTaskId
+            $currentTaskRef = Get-TaskRefInfo -Value $currentTaskId
+            if ($commandTaskRef -and ($null -eq $currentTaskRef -or [long]$commandTaskRef.task_number -gt [long]$currentTaskRef.task_number)) {
+                $currentTaskId = $commandCurrentTaskId
+            }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($currentCorrelationId) -and $commandStatusPacket.bridge_runtime.current_processing.PSObject.Properties['correlation_id']) {
+            $currentCorrelationId = [string]$commandStatusPacket.bridge_runtime.current_processing.correlation_id
+        }
+    }
+
     if ([string]::IsNullOrWhiteSpace($currentTaskId) -and $listenerState -and $listenerState.PSObject.Properties['last_processed_request_id']) {
         $currentTaskId = [string]$listenerState.last_processed_request_id
+    }
+
+    if ([string]::IsNullOrWhiteSpace($currentTaskId) -and $listenerState -and $listenerState.PSObject.Properties['high_watermark_request_id']) {
+        $currentTaskId = [string]$listenerState.high_watermark_request_id
     }
 
     $taskObjectiveId = Get-ObjectiveIdFromRequestId -RequestId $currentTaskId
@@ -6584,7 +7718,12 @@ function Get-BridgeStatus {
         }
     }
 
-    $listenerFreshThreshold = if ($pollSeconds -gt 0) { [math]::Max(15, ($pollSeconds * 6)) } else { 30 }
+    $listenerFreshThreshold = if ($pollSeconds -gt 0) {
+        [math]::Max(15, [math]::Max(($pollSeconds * 6), ($listenerPlannedSleepSeconds + 5)))
+    }
+    else {
+        [math]::Max(30, ($listenerPlannedSleepSeconds + 5))
+    }
     $listenerFresh = ($listenerCycleAgeSeconds -ge 0) -and ($listenerCycleAgeSeconds -le $listenerFreshThreshold)
     $sequenceAware = ($ackSequence -gt 0) -and ($triggerSequence -gt 0)
     $ackObservedAgeSeconds = Get-IsoAgeSeconds -Value $ackObservedAt
@@ -6704,10 +7843,50 @@ function Get-BridgeStatus {
 
 function Get-RecoveryWatchdogStatus {
     $doc = Read-JsonFileIfExists -Path $recoveryWatchdogStatePath
+    $watchdogItem = if (Test-Path -Path $recoveryWatchdogStatePath) { Get-Item -Path $recoveryWatchdogStatePath } else { $null }
+    $listenerItem = if (Test-Path -Path $listenerStatePath) { Get-Item -Path $listenerStatePath } else { $null }
+    $requestItem = if (Test-Path -Path $listenerRequestPath) { Get-Item -Path $listenerRequestPath } else { $null }
+    $resultItem = if (Test-Path -Path $listenerResultPath) { Get-Item -Path $listenerResultPath } else { $null }
+    $nowUtc = (Get-Date).ToUniversalTime()
+
+    $watchdogMtimeUtc = if ($watchdogItem) { $watchdogItem.LastWriteTimeUtc } else { $null }
+    $referenceCandidates = @()
+    foreach ($candidate in @($listenerItem, $requestItem, $resultItem)) {
+        if ($candidate) {
+            $referenceCandidates += $candidate.LastWriteTimeUtc
+        }
+    }
+
+    $referenceLatestUtc = $null
+    if (@($referenceCandidates).Count -gt 0) {
+        $referenceLatestUtc = @($referenceCandidates | Sort-Object | Select-Object -Last 1)[0]
+    }
+
+    $watchdogSkewSeconds = -1
+    if ($watchdogMtimeUtc -and $referenceLatestUtc) {
+        $watchdogSkewSeconds = [int][Math]::Floor(($referenceLatestUtc - $watchdogMtimeUtc).TotalSeconds)
+    }
+
+    $watchdogFileAgeSeconds = -1
+    if ($watchdogMtimeUtc) {
+        $watchdogFileAgeSeconds = [int][Math]::Floor(($nowUtc - $watchdogMtimeUtc).TotalSeconds)
+    }
+
+    $isStale = $false
+    $staleReason = 'none'
+    if ($watchdogSkewSeconds -ge 300) {
+        $isStale = $true
+        $staleReason = 'watchdog_older_than_listener_truth'
+    }
+
     if ($null -eq $doc) {
         return [pscustomobject]@{
             available = $false
             state = "unknown"
+            effective_state = "unknown"
+            stale = $false
+            stale_reason = "missing"
+            bridge_smoke = $null
             task_state = "idle"
             progress_classification = "no_progress_but_heartbeats_present"
             last_check_at = ""
@@ -6720,12 +7899,21 @@ function Get-RecoveryWatchdogStatus {
             recovery_attempts = 0
             consecutive_freezes = 0
             last_recovery_time = ""
+            file_age_seconds = $watchdogFileAgeSeconds
+            watchdog_mtime_utc = if ($watchdogMtimeUtc) { $watchdogMtimeUtc.ToString('o') } else { '' }
+            listener_reference_utc = if ($referenceLatestUtc) { $referenceLatestUtc.ToString('o') } else { '' }
+            watchdog_skew_seconds = $watchdogSkewSeconds
         }
     }
 
+    $state = if ($doc.PSObject.Properties["state"]) { [string]$doc.state } else { "unknown" }
     return [pscustomobject]@{
         available = $true
-        state = if ($doc.PSObject.Properties["state"]) { [string]$doc.state } else { "unknown" }
+        state = $state
+        effective_state = if ($isStale) { 'stale' } else { $state }
+        stale = $isStale
+        stale_reason = $staleReason
+        bridge_smoke = if ($doc.PSObject.Properties['bridge_smoke']) { $doc.bridge_smoke } else { $null }
         task_state = if ($doc.PSObject.Properties["task_state"]) { [string]$doc.task_state } else { "idle" }
         progress_classification = if ($doc.PSObject.Properties["progress_classification"]) { [string]$doc.progress_classification } else { "no_progress_but_heartbeats_present" }
         last_check_at = if ($doc.PSObject.Properties["last_check_at"]) { [string]$doc.last_check_at } else { "" }
@@ -6738,6 +7926,10 @@ function Get-RecoveryWatchdogStatus {
         recovery_attempts = if ($doc.PSObject.Properties["recovery_attempts"]) { [int]$doc.recovery_attempts } else { 0 }
         consecutive_freezes = if ($doc.PSObject.Properties["consecutive_freezes"]) { [int]$doc.consecutive_freezes } else { 0 }
         last_recovery_time = if ($doc.PSObject.Properties["last_recovery_time"]) { [string]$doc.last_recovery_time } else { "" }
+        file_age_seconds = $watchdogFileAgeSeconds
+        watchdog_mtime_utc = if ($watchdogMtimeUtc) { $watchdogMtimeUtc.ToString('o') } else { '' }
+        listener_reference_utc = if ($referenceLatestUtc) { $referenceLatestUtc.ToString('o') } else { '' }
+        watchdog_skew_seconds = $watchdogSkewSeconds
     }
 }
 
@@ -6754,7 +7946,13 @@ function Get-SelfHealthMaintenanceStatus {
             invocation_mode = "unknown"
             summary = "Self-health maintenance report unavailable."
             generated_at = ""
+            generated_age_seconds = -1
             duration_seconds = -1
+            stale = $false
+            stale_reason = 'missing'
+            source_overall_status = 'unknown'
+            source_overall_severity = 'unknown'
+            source_summary = 'Self-health maintenance report unavailable.'
             recommendation = ""
             history = [pscustomobject]@{
                 scheduled_runs_considered = 0
@@ -6768,18 +7966,52 @@ function Get-SelfHealthMaintenanceStatus {
 
     $history = if ($doc.PSObject.Properties['history'] -and $doc.history) { $doc.history } else { $null }
     $recommendations = if ($doc.PSObject.Properties['recommendations']) { @($doc.recommendations) } else { @() }
+    $generatedAt = if ($doc.PSObject.Properties['generated_at']) { [string]$doc.generated_at } else { "" }
+    $generatedAgeSeconds = Get-IsoAgeSeconds -Value $generatedAt
+    $sourceOverallStatus = if ($doc.PSObject.Properties['overall_status']) { [string]$doc.overall_status } else { "unknown" }
+    $sourceOverallSeverity = if ($doc.PSObject.Properties['overall_severity']) { [string]$doc.overall_severity } else { "unknown" }
+    $sourceSummary = if ($doc.PSObject.Properties['summary']) { [string]$doc.summary } else { "" }
+    $sourceSeverityReason = if ($doc.PSObject.Properties['severity_reason']) { [string]$doc.severity_reason } else { "unknown" }
+    $liveWatchdog = Get-RecoveryWatchdogStatus
+    $watchdogEffectiveState = if ($liveWatchdog -and $liveWatchdog.PSObject.Properties['effective_state'] -and -not [string]::IsNullOrWhiteSpace([string]$liveWatchdog.effective_state)) {
+        [string]$liveWatchdog.effective_state
+    }
+    elseif ($liveWatchdog -and $liveWatchdog.PSObject.Properties['state']) {
+        [string]$liveWatchdog.state
+    }
+    else {
+        'unknown'
+    }
+    $watchdogHealthy = [string]::Equals($watchdogEffectiveState, 'healthy', [System.StringComparison]::OrdinalIgnoreCase)
+    $reportStale = ($generatedAgeSeconds -ge 1800)
+    $supersededByLiveWatchdog = $reportStale -and $watchdogHealthy
+    $effectiveOverallStatus = if ($supersededByLiveWatchdog) { 'healthy' } else { $sourceOverallStatus }
+    $effectiveOverallSeverity = if ($supersededByLiveWatchdog) { 'info' } else { $sourceOverallSeverity }
+    $effectiveSeverityReason = if ($supersededByLiveWatchdog) { 'stale_report_superseded_by_live_watchdog' } else { $sourceSeverityReason }
+    $effectiveSummary = if ($supersededByLiveWatchdog) {
+        'Latest maintenance report is stale relative to the live watchdog state; current recovery telemetry is healthy.'
+    }
+    else {
+        $sourceSummary
+    }
 
     return [pscustomobject]@{
         available = $true
         path = $selfHealthMaintenanceReportPath
-        overall_status = if ($doc.PSObject.Properties['overall_status']) { [string]$doc.overall_status } else { "unknown" }
-        overall_severity = if ($doc.PSObject.Properties['overall_severity']) { [string]$doc.overall_severity } else { "unknown" }
+        overall_status = $effectiveOverallStatus
+        overall_severity = $effectiveOverallSeverity
         source_severity = if ($doc.PSObject.Properties['source_severity']) { [string]$doc.source_severity } else { "unknown" }
-        severity_reason = if ($doc.PSObject.Properties['severity_reason']) { [string]$doc.severity_reason } else { "unknown" }
+        severity_reason = $effectiveSeverityReason
         invocation_mode = if ($doc.PSObject.Properties['invocation_mode']) { [string]$doc.invocation_mode } else { "unknown" }
-        summary = if ($doc.PSObject.Properties['summary']) { [string]$doc.summary } else { "" }
-        generated_at = if ($doc.PSObject.Properties['generated_at']) { [string]$doc.generated_at } else { "" }
+        summary = $effectiveSummary
+        generated_at = $generatedAt
+        generated_age_seconds = $generatedAgeSeconds
         duration_seconds = if ($doc.PSObject.Properties['duration_seconds']) { [double]$doc.duration_seconds } else { -1 }
+        stale = $supersededByLiveWatchdog
+        stale_reason = if ($supersededByLiveWatchdog) { 'superseded_by_live_watchdog' } elseif ($reportStale) { 'aged_report' } else { 'none' }
+        source_overall_status = $sourceOverallStatus
+        source_overall_severity = $sourceOverallSeverity
+        source_summary = $sourceSummary
         recommendation = if (@($recommendations).Count -gt 0) { [string]$recommendations[0] } else { "" }
         history = [pscustomobject]@{
             scheduled_runs_considered = if ($history -and $history.PSObject.Properties['scheduled_runs_considered']) { [int]$history.scheduled_runs_considered } else { 0 }
@@ -6842,6 +8074,22 @@ function Get-SteadyStateHealth {
     $cadenceSeverity = if ($CadenceHealth -and $CadenceHealth.PSObject.Properties['governance'] -and $CadenceHealth.governance.PSObject.Properties['adjusted_severity']) { [string]$CadenceHealth.governance.adjusted_severity } elseif ($CadenceHealth -and $CadenceHealth.PSObject.Properties['severity']) { [string]$CadenceHealth.severity } else { "unknown" }
     $listenerMode = if ($UsingListenerOnly) { "listener_telemetry" } else { "state_plus_listener" }
     $cadenceNoiseSuppressed = [bool]($CadenceHealth -and $CadenceHealth.PSObject.Properties['governance'] -and $CadenceHealth.governance.PSObject.Properties['noise_suppressed'] -and $CadenceHealth.governance.noise_suppressed)
+    $regressionAgeSeconds = Get-IsoAgeSeconds -Value $regressionGeneratedAt
+    $watchdogEffectiveState = if ($RecoveryWatchdog -and $RecoveryWatchdog.PSObject.Properties['effective_state'] -and -not [string]::IsNullOrWhiteSpace([string]$RecoveryWatchdog.effective_state)) { [string]$RecoveryWatchdog.effective_state } elseif ($RecoveryWatchdog -and $RecoveryWatchdog.PSObject.Properties['state']) { [string]$RecoveryWatchdog.state } else { 'unknown' }
+    $watchdogHealthy = [string]::Equals($watchdogEffectiveState, 'healthy', [System.StringComparison]::OrdinalIgnoreCase)
+    $bridgeStatus = if ($RecoveryWatchdog -and $RecoveryWatchdog.PSObject.Properties['bridge_smoke']) { $RecoveryWatchdog.bridge_smoke } else { $null }
+    $bridgeHealthy = $false
+    if ($bridgeStatus -and $bridgeStatus.PSObject.Properties['passed']) {
+        $bridgeHealthy = [bool]$bridgeStatus.passed
+    }
+    elseif ($bridgeStatus -and $bridgeStatus.PSObject.Properties['available'] -and $bridgeStatus.PSObject.Properties['status']) {
+        $bridgeHealthy = ([bool]$bridgeStatus.available -and [string]::Equals([string]$bridgeStatus.status, 'ok', [System.StringComparison]::OrdinalIgnoreCase))
+    }
+    else {
+        $bridgeStatus = Get-BridgeStatus
+        $bridgeHealthy = ($bridgeStatus -and [bool]$bridgeStatus.available -and [string]::Equals([string]$bridgeStatus.status, 'ok', [System.StringComparison]::OrdinalIgnoreCase))
+    }
+    $staleRegressionSuperseded = $regressionAvailable -and ($failed -gt 0) -and ($regressionAgeSeconds -ge 3600) -and $watchdogHealthy -and $bridgeHealthy -and [string]::Equals($cadenceSeverity, 'ok', [System.StringComparison]::OrdinalIgnoreCase)
 
     $status = "unknown"
     $summary = "Steady state unavailable"
@@ -6862,6 +8110,10 @@ function Get-SteadyStateHealth {
             $status = "ok"
             $summary = "Regression is green, coordination is clear, and listener cadence is healthy."
         }
+    }
+    elseif ($staleRegressionSuperseded) {
+        $status = 'ok'
+        $summary = 'Historical regression failures are present, but the regression report is stale and current bridge, cadence, and watchdog telemetry are healthy.'
     }
     elseif ($regressionAvailable -and $failed -gt 0) {
         $status = "critical"
@@ -6887,6 +8139,8 @@ function Get-SteadyStateHealth {
         loop_idle_sec = $loopIdleSec
         cadence_severity = $cadenceSeverity
         listener_mode = $listenerMode
+        regression_age_seconds = $regressionAgeSeconds
+        regression_report_stale = $staleRegressionSuperseded
         source_warning = $StateWarning
     }
 }
@@ -6913,13 +8167,18 @@ function Get-MimProposalFromListenerRequest {
         return [pscustomobject]@{
             available = $false
             source = 'mim_listener_task_request'
+            suppressed = $false
+            suppression_reason = ''
         }
     }
 
-    $taskId = if ($requestPacket.PSObject.Properties['task_id']) { [string]$requestPacket.task_id } else { '' }
+    $taskId = if ($requestPacket.PSObject.Properties['task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$requestPacket.task_id)) { [string]$requestPacket.task_id } elseif ($requestPacket.PSObject.Properties['request_id']) { [string]$requestPacket.request_id } else { '' }
     $objectiveId = if ($requestPacket.PSObject.Properties['objective_id']) { [string]$requestPacket.objective_id } else { '' }
     $generatedAt = if ($requestPacket.PSObject.Properties['generated_at']) { [string]$requestPacket.generated_at } else { '' }
     $normalizedObjectiveId = ''
+    $commandStatusPacket = Read-JsonFileIfExists -Path $listenerCommandStatusPath
+    $effectiveTaskId = ''
+    $commandStatus = ''
 
     if (-not [string]::IsNullOrWhiteSpace($taskId)) {
         $requestRef = Get-TaskRefInfo -Value $taskId
@@ -6938,6 +8197,28 @@ function Get-MimProposalFromListenerRequest {
         }
     }
 
+    if ($commandStatusPacket) {
+        if ($commandStatusPacket.PSObject.Properties['status']) {
+            $commandStatus = [string]$commandStatusPacket.status
+        }
+        if ($commandStatusPacket.PSObject.Properties['bridge_runtime'] -and $commandStatusPacket.bridge_runtime -and $commandStatusPacket.bridge_runtime.PSObject.Properties['current_processing'] -and $commandStatusPacket.bridge_runtime.current_processing -and $commandStatusPacket.bridge_runtime.current_processing.PSObject.Properties['task_id']) {
+            $effectiveTaskId = [string]$commandStatusPacket.bridge_runtime.current_processing.task_id
+        }
+    }
+
+    $requestRef = Get-TaskRefInfo -Value $taskId
+    $effectiveTaskRef = Get-TaskRefInfo -Value $effectiveTaskId
+    $staleBackfillSuperseded = $false
+    if (
+        $requestRef -and
+        $effectiveTaskRef -and
+        [string]::Equals([string]$requestRef.objective, [string]$effectiveTaskRef.objective, [System.StringComparison]::OrdinalIgnoreCase) -and
+        ([long]$effectiveTaskRef.task_number -gt [long]$requestRef.task_number) -and
+        @('stale_request_ignored', 'stale_backfill_ignored') -contains $commandStatus
+    ) {
+        $staleBackfillSuperseded = $true
+    }
+
     $acceptanceCriteria = @()
     if ($requestPacket.PSObject.Properties['acceptance_criteria']) {
         $acceptanceCriteria = @($requestPacket.acceptance_criteria | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -6948,15 +8229,43 @@ function Get-MimProposalFromListenerRequest {
         $constraints = @($requestPacket.constraints | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     }
 
+    if ($staleBackfillSuperseded) {
+        return [pscustomobject]@{
+            available = $false
+            source = 'mim_listener_task_request'
+            suppressed = $true
+            suppression_reason = 'stale_backfill_superseded'
+            task_id = $taskId
+            effective_task_id = $effectiveTaskId
+            objective_id = $objectiveId
+            normalized_objective_id = $normalizedObjectiveId
+            generated_at = $generatedAt
+            correlation_id = if ($requestPacket.PSObject.Properties['correlation_id']) { [string]$requestPacket.correlation_id } else { '' }
+            title = if ($requestPacket.PSObject.Properties['title'] -and -not [string]::IsNullOrWhiteSpace([string]$requestPacket.title)) { [string]$requestPacket.title } elseif ($requestPacket.PSObject.Properties['project_question'] -and -not [string]::IsNullOrWhiteSpace([string]$requestPacket.project_question)) { [string]$requestPacket.project_question } else { '' }
+            scope = if ($requestPacket.PSObject.Properties['scope']) { [string]$requestPacket.scope } else { '' }
+            priority = if ($requestPacket.PSObject.Properties['priority']) { [string]$requestPacket.priority } else { '' }
+            notes = if ($requestPacket.PSObject.Properties['notes']) { [string]$requestPacket.notes } else { '' }
+            source_service = if ($requestPacket.PSObject.Properties['source_service']) { [string]$requestPacket.source_service } else { '' }
+            source_instance_id = if ($requestPacket.PSObject.Properties['source_instance_id']) { [string]$requestPacket.source_instance_id } else { '' }
+            acceptance_criteria = @($acceptanceCriteria)
+            acceptance_criteria_count = @($acceptanceCriteria).Count
+            constraints = @($constraints)
+            constraints_count = @($constraints).Count
+        }
+    }
+
     return [pscustomobject]@{
         available = $true
         source = 'mim_listener_task_request'
+        suppressed = $false
+        suppression_reason = ''
         task_id = $taskId
+        effective_task_id = $effectiveTaskId
         objective_id = $objectiveId
         normalized_objective_id = $normalizedObjectiveId
         generated_at = $generatedAt
         correlation_id = if ($requestPacket.PSObject.Properties['correlation_id']) { [string]$requestPacket.correlation_id } else { '' }
-        title = if ($requestPacket.PSObject.Properties['title']) { [string]$requestPacket.title } else { '' }
+        title = if ($requestPacket.PSObject.Properties['title'] -and -not [string]::IsNullOrWhiteSpace([string]$requestPacket.title)) { [string]$requestPacket.title } elseif ($requestPacket.PSObject.Properties['project_question'] -and -not [string]::IsNullOrWhiteSpace([string]$requestPacket.project_question)) { [string]$requestPacket.project_question } else { '' }
         scope = if ($requestPacket.PSObject.Properties['scope']) { [string]$requestPacket.scope } else { '' }
         priority = if ($requestPacket.PSObject.Properties['priority']) { [string]$requestPacket.priority } else { '' }
         notes = if ($requestPacket.PSObject.Properties['notes']) { [string]$requestPacket.notes } else { '' }
@@ -7151,7 +8460,7 @@ function Get-MimProposalMergePolicy {
             available = $true
             status = 'merge_ready'
             mode = 'context'
-            summary = 'Treat the live MIM proposal as bounded context for the current TOD objective rather than a separate competing lane.'
+            summary = 'Use MIM-TOD bounded context to determine implementation for the current TOD objective rather than creating a separate competing lane.'
             recommended_action = if ($MimProposalArbitration.PSObject.Properties['recommended_action']) { [string]$MimProposalArbitration.recommended_action } else { 'refresh-project-status' }
         }
     }
@@ -7297,6 +8606,21 @@ function Get-MimProposalClosure {
         $MimProposalAcknowledgment
     )
 
+    if ($MimProposal -and $MimProposal.PSObject.Properties['suppressed'] -and [bool]$MimProposal.suppressed) {
+        return [pscustomobject]@{
+            available = $false
+            status = 'none'
+            disposition = 'none'
+            summary = 'Raw MIM proposal telemetry is a stale backfill superseded by the effective live bridge task.'
+            recommended_action = 'refresh-project-status'
+            proposal_id = if ($MimProposal.PSObject.Properties['task_id']) { [string]$MimProposal.task_id } else { '' }
+            proposal_objective_id = if ($MimProposal.PSObject.Properties['normalized_objective_id']) { [string]$MimProposal.normalized_objective_id } else { '' }
+            journal = @()
+            latest_terminal_state = ''
+            latest_terminal_at = ''
+        }
+    }
+
     $currentProposalId = if ($MimProposal -and [bool]$MimProposal.available -and $MimProposal.PSObject.Properties['task_id']) { [string]$MimProposal.task_id } else { '' }
     $currentProposalTitle = if ($MimProposal -and [bool]$MimProposal.available -and $MimProposal.PSObject.Properties['title']) { [string]$MimProposal.title } else { '' }
     $currentProposalObjectiveId = if ($MimProposal -and [bool]$MimProposal.available) {
@@ -7355,6 +8679,10 @@ function Get-MimProposalClosure {
             if ([string]::Equals([string]$group.latest_terminal.status, 'satisfied', [System.StringComparison]::OrdinalIgnoreCase)) {
                 $status = 'fulfilled'
                 $summary = 'The proposal reached a satisfied commitment outcome and is now treated as fulfilled.'
+            }
+            elseif ($live) {
+                $status = 'open'
+                $summary = 'The live proposal remains open; the latest proposal-linked commitment was abandoned and should be treated as historical context, not proposal closure.'
             }
             else {
                 $status = 'abandoned'
@@ -7462,6 +8790,10 @@ function Get-ProjectStatusFromListenerOnly {
     $bridgeStatus = Get-BridgeStatus
     $selfHealthMaintenance = Get-SelfHealthMaintenanceStatus
 
+    $latestListenerObjectiveId = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['latest_objective_id']) { [string]$ListenerActivity.latest_objective_id } else { '' }
+    $latestListenerStatus = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['latest_execution_status']) { [string]$ListenerActivity.latest_execution_status } else { '' }
+    $latestListenerTimestamp = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['latest_timestamp']) { [string]$ListenerActivity.latest_timestamp } else { '' }
+
     $objectiveOptions = @()
     $objectiveStatsMap = @{}
     if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['objective_stats']) {
@@ -7519,15 +8851,53 @@ function Get-ProjectStatusFromListenerOnly {
         }
     }
 
+    $selectedObjectiveStatus = ''
+    if (-not [string]::IsNullOrWhiteSpace($selectedObjectiveId) -and
+        -not [string]::IsNullOrWhiteSpace($latestListenerObjectiveId) -and
+        [string]::Equals($selectedObjectiveId, $latestListenerObjectiveId, [System.StringComparison]::OrdinalIgnoreCase) -and
+        -not [string]::IsNullOrWhiteSpace($latestListenerStatus)) {
+        $selectedObjectiveStatus = $latestListenerStatus
+    }
+    elseif ($selectedStats -and $selectedStats.last_execution_status) {
+        $selectedObjectiveStatus = [string]$selectedStats.last_execution_status
+    }
+    elseif ($ListenerActivity -and $ListenerActivity.PSObject.Properties['result_objective_id'] -and [string]::Equals([string]$ListenerActivity.result_objective_id, $selectedObjectiveId, [System.StringComparison]::OrdinalIgnoreCase) -and -not [string]::IsNullOrWhiteSpace([string]$ListenerActivity.result_status)) {
+        $selectedObjectiveStatus = [string]$ListenerActivity.result_status
+    }
+
+    $selectedObjectiveStatusNormalized = ([string]$selectedObjectiveStatus).Trim().ToLowerInvariant()
+    $listenerPendingRequestCount = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['sync'] -and $ListenerActivity.sync -and $ListenerActivity.sync.PSObject.Properties['pending_request_count']) { [int]$ListenerActivity.sync.pending_request_count } else { 0 }
+    if (
+        ($taskCount -gt 0) -and
+        ($listenerPendingRequestCount -le 0) -and
+        (@('completed', 'succeeded', 'done', 'pass') -contains $selectedObjectiveStatusNormalized)
+    ) {
+        $taskCount = 1
+        $progressUnits = 1.0
+        $percent = 100
+        $statusBreakdown = @{ completed = 1 }
+    }
+
+    $selectedObjectiveUpdatedAt = ''
+    if (-not [string]::IsNullOrWhiteSpace($selectedObjectiveId) -and
+        -not [string]::IsNullOrWhiteSpace($latestListenerObjectiveId) -and
+        [string]::Equals($selectedObjectiveId, $latestListenerObjectiveId, [System.StringComparison]::OrdinalIgnoreCase) -and
+        -not [string]::IsNullOrWhiteSpace($latestListenerTimestamp)) {
+        $selectedObjectiveUpdatedAt = $latestListenerTimestamp
+    }
+    elseif ($selectedStats -and $selectedStats.last_timestamp) {
+        $selectedObjectiveUpdatedAt = [string]$selectedStats.last_timestamp
+    }
+
     $marker = $null
     if (-not [string]::IsNullOrWhiteSpace($selectedObjectiveId)) {
         $marker = [pscustomobject]@{
             objective_id = $selectedObjectiveId
             remote_objective_id = $selectedObjectiveId
             title = "Listener Objective $selectedObjectiveId"
-            status = if ($selectedStats -and $selectedStats.last_execution_status) { [string]$selectedStats.last_execution_status } elseif ($ListenerActivity -and $ListenerActivity.PSObject.Properties['result_objective_id'] -and [string]::Equals([string]$ListenerActivity.result_objective_id, $selectedObjectiveId, [System.StringComparison]::OrdinalIgnoreCase) -and -not [string]::IsNullOrWhiteSpace([string]$ListenerActivity.result_status)) { [string]$ListenerActivity.result_status } else { "listener" }
+            status = if (-not [string]::IsNullOrWhiteSpace($selectedObjectiveStatus)) { $selectedObjectiveStatus } else { "listener" }
             priority = "listener"
-            updated_at = if ($selectedStats -and $selectedStats.last_timestamp) { [string]$selectedStats.last_timestamp } else { "" }
+            updated_at = $selectedObjectiveUpdatedAt
         }
     }
 
@@ -7558,8 +8928,8 @@ function Get-ProjectStatusFromListenerOnly {
             percent = $percent
             completed_equivalent = [math]::Round($progressUnits, 2)
             task_count = $taskCount
-            source = "listener_journal"
-            summary = if (-not [string]::IsNullOrWhiteSpace($selectedObjectiveId) -and $taskCount -gt 0) { "Objective ${selectedObjectiveId}: $percent% (listener journal)" } elseif (-not [string]::IsNullOrWhiteSpace($selectedObjectiveId)) { "Objective ${selectedObjectiveId}: awaiting listener journal convergence" } else { "Awaiting listener telemetry..." }
+            source = if ($percent -eq 100 -and $taskCount -eq 1 -and @('completed', 'succeeded', 'done', 'pass') -contains $selectedObjectiveStatusNormalized) { "objective_status" } else { "listener_journal" }
+            summary = if (-not [string]::IsNullOrWhiteSpace($selectedObjectiveId) -and $taskCount -gt 0 -and $percent -eq 100 -and @('completed', 'succeeded', 'done', 'pass') -contains $selectedObjectiveStatusNormalized) { "Objective ${selectedObjectiveId}: 100% (listener terminal status)" } elseif (-not [string]::IsNullOrWhiteSpace($selectedObjectiveId) -and $taskCount -gt 0) { "Objective ${selectedObjectiveId}: $percent% (listener journal)" } elseif (-not [string]::IsNullOrWhiteSpace($selectedObjectiveId)) { "Objective ${selectedObjectiveId}: awaiting listener journal convergence" } else { "Awaiting listener telemetry..." }
         }
         listener_activity = $ListenerActivity
         recovery_watchdog = $RecoveryWatchdog
@@ -7588,6 +8958,40 @@ function Get-ProjectStatusFromListenerOnly {
         mim_proposal_closure = $mimProposalClosure
         warnings = if ([string]::IsNullOrWhiteSpace($StateWarning)) { @() } else { @($StateWarning) }
     }
+}
+
+function Get-SharedObjectiveProgressSnapshot {
+    param([string]$ObjectiveId)
+
+    $normalizedObjectiveId = Normalize-ObjectiveIdValue -Value $ObjectiveId
+    if ([string]::IsNullOrWhiteSpace($normalizedObjectiveId)) {
+        return $null
+    }
+
+    $ledger = Read-JsonFileIfExists -Path $sharedObjectivesPath
+    if ($null -eq $ledger -or -not $ledger.PSObject.Properties['objectives']) {
+        return $null
+    }
+
+    foreach ($entry in @($ledger.objectives)) {
+        $entryObjectiveId = ''
+        if ($entry.PSObject.Properties['objective_id']) {
+            $entryObjectiveId = Normalize-ObjectiveIdValue -Value ([string]$entry.objective_id)
+        }
+        elseif ($entry.PSObject.Properties['id']) {
+            $entryObjectiveId = Normalize-ObjectiveIdValue -Value ([string]$entry.id)
+        }
+
+        if (-not [string]::Equals($entryObjectiveId, $normalizedObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        if ($entry.PSObject.Properties['progress_snapshot'] -and $entry.progress_snapshot -and $entry.progress_snapshot.PSObject.Properties['available'] -and [bool]$entry.progress_snapshot.available) {
+            return $entry.progress_snapshot
+        }
+    }
+
+    return $null
 }
 
 function Get-ProjectStatusPayload {
@@ -7619,8 +9023,13 @@ function Get-ProjectStatusPayload {
                 $stateReadWarning = "state.json too large (${stateMiB} MiB); using listener telemetry"
             }
             else {
-                $rawState = Get-Content -Path $statePath -Raw
-                $state = $rawState | ConvertFrom-Json
+                $rawState = Read-TextFileIfExists -Path $statePath
+                if ([string]::IsNullOrWhiteSpace($rawState)) {
+                    $stateReadWarning = "state.json unavailable for UI telemetry: read returned empty content"
+                }
+                else {
+                    $state = $rawState | ConvertFrom-Json
+                }
             }
         }
         catch {
@@ -7696,8 +9105,10 @@ function Get-ProjectStatusPayload {
     $nextActions = $null
     if (Test-Path -Path $nextActionsPath) {
         try {
-            $nextActionsRaw = Get-Content -Path $nextActionsPath -Raw -ErrorAction Stop
-            $nextActions = $nextActionsRaw | ConvertFrom-Json
+            $nextActionsRaw = Read-TextFileIfExists -Path $nextActionsPath
+            if (-not [string]::IsNullOrWhiteSpace($nextActionsRaw)) {
+                $nextActions = $nextActionsRaw | ConvertFrom-Json
+            }
         }
         catch {
             $nextActions = $null
@@ -7736,8 +9147,17 @@ function Get-ProjectStatusPayload {
         }
     }
 
-    $objectiveTasks = @($tasks | Where-Object { [string]$_.objective_id -eq $objectiveId })
+    $stateObjectiveTasks = @($tasks | Where-Object { [string]$_.objective_id -eq $objectiveId })
+    $bridgeRuntimeTasks = @($stateObjectiveTasks | Where-Object {
+            (($_.PSObject.Properties['task_category']) -and [string]::Equals([string]$_.task_category, 'bridge_runtime', [System.StringComparison]::OrdinalIgnoreCase)) -or
+            (($_.PSObject.Properties['source']) -and [string]::Equals([string]$_.source, 'bridge_runtime_sync', [System.StringComparison]::OrdinalIgnoreCase))
+        })
+    $objectiveTasks = @($stateObjectiveTasks | Where-Object {
+            -not (((($_.PSObject.Properties['task_category']) -and [string]::Equals([string]$_.task_category, 'bridge_runtime', [System.StringComparison]::OrdinalIgnoreCase)) -or
+            (($_.PSObject.Properties['source']) -and [string]::Equals([string]$_.source, 'bridge_runtime_sync', [System.StringComparison]::OrdinalIgnoreCase))))
+        })
     $taskCount = @($objectiveTasks).Count
+    $stateTaskCount = $taskCount
 
     $statusBreakdown = @{}
     foreach ($task in $objectiveTasks) {
@@ -7747,6 +9167,16 @@ function Get-ProjectStatusPayload {
             $statusBreakdown[$key] = 0
         }
         $statusBreakdown[$key] = [int]$statusBreakdown[$key] + 1
+    }
+
+    $bridgeRuntimeStatusBreakdown = @{}
+    foreach ($task in $bridgeRuntimeTasks) {
+        $statusValue = if ($task.PSObject.Properties["status"]) { [string]$task.status } else { "unknown" }
+        $key = if ([string]::IsNullOrWhiteSpace($statusValue)) { "unknown" } else { $statusValue.Trim().ToLowerInvariant() }
+        if (-not $bridgeRuntimeStatusBreakdown.ContainsKey($key)) {
+            $bridgeRuntimeStatusBreakdown[$key] = 0
+        }
+        $bridgeRuntimeStatusBreakdown[$key] = [int]$bridgeRuntimeStatusBreakdown[$key] + 1
     }
 
     $progressUnits = 0.0
@@ -7767,9 +9197,40 @@ function Get-ProjectStatusPayload {
         $listenerProgressUnits = [double]$listenerStats.Value.progress_units
     }
 
+    $sharedObjectiveProgress = Get-SharedObjectiveProgressSnapshot -ObjectiveId $objectiveId
+    $sharedTaskCount = 0
+    $sharedProgressUnits = 0.0
+    $sharedStatusBreakdown = @{}
+    if ($sharedObjectiveProgress) {
+        if ($sharedObjectiveProgress.PSObject.Properties['task_count']) {
+            $sharedTaskCount = [int]$sharedObjectiveProgress.task_count
+        }
+        if ($sharedObjectiveProgress.PSObject.Properties['completed_equivalent']) {
+            $sharedProgressUnits = [double]$sharedObjectiveProgress.completed_equivalent
+        }
+        if ($sharedObjectiveProgress.PSObject.Properties['by_status'] -and $sharedObjectiveProgress.by_status) {
+            foreach ($prop in $sharedObjectiveProgress.by_status.PSObject.Properties) {
+                $sharedStatusBreakdown[[string]$prop.Name] = [int]$prop.Value
+            }
+        }
+    }
+
+    $preferSharedObjectiveLedger = ($sharedTaskCount -gt 0) -and (
+        ($taskCount -le 0) -or
+        ($sharedTaskCount -gt $taskCount) -or
+        (($sharedTaskCount -eq $taskCount) -and ($sharedProgressUnits -gt $progressUnits))
+    )
+
     $progressSource = "tasks"
-    $percent = if ($taskCount -gt 0) {
+    $percent = if ($taskCount -gt 0 -and -not $preferSharedObjectiveLedger) {
         [int][math]::Round(($progressUnits / [double]$taskCount) * 100)
+    }
+    elseif ($sharedTaskCount -gt 0) {
+        $progressSource = "shared_objective_ledger"
+        $progressUnits = $sharedProgressUnits
+        $taskCount = $sharedTaskCount
+        $statusBreakdown = $sharedStatusBreakdown
+        [int][math]::Round(($sharedProgressUnits / [double]$sharedTaskCount) * 100)
     }
     elseif ($listenerTaskCount -gt 0) {
         $progressSource = "listener_journal"
@@ -7782,9 +9243,43 @@ function Get-ProjectStatusPayload {
         [int][math]::Round((Get-TaskProgressWeight -Status ([string]$marker.status)) * 100)
     }
 
+    if ($preferSharedObjectiveLedger -and $sharedTaskCount -gt 0 -and $taskCount -eq $sharedTaskCount) {
+        $progressSource = "shared_objective_ledger"
+        if ($sharedStatusBreakdown.Count -gt 0) {
+            $statusBreakdown = $sharedStatusBreakdown
+        }
+        $progressUnits = $sharedProgressUnits
+    }
+    elseif ($progressSource -eq "listener_journal" -and $stateTaskCount -eq 0 -and -not [string]::IsNullOrWhiteSpace($objectiveId)) {
+        $progressSource = "state_plus_listener"
+    }
+
+    $markerStatusNormalized = ([string]$marker.status).Trim().ToLowerInvariant()
+    $listenerLatestExecutionNormalized = if ($listenerActivity -and $listenerActivity.PSObject.Properties['latest_execution_status']) { ([string]$listenerActivity.latest_execution_status).Trim().ToLowerInvariant() } else { '' }
+    $listenerPendingRequestCount = if ($listenerActivity -and $listenerActivity.PSObject.Properties['sync'] -and $listenerActivity.sync -and $listenerActivity.sync.PSObject.Properties['pending_request_count']) { [int]$listenerActivity.sync.pending_request_count } else { 0 }
+    if (
+        ($progressSource -eq 'listener_journal' -or $progressSource -eq 'state_plus_listener') -and
+        ($stateTaskCount -le 0) -and
+        ($listenerPendingRequestCount -le 0) -and
+        (@('completed', 'succeeded', 'done', 'pass') -contains $markerStatusNormalized) -and
+        (@('completed', 'succeeded') -contains $listenerLatestExecutionNormalized)
+    ) {
+        $progressSource = 'objective_status'
+        $taskCount = 1
+        $progressUnits = 1.0
+        $statusBreakdown = @{ completed = 1 }
+        $percent = 100
+    }
+
     $progressSummary = if ($taskCount -gt 0) {
         if ($progressSource -eq "listener_journal") {
             "Objective ${objectiveId}: $percent% (listener journal)"
+        }
+        elseif ($progressSource -eq "shared_objective_ledger") {
+            "Objective ${objectiveId}: $percent% (shared objective ledger)"
+        }
+        elseif ($progressSource -eq "state_plus_listener") {
+            "Objective ${objectiveId}: $percent% (state marker plus listener task journal)"
         }
         else {
             "Objective ${objectiveId}: $percent%"
@@ -7837,6 +9332,12 @@ function Get-ProjectStatusPayload {
         task_funnel = [pscustomobject]@{
             total = $taskCount
             by_status = [pscustomobject]$statusBreakdown
+            state_canonical_total = $stateTaskCount
+            state_total = @($stateObjectiveTasks).Count
+            bridge_runtime = [pscustomobject]@{
+                total = @($bridgeRuntimeTasks).Count
+                by_status = [pscustomobject]$bridgeRuntimeStatusBreakdown
+            }
         }
         progress = [pscustomobject]@{
             percent = $percent
@@ -7923,11 +9424,7 @@ try {
         if ($request.HttpMethod -eq "GET" -and ($path -eq "/" -or $path -eq "/index.html")) {
             $html = Get-Content -Path $indexPath -Raw
             $bytes = [System.Text.Encoding]::UTF8.GetBytes($html)
-            $response.StatusCode = 200
-            $response.ContentType = "text/html; charset=utf-8"
-            $response.ContentLength64 = $bytes.LongLength
-            $response.OutputStream.Write($bytes, 0, $bytes.Length)
-            $response.Close()
+                Write-BytesResponse -Response $response -StatusCode 200 -Bytes $bytes -ContentType "text/html; charset=utf-8"
             continue
         }
 
@@ -7961,6 +9458,9 @@ try {
                 if ($payload.PSObject.Properties["taskId"] -and -not [string]::IsNullOrWhiteSpace([string]$payload.taskId)) {
                     $invokeParams.TaskId = [string]$payload.taskId
                 }
+                if ($payload.PSObject.Properties["requestId"] -and -not [string]::IsNullOrWhiteSpace([string]$payload.requestId)) {
+                    $invokeParams.RequestId = [string]$payload.requestId
+                }
                 if ($payload.PSObject.Properties["statePath"] -and -not [string]::IsNullOrWhiteSpace([string]$payload.statePath)) {
                     $invokeParams.StatePath = [string]$payload.statePath
                 }
@@ -7972,6 +9472,26 @@ try {
                 }
                 if ($payload.PSObject.Properties["allowContractDrift"] -and [bool]$payload.allowContractDrift) {
                     $invokeParams.AllowContractDrift = $true
+                }
+
+                if ([string]::Equals($action, 'run-task', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    if (-not $invokeParams.ContainsKey('TaskId') -or [string]::IsNullOrWhiteSpace([string]$invokeParams.TaskId)) {
+                        throw 'run-task requires taskId.'
+                    }
+                    if ($invokeParams.ContainsKey('RequestId') -and -not [string]::IsNullOrWhiteSpace([string]$invokeParams.RequestId)) {
+                        throw 'run-task does not accept requestId. Use action=run-bridge-request with requestId for live bridge requests.'
+                    }
+                }
+                elseif ([string]::Equals($action, 'run-bridge-request', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    if (-not $invokeParams.ContainsKey('RequestId') -or [string]::IsNullOrWhiteSpace([string]$invokeParams.RequestId)) {
+                        throw 'run-bridge-request requires requestId.'
+                    }
+                    if ($invokeParams.ContainsKey('TaskId') -and -not [string]::IsNullOrWhiteSpace([string]$invokeParams.TaskId)) {
+                        throw 'run-bridge-request does not accept taskId. Use requestId only for the bridge lane.'
+                    }
+                }
+                elseif ($invokeParams.ContainsKey('RequestId') -and -not [string]::IsNullOrWhiteSpace([string]$invokeParams.RequestId)) {
+                    throw ("Action '{0}' does not accept requestId. requestId is reserved for run-bridge-request." -f $action)
                 }
 
                 $lightweightActions = @(
@@ -8437,38 +9957,65 @@ try {
             continue
         }
 
+        if ($request.HttpMethod -eq "GET" -and $path -eq "/api/dialog-sessions") {
+            try {
+                $limitText = [string]$request.QueryString["limit"]
+                $limit = 8
+                if (-not [string]::IsNullOrWhiteSpace($limitText)) {
+                    [void][int]::TryParse($limitText, [ref]$limit)
+                }
+                $actor = [string]$request.QueryString["actor"]
+                $payload = Get-DialogSessionsPayload -Limit $limit -Actor $actor
+                Write-JsonResponse -Response $response -StatusCode 200 -Json ($payload | ConvertTo-Json -Depth 12)
+            }
+            catch {
+                $errorPayload = [pscustomobject]@{
+                    ok = $false
+                    error = $_.Exception.Message
+                }
+                Write-JsonResponse -Response $response -StatusCode 400 -Json ($errorPayload | ConvertTo-Json -Depth 6)
+            }
+            continue
+        }
+
+        if ($request.HttpMethod -eq "GET" -and $path -eq "/api/dialog-session") {
+            try {
+                $sessionIdValue = [string]$request.QueryString["session_id"]
+                $tailText = [string]$request.QueryString["tail"]
+                $tail = 12
+                if (-not [string]::IsNullOrWhiteSpace($tailText)) {
+                    [void][int]::TryParse($tailText, [ref]$tail)
+                }
+                $payload = Get-DialogSessionPayload -SessionId $sessionIdValue -Tail $tail
+                Write-JsonResponse -Response $response -StatusCode 200 -Json ($payload | ConvertTo-Json -Depth 14)
+            }
+            catch {
+                $errorPayload = [pscustomobject]@{
+                    ok = $false
+                    error = $_.Exception.Message
+                }
+                Write-JsonResponse -Response $response -StatusCode 400 -Json ($errorPayload | ConvertTo-Json -Depth 6)
+            }
+            continue
+        }
+
         if ($request.HttpMethod -eq "GET" -and $path -eq "/api/share-download") {
             try {
                 $key = [string]$request.QueryString["key"]
                 if ([string]::IsNullOrWhiteSpace($key) -or -not $shareArtifacts.Contains($key)) {
-                    $response.StatusCode = 404
-                    $response.ContentType = "text/plain; charset=utf-8"
-                    $bytes = [System.Text.Encoding]::UTF8.GetBytes("Unknown artifact key")
-                    $response.ContentLength64 = $bytes.LongLength
-                    $response.OutputStream.Write($bytes, 0, $bytes.Length)
-                    $response.Close()
+                    Write-TextResponse -Response $response -StatusCode 404 -Text "Unknown artifact key"
                     continue
                 }
 
                 $artifactPath = [string]$shareArtifacts[$key].path
                 if (-not (Test-Path -Path $artifactPath)) {
-                    $response.StatusCode = 404
-                    $response.ContentType = "text/plain; charset=utf-8"
-                    $bytes = [System.Text.Encoding]::UTF8.GetBytes("Artifact not found")
-                    $response.ContentLength64 = $bytes.LongLength
-                    $response.OutputStream.Write($bytes, 0, $bytes.Length)
-                    $response.Close()
+                    Write-TextResponse -Response $response -StatusCode 404 -Text "Artifact not found"
                     continue
                 }
 
                 $fileInfo = Get-Item -Path $artifactPath
                 $bytes = [System.IO.File]::ReadAllBytes($artifactPath)
-                $response.StatusCode = 200
-                $response.ContentType = Get-MimeTypeForPath -Path $artifactPath
-                $response.AddHeader("Content-Disposition", "attachment; filename=`"$($fileInfo.Name)`"")
-                $response.ContentLength64 = $bytes.LongLength
-                $response.OutputStream.Write($bytes, 0, $bytes.Length)
-                $response.Close()
+                Write-BytesResponse -Response $response -StatusCode 200 -Bytes $bytes -ContentType (Get-MimeTypeForPath -Path $artifactPath) -Headers @{ "Content-Disposition" = ('attachment; filename="{0}"' -f $fileInfo.Name) }
             }
             catch {
                 $errorPayload = [pscustomobject]@{
@@ -8484,32 +10031,18 @@ try {
             try {
                 $key = [string]$request.QueryString["key"]
                 if ([string]::IsNullOrWhiteSpace($key) -or -not $shareArtifacts.Contains($key)) {
-                    $response.StatusCode = 404
-                    $response.ContentType = "text/plain; charset=utf-8"
-                    $bytes = [System.Text.Encoding]::UTF8.GetBytes("Unknown artifact key")
-                    $response.ContentLength64 = $bytes.LongLength
-                    $response.OutputStream.Write($bytes, 0, $bytes.Length)
-                    $response.Close()
+                    Write-TextResponse -Response $response -StatusCode 404 -Text "Unknown artifact key"
                     continue
                 }
 
                 $artifactPath = [string]$shareArtifacts[$key].path
                 if (-not (Test-Path -Path $artifactPath)) {
-                    $response.StatusCode = 404
-                    $response.ContentType = "text/plain; charset=utf-8"
-                    $bytes = [System.Text.Encoding]::UTF8.GetBytes("Artifact not found")
-                    $response.ContentLength64 = $bytes.LongLength
-                    $response.OutputStream.Write($bytes, 0, $bytes.Length)
-                    $response.Close()
+                    Write-TextResponse -Response $response -StatusCode 404 -Text "Artifact not found"
                     continue
                 }
 
                 $bytes = [System.IO.File]::ReadAllBytes($artifactPath)
-                $response.StatusCode = 200
-                $response.ContentType = Get-MimeTypeForPath -Path $artifactPath
-                $response.ContentLength64 = $bytes.LongLength
-                $response.OutputStream.Write($bytes, 0, $bytes.Length)
-                $response.Close()
+                Write-BytesResponse -Response $response -StatusCode 200 -Bytes $bytes -ContentType (Get-MimeTypeForPath -Path $artifactPath)
             }
             catch {
                 $errorPayload = [pscustomobject]@{
@@ -8521,12 +10054,7 @@ try {
             continue
         }
 
-        $response.StatusCode = 404
-        $response.ContentType = "text/plain; charset=utf-8"
-        $notFound = [System.Text.Encoding]::UTF8.GetBytes("Not found")
-        $response.ContentLength64 = $notFound.LongLength
-        $response.OutputStream.Write($notFound, 0, $notFound.Length)
-        $response.Close()
+        Write-TextResponse -Response $response -StatusCode 404 -Text "Not found"
 
         } catch {
             # Per-request outer safety net — log and try to return 500 so server keeps running

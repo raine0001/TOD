@@ -1,0 +1,26 @@
+{
+    "session_id":  "tod-operator-chat-summarize_status-75-20260402T143243511Z-39f34fc9",
+    "status":  "timed_out",
+    "timed_out":  true,
+    "message_count":  1,
+    "updated_at":  "2026-04-02T14:32:43.5647184Z",
+    "session_path":  "E:\\TOD\\shared_state\\dialog\\MIM_TOD_DIALOG.session-tod-operator-chat-summarize_status-75-20260402T143243511Z-39f34fc9.jsonl",
+    "open_reply":  {
+                       "turn_id":  1,
+                       "from":  "TOD",
+                       "to":  "MIM",
+                       "message_type":  "status_request",
+                       "summary":  "TOD operator chat asks MIM: Summarize dashboard state in operator language.",
+                       "timestamp":  "2026-04-02T14:32:43.5647184Z"
+                   },
+    "last_message":  {
+                         "turn_id":  1,
+                         "from":  "TOD",
+                         "to":  "MIM",
+                         "message_type":  "status_request",
+                         "summary":  "TOD operator chat asks MIM: Summarize dashboard state in operator language.",
+                         "task_id":  "objective-75-task-3422",
+                         "correlation_id":  "",
+                         "timestamp":  "2026-04-02T14:32:43.5647184Z"
+                     }
+}

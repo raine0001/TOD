@@ -1,0 +1,26 @@
+{
+    "session_id":  "tod-watchdog-objective-75-task-3422-remote",
+    "status":  "timed_out",
+    "timed_out":  true,
+    "message_count":  1,
+    "updated_at":  "2026-04-02T14:59:44.6800403Z",
+    "session_path":  "E:\\TOD\\shared_state\\dialog\\MIM_TOD_DIALOG.session-tod-watchdog-objective-75-task-3422-remote.jsonl",
+    "open_reply":  {
+                       "turn_id":  1,
+                       "from":  "TOD",
+                       "to":  "MIM",
+                       "message_type":  "diagnostic_query",
+                       "summary":  "Canonical objective is 97 but MIM is still auto-reissuing objective-75-task-3422 into the live request file.",
+                       "timestamp":  "2026-04-02T14:59:44.6800403Z"
+                   },
+    "last_message":  {
+                         "turn_id":  1,
+                         "from":  "TOD",
+                         "to":  "MIM",
+                         "message_type":  "diagnostic_query",
+                         "summary":  "Canonical objective is 97 but MIM is still auto-reissuing objective-75-task-3422 into the live request file.",
+                         "task_id":  "objective-75-task-3422",
+                         "correlation_id":  "obj75-task3422",
+                         "timestamp":  "2026-04-02T14:59:44.6800403Z"
+                     }
+}

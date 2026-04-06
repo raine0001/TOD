@@ -1,0 +1,33 @@
+{
+    "generated_at":  "2026-04-02T23:23:13.3986169Z",
+    "label":  "pre-republish",
+    "baseline_id":  "pre-republish-20260402T232313238Z",
+    "snapshot_dir":  "E:\\TOD\\shared_state\\archive\\tod-mim-boundary-baselines\\pre-republish-20260402T232313238Z",
+    "artifacts":  {
+                      "bridge_smoke":  "E:\\TOD\\shared_state\\archive\\tod-mim-boundary-baselines\\pre-republish-20260402T232313238Z\\bridge_smoke.json",
+                      "remote_boundary":  "E:\\TOD\\shared_state\\archive\\tod-mim-boundary-baselines\\pre-republish-20260402T232313238Z\\remote_boundary.json",
+                      "remote_probe":  "E:\\TOD\\shared_state\\archive\\tod-mim-boundary-baselines\\pre-republish-20260402T232313238Z\\remote_probe.json",
+                      "local_listener_request":  "E:\\TOD\\shared_state\\archive\\tod-mim-boundary-baselines\\pre-republish-20260402T232313238Z\\local_listener_request.json"
+                  },
+    "summary":  {
+                    "smoke_classification":  "noncanonical_remote_surface",
+                    "smoke_failure_modes":  [
+                                                "noncanonical_remote_surface"
+                                            ],
+                    "boundary_classification":  "noncanonical_remote_surface",
+                    "boundary_recommendation":  "repair_current_boundary",
+                    "request_identity":  {
+                                             "expected_objective_id":  "objective-97",
+                                             "remote_objective_id":  "objective-97",
+                                             "remote_task_id":  "objective-97-task-3422",
+                                             "remote_sequence":  "1",
+                                             "remote_sha256":  "392cd01625b7eac770386373102f37bead7d005a680953832ffb5da3b639f7c5",
+                                             "remote_inode":  "649265",
+                                             "local_objective_id":  "objective-97",
+                                             "local_task_id":  "objective-97-task-3422",
+                                             "local_sequence":  "1",
+                                             "local_sha256":  "392cd01625b7eac770386373102f37bead7d005a680953832ffb5da3b639f7c5"
+                                         },
+                    "remote_probe_generated_at":  "2026-04-02T23:14:14Z"
+                }
+}

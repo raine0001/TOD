@@ -465,6 +465,50 @@ Reports:
 - `shared_state/conversation_eval/real_usage/tod_real_code_assist.latest.json`
 - `shared_state/conversation_eval/codex_readiness/tod_codex_readiness.latest.json`
 
+TOD<->MIM communication contract gate (synthetic-only, dialog/adjudication only):
+
+```powershell
+# Standing synthetic regression gate for dialog and next-step adjudication integrity
+.\scripts\Invoke-TODMimCommunicationContractGate.ps1 -EmitJson
+```
+
+Communication-contract gate scope:
+
+- synthetic-only
+- dialog routing and actionable inbox/index semantics
+- same-session reply expectation handling
+- next-step consensus, reminder, and supersede/reissue behavior
+- not live execution-lane validation
+
+Project wording:
+
+- The synthetic TOD<->MIM conversation harness is now promoted as a standing regression gate for communication-contract integrity.
+- Its scope remains synthetic-only and limited to dialog/adjudication behavior.
+- Live execution authority remains governed and validated separately through the listener-stage execution contract.
+
+TOD<->MIM execution contract gate (synthetic-only, listener execution lane only):
+
+```powershell
+# Standing synthetic regression gate for request/trigger/ACK/result execution integrity
+.\scripts\Invoke-TODMimExecutionContractGate.ps1 -EmitJson
+```
+
+Execution-contract gate scope:
+
+- synthetic-only
+- canonical request, trigger ACK, task ACK, and task result semantics
+- request accepted once, ACK once, RESULT once
+- duplicate request deduplication
+- stale and superseded request handling
+- wrong-target rejection
+- not live SSH listener validation
+
+Project wording:
+
+- The execution-lane synthetic harness is a separate standing regression gate for listener-stage contract integrity.
+- Its scope remains synthetic-only and limited to the request/trigger/ACK/result lane.
+- Dialog and adjudication behavior stays covered by the separate communication-contract gate.
+
 ### Continuous Training Automation
 
 Generate a structured training report from existing TOD evidence (tests, smoke, state-bus, reliability, engineering loop):

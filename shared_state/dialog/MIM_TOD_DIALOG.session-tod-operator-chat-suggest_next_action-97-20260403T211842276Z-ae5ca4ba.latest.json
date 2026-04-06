@@ -1,0 +1,26 @@
+{
+    "session_id":  "tod-operator-chat-suggest_next_action-97-20260403T211842276Z-ae5ca4ba",
+    "status":  "timed_out",
+    "timed_out":  true,
+    "message_count":  1,
+    "updated_at":  "2026-04-03T21:18:42.3220339Z",
+    "session_path":  "E:\\TOD\\shared_state\\dialog\\MIM_TOD_DIALOG.session-tod-operator-chat-suggest_next_action-97-20260403T211842276Z-ae5ca4ba.jsonl",
+    "open_reply":  {
+                       "turn_id":  1,
+                       "from":  "TOD",
+                       "to":  "MIM",
+                       "message_type":  "status_request",
+                       "summary":  "TOD operator chat asks MIM: What should I do next? direct-query-cache-regression 1ca6e375fcb84a948b6c09916cc3889b",
+                       "timestamp":  "2026-04-03T21:18:42.3220339Z"
+                   },
+    "last_message":  {
+                         "turn_id":  1,
+                         "from":  "TOD",
+                         "to":  "MIM",
+                         "message_type":  "status_request",
+                         "summary":  "TOD operator chat asks MIM: What should I do next? direct-query-cache-regression 1ca6e375fcb84a948b6c09916cc3889b",
+                         "task_id":  "objective-97-task-smoke-20260403171131",
+                         "correlation_id":  "",
+                         "timestamp":  "2026-04-03T21:18:42.3220339Z"
+                     }
+}

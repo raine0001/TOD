@@ -96,6 +96,83 @@ function Invoke-TodSweepSnapshot {
     }
 }
 
+function Convert-ToNormalizedTodSweepSnapshot {
+    param([Parameter(Mandatory = $true)]$Snapshot)
+
+    return [pscustomobject]@{
+        raw = [pscustomobject]@{
+            stable_contract = [pscustomobject]@{
+                build_ok = [bool]$Snapshot.raw.stable_contract.build_ok
+                operator_chat_queries_ok = [bool]$Snapshot.raw.stable_contract.operator_chat_queries_ok
+                governed_actions_ok = [bool]$Snapshot.raw.stable_contract.governed_actions_ok
+                audit_ok = [bool]$Snapshot.raw.stable_contract.audit_ok
+                reasoning_ok = [bool]$Snapshot.raw.stable_contract.reasoning_ok
+                commitments_ok = [bool]$Snapshot.raw.stable_contract.commitments_ok
+                ineffective_smoke_ok = [bool]$Snapshot.raw.stable_contract.ineffective_smoke_ok
+                feedback_ok = [bool]$Snapshot.raw.stable_contract.feedback_ok
+                bridge_diagnostics_ok = [bool]$Snapshot.raw.stable_contract.bridge_diagnostics_ok
+                bridge_explain_ok = [bool]$Snapshot.raw.stable_contract.bridge_explain_ok
+            }
+            commitment = [pscustomobject]@{
+                ok = [bool]$Snapshot.raw.commitment.ok
+                state = [string]$Snapshot.raw.commitment.state
+                timeboxed_ok = [bool]$Snapshot.raw.commitment.timeboxed_ok
+                timeboxed_state = [string]$Snapshot.raw.commitment.timeboxed_state
+                timeboxed_has_expiry = [bool]$Snapshot.raw.commitment.timeboxed_has_expiry
+                evidence_bound_ok = [bool]$Snapshot.raw.commitment.evidence_bound_ok
+                evidence_bound_state = [string]$Snapshot.raw.commitment.evidence_bound_state
+                evidence_bound_release = [string]$Snapshot.raw.commitment.evidence_bound_release
+                evidence_bound_snapshot = [bool]$Snapshot.raw.commitment.evidence_bound_snapshot
+                satisfied_ok = [bool]$Snapshot.raw.commitment.satisfied_ok
+                satisfied_state = [string]$Snapshot.raw.commitment.satisfied_state
+                satisfied_lifecycle = [string]$Snapshot.raw.commitment.satisfied_lifecycle
+                abandoned_ok = [bool]$Snapshot.raw.commitment.abandoned_ok
+                abandoned_state = [string]$Snapshot.raw.commitment.abandoned_state
+                abandoned_lifecycle = [string]$Snapshot.raw.commitment.abandoned_lifecycle
+                ineffective_cycle_one_preview_ok = [bool]$Snapshot.raw.commitment.ineffective_cycle_one_preview_ok
+                ineffective_cycle_one_committed_ok = [bool]$Snapshot.raw.commitment.ineffective_cycle_one_committed_ok
+                ineffective_cycle_one_abandoned_ok = [bool]$Snapshot.raw.commitment.ineffective_cycle_one_abandoned_ok
+                ineffective_cycle_two_preview_ok = [bool]$Snapshot.raw.commitment.ineffective_cycle_two_preview_ok
+                ineffective_cycle_two_committed_ok = [bool]$Snapshot.raw.commitment.ineffective_cycle_two_committed_ok
+                ineffective_cycle_two_abandoned_ok = [bool]$Snapshot.raw.commitment.ineffective_cycle_two_abandoned_ok
+                ineffective_probe_action = [string]$Snapshot.raw.commitment.ineffective_probe_action
+                ineffective_projection_seen = [bool]$Snapshot.raw.commitment.ineffective_projection_seen
+                ineffective_terminal_state = [string]$Snapshot.raw.commitment.ineffective_terminal_state
+                ineffective_lifecycle_status = [string]$Snapshot.raw.commitment.ineffective_lifecycle_status
+                ineffective_signal_seen = [bool]$Snapshot.raw.commitment.ineffective_signal_seen
+                ineffective_followup_action = [string]$Snapshot.raw.commitment.ineffective_followup_action
+                ineffective_followup_reason = [string]$Snapshot.raw.commitment.ineffective_followup_reason
+                ineffective_followup_history_signal = [bool]$Snapshot.raw.commitment.ineffective_followup_history_signal
+                list_ok = [bool]$Snapshot.raw.commitment.list_ok
+                list_count = [int]$Snapshot.raw.commitment.list_count
+                list_states = [string]$Snapshot.raw.commitment.list_states
+                evidence_commitment_provenance_source = [string]$Snapshot.raw.commitment.evidence_commitment_provenance_source
+                evidence_commitment_fitness_field = [bool]$Snapshot.raw.commitment.evidence_commitment_fitness_field
+            }
+            trust_chain = [pscustomobject]@{
+                ok = [bool]$Snapshot.raw.trust_chain.ok
+                chain_status = [string]$Snapshot.raw.trust_chain.chain_status
+                evidence_count = [int]$Snapshot.raw.trust_chain.evidence_count
+                commitment_count = [int]$Snapshot.raw.trust_chain.commitment_count
+                evidence_delta_count = [int]$Snapshot.raw.trust_chain.evidence_delta_count
+                evidence_commitment_ok = [bool]$Snapshot.raw.trust_chain.evidence_commitment_ok
+                evidence_commitment_chain_status = [string]$Snapshot.raw.trust_chain.evidence_commitment_chain_status
+                evidence_commitment_delta_field = [bool]$Snapshot.raw.trust_chain.evidence_commitment_delta_field
+                evidence_commitment_comparison_applied = [bool]$Snapshot.raw.trust_chain.evidence_commitment_comparison_applied
+                evidence_commitment_comparison_source = [string]$Snapshot.raw.trust_chain.evidence_commitment_comparison_source
+                evidence_commitment_comparison_objective = [string]$Snapshot.raw.trust_chain.evidence_commitment_comparison_objective
+                evidence_commitment_delta_positive = [bool]$Snapshot.raw.trust_chain.evidence_commitment_delta_positive
+                evidence_commitment_snapshot_field = [bool]$Snapshot.raw.trust_chain.evidence_commitment_snapshot_field
+                ineffective_commitment_ok = [bool]$Snapshot.raw.trust_chain.ineffective_commitment_ok
+                ineffective_commitment_chain_status = [string]$Snapshot.raw.trust_chain.ineffective_commitment_chain_status
+                ineffective_commitment_terminal_state = [string]$Snapshot.raw.trust_chain.ineffective_commitment_terminal_state
+                ineffective_commitment_lifecycle_status = [string]$Snapshot.raw.trust_chain.ineffective_commitment_lifecycle_status
+            }
+        }
+        summary = $Snapshot.summary
+    }
+}
+
 Describe 'Operator chat sweep artifacts' {
     It 'writes raw and ineffective summary artifacts with stable ineffective smoke fields' {
         if (-not (Test-TodUiReachable)) {
@@ -147,10 +224,10 @@ Describe 'Operator chat sweep artifacts' {
         $artifactBackup = Get-TodExecutionReadinessArtifactBackup
         try {
             Set-TodExecutionReadinessArtifactScenario -Scenario 'valid'
-            $baseline = Invoke-TodSweepSnapshot
+            $baseline = Convert-ToNormalizedTodSweepSnapshot -Snapshot (Invoke-TodSweepSnapshot)
 
             Set-TodExecutionReadinessArtifactScenario -Scenario 'stale'
-            $stale = Invoke-TodSweepSnapshot
+            $stale = Convert-ToNormalizedTodSweepSnapshot -Snapshot (Invoke-TodSweepSnapshot)
 
             (($baseline.raw | ConvertTo-Json -Depth 20 -Compress)) | Should Be (($stale.raw | ConvertTo-Json -Depth 20 -Compress))
             (($baseline.summary | ConvertTo-Json -Depth 20 -Compress)) | Should Be (($stale.summary | ConvertTo-Json -Depth 20 -Compress))

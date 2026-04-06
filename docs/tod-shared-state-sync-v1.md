@@ -11,12 +11,14 @@ Generated files:
 - `shared_state/current_build_state.json`
 - `shared_state/objectives.json`
 - `shared_state/contracts.json`
+- `shared_state/execution_evidence.json`
 - `shared_state/next_actions.json`
 - `shared_state/shared_development_log_plan.json`
 - `shared_state/dev_journal.jsonl`
 - `shared_state/latest_summary.md`
 - `shared_state/chatgpt_update.md`
 - `shared_state/chatgpt_update.json`
+- `shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json`
 
 Related contract doc:
 
@@ -39,11 +41,13 @@ Optional overrides:
 
 - git metadata: branch, commit SHA, release tag
 - TOD runtime endpoints: `get-capabilities`, `get-engineering-signal`, `get-reliability`
+- TOD runtime execution-readiness endpoint: `get-execution-readiness`
 - TOD state and reports:
   - `tod/data/state.json`
   - `tod/out/training/test-summary.json`
   - `tod/out/training/smoke-summary.json`
   - `tod/out/training/quality-gate-summary.json`
+  - `shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json`
 
 ## Update Cadence
 
@@ -61,3 +65,4 @@ Run this sync at minimum:
 - Keep snapshots machine-readable and small.
 - Keep journal append-only (`dev_journal.jsonl`).
 - Record decisions/outcomes/current truth, not raw scratchpad reasoning.
+- Treat the operator-chat sweep artifact smoke result as an execution-readiness input for downstream MIM consumers and policy gates.

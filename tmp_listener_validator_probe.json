@@ -1,0 +1,51 @@
+{
+    "generated_at":  "2026-04-05T16:45:25.8376203Z",
+    "request_id":  "objective-97-task-mim-arm-safe-home-20260404194149",
+    "review_decision":  "accepted",
+    "request_fingerprint":  {
+                                "hostname":  "DR_HOME_II",
+                                "whoami":  "dave",
+                                "absolute_path":  "E:\\TOD\\tod\\out\\context-sync\\listener\\MIM_TOD_TASK_REQUEST.validator.3d834f2f18134c168bddfab30f62cbc1.json",
+                                "realpath":  "E:\\TOD\\tod\\out\\context-sync\\listener\\MIM_TOD_TASK_REQUEST.validator.3d834f2f18134c168bddfab30f62cbc1.json",
+                                "inode":  "",
+                                "mtime":  "2026-04-05T16:38:44.6726047Z",
+                                "size":  4169,
+                                "sha256":  "8d5de6f4307bb722b6cff5509d6267de804e03866d2f9aef7eb4bd868f633e8e",
+                                "objective_id":  "objective-97",
+                                "task_id":  "",
+                                "sequence":  "708284"
+                            },
+    "checks":  [
+                   {
+                       "name":  "compatible",
+                       "passed":  true,
+                       "actual":  true,
+                       "expected":  true
+                   },
+                   {
+                       "name":  "objective_alignment",
+                       "passed":  true,
+                       "actual":  "in_sync",
+                       "expected":  "aligned"
+                   },
+                   {
+                       "name":  "tod_current_objective",
+                       "passed":  true,
+                       "actual":  "97",
+                       "expected":  "97"
+                   },
+                   {
+                       "name":  "mim_objective_active",
+                       "passed":  true,
+                       "actual":  "97",
+                       "expected":  "97"
+                   },
+                   {
+                       "name":  "mim_refresh_failure_reason_empty",
+                       "passed":  true,
+                       "actual":  "",
+                       "expected":  ""
+                   }
+               ],
+    "passed":  true
+}

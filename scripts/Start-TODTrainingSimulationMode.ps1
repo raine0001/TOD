@@ -101,7 +101,7 @@ function Invoke-ProgrammingTask {
     }
 
     if ($taskRoll -eq 3) {
-        $syncRaw = & $sharedSyncScript
+        $syncRaw = & $sharedSyncScript -PublishTodStatusToMimArm
         $sync = $syncRaw | ConvertFrom-Json
         Write-Journal -Category "programming" -Task "shared-state refresh" -Ok ([bool]$sync.ok) -Detail "shared_state regenerated" -Validation "Invoke-TODSharedStateSync"
         return

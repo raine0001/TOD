@@ -8,6 +8,7 @@ Audience: MIM / AgentMIM operators and collaborators
 - TOD is operational as the coordination and managed-work layer across registered MIM projects.
 - TOD remains in `guarded` write mode for its own repo and uses per-project boundaries from [tod/config/project-registry.json](e:/TOD/tod/config/project-registry.json).
 - A final live MIM listener confirmation smoke on `2026-03-26` completed successfully for `objective-90-task-smoke-20260326215121`, with execution-readiness metadata propagated through the emitted result, command-status, and loop-journal artifacts.
+- On `2026-03-27`, TOD promoted the direct operator-chat artifact smoke result to the authoritative execution-readiness gate on this host, added graded readiness states plus transition history, and documented the contract in [docs/tod-execution-readiness-promotion-note-2026-03-27.md](e:/TOD/docs/tod-execution-readiness-promotion-note-2026-03-27.md).
 - The most recent completed cross-project work was the `comm_app` marketing docs-capture workflow, including code changes, runbook updates, screenshot generation, commit, and push.
 - The `comm_app` marketing/docs work is complete and published.
 - TOD itself still has unrelated local working-tree churn from runtime artifacts, experimental scripts, and state outputs; low-risk cleanup has started by removing tracked Python cache files and tightening ignore rules for local cache/archive artifacts.

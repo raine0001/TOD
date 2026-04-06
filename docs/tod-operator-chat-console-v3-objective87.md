@@ -13,6 +13,8 @@ The first slice was intentionally small:
 
 The next hardening slice expands that contract so commitments can stay durable without becoming sticky forever.
 
+As of `2026-03-27`, governed confirmation also sits behind the authoritative execution-readiness gate described in [docs/tod-execution-readiness-promotion-note-2026-03-27.md](e:/TOD/docs/tod-execution-readiness-promotion-note-2026-03-27.md). Preview remains available for inspection, but confirm now requires a current passing direct artifact-smoke certification signal.
+
 ## Initial Contract
 
 Artifacts:

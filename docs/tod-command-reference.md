@@ -7,9 +7,12 @@ Quick command cheatsheet for operating TOD and the TOD Command Console.
 ```powershell
 .\scripts\TOD.ps1 -Action init
 .\scripts\TOD.ps1 -Action ping-mim
+.\scripts\TOD.ps1 -Action safe_home
 .\scripts\TOD.ps1 -Action compare-manifest
 .\scripts\TOD.ps1 -Action sync-mim
 ```
+
+`safe_home` uses the configured `MIM_ARM_SSH_*` or `MIM_SSH_*` settings from `.env`, opens an SSH session to the active arm host, and invokes the bounded `POST /go_safe` endpoint on the remote Flask runtime.
 
 ## Objectives and Tasks
 
@@ -23,6 +26,16 @@ Quick command cheatsheet for operating TOD and the TOD Command Console.
 .\scripts\TOD.ps1 -Action run-task -TaskId <ID>
 .\scripts\TOD.ps1 -Action run-task-report -TaskId <ID>
 ```
+
+Use `run-task` only for resolvable MIM `/tasks` registry IDs. Do not pass listener bridge request IDs to this lane.
+
+## Bridge Requests
+
+```powershell
+.\scripts\TOD.ps1 -Action run-bridge-request -RequestId <REQUEST_ID>
+```
+
+`run-bridge-request` reads `tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json`, validates that the live `request_id` matches `-RequestId`, and dispatches the packet through the bridge execution lane. It does not use `/tasks` lookup or local task-state resolution.
 
 ## Results and Review
 
@@ -54,6 +67,11 @@ Quick command cheatsheet for operating TOD and the TOD Command Console.
 .\scripts\TOD.ps1 -Action sandbox-write -SandboxPath "notes/demo.txt" -Content "hello sandbox"
 .\scripts\TOD.ps1 -Action get-state-bus
 .\scripts\TOD.ps1 -Action get-version
+.\scripts\Invoke-TODWatchdogDriftGuard.ps1 -AutoCorrect -RestartUiOnFailure -EmitJson
+.\scripts\Register-TODWatchdogDriftGuardTask.ps1 -CheckEveryMinutes 15 -RestartUiOnFailure -TriggerMaintenanceOnUnresolved -IncludeLogonTrigger
+.\scripts\Register-TODWatchdogDriftGuardTask.ps1 -TaskName "TOD-Watchdog-DriftGuard-Training" -CheckEveryMinutes 5 -RestartUiOnFailure -TriggerMaintenanceOnUnresolved -ActiveWindows "06:00-23:00" -IncludeLogonTrigger
+.\scripts\Register-TODWatchdogDriftGuardTask.ps1 -TaskName "TOD-Watchdog-DriftGuard-Overnight" -CheckEveryMinutes 30 -RestartUiOnFailure -TriggerMaintenanceOnUnresolved -ActiveWindows "23:00-06:00" -IncludeLogonTrigger
+.\scripts\Get-TODDriftGuardCoverageHealth.ps1
 ```
 
 Execution-readiness policy notes:

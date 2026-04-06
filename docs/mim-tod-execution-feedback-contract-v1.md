@@ -152,10 +152,56 @@ TOD currently supports feedback publisher wiring in run-task flow with:
 - blocked (guardrail)
 - succeeded/failed terminal mapping
 
+For bounded runtime actions that are dispatched through the listener rather than `run-task`, TOD must still preserve the same lifecycle shape:
+- emit ACK against the live `request_id`
+- execute exactly one bounded action for that request
+- publish a terminal result for that same `request_id`
+- avoid treating historical journal rows as the current live task
+
 Execution id resolution order:
 1. explicit -ExecutionId
 2. task.execution_id
 3. task.remote_execution_id
+
+## 9) Communication Plan For Preventing Stale Or Non-Closing Tasks
+
+Use the following rules for all MIM to TOD bounded execution handoffs.
+
+### Active-task authority
+
+- The listener stage is the source of truth for the live task: `listener_state.json`, `MIM_TOD_TASK_REQUEST.latest.json`, `TOD_MIM_TASK_ACK.latest.json`, and `TOD_MIM_TASK_RESULT.latest.json`.
+- UI summaries may show historical proposal or journal rows, but `current_processing`, `latest_request_id`, and the latest ACK/result pair determine what is active now.
+- Historical entries must never be interpreted as the current task unless they also match the active listener artifacts.
+
+### Request identity and retry semantics
+
+- `request_id` is the stable lifecycle key for one bounded execution attempt.
+- If TOD has already processed a request with the same semantic signature, later reissues are deduplicated intentionally.
+- If MIM wants a real retry after a failed terminal result, it must issue a new request identity. Acceptable patterns are:
+  - a new `request_id`
+  - a new `task_id`
+  - an explicit retry token or retry attempt field that changes the semantic signature
+- Reissuing only timestamp, sequence, or source-instance changes is not a valid retry signal.
+
+### ACK and result expectations
+
+- ACK must echo the same live request identity and current processing task.
+- Result must reference that same request identity and carry the actual terminal status: `completed`, `failed`, or `blocked`.
+- If TOD cannot execute the requested action because the action is unsupported or the runtime preflight fails, TOD should publish `failed` with a concrete machine-readable reason rather than looping on duplicate reissues.
+
+### Recovery workflow
+
+- If ACK and result both point at the current request, the listener is healthy even when the task fails.
+- In that case, fix the action/runtime failure first; do not diagnose it as a frozen listener.
+- After the failure is fixed, MIM should send an explicit retry request with a new live identity so TOD can process it as new work.
+
+### Operator communication rule
+
+- When TOD and MIM are aligned on the same objective, operator guidance should frame MIM as bounded context for the active TOD objective instead of creating a competing lane.
+- Recommended next steps should explicitly state whether the system needs:
+  - implementation work
+  - a bounded retry from MIM
+  - or only a status refresh
 
 ## 7) Sequence Diagram
 

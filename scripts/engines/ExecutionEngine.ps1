@@ -26,6 +26,7 @@ function Get-ExecutionEngineInterfaceSpec {
             "test_results",
             "failures",
             "recommendations",
+            "structured_findings",
             "needs_escalation",
             "started_at",
             "completed_at",
@@ -83,6 +84,7 @@ function New-EngineExecutionResult {
         test_results = @()
         failures = @()
         recommendations = @()
+        structured_findings = @()
         needs_escalation = $false
         started_at = (Get-Date).ToUniversalTime().ToString("o")
         completed_at = ""

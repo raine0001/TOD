@@ -1,0 +1,52 @@
+{
+    "generated_at":  "2026-04-02T23:54:54.7433770Z",
+    "label":  "pre-rerun-dispatch",
+    "baseline_id":  "pre-rerun-dispatch-20260402T235454530Z",
+    "snapshot_dir":  "E:\\TOD\\shared_state\\archive\\tod-mim-execution-dispatch-baselines\\pre-rerun-dispatch-20260402T235454530Z",
+    "artifacts":  {
+                      "task_request":  "E:\\TOD\\shared_state\\archive\\tod-mim-execution-dispatch-baselines\\pre-rerun-dispatch-20260402T235454530Z\\task_request.json",
+                      "command_status":  "E:\\TOD\\shared_state\\archive\\tod-mim-execution-dispatch-baselines\\pre-rerun-dispatch-20260402T235454530Z\\command_status.json",
+                      "task_ack":  "E:\\TOD\\shared_state\\archive\\tod-mim-execution-dispatch-baselines\\pre-rerun-dispatch-20260402T235454530Z\\task_ack.json",
+                      "task_result":  "E:\\TOD\\shared_state\\archive\\tod-mim-execution-dispatch-baselines\\pre-rerun-dispatch-20260402T235454530Z\\task_result.json"
+                  },
+    "summary":  {
+                    "request_identity":  {
+                                             "request_task_id":  "objective-97-task-3422",
+                                             "request_objective_id":  "objective-97",
+                                             "request_correlation_id":  "obj97-task3422",
+                                             "request_sequence":  "399554",
+                                             "command_status_request_id":  "objective-97-task-mim-arm-safe-home-1775172258",
+                                             "command_status_task_id":  "objective-97-task-mim-arm-safe-home-1775172258",
+                                             "trigger_task_id":  "objective-97-task-3422",
+                                             "current_processing_task_id":  "objective-97-task-mim-arm-safe-home-1775172258",
+                                             "ack_task_id":  "objective-97-task-mim-arm-safe-home-1775172258",
+                                             "result_task_id":  "objective-97-task-mim-arm-safe-home-1775172258"
+                                         },
+                    "command_status":  {
+                                           "status":  "stale_request_ignored",
+                                           "detail":  "Ignored stale backfill request objective-97-task-3422; authoritative current task remains objective-97-task-mim-arm-safe-home-1775172258.",
+                                           "action":  "",
+                                           "acted_upon":  true,
+                                           "generated_at":  "2026-04-02T23:54:20.1235896Z"
+                                       },
+                    "execution_gating":  {
+                                             "command_readiness_status":  "",
+                                             "command_readiness_policy":  "",
+                                             "result_status":  "failed",
+                                             "result_execution_mode":  "direct_script_exception",
+                                             "result_readiness_status":  "",
+                                             "result_readiness_policy":  "",
+                                             "ack_status":  "accepted"
+                                         },
+                    "dispatch_attribution":  {
+                                                 "trigger_sequence":  "399558",
+                                                 "trigger_source_service":  "mim-watch-shared-triggers",
+                                                 "trigger_source_instance_id":  "mim-watch-shared-triggers:2914609",
+                                                 "trigger_source_host":  "MIM",
+                                                 "trigger_artifact_sha256":  "65472b6a31f03a3d3be9618a9245fd87d16619cf098ce8f5f08fb8e2829f1701",
+                                                 "listener_instance_id":  "DR_HOME_II:69216",
+                                                 "ack_source_instance_id":  "DR_HOME_II:42148",
+                                                 "result_source_instance_id":  "DR_HOME_II:69216"
+                                             }
+                }
+}

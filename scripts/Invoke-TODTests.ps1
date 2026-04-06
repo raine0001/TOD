@@ -42,7 +42,7 @@ function Invoke-SharedStateSyncIfEnabled {
     }
 
     try {
-        & $syncScriptPath | Out-Null
+        & $syncScriptPath -PublishTodStatusToMimArm | Out-Null
     }
     catch {
         Write-Warning ("Shared state sync failed after tests: {0}" -f $_.Exception.Message)

@@ -2,6 +2,7 @@ param(
     [int]$PreferredPort = 8844,
     [int]$MaxPortSearch = 30,
     [int]$Top = 10,
+    [string]$JsonOutputPath = "",
     [switch]$FailOnError,
     [switch]$SkipSharedStateSync,
     [string]$SharedStateSyncScript = "scripts/Invoke-TODSharedStateSync.ps1"
@@ -30,7 +31,7 @@ function Invoke-SharedStateSyncIfEnabled {
     }
 
     try {
-        & $syncScriptPath | Out-Null
+        & $syncScriptPath -PublishTodStatusToMimArm | Out-Null
     }
     catch {
         Write-Warning ("Shared state sync failed after smoke run: {0}" -f $_.Exception.Message)
@@ -166,6 +167,15 @@ try {
     $result | Add-Member -NotePropertyName passed_all -NotePropertyValue $allOk
 
     $json = $result | ConvertTo-Json -Depth 8
+    if (-not [string]::IsNullOrWhiteSpace($JsonOutputPath)) {
+        $outputPath = if ([System.IO.Path]::IsPathRooted($JsonOutputPath)) { $JsonOutputPath } else { Join-Path $repoRoot $JsonOutputPath }
+        $outDir = Split-Path -Parent $outputPath
+        if (-not [string]::IsNullOrWhiteSpace($outDir) -and -not (Test-Path -Path $outDir)) {
+            New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+        }
+
+        Set-Content -Path $outputPath -Value $json
+    }
     Write-Output $json
 
     Invoke-SharedStateSyncIfEnabled

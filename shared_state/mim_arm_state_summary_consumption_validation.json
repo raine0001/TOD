@@ -1,0 +1,42 @@
+{
+    "generated_at":  "2026-03-31T04:55:44.1332527Z",
+    "source":  "tod-mim-arm-state-summary-consumption-validation-v1",
+    "state_summary_read":  {
+                               "path":  "shared_state/TOD_ARM_STATE_SUMMARY.latest.json",
+                               "accepted":  true,
+                               "sha256_looks_valid":  true
+                           },
+    "contract_accepted":  {
+                              "root":  true,
+                              "app":  true,
+                              "runtime":  true,
+                              "camera":  true,
+                              "serial":  true,
+                              "estop":  true,
+                              "pose":  true,
+                              "last_command_result":  true,
+                              "all":  true
+                          },
+    "current_state":  {
+                          "app_alive":  true,
+                          "mode":  "development",
+                          "runtime":  "sim",
+                          "serial_ready":  true,
+                          "camera_ready":  true,
+                          "last_error":  ""
+                      },
+    "mim_arm_interpretation_payload":  {
+                                           "source":  "mim-arm-read-state-consumer-v1",
+                                           "ready_for_management":  true,
+                                           "management_mode":  "direct_runtime_awareness",
+                                           "update_payload":  {
+                                                                  "memory_key":  "mim_arm.tod.read_state.latest",
+                                                                  "summary_path":  "shared_state/TOD_ARM_STATE_SUMMARY.latest.json",
+                                                                  "mode":  "development",
+                                                                  "runtime":  "sim",
+                                                                  "serial_ready":  true,
+                                                                  "camera_ready":  true,
+                                                                  "last_error":  ""
+                                                              }
+                                       }
+}

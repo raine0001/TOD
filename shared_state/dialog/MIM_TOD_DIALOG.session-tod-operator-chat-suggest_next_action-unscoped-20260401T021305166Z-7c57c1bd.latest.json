@@ -1,0 +1,26 @@
+{
+    "session_id":  "tod-operator-chat-suggest_next_action-unscoped-20260401T021305166Z-7c57c1bd",
+    "status":  "timed_out",
+    "timed_out":  true,
+    "message_count":  1,
+    "updated_at":  "2026-04-01T02:13:05.2243613Z",
+    "session_path":  "E:\\TOD\\shared_state\\dialog\\MIM_TOD_DIALOG.session-tod-operator-chat-suggest_next_action-unscoped-20260401T021305166Z-7c57c1bd.jsonl",
+    "open_reply":  {
+                       "turn_id":  1,
+                       "from":  "TOD",
+                       "to":  "MIM",
+                       "message_type":  "status_request",
+                       "summary":  "TOD operator chat asks MIM: What should I do next?",
+                       "timestamp":  "2026-04-01T02:13:05.2243613Z"
+                   },
+    "last_message":  {
+                         "turn_id":  1,
+                         "from":  "TOD",
+                         "to":  "MIM",
+                         "message_type":  "status_request",
+                         "summary":  "TOD operator chat asks MIM: What should I do next?",
+                         "task_id":  "objective-97-task-mim-arm-safe-home-207749",
+                         "correlation_id":  "",
+                         "timestamp":  "2026-04-01T02:13:05.2243613Z"
+                     }
+}

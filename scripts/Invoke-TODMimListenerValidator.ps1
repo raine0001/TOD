@@ -10,6 +10,51 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Get-FileSha256 {
+    param([Parameter(Mandatory = $true)][string]$PathValue)
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($PathValue)
+        try {
+            $hashBytes = $sha256.ComputeHash($stream)
+        }
+        finally {
+            $stream.Dispose()
+        }
+        return ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
+function Get-RequestFingerprint {
+    param(
+        [Parameter(Mandatory = $true)][string]$PathValue,
+        [AllowNull()]$Request
+    )
+
+    $item = Get-Item -Path $PathValue -ErrorAction Stop
+    $taskId = if ($Request -and $Request.PSObject.Properties['task_id']) { [string]$Request.task_id } else { '' }
+    $objectiveId = if ($Request -and $Request.PSObject.Properties['objective_id']) { [string]$Request.objective_id } else { '' }
+    $sequence = if ($Request -and $Request.PSObject.Properties['sequence']) { [string]$Request.sequence } else { '' }
+
+    return [pscustomobject]@{
+        hostname = if (-not [string]::IsNullOrWhiteSpace([string]$env:COMPUTERNAME)) { [string]$env:COMPUTERNAME } else { [System.Environment]::MachineName }
+        whoami = if (-not [string]::IsNullOrWhiteSpace([string]$env:USERNAME)) { [string]$env:USERNAME } else { [System.Environment]::UserName }
+        absolute_path = $item.FullName
+        realpath = $item.FullName
+        inode = if ($item.PSObject.Properties['Inode']) { [string]$item.Inode } else { '' }
+        mtime = $item.LastWriteTimeUtc.ToString('o')
+        size = [int64]$item.Length
+        sha256 = Get-FileSha256 -PathValue $PathValue
+        objective_id = $objectiveId
+        task_id = $taskId
+        sequence = $sequence
+    }
+}
+
 function Read-Json {
     param([Parameter(Mandatory = $true)][string]$PathValue)
     if (-not (Test-Path -Path $PathValue)) {
@@ -59,8 +104,16 @@ $goOrder = Read-Json -PathValue $GoOrderPath
 $reviewDecision = Read-Json -PathValue $ReviewDecisionPath
 $integration = Read-Json -PathValue $IntegrationStatusPath
 
-if (-not [string]::Equals([string]$RequestId, [string]$request.task_id, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "RequestId mismatch: expected '$RequestId' got '$($request.task_id)'"
+$requestIdentity = ''
+if ($request.PSObject.Properties['task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$request.task_id)) {
+    $requestIdentity = [string]$request.task_id
+}
+elseif ($request.PSObject.Properties['request_id'] -and -not [string]::IsNullOrWhiteSpace([string]$request.request_id)) {
+    $requestIdentity = [string]$request.request_id
+}
+
+if (-not [string]::Equals([string]$RequestId, $requestIdentity, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "RequestId mismatch: expected '$RequestId' got '$requestIdentity'"
 }
 
 $expectedCompatible = $true
@@ -97,6 +150,7 @@ $result = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString("o")
     request_id = $RequestId
     review_decision = if ($reviewDecision.PSObject.Properties["decision"]) { [string]$reviewDecision.decision } else { "" }
+    request_fingerprint = Get-RequestFingerprint -PathValue $RequestPath -Request $request
     checks = @($checks)
     passed = (@($failed).Count -eq 0)
 }

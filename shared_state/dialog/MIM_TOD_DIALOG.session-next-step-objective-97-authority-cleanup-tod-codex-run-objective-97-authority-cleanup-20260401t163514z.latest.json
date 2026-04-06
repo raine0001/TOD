@@ -1,0 +1,26 @@
+{
+    "session_id":  "next-step-objective-97-authority-cleanup-tod-codex-run-objective-97-authority-cleanup-20260401t163514z",
+    "status":  "timed_out",
+    "timed_out":  true,
+    "message_count":  11,
+    "updated_at":  "2026-04-01T19:54:06.5005551Z",
+    "session_path":  "E:\\TOD\\shared_state\\dialog\\MIM_TOD_DIALOG.session-next-step-objective-97-authority-cleanup-tod-codex-run-objective-97-authority-cleanup-20260401t163514z.jsonl",
+    "open_reply":  {
+                       "turn_id":  7,
+                       "from":  "TOD",
+                       "to":  "MIM",
+                       "message_type":  "handoff_request",
+                       "summary":  "TOD requires a MIM decision for next-step consensus on run tod-codex-run-objective-97-authority-cleanup-20260401T163514Z. Reply with handoff_response finding_positions.",
+                       "timestamp":  "2026-04-01T18:09:18.2582347Z"
+                   },
+    "last_message":  {
+                         "turn_id":  11,
+                         "from":  "TOD",
+                         "to":  "MIM",
+                         "message_type":  "status_request",
+                         "summary":  "TOD location hint: read the shared dialog session index, open the objective 97 session log, and answer turn 7 with handoff_response finding_positions.",
+                         "task_id":  "objective-97-authority-cleanup",
+                         "correlation_id":  "",
+                         "timestamp":  "2026-04-01T19:54:06.5005551Z"
+                     }
+}

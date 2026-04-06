@@ -156,16 +156,6 @@ try {
         }
     }
 
-    $artifactFresh = ($null -ne $rawGeneratedAt -and $rawGeneratedAt -ge $startedAt.AddSeconds(-5) -and $rawGeneratedAt -ge ((Get-Date).ToUniversalTime().AddSeconds(-1 * [Math]::Abs($ArtifactFreshnessSeconds))))
-    $summaryValid = ($summaryRead.parsed -and $summaryRead.payload -and
-        [bool]$summaryRead.payload.ineffective_smoke_ok -and
-        [bool]$summaryRead.payload.stable_contract_ok -and
-        [string]$summaryRead.payload.ineffective_terminal_state -eq 'ineffective' -and
-        [string]$summaryRead.payload.ineffective_lifecycle_status -eq 'ineffective' -and
-        [bool]$summaryRead.payload.ineffective_signal_seen -and
-        [string]$summaryRead.payload.ineffective_followup_action -eq 'refresh-governance-snapshot' -and
-        [string]$summaryRead.payload.ineffective_commitment_terminal_state -eq 'ineffective')
-
 }
 catch {
     $transportError = [string]$_.Exception.Message

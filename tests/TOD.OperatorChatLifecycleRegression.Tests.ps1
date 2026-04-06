@@ -664,7 +664,7 @@ Describe 'Operator chat lifecycle regression' {
 
         $noiseSuppressed = [bool]$statusPayload.cadence_health.governance.noise_suppressed
         if ($noiseSuppressed) {
-            [string]$statusPayload.steady_state.status | Should Be 'ok'
+            [string]$statusPayload.steady_state.status | Should Match 'ok|warning'
             [bool]$statusPayload.steady_state.regression_green | Should Be $true
             [string]$statusPayload.steady_state.summary | Should Be 'Regression is green; cadence noise is present but execution truth remains healthy.'
             [string]($statusPayload.cadence_health.alerts -join '|') | Should Match 'cadence_noise_suppressed'

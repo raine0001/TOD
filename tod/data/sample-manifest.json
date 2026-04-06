@@ -12,13 +12,15 @@
     "results",
     "reviews",
     "journal",
-    "manifest"
+    "manifest",
+    "execution-readiness"
   ],
   "recent_changes": [
     "Added review endpoint",
     "Added journal endpoint",
     "Aligned structured workflow schema",
-    "Added manifest endpoint and metadata"
+    "Added manifest endpoint and metadata",
+    "Added TOD Sweep Certification Capability execution-readiness signal"
   ],
   "last_updated_at": "2026-03-12T05:17:53Z"
 }

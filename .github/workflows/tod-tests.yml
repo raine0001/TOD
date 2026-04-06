@@ -32,6 +32,16 @@ jobs:
         run: |
           ./scripts/Invoke-TODTests.CI.ps1 -SummaryPath "tod/out/results-v2/tod-tests-summary.json"
 
+      - name: Run TOD MIM Communication Contract Gate
+        shell: powershell
+        run: |
+          ./scripts/Invoke-TODMimCommunicationContractGate.ps1 -OutputPath "tod/out/results-v2/tod-mim-communication-contract.latest.json" -MarkdownOutputPath "tod/out/results-v2/tod-mim-communication-contract.latest.md" -FailOnFailure -EmitJson
+
+      - name: Run TOD MIM Execution Contract Gate
+        shell: powershell
+        run: |
+          ./scripts/Invoke-TODMimExecutionContractGate.ps1 -OutputPath "tod/out/results-v2/tod-mim-execution-contract.latest.json" -MarkdownOutputPath "tod/out/results-v2/tod-mim-execution-contract.latest.md" -FailOnFailure -EmitJson
+
       - name: Upload TOD Test Summary
         if: always()
         uses: actions/upload-artifact@v4
@@ -48,4 +58,26 @@ jobs:
           path: |
             tod/out/results-v2/tod-tests-history.json
             tod/out/results-v2/tod-tests-trends.json
+          if-no-files-found: warn
+
+      - name: Upload TOD MIM Communication Contract Gate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tod-mim-communication-contract
+          path: |
+            tod/out/results-v2/tod-mim-communication-contract.latest.json
+            tod/out/results-v2/tod-mim-communication-contract.latest.md
+            tod/out/results-v2/tod-mim-communication-contract-suites/*.json
+          if-no-files-found: warn
+
+      - name: Upload TOD MIM Execution Contract Gate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tod-mim-execution-contract
+          path: |
+            tod/out/results-v2/tod-mim-execution-contract.latest.json
+            tod/out/results-v2/tod-mim-execution-contract.latest.md
+            tod/out/results-v2/tod-mim-execution-contract-suites/*.json
           if-no-files-found: warn

@@ -1,0 +1,26 @@
+{
+    "session_id":  "tod-operator-chat-summarize_status-97-20260403T211750568Z-d5c5c7bd",
+    "status":  "timed_out",
+    "timed_out":  true,
+    "message_count":  1,
+    "updated_at":  "2026-04-03T21:17:50.5873314Z",
+    "session_path":  "E:\\TOD\\shared_state\\dialog\\MIM_TOD_DIALOG.session-tod-operator-chat-summarize_status-97-20260403T211750568Z-d5c5c7bd.jsonl",
+    "open_reply":  {
+                       "turn_id":  1,
+                       "from":  "TOD",
+                       "to":  "MIM",
+                       "message_type":  "status_request",
+                       "summary":  "TOD operator chat asks MIM: Cache isolation regression 233c703072c64aa682725bc4dcc18887",
+                       "timestamp":  "2026-04-03T21:17:50.5873314Z"
+                   },
+    "last_message":  {
+                         "turn_id":  1,
+                         "from":  "TOD",
+                         "to":  "MIM",
+                         "message_type":  "status_request",
+                         "summary":  "TOD operator chat asks MIM: Cache isolation regression 233c703072c64aa682725bc4dcc18887",
+                         "task_id":  "objective-97-task-smoke-20260403171131",
+                         "correlation_id":  "",
+                         "timestamp":  "2026-04-03T21:17:50.5873314Z"
+                     }
+}

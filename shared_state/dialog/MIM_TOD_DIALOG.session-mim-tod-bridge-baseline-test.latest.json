@@ -1,0 +1,19 @@
+{
+    "session_id":  "mim-tod-bridge-baseline-test",
+    "status":  "closed",
+    "timed_out":  false,
+    "message_count":  3,
+    "updated_at":  "2026-03-31T20:00:36.5318548Z",
+    "session_path":  "E:\\TOD\\shared_state\\dialog\\MIM_TOD_DIALOG.session-mim-tod-bridge-baseline-test.jsonl",
+    "open_reply":  null,
+    "last_message":  {
+                         "turn_id":  3,
+                         "from":  "TOD",
+                         "to":  "MIM",
+                         "message_type":  "resolution_notice",
+                         "summary":  "Baseline dialog flow verified.",
+                         "task_id":  "objective-97-task-mim-arm-safe-home-207749",
+                         "correlation_id":  "obj97-task207749",
+                         "timestamp":  "2026-03-31T20:00:36.5318548Z"
+                     }
+}

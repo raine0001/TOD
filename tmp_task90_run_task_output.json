@@ -1,0 +1,554 @@
+﻿{
+    "task_id":  "90",
+    "execution_id":  "",
+    "package_path":  "E:\\TOD\\tod\\out\\prompts\\90.md",
+    "engine_invocation":  {
+                              "task_id":  "90",
+                              "package_path":  "E:\\TOD\\tod\\out\\prompts\\90.md",
+                              "attempted_engines":  [
+                                                        "codex"
+                                                    ],
+                              "attempts":  [
+                                               {
+                                                   "engine":  "codex",
+                                                   "attempt":  1,
+                                                   "status":  "completed",
+                                                   "retryable":  false,
+                                                   "failure_category":  "none",
+                                                   "message":  "",
+                                                   "created_at":  "2026-04-03T20:00:58.9422120Z"
+                                               }
+                                           ],
+                              "failure_category":  "none",
+                              "active_engine":  "codex",
+                              "fallback_applied":  false,
+                              "elapsed_ms":  200,
+                              "result":  {
+                                             "engine":  "codex",
+                                             "status":  "completed",
+                                             "summary":  "CodexExecutionEngine wrapper accepted package and prepared normalized result from prompt path: E:\\TOD\\tod\\out\\prompts\\90.md",
+                                             "files_changed":  [
+
+                                                               ],
+                                             "tests_run":  [
+                                                               "codex-wrapper package-path check",
+                                                               "engine contract self-check"
+                                                           ],
+                                             "test_results":  [
+                                                                  "pass",
+                                                                  "pass"
+                                                              ],
+                                             "failures":  [
+
+                                                          ],
+                                             "recommendations":  [
+                                                                     "Persist this normalized output through TOD add-result/review flow.",
+                                                                     "Use invoke-engine for package-path orchestration."
+                                                                 ],
+                                             "structured_findings":  [
+
+                                                                     ],
+                                             "needs_escalation":  false,
+                                             "execution_engine":  {
+                                                                      "name":  "codex",
+                                                                      "version":  "1.1-wrapper",
+                                                                      "execution_id":  "CDEX-54F5BA2A2C",
+                                                                      "status":  "completed",
+                                                                      "selected_at":  "2026-04-03T20:00:58.9657210Z",
+                                                                      "fallback_reason":  ""
+                                                                  },
+                                             "raw_output":  {
+                                                                "engine":  {
+                                                                               "name":  "codex",
+                                                                               "version":  "1.1-wrapper",
+                                                                               "lifecycle":  [
+                                                                                                 "prepare",
+                                                                                                 "execute",
+                                                                                                 "finalize"
+                                                                                             ],
+                                                                               "supports":  [
+                                                                                                "prompt_path_input",
+                                                                                                "structured_result_output",
+                                                                                                "engine_metadata",
+                                                                                                "wrapper_stdout_stderr_equivalent"
+                                                                                            ]
+                                                                           },
+                                                                "wrapper_mode":  "provider-adapter",
+                                                                "task_context":  {
+                                                                                     "task_id":  "90",
+                                                                                     "objective_id":  "4",
+                                                                                     "title":  "Scan state.json for OOM risk and apply compaction if size exceeds 2 MiB",
+                                                                                     "scope":  "tod/data/state.json, scripts/TOD.ps1",
+                                                                                     "prompt_path":  "E:\\TOD\\tod\\out\\prompts\\90.md",
+                                                                                     "prompt_exists":  true
+                                                                                 },
+                                                                "io_capture":  {
+                                                                                   "stdout":  [
+                                                                                                  "[codex-wrapper] task_id=90",
+                                                                                                  "[codex-wrapper] prompt_path=E:\\TOD\\tod\\out\\prompts\\90.md",
+                                                                                                  "[codex-wrapper] package accepted",
+                                                                                                  "[codex-wrapper] normalized envelope produced"
+                                                                                              ],
+                                                                                   "stderr":  [
+
+                                                                                              ]
+                                                                               },
+                                                                "package_preview":  "# TOD Task Execution Package\r\n\r\n## Objective Context\r\n- Objective ID: 4\r\n- Objective Title: TOD-17: Execution reliability stabilization\r\n- Objective Description: Stabilize TOD execution layer: quarantine repeated fail loops, reset cadence metrics on objective rollover, ensure MIM-TOD objective handoff is reliable.\r\n- Priority: high\r\n- Constraints: none\r\n- Success Criteria: No rapid fail loops pers ...",
+                                                                "generated_at":  "2026-04-03T20:00:58.8972238Z"
+                                                            },
+                                             "review_precheck":  {
+                                                                     "is_consistent":  true,
+                                                                     "warnings":  [
+
+                                                                                  ],
+                                                                     "checked_at":  "2026-04-03T20:00:58.9810561Z"
+                                                                 }
+                                         }
+                          },
+    "add_result_response":  {
+                                "result_id":  "13",
+                                "task_id":  "90",
+                                "summary":  "CodexExecutionEngine wrapper accepted package and prepared normalized result from prompt path: E:\\TOD\\tod\\out\\prompts\\90.md",
+                                "files_changed":  [
+
+                                                  ],
+                                "tests_run":  [
+                                                  "codex-wrapper package-path check",
+                                                  "engine contract self-check"
+                                              ],
+                                "test_results":  [
+                                                     "pass; pass"
+                                                 ],
+                                "failures":  [
+
+                                             ],
+                                "recommendations":  [
+                                                        "Persist this normalized output through TOD add-result/review flow.; Use invoke-engine for package-path orchestration."
+                                                    ],
+                                "created_at":  "2026-04-03T20:00:59.269387Z",
+                                "engine_metadata":  {
+                                                        "name":  "codex",
+                                                        "version":  "config-default",
+                                                        "decision":  "selected",
+                                                        "selected_at":  "2026-04-03T20:00:59.1753481Z"
+                                                    },
+                                "state_access":  {
+                                                     "mode":  "remote_ephemeral",
+                                                     "local_cache_enabled":  false,
+                                                     "oversized":  true,
+                                                     "state_file":  {
+                                                                        "path":  "E:\\TOD\\tod\\data\\state.json",
+                                                                        "exists":  true,
+                                                                        "size_bytes":  1639957969,
+                                                                        "threshold_bytes":  268435456,
+                                                                        "size_mib":  1563.99,
+                                                                        "threshold_mib":  256,
+                                                                        "oversized":  true
+                                                                    }
+                                                 }
+                            },
+    "review_response":  {
+                            "review_id":  "8",
+                            "task_id":  "90",
+                            "decision":  "pass",
+                            "rationale":  "run-task completed via invoke-engine and result persistence.",
+                            "continue_allowed":  true,
+                            "escalate_to_user":  false,
+                            "created_at":  "2026-04-03T20:00:59.452486Z",
+                            "state_access":  {
+                                                 "mode":  "remote_ephemeral",
+                                                 "local_cache_enabled":  false,
+                                                 "oversized":  true,
+                                                 "state_file":  {
+                                                                    "path":  "E:\\TOD\\tod\\data\\state.json",
+                                                                    "exists":  true,
+                                                                    "size_bytes":  1639957969,
+                                                                    "threshold_bytes":  268435456,
+                                                                    "size_mib":  1563.99,
+                                                                    "threshold_mib":  256,
+                                                                    "oversized":  true
+                                                                }
+                                             }
+                        },
+    "decision":  "pass",
+    "execution_feedback":  [
+                               {
+                                   "status":  "accepted",
+                                   "publish":  {
+                                                   "attempted":  false,
+                                                   "published":  false,
+                                                   "reason":  "disabled"
+                                               }
+                               },
+                               {
+                                   "status":  "running",
+                                   "publish":  {
+                                                   "attempted":  false,
+                                                   "published":  false,
+                                                   "reason":  "disabled"
+                                               }
+                               },
+                               {
+                                   "status":  "succeeded",
+                                   "publish":  {
+                                                   "attempted":  false,
+                                                   "published":  false,
+                                                   "reason":  "disabled"
+                                               }
+                               }
+                           ],
+    "execution_readiness":  {
+                                "status":  "unknown",
+                                "source":  "policy_disabled",
+                                "detail":  "Execution readiness policy is disabled.",
+                                "valid":  false,
+                                "execution_allowed":  true,
+                                "authoritative":  true,
+                                "freshness_state":  "unknown",
+                                "signal_name":  "execution-readiness",
+                                "evaluated_action":  "run-task",
+                                "policy_outcome":  "allow",
+                                "effective_apply_plan":  false,
+                                "decision_path":  [
+                                                      "signal:execution-readiness",
+                                                      "status:unknown",
+                                                      "source:policy_disabled",
+                                                      "action:run-task",
+                                                      "policy_outcome:allow"
+                                                  ]
+                            },
+    "execution_trace":  {
+                            "action":  "run-task",
+                            "execution_readiness":  {
+                                                        "status":  "unknown",
+                                                        "source":  "policy_disabled",
+                                                        "detail":  "Execution readiness policy is disabled.",
+                                                        "valid":  false,
+                                                        "execution_allowed":  true,
+                                                        "authoritative":  true,
+                                                        "freshness_state":  "unknown",
+                                                        "signal_name":  "execution-readiness",
+                                                        "evaluated_action":  "run-task",
+                                                        "policy_outcome":  "allow",
+                                                        "effective_apply_plan":  false,
+                                                        "decision_path":  [
+                                                                              "signal:execution-readiness",
+                                                                              "status:unknown",
+                                                                              "source:policy_disabled",
+                                                                              "action:run-task",
+                                                                              "policy_outcome:allow"
+                                                                          ]
+                                                    }
+                        },
+    "routing_decision_preinvoke":  {
+                                       "id":  "ROUTE-D7838EE1",
+                                       "task_id":  "90",
+                                       "action":  "run_task",
+                                       "task_category":  "code_change",
+                                       "selected_engine":  "codex",
+                                       "fallback_engine":  "local-placeholder",
+                                       "candidate_engines":  [
+                                                                 "codex",
+                                                                 "local-placeholder"
+                                                             ],
+                                       "selection_reason":  "Configured default engine retained; history considered advisory with current sample size and health band active=unknown.",
+                                       "confidence":  0.52,
+                                       "source":  "routing_policy_v1",
+                                       "attempted_engines":  [
+                                                                 "codex"
+                                                             ],
+                                       "fallback_applied":  false,
+                                       "final_outcome":  "pass",
+                                       "routing":  {
+                                                       "applied":  false,
+                                                       "reason":  "static_config",
+                                                       "disabled":  false,
+                                                       "blocked":  false,
+                                                       "task_category":  "code_change",
+                                                       "policy":  {
+                                                                      "enabled":  true,
+                                                                      "min_runs":  1,
+                                                                      "min_success_rate":  75,
+                                                                      "improvement_margin":  5,
+                                                                      "source":  "routing_policy_v1",
+                                                                      "allow_placeholder_for_code_change":  false,
+                                                                      "prefer_stable_on_sync_warn":  true,
+                                                                      "block_on_contract_drift":  true,
+                                                                      "recent_failure_window":  5,
+                                                                      "recent_failure_threshold":  2,
+                                                                      "min_category_records_light":  10,
+                                                                      "min_category_records_strong":  20,
+                                                                      "drift_detection":  {
+                                                                                              "enabled":  true,
+                                                                                              "recent_window":  20,
+                                                                                              "baseline_window":  50,
+                                                                                              "minimum_baseline_records":  10,
+                                                                                              "failure_rate_multiplier":  1.5,
+                                                                                              "retry_rate_threshold":  0.35,
+                                                                                              "fallback_rate_multiplier":  1.5,
+                                                                                              "fallback_rate_threshold":  0.3,
+                                                                                              "guardrail_rate_multiplier":  1.8,
+                                                                                              "guardrail_rate_threshold":  0.15,
+                                                                                              "engine_score_drop_threshold":  0.2,
+                                                                                              "confidence_penalty_failure_drift":  0.18,
+                                                                                              "confidence_penalty_retry_high":  0.12,
+                                                                                              "confidence_penalty_fallback_drift":  0.09,
+                                                                                              "confidence_penalty_guardrail_spike":  0.1,
+                                                                                              "confidence_penalty_score_drop":  0.12,
+                                                                                              "score_penalty_failure_drift":  0.12,
+                                                                                              "score_penalty_retry_high":  0.08,
+                                                                                              "score_penalty_fallback_drift":  0.08,
+                                                                                              "score_penalty_guardrail_spike":  0.1,
+                                                                                              "score_penalty_score_drop":  0.12,
+                                                                                              "normalization_window_runs":  8,
+                                                                                              "stable_run_decay_floor":  0.2,
+                                                                                              "decay_half_life_days":  7,
+                                                                                              "decay_floor":  0.25,
+                                                                                              "quarantine_enabled":  true,
+                                                                                              "quarantine_alert_state":  "critical"
+                                                                                          },
+                                                                      "weights":  {
+                                                                                      "availability":  0.25,
+                                                                                      "task_category_support":  0.2,
+                                                                                      "historical_success":  0.2,
+                                                                                      "recent_fallback":  0.1,
+                                                                                      "review_quality":  0.05,
+                                                                                      "failure_rate":  0.1,
+                                                                                      "review_corrections":  0.05,
+                                                                                      "latency":  0.05
+                                                                                  },
+                                                                      "effective_weights":  {
+                                                                                                "availability":  0.25,
+                                                                                                "task_category_support":  0.2,
+                                                                                                "historical_success":  0.2,
+                                                                                                "recent_fallback":  0.1,
+                                                                                                "review_quality":  0.05,
+                                                                                                "failure_rate":  0.1,
+                                                                                                "review_corrections":  0.05,
+                                                                                                "latency":  0.05
+                                                                                            }
+                                                                  },
+                                                       "retry_policy":  {
+                                                                            "enabled":  true,
+                                                                            "max_attempts_per_engine":  2,
+                                                                            "max_attempts_by_category":  {
+                                                                                                             "code_change":  1,
+                                                                                                             "review_only":  2,
+                                                                                                             "refactor":  2
+                                                                                                         },
+                                                                            "backoff_ms":  200,
+                                                                            "retry_on_status":  [
+                                                                                                    "failed",
+                                                                                                    "error",
+                                                                                                    "not_implemented"
+                                                                                                ],
+                                                                            "no_retry_failure_categories":  [
+                                                                                                                "auth",
+                                                                                                                "capability"
+                                                                                                            ],
+                                                                            "backoff_by_failure_category":  {
+                                                                                                                "timeout":  2,
+                                                                                                                "network":  2,
+                                                                                                                "rate_limit":  3
+                                                                                                            }
+                                                                        },
+                                                       "active_metrics":  {
+
+                                                                          },
+                                                       "fallback_metrics":  {
+
+                                                                            }
+                                                   },
+                                       "created_at":  "2026-04-03T20:00:55.6033387Z",
+                                       "updated_at":  "2026-04-03T20:00:59.5375177Z"
+                                   },
+    "routing_decision":  {
+                             "id":  "ROUTE-D7838EE1",
+                             "task_id":  "90",
+                             "action":  "run_task",
+                             "task_category":  "code_change",
+                             "selected_engine":  "codex",
+                             "fallback_engine":  "local-placeholder",
+                             "candidate_engines":  [
+                                                       "codex",
+                                                       "local-placeholder"
+                                                   ],
+                             "selection_reason":  "Configured default engine retained; history considered advisory with current sample size and health band active=unknown.",
+                             "confidence":  0.52,
+                             "source":  "routing_policy_v1",
+                             "attempted_engines":  [
+                                                       "codex"
+                                                   ],
+                             "fallback_applied":  false,
+                             "final_outcome":  "pass",
+                             "routing":  {
+                                             "applied":  false,
+                                             "reason":  "static_config",
+                                             "disabled":  false,
+                                             "blocked":  false,
+                                             "task_category":  "code_change",
+                                             "policy":  {
+                                                            "enabled":  true,
+                                                            "min_runs":  1,
+                                                            "min_success_rate":  75,
+                                                            "improvement_margin":  5,
+                                                            "source":  "routing_policy_v1",
+                                                            "allow_placeholder_for_code_change":  false,
+                                                            "prefer_stable_on_sync_warn":  true,
+                                                            "block_on_contract_drift":  true,
+                                                            "recent_failure_window":  5,
+                                                            "recent_failure_threshold":  2,
+                                                            "min_category_records_light":  10,
+                                                            "min_category_records_strong":  20,
+                                                            "drift_detection":  {
+                                                                                    "enabled":  true,
+                                                                                    "recent_window":  20,
+                                                                                    "baseline_window":  50,
+                                                                                    "minimum_baseline_records":  10,
+                                                                                    "failure_rate_multiplier":  1.5,
+                                                                                    "retry_rate_threshold":  0.35,
+                                                                                    "fallback_rate_multiplier":  1.5,
+                                                                                    "fallback_rate_threshold":  0.3,
+                                                                                    "guardrail_rate_multiplier":  1.8,
+                                                                                    "guardrail_rate_threshold":  0.15,
+                                                                                    "engine_score_drop_threshold":  0.2,
+                                                                                    "confidence_penalty_failure_drift":  0.18,
+                                                                                    "confidence_penalty_retry_high":  0.12,
+                                                                                    "confidence_penalty_fallback_drift":  0.09,
+                                                                                    "confidence_penalty_guardrail_spike":  0.1,
+                                                                                    "confidence_penalty_score_drop":  0.12,
+                                                                                    "score_penalty_failure_drift":  0.12,
+                                                                                    "score_penalty_retry_high":  0.08,
+                                                                                    "score_penalty_fallback_drift":  0.08,
+                                                                                    "score_penalty_guardrail_spike":  0.1,
+                                                                                    "score_penalty_score_drop":  0.12,
+                                                                                    "normalization_window_runs":  8,
+                                                                                    "stable_run_decay_floor":  0.2,
+                                                                                    "decay_half_life_days":  7,
+                                                                                    "decay_floor":  0.25,
+                                                                                    "quarantine_enabled":  true,
+                                                                                    "quarantine_alert_state":  "critical"
+                                                                                },
+                                                            "weights":  {
+                                                                            "availability":  0.25,
+                                                                            "task_category_support":  0.2,
+                                                                            "historical_success":  0.2,
+                                                                            "recent_fallback":  0.1,
+                                                                            "review_quality":  0.05,
+                                                                            "failure_rate":  0.1,
+                                                                            "review_corrections":  0.05,
+                                                                            "latency":  0.05
+                                                                        },
+                                                            "effective_weights":  {
+                                                                                      "availability":  0.25,
+                                                                                      "task_category_support":  0.2,
+                                                                                      "historical_success":  0.2,
+                                                                                      "recent_fallback":  0.1,
+                                                                                      "review_quality":  0.05,
+                                                                                      "failure_rate":  0.1,
+                                                                                      "review_corrections":  0.05,
+                                                                                      "latency":  0.05
+                                                                                  }
+                                                        },
+                                             "retry_policy":  {
+                                                                  "enabled":  true,
+                                                                  "max_attempts_per_engine":  2,
+                                                                  "max_attempts_by_category":  {
+                                                                                                   "code_change":  1,
+                                                                                                   "review_only":  2,
+                                                                                                   "refactor":  2
+                                                                                               },
+                                                                  "backoff_ms":  200,
+                                                                  "retry_on_status":  [
+                                                                                          "failed",
+                                                                                          "error",
+                                                                                          "not_implemented"
+                                                                                      ],
+                                                                  "no_retry_failure_categories":  [
+                                                                                                      "auth",
+                                                                                                      "capability"
+                                                                                                  ],
+                                                                  "backoff_by_failure_category":  {
+                                                                                                      "timeout":  2,
+                                                                                                      "network":  2,
+                                                                                                      "rate_limit":  3
+                                                                                                  }
+                                                              },
+                                             "active_metrics":  {
+
+                                                                },
+                                             "fallback_metrics":  {
+
+                                                                  }
+                                         },
+                             "created_at":  "2026-04-03T20:00:55.6033387Z",
+                             "updated_at":  "2026-04-03T20:00:59.5375177Z"
+                         },
+    "engine_performance_record":  {
+                                      "id":  "ENGPERF-1DD07A2B",
+                                      "task_id":  "90",
+                                      "engine":  "codex",
+                                      "task_type":  "implementation",
+                                      "task_category":  "code_change",
+                                      "fallback_applied":  false,
+                                      "attempted_engines":  [
+                                                                "codex"
+                                                            ],
+                                      "attempts_count":  1,
+                                      "retry_inflated":  false,
+                                      "result_status":  "completed",
+                                      "needs_escalation":  false,
+                                      "failure_category":  "none",
+                                      "review_decision":  "pass",
+                                      "success":  true,
+                                      "recovered_on_retry":  false,
+                                      "recovered_on_fallback":  false,
+                                      "unrecovered_failure":  false,
+                                      "degraded_success":  false,
+                                      "manual_intervention_required":  false,
+                                      "review_score":  1,
+                                      "latency_ms":  200,
+                                      "files_involved":  [
+
+                                                         ],
+                                      "modules_involved":  [
+
+                                                           ],
+                                      "created_at":  "2026-04-03T20:01:02.7086926Z"
+                                  },
+    "state_access":  {
+                         "mode":  "remote_ephemeral",
+                         "local_cache_enabled":  false,
+                         "oversized":  true,
+                         "state_file":  {
+                                            "path":  "E:\\TOD\\tod\\data\\state.json",
+                                            "exists":  true,
+                                            "size_bytes":  1639957969,
+                                            "threshold_bytes":  268435456,
+                                            "size_mib":  1563.99,
+                                            "threshold_mib":  256,
+                                            "oversized":  true
+                                        }
+                     },
+    "memory_profile":  {
+                           "before_execution":  {
+                                                    "working_set_mb":  190.87,
+                                                    "private_memory_mb":  176.66,
+                                                    "managed_heap_mb":  90.64,
+                                                    "sampled_at":  "2026-04-03T20:00:55.5866055Z"
+                                                },
+                           "after_execution":  {
+                                                   "working_set_mb":  465.37,
+                                                   "private_memory_mb":  450.26,
+                                                   "managed_heap_mb":  339.2,
+                                                   "sampled_at":  "2026-04-03T20:00:59.0230035Z"
+                                               },
+                           "after_result_persist":  {
+                                                        "working_set_mb":  465.59,
+                                                        "private_memory_mb":  450.2,
+                                                        "managed_heap_mb":  360.33,
+                                                        "sampled_at":  "2026-04-03T20:00:59.4922158Z"
+                                                    },
+                           "peak_private_memory_mb":  450.26
+                       }
+}

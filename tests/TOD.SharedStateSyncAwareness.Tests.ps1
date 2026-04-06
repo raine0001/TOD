@@ -80,7 +80,9 @@ Describe "TOD Shared State Sync Awareness" {
         $contextDoc | ConvertTo-Json -Depth 12 | Set-Content -Path $paths.MimContext
         $manifestDoc | ConvertTo-Json -Depth 12 | Set-Content -Path $paths.MimManifest
 
-        $null = & $syncScript -SharedStateDir $paths.SharedStateDir -MimContextExportPath $paths.MimContext -MimManifestPath $paths.MimManifest -MimStatusStaleAfterHours 1 -ContextSyncInboxPath "tod/inbox/context-sync/updates"
+        # Pass a non-existent listener request path so the live-task freshness
+        # override does not suppress the stale detection we are testing here.
+        $null = & $syncScript -SharedStateDir $paths.SharedStateDir -MimContextExportPath $paths.MimContext -MimManifestPath $paths.MimManifest -MimStatusStaleAfterHours 1 -ContextSyncInboxPath "tod/inbox/context-sync/updates" -ListenerRequestPath (Join-Path $paths.Base "no_live_request.json")
 
         $chatgptUpdatePath = Join-Path $paths.SharedStateDir "chatgpt_update.json"
         (Test-Path -Path $chatgptUpdatePath) | Should Be $true
@@ -297,5 +299,41 @@ Describe "TOD Shared State Sync Awareness" {
         [string]$integration.mim_handshake.current_next_objective | Should Be "75"
         [string]$integration.objective_alignment.mim_objective_active | Should Be "74"
         [string]$integration.objective_alignment.mim_objective_source | Should Be "handshake_packet"
+    }
+
+    It "publish metadata records missing ssh password without attempting network" {
+        $paths = New-TestRunPaths
+
+        $contextDoc = [pscustomobject]@{
+            source = "mim-test"
+            generated_at = (Get-Date).ToUniversalTime().ToString("o")
+            status = [pscustomobject]@{
+                objective_active = 17
+                phase = "active"
+                blockers = "none"
+            }
+            schema_version = "2026-03-12-57"
+        }
+        $manifestDoc = [pscustomobject]@{
+            source = "mim-test"
+            schema_version = "2026-03-12-57"
+            contract_version = "tod-mim-shared-contract-v1"
+        }
+
+        $contextDoc | ConvertTo-Json -Depth 12 | Set-Content -Path $paths.MimContext
+        $manifestDoc | ConvertTo-Json -Depth 12 | Set-Content -Path $paths.MimManifest
+
+        $missingDotEnv = Join-Path $paths.Base ".env.missing"
+        $null = & $syncScript -SharedStateDir $paths.SharedStateDir -MimContextExportPath $paths.MimContext -MimManifestPath $paths.MimManifest -PublishTodStatusToMimArm -MimArmSshHost "192.168.1.90" -MimArmSshUser "testpilot" -MimArmSshPort 22 -MimArmSshRemoteRoot "/home/testpilot/mim_arm/runtime/shared" -DotEnvPath $missingDotEnv -ContextSyncInboxPath "tod/inbox/context-sync/updates"
+
+        $integrationPath = Join-Path $paths.SharedStateDir "integration_status.json"
+        $receiptPath = Join-Path $paths.SharedStateDir "TOD_MIM_ARM_STATUS_UPLOAD_RECEIPT.latest.json"
+        $integration = Get-Content -Path $integrationPath -Raw | ConvertFrom-Json
+        $receipt = Get-Content -Path $receiptPath -Raw | ConvertFrom-Json
+
+        [string]$integration.tod_status_publish.status | Should Be "missing_ssh_password"
+        [string]$integration.tod_status_publish.remote_primary_path | Should Be "/home/testpilot/mim_arm/runtime/shared/TOD_INTEGRATION_STATUS.latest.json"
+        [string]$integration.tod_status_publish.remote_summary_path | Should Be "/home/testpilot/mim_arm/runtime/shared/TOD_AUTHORITY_SUMMARY.latest.json"
+        [string]$receipt.status | Should Be "missing_ssh_password"
     }
 }

@@ -1,0 +1,9 @@
+﻿{
+    "ok":  true,
+    "total":  6,
+    "passed":  5,
+    "failed":  1,
+    "failed_names":  [
+                         "keeps cadence noise suppression aligned with steady-state messaging"
+                     ]
+}

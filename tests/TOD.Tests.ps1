@@ -118,6 +118,224 @@ function Invoke-TodActionJson {
     }
 }
 
+function New-ExecutionReadinessFixture {
+    param(
+        [int]$ArtifactAgeMinutes = 0,
+        [bool]$PassedAll = $true,
+        [int]$ExitCode = 0,
+        [int]$ExecutionMaxAgeMinutes = 30,
+        [int]$DisplayMaxAgeMinutes = 10
+    )
+
+    $id = [guid]::NewGuid().ToString("N")
+    $base = Join-Path $repoRoot ("tod/out/tests/execution-readiness-" + $id)
+    New-Item -ItemType Directory -Path $base -Force | Out-Null
+
+    $artifactPath = Join-Path $base "tod_operator_chat_sweep_artifact_smoke.latest.json"
+    $historyPath = Join-Path $base "tod_execution_readiness_history.latest.json"
+    $fixtureConfigPath = Join-Path $base "tod-config.json"
+
+    Set-ExecutionReadinessFixtureArtifact -ArtifactPath $artifactPath -ArtifactAgeMinutes $ArtifactAgeMinutes -PassedAll:$PassedAll -ExitCode $ExitCode
+
+    $cfg = Get-Content -Path $configPath -Raw | ConvertFrom-Json
+    if (-not $cfg.execution_engine.PSObject.Properties["readiness_policy"] -or $null -eq $cfg.execution_engine.readiness_policy) {
+        $cfg.execution_engine | Add-Member -NotePropertyName readiness_policy -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+
+    $cfg.execution_engine.readiness_policy = [pscustomobject]@{
+        enabled = $true
+        signal_path = $artifactPath
+        history_path = $historyPath
+        history_max_entries = 20
+        max_artifact_age_minutes = $ExecutionMaxAgeMinutes
+        display_max_artifact_age_minutes = $DisplayMaxAgeMinutes
+        block_actions = @("run-task")
+        degrade_actions = @("engineer-run")
+        block_states = @("stale", "invalid", "unknown")
+        degrade_states = @("degraded", "stale", "invalid", "unknown")
+        degrade_apply_plan = $true
+    }
+
+    $cfg | ConvertTo-Json -Depth 40 | Set-Content -Path $fixtureConfigPath
+
+    return [pscustomobject]@{
+        Base = $base
+        ArtifactPath = $artifactPath
+        HistoryPath = $historyPath
+        ConfigPath = $fixtureConfigPath
+    }
+}
+
+function Set-ExecutionReadinessFixtureArtifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$ArtifactPath,
+        [int]$ArtifactAgeMinutes = 0,
+        [bool]$PassedAll = $true,
+        [int]$ExitCode = 0
+    )
+
+    $generatedAt = (Get-Date).ToUniversalTime().AddMinutes(-1 * $ArtifactAgeMinutes).ToString("o")
+    $artifact = [pscustomobject]@{
+        source = "tod-operator-chat-sweep-artifact-smoke-v1"
+        generated_at = $generatedAt
+        summary = [pscustomobject]@{
+            total = 13
+            passed = if ($PassedAll -and $ExitCode -eq 0) { 13 } else { 12 }
+            failed = if ($PassedAll -and $ExitCode -eq 0) { 0 } else { 1 }
+            passed_all = $PassedAll
+            exit_code = $ExitCode
+        }
+    }
+
+    $artifact | ConvertTo-Json -Depth 20 | Set-Content -Path $ArtifactPath
+}
+
+function Set-ExecutionReadinessFixtureScenario {
+    param(
+        [Parameter(Mandatory = $true)]$Fixture,
+        [Parameter(Mandatory = $true)][ValidateSet('degraded', 'stale', 'invalid', 'unknown')][string]$Scenario
+    )
+
+    switch ($Scenario) {
+        'degraded' {
+            Set-ExecutionReadinessFixtureArtifact -ArtifactPath $Fixture.ArtifactPath -ArtifactAgeMinutes 12 -PassedAll:$true -ExitCode 0
+        }
+        'stale' {
+            Set-ExecutionReadinessFixtureArtifact -ArtifactPath $Fixture.ArtifactPath -ArtifactAgeMinutes 45 -PassedAll:$true -ExitCode 0
+        }
+        'invalid' {
+            Set-ExecutionReadinessFixtureArtifact -ArtifactPath $Fixture.ArtifactPath -ArtifactAgeMinutes 0 -PassedAll:$false -ExitCode 5
+        }
+        'unknown' {
+            if (Test-Path -Path $Fixture.ArtifactPath) {
+                Remove-Item -Path $Fixture.ArtifactPath -Force
+            }
+        }
+    }
+}
+
+function Remove-TestFixturePath {
+    param([string]$PathValue)
+
+    if (-not [string]::IsNullOrWhiteSpace($PathValue) -and (Test-Path -Path $PathValue)) {
+        Remove-Item -Path $PathValue -Recurse -Force
+    }
+}
+
+Describe "TOD Execution Readiness" {
+    It "classifies display-stale certification as degraded while preserving execution allowance" {
+        $fixture = New-ExecutionReadinessFixture -ArtifactAgeMinutes 12 -ExecutionMaxAgeMinutes 30 -DisplayMaxAgeMinutes 5
+        try {
+            $payload = Invoke-TodActionJson -Action "get-execution-readiness" -ExtraArgs @{ ConfigPath = $fixture.ConfigPath }
+
+            [string]$payload.readiness.status | Should Be "degraded"
+            [bool]$payload.readiness.valid | Should Be $true
+            [bool]$payload.readiness.execution_allowed | Should Be $true
+            [bool]$payload.readiness.authoritative | Should Be $true
+            [string]$payload.readiness.reason | Should Be "artifact_display_stale"
+            [string]$payload.readiness.freshness_state | Should Be "display_stale"
+            [string]$payload.authoritative_surface | Should Be "direct_artifact_smoke"
+        }
+        finally {
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { "" })
+        }
+    }
+
+    It "records readiness transitions when the authoritative artifact becomes stale" {
+        $fixture = New-ExecutionReadinessFixture -ArtifactAgeMinutes 1 -ExecutionMaxAgeMinutes 30 -DisplayMaxAgeMinutes 10
+        try {
+            $initial = Invoke-TodActionJson -Action "get-execution-readiness" -ExtraArgs @{ ConfigPath = $fixture.ConfigPath }
+            [string]$initial.readiness.status | Should Be "valid"
+
+            Set-ExecutionReadinessFixtureArtifact -ArtifactPath $fixture.ArtifactPath -ArtifactAgeMinutes 45 -PassedAll:$true -ExitCode 0
+            $updated = Invoke-TodActionJson -Action "get-execution-readiness" -ExtraArgs @{ ConfigPath = $fixture.ConfigPath }
+
+            [string]$updated.readiness.status | Should Be "stale"
+            [string]$updated.history.current_state.status | Should Be "stale"
+            @($updated.history.recent_transitions).Count | Should BeGreaterThan 1
+            [string]$updated.history.recent_transitions[0].prior_status | Should Be "valid"
+            [string]$updated.history.recent_transitions[0].new_status | Should Be "stale"
+            [string]$updated.history.recent_transitions[0].new_reason | Should Be "artifact_stale"
+            [string]$updated.history.recent_transitions[0].artifact_path | Should Be ([string]$fixture.ArtifactPath)
+            [string]$updated.history.recent_transitions[0].transition_at | Should Not BeNullOrEmpty
+            (($updated.history.recent_transitions[0].PSObject.Properties.Name) -contains "host_name") | Should Be $true
+            (($updated.history.recent_transitions[0].PSObject.Properties.Name) -contains "user_name") | Should Be $true
+            (($updated.history.recent_transitions[0].PSObject.Properties.Name) -contains "process_id") | Should Be $true
+            (($updated.history.recent_transitions[0].PSObject.Properties.Name) -contains "session_id") | Should Be $true
+            [string]$updated.history.current_state.reason | Should Be "artifact_stale"
+            [string]$updated.history.current_state.artifact_path | Should Be ([string]$fixture.ArtifactPath)
+            (($updated.history.current_state.PSObject.Properties.Name) -contains "host_name") | Should Be $true
+            (($updated.history.current_state.PSObject.Properties.Name) -contains "user_name") | Should Be $true
+            (($updated.history.current_state.PSObject.Properties.Name) -contains "process_id") | Should Be $true
+            (($updated.history.current_state.PSObject.Properties.Name) -contains "session_id") | Should Be $true
+        }
+        finally {
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { "" })
+        }
+    }
+
+    It "blocks run-task when the authoritative certification is stale" {
+        $fixture = New-ExecutionReadinessFixture -ArtifactAgeMinutes 45 -ExecutionMaxAgeMinutes 30 -DisplayMaxAgeMinutes 10
+        $testStatePath = New-ReliabilityTestStatePath
+        try {
+            $result = Invoke-TodActionJson -Action "run-task" -ExtraArgs @{ TaskId = "45"; StatePath = $testStatePath; ConfigPath = $fixture.ConfigPath }
+
+            [bool]$result.blocked | Should Be $true
+            [string]$result.decision | Should Be "blocked"
+            [string]$result.execution_readiness.status | Should Be "stale"
+            [string]$result.execution_readiness.policy_outcome | Should Be "block"
+        }
+        finally {
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { "" })
+        }
+    }
+
+    It "blocks run-task when the authoritative certification is invalid or unknown" {
+        $fixture = New-ExecutionReadinessFixture -ArtifactAgeMinutes 0 -ExecutionMaxAgeMinutes 30 -DisplayMaxAgeMinutes 10
+        $testStatePath = New-ReliabilityTestStatePath
+        try {
+            foreach ($scenario in @('invalid', 'unknown')) {
+                Set-ExecutionReadinessFixtureScenario -Fixture $fixture -Scenario $scenario
+                $result = Invoke-TodActionJson -Action "run-task" -ExtraArgs @{ TaskId = "45"; StatePath = $testStatePath; ConfigPath = $fixture.ConfigPath }
+
+                [bool]$result.blocked | Should Be $true
+                [string]$result.decision | Should Be "blocked"
+                [string]$result.execution_readiness.status | Should Be $scenario
+                [string]$result.execution_readiness.policy_outcome | Should Be "block"
+            }
+        }
+        finally {
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { "" })
+        }
+    }
+
+    It "degrades engineer-run -ApplyPlan across degraded stale invalid and unknown readiness states" {
+        $fixture = New-ExecutionReadinessFixture -ArtifactAgeMinutes 12 -ExecutionMaxAgeMinutes 30 -DisplayMaxAgeMinutes 5
+        $testStatePath = New-ReliabilityTestStatePath
+        try {
+            foreach ($scenario in @('degraded', 'stale', 'invalid', 'unknown')) {
+                Set-ExecutionReadinessFixtureScenario -Fixture $fixture -Scenario $scenario
+                $run = Invoke-TodActionJson -Action "engineer-run" -ExtraArgs @{ Top = "10"; StatePath = $testStatePath; ConfigPath = $fixture.ConfigPath; ApplyPlan = $true }
+
+                $run | Should Not BeNullOrEmpty
+                [string]$run.execution_readiness.status | Should Be $scenario
+                [bool]$run.execution_readiness_degraded | Should Be $true
+                [bool]$run.apply_plan_effective | Should Be $false
+                [string]$run.execution_trace.execution_readiness.policy_outcome | Should Be 'degrade'
+                [bool]$run.execution_trace.execution_readiness.effective_apply_plan | Should Be $false
+                [string]$run.phases.implement.status | Should Be 'planned_only'
+                [bool]$run.phases.implement.apply_requested | Should Be $false
+            }
+        }
+        finally {
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { "" })
+        }
+    }
+}
+
 Describe "TOD Reliability Reports" {
     It "run-task-report includes reliability scorecard" {
         $testStatePath = New-ReliabilityTestStatePath
@@ -259,6 +477,24 @@ Describe "TOD Reliability Dashboards" {
         finally {
             if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
         }
+    }
+
+    It "get-capabilities does not require a readable state file" {
+        $missingStatePath = Join-Path $repoRoot ("tod/out/tests/missing-state-{0}.json" -f ([guid]::NewGuid().ToString("N")))
+        $caps = Invoke-TodActionJson -Action "get-capabilities" -ExtraArgs @{ StatePath = $missingStatePath }
+
+        $caps | Should Not BeNullOrEmpty
+        [string]$caps.path | Should Be "/tod/capabilities"
+    }
+
+    It "get-execution-readiness returns endpoint payload shape without state load" {
+        $missingStatePath = Join-Path $repoRoot ("tod/out/tests/missing-state-{0}.json" -f ([guid]::NewGuid().ToString("N")))
+        $readiness = Invoke-TodActionJson -Action "get-execution-readiness" -ExtraArgs @{ StatePath = $missingStatePath }
+
+        $readiness | Should Not BeNullOrEmpty
+        [string]$readiness.path | Should Be "/tod/execution-readiness"
+        (($readiness.PSObject.Properties.Name) -contains "readiness") | Should Be $true
+        (($readiness.PSObject.Properties.Name) -contains "policy") | Should Be $true
     }
 
     It "engineer-run returns orchestration payload with plan artifact" {
@@ -770,6 +1006,39 @@ Describe "TOD Reliability Dashboards" {
         }
     }
 
+    It "get-state-bus uses lightweight guard when state exceeds configured limit" {
+        $testStatePath = New-ReliabilityTestStatePath
+        $previousThreshold = [Environment]::GetEnvironmentVariable("TOD_STATE_MAX_READ_BYTES", "Process")
+        try {
+            [Environment]::SetEnvironmentVariable("TOD_STATE_MAX_READ_BYTES", "10", "Process")
+            $bus = Invoke-TodActionJson -Action "get-state-bus" -ExtraArgs @{ Top = "10"; StatePath = $testStatePath }
+
+            $bus | Should Not BeNullOrEmpty
+            (($bus.PSObject.Properties.Name) -contains "state_access") | Should Be $true
+            [string]$bus.state_access.mode | Should Be "lightweight_guard"
+            [bool]$bus.state_access.oversized | Should Be $true
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable("TOD_STATE_MAX_READ_BYTES", $previousThreshold, "Process")
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+        }
+    }
+
+    It "get-research fails fast when state exceeds configured limit" {
+        $testStatePath = New-ReliabilityTestStatePath
+        $previousThreshold = [Environment]::GetEnvironmentVariable("TOD_STATE_MAX_READ_BYTES", "Process")
+        try {
+            [Environment]::SetEnvironmentVariable("TOD_STATE_MAX_READ_BYTES", "10", "Process")
+
+            { Invoke-TodActionJson -Action "get-research" -ExtraArgs @{ Top = "10"; StatePath = $testStatePath } } |
+                Should Throw "State file too large for safe in-process load"
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable("TOD_STATE_MAX_READ_BYTES", $previousThreshold, "Process")
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+        }
+    }
+
     It "get-version returns endpoint payload shape" {
         $testStatePath = New-ReliabilityTestStatePath
         try {
@@ -783,5 +1052,13 @@ Describe "TOD Reliability Dashboards" {
         finally {
             if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
         }
+    }
+
+    It "get-version does not require a readable state file" {
+        $missingStatePath = Join-Path $repoRoot ("tod/out/tests/missing-state-{0}.json" -f ([guid]::NewGuid().ToString("N")))
+        $ver = Invoke-TodActionJson -Action "get-version" -ExtraArgs @{ StatePath = $missingStatePath }
+
+        $ver | Should Not BeNullOrEmpty
+        [string]$ver.path | Should Be "/tod/version"
     }
 }

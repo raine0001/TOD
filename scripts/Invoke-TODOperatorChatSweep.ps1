@@ -65,7 +65,7 @@ function Invoke-JsonPost {
 
     $json = $Body | ConvertTo-Json -Depth 8
     try {
-        $response = Invoke-WebRequest -UseBasicParsing -Uri ("$baseUrl$Path") -Method Post -Body $json -ContentType 'application/json' -TimeoutSec 60
+        $response = Invoke-WebRequest -UseBasicParsing -Uri ("$baseUrl$Path") -Method Post -Body $json -ContentType 'application/json' -TimeoutSec 60 -DisableKeepAlive
         $payloadText = [string]$response.Content
         return [pscustomobject]@{
             status_code = [int]$response.StatusCode
@@ -80,7 +80,7 @@ function Invoke-JsonPost {
 function Invoke-JsonGet {
     param([Parameter(Mandatory = $true)][string]$Uri)
 
-    $response = Invoke-WebRequest -UseBasicParsing -Uri $Uri -Method Get -TimeoutSec 60
+    $response = Invoke-WebRequest -UseBasicParsing -Uri $Uri -Method Get -TimeoutSec 60 -DisableKeepAlive
     if ([string]::IsNullOrWhiteSpace([string]$response.Content)) {
         return [pscustomobject]@{}
     }
@@ -91,7 +91,7 @@ function Invoke-JsonGet {
 function Invoke-TextGet {
     param([Parameter(Mandatory = $true)][string]$Uri)
 
-    return [string](Invoke-WebRequest -UseBasicParsing -Uri $Uri -Method Get -TimeoutSec 60).Content
+    return [string](Invoke-WebRequest -UseBasicParsing -Uri $Uri -Method Get -TimeoutSec 60 -DisableKeepAlive).Content
 }
 
 function Write-Utf8NoBomJson {
@@ -207,6 +207,7 @@ function Invoke-ActionPreview {
         operator_id = 'sweep-operator'
         suggested_reason = [string]$Spec.suggested_reason
         mode = [string]$Spec.mode
+        validation_harness = [string]$ValidationHarness
         configPath = if ($script:SweepReadinessFixture) { [string]$script:SweepReadinessFixture.ConfigPath } else { '' }
     }
 }
@@ -229,6 +230,7 @@ function Invoke-ActionConfirm {
         operator_id = 'sweep-operator'
         suggested_reason = [string]$Spec.suggested_reason
         mode = [string]$Spec.mode
+        validation_harness = [string]$ValidationHarness
         configPath = if ($script:SweepReadinessFixture) { [string]$script:SweepReadinessFixture.ConfigPath } else { '' }
     }
 }
@@ -293,10 +295,16 @@ function Get-IneffectiveValidationSpec {
     }
 
     if ($null -eq $selected) {
-        return $null
+        return [pscustomobject]@{
+            action = 'get-reliability'
+            intent = 'explain_warning'
+            query = 'What is blocking progress right now?'
+            suggested_reason = 'Sweep validation for ineffective operator commitment derivation.'
+            mode = 'read_only'
+        }
     }
 
-    return @{
+    return [pscustomobject]@{
         action = [string]$selected.action
         intent = if ($selected.PSObject.Properties['intent']) { [string]$selected.intent } else { 'suggest_next_action' }
         query = 'What should I do next?'
@@ -620,13 +628,17 @@ try {
     $commitmentListPayload = Invoke-JsonGet -Uri $commitmentListUrl
     $ineffectiveCommitmentListUrl = if ([string]::IsNullOrWhiteSpace($validationHarnessQuery)) { "$baseUrl/api/operator-chat-commitments?limit=12&objective_id=$([uri]::EscapeDataString([string]$script:EffectiveObjectiveId))" } else { "$baseUrl/api/operator-chat-commitments?limit=12&objective_id=$([uri]::EscapeDataString([string]$script:EffectiveObjectiveId))&$validationHarnessQuery" }
     $ineffectiveCommitmentListPayload = Invoke-JsonGet -Uri $ineffectiveCommitmentListUrl
+    $ineffectiveProbeAction = if ($ineffectiveCommitmentProbe -and $ineffectiveCommitmentProbe.PSObject.Properties['action']) { [string]$ineffectiveCommitmentProbe.action } else { '' }
+    $ineffectiveProbeQuery = if ($ineffectiveCommitmentProbe -and $ineffectiveCommitmentProbe.PSObject.Properties['query']) { [string]$ineffectiveCommitmentProbe.query } else { 'What should I do next?' }
+    $ineffectiveProbeIntent = if ($ineffectiveCommitmentProbe -and $ineffectiveCommitmentProbe.PSObject.Properties['intent']) { [string]$ineffectiveCommitmentProbe.intent } else { 'suggest_next_action' }
     $ineffectiveEntry = @($ineffectiveCommitmentListPayload.entries | Where-Object {
-            [string]$_.action -eq [string]$ineffectiveCommitmentProbe.action -and
-            [string]$_.terminal_state -eq 'ineffective'
+            $entryAction = if ($_.PSObject.Properties['action']) { [string]$_.action } else { '' }
+            $entryTerminalState = if ($_.PSObject.Properties['terminal_state']) { [string]$_.terminal_state } else { '' }
+            $entryAction -eq $ineffectiveProbeAction -and $entryTerminalState -eq 'ineffective'
         } | Select-Object -First 1)
     $ineffectiveFollowupPayload = (Invoke-JsonPost -Path '/api/operator-chat' -Body @{
-        query = if ($ineffectiveCommitmentProbe) { [string]$ineffectiveCommitmentProbe.query } else { 'What should I do next?' }
-        intent = if ($ineffectiveCommitmentProbe) { [string]$ineffectiveCommitmentProbe.intent } else { 'suggest_next_action' }
+        query = $ineffectiveProbeQuery
+        intent = $ineffectiveProbeIntent
         objective_id = [string]$script:EffectiveObjectiveId
         window_minutes = $WindowMinutes
         validation_harness = $ValidationHarness

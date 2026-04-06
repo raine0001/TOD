@@ -3,6 +3,8 @@ param(
     [ValidateSet(
         "init",
         "ping-mim",
+        "safe_home",
+        "scan_pose",
         "compare-manifest",
         "sync-mim",
         "new-objective",
@@ -12,6 +14,7 @@ param(
         "package-task",
         "invoke-engine",
         "run-task",
+        "run-bridge-request",
         "run-task-report",
         "show-engine-performance",
         "show-routing-decisions",
@@ -19,6 +22,7 @@ param(
         "show-failure-taxonomy",
         "show-reliability-dashboard",
         "get-reliability",
+        "get-execution-readiness",
         "get-capabilities",
         "get-research",
         "get-resourcing",
@@ -33,6 +37,7 @@ param(
         "sandbox-plan",
         "sandbox-apply-plan",
         "sandbox-write",
+        "repair-state",
         "get-state-bus",
         "get-version",
         "add-result",
@@ -43,6 +48,7 @@ param(
 
     [string]$ObjectiveId,
     [string]$TaskId,
+    [string]$RequestId,
     [string]$Title,
     [string]$Description,
     [ValidateSet("low", "medium", "high", "critical")]
@@ -116,12 +122,16 @@ $promptOutDir = Join-Path $repoRoot "tod/out/prompts"
 $mimClientPath = Join-Path $repoRoot "client/mim_api_client.ps1"
 $syncPolicyPath = Join-Path $repoRoot "tod/config/sync-policy.json"
 $todEngineerPath = Join-Path $PSScriptRoot "TOD-Engineer.ps1"
+$lightweightStateBusScript = Join-Path $PSScriptRoot "Get-TODLightweightStateBus.ps1"
 $repoIndexPath = Join-Path $repoRoot "tod/data/repo-index.json"
 $stateRepoIndexPath = Join-Path $repoRoot "tod/state/repo_index.json"
+$executionReadinessSignalPath = Join-Path $repoRoot "shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json"
 $engineeringMemoryPath = Join-Path $repoRoot "tod/data/engineering-memory.json"
 $stateEngineeringMemoryPath = Join-Path $repoRoot "tod/state/engineering_memory.json"
 $projectAccessPolicyScript = Join-Path $PSScriptRoot "Test-TODProjectAccessPolicy.ps1"
 $projectPriorityPath = Join-Path $repoRoot "tod/config/project-priority.json"
+$bridgeRequestPacketPath = Join-Path $repoRoot "tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json"
+$defaultMaxStateReadBytes = 256MB
 
 if (Test-Path -Path $mimClientPath) {
     . $mimClientPath
@@ -129,6 +139,443 @@ if (Test-Path -Path $mimClientPath) {
 
 function Get-UtcNow {
     return (Get-Date).ToUniversalTime().ToString("o")
+}
+
+function Get-DotEnvValue {
+    param(
+        [string]$Path,
+        [string]$Name
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($Name)) {
+        return ""
+    }
+
+    if (-not (Test-Path -Path $Path)) {
+        return ""
+    }
+
+    $line = Get-Content -Path $Path | Where-Object {
+        $_ -match ("^\s*{0}\s*=" -f [regex]::Escape($Name))
+    } | Select-Object -First 1
+
+    if ([string]::IsNullOrWhiteSpace([string]$line)) {
+        return ""
+    }
+
+    return ([string]($line -replace ("^\s*{0}\s*=\s*" -f [regex]::Escape($Name)), "")).Trim()
+}
+
+function Resolve-MimSshSettingValue {
+    param(
+        [string]$ExplicitValue,
+        [string]$EnvVarName,
+        [string]$DotEnvPathValue
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitValue)) {
+        return [string]$ExplicitValue
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($EnvVarName)) {
+        $fromEnv = [string][Environment]::GetEnvironmentVariable($EnvVarName)
+        if (-not [string]::IsNullOrWhiteSpace($fromEnv)) {
+            return $fromEnv
+        }
+
+        $fromDotEnv = Get-DotEnvValue -Path $DotEnvPathValue -Name $EnvVarName
+        if (-not [string]::IsNullOrWhiteSpace($fromDotEnv)) {
+            return $fromDotEnv
+        }
+    }
+
+    return ""
+}
+
+function Resolve-SshHostAlias {
+    param([string]$RemoteHost)
+
+    if ([string]::IsNullOrWhiteSpace($RemoteHost)) {
+        return ""
+    }
+
+    if ($RemoteHost -match '^\d{1,3}(?:\.\d{1,3}){3}$' -or $RemoteHost -match '\.') {
+        return $RemoteHost
+    }
+
+    $sshConfigPath = Join-Path $HOME ".ssh/config"
+    if (-not (Test-Path -Path $sshConfigPath)) {
+        return $RemoteHost
+    }
+
+    $matchedHost = $false
+    foreach ($rawLine in (Get-Content -Path $sshConfigPath)) {
+        $line = [string]$rawLine
+        $trim = $line.Trim()
+        if ([string]::IsNullOrWhiteSpace($trim) -or $trim.StartsWith('#')) {
+            continue
+        }
+
+        if ($trim -match '^(?i)Host\s+(.+)$') {
+            $matchedHost = $false
+            foreach ($token in @($matches[1] -split '\s+')) {
+                if ([string]::Equals([string]$token, $RemoteHost, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $matchedHost = $true
+                    break
+                }
+            }
+            continue
+        }
+
+        if ($matchedHost -and $trim -match '^(?i)HostName\s+(.+)$') {
+            return [string]$matches[1]
+        }
+    }
+
+    return $RemoteHost
+}
+
+function New-MimArmSshSession {
+    param(
+        [Parameter(Mandatory = $true)][string]$HostAlias,
+        [Parameter(Mandatory = $true)][string]$UserName,
+        [Parameter(Mandatory = $true)][int]$Port,
+        [Parameter(Mandatory = $true)][string]$Password
+    )
+
+    if (-not (Get-Module -ListAvailable -Name Posh-SSH)) {
+        throw "Posh-SSH is not installed. Install-Module -Name Posh-SSH -Scope CurrentUser"
+    }
+
+    Import-Module Posh-SSH -ErrorAction Stop | Out-Null
+
+    $resolvedHost = Resolve-SshHostAlias -RemoteHost $HostAlias
+    $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+    $credential = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
+    $session = New-SSHSession -ComputerName $resolvedHost -Port $Port -Credential $credential -AcceptKey -ConnectionTimeout 15000
+
+    return [pscustomobject]@{
+        host_alias = $HostAlias
+        resolved_host = $resolvedHost
+        user_name = $UserName
+        port = $Port
+        ssh = $session
+    }
+}
+
+function Close-MimArmSshSession {
+    param($SessionInfo)
+
+    if ($null -eq $SessionInfo) {
+        return
+    }
+
+    try {
+        if ($SessionInfo.ssh) {
+            Remove-SSHSession -SessionId ([int]$SessionInfo.ssh.SessionId) | Out-Null
+        }
+    }
+    catch {
+    }
+}
+
+function Get-CommandOutputText {
+    param($Result)
+
+    if ($null -eq $Result) {
+        return ""
+    }
+
+    if ($Result.PSObject.Properties['Output']) {
+        return [string]((@($Result.Output) -join "`n")).Trim()
+    }
+
+    return ""
+}
+
+function Get-CommandErrorText {
+    param($Result)
+
+    if ($null -eq $Result) {
+        return ""
+    }
+
+    if ($Result.PSObject.Properties['Error']) {
+        return [string]((@($Result.Error) -join "`n")).Trim()
+    }
+
+    return ""
+}
+
+function ConvertFrom-JsonIfPossible {
+    param([AllowNull()][string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return $null
+    }
+
+    try {
+        return ($Text | ConvertFrom-Json)
+    }
+    catch {
+        return $null
+    }
+}
+
+function Invoke-MimArmSafeHome {
+    param(
+        [Parameter(Mandatory = $true)][string]$DotEnvPathValue,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $resolvedHost = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_ARM_SSH_HOST" -DotEnvPathValue $DotEnvPathValue
+    if ([string]::IsNullOrWhiteSpace($resolvedHost)) {
+        $resolvedHost = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_HOST" -DotEnvPathValue $DotEnvPathValue
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedHost)) {
+        throw "safe_home requires MIM_ARM_SSH_HOST or MIM_SSH_HOST in .env"
+    }
+
+    $resolvedUser = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_ARM_SSH_USER" -DotEnvPathValue $DotEnvPathValue
+    if ([string]::IsNullOrWhiteSpace($resolvedUser)) {
+        $resolvedUser = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_USER" -DotEnvPathValue $DotEnvPathValue
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedUser)) {
+        $resolvedUser = "testpilot"
+    }
+
+    $resolvedPortText = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_ARM_SSH_PORT" -DotEnvPathValue $DotEnvPathValue
+    if ([string]::IsNullOrWhiteSpace($resolvedPortText)) {
+        $resolvedPortText = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_PORT" -DotEnvPathValue $DotEnvPathValue
+    }
+    $resolvedPort = 22
+    if (-not [string]::IsNullOrWhiteSpace($resolvedPortText)) {
+        $parsedPort = 0
+        if ([int]::TryParse($resolvedPortText, [ref]$parsedPort) -and $parsedPort -gt 0) {
+            $resolvedPort = $parsedPort
+        }
+    }
+
+    $resolvedPassword = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_ARM_SSH_HOST_PASS" -DotEnvPathValue $DotEnvPathValue
+    if ([string]::IsNullOrWhiteSpace($resolvedPassword)) {
+        $resolvedPassword = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_PASSWORD" -DotEnvPathValue $DotEnvPathValue
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedPassword)) {
+        throw "safe_home requires MIM_ARM_SSH_HOST_PASS or MIM_SSH_PASSWORD in .env"
+    }
+
+    $sessionInfo = $null
+    try {
+        $sessionInfo = New-MimArmSshSession -HostAlias $resolvedHost -UserName $resolvedUser -Port $resolvedPort -Password $resolvedPassword
+
+        $armStateCommand = "curl -fsS http://127.0.0.1:5000/arm_state"
+        $goSafeCommand = "curl -fsS -X POST http://127.0.0.1:5000/go_safe"
+
+        $preflightResult = Invoke-SSHCommand -SessionId ([int]$sessionInfo.ssh.SessionId) -Command $armStateCommand -TimeOut $TimeoutSeconds
+        if ($preflightResult.ExitStatus -ne 0) {
+            $preflightError = Get-CommandErrorText -Result $preflightResult
+            if ([string]::IsNullOrWhiteSpace($preflightError)) {
+                $preflightError = Get-CommandOutputText -Result $preflightResult
+            }
+            throw ("safe_home preflight failed: {0}" -f $preflightError)
+        }
+
+        $preflightRaw = Get-CommandOutputText -Result $preflightResult
+        $preflightState = ConvertFrom-JsonIfPossible -Text $preflightRaw
+        $serialReady = $false
+        if ($null -ne $preflightState) {
+            if ($preflightState.PSObject.Properties['serial_ready']) {
+                $serialReady = [bool]$preflightState.serial_ready
+            }
+            elseif ($preflightState.PSObject.Properties['serial'] -and $null -ne $preflightState.serial -and $preflightState.serial.PSObject.Properties['serial_ready']) {
+                $serialReady = [bool]$preflightState.serial.serial_ready
+            }
+        }
+        if (-not $serialReady) {
+            throw "safe_home preflight blocked: MIM_ARM serial controller is not ready."
+        }
+
+        $goSafeResult = Invoke-SSHCommand -SessionId ([int]$sessionInfo.ssh.SessionId) -Command $goSafeCommand -TimeOut $TimeoutSeconds
+        if ($goSafeResult.ExitStatus -ne 0) {
+            $goSafeError = Get-CommandErrorText -Result $goSafeResult
+            if ([string]::IsNullOrWhiteSpace($goSafeError)) {
+                $goSafeError = Get-CommandOutputText -Result $goSafeResult
+            }
+            throw ("safe_home execution failed: {0}" -f $goSafeError)
+        }
+
+        $goSafeRaw = Get-CommandOutputText -Result $goSafeResult
+        $goSafePayload = ConvertFrom-JsonIfPossible -Text $goSafeRaw
+        if ($null -ne $goSafePayload -and $goSafePayload.PSObject.Properties['status']) {
+            $responseStatus = ([string]$goSafePayload.status).Trim().ToLowerInvariant()
+            if ($responseStatus -notin @('ok', 'success')) {
+                throw ("safe_home execution returned non-success status '{0}'." -f [string]$goSafePayload.status)
+            }
+        }
+
+        $postflightResult = Invoke-SSHCommand -SessionId ([int]$sessionInfo.ssh.SessionId) -Command $armStateCommand -TimeOut $TimeoutSeconds
+        $postflightRaw = Get-CommandOutputText -Result $postflightResult
+        $postflightState = if ($postflightResult.ExitStatus -eq 0) { ConvertFrom-JsonIfPossible -Text $postflightRaw } else { $null }
+
+        return [pscustomobject]@{
+            ok = $true
+            action = 'safe_home'
+            execution_mode = 'mim_arm_ssh_http'
+            host_alias = [string]$sessionInfo.host_alias
+            resolved_host = [string]$sessionInfo.resolved_host
+            user_name = [string]$sessionInfo.user_name
+            port = [int]$sessionInfo.port
+            endpoint = 'http://127.0.0.1:5000/go_safe'
+            preflight = if ($null -ne $preflightState) { $preflightState } else { $preflightRaw }
+            response = if ($null -ne $goSafePayload) { $goSafePayload } else { $goSafeRaw }
+            postflight = if ($null -ne $postflightState) { $postflightState } else { $postflightRaw }
+            completed_at = Get-UtcNow
+        }
+    }
+    finally {
+        Close-MimArmSshSession -SessionInfo $sessionInfo
+    }
+}
+
+function Invoke-MimArmNamedRoutine {
+    param(
+        [Parameter(Mandatory = $true)][string]$DotEnvPathValue,
+        [Parameter(Mandatory = $true)][string]$RoutineName,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $resolvedHost = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_ARM_SSH_HOST" -DotEnvPathValue $DotEnvPathValue
+    if ([string]::IsNullOrWhiteSpace($resolvedHost)) {
+        $resolvedHost = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_HOST" -DotEnvPathValue $DotEnvPathValue
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedHost)) {
+        throw ("{0} requires MIM_ARM_SSH_HOST or MIM_SSH_HOST in .env" -f $RoutineName)
+    }
+
+    $resolvedUser = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_ARM_SSH_USER" -DotEnvPathValue $DotEnvPathValue
+    if ([string]::IsNullOrWhiteSpace($resolvedUser)) {
+        $resolvedUser = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_USER" -DotEnvPathValue $DotEnvPathValue
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedUser)) {
+        $resolvedUser = "testpilot"
+    }
+
+    $resolvedPortText = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_ARM_SSH_PORT" -DotEnvPathValue $DotEnvPathValue
+    if ([string]::IsNullOrWhiteSpace($resolvedPortText)) {
+        $resolvedPortText = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_PORT" -DotEnvPathValue $DotEnvPathValue
+    }
+    $resolvedPort = 22
+    if (-not [string]::IsNullOrWhiteSpace($resolvedPortText)) {
+        $parsedPort = 0
+        if ([int]::TryParse($resolvedPortText, [ref]$parsedPort) -and $parsedPort -gt 0) {
+            $resolvedPort = $parsedPort
+        }
+    }
+
+    $resolvedPassword = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_ARM_SSH_HOST_PASS" -DotEnvPathValue $DotEnvPathValue
+    if ([string]::IsNullOrWhiteSpace($resolvedPassword)) {
+        $resolvedPassword = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_PASSWORD" -DotEnvPathValue $DotEnvPathValue
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedPassword)) {
+        throw ("{0} requires MIM_ARM_SSH_HOST_PASS or MIM_SSH_PASSWORD in .env" -f $RoutineName)
+    }
+
+    $sessionInfo = $null
+    try {
+        $sessionInfo = New-MimArmSshSession -HostAlias $resolvedHost -UserName $resolvedUser -Port $resolvedPort -Password $resolvedPassword
+
+        $armStateCommand = "curl -fsS http://127.0.0.1:5000/arm_state"
+        $listRoutinesCommand = "curl -fsS http://127.0.0.1:5000/list_routines"
+        $playRoutineCommand = ('curl -fsS -H ''Content-Type: application/json'' -X POST http://127.0.0.1:5000/play_routine -d ''{{"name":"{0}"}}''' -f $RoutineName)
+
+        $preflightResult = Invoke-SSHCommand -SessionId ([int]$sessionInfo.ssh.SessionId) -Command $armStateCommand -TimeOut $TimeoutSeconds
+        if ($preflightResult.ExitStatus -ne 0) {
+            $preflightError = Get-CommandErrorText -Result $preflightResult
+            if ([string]::IsNullOrWhiteSpace($preflightError)) {
+                $preflightError = Get-CommandOutputText -Result $preflightResult
+            }
+            throw ("{0} preflight failed: {1}" -f $RoutineName, $preflightError)
+        }
+
+        $preflightRaw = Get-CommandOutputText -Result $preflightResult
+        $preflightState = ConvertFrom-JsonIfPossible -Text $preflightRaw
+        $serialReady = $false
+        if ($null -ne $preflightState) {
+            if ($preflightState.PSObject.Properties['serial_ready']) {
+                $serialReady = [bool]$preflightState.serial_ready
+            }
+            elseif ($preflightState.PSObject.Properties['serial'] -and $null -ne $preflightState.serial -and $preflightState.serial.PSObject.Properties['serial_ready']) {
+                $serialReady = [bool]$preflightState.serial.serial_ready
+            }
+        }
+        if (-not $serialReady) {
+            throw ("{0} preflight blocked: MIM_ARM serial controller is not ready." -f $RoutineName)
+        }
+
+        $listRoutinesResult = Invoke-SSHCommand -SessionId ([int]$sessionInfo.ssh.SessionId) -Command $listRoutinesCommand -TimeOut $TimeoutSeconds
+        if ($listRoutinesResult.ExitStatus -ne 0) {
+            $routineError = Get-CommandErrorText -Result $listRoutinesResult
+            if ([string]::IsNullOrWhiteSpace($routineError)) {
+                $routineError = Get-CommandOutputText -Result $listRoutinesResult
+            }
+            throw ("{0} routine discovery failed: {1}" -f $RoutineName, $routineError)
+        }
+
+        $routineListRaw = Get-CommandOutputText -Result $listRoutinesResult
+        $routineList = ConvertFrom-JsonIfPossible -Text $routineListRaw
+        $availableRoutines = @()
+        if ($null -ne $routineList -and $routineList.PSObject.Properties['routines']) {
+            $availableRoutines = @($routineList.routines)
+        }
+        $selectedRoutine = @($availableRoutines | Where-Object { [string]::Equals([string]$_.name, $RoutineName, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1)
+        if (@($selectedRoutine).Count -eq 0) {
+            $knownNames = @($availableRoutines | ForEach-Object { [string]$_.name } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            $knownText = if (@($knownNames).Count -gt 0) { ($knownNames -join ', ') } else { 'none' }
+            throw ("{0} routine is not available on MIM. Available routines: {1}" -f $RoutineName, $knownText)
+        }
+
+        $playRoutineResult = Invoke-SSHCommand -SessionId ([int]$sessionInfo.ssh.SessionId) -Command $playRoutineCommand -TimeOut $TimeoutSeconds
+        if ($playRoutineResult.ExitStatus -ne 0) {
+            $playRoutineError = Get-CommandErrorText -Result $playRoutineResult
+            if ([string]::IsNullOrWhiteSpace($playRoutineError)) {
+                $playRoutineError = Get-CommandOutputText -Result $playRoutineResult
+            }
+            throw ("{0} execution failed: {1}" -f $RoutineName, $playRoutineError)
+        }
+
+        $playRoutineRaw = Get-CommandOutputText -Result $playRoutineResult
+        $playRoutinePayload = ConvertFrom-JsonIfPossible -Text $playRoutineRaw
+        if ($null -ne $playRoutinePayload -and $playRoutinePayload.PSObject.Properties['status']) {
+            $responseStatus = ([string]$playRoutinePayload.status).Trim().ToLowerInvariant()
+            if ($responseStatus -notin @('ok', 'success')) {
+                throw ("{0} execution returned non-success status '{1}'." -f $RoutineName, [string]$playRoutinePayload.status)
+            }
+        }
+
+        $postflightResult = Invoke-SSHCommand -SessionId ([int]$sessionInfo.ssh.SessionId) -Command $armStateCommand -TimeOut $TimeoutSeconds
+        $postflightRaw = Get-CommandOutputText -Result $postflightResult
+        $postflightState = if ($postflightResult.ExitStatus -eq 0) { ConvertFrom-JsonIfPossible -Text $postflightRaw } else { $null }
+
+        return [pscustomobject]@{
+            ok = $true
+            action = $RoutineName
+            execution_mode = 'mim_arm_ssh_http_routine'
+            host_alias = [string]$sessionInfo.host_alias
+            resolved_host = [string]$sessionInfo.resolved_host
+            user_name = [string]$sessionInfo.user_name
+            port = [int]$sessionInfo.port
+            endpoint = 'http://127.0.0.1:5000/play_routine'
+            routine = if (@($selectedRoutine).Count -gt 0) { $selectedRoutine[0] } else { $null }
+            routine_catalog = if ($null -ne $routineList) { $routineList } else { $routineListRaw }
+            preflight = if ($null -ne $preflightState) { $preflightState } else { $preflightRaw }
+            response = if ($null -ne $playRoutinePayload) { $playRoutinePayload } else { $playRoutineRaw }
+            postflight = if ($null -ne $postflightState) { $postflightState } else { $postflightRaw }
+            completed_at = Get-UtcNow
+        }
+    }
+    finally {
+        Close-MimArmSshSession -SessionInfo $sessionInfo
+    }
 }
 
 function Assert-Exists {
@@ -144,8 +591,104 @@ function Assert-Exists {
     }
 }
 
+function Get-MaxStateReadBytes {
+    $rawValue = [string][Environment]::GetEnvironmentVariable("TOD_STATE_MAX_READ_BYTES")
+    if (-not [string]::IsNullOrWhiteSpace($rawValue)) {
+        $parsed = [int64]0
+        if ([int64]::TryParse($rawValue, [ref]$parsed) -and $parsed -gt 0) {
+            return $parsed
+        }
+    }
+
+    return [int64]$defaultMaxStateReadBytes
+}
+
+function Get-ProcessMemorySnapshot {
+    $process = [System.Diagnostics.Process]::GetCurrentProcess()
+    return [pscustomobject]@{
+        working_set_mb = [math]::Round(([double]$process.WorkingSet64 / 1MB), 2)
+        private_memory_mb = [math]::Round(([double]$process.PrivateMemorySize64 / 1MB), 2)
+        managed_heap_mb = [math]::Round(([double][System.GC]::GetTotalMemory($false) / 1MB), 2)
+        sampled_at = Get-UtcNow
+    }
+}
+
+function Get-StateLoadGuardInfo {
+    param([string]$Path = $statePath)
+
+    $thresholdBytes = Get-MaxStateReadBytes
+    $exists = Test-Path -Path $Path
+    $sizeBytes = [int64]0
+    if ($exists) {
+        try {
+            $sizeBytes = [int64](Get-Item -Path $Path -ErrorAction Stop).Length
+        }
+        catch {
+            $sizeBytes = [int64]0
+        }
+    }
+
+    return [pscustomobject]@{
+        path = $Path
+        exists = [bool]$exists
+        size_bytes = $sizeBytes
+        threshold_bytes = [int64]$thresholdBytes
+        size_mib = [math]::Round(([double]$sizeBytes / 1MB), 2)
+        threshold_mib = [math]::Round(([double]$thresholdBytes / 1MB), 2)
+        oversized = ([bool]$exists -and $sizeBytes -gt $thresholdBytes)
+    }
+}
+
+function New-MinimalTodState {
+    $state = [pscustomobject]@{
+        source = "tod-oversized-state-ephemeral-v1"
+        updated_at = ""
+        objectives = @()
+        tasks = @()
+        execution_results = @()
+        review_decisions = @()
+        journal = @()
+        sync_state = [pscustomobject]@{}
+        engine_performance = [pscustomobject]@{}
+        routing_decisions = [pscustomobject]@{}
+        routing_feedback = [pscustomobject]@{}
+        engineering_loop = [pscustomobject]@{}
+    }
+
+    Normalize-State -State $state
+    return $state
+}
+
+function Test-ActionSupportsLightweightStateBus {
+    param([Parameter(Mandatory = $true)][string]$ActionName)
+
+    switch ($ActionName.ToLowerInvariant()) {
+        "get-state-bus" { return $true }
+        "get-reliability" { return $true }
+        "show-reliability-dashboard" { return $true }
+        "show-failure-taxonomy" { return $true }
+        "get-engineering-loop-summary" { return $true }
+        "get-engineering-signal" { return $true }
+        default { return $false }
+    }
+}
+
+function Invoke-LightweightStateBusPayload {
+    if (-not (Test-Path -Path $lightweightStateBusScript)) {
+        throw "Lightweight state bus script not found at $lightweightStateBusScript"
+    }
+
+    $raw = & $lightweightStateBusScript -AsJson -StatePath $statePath -MaxStateReadBytes (Get-MaxStateReadBytes)
+    return ($raw | ConvertFrom-Json)
+}
+
 function Load-State {
     Assert-Exists -Path $statePath -Name "State file"
+
+    $guardInfo = Get-StateLoadGuardInfo -Path $statePath
+    if ([bool]$guardInfo.oversized) {
+        throw ("State file too large for safe in-process load: {0} MiB exceeds threshold {1} MiB. Use lightweight state bus actions or remote-backed execution paths." -f $guardInfo.size_mib, $guardInfo.threshold_mib)
+    }
 
     $maxAttempts = 6
     $baseDelayMs = 90
@@ -173,8 +716,25 @@ function Load-State {
 }
 
 function Save-State {
-    param([Parameter(Mandatory = $true)]$State)
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [AllowNull()]$Config = $null
+    )
     Normalize-State -State $State
+
+    $effectiveConfig = $Config
+    if ($null -eq $effectiveConfig) {
+        $configVar = Get-Variable -Name config -Scope Script -ErrorAction SilentlyContinue
+        if ($null -ne $configVar) {
+            $effectiveConfig = $configVar.Value
+        }
+    }
+
+    Protect-StateForOperationalUse -State $State
+    if ($null -ne $effectiveConfig) {
+        Compress-StateForOperationalUse -State $State -Config $effectiveConfig | Out-Null
+    }
+
     $json = $State | ConvertTo-Json -Depth 12
 
     $maxAttempts = 6
@@ -197,6 +757,260 @@ function Save-State {
 
             Start-Sleep -Milliseconds ($baseDelayMs * $attempt)
         }
+    }
+}
+
+function Repair-OversizedStateStringLine {
+    param(
+        [AllowEmptyString()][string]$Line,
+        [Parameter(Mandatory = $true)][string]$RepairTimestamp,
+        [int]$MaxLineLength = 1048576
+    )
+
+    if ($Line.Length -le $MaxLineLength) {
+        return $null
+    }
+
+    $propertyStart = $Line.IndexOf('"')
+    if ($propertyStart -lt 0) {
+        return $null
+    }
+
+    $propertyEnd = $Line.IndexOf('"', $propertyStart + 1)
+    if ($propertyEnd -lt 0) {
+        return $null
+    }
+
+    $colonIndex = $Line.IndexOf(':', $propertyEnd + 1)
+    if ($colonIndex -lt 0) {
+        return $null
+    }
+
+    $valueStart = $Line.IndexOf('"', $colonIndex + 1)
+    if ($valueStart -lt 0) {
+        return $null
+    }
+
+    $valueEnd = $Line.Length - 1
+    while ($valueEnd -gt $valueStart -and [char]::IsWhiteSpace($Line[$valueEnd])) {
+        $valueEnd--
+    }
+    if ($valueEnd -gt $valueStart -and $Line[$valueEnd] -eq ',') {
+        $valueEnd--
+        while ($valueEnd -gt $valueStart -and [char]::IsWhiteSpace($Line[$valueEnd])) {
+            $valueEnd--
+        }
+    }
+    if ($valueEnd -le $valueStart -or $Line[$valueEnd] -ne '"') {
+        return $null
+    }
+
+    $propertyName = $Line.Substring($propertyStart + 1, $propertyEnd - $propertyStart - 1)
+    $originalLength = $valueEnd - $valueStart - 1
+    $replacementValue = "[truncated oversized state field; property=$propertyName; original_length=$originalLength; repaired_at=$RepairTimestamp]"
+    $rewritten = $Line.Substring(0, $valueStart + 1) + $replacementValue + $Line.Substring($valueEnd)
+
+    return [pscustomobject]@{
+        property = $propertyName
+        original_length = $originalLength
+        line = $rewritten
+    }
+}
+
+function Repair-StateFileOversizedStrings {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [int]$MaxLineLength = 1048576
+    )
+
+    Assert-Exists -Path $Path -Name "State file"
+
+    $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $tempPath = "$Path.repairing"
+    $backupPath = Join-Path (Split-Path -Parent $Path) ("state.repair-{0}.json.bak" -f ((Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")))
+    $originalBytes = (Get-Item -Path $Path).Length
+    $changes = @()
+    $reader = $null
+    $writer = $null
+
+    try {
+        $reader = [System.IO.File]::OpenText($Path)
+        $writer = New-Object System.IO.StreamWriter($tempPath, $false, ([System.Text.UTF8Encoding]::new($false)))
+        $lineNumber = 0
+
+        while (($line = $reader.ReadLine()) -ne $null) {
+            $lineNumber++
+            $rewritten = Repair-OversizedStateStringLine -Line $line -RepairTimestamp $timestamp -MaxLineLength $MaxLineLength
+            if ($null -ne $rewritten) {
+                $changes += [pscustomobject]@{
+                    line = $lineNumber
+                    property = [string]$rewritten.property
+                    original_length = [int64]$rewritten.original_length
+                }
+                $writer.WriteLine([string]$rewritten.line)
+            }
+            else {
+                $writer.WriteLine($line)
+            }
+        }
+    }
+    catch {
+        if (Test-Path -Path $tempPath) {
+            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+        }
+        throw
+    }
+    finally {
+        if ($writer) { $writer.Dispose() }
+        if ($reader) { $reader.Dispose() }
+    }
+
+    if (@($changes).Count -eq 0) {
+        if (Test-Path -Path $tempPath) {
+            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+        }
+        return [pscustomobject]@{
+            changed = $false
+            state_path = $Path
+            backup_path = $null
+            repaired_lines = @()
+            original_bytes = [int64]$originalBytes
+            repaired_bytes = [int64]$originalBytes
+        }
+    }
+
+    $maxAttempts = 6
+    $baseDelayMs = 120
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            Move-Item -Path $Path -Destination $backupPath -Force -ErrorAction Stop
+            Move-Item -Path $tempPath -Destination $Path -Force -ErrorAction Stop
+            break
+        }
+        catch {
+            $message = [string]$_.Exception.Message
+            $isLockContention = (
+                ($message -match "used by another process") -or
+                ($message -match "cannot access the file")
+            )
+
+            if (-not $isLockContention -or $attempt -ge $maxAttempts) {
+                if (Test-Path -Path $tempPath) {
+                    Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+                }
+                throw
+            }
+
+            Start-Sleep -Milliseconds ($baseDelayMs * $attempt)
+        }
+    }
+
+    $repairedBytes = (Get-Item -Path $Path).Length
+
+    return [pscustomobject]@{
+        changed = $true
+        state_path = $Path
+        backup_path = $backupPath
+        repaired_lines = @($changes)
+        original_bytes = [int64]$originalBytes
+        repaired_bytes = [int64]$repairedBytes
+    }
+}
+
+function Compress-StateForOperationalUse {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Config
+    )
+
+    $summary = [ordered]@{}
+    $applyWindow = {
+        param([string]$Name, $Items, [int]$Limit)
+
+        $before = @($Items).Count
+        $afterItems = if ($before -gt $Limit) { @($Items | Select-Object -Last $Limit) } else { @($Items) }
+        $summary[$Name] = [pscustomobject]@{
+            before = [int]$before
+            after = [int]@($afterItems).Count
+            limit = [int]$Limit
+        }
+        return ,$afterItems
+    }
+
+    $runHistoryLimit = Resolve-EngineeringLoopHistoryLimit -Config $Config -Kind "run_history"
+    $scorecardHistoryLimit = Resolve-EngineeringLoopHistoryLimit -Config $Config -Kind "scorecard_history"
+    $cycleRecordLimit = Resolve-EngineeringCycleRecordLimit -Config $Config
+
+    $State.engineering_loop.run_history = @((& $applyWindow "engineering_loop.run_history" @($State.engineering_loop.run_history) $runHistoryLimit))
+    $State.engineering_loop.scorecard_history = @((& $applyWindow "engineering_loop.scorecard_history" @($State.engineering_loop.scorecard_history) $scorecardHistoryLimit))
+    $State.engineering_loop.cycle_records = @((& $applyWindow "engineering_loop.cycle_records" @($State.engineering_loop.cycle_records) $cycleRecordLimit))
+    $State.engineering_loop.review_actions = @((& $applyWindow "engineering_loop.review_actions" @($State.engineering_loop.review_actions) 400))
+
+    $State.routing_decisions.records = @((& $applyWindow "routing_decisions.records" @($State.routing_decisions.records) 1000))
+    $State.engine_performance.records = @((& $applyWindow "engine_performance.records" @($State.engine_performance.records) 1000))
+    $State.journal = @((& $applyWindow "journal" @($State.journal) 1000))
+    $State.execution_results = @((& $applyWindow "execution_results" @($State.execution_results) 500))
+    $State.review_decisions = @((& $applyWindow "review_decisions" @($State.review_decisions) 500))
+
+    return [pscustomobject]$summary
+}
+
+function Limit-StateTextField {
+    param(
+        [AllowNull()][string]$Value,
+        [int]$MaxLength = 8192,
+        [string]$FieldName = "text"
+    )
+
+    if ([string]::IsNullOrEmpty($Value)) {
+        return $Value
+    }
+
+    if ($Value.Length -le $MaxLength) {
+        return $Value
+    }
+
+    $suffix = "...[truncated for operational state; field=$FieldName; original_length=$($Value.Length)]"
+    $prefixLength = $MaxLength - $suffix.Length
+    if ($prefixLength -lt 0) {
+        $prefixLength = 0
+    }
+
+    return $Value.Substring(0, $prefixLength) + $suffix
+}
+
+function Protect-StateForOperationalUse {
+    param([Parameter(Mandatory = $true)]$State)
+
+    if ($State.PSObject.Properties["objectives"] -and $null -ne $State.objectives) {
+        foreach ($objective in @($State.objectives)) {
+            if ($null -eq $objective) {
+                continue
+            }
+
+            if ($objective.PSObject.Properties["title"] -and $null -ne $objective.title) {
+                $objective.title = Limit-StateTextField -Value ([string]$objective.title) -MaxLength 512 -FieldName "objective.title"
+            }
+            if ($objective.PSObject.Properties["description"] -and $null -ne $objective.description) {
+                $objective.description = Limit-StateTextField -Value ([string]$objective.description) -MaxLength 8192 -FieldName "objective.description"
+            }
+        }
+    }
+}
+
+function Test-ActionRequiresState {
+    param([Parameter(Mandatory = $true)][string]$ActionName)
+
+    switch ($ActionName.ToLowerInvariant()) {
+        "get-capabilities" { return $false }
+        "get-execution-readiness" { return $false }
+        "get-version" { return $false }
+        "ping-mim" { return $false }
+        "repair-state" { return $false }
+        "run-bridge-request" { return $false }
+        "safe_home" { return $false }
+        "scan_pose" { return $false }
+        default { return $true }
     }
 }
 
@@ -642,7 +1456,7 @@ function Assert-DangerousActionApproved {
 
 function Convert-ToPagedEngineeringHistory {
     param(
-        [Parameter(Mandatory = $true)]$Items,
+        [AllowNull()]$Items = @(),
         [int]$Page = 1,
         [int]$PageSize = 25
     )
@@ -2490,6 +3304,7 @@ function Get-TodCapabilitiesPayload {
 
     $capabilityEndpoints = @(
         "/tod/reliability",
+        "/tod/execution-readiness",
         "/tod/capabilities",
         "/tod/research",
         "/tod/resourcing",
@@ -2515,6 +3330,21 @@ function Get-TodCapabilitiesPayload {
         execution = [pscustomobject]@{
             engines = @("codex", "local")
             fallback_supported = [bool]$Config.execution_engine.allow_fallback
+            readiness_policy = [pscustomobject]@{
+                enabled = if ($Config.execution_engine.PSObject.Properties["readiness_policy"] -and $Config.execution_engine.readiness_policy -and $Config.execution_engine.readiness_policy.PSObject.Properties["enabled"]) { [bool]$Config.execution_engine.readiness_policy.enabled } else { $false }
+                capability_name = "tod_sweep_certification"
+                signal_name = "execution-readiness"
+                signal_source = if ($Config.execution_engine.PSObject.Properties["readiness_policy"] -and $Config.execution_engine.readiness_policy -and $Config.execution_engine.readiness_policy.PSObject.Properties["signal_path"] -and -not [string]::IsNullOrWhiteSpace([string]$Config.execution_engine.readiness_policy.signal_path)) { [string]$Config.execution_engine.readiness_policy.signal_path } else { "shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json" }
+                authoritative_surface = "direct_artifact_smoke"
+                non_authoritative_surfaces = @("wrapper_pester_output")
+                signal_command = ".\\scripts\\TOD.ps1 -Action get-execution-readiness"
+                display_max_artifact_age_minutes = if ($Config.execution_engine.PSObject.Properties["readiness_policy"] -and $Config.execution_engine.readiness_policy -and $Config.execution_engine.readiness_policy.PSObject.Properties["display_max_artifact_age_minutes"]) { [int]$Config.execution_engine.readiness_policy.display_max_artifact_age_minutes } else { 10 }
+                block_actions = if ($Config.execution_engine.PSObject.Properties["readiness_policy"] -and $Config.execution_engine.readiness_policy -and $Config.execution_engine.readiness_policy.PSObject.Properties["block_actions"]) { @($Config.execution_engine.readiness_policy.block_actions | ForEach-Object { [string]$_ }) } else { @("run-task") }
+                degrade_actions = if ($Config.execution_engine.PSObject.Properties["readiness_policy"] -and $Config.execution_engine.readiness_policy -and $Config.execution_engine.readiness_policy.PSObject.Properties["degrade_actions"]) { @($Config.execution_engine.readiness_policy.degrade_actions | ForEach-Object { [string]$_ }) } else { @("engineer-run") }
+                block_states = if ($Config.execution_engine.PSObject.Properties["readiness_policy"] -and $Config.execution_engine.readiness_policy -and $Config.execution_engine.readiness_policy.PSObject.Properties["block_states"]) { @($Config.execution_engine.readiness_policy.block_states | ForEach-Object { [string]$_ }) } else { @("stale", "invalid", "unknown") }
+                degrade_states = if ($Config.execution_engine.PSObject.Properties["readiness_policy"] -and $Config.execution_engine.readiness_policy -and $Config.execution_engine.readiness_policy.PSObject.Properties["degrade_states"]) { @($Config.execution_engine.readiness_policy.degrade_states | ForEach-Object { [string]$_ }) } else { @("degraded", "stale", "invalid", "unknown") }
+                history_path = if ($Config.execution_engine.PSObject.Properties["readiness_policy"] -and $Config.execution_engine.readiness_policy -and $Config.execution_engine.readiness_policy.PSObject.Properties["history_path"] -and -not [string]::IsNullOrWhiteSpace([string]$Config.execution_engine.readiness_policy.history_path)) { [string]$Config.execution_engine.readiness_policy.history_path } else { "shared_state/tod_execution_readiness_history.latest.json" }
+            }
             retry_policy = [pscustomobject]@{
                 enabled = [bool]$Config.execution_engine.retry_policy.enabled
                 categories = @($Config.execution_engine.retry_policy.max_attempts_by_category.PSObject.Properties.Name)
@@ -2554,6 +3384,304 @@ function Get-TodCapabilitiesPayload {
             path_guardrails = @("disallow_parent_traversal", "workspace_confined")
         }
         endpoints = @($capabilityEndpoints)
+    }
+}
+
+function Resolve-ExecutionReadinessSignalPath {
+    param([Parameter(Mandatory = $true)]$Config)
+
+    $configuredPath = ""
+    if ($Config -and $Config.PSObject.Properties["execution_engine"] -and $Config.execution_engine -and $Config.execution_engine.PSObject.Properties["readiness_policy"] -and $Config.execution_engine.readiness_policy -and $Config.execution_engine.readiness_policy.PSObject.Properties["signal_path"] -and -not [string]::IsNullOrWhiteSpace([string]$Config.execution_engine.readiness_policy.signal_path)) {
+        $configuredPath = [string]$Config.execution_engine.readiness_policy.signal_path
+    }
+
+    if ([string]::IsNullOrWhiteSpace($configuredPath)) {
+        return $executionReadinessSignalPath
+    }
+
+    if ([System.IO.Path]::IsPathRooted($configuredPath)) {
+        return [System.IO.Path]::GetFullPath($configuredPath)
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $configuredPath))
+}
+
+function Resolve-ExecutionReadinessHistoryPath {
+    param([Parameter(Mandatory = $true)]$Config)
+
+    $configuredPath = ""
+    if ($Config -and $Config.PSObject.Properties["execution_engine"] -and $Config.execution_engine -and $Config.execution_engine.PSObject.Properties["readiness_policy"] -and $Config.execution_engine.readiness_policy -and $Config.execution_engine.readiness_policy.PSObject.Properties["history_path"] -and -not [string]::IsNullOrWhiteSpace([string]$Config.execution_engine.readiness_policy.history_path)) {
+        $configuredPath = [string]$Config.execution_engine.readiness_policy.history_path
+    }
+
+    if ([string]::IsNullOrWhiteSpace($configuredPath)) {
+        return [System.IO.Path]::GetFullPath((Join-Path $repoRoot "shared_state/tod_execution_readiness_history.latest.json"))
+    }
+
+    if ([System.IO.Path]::IsPathRooted($configuredPath)) {
+        return [System.IO.Path]::GetFullPath($configuredPath)
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $configuredPath))
+}
+
+function Update-ExecutionReadinessHistory {
+    param(
+        [Parameter(Mandatory = $true)]$Config,
+        [Parameter(Mandatory = $true)]$ReadinessPayload
+    )
+
+    $policy = if ($Config -and $Config.PSObject.Properties["execution_engine"] -and $Config.execution_engine -and $Config.execution_engine.PSObject.Properties["readiness_policy"]) { $Config.execution_engine.readiness_policy } else { $null }
+    $historyPath = Resolve-ExecutionReadinessHistoryPath -Config $Config
+    $historyMaxEntries = if ($policy -and $policy.PSObject.Properties["history_max_entries"] -and $null -ne $policy.history_max_entries) { [int]$policy.history_max_entries } else { 50 }
+    $historyMaxEntries = [math]::Max(5, [math]::Min(500, $historyMaxEntries))
+
+    $existing = $null
+    if (Test-Path -Path $historyPath -PathType Leaf) {
+        try {
+            $existing = (Get-Content -Path $historyPath -Raw) | ConvertFrom-Json
+        }
+        catch {
+            $existing = $null
+        }
+    }
+
+    $previousState = if ($existing -and $existing.PSObject.Properties["current_state"] -and $existing.current_state) { $existing.current_state } else { $null }
+    $recentTransitions = if ($existing -and $existing.PSObject.Properties["recent_transitions"] -and $existing.recent_transitions) { @($existing.recent_transitions) } else { @() }
+
+    $currentStatus = if ($ReadinessPayload.PSObject.Properties["status"]) { [string]$ReadinessPayload.status } else { "unknown" }
+    $currentReason = if ($ReadinessPayload.PSObject.Properties["reason"]) { [string]$ReadinessPayload.reason } else { "unknown" }
+    $currentArtifactGeneratedAt = if ($ReadinessPayload.PSObject.Properties["artifact_generated_at"]) { [string]$ReadinessPayload.artifact_generated_at } else { "" }
+    $currentArtifactAgeMinutes = if ($ReadinessPayload.PSObject.Properties["artifact_age_minutes"]) { $ReadinessPayload.artifact_age_minutes } else { $null }
+
+    $shouldRecordTransition = $false
+    $transitionKind = "initial"
+    if ($null -eq $previousState) {
+        $shouldRecordTransition = $true
+    }
+    else {
+        $previousStatus = if ($previousState.PSObject.Properties["status"]) { [string]$previousState.status } else { "unknown" }
+        $previousReason = if ($previousState.PSObject.Properties["reason"]) { [string]$previousState.reason } else { "unknown" }
+        $previousArtifactGeneratedAt = if ($previousState.PSObject.Properties["artifact_generated_at"]) { [string]$previousState.artifact_generated_at } else { "" }
+        $previousExecutionAllowed = if ($previousState.PSObject.Properties["execution_allowed"]) { [bool]$previousState.execution_allowed } else { $false }
+        $currentExecutionAllowed = if ($ReadinessPayload.PSObject.Properties["execution_allowed"]) { [bool]$ReadinessPayload.execution_allowed } else { $false }
+
+        if ($previousStatus -ne $currentStatus -or $previousReason -ne $currentReason -or $previousArtifactGeneratedAt -ne $currentArtifactGeneratedAt -or $previousExecutionAllowed -ne $currentExecutionAllowed) {
+            $shouldRecordTransition = $true
+            $transitionKind = "state_change"
+        }
+    }
+
+    if ($shouldRecordTransition) {
+        $recentTransitions = @(
+            [pscustomobject]@{
+                transition_at = Get-UtcNow
+                transition_kind = $transitionKind
+                prior_status = if ($previousState -and $previousState.PSObject.Properties["status"]) { [string]$previousState.status } else { "" }
+                prior_reason = if ($previousState -and $previousState.PSObject.Properties["reason"]) { [string]$previousState.reason } else { "" }
+                new_status = $currentStatus
+                new_reason = $currentReason
+                artifact_path = if ($ReadinessPayload.PSObject.Properties["artifact_path"]) { [string]$ReadinessPayload.artifact_path } else { "" }
+                artifact_generated_at = $currentArtifactGeneratedAt
+                artifact_age_minutes = $currentArtifactAgeMinutes
+                authoritative = if ($ReadinessPayload.PSObject.Properties["authoritative"]) { [bool]$ReadinessPayload.authoritative } else { $true }
+                freshness_state = if ($ReadinessPayload.PSObject.Properties["freshness_state"]) { [string]$ReadinessPayload.freshness_state } else { "unknown" }
+                execution_allowed = if ($ReadinessPayload.PSObject.Properties["execution_allowed"]) { [bool]$ReadinessPayload.execution_allowed } else { $false }
+                signal_name = "execution-readiness"
+                host_name = $env:COMPUTERNAME
+                user_name = $env:USERNAME
+                process_id = $PID
+                session_id = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+            }
+        ) + @($recentTransitions | Select-Object -First ($historyMaxEntries - 1))
+    }
+
+    $currentState = [pscustomobject]@{
+        evaluated_at = Get-UtcNow
+        status = $currentStatus
+        reason = $currentReason
+        detail = if ($ReadinessPayload.PSObject.Properties["detail"]) { [string]$ReadinessPayload.detail } else { "" }
+        valid = if ($ReadinessPayload.PSObject.Properties["valid"]) { [bool]$ReadinessPayload.valid } else { $false }
+        execution_allowed = if ($ReadinessPayload.PSObject.Properties["execution_allowed"]) { [bool]$ReadinessPayload.execution_allowed } else { $false }
+        authoritative = if ($ReadinessPayload.PSObject.Properties["authoritative"]) { [bool]$ReadinessPayload.authoritative } else { $true }
+        freshness_state = if ($ReadinessPayload.PSObject.Properties["freshness_state"]) { [string]$ReadinessPayload.freshness_state } else { "unknown" }
+        artifact_path = if ($ReadinessPayload.PSObject.Properties["artifact_path"]) { [string]$ReadinessPayload.artifact_path } else { "" }
+        artifact_generated_at = $currentArtifactGeneratedAt
+        artifact_age_minutes = $currentArtifactAgeMinutes
+        host_name = $env:COMPUTERNAME
+        user_name = $env:USERNAME
+        process_id = $PID
+        session_id = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+    }
+
+    $historyDir = Split-Path -Parent $historyPath
+    if (-not [string]::IsNullOrWhiteSpace($historyDir) -and -not (Test-Path -Path $historyDir)) {
+        New-Item -ItemType Directory -Path $historyDir -Force | Out-Null
+    }
+
+    $historyPayload = [pscustomobject]@{
+        path = "/tod/execution-readiness-history"
+        source = "tod_sweep_certification_history_v1"
+        generated_at = Get-UtcNow
+        history_path = $historyPath
+        transition_count = @($recentTransitions).Count
+        max_entries = $historyMaxEntries
+        current_state = $currentState
+        recent_transitions = @($recentTransitions)
+    }
+
+    $historyPayload | ConvertTo-Json -Depth 20 | Set-Content -Path $historyPath -Encoding utf8
+    return $historyPayload
+}
+
+function Get-TodExecutionReadinessPayload {
+    param([Parameter(Mandatory = $true)]$Config)
+
+    $policy = if ($Config -and $Config.PSObject.Properties["execution_engine"] -and $Config.execution_engine -and $Config.execution_engine.PSObject.Properties["readiness_policy"]) { $Config.execution_engine.readiness_policy } else { $null }
+    $enabled = if ($policy -and $policy.PSObject.Properties["enabled"]) { [bool]$policy.enabled } else { $false }
+    $signalPath = Resolve-ExecutionReadinessSignalPath -Config $Config
+    $historyPath = Resolve-ExecutionReadinessHistoryPath -Config $Config
+    $maxAgeMinutes = if ($policy -and $policy.PSObject.Properties["max_artifact_age_minutes"] -and $null -ne $policy.max_artifact_age_minutes) { [int]$policy.max_artifact_age_minutes } else { 30 }
+    $displayMaxAgeMinutes = if ($policy -and $policy.PSObject.Properties["display_max_artifact_age_minutes"] -and $null -ne $policy.display_max_artifact_age_minutes) { [int]$policy.display_max_artifact_age_minutes } else { [math]::Min($maxAgeMinutes, 10) }
+    $blockActions = if ($policy -and $policy.PSObject.Properties["block_actions"]) { @($policy.block_actions | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @("run-task") }
+    $degradeActions = if ($policy -and $policy.PSObject.Properties["degrade_actions"]) { @($policy.degrade_actions | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @("engineer-run") }
+    $blockStates = if ($policy -and $policy.PSObject.Properties["block_states"]) { @($policy.block_states | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @("stale", "invalid", "unknown") }
+    $degradeStates = if ($policy -and $policy.PSObject.Properties["degrade_states"]) { @($policy.degrade_states | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @("degraded", "stale", "invalid", "unknown") }
+
+    $status = "unknown"
+    $valid = $false
+    $executionAllowed = $false
+    $reason = "policy_disabled"
+    $detail = "Execution readiness policy is disabled."
+    $freshnessState = "unknown"
+    $artifact = $null
+    $artifactGeneratedAt = ""
+    $artifactAgeMinutes = $null
+
+    if ($enabled) {
+        $status = "unknown"
+        $valid = $false
+        $executionAllowed = $false
+        $reason = "artifact_missing"
+        $detail = "Execution readiness artifact is missing."
+
+        if (Test-Path -Path $signalPath -PathType Leaf) {
+            try {
+                $artifact = (Get-Content -Path $signalPath -Raw) | ConvertFrom-Json
+                $artifactGeneratedAt = if ($artifact.PSObject.Properties["generated_at"]) { [string]$artifact.generated_at } else { "" }
+
+                $parsedGeneratedAt = $null
+                if (-not [string]::IsNullOrWhiteSpace($artifactGeneratedAt)) {
+                    try {
+                        $parsedGeneratedAt = ([datetime]::Parse($artifactGeneratedAt, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)).ToUniversalTime()
+                    }
+                    catch {
+                        $parsedGeneratedAt = $null
+                    }
+                }
+
+                if ($null -ne $parsedGeneratedAt) {
+                    $artifactAgeMinutes = [math]::Round(((Get-Date).ToUniversalTime() - $parsedGeneratedAt).TotalMinutes, 2)
+                }
+
+                $passedAll = if ($artifact.PSObject.Properties["summary"] -and $artifact.summary -and $artifact.summary.PSObject.Properties["passed_all"]) { [bool]$artifact.summary.passed_all } else { $false }
+                $exitCode = if ($artifact.PSObject.Properties["summary"] -and $artifact.summary -and $artifact.summary.PSObject.Properties["exit_code"]) { [int]$artifact.summary.exit_code } else { 1 }
+                $executionStale = ($null -eq $artifactAgeMinutes) -or ($artifactAgeMinutes -gt $maxAgeMinutes)
+                $displayStale = ($null -eq $artifactAgeMinutes) -or ($artifactAgeMinutes -gt $displayMaxAgeMinutes)
+
+                if ($executionStale) {
+                    $status = "stale"
+                    $valid = $false
+                    $executionAllowed = $false
+                    $reason = "artifact_stale"
+                    $detail = "Execution readiness artifact is older than policy allows."
+                    $freshnessState = "stale"
+                }
+                elseif ($passedAll -and $exitCode -eq 0) {
+                    if ($displayStale) {
+                        $status = "degraded"
+                        $valid = $true
+                        $executionAllowed = $true
+                        $reason = "artifact_display_stale"
+                        $detail = "Execution readiness artifact still permits execution, but its display freshness window has expired."
+                        $freshnessState = "display_stale"
+                    }
+                    else {
+                        $status = "valid"
+                        $valid = $true
+                        $executionAllowed = $true
+                        $reason = "artifact_passed"
+                        $detail = "Execution readiness artifact is current and passing."
+                        $freshnessState = "fresh"
+                    }
+                }
+                else {
+                    $status = "invalid"
+                    $valid = $false
+                    $executionAllowed = $false
+                    $reason = "artifact_failed"
+                    $detail = "Execution readiness artifact exists but did not pass all checks."
+                    $freshnessState = if ($displayStale) { "display_stale" } else { "fresh" }
+                }
+            }
+            catch {
+                $status = "unknown"
+                $valid = $false
+                $executionAllowed = $false
+                $reason = "parse_failure"
+                $detail = [string]$_.Exception.Message
+                $freshnessState = "unknown"
+            }
+        }
+    }
+
+    if (-not $enabled) {
+        $executionAllowed = $true
+    }
+
+    $readinessPayload = [pscustomobject]@{
+        status = $status
+        valid = $valid
+        execution_allowed = $executionAllowed
+        authoritative = $true
+        reason = $reason
+        detail = $detail
+        freshness_state = $freshnessState
+        artifact_path = $signalPath
+        artifact_generated_at = $artifactGeneratedAt
+        artifact_age_minutes = $artifactAgeMinutes
+        execution_max_artifact_age_minutes = $maxAgeMinutes
+        display_max_artifact_age_minutes = $displayMaxAgeMinutes
+        checks_passed_all = if ($null -ne $artifact -and $artifact.PSObject.Properties["summary"] -and $null -ne $artifact.summary) { [bool]$artifact.summary.passed_all } else { $false }
+        artifact_exit_code = if ($null -ne $artifact -and $artifact.PSObject.Properties["summary"] -and $null -ne $artifact.summary -and $artifact.summary.PSObject.Properties["exit_code"]) { [int]$artifact.summary.exit_code } else { $null }
+    }
+    $history = Update-ExecutionReadinessHistory -Config $Config -ReadinessPayload $readinessPayload
+
+    return [pscustomobject]@{
+        path = "/tod/execution-readiness"
+        service = "tod"
+        signal_name = "execution-readiness"
+        capability_name = "TOD Sweep Certification Capability"
+        source = "tod_sweep_certification_v2"
+        authoritative_surface = "direct_artifact_smoke"
+        non_authoritative_surfaces = @("wrapper_pester_output")
+        generated_at = Get-UtcNow
+        artifact_path = $signalPath
+        history_path = $historyPath
+        policy = [pscustomobject]@{
+            enabled = $enabled
+            max_artifact_age_minutes = $maxAgeMinutes
+            display_max_artifact_age_minutes = $displayMaxAgeMinutes
+            block_actions = @($blockActions)
+            degrade_actions = @($degradeActions)
+            block_states = @($blockStates)
+            degrade_states = @($degradeStates)
+            history_path = $historyPath
+            degrade_apply_plan = if ($policy -and $policy.PSObject.Properties["degrade_apply_plan"]) { [bool]$policy.degrade_apply_plan } else { $true }
+        }
+        readiness = $readinessPayload
+        history = $history
+        certification = if ($null -ne $artifact) { $artifact } else { $null }
     }
 }
 
@@ -2685,6 +3813,7 @@ function Get-TodResourcingPayload {
     else {
         @($tasks | Select-Object -First $safeTop)
     }
+    $bridgeRuntimeTasks = @($objectiveTasks | Where-Object { Test-IsBridgeRuntimeTask -Task $_ })
 
     $categoryCounts = @{}
     foreach ($t in $objectiveTasks) {
@@ -2723,6 +3852,7 @@ function Get-TodResourcingPayload {
         }
         demand_profile = [pscustomobject]@{
             task_count = @($objectiveTasks).Count
+            bridge_runtime_count = @($bridgeRuntimeTasks).Count
             categories = [pscustomobject]$categoryCounts
             target_skills = @($skills)
         }
@@ -2774,19 +3904,11 @@ function Get-TodEngineerRunPayload {
     if (-not [string]::IsNullOrWhiteSpace($TaskId)) {
         $selectedTask = @($tasks | Where-Object { [string]$_.id -eq [string]$TaskId } | Select-Object -First 1)
     }
-    if (($null -eq $selectedTask -or @($selectedTask).Count -eq 0) -and $objective) {
-        $objectiveTasks = @($tasks | Where-Object { [string]$_.objective_id -eq [string]$objective.id })
-        $preferred = @($objectiveTasks | Where-Object {
-                $status = if ($_.PSObject.Properties["status"]) { ([string]$_.status).ToLowerInvariant() } else { "" }
-                $status -in @("in_progress", "open", "planned", "todo")
-            } | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
-        if (@($preferred).Count -gt 0) {
-            $selectedTask = $preferred
+        if (($null -eq $selectedTask -or @($selectedTask).Count -eq 0) -and $objective) {
+            $taskPartition = Get-ObjectiveTaskPartition -Tasks $tasks -ObjectiveId ([string]$objective.id)
+            $selectionPool = if (@($taskPartition.canonical).Count -gt 0) { @($taskPartition.canonical) } else { @($taskPartition.all) }
+            $selectedTask = Get-PreferredTaskSelection -Tasks $selectionPool
         }
-        else {
-            $selectedTask = @($objectiveTasks | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
-        }
-    }
     if (($null -eq $selectedTask -or @($selectedTask).Count -eq 0) -and @($tasks).Count -gt 0) {
         $selectedTask = @($tasks | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
     }
@@ -3508,24 +4630,36 @@ function Get-TodStateBusPayload {
     $sortedObjectives = @($objectives | Sort-Object created_at -Descending)
     $currentObjective = @($sortedObjectives | Select-Object -First 1)
     $currentObjectiveId = if (@($currentObjective).Count -gt 0) { [string]$currentObjective[0].id } else { "" }
-    $objectiveTasks = if ([string]::IsNullOrWhiteSpace($currentObjectiveId)) { @() } else { @($tasks | Where-Object { [string]$_.objective_id -eq $currentObjectiveId }) }
-
-    $taskStatusCounts = @{}
-    foreach ($task in $objectiveTasks) {
-        $statusValue = if ($task.PSObject.Properties["status"] -and -not [string]::IsNullOrWhiteSpace([string]$task.status)) { [string]$task.status } else { "unknown" }
-        $statusKey = $statusValue.Trim().ToLowerInvariant()
-        if (-not $taskStatusCounts.ContainsKey($statusKey)) {
-            $taskStatusCounts[$statusKey] = 0
-        }
-        $taskStatusCounts[$statusKey] = [int]$taskStatusCounts[$statusKey] + 1
+    $taskPartition = if ([string]::IsNullOrWhiteSpace($currentObjectiveId)) {
+        [pscustomobject]@{ all = @(); canonical = @(); bridge_runtime = @() }
     }
+    else {
+        Get-ObjectiveTaskPartition -Tasks $tasks -ObjectiveId $currentObjectiveId
+    }
+    $objectiveTasks = @($taskPartition.canonical)
+    $bridgeRuntimeTasks = @($taskPartition.bridge_runtime)
 
-    $activeTask = @($tasks | Sort-Object updated_at -Descending | Where-Object {
-            $_.PSObject.Properties["status"] -and
-            ([string]$_.status).ToLowerInvariant() -eq "in_progress"
-        } | Select-Object -First 1)
+    $taskStatusCounts = Get-TaskStatusBreakdown -Tasks $objectiveTasks
+    $bridgeRuntimeStatusCounts = Get-TaskStatusBreakdown -Tasks $bridgeRuntimeTasks
+
+    $activeTask = Get-PreferredTaskSelection -Tasks @($objectiveTasks | Where-Object {
+            $_.PSObject.Properties['status'] -and
+            ([string]$_.status).ToLowerInvariant() -eq 'in_progress'
+        })
     if (@($activeTask).Count -eq 0) {
-        $activeTask = @($tasks | Sort-Object updated_at -Descending | Select-Object -First 1)
+        $activeTask = Get-PreferredTaskSelection -Tasks @($bridgeRuntimeTasks | Where-Object {
+                $_.PSObject.Properties['status'] -and
+                ([string]$_.status).ToLowerInvariant() -eq 'in_progress'
+            })
+    }
+    if (@($activeTask).Count -eq 0) {
+        $activeTask = Get-PreferredTaskSelection -Tasks $objectiveTasks
+    }
+    if (@($activeTask).Count -eq 0) {
+        $activeTask = Get-PreferredTaskSelection -Tasks $bridgeRuntimeTasks
+    }
+    if (@($activeTask).Count -eq 0) {
+        $activeTask = Get-PreferredTaskSelection -Tasks $tasks
     }
 
     $pendingReviews = @($tasks | Where-Object {
@@ -3791,6 +4925,10 @@ function Get-TodStateBusPayload {
             current_alert_state = $currentAlertState
         }
         world_state = [pscustomobject]@{
+                bridge_runtime = [pscustomobject]@{
+                    total = @($bridgeRuntimeTasks).Count
+                    by_status = [pscustomobject]$bridgeRuntimeStatusCounts
+                }
             objective = if (@($currentObjective).Count -gt 0) { $currentObjective[0] } else { $null }
             objectives_total = @($objectives).Count
             tasks_total = @($tasks).Count
@@ -3810,6 +4948,10 @@ function Get-TodStateBusPayload {
             task_funnel = [pscustomobject]@{
                 total = @($objectiveTasks).Count
                 by_status = [pscustomobject]$taskStatusCounts
+                bridge_runtime = [pscustomobject]@{
+                    total = @($bridgeRuntimeTasks).Count
+                    by_status = [pscustomobject]$bridgeRuntimeStatusCounts
+                }
             }
             pending_review_count = @($pendingReviews).Count
         }
@@ -4281,6 +5423,8 @@ function Build-RunTaskReport {
     $attempted = @()
     $performanceRecordId = ""
     $lastRunSource = "manual_or_unknown"
+    $executionReadiness = $null
+    $executionTrace = $null
 
     $journalPayload = $null
     if ($latestRunTaskJournal -and $latestRunTaskJournal.payload) {
@@ -4304,6 +5448,13 @@ function Build-RunTaskReport {
         }
         if ($journalPayload.PSObject.Properties["engine_performance_record_id"]) {
             $performanceRecordId = [string]$journalPayload.engine_performance_record_id
+        }
+        if ($journalPayload.PSObject.Properties["execution_readiness"] -and $null -ne $journalPayload.execution_readiness) {
+            $executionReadiness = $journalPayload.execution_readiness
+            $executionTrace = [pscustomobject]@{
+                action = "run-task"
+                execution_readiness = $executionReadiness
+            }
         }
     }
 
@@ -4342,6 +5493,8 @@ function Build-RunTaskReport {
         retry_policy_snapshot = if ($latestRoutingRecord -and $latestRoutingRecord.routing -and $latestRoutingRecord.routing.PSObject.Properties["retry_policy"]) { $latestRoutingRecord.routing.retry_policy } else { $null }
         performance_delta = $perfDelta
         reliability_scorecard = $scorecard
+        execution_readiness = $executionReadiness
+        execution_trace = $executionTrace
     }
 }
 
@@ -4583,6 +5736,39 @@ function Load-TodConfig {
     if (-not $cfg.execution_engine.retry_policy.max_attempts_by_category.PSObject.Properties["code_change"] -or $null -eq $cfg.execution_engine.retry_policy.max_attempts_by_category.code_change) { $cfg.execution_engine.retry_policy.max_attempts_by_category | Add-Member -NotePropertyName code_change -NotePropertyValue 1 -Force }
     if (-not $cfg.execution_engine.retry_policy.max_attempts_by_category.PSObject.Properties["review_only"] -or $null -eq $cfg.execution_engine.retry_policy.max_attempts_by_category.review_only) { $cfg.execution_engine.retry_policy.max_attempts_by_category | Add-Member -NotePropertyName review_only -NotePropertyValue 2 -Force }
     if (-not $cfg.execution_engine.retry_policy.max_attempts_by_category.PSObject.Properties["refactor"] -or $null -eq $cfg.execution_engine.retry_policy.max_attempts_by_category.refactor) { $cfg.execution_engine.retry_policy.max_attempts_by_category | Add-Member -NotePropertyName refactor -NotePropertyValue 2 -Force }
+    if (-not $cfg.execution_engine.PSObject.Properties["readiness_policy"] -or $null -eq $cfg.execution_engine.readiness_policy) {
+        $cfg.execution_engine | Add-Member -NotePropertyName readiness_policy -NotePropertyValue ([pscustomobject]@{
+                enabled = $true
+                signal_path = "shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json"
+                max_artifact_age_minutes = 30
+                display_max_artifact_age_minutes = 10
+                block_actions = @("run-task")
+                degrade_actions = @("engineer-run")
+                block_states = @("stale", "invalid", "unknown")
+                degrade_states = @("degraded", "stale", "invalid", "unknown")
+                degrade_apply_plan = $true
+                history_path = "shared_state/tod_execution_readiness_history.latest.json"
+                history_max_entries = 50
+            }) -Force
+    }
+    if (-not $cfg.execution_engine.readiness_policy.PSObject.Properties["enabled"] -or $null -eq $cfg.execution_engine.readiness_policy.enabled) { $cfg.execution_engine.readiness_policy.enabled = $true }
+    if (-not $cfg.execution_engine.readiness_policy.PSObject.Properties["signal_path"] -or [string]::IsNullOrWhiteSpace([string]$cfg.execution_engine.readiness_policy.signal_path)) { $cfg.execution_engine.readiness_policy.signal_path = "shared_state/tod_operator_chat_sweep_artifact_smoke.latest.json" }
+    if (-not $cfg.execution_engine.readiness_policy.PSObject.Properties["max_artifact_age_minutes"] -or $null -eq $cfg.execution_engine.readiness_policy.max_artifact_age_minutes) { $cfg.execution_engine.readiness_policy.max_artifact_age_minutes = 30 }
+    if (-not $cfg.execution_engine.readiness_policy.PSObject.Properties["display_max_artifact_age_minutes"] -or $null -eq $cfg.execution_engine.readiness_policy.display_max_artifact_age_minutes) { $cfg.execution_engine.readiness_policy.display_max_artifact_age_minutes = [math]::Min([int]$cfg.execution_engine.readiness_policy.max_artifact_age_minutes, 10) }
+    if (-not $cfg.execution_engine.readiness_policy.PSObject.Properties["block_actions"] -or $null -eq $cfg.execution_engine.readiness_policy.block_actions) { $cfg.execution_engine.readiness_policy.block_actions = @("run-task") }
+    if (-not $cfg.execution_engine.readiness_policy.PSObject.Properties["degrade_actions"] -or $null -eq $cfg.execution_engine.readiness_policy.degrade_actions) { $cfg.execution_engine.readiness_policy.degrade_actions = @("engineer-run") }
+    if (-not $cfg.execution_engine.readiness_policy.PSObject.Properties["block_states"] -or $null -eq $cfg.execution_engine.readiness_policy.block_states) { $cfg.execution_engine.readiness_policy.block_states = @("stale", "invalid", "unknown") }
+    if (-not $cfg.execution_engine.readiness_policy.PSObject.Properties["degrade_states"] -or $null -eq $cfg.execution_engine.readiness_policy.degrade_states) { $cfg.execution_engine.readiness_policy.degrade_states = @("degraded", "stale", "invalid", "unknown") }
+    if (-not $cfg.execution_engine.readiness_policy.PSObject.Properties["degrade_apply_plan"] -or $null -eq $cfg.execution_engine.readiness_policy.degrade_apply_plan) { $cfg.execution_engine.readiness_policy.degrade_apply_plan = $true }
+    if (-not $cfg.execution_engine.readiness_policy.PSObject.Properties["history_path"] -or [string]::IsNullOrWhiteSpace([string]$cfg.execution_engine.readiness_policy.history_path)) { $cfg.execution_engine.readiness_policy.history_path = "shared_state/tod_execution_readiness_history.latest.json" }
+    if (-not $cfg.execution_engine.readiness_policy.PSObject.Properties["history_max_entries"] -or $null -eq $cfg.execution_engine.readiness_policy.history_max_entries) { $cfg.execution_engine.readiness_policy.history_max_entries = 50 }
+    $cfg.execution_engine.readiness_policy.block_actions = @($cfg.execution_engine.readiness_policy.block_actions | ForEach-Object { ([string]$_).ToLowerInvariant() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    $cfg.execution_engine.readiness_policy.degrade_actions = @($cfg.execution_engine.readiness_policy.degrade_actions | ForEach-Object { ([string]$_).ToLowerInvariant() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    $cfg.execution_engine.readiness_policy.block_states = @($cfg.execution_engine.readiness_policy.block_states | ForEach-Object { ([string]$_).ToLowerInvariant() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    $cfg.execution_engine.readiness_policy.degrade_states = @($cfg.execution_engine.readiness_policy.degrade_states | ForEach-Object { ([string]$_).ToLowerInvariant() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    $cfg.execution_engine.readiness_policy.max_artifact_age_minutes = [math]::Max(1, [math]::Min(1440, [int]$cfg.execution_engine.readiness_policy.max_artifact_age_minutes))
+    $cfg.execution_engine.readiness_policy.display_max_artifact_age_minutes = [math]::Max(1, [math]::Min([int]$cfg.execution_engine.readiness_policy.max_artifact_age_minutes, [int]$cfg.execution_engine.readiness_policy.display_max_artifact_age_minutes))
+    $cfg.execution_engine.readiness_policy.history_max_entries = [math]::Max(5, [math]::Min(500, [int]$cfg.execution_engine.readiness_policy.history_max_entries))
 
     if (-not $cfg.execution_engine.PSObject.Properties["routing_policy"] -or $null -eq $cfg.execution_engine.routing_policy) {
         $cfg.execution_engine | Add-Member -NotePropertyName routing_policy -NotePropertyValue ([pscustomobject]@{
@@ -5188,6 +6374,79 @@ function Get-TaskFromState {
         } | Select-Object -First 1)
 }
 
+function Test-IsBridgeRuntimeTask {
+    param($Task)
+
+    if ($null -eq $Task) {
+        return $false
+    }
+
+    $taskCategory = if ($Task.PSObject.Properties['task_category']) { [string]$Task.task_category } else { '' }
+    if ([string]::Equals($taskCategory, 'bridge_runtime', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    $source = if ($Task.PSObject.Properties['source']) { [string]$Task.source } else { '' }
+    return [string]::Equals($source, 'bridge_runtime_sync', [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-ObjectiveTaskPartition {
+    param(
+        [Parameter(Mandatory = $true)]$Tasks,
+        [string]$ObjectiveId
+    )
+
+    $objectiveTasks = if ([string]::IsNullOrWhiteSpace($ObjectiveId)) {
+        @()
+    }
+    else {
+        @($Tasks | Where-Object { [string]$_.objective_id -eq [string]$ObjectiveId })
+    }
+
+    $canonicalTasks = @($objectiveTasks | Where-Object { -not (Test-IsBridgeRuntimeTask -Task $_) })
+    $bridgeRuntimeTasks = @($objectiveTasks | Where-Object { Test-IsBridgeRuntimeTask -Task $_ })
+
+    return [pscustomobject]@{
+        all = @($objectiveTasks)
+        canonical = @($canonicalTasks)
+        bridge_runtime = @($bridgeRuntimeTasks)
+    }
+}
+
+function Get-TaskStatusBreakdown {
+    param([Parameter(Mandatory = $true)]$Tasks)
+
+    $statusCounts = @{}
+    foreach ($task in @($Tasks)) {
+        $statusValue = if ($task.PSObject.Properties['status'] -and -not [string]::IsNullOrWhiteSpace([string]$task.status)) { [string]$task.status } else { 'unknown' }
+        $statusKey = $statusValue.Trim().ToLowerInvariant()
+        if (-not $statusCounts.ContainsKey($statusKey)) {
+            $statusCounts[$statusKey] = 0
+        }
+        $statusCounts[$statusKey] = [int]$statusCounts[$statusKey] + 1
+    }
+
+    return $statusCounts
+}
+
+function Get-PreferredTaskSelection {
+    param([Parameter(Mandatory = $true)]$Tasks)
+
+    if (@($Tasks).Count -eq 0) {
+        return @()
+    }
+
+    $preferred = @($Tasks | Where-Object {
+            $status = if ($_.PSObject.Properties['status']) { ([string]$_.status).ToLowerInvariant() } else { '' }
+            $status -in @('in_progress', 'open', 'planned', 'todo')
+        } | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
+    if (@($preferred).Count -gt 0) {
+        return $preferred
+    }
+
+    return @($Tasks | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
+}
+
 function Resolve-TaskPackagePath {
     param(
         [Parameter(Mandatory = $true)][string]$TaskId,
@@ -5230,6 +6489,7 @@ function Convert-EngineResultToNormalizedEnvelope {
         test_results = @($EngineResult.test_results | ForEach-Object { [string]$_ })
         failures = @($EngineResult.failures | ForEach-Object { [string]$_ })
         recommendations = @($EngineResult.recommendations | ForEach-Object { [string]$_ })
+        structured_findings = @($EngineResult.structured_findings)
         needs_escalation = [bool]$EngineResult.needs_escalation
         execution_engine = [pscustomobject]@{
             name = [string]$engineName
@@ -5268,6 +6528,7 @@ function Normalize-EngineResultPayload {
         test_results = @($testResults)
         failures = @($failures)
         recommendations = @($recommendations)
+        structured_findings = @($EngineResult.structured_findings)
         needs_escalation = [bool]$EngineResult.needs_escalation
     }
 }
@@ -5930,6 +7191,77 @@ function Apply-CapabilityDegrade {
     return [pscustomobject]@{ degraded = $true; missing = @($missing) }
 }
 
+function Apply-ExecutionReadinessPolicy {
+    param(
+        [Parameter(Mandatory = $true)]$Config,
+        [Parameter(Mandatory = $true)][string]$ActionName,
+        [switch]$ApplyPlan
+    )
+
+    $signal = Get-TodExecutionReadinessPayload -Config $Config
+    $effectiveApplyPlan = [bool]$ApplyPlan
+
+    $actionNameLower = $ActionName.ToLowerInvariant()
+    $blockActions = @($signal.policy.block_actions | ForEach-Object { ([string]$_).ToLowerInvariant() })
+    $degradeActions = @($signal.policy.degrade_actions | ForEach-Object { ([string]$_).ToLowerInvariant() })
+    $blockStates = if ($signal.policy.PSObject.Properties["block_states"]) { @($signal.policy.block_states | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @("stale", "invalid", "unknown") }
+    $degradeStates = if ($signal.policy.PSObject.Properties["degrade_states"]) { @($signal.policy.degrade_states | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @("degraded", "stale", "invalid", "unknown") }
+    $statusLower = if ($signal.readiness.PSObject.Properties["status"] -and -not [string]::IsNullOrWhiteSpace([string]$signal.readiness.status)) { ([string]$signal.readiness.status).ToLowerInvariant() } else { "unknown" }
+    $blocked = $false
+    $degraded = $false
+
+    if ($signal.policy.enabled) {
+        if (($blockActions -contains $actionNameLower) -and ($blockStates -contains $statusLower)) {
+            $blocked = $true
+        }
+        elseif (($degradeActions -contains $actionNameLower) -and ($degradeStates -contains $statusLower)) {
+            $degraded = $true
+        }
+    }
+
+    if ($degraded -and $effectiveApplyPlan -and [bool]$signal.policy.degrade_apply_plan) {
+        $effectiveApplyPlan = $false
+    }
+
+    if ($degraded) {
+        Write-Warning "Execution readiness is $([string]$signal.readiness.status); action '$ActionName' is running in degraded mode."
+    }
+
+    $policyOutcome = if ($blocked) { "block" } elseif ($degraded) { "degrade" } else { "allow" }
+    $decisionPath = @(
+        "signal:execution-readiness",
+        "status:$([string]$signal.readiness.status)",
+        "source:$([string]$signal.readiness.reason)",
+        "action:$ActionName",
+        "policy_outcome:$policyOutcome"
+    )
+    if ($ApplyPlan.IsPresent) {
+        $decisionPath += "apply_plan_requested:true"
+        $decisionPath += "apply_plan_effective:$([bool]$effectiveApplyPlan)"
+    }
+
+    return [pscustomobject]@{
+        blocked = $blocked
+        degraded = $degraded
+        effective_apply_plan = $effectiveApplyPlan
+        signal = $signal
+        trace = [pscustomobject]@{
+            status = [string]$signal.readiness.status
+            source = [string]$signal.readiness.reason
+            detail = if ($signal.readiness.PSObject.Properties["detail"]) { [string]$signal.readiness.detail } else { "" }
+            valid = [bool]$signal.readiness.valid
+            execution_allowed = if ($signal.readiness.PSObject.Properties["execution_allowed"]) { [bool]$signal.readiness.execution_allowed } else { $false }
+            authoritative = if ($signal.readiness.PSObject.Properties["authoritative"]) { [bool]$signal.readiness.authoritative } else { $true }
+            freshness_state = if ($signal.readiness.PSObject.Properties["freshness_state"]) { [string]$signal.readiness.freshness_state } else { "unknown" }
+            signal_name = if ($signal.PSObject.Properties["signal_name"]) { [string]$signal.signal_name } else { "execution-readiness" }
+            evaluated_action = $ActionName
+            policy_outcome = $policyOutcome
+            effective_apply_plan = [bool]$effectiveApplyPlan
+            decision_path = @($decisionPath)
+        }
+    }
+}
+
 function Save-JsonObject {
     param([Parameter(Mandatory = $true)]$Object, [Parameter(Mandatory = $true)][string]$Path)
     $Object | ConvertTo-Json -Depth 16 | Set-Content -Path $Path
@@ -6083,6 +7415,302 @@ function Resolve-RemoteTaskId {
         return Try-ParseInt -Value ([string]$task.remote_task_id)
     }
     return $null
+}
+
+function Convert-RemoteTaskToTodTask {
+    param([Parameter(Mandatory = $true)]$Task)
+
+    $remoteTaskId = if ($Task.PSObject.Properties["task_id"]) { [string]$Task.task_id } else { "" }
+    return [pscustomobject]@{
+        id = if (-not [string]::IsNullOrWhiteSpace($remoteTaskId)) { $remoteTaskId } else { "" }
+        remote_task_id = $remoteTaskId
+        objective_id = if ($Task.PSObject.Properties["objective_id"]) { [string]$Task.objective_id } else { "" }
+        title = if ($Task.PSObject.Properties["title"]) { [string]$Task.title } else { "" }
+        scope = if ($Task.PSObject.Properties["scope"]) { [string]$Task.scope } else { "" }
+        type = "implementation"
+        task_category = ""
+        assigned_executor = if ($Task.PSObject.Properties["assigned_to"]) { [string]$Task.assigned_to } elseif ($Task.PSObject.Properties["assigned_executor"]) { [string]$Task.assigned_executor } else { "codex" }
+        status = if ($Task.PSObject.Properties["status"]) { [string]$Task.status } else { "pending" }
+        dependencies = if ($Task.PSObject.Properties["dependencies"]) { @($Task.dependencies | ForEach-Object { [string]$_ }) } else { @() }
+        acceptance_criteria = if ($Task.PSObject.Properties["acceptance_criteria"]) { @($Task.acceptance_criteria | ForEach-Object { [string]$_ }) } else { @() }
+        updated_at = Get-UtcNow
+    }
+}
+
+function Resolve-RemoteExecutionTask {
+    param(
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        [string]$ObjectiveId,
+        [Parameter(Mandatory = $true)]$Config
+    )
+
+    if (-not (Use-Remote -Config $Config)) {
+        return $null
+    }
+    if (-not (Get-Command -Name Get-MimTasks -ErrorAction SilentlyContinue)) {
+        return $null
+    }
+
+    $remoteObjectiveId = if (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) { Resolve-RemoteObjectiveId -ObjectiveId $ObjectiveId -State $null } else { $null }
+    $remoteTasks = Invoke-MimSafely -Config $Config -Operation "GET /tasks" -ApiCall {
+        Get-MimTasks -BaseUrl $Config.mim_base_url -ObjectiveId $(if ($null -ne $remoteObjectiveId) { [string]$remoteObjectiveId } else { "" }) -TimeoutSeconds ([int]$Config.timeout_seconds)
+    }
+
+    if ($null -eq $remoteTasks) {
+        return $null
+    }
+
+    $resolved = @($remoteTasks | Where-Object { [string]$_.task_id -eq [string]$TaskId } | Select-Object -First 1)
+    if (@($resolved).Count -eq 0) {
+        return $null
+    }
+
+    return (Convert-RemoteTaskToTodTask -Task $resolved[0])
+}
+
+function Get-BridgeRequestPacket {
+    if (-not (Test-Path -Path $bridgeRequestPacketPath -PathType Leaf)) {
+        throw "Bridge request packet not found at $bridgeRequestPacketPath"
+    }
+
+    try {
+        $payload = Get-Content -Path $bridgeRequestPacketPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw "Bridge request packet at '$bridgeRequestPacketPath' is not valid JSON: $([string]$_.Exception.Message)"
+    }
+
+    return [pscustomobject]@{
+        path = $bridgeRequestPacketPath
+        payload = $payload
+    }
+}
+
+function Resolve-BridgeRequestAction {
+    param([Parameter(Mandatory = $true)]$Request)
+
+    $actionName = ""
+    if ($Request.PSObject.Properties["tod_action"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.tod_action)) {
+        $actionName = [string]$Request.tod_action
+    }
+    elseif ($Request.PSObject.Properties["action"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.action)) {
+        $actionName = [string]$Request.action
+    }
+
+    if ([string]::IsNullOrWhiteSpace($actionName)) {
+        throw "Bridge request is missing tod_action/action and cannot be executed."
+    }
+
+    return $actionName.Trim()
+}
+
+function Test-BridgeRequestSupportedAction {
+    param([Parameter(Mandatory = $true)][string]$ActionName)
+
+    switch ($ActionName.ToLowerInvariant()) {
+        "get-capabilities" { return $true }
+        "get-execution-readiness" { return $true }
+        "get-state-bus" { return $true }
+        "get-version" { return $true }
+        "ping-mim" { return $true }
+        "safe_home" { return $true }
+        "scan_pose" { return $true }
+        default { return $false }
+    }
+}
+
+function Invoke-BridgeRequestExecution {
+    param(
+        [Parameter(Mandatory = $true)][string]$RequestId,
+        [Parameter(Mandatory = $true)][string]$ResolvedConfigPath,
+        [string]$ResolvedStatePath
+    )
+
+    $packet = Get-BridgeRequestPacket
+    $request = $packet.payload
+    $liveRequestId = if ($request.PSObject.Properties["request_id"] -and -not [string]::IsNullOrWhiteSpace([string]$request.request_id)) {
+        [string]$request.request_id
+    }
+    else {
+        ""
+    }
+
+    if ([string]::IsNullOrWhiteSpace($liveRequestId)) {
+        throw "Bridge request packet at '$([string]$packet.path)' is missing request_id."
+    }
+    if (-not [string]::Equals($liveRequestId, $RequestId, [System.StringComparison]::Ordinal)) {
+        throw "Latest bridge request_id '$liveRequestId' at '$([string]$packet.path)' does not match requested request_id '$RequestId'."
+    }
+
+    $bridgeAction = Resolve-BridgeRequestAction -Request $request
+    if (-not (Test-BridgeRequestSupportedAction -ActionName $bridgeAction)) {
+        throw "Bridge request '$RequestId' resolves to TOD action '$bridgeAction', which is not supported by run-bridge-request. Supported bridge actions: get-capabilities, get-execution-readiness, get-state-bus, get-version, ping-mim, safe_home, scan_pose."
+    }
+
+    $todArgs = @{
+        Action = $bridgeAction
+        ConfigPath = $ResolvedConfigPath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ResolvedStatePath)) {
+        $todArgs["StatePath"] = $ResolvedStatePath
+    }
+    if ($request.PSObject.Properties["Top"] -and $null -ne $request.Top) {
+        try {
+            $todArgs["Top"] = [int]$request.Top
+        }
+        catch {
+        }
+    }
+    elseif ($request.PSObject.Properties["top"] -and $null -ne $request.top) {
+        try {
+            $todArgs["Top"] = [int]$request.top
+        }
+        catch {
+        }
+    }
+
+    $startUtc = Get-UtcNow
+    try {
+        $raw = & $PSCommandPath @todArgs 2>&1
+        $payload = $null
+        try {
+            $payload = ($raw | ConvertFrom-Json)
+        }
+        catch {
+            $payload = $null
+        }
+
+        return [pscustomobject]@{
+            request_id = $liveRequestId
+            task_id = if ($request.PSObject.Properties["task_id"]) { [string]$request.task_id } else { "" }
+            objective_id = if ($request.PSObject.Properties["objective_id"]) { [string]$request.objective_id } else { "" }
+            tod_action = $bridgeAction
+            execution_lane = "bridge_request"
+            validated_request_match = $true
+            request_packet_path = [string]$packet.path
+            mim_task_lookup_used = $false
+            local_task_resolution_used = $false
+            request = [pscustomobject]@{
+                request_id = $liveRequestId
+                task_id = if ($request.PSObject.Properties["task_id"]) { [string]$request.task_id } else { "" }
+                objective_id = if ($request.PSObject.Properties["objective_id"]) { [string]$request.objective_id } else { "" }
+                tod_action = $bridgeAction
+                generated_at = if ($request.PSObject.Properties["generated_at"]) { [string]$request.generated_at } else { "" }
+                target = if ($request.PSObject.Properties["target"]) { [string]$request.target } else { "" }
+            }
+            execution = [pscustomobject]@{
+                ok = $true
+                blocked = if ($null -ne $payload -and $payload.PSObject.Properties["blocked"]) { [bool]$payload.blocked } else { $false }
+                action = $bridgeAction
+                execution_mode = "direct_script_success"
+                started_at = $startUtc
+                completed_at = Get-UtcNow
+                execution_readiness = if ($null -ne $payload -and $payload.PSObject.Properties["execution_readiness"]) { $payload.execution_readiness } else { $null }
+                execution_trace = if ($null -ne $payload -and $payload.PSObject.Properties["execution_trace"]) { $payload.execution_trace } else { $null }
+                payload = $payload
+                output = [string]($raw | Out-String)
+                error = ""
+            }
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            request_id = $liveRequestId
+            task_id = if ($request.PSObject.Properties["task_id"]) { [string]$request.task_id } else { "" }
+            objective_id = if ($request.PSObject.Properties["objective_id"]) { [string]$request.objective_id } else { "" }
+            tod_action = $bridgeAction
+            execution_lane = "bridge_request"
+            validated_request_match = $true
+            request_packet_path = [string]$packet.path
+            mim_task_lookup_used = $false
+            local_task_resolution_used = $false
+            request = [pscustomobject]@{
+                request_id = $liveRequestId
+                task_id = if ($request.PSObject.Properties["task_id"]) { [string]$request.task_id } else { "" }
+                objective_id = if ($request.PSObject.Properties["objective_id"]) { [string]$request.objective_id } else { "" }
+                tod_action = $bridgeAction
+                generated_at = if ($request.PSObject.Properties["generated_at"]) { [string]$request.generated_at } else { "" }
+                target = if ($request.PSObject.Properties["target"]) { [string]$request.target } else { "" }
+            }
+            execution = [pscustomobject]@{
+                ok = $false
+                blocked = $false
+                action = $bridgeAction
+                execution_mode = "direct_script_exception"
+                started_at = $startUtc
+                completed_at = Get-UtcNow
+                execution_readiness = $null
+                execution_trace = $null
+                payload = $null
+                output = ""
+                error = [string]$_.Exception.Message
+            }
+        }
+    }
+}
+
+function Get-ListenerRequestBridgeHint {
+    param([string]$TaskId)
+
+    if ([string]::IsNullOrWhiteSpace($TaskId)) {
+        return $null
+    }
+
+    $packetSpecs = @(
+        [pscustomobject]@{ kind = "request"; path = $bridgeRequestPacketPath },
+        [pscustomobject]@{ kind = "ack"; path = (Join-Path $repoRoot "tod/out/context-sync/listener/TOD_MIM_TASK_ACK.latest.json") },
+        [pscustomobject]@{ kind = "result"; path = (Join-Path $repoRoot "tod/out/context-sync/listener/TOD_MIM_TASK_RESULT.latest.json") }
+    )
+
+    foreach ($packetSpec in $packetSpecs) {
+        if (-not (Test-Path -Path $packetSpec.path -PathType Leaf)) {
+            continue
+        }
+
+        try {
+            $payload = Get-Content -Path $packetSpec.path -Raw | ConvertFrom-Json
+        }
+        catch {
+            continue
+        }
+
+        $candidateTaskId = if ($payload.PSObject.Properties["task_id"]) { [string]$payload.task_id } else { "" }
+        $candidateRequestId = if ($payload.PSObject.Properties["request_id"]) { [string]$payload.request_id } else { "" }
+        if (([string]$candidateTaskId -ne [string]$TaskId) -and ([string]$candidateRequestId -ne [string]$TaskId)) {
+            continue
+        }
+
+        return [pscustomobject]@{
+            kind = [string]$packetSpec.kind
+            path = [string]$packetSpec.path
+            task_id = $candidateTaskId
+            request_id = $candidateRequestId
+            objective_id = if ($payload.PSObject.Properties["objective_id"]) { [string]$payload.objective_id } elseif ($payload.PSObject.Properties["objective"]) { [string]$payload.objective } else { "" }
+            title = if ($payload.PSObject.Properties["title"]) { [string]$payload.title } else { "" }
+            tod_action = if ($payload.PSObject.Properties["tod_action"]) { [string]$payload.tod_action } elseif ($payload.PSObject.Properties["action"]) { [string]$payload.action } else { "" }
+            status = if ($payload.PSObject.Properties["status"]) { [string]$payload.status } else { "" }
+            generated_at = if ($payload.PSObject.Properties["generated_at"]) { [string]$payload.generated_at } else { "" }
+        }
+    }
+
+    return $null
+}
+
+function Get-RemoteTaskResolutionFailureMessage {
+    param(
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        $BridgeHint
+    )
+
+    if ($null -eq $BridgeHint) {
+        return "Task not found in local state cache or remote task registry: $TaskId"
+    }
+
+    $objectiveText = if (-not [string]::IsNullOrWhiteSpace([string]$BridgeHint.objective_id)) { [string]$BridgeHint.objective_id } else { "unknown" }
+    $actionText = if (-not [string]::IsNullOrWhiteSpace([string]$BridgeHint.tod_action)) { [string]$BridgeHint.tod_action } else { "unspecified" }
+    $statusText = if (-not [string]::IsNullOrWhiteSpace([string]$BridgeHint.status)) { [string]$BridgeHint.status } else { [string]$BridgeHint.kind }
+
+    return "Task '$TaskId' matches the live listener $([string]$BridgeHint.kind) packet at '$([string]$BridgeHint.path)'. This is a bridge request_id/task_id for objective '$objectiveText' and TOD action '$actionText' (status '$statusText'), not a numeric MIM /tasks record. Execute it with '.\\scripts\\TOD.ps1 -Action run-bridge-request -RequestId $TaskId' or use a resolvable MIM task ID."
 }
 
 function Resolve-ExecutionFeedbackConfig {
@@ -6294,8 +7922,30 @@ if ($Action -eq "init") {
     return
 }
 
-$state = Load-State
 $config = Load-TodConfig
+$state = [pscustomobject]@{}
+$stateLoadGuard = Get-StateLoadGuardInfo -Path $statePath
+$stateAccess = [pscustomobject]@{
+    mode = "full"
+    local_cache_enabled = $true
+    oversized = [bool]$stateLoadGuard.oversized
+    state_file = $stateLoadGuard
+}
+if (Test-ActionRequiresState -ActionName $Action) {
+    if ([bool]$stateLoadGuard.oversized -and (Test-ActionSupportsLightweightStateBus -ActionName $Action)) {
+        $stateAccess.mode = "lightweight_guard"
+        $stateAccess.local_cache_enabled = $false
+        $state = New-MinimalTodState
+    }
+    elseif ([bool]$stateLoadGuard.oversized -and @("run-task", "add-result", "review-task") -contains $Action -and (Use-Remote -Config $config)) {
+        $stateAccess.mode = "remote_ephemeral"
+        $stateAccess.local_cache_enabled = $false
+        $state = New-MinimalTodState
+    }
+    else {
+        $state = Load-State
+    }
+}
 if (Get-Command -Name Set-MimApiDebugLogging -ErrorAction SilentlyContinue) {
     $resolvedDebugPath = [string]$config.mim_debug.log_path
     if ([string]::IsNullOrWhiteSpace($resolvedDebugPath)) {
@@ -6305,6 +7955,11 @@ if (Get-Command -Name Set-MimApiDebugLogging -ErrorAction SilentlyContinue) {
 }
 $engineConfig = Resolve-ExecutionEngineConfig -Config $config -State $state -DisableAdaptiveRouting:$ForceConfiguredEngine
 $capabilityGate = Apply-CapabilityDegrade -Config $config -State $state -ActionName $Action
+$executionReadinessGate = Apply-ExecutionReadinessPolicy -Config $config -ActionName $Action -ApplyPlan:$ApplyPlan
+$ApplyPlan = [bool]$executionReadinessGate.effective_apply_plan
+if ($executionReadinessGate.blocked -and $Action -ne "run-task") {
+    throw "Blocked action '$Action' because execution-readiness is $([string]$executionReadinessGate.signal.readiness.status). Run .\\scripts\\Test-TODOperatorChatSweepArtifact.ps1 and restore a valid certification artifact before executing tasks."
+}
 Assert-ContractGate -ActionName $Action -State $state -AllowDrift:$AllowContractDrift
 
 if ((Use-Remote -Config $config) -and -not (Get-Command -Name Get-MimHealth -ErrorAction SilentlyContinue)) {
@@ -6339,6 +7994,18 @@ switch ($Action) {
             health = $health
             status = $status
         } | ConvertTo-Json -Depth 10
+    }
+
+    "safe_home" {
+        $dotEnvPath = Join-Path $repoRoot ".env"
+        $safeHomeResult = Invoke-MimArmSafeHome -DotEnvPathValue $dotEnvPath -TimeoutSeconds ([int]$config.timeout_seconds)
+        $safeHomeResult | ConvertTo-Json -Depth 12
+    }
+
+    "scan_pose" {
+        $dotEnvPath = Join-Path $repoRoot ".env"
+        $scanPoseResult = Invoke-MimArmNamedRoutine -DotEnvPathValue $dotEnvPath -RoutineName 'scan_pose' -TimeoutSeconds ([int]$config.timeout_seconds)
+        $scanPoseResult | ConvertTo-Json -Depth 12
     }
 
     "compare-manifest" {
@@ -6504,11 +8171,14 @@ switch ($Action) {
         if ([string]::IsNullOrWhiteSpace($Description)) { throw "-Description is required" }
         if ([string]::IsNullOrWhiteSpace($SuccessCriteria)) { throw "-SuccessCriteria is required" }
 
+        $safeTitle = Limit-StateTextField -Value ([string]$Title) -MaxLength 512 -FieldName "objective.title"
+        $safeDescription = Limit-StateTextField -Value ([string]$Description) -MaxLength 8192 -FieldName "objective.description"
+
         $id = New-Id -Prefix "OBJ" -Count $state.objectives.Count
         $obj = [pscustomobject]@{
             id = $id
-            title = $Title
-            description = $Description
+            title = $safeTitle
+            description = $safeDescription
             priority = $Priority
             constraints = [string[]](Split-List -Value $Constraints)
             success_criteria = [string[]](Split-List -Value $SuccessCriteria)
@@ -6772,15 +8442,68 @@ switch ($Action) {
         if ([string]::IsNullOrWhiteSpace($TaskId)) { throw "-TaskId is required" }
 
         $task = Get-TaskFromState -State $state -TaskId $TaskId
-        if (-not $task) { throw "Task not found in local state cache: $TaskId" }
+        if ((-not $task) -and [string]$stateAccess.mode -eq "remote_ephemeral") {
+            $task = Resolve-RemoteExecutionTask -TaskId $TaskId -ObjectiveId $ObjectiveId -Config $config
+            if ($task) {
+                $state.tasks += $task
+            }
+        }
+        if (-not $task) {
+            $bridgeHint = Get-ListenerRequestBridgeHint -TaskId $TaskId
+            throw (Get-RemoteTaskResolutionFailureMessage -TaskId $TaskId -BridgeHint $bridgeHint)
+        }
         $feedbackConfig = Resolve-ExecutionFeedbackConfig -Config $config
         $resolvedExecutionId = Resolve-ExecutionIdForTask -ExplicitExecutionId $ExecutionId -Task $task
         $feedbackEvents = @()
+        $memoryProfile = [ordered]@{
+            before_execution = Get-ProcessMemorySnapshot
+            after_execution = $null
+            after_result_persist = $null
+            peak_private_memory_mb = $null
+        }
         $taskCategoryResolved = Resolve-TaskCategory -Task $task
         $actionEngineConfig = Resolve-ExecutionEngineConfig -Config $config -State $state -DisableAdaptiveRouting:$ForceConfiguredEngine -TaskCategoryHint $taskCategoryResolved
         $routingPre = Add-RoutingDecisionRecord -State $state -TaskId $TaskId -ActionName "run_task" -EngineConfig $actionEngineConfig -TaskCategory $taskCategoryResolved -FinalOutcome "pre_invocation"
         $routingPre = @($routingPre | Select-Object -First 1)
-        Save-State -State $state
+        if ([bool]$stateAccess.local_cache_enabled) {
+            Save-State -State $state
+        }
+
+        if ($executionReadinessGate.blocked) {
+            $blockedFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status "blocked" -TaskId $TaskId -Details ([pscustomobject]@{
+                    reason = "readiness_policy_blocked"
+                    task_category = $taskCategoryResolved
+                    execution_readiness = $executionReadinessGate.trace
+                })
+            $feedbackEvents += @([pscustomobject]@{ status = "blocked"; publish = $blockedFeedback })
+            Add-Journal -State $state -Actor "tod" -ActionName "run_task_blocked" -EntityType "task" -EntityId $TaskId -Payload ([pscustomobject]@{
+                    task_category = $taskCategoryResolved
+                    reason = "execution_readiness_blocked"
+                    execution_readiness = $executionReadinessGate.trace
+                })
+            if ([bool]$stateAccess.local_cache_enabled) {
+                Save-State -State $state
+            }
+
+            [pscustomobject]@{
+                task_id = [string]$TaskId
+                execution_id = [string]$resolvedExecutionId
+                task_category = $taskCategoryResolved
+                decision = "blocked"
+                blocked = $true
+                execution_feedback = @($feedbackEvents)
+                execution_readiness = $executionReadinessGate.trace
+                execution_trace = [pscustomobject]@{
+                    action = "run-task"
+                    execution_readiness = $executionReadinessGate.trace
+                }
+                routing_decision_preinvoke = $routingPre[0]
+                message = "run-task blocked by execution-readiness policy before engine invocation."
+                state_access = $stateAccess
+                memory_profile = [pscustomobject]$memoryProfile
+            } | ConvertTo-Json -Depth 14
+            break
+        }
 
         if ($actionEngineConfig.routing -and $actionEngineConfig.routing.PSObject.Properties["blocked"] -and [bool]$actionEngineConfig.routing.blocked) {
             $routingFinalBlocked = Update-RoutingDecisionRecord -State $state -RoutingDecisionId ([string]$routingPre[0].id) -FinalOutcome "escalated_pre_run"
@@ -6795,7 +8518,9 @@ switch ($Action) {
                     task_category = $taskCategoryResolved
                 })
             $feedbackEvents += @([pscustomobject]@{ status = "blocked"; publish = $blockedFeedback })
-            Save-State -State $state
+            if ([bool]$stateAccess.local_cache_enabled) {
+                Save-State -State $state
+            }
 
             [pscustomobject]@{
                 task_id = [string]$TaskId
@@ -6804,10 +8529,17 @@ switch ($Action) {
                 decision = "escalate"
                 blocked = $true
                 execution_feedback = @($feedbackEvents)
+                execution_readiness = $executionReadinessGate.trace
+                execution_trace = [pscustomobject]@{
+                    action = "run-task"
+                    execution_readiness = $executionReadinessGate.trace
+                }
                 routing_decision_preinvoke = $routingPre[0]
                 routing_decision = $routingFinalBlocked
                 message = "run-task blocked by routing guardrail before engine invocation."
-            } | ConvertTo-Json -Depth 12
+                state_access = $stateAccess
+                memory_profile = [pscustomobject]$memoryProfile
+            } | ConvertTo-Json -Depth 14
             break
         }
 
@@ -6828,8 +8560,10 @@ switch ($Action) {
         $invokeResult = $null
         try {
             $invokeResult = Invoke-ExecutionEngine -Task $task -TaskId $TaskId -PackagePath $packagePath -EngineConfig $actionEngineConfig
+            $memoryProfile.after_execution = Get-ProcessMemorySnapshot
         }
         catch {
+            $memoryProfile.after_execution = Get-ProcessMemorySnapshot
             $failedFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status "failed" -TaskId $TaskId -Details ([pscustomobject]@{
                     reason = "executor_unavailable"
                     task_category = $taskCategoryResolved
@@ -6871,6 +8605,12 @@ switch ($Action) {
 
         $unresolvedCsv = (@($resultPayload.failures) + @($precheckWarnings) | ForEach-Object { [string]$_ }) -join ","
         $reviewResponse = (& $PSCommandPath -Action review-task -ConfigPath $configPath -StatePath $statePath -TaskId $TaskId -Decision $reviewDecision -Rationale $rationale -UnresolvedIssues $unresolvedCsv) | ConvertFrom-Json
+    $memoryProfile.after_result_persist = Get-ProcessMemorySnapshot
+    $memoryProfile.peak_private_memory_mb = [math]::Round((@(
+            [double]$memoryProfile.before_execution.private_memory_mb,
+            [double]$(if ($null -ne $memoryProfile.after_execution) { $memoryProfile.after_execution.private_memory_mb } else { 0.0 }),
+            [double]$(if ($null -ne $memoryProfile.after_result_persist) { $memoryProfile.after_result_persist.private_memory_mb } else { 0.0 })
+        ) | Measure-Object -Maximum).Maximum, 2)
 
         $attemptedEngines = @($invokeResult.attempted_engines)
         $attemptRecords = @($invokeResult.attempts)
@@ -6893,8 +8633,8 @@ switch ($Action) {
             })
         $feedbackEvents += @([pscustomobject]@{ status = $terminalStatus; publish = $terminalFeedback })
 
-        $stateAfter = Load-State
-    $routingRecord = Update-RoutingDecisionRecord -State $stateAfter -RoutingDecisionId ([string]$routingPre[0].id) -FinalOutcome ([string]$reviewDecision) -InvokeResult $invokeResult
+        $stateAfter = if ([bool]$stateAccess.local_cache_enabled) { Load-State } else { $state }
+        $routingRecord = Update-RoutingDecisionRecord -State $stateAfter -RoutingDecisionId ([string]$routingPre[0].id) -FinalOutcome ([string]$reviewDecision) -InvokeResult $invokeResult
         $taskType = if ($task.PSObject.Properties["type"]) { [string]$task.type } else { "implementation" }
         $perfRecord = Add-EnginePerformanceRecord -State $stateAfter -TaskId $TaskId -InvokeResult $invokeResult -ReviewDecision $reviewDecision -TaskType $taskType -TaskCategory $taskCategoryResolved -FilesInvolved @($resultPayload.files_changed)
         Add-Journal -State $stateAfter -Actor "tod" -ActionName "run_task" -EntityType "task" -EntityId $TaskId -Payload ([pscustomobject]@{
@@ -6903,12 +8643,15 @@ switch ($Action) {
                 fallback_applied = [bool]$invokeResult.fallback_applied
                 result_summary = [string]$resultPayload.summary
                 review_decision = $reviewDecision
-            engine_performance_record_id = [string]$perfRecord.id
-            task_category = $taskCategoryResolved
-            routing_decision_id = [string]$routingRecord.id
-            routing_decision = $routingRecord
+                engine_performance_record_id = [string]$perfRecord.id
+                task_category = $taskCategoryResolved
+                routing_decision_id = [string]$routingRecord.id
+                routing_decision = $routingRecord
+                execution_readiness = $executionReadinessGate.trace
             })
-        Save-State -State $stateAfter
+        if ([bool]$stateAccess.local_cache_enabled) {
+            Save-State -State $stateAfter
+        }
 
         [pscustomobject]@{
             task_id = $TaskId
@@ -6919,10 +8662,24 @@ switch ($Action) {
             review_response = $reviewResponse
             decision = $reviewDecision
             execution_feedback = @($feedbackEvents)
+            execution_readiness = $executionReadinessGate.trace
+            execution_trace = [pscustomobject]@{
+                action = "run-task"
+                execution_readiness = $executionReadinessGate.trace
+            }
             routing_decision_preinvoke = $routingPre[0]
             routing_decision = $routingRecord
             engine_performance_record = $perfRecord
-        } | ConvertTo-Json -Depth 12
+            state_access = $stateAccess
+            memory_profile = [pscustomobject]$memoryProfile
+        } | ConvertTo-Json -Depth 14
+    }
+
+    "run-bridge-request" {
+        if ([string]::IsNullOrWhiteSpace($RequestId)) { throw "-RequestId is required" }
+
+        $bridgeExecution = Invoke-BridgeRequestExecution -RequestId $RequestId -ResolvedConfigPath $configPath -ResolvedStatePath $statePath
+        $bridgeExecution | ConvertTo-Json -Depth 14
     }
 
     "run-task-report" {
@@ -6947,16 +8704,40 @@ switch ($Action) {
     }
 
     "show-failure-taxonomy" {
+        if ([string]$stateAccess.mode -eq "lightweight_guard") {
+            $payload = Invoke-LightweightStateBusPayload
+            $result = if ($payload.PSObject.Properties["failure_taxonomy"]) { $payload.failure_taxonomy } else { $payload }
+            $result | Add-Member -NotePropertyName state_access -NotePropertyValue $stateAccess -Force
+            $result | ConvertTo-Json -Depth 16
+            break
+        }
+
         $report = Build-FailureTaxonomyReport -State $state -Window $Top -CategoryFilter $Category -EngineFilter $Engine
         $report | ConvertTo-Json -Depth 16
     }
 
     "show-reliability-dashboard" {
+        if ([string]$stateAccess.mode -eq "lightweight_guard") {
+            $payload = Invoke-LightweightStateBusPayload
+            $result = if ($payload.PSObject.Properties["reliability_dashboard"]) { $payload.reliability_dashboard } else { $payload }
+            $result | Add-Member -NotePropertyName state_access -NotePropertyValue $stateAccess -Force
+            $result | ConvertTo-Json -Depth 18
+            break
+        }
+
         $dashboard = Build-ReliabilityDashboard -State $state -Config $config -Window $Top -CategoryFilter $Category -EngineFilter $Engine
         $dashboard | ConvertTo-Json -Depth 18
     }
 
     "get-reliability" {
+        if ([string]$stateAccess.mode -eq "lightweight_guard") {
+            $payload = Invoke-LightweightStateBusPayload
+            $result = if ($payload.PSObject.Properties["reliability"]) { $payload.reliability } else { $payload }
+            $result | Add-Member -NotePropertyName state_access -NotePropertyValue $stateAccess -Force
+            $result | ConvertTo-Json -Depth 18
+            break
+        }
+
         $dashboard = Build-ReliabilityDashboard -State $state -Config $config -Window $Top -CategoryFilter $Category -EngineFilter $Engine
         $retryTrend = if ($dashboard.PSObject.Properties["retry_trend"] -and $null -ne $dashboard.retry_trend) { @($dashboard.retry_trend) } else { @() }
         $driftWarnings = if ($dashboard.PSObject.Properties["drift_warnings"] -and $null -ne $dashboard.drift_warnings) { @($dashboard.drift_warnings) } else { @() }
@@ -7006,6 +8787,11 @@ switch ($Action) {
         } | ConvertTo-Json -Depth 18
     }
 
+    "get-execution-readiness" {
+        $payload = Get-TodExecutionReadinessPayload -Config $config
+        $payload | ConvertTo-Json -Depth 20
+    }
+
     "get-capabilities" {
         $caps = Get-TodCapabilitiesPayload -Config $config
         $caps | ConvertTo-Json -Depth 18
@@ -7023,6 +8809,13 @@ switch ($Action) {
 
     "engineer-run" {
         $payload = Get-TodEngineerRunPayload -State $state -Config $config -ObjectiveId $ObjectiveId -TaskId $TaskId -Body $Content -Append:$Append -ApplyPlan:$ApplyPlan -DangerousApproved:$DangerousApproved -Top $Top
+        $payload | Add-Member -NotePropertyName execution_readiness -NotePropertyValue $executionReadinessGate.signal.readiness -Force
+        $payload | Add-Member -NotePropertyName execution_readiness_degraded -NotePropertyValue ([bool]$executionReadinessGate.degraded) -Force
+        $payload | Add-Member -NotePropertyName apply_plan_effective -NotePropertyValue ([bool]$ApplyPlan) -Force
+        $payload | Add-Member -NotePropertyName execution_trace -NotePropertyValue ([pscustomobject]@{
+            action = "engineer-run"
+            execution_readiness = $executionReadinessGate.trace
+            }) -Force
         $runHistoryLimit = Resolve-EngineeringLoopHistoryLimit -Config $config -Kind "run_history"
         $null = Add-EngineeringRunHistoryRecord -State $state -Payload $payload -MaxEntries $runHistoryLimit
         Add-Journal -State $state -Actor "tod" -ActionName "engineer_run" -EntityType "task" -EntityId $(if (-not [string]::IsNullOrWhiteSpace([string]$payload.focus.task_id)) { [string]$payload.focus.task_id } else { "none" }) -Payload $payload
@@ -7039,11 +8832,27 @@ switch ($Action) {
     }
 
     "get-engineering-loop-summary" {
+        if ([string]$stateAccess.mode -eq "lightweight_guard") {
+            $payload = Invoke-LightweightStateBusPayload
+            $result = if ($payload.PSObject.Properties["engineering_summary"]) { $payload.engineering_summary } else { $payload }
+            $result | Add-Member -NotePropertyName state_access -NotePropertyValue $stateAccess -Force
+            $result | ConvertTo-Json -Depth 18
+            break
+        }
+
         $payload = Get-TodEngineeringLoopSummaryPayload -State $state -Config $config -Top $Top
         $payload | ConvertTo-Json -Depth 18
     }
 
     "get-engineering-signal" {
+        if ([string]$stateAccess.mode -eq "lightweight_guard") {
+            $payload = Invoke-LightweightStateBusPayload
+            $result = if ($payload.PSObject.Properties["engineering_signal"]) { $payload.engineering_signal } else { $payload }
+            $result | Add-Member -NotePropertyName state_access -NotePropertyValue $stateAccess -Force
+            $result | ConvertTo-Json -Depth 18
+            break
+        }
+
         $payload = Get-TodEngineeringSignalPayload -State $state -Config $config -Top $Top
         $payload | ConvertTo-Json -Depth 18
     }
@@ -7104,7 +8913,28 @@ switch ($Action) {
         $payload | ConvertTo-Json -Depth 18
     }
 
+    "repair-state" {
+        $repairReport = Repair-StateFileOversizedStrings -Path $statePath
+        $repairedState = Load-State
+        $compaction = Compress-StateForOperationalUse -State $repairedState -Config $config
+        Save-State -State $repairedState
+        $finalBytes = (Get-Item -Path $statePath).Length
+
+        [pscustomobject]@{
+            repaired = $repairReport
+            compaction = $compaction
+            final_state_bytes = [int64]$finalBytes
+        } | ConvertTo-Json -Depth 12
+    }
+
     "get-state-bus" {
+        if ([string]$stateAccess.mode -eq "lightweight_guard") {
+            $payload = Invoke-LightweightStateBusPayload
+            $payload | Add-Member -NotePropertyName state_access -NotePropertyValue $stateAccess -Force
+            $payload | ConvertTo-Json -Depth 24
+            break
+        }
+
         $stateBus = Get-TodStateBusPayload -Config $config -State $state -Top $Top
         $stateBus | ConvertTo-Json -Depth 24
     }
@@ -7119,7 +8949,7 @@ switch ($Action) {
         if ([string]::IsNullOrWhiteSpace($Summary)) { throw "-Summary is required" }
 
         $task = $null
-        if (Use-Local -Config $config) {
+        if ((Use-Local -Config $config) -and [bool]$stateAccess.local_cache_enabled) {
             $task = $state.tasks | Where-Object { $_.id -eq $TaskId } | Select-Object -First 1
             if (-not $task) { throw "Task not found: $TaskId" }
         }
@@ -7139,8 +8969,18 @@ switch ($Action) {
         }
 
         $remoteCreated = $null
+        $remoteTaskId = $null
         if (Use-Remote -Config $config) {
             $remoteTaskId = Resolve-RemoteTaskId -TaskId $TaskId -State $state
+            if ($null -eq $remoteTaskId -and [string]$stateAccess.mode -eq "remote_ephemeral") {
+                $remoteTask = Resolve-RemoteExecutionTask -TaskId $TaskId -ObjectiveId $ObjectiveId -Config $config
+                if ($remoteTask) {
+                    $remoteTaskId = Resolve-RemoteTaskId -TaskId ([string]$remoteTask.id) -State ([pscustomobject]@{ tasks = @($remoteTask) })
+                    if ($null -eq $task) {
+                        $task = $remoteTask
+                    }
+                }
+            }
             if ($null -ne $remoteTaskId) {
                 $remoteCreated = Invoke-MimSafely -Config $config -Operation "POST /results" -ApiCall {
                     New-MimResult -BaseUrl $config.mim_base_url -TimeoutSeconds ([int]$config.timeout_seconds) -Result $result -RemoteTaskId $remoteTaskId
@@ -7148,6 +8988,10 @@ switch ($Action) {
             }
             elseif (([string]$config.mode).ToLowerInvariant() -eq "remote") {
                 throw "Cannot submit result to MIM without a remote integer task ID for task '$TaskId'."
+            }
+            elseif ([string]$stateAccess.mode -eq "remote_ephemeral") {
+                $bridgeHint = Get-ListenerRequestBridgeHint -TaskId $TaskId
+                throw ("Cannot safely fall back to local state for add-result because state.json is oversized and no remote task ID could be resolved for '$TaskId'. " + (Get-RemoteTaskResolutionFailureMessage -TaskId $TaskId -BridgeHint $bridgeHint))
             }
             else {
                 Write-Warning "Skipping remote result submission because no remote task ID is available for task '$TaskId'."
@@ -7165,7 +9009,7 @@ switch ($Action) {
             }
         }
 
-        if ((Use-Local -Config $config) -or ((([string]$config.mode).ToLowerInvariant() -eq "hybrid") -and $null -eq $remoteCreated -and [bool]$config.fallback_to_local)) {
+        if ([bool]$stateAccess.local_cache_enabled -and ((Use-Local -Config $config) -or ((([string]$config.mode).ToLowerInvariant() -eq "hybrid") -and $null -eq $remoteCreated -and [bool]$config.fallback_to_local))) {
             $state.execution_results += $result
             if ($task) {
                 if ($remoteCreated -and $remoteCreated.PSObject.Properties["task_id"]) {
@@ -7182,13 +9026,14 @@ switch ($Action) {
             Save-State -State $state
         }
 
-        if (Use-Local -Config $config) {
+        if ((Use-Local -Config $config) -and [bool]$stateAccess.local_cache_enabled) {
             if ($remoteCreated) {
                 [pscustomobject]@{
                     mode = $config.mode
                     local = $result
                     remote = $remoteCreated
                     engine_metadata = $result.engine_metadata
+                    state_access = $stateAccess
                 } | ConvertTo-Json -Depth 12
             }
             else {
@@ -7198,6 +9043,9 @@ switch ($Action) {
         else {
             if ($remoteCreated -and ((-not $remoteCreated.PSObject.Properties["engine_metadata"]) -or $null -eq $remoteCreated.engine_metadata)) {
                 $remoteCreated | Add-Member -NotePropertyName engine_metadata -NotePropertyValue $result.engine_metadata -Force
+            }
+            if ($remoteCreated) {
+                $remoteCreated | Add-Member -NotePropertyName state_access -NotePropertyValue $stateAccess -Force
             }
             $remoteCreated | ConvertTo-Json -Depth 12
         }
@@ -7209,7 +9057,7 @@ switch ($Action) {
         if ([string]::IsNullOrWhiteSpace($Rationale)) { throw "-Rationale is required" }
 
         $task = $null
-        if (Use-Local -Config $config) {
+        if ((Use-Local -Config $config) -and [bool]$stateAccess.local_cache_enabled) {
             $task = $state.tasks | Where-Object { $_.id -eq $TaskId } | Select-Object -First 1
             if (-not $task) { throw "Task not found: $TaskId" }
         }
@@ -7226,8 +9074,18 @@ switch ($Action) {
         }
 
         $remoteCreated = $null
+        $remoteTaskId = $null
         if (Use-Remote -Config $config) {
             $remoteTaskId = Resolve-RemoteTaskId -TaskId $TaskId -State $state
+            if ($null -eq $remoteTaskId -and [string]$stateAccess.mode -eq "remote_ephemeral") {
+                $remoteTask = Resolve-RemoteExecutionTask -TaskId $TaskId -ObjectiveId $ObjectiveId -Config $config
+                if ($remoteTask) {
+                    $remoteTaskId = Resolve-RemoteTaskId -TaskId ([string]$remoteTask.id) -State ([pscustomobject]@{ tasks = @($remoteTask) })
+                    if ($null -eq $task) {
+                        $task = $remoteTask
+                    }
+                }
+            }
             if ($null -ne $remoteTaskId) {
                 $remoteCreated = Invoke-MimSafely -Config $config -Operation "POST /reviews" -ApiCall {
                     New-MimReview -BaseUrl $config.mim_base_url -TimeoutSeconds ([int]$config.timeout_seconds) -Review $review -RemoteTaskId $remoteTaskId
@@ -7235,6 +9093,10 @@ switch ($Action) {
             }
             elseif (([string]$config.mode).ToLowerInvariant() -eq "remote") {
                 throw "Cannot submit review to MIM without a remote integer task ID for task '$TaskId'."
+            }
+            elseif ([string]$stateAccess.mode -eq "remote_ephemeral") {
+                $bridgeHint = Get-ListenerRequestBridgeHint -TaskId $TaskId
+                throw ("Cannot safely fall back to local state for review-task because state.json is oversized and no remote task ID could be resolved for '$TaskId'. " + (Get-RemoteTaskResolutionFailureMessage -TaskId $TaskId -BridgeHint $bridgeHint))
             }
             else {
                 Write-Warning "Skipping remote review submission because no remote task ID is available for task '$TaskId'."
@@ -7249,7 +9111,7 @@ switch ($Action) {
             }
         }
 
-        if ((Use-Local -Config $config) -or ((([string]$config.mode).ToLowerInvariant() -eq "hybrid") -and $null -eq $remoteCreated -and [bool]$config.fallback_to_local)) {
+        if ([bool]$stateAccess.local_cache_enabled -and ((Use-Local -Config $config) -or ((([string]$config.mode).ToLowerInvariant() -eq "hybrid") -and $null -eq $remoteCreated -and [bool]$config.fallback_to_local))) {
             if ($task) {
                 $task.status = if ($remoteCreated -and $remoteCreated.PSObject.Properties["decision"]) { [string]$remoteCreated.decision } else {
                     switch ($Decision) {
@@ -7267,12 +9129,13 @@ switch ($Action) {
             Save-State -State $state
         }
 
-        if (Use-Local -Config $config) {
+        if ((Use-Local -Config $config) -and [bool]$stateAccess.local_cache_enabled) {
             if ($remoteCreated) {
                 [pscustomobject]@{
                     mode = $config.mode
                     local = $review
                     remote = $remoteCreated
+                    state_access = $stateAccess
                 } | ConvertTo-Json -Depth 12
             }
             else {
@@ -7280,6 +9143,9 @@ switch ($Action) {
             }
         }
         else {
+            if ($remoteCreated) {
+                $remoteCreated | Add-Member -NotePropertyName state_access -NotePropertyValue $stateAccess -Force
+            }
             $remoteCreated | ConvertTo-Json -Depth 12
         }
     }

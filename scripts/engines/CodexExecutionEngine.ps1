@@ -57,6 +57,7 @@ function Invoke-CodexExecutionEngineWrapper {
         if ($SimulatedOutput.ContainsKey("test_results")) { $result.test_results = @($SimulatedOutput.test_results) }
         if ($SimulatedOutput.ContainsKey("failures")) { $result.failures = @($SimulatedOutput.failures) }
         if ($SimulatedOutput.ContainsKey("recommendations")) { $result.recommendations = @($SimulatedOutput.recommendations) }
+        if ($SimulatedOutput.ContainsKey("structured_findings")) { $result.structured_findings = @($SimulatedOutput.structured_findings) }
         if ($SimulatedOutput.ContainsKey("needs_escalation")) { $result.needs_escalation = [bool]$SimulatedOutput.needs_escalation }
         $stdout += "[codex-wrapper] simulated output applied"
     }
@@ -130,6 +131,7 @@ function Convert-CodexEngineResultToTodResult {
         test_results = @($EngineResult.test_results)
         failures = @($EngineResult.failures)
         recommendations = @($EngineResult.recommendations)
+        structured_findings = @($EngineResult.structured_findings)
         needs_escalation = [bool]$EngineResult.needs_escalation
         engine = [pscustomobject]@{
             name = [string]$EngineResult.engine_name

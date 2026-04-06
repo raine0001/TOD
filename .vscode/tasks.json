@@ -1,0 +1,56 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "rerun-bounded-training-20260328-14",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/Invoke-TODTrainingLoop.ps1",
+				"-ConfigPath",
+				"tod/config/tod-config.json",
+				"-OutputDir",
+				"tod/out/training/bounded-under-lock-20260328-14",
+				"-SkipProjectDiscovery"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "rerun-bounded-training-20260328-15",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/Invoke-TODTrainingLoop.ps1",
+				"-ConfigPath",
+				"tod/config/tod-config.json",
+				"-OutputDir",
+				"tod/out/training/bounded-under-lock-20260328-15",
+				"-SkipProjectDiscovery"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "tod-supervised-default",
+			"type": "shell",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/Invoke-TODSupervisedExecution.ps1",
+				"-RefreshMimContextFromSsh",
+				"-FailOnEscalation"
+			],
+			"isBackground": false
+		}
+	]
+}

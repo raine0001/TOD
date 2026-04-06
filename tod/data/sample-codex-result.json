@@ -15,5 +15,20 @@
   "recommendations": [
     "Proceed to repo indexer enhancements"
   ],
+  "structured_findings": [
+    {
+      "type": "implementation_candidate",
+      "description": "Proceed to repo indexer enhancements",
+      "owner_workspace": "TOD",
+      "action_type": "repair",
+      "needs_remote_input": false,
+      "needs_cross_system_consensus": true,
+      "approval_required": false,
+      "confidence": 0.72,
+      "risk": "medium",
+      "blocking_dependencies": [],
+      "recommended_executor": "tod.local"
+    }
+  ],
   "needs_escalation": false
 }

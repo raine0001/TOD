@@ -1,0 +1,103 @@
+﻿{
+    "generated_at":  "2026-04-03T20:05:27.7983690Z",
+    "source":  "tod-operator-chat-sweep-artifact-smoke-v1",
+    "port":  8844,
+    "validation_harness":  "multi_objective_compare",
+    "wait_timeout_seconds":  120,
+    "poll_milliseconds":  500,
+    "artifact_freshness_seconds":  300,
+    "started_at":  "2026-04-03T20:04:54.6578566Z",
+    "raw_artifact_path":  "E:\\TOD\\tmp_live_sweep_raw.json",
+    "ineffective_summary_path":  "E:\\TOD\\tmp_ineffective_sweep_summary.json",
+    "output_path":  "E:\\TOD\\shared_state\\tod_operator_chat_sweep_artifact_smoke.latest.json",
+    "stdout_log_path":  "E:\\TOD\\shared_state\\tod_operator_chat_sweep_artifact_smoke.latest.20260403T200454655Z.stdout.log",
+    "stderr_log_path":  "E:\\TOD\\shared_state\\tod_operator_chat_sweep_artifact_smoke.latest.20260403T200454655Z.stderr.log",
+    "sweep_process":  {
+                          "started":  true,
+                          "pid":  13432,
+                          "exited":  true,
+                          "exit_code":  0,
+                          "elapsed_seconds":  33.087,
+                          "timed_out":  false
+                      },
+    "artifact_generated_at":  "2026-04-03T20:05:27.7258204Z",
+    "checks":  [
+                   {
+                       "name":  "sweep_transport_started",
+                       "passed":  true,
+                       "detail":  "Sweep process launched."
+                   },
+                   {
+                       "name":  "raw_artifact_exists",
+                       "passed":  true,
+                       "detail":  "E:\\TOD\\tmp_live_sweep_raw.json"
+                   },
+                   {
+                       "name":  "summary_artifact_exists",
+                       "passed":  true,
+                       "detail":  "E:\\TOD\\tmp_ineffective_sweep_summary.json"
+                   },
+                   {
+                       "name":  "raw_artifact_parses",
+                       "passed":  true,
+                       "detail":  "Raw artifact parsed."
+                   },
+                   {
+                       "name":  "summary_artifact_parses",
+                       "passed":  true,
+                       "detail":  "Summary artifact parsed."
+                   },
+                   {
+                       "name":  "raw_artifact_contract_source",
+                       "passed":  true,
+                       "detail":  "tod-operator-chat-sweep-early-artifact-v1"
+                   },
+                   {
+                       "name":  "artifact_timestamp_fresh",
+                       "passed":  true,
+                       "detail":  "2026-04-03T20:05:27.7258204Z"
+                   },
+                   {
+                       "name":  "ineffective_smoke_ok",
+                       "passed":  true,
+                       "detail":  "True"
+                   },
+                   {
+                       "name":  "stable_contract_ok",
+                       "passed":  true,
+                       "detail":  "True"
+                   },
+                   {
+                       "name":  "ineffective_terminal_state",
+                       "passed":  true,
+                       "detail":  "ineffective"
+                   },
+                   {
+                       "name":  "ineffective_lifecycle_status",
+                       "passed":  true,
+                       "detail":  "ineffective"
+                   },
+                   {
+                       "name":  "ineffective_signal_seen",
+                       "passed":  true,
+                       "detail":  "True"
+                   },
+                   {
+                       "name":  "ineffective_followup_action",
+                       "passed":  true,
+                       "detail":  "refresh-governance-snapshot"
+                   },
+                   {
+                       "name":  "ineffective_commitment_terminal_state",
+                       "passed":  true,
+                       "detail":  "ineffective"
+                   }
+               ],
+    "summary":  {
+                    "total":  14,
+                    "passed":  14,
+                    "failed":  0,
+                    "passed_all":  true,
+                    "exit_code":  0
+                }
+}

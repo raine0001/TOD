@@ -37,6 +37,7 @@ This document defines the initial response model for MIM synchronization manifes
 - schema_version: Manifest schema version for forward-compatible parsing.
 - repo_signature: Deterministic signature for current repository state.
 - capabilities: Feature flags or operation names supported by MIM.
+- capabilities should include `execution-readiness` when the runtime exposes a machine-readable sweep certification gate for task execution or degraded-mode policy.
 - recent_changes: Latest compatibility-relevant deltas.
 - last_updated_at: Last compatibility-impacting update time.
 - generated_at: UTC timestamp when the manifest was produced.
