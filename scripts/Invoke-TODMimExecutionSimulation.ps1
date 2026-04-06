@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('all', 'accept_once', 'duplicate_request_dedup', 'stale_request_rejected', 'superseded_request_ignored', 'wrong_target_rejected')]
+    [ValidateSet('all', 'accept_once', 'duplicate_request_dedup', 'stale_request_rejected', 'superseded_request_ignored', 'sequence_preferred_over_suffix', 'wrong_target_rejected')]
     [string]$Scenario = 'all',
     [string]$OutputRoot = ''
 )
@@ -132,6 +132,57 @@ function Get-TaskOrdinalInfo {
     }
 }
 
+function Get-RequestOrderingInfo {
+    param(
+        [Parameter(Mandatory = $true)]$Request,
+        [string]$FallbackObjectiveId = ''
+    )
+
+    $requestId = Get-RequestIdentifier -Request $Request
+    $taskId = if ($Request.PSObject.Properties['task_id']) { [string]$Request.task_id } else { '' }
+    $candidate = Get-TaskOrdinalInfo -Value $requestId -FallbackObjectiveId $FallbackObjectiveId
+    if ($null -eq $candidate -and -not [string]::IsNullOrWhiteSpace($taskId)) {
+        $candidate = Get-TaskOrdinalInfo -Value $taskId -FallbackObjectiveId $FallbackObjectiveId
+    }
+
+    $sequence = 0L
+    if ($Request.PSObject.Properties['sequence'] -and $null -ne $Request.sequence) {
+        try { $sequence = [long]$Request.sequence } catch { $sequence = 0L }
+    }
+
+    if ($null -eq $candidate -and $sequence -le 0) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        raw = if ($candidate) { [string]$candidate.raw } elseif (-not [string]::IsNullOrWhiteSpace($taskId)) { $taskId } else { $requestId }
+        objective_id = if ($candidate) { [string]$candidate.objective_id } else { [string]$FallbackObjectiveId }
+        ordinal = if ($candidate) { [long]$candidate.ordinal } else { 0L }
+        sequence = $sequence
+    }
+}
+
+function Test-RequestOrderingIsStale {
+    param(
+        [AllowNull()]$RequestOrderingInfo,
+        [AllowNull()]$HighWatermark
+    )
+
+    if ($null -eq $RequestOrderingInfo -or $null -eq $HighWatermark) {
+        return $false
+    }
+
+    if (-not [string]::Equals([string]$RequestOrderingInfo.objective_id, [string]$HighWatermark.objective_id, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+
+    if ([long]$RequestOrderingInfo.sequence -gt 0 -and $HighWatermark.PSObject.Properties['sequence'] -and [long]$HighWatermark.sequence -gt 0) {
+        return ([long]$RequestOrderingInfo.sequence -lt [long]$HighWatermark.sequence)
+    }
+
+    return ([long]$RequestOrderingInfo.ordinal -gt 0 -and [long]$HighWatermark.ordinal -gt 0 -and [long]$RequestOrderingInfo.ordinal -lt [long]$HighWatermark.ordinal)
+}
+
 function Get-SemanticRequestSignature {
     param([Parameter(Mandatory = $true)]$Request)
 
@@ -220,6 +271,7 @@ function New-State {
         high_watermark_request_id = ''
         high_watermark_objective_id = ''
         high_watermark_ordinal = 0L
+        high_watermark_sequence = 0L
         highWatermarkByObjective = @{}
         processed = @{}
         emitted = [ordered]@{
@@ -332,6 +384,7 @@ function Write-ListenerStateSnapshot {
         high_watermark_request_id = [string]$State.high_watermark_request_id
         high_watermark_objective_id = [string]$State.high_watermark_objective_id
         high_watermark_ordinal = [long]$State.high_watermark_ordinal
+        high_watermark_sequence = [long]$State.high_watermark_sequence
         last_outbound_sequence = [long]$State.last_outbound_sequence
     }
 
@@ -505,15 +558,30 @@ function Get-HighWatermark {
 function Set-HighWatermark {
     param(
         [Parameter(Mandatory = $true)]$State,
-        [Parameter(Mandatory = $true)]$OrdinalInfo
+        [Parameter(Mandatory = $true)]$OrderingInfo
     )
 
-    $current = Get-HighWatermark -State $State -ObjectiveId ([string]$OrdinalInfo.objective_id)
-    if ($null -eq $current -or [long]$OrdinalInfo.ordinal -ge [long]$current.ordinal) {
-        $State.highWatermarkByObjective[[string]$OrdinalInfo.objective_id] = $OrdinalInfo
-        $State.high_watermark_request_id = [string]$OrdinalInfo.raw
-        $State.high_watermark_objective_id = [string]$OrdinalInfo.objective_id
-        $State.high_watermark_ordinal = [long]$OrdinalInfo.ordinal
+    $current = Get-HighWatermark -State $State -ObjectiveId ([string]$OrderingInfo.objective_id)
+    $shouldUpdate = $false
+    if ($null -eq $current) {
+        $shouldUpdate = $true
+    }
+    elseif ([long]$OrderingInfo.sequence -gt 0 -and $current.PSObject.Properties['sequence'] -and [long]$current.sequence -gt 0) {
+        $shouldUpdate = ([long]$OrderingInfo.sequence -ge [long]$current.sequence)
+    }
+    elseif ([long]$OrderingInfo.sequence -gt 0 -and (-not $current.PSObject.Properties['sequence'] -or [long]$current.sequence -le 0)) {
+        $shouldUpdate = $true
+    }
+    else {
+        $shouldUpdate = ([long]$OrderingInfo.ordinal -ge [long]$current.ordinal)
+    }
+
+    if ($shouldUpdate) {
+        $State.highWatermarkByObjective[[string]$OrderingInfo.objective_id] = $OrderingInfo
+        $State.high_watermark_request_id = [string]$OrderingInfo.raw
+        $State.high_watermark_objective_id = [string]$OrderingInfo.objective_id
+        $State.high_watermark_ordinal = [long]$OrderingInfo.ordinal
+        $State.high_watermark_sequence = [long]$OrderingInfo.sequence
     }
 }
 
@@ -553,8 +621,8 @@ function Invoke-SyntheticStep {
     $requestSignature = Get-SemanticRequestSignature -Request $Request
     $objectiveIdRaw = if ($Request.PSObject.Properties['objective_id']) { [string]$Request.objective_id } else { '' }
     $objectiveId = if ($objectiveIdRaw -match '^objective-(?<id>\d+)$') { [string]$matches['id'] } else { $objectiveIdRaw }
-    $ordinalInfo = Get-TaskOrdinalInfo -Value $requestId -FallbackObjectiveId $objectiveId
-    $highWatermark = if ($null -ne $ordinalInfo) { Get-HighWatermark -State $State -ObjectiveId ([string]$ordinalInfo.objective_id) } else { $null }
+    $orderingInfo = Get-RequestOrderingInfo -Request $Request -FallbackObjectiveId $objectiveId
+    $highWatermark = if ($null -ne $orderingInfo) { Get-HighWatermark -State $State -ObjectiveId ([string]$orderingInfo.objective_id) } else { $null }
     $wrongTarget = -not [string]::Equals(([string]$Request.target), 'TOD', [System.StringComparison]::OrdinalIgnoreCase)
 
     $triggerAck = $null
@@ -565,7 +633,7 @@ function Invoke-SyntheticStep {
         $stepSummary.status = 'wrong_target_rejected'
         $stepSummary.detail = ('Rejected request {0}; target must be TOD.' -f $requestId)
     }
-    elseif ($null -ne $ordinalInfo -and $null -ne $highWatermark -and [long]$ordinalInfo.ordinal -lt [long]$highWatermark.ordinal) {
+    elseif (Test-RequestOrderingIsStale -RequestOrderingInfo $orderingInfo -HighWatermark $highWatermark) {
         $triggerAck = New-TriggerAckPacket -State $State -Request $Request -Trigger $Trigger
         $triggerAckArtifact = Write-StepArtifact -ScenarioDir $ScenarioDir -StepNumber $StepNumber -FileName 'TOD_TO_MIM_TRIGGER_ACK.latest.json' -Payload $triggerAck
         Add-EmissionRecord -State $State -Bucket 'trigger_ack' -Payload $triggerAck -StepName $StepName -StepNumber $StepNumber -LatestPath $triggerAckArtifact.latest_path
@@ -573,7 +641,7 @@ function Invoke-SyntheticStep {
         $stepSummary.artifact_paths.trigger_ack = $triggerAckArtifact.latest_path
 
         $stepSummary.status = 'stale_request_ignored'
-        $stepSummary.detail = ('Ignored stale request {0}; higher ordinal task {1} is authoritative.' -f $requestId, [string]$highWatermark.raw)
+        $stepSummary.detail = ('Ignored stale request {0}; higher-priority task {1} is authoritative.' -f $requestId, [string]$highWatermark.raw)
         $stepSummary.superseded_by_request_id = [string]$highWatermark.raw
 
         $staleRequest = [pscustomobject]@{
@@ -585,7 +653,7 @@ function Invoke-SyntheticStep {
             superseded_by_request_id = [string]$highWatermark.raw
         }
 
-        $result = New-ResultPacket -State $State -Request $Request -Trigger $Trigger -Status 'stale_request_ignored' -Action 'bridge_runtime_sync' -ExecutionMode 'stale_backfill_suppressed' -StaleRequest $staleRequest -OutputPreview 'Synthetic listener preserved the higher ordinal request and rejected stale backfill.'
+        $result = New-ResultPacket -State $State -Request $Request -Trigger $Trigger -Status 'stale_request_ignored' -Action 'bridge_runtime_sync' -ExecutionMode 'stale_backfill_suppressed' -StaleRequest $staleRequest -OutputPreview 'Synthetic listener preserved the higher-priority request and rejected stale backfill.'
         $resultArtifact = Write-StepArtifact -ScenarioDir $ScenarioDir -StepNumber $StepNumber -FileName 'TOD_MIM_TASK_RESULT.latest.json' -Payload $result
         Add-EmissionRecord -State $State -Bucket 'result' -Payload $result -StepName $StepName -StepNumber $StepNumber -LatestPath $resultArtifact.latest_path
         $stepSummary.emitted.result = 1
@@ -619,8 +687,8 @@ function Invoke-SyntheticStep {
         $State.processed[$requestId] = $requestSignature
         $State.last_processed_request_id = $requestId
         $State.last_processed_request_signature = $requestSignature
-        if ($null -ne $ordinalInfo) {
-            Set-HighWatermark -State $State -OrdinalInfo $ordinalInfo
+        if ($null -ne $orderingInfo) {
+            Set-HighWatermark -State $State -OrderingInfo $orderingInfo
         }
     }
 
@@ -710,6 +778,8 @@ function Invoke-StaleRequestRejectedScenario {
     $currentTrigger = New-TriggerPacket -RequestId 'objective-303-task-005' -TriggerSequence 9020
     $staleRequest = New-RequestPacket -RequestId 'objective-303-task-003' -ObjectiveId 'objective-303' -TriggerSequence 9021
     $staleTrigger = New-TriggerPacket -RequestId 'objective-303-task-003' -TriggerSequence 9021
+    $currentRequest.sequence = 200
+    $staleRequest.sequence = 100
     $steps = @(
         Invoke-SyntheticStep -State $state -ScenarioDir $scenarioDir -StepNumber 1 -StepName 'accept-current' -Request $currentRequest -Trigger $currentTrigger
         Invoke-SyntheticStep -State $state -ScenarioDir $scenarioDir -StepNumber 2 -StepName 'reject-stale' -Request $staleRequest -Trigger $staleTrigger
@@ -743,6 +813,33 @@ function Invoke-SupersededRequestIgnoredScenario {
     }
 }
 
+function Invoke-SequencePreferredOverSuffixScenario {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $scenarioDir = Join-Path $Root 'sequence_preferred_over_suffix'
+    Ensure-Directory -PathValue $scenarioDir
+    $state = New-State
+
+    $olderBySuffix = New-RequestPacket -RequestId 'objective-306-task-mim-arm-safe-home-20260403171131' -ObjectiveId 'objective-306' -TriggerSequence 9045
+    $olderBySuffix.sequence = 100
+    $olderTrigger = New-TriggerPacket -RequestId 'objective-306-task-mim-arm-safe-home-20260403171131' -TriggerSequence 9045
+
+    $newerBySequence = New-RequestPacket -RequestId 'objective-306-task-mim-arm-scan-pose-1775330845' -ObjectiveId 'objective-306' -TriggerSequence 9046
+    $newerBySequence.sequence = 200
+    $newerTrigger = New-TriggerPacket -RequestId 'objective-306-task-mim-arm-scan-pose-1775330845' -TriggerSequence 9046
+
+    $steps = @(
+        Invoke-SyntheticStep -State $state -ScenarioDir $scenarioDir -StepNumber 1 -StepName 'accept-sequence-100' -Request $olderBySuffix -Trigger $olderTrigger
+        Invoke-SyntheticStep -State $state -ScenarioDir $scenarioDir -StepNumber 2 -StepName 'accept-sequence-200' -Request $newerBySequence -Trigger $newerTrigger
+        Invoke-SyntheticStep -State $state -ScenarioDir $scenarioDir -StepNumber 3 -StepName 'reject-sequence-100-replay' -Request $olderBySuffix -Trigger $olderTrigger
+    )
+
+    return New-ScenarioResult -ScenarioName 'sequence_preferred_over_suffix' -Root $Root -Steps $steps -State $state -Assertion {
+        param($scenarioSteps, $counts)
+        return ([string]$scenarioSteps[1].status -eq 'completed') -and ([string]$scenarioSteps[2].status -eq 'stale_request_ignored') -and ([string]$scenarioSteps[2].superseded_by_request_id -eq 'objective-306-task-mim-arm-scan-pose-1775330845') -and ($counts.result -eq 3)
+    }
+}
+
 function Invoke-WrongTargetRejectedScenario {
     param([Parameter(Mandatory = $true)][string]$Root)
 
@@ -773,6 +870,9 @@ if ($Scenario -in @('all', 'stale_request_rejected')) {
 }
 if ($Scenario -in @('all', 'superseded_request_ignored')) {
     $results += Invoke-SupersededRequestIgnoredScenario -Root $root
+}
+if ($Scenario -in @('all', 'sequence_preferred_over_suffix')) {
+    $results += Invoke-SequencePreferredOverSuffixScenario -Root $root
 }
 if ($Scenario -in @('all', 'wrong_target_rejected')) {
     $results += Invoke-WrongTargetRejectedScenario -Root $root

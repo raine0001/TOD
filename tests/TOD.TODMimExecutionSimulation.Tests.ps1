@@ -26,7 +26,7 @@ Describe 'TOD MIM execution simulation harness' {
         $payload = (& $simulationScript -Scenario all -OutputRoot $base) | ConvertFrom-Json
 
         [bool]$payload.ok | Should Be $true
-        @($payload.scenario_results).Count | Should Be 5
+        @($payload.scenario_results).Count | Should Be 6
         (Test-Path -Path (Join-Path $payload.root 'simulation-summary.json')) | Should Be $true
         (Test-Path -Path (Join-Path $payload.root 'simulation-summary.md')) | Should Be $true
     }
@@ -79,6 +79,19 @@ Describe 'TOD MIM execution simulation harness' {
         [string]$scenario.steps[2].status | Should Be 'stale_request_ignored'
         [string]$scenario.steps[2].superseded_by_request_id | Should Be 'objective-304-task-007'
         [int]$scenario.steps[2].emitted.task_ack | Should Be 0
+    }
+
+    It 'prefers explicit sequence over request-id suffix ordering when rejecting stale replays' {
+        $base = New-TestArea
+        $payload = (& $simulationScript -Scenario sequence_preferred_over_suffix -OutputRoot $base) | ConvertFrom-Json
+        $scenario = Get-Scenario -Payload $payload -ScenarioName 'sequence_preferred_over_suffix'
+
+        [bool]$scenario.ok | Should Be $true
+        [string]$scenario.steps[1].status | Should Be 'completed'
+        [string]$scenario.steps[2].status | Should Be 'stale_request_ignored'
+        [string]$scenario.steps[2].superseded_by_request_id | Should Be 'objective-306-task-mim-arm-scan-pose-1775330845'
+        [int]$scenario.steps[2].emitted.task_ack | Should Be 0
+        [int]$scenario.counts.result | Should Be 3
     }
 
     It 'rejects wrong-target requests cleanly without emitting execution artifacts' {

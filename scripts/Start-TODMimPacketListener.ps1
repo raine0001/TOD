@@ -238,6 +238,7 @@ function New-ListenerState {
         high_watermark_request_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["high_watermark_request_id"]) { [string]$ExistingState.high_watermark_request_id } else { "" }
         high_watermark_objective_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["high_watermark_objective_id"]) { [string]$ExistingState.high_watermark_objective_id } else { "" }
         high_watermark_ordinal = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["high_watermark_ordinal"]) { [long]$ExistingState.high_watermark_ordinal } else { 0L }
+        high_watermark_sequence = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["high_watermark_sequence"]) { [long]$ExistingState.high_watermark_sequence } else { 0L }
         last_stale_guard = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_stale_guard"]) { $ExistingState.last_stale_guard } else { $null }
         last_cycle_classification = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_cycle_classification"]) { [string]$ExistingState.last_cycle_classification } else { "" }
         last_retry_reason = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_retry_reason"]) { [string]$ExistingState.last_retry_reason } else { "none" }
@@ -1037,6 +1038,66 @@ function Get-TaskOrdinalInfo {
     }
 }
 
+function Get-RequestOrderingInfo {
+    param(
+        $Request,
+        [string]$RequestId,
+        [string]$FallbackObjectiveId = ''
+    )
+
+    $requestTaskId = if ($Request -and $Request.PSObject.Properties['task_id']) { [string]$Request.task_id } else { '' }
+    $candidate = Get-TaskOrdinalInfo -Value $RequestId -FallbackObjectiveId $FallbackObjectiveId
+    $sourceField = 'request_id'
+    if ($null -eq $candidate -and -not [string]::IsNullOrWhiteSpace($requestTaskId)) {
+        $candidate = Get-TaskOrdinalInfo -Value $requestTaskId -FallbackObjectiveId $FallbackObjectiveId
+        $sourceField = 'task_id'
+    }
+
+    $sequence = Get-ObjectFieldLong -InputObject $Request -FieldName 'sequence'
+    if ($null -eq $candidate -and $sequence -le 0) {
+        return $null
+    }
+
+    $objectiveId = if ($candidate) { [string]$candidate.objective_id } else { [string]$FallbackObjectiveId }
+    $rawValue = if ($candidate) { [string]$candidate.raw } elseif (-not [string]::IsNullOrWhiteSpace($requestTaskId)) { $requestTaskId } else { $RequestId }
+
+    return [pscustomobject]@{
+        raw = $rawValue
+        objective_id = $objectiveId
+        ordinal = if ($candidate) { [long]$candidate.ordinal } else { 0L }
+        sequence = if ($sequence -gt 0) { [long]$sequence } else { 0L }
+        source = 'incoming_request'
+        source_field = if ($sequence -gt 0) { 'sequence' } else { $sourceField }
+    }
+}
+
+function Test-RequestOrderingIsStale {
+    param(
+        [AllowNull()]$RequestOrderingInfo,
+        [AllowNull()]$HighWatermark
+    )
+
+    if ($null -eq $RequestOrderingInfo -or $null -eq $HighWatermark) {
+        return $false
+    }
+
+    $requestObjective = if ($RequestOrderingInfo.PSObject.Properties['objective_id']) { [string]$RequestOrderingInfo.objective_id } else { '' }
+    $highObjective = if ($HighWatermark.PSObject.Properties['objective_id']) { [string]$HighWatermark.objective_id } else { '' }
+    if ([string]::IsNullOrWhiteSpace($requestObjective) -or [string]::IsNullOrWhiteSpace($highObjective) -or -not [string]::Equals($requestObjective, $highObjective, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+
+    $requestSequence = if ($RequestOrderingInfo.PSObject.Properties['sequence']) { [long]$RequestOrderingInfo.sequence } else { 0L }
+    $highSequence = if ($HighWatermark.PSObject.Properties['sequence']) { [long]$HighWatermark.sequence } else { 0L }
+    if ($requestSequence -gt 0 -and $highSequence -gt 0) {
+        return ($requestSequence -lt $highSequence)
+    }
+
+    $requestOrdinal = if ($RequestOrderingInfo.PSObject.Properties['ordinal']) { [long]$RequestOrderingInfo.ordinal } else { 0L }
+    $highOrdinal = if ($HighWatermark.PSObject.Properties['ordinal']) { [long]$HighWatermark.ordinal } else { 0L }
+    return ($requestOrdinal -gt 0 -and $highOrdinal -gt 0 -and $requestOrdinal -lt $highOrdinal)
+}
+
 function Get-MaxObservedTaskOrdinal {
     param(
         [string]$JournalPath,
@@ -1093,32 +1154,49 @@ function Get-MaxObservedTaskOrdinal {
 function Update-TaskHighWatermark {
     param(
         [Parameter(Mandatory = $true)]$State,
-        [string]$CandidateValue,
-        [string]$FallbackObjectiveId = ""
+        [AllowNull()]$CandidateInfo
     )
 
-    $candidate = Get-TaskOrdinalInfo -Value $CandidateValue -FallbackObjectiveId $FallbackObjectiveId
+    $candidate = $CandidateInfo
     if ($null -eq $candidate) {
         return $null
     }
 
-    $existingRequestId = if ($State.PSObject.Properties['high_watermark_request_id']) { [string]$State.high_watermark_request_id } else { "" }
     $existingObjectiveId = if ($State.PSObject.Properties['high_watermark_objective_id']) { [string]$State.high_watermark_objective_id } else { "" }
     $existingOrdinal = if ($State.PSObject.Properties['high_watermark_ordinal']) { [long]$State.high_watermark_ordinal } else { 0L }
+    $existingSequence = if ($State.PSObject.Properties['high_watermark_sequence']) { [long]$State.high_watermark_sequence } else { 0L }
+    $candidateSequence = if ($candidate.PSObject.Properties['sequence']) { [long]$candidate.sequence } else { 0L }
 
-    if ([string]::IsNullOrWhiteSpace($existingObjectiveId) -or
-        [string]::Equals([string]$candidate.objective_id, $existingObjectiveId, [System.StringComparison]::OrdinalIgnoreCase) -and [long]$candidate.ordinal -gt $existingOrdinal) {
+    $canUpdate = $false
+    if ([string]::IsNullOrWhiteSpace($existingObjectiveId)) {
+        $canUpdate = $true
+    }
+    elseif ([string]::Equals([string]$candidate.objective_id, $existingObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        if ($candidateSequence -gt 0 -and $existingSequence -gt 0) {
+            $canUpdate = ($candidateSequence -ge $existingSequence)
+        }
+        elseif ($candidateSequence -gt 0 -and $existingSequence -le 0) {
+            $canUpdate = $true
+        }
+        else {
+            $canUpdate = ([long]$candidate.ordinal -gt $existingOrdinal)
+        }
+    }
+
+    if ($canUpdate) {
         $State.high_watermark_request_id = [string]$candidate.raw
         $State.high_watermark_objective_id = [string]$candidate.objective_id
         $State.high_watermark_ordinal = [long]$candidate.ordinal
+        $State.high_watermark_sequence = $candidateSequence
     }
 
     return [pscustomobject]@{
         raw = if ($State.PSObject.Properties['high_watermark_request_id']) { [string]$State.high_watermark_request_id } else { "" }
         objective_id = if ($State.PSObject.Properties['high_watermark_objective_id']) { [string]$State.high_watermark_objective_id } else { "" }
         ordinal = if ($State.PSObject.Properties['high_watermark_ordinal']) { [long]$State.high_watermark_ordinal } else { 0L }
+        sequence = if ($State.PSObject.Properties['high_watermark_sequence']) { [long]$State.high_watermark_sequence } else { 0L }
         source = 'listener_state'
-        source_field = 'high_watermark_request_id'
+        source_field = if (($State.PSObject.Properties['high_watermark_sequence']) -and [long]$State.high_watermark_sequence -gt 0) { 'high_watermark_sequence' } else { 'high_watermark_request_id' }
     }
 }
 
@@ -1133,14 +1211,16 @@ function Get-ObjectiveHighWatermark {
     $stateRequestId = if ($State.PSObject.Properties['high_watermark_request_id']) { [string]$State.high_watermark_request_id } else { "" }
     $stateCandidate = Get-TaskOrdinalInfo -Value $stateRequestId -FallbackObjectiveId $ObjectiveId
     if ($stateCandidate -and [string]::Equals([string]$stateCandidate.objective_id, [string]$ObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $stateSequence = if ($State.PSObject.Properties['high_watermark_sequence']) { [long]$State.high_watermark_sequence } else { 0L }
         $stateCandidate = [pscustomobject]@{
             raw = [string]$stateCandidate.raw
             objective_id = [string]$stateCandidate.objective_id
             ordinal = [long]$stateCandidate.ordinal
+            sequence = $stateSequence
             source = 'listener_state'
-            source_field = 'high_watermark_request_id'
+            source_field = if ($stateSequence -gt 0) { 'high_watermark_sequence' } else { 'high_watermark_request_id' }
         }
-        if ($null -eq $best -or [long]$stateCandidate.ordinal -gt [long]$best.ordinal) {
+        if ($null -eq $best -or ($stateSequence -gt 0 -and (-not $best.PSObject.Properties['sequence'] -or [long]$best.sequence -le 0)) -or ($stateSequence -gt 0 -and $best.PSObject.Properties['sequence'] -and [long]$stateCandidate.sequence -gt [long]$best.sequence) -or ($stateSequence -le 0 -and [long]$stateCandidate.ordinal -gt [long]$best.ordinal)) {
             $best = $stateCandidate
         }
         elseif ($best -and [long]$stateCandidate.ordinal -eq [long]$best.ordinal -and [string]::Equals([string]$stateCandidate.raw, [string]$best.raw, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -1148,8 +1228,9 @@ function Get-ObjectiveHighWatermark {
                 raw = [string]$best.raw
                 objective_id = [string]$best.objective_id
                 ordinal = [long]$best.ordinal
+                sequence = if ($best.PSObject.Properties['sequence']) { [long]$best.sequence } else { 0L }
                 source = 'listener_state_and_loop_journal'
-                source_field = 'request_id|high_watermark_request_id'
+                source_field = if ($stateSequence -gt 0) { 'request_id|high_watermark_sequence' } else { 'request_id|high_watermark_request_id' }
             }
         }
     }
@@ -1195,7 +1276,7 @@ function New-StaleGuardMetadata {
         status = 'execution_blocked_by_stale_guard'
         reason = 'higher_authoritative_task_ordinal_active'
         objective_id = [string]$ObjectiveId
-        guidance = 'Freshness is currently inferred from the trailing numeric suffix in request_id/task_id. Replace this with an explicit monotonic field.'
+        guidance = 'Freshness is sequence-aware when request.sequence is available; otherwise TOD falls back to the trailing numeric suffix in request_id/task_id.'
         winner = [pscustomobject]@{
             request_field = [string]$RequestOrdinalSourceField
             high_watermark_source = $highWatermarkSource
@@ -1204,7 +1285,7 @@ function New-StaleGuardMetadata {
         comparison_basis = [pscustomobject]@{
             request_id_suffix = [string]::Equals([string]$RequestOrdinalSourceField, 'request_id', [System.StringComparison]::OrdinalIgnoreCase)
             task_id_suffix = [string]::Equals([string]$RequestOrdinalSourceField, 'task_id', [System.StringComparison]::OrdinalIgnoreCase)
-            sequence = $false
+            sequence = (($RequestOrdinalInfo -and $RequestOrdinalInfo.PSObject.Properties['sequence'] -and [long]$RequestOrdinalInfo.sequence -gt 0) -or ($HighWatermark -and $HighWatermark.PSObject.Properties['sequence'] -and [long]$HighWatermark.sequence -gt 0))
             emitted_at = $false
             internal_tracked_request_id = $usesInternalTrackedRequestId
         }
@@ -1214,12 +1295,14 @@ function New-StaleGuardMetadata {
             source_field = [string]$RequestOrdinalSourceField
             ordinal_value = $requestOrdinalValue
             ordinal = $requestOrdinal
+            sequence = if ($RequestOrdinalInfo -and $RequestOrdinalInfo.PSObject.Properties['sequence']) { [long]$RequestOrdinalInfo.sequence } else { 0L }
         }
         high_watermark = [pscustomobject]@{
             source = $highWatermarkSource
             source_field = $highWatermarkField
             request_id = $highWatermarkValue
             ordinal = $highWatermarkOrdinal
+            sequence = if ($HighWatermark -and $HighWatermark.PSObject.Properties['sequence']) { [long]$HighWatermark.sequence } else { 0L }
         }
         trigger = [pscustomobject]@{
             sequence = [long]$TriggerSequence
@@ -1587,13 +1670,18 @@ function Update-CadencePlan {
         $ListenerState.cadence_last_success_at = Get-UtcNowString
     }
     else {
-        $retryStreak = if ($retryReasonNormalized -eq "none") { 0 } else { $previousRetryStreak + 1 }
+        $retryStreak = switch ($retryReasonNormalized) {
+            'none' { 0 }
+            'duplicate_seen' { 0 }
+            default { $previousRetryStreak + 1 }
+        }
         switch ($retryReasonNormalized) {
             "failure" {
                 $backoffSeconds = [Math]::Min(30, [Math]::Max($previousBackoff, $BasePollSeconds) + ([Math]::Min($retryStreak, 5) * 2))
             }
             "duplicate_seen" {
-                $backoffSeconds = [Math]::Min(18, [Math]::Max($previousBackoff, 0) + [Math]::Min($retryStreak, 4))
+                $backoffSeconds = [Math]::Max($BasePollSeconds, 4)
+                $ListenerState.cadence_last_success_at = Get-UtcNowString
             }
             "no_new_work" {
                 $backoffSeconds = [Math]::Min(12, [Math]::Floor(($retryStreak + 1) / 2))
@@ -3579,23 +3667,15 @@ try {
         }
 
         $requestObjectiveId = Get-ExpectedObjectiveFromRequest -Request $request
-        $requestOrdinalSourceField = 'request_id'
-        $requestOrdinalInfo = Get-TaskOrdinalInfo -Value $requestId -FallbackObjectiveId $requestObjectiveId
-        if ($null -eq $requestOrdinalInfo -and $request.PSObject.Properties['task_id']) {
-            $requestOrdinalSourceField = 'task_id'
-            $requestOrdinalInfo = Get-TaskOrdinalInfo -Value ([string]$request.task_id) -FallbackObjectiveId $requestObjectiveId
-        }
-        if ($requestOrdinalInfo) {
-            $requestOrdinalInfo.source = 'incoming_request'
-            $requestOrdinalInfo.source_field = $requestOrdinalSourceField
-        }
-        if ($requestOrdinalInfo) {
-            $null = Update-TaskHighWatermark -State $listenerState -CandidateValue ([string]$requestOrdinalInfo.raw) -FallbackObjectiveId $requestObjectiveId
+        $requestOrderingInfo = Get-RequestOrderingInfo -Request $request -RequestId $requestId -FallbackObjectiveId $requestObjectiveId
+        $requestOrderingSourceField = if ($requestOrderingInfo -and $requestOrderingInfo.PSObject.Properties['source_field']) { [string]$requestOrderingInfo.source_field } else { 'request_id' }
+        if ($requestOrderingInfo) {
+            $null = Update-TaskHighWatermark -State $listenerState -CandidateInfo $requestOrderingInfo
         }
         $maxObservedOrdinal = Get-ObjectiveHighWatermark -State $listenerState -JournalPath $localJournalPath -ObjectiveId $requestObjectiveId
-        if ($null -ne $requestOrdinalInfo -and $null -ne $maxObservedOrdinal -and [long]$requestOrdinalInfo.ordinal -lt [long]$maxObservedOrdinal.ordinal) {
+        if (Test-RequestOrderingIsStale -RequestOrderingInfo $requestOrderingInfo -HighWatermark $maxObservedOrdinal) {
             $requestTaskIdForStaleGuard = Get-NonEmptyPacketValue -Primary (Get-ObjectFieldText -InputObject $request -FieldName 'task_id') -Fallback $requestId
-            $staleGuard = New-StaleGuardMetadata -Decision 'stale_request_ignored' -RequestId $requestId -TaskId $requestTaskIdForStaleGuard -ObjectiveId $requestObjectiveId -RequestOrdinalInfo $requestOrdinalInfo -RequestOrdinalSourceField $requestOrdinalSourceField -HighWatermark $maxObservedOrdinal -TriggerSequence (Get-ObjectFieldLong -InputObject $livenessTrigger -FieldName 'sequence')
+            $staleGuard = New-StaleGuardMetadata -Decision 'stale_request_ignored' -RequestId $requestId -TaskId $requestTaskIdForStaleGuard -ObjectiveId $requestObjectiveId -RequestOrdinalInfo $requestOrderingInfo -RequestOrdinalSourceField $requestOrderingSourceField -HighWatermark $maxObservedOrdinal -TriggerSequence (Get-ObjectFieldLong -InputObject $livenessTrigger -FieldName 'sequence')
             $effectiveTaskId = [string]$maxObservedOrdinal.raw
             $bridgeTaskTitle = ''
             if ($request.PSObject.Properties['title'] -and -not [string]::IsNullOrWhiteSpace([string]$request.title)) {
