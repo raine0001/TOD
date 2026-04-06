@@ -721,6 +721,68 @@ Describe "TOD Reliability Dashboards" {
         }
     }
 
+    It "repair-state truncates oversized task strings on disposable state files" {
+        $testStatePath = New-ReliabilityTestStatePath
+        $backupPath = $null
+        try {
+            $state = (Get-Content -Path $testStatePath -Raw) | ConvertFrom-Json
+            $state.tasks += [pscustomobject]@{
+                id = "oversized-task"
+                objective_id = "75"
+                title = "Oversized field fixture"
+                scope = ("x" * 1100000)
+                type = "implementation"
+                task_category = "code_change"
+                assigned_executor = "codex"
+                status = "pending"
+                dependencies = @()
+                acceptance_criteria = @()
+            }
+            $state | ConvertTo-Json -Depth 30 | Set-Content -Path $testStatePath
+
+            $repair = Invoke-TodActionJson -Action "repair-state" -ExtraArgs @{ StatePath = $testStatePath }
+            $backupPath = [string]$repair.backup_path
+
+            [bool]$repair.changed | Should Be $true
+            [bool]$repair.swap_pending | Should Be $false
+            (Test-Path -Path $backupPath) | Should Be $true
+            [string]$repair.repaired_lines[0].property | Should Be "scope"
+
+            $repairedState = (Get-Content -Path $testStatePath -Raw) | ConvertFrom-Json
+            $repairedTask = @($repairedState.tasks | Where-Object { $_.id -eq "oversized-task" })[0]
+            ([string]$repairedTask.scope) | Should Match "truncated oversized state field"
+            ([string]$repairedTask.scope).Length | Should BeLessThan 256
+        }
+        finally {
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+            if (-not [string]::IsNullOrWhiteSpace($backupPath) -and (Test-Path $backupPath)) { Remove-Item $backupPath -Force }
+        }
+    }
+
+    It "add-task truncates oversized scope for operational state persistence" {
+        $testStatePath = New-ReliabilityTestStatePath
+        try {
+            $oversizedScope = ("scope-" + ("x" * 12000))
+            $result = Invoke-TodActionJson -Action "add-task" -ExtraArgs @{
+                ObjectiveId = "75"
+                Title = "Oversized scope fixture"
+                Scope = $oversizedScope
+                AcceptanceCriteria = "criterion-one"
+                StatePath = $testStatePath
+            }
+
+            $storedState = (Get-Content -Path $testStatePath -Raw) | ConvertFrom-Json
+            $task = @($storedState.tasks | Where-Object { [string]$_.id -eq [string]$result.id })[0]
+
+            [string]$task.title | Should Be "Oversized scope fixture"
+            ([string]$task.scope).Length | Should BeLessThan 9000
+            ([string]$task.scope) | Should Match "truncated for operational state"
+        }
+        finally {
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+        }
+    }
+
     It "engineer-cycle executes bounded loop cycles" {
         $tmpConfigPath = Join-Path $repoRoot ("tod/config/tod-config.test-cycle-{0}.json" -f ([guid]::NewGuid().ToString("N")) )
         $testStatePath = New-ReliabilityTestStatePath

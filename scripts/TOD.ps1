@@ -1346,8 +1346,10 @@ function Repair-StateFileOversizedStrings {
     Assert-Exists -Path $Path -Name "State file"
 
     $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $fileTimestamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
     $tempPath = "$Path.repairing"
-    $backupPath = Join-Path (Split-Path -Parent $Path) ("state.repair-{0}.json.bak" -f ((Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")))
+    $backupPath = Join-Path (Split-Path -Parent $Path) ("state.repair-{0}.json.bak" -f $fileTimestamp)
+    $pendingPath = Join-Path (Split-Path -Parent $Path) ("state.repair-{0}.json.pending" -f $fileTimestamp)
     $originalBytes = (Get-Item -Path $Path).Length
     $changes = @()
     $reader = $null
@@ -1401,10 +1403,12 @@ function Repair-StateFileOversizedStrings {
 
     $maxAttempts = 6
     $baseDelayMs = 120
+    $replacementComplete = $false
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         try {
             Move-Item -Path $Path -Destination $backupPath -Force -ErrorAction Stop
             Move-Item -Path $tempPath -Destination $Path -Force -ErrorAction Stop
+            $replacementComplete = $true
             break
         }
         catch {
@@ -1415,6 +1419,20 @@ function Repair-StateFileOversizedStrings {
             )
 
             if (-not $isLockContention -or $attempt -ge $maxAttempts) {
+                if ($isLockContention -and $attempt -ge $maxAttempts) {
+                    Move-Item -Path $tempPath -Destination $pendingPath -Force -ErrorAction Stop
+                    $pendingBytes = (Get-Item -Path $pendingPath).Length
+                    return [pscustomobject]@{
+                        changed = $true
+                        state_path = $Path
+                        backup_path = $null
+                        pending_repaired_path = $pendingPath
+                        swap_pending = $true
+                        repaired_lines = @($changes)
+                        original_bytes = [int64]$originalBytes
+                        repaired_bytes = [int64]$pendingBytes
+                    }
+                }
                 if (Test-Path -Path $tempPath) {
                     Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
                 }
@@ -1425,12 +1443,21 @@ function Repair-StateFileOversizedStrings {
         }
     }
 
+    if (-not $replacementComplete) {
+        if (Test-Path -Path $tempPath) {
+            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+        }
+        throw "State repair did not complete for $Path"
+    }
+
     $repairedBytes = (Get-Item -Path $Path).Length
 
     return [pscustomobject]@{
         changed = $true
         state_path = $Path
         backup_path = $backupPath
+        pending_repaired_path = $null
+        swap_pending = $false
         repaired_lines = @($changes)
         original_bytes = [int64]$originalBytes
         repaired_bytes = [int64]$repairedBytes
@@ -1499,6 +1526,20 @@ function Limit-StateTextField {
     return $Value.Substring(0, $prefixLength) + $suffix
 }
 
+function Limit-StateTextArray {
+    param(
+        $Values,
+        [int]$MaxItemLength = 2048,
+        [string]$FieldName = "text_array"
+    )
+
+    return @(
+        Convert-ToStringArray -Value $Values | ForEach-Object {
+            Limit-StateTextField -Value ([string]$_) -MaxLength $MaxItemLength -FieldName $FieldName
+        }
+    )
+}
+
 function Protect-StateForOperationalUse {
     param([Parameter(Mandatory = $true)]$State)
 
@@ -1513,6 +1554,33 @@ function Protect-StateForOperationalUse {
             }
             if ($objective.PSObject.Properties["description"] -and $null -ne $objective.description) {
                 $objective.description = Limit-StateTextField -Value ([string]$objective.description) -MaxLength 8192 -FieldName "objective.description"
+            }
+            if ($objective.PSObject.Properties["constraints"]) {
+                $objective.constraints = Limit-StateTextArray -Values $objective.constraints -MaxItemLength 2048 -FieldName "objective.constraints[]"
+            }
+            if ($objective.PSObject.Properties["success_criteria"]) {
+                $objective.success_criteria = Limit-StateTextArray -Values $objective.success_criteria -MaxItemLength 2048 -FieldName "objective.success_criteria[]"
+            }
+        }
+    }
+
+    if ($State.PSObject.Properties["tasks"] -and $null -ne $State.tasks) {
+        foreach ($task in @($State.tasks)) {
+            if ($null -eq $task) {
+                continue
+            }
+
+            if ($task.PSObject.Properties["title"] -and $null -ne $task.title) {
+                $task.title = Limit-StateTextField -Value ([string]$task.title) -MaxLength 512 -FieldName "task.title"
+            }
+            if ($task.PSObject.Properties["scope"] -and $null -ne $task.scope) {
+                $task.scope = Limit-StateTextField -Value ([string]$task.scope) -MaxLength 8192 -FieldName "task.scope"
+            }
+            if ($task.PSObject.Properties["description"] -and $null -ne $task.description) {
+                $task.description = Limit-StateTextField -Value ([string]$task.description) -MaxLength 8192 -FieldName "task.description"
+            }
+            if ($task.PSObject.Properties["acceptance_criteria"]) {
+                $task.acceptance_criteria = Limit-StateTextArray -Values $task.acceptance_criteria -MaxItemLength 2048 -FieldName "task.acceptance_criteria[]"
             }
         }
     }
@@ -1674,6 +1742,16 @@ function Normalize-State {
     foreach ($task in @($State.tasks)) {
         $task.dependencies = Convert-ToStringArray -Value $task.dependencies
         $task.acceptance_criteria = Convert-ToStringArray -Value $task.acceptance_criteria
+        if ($task.PSObject.Properties["title"] -and $null -ne $task.title) {
+            $task.title = Limit-StateTextField -Value ([string]$task.title) -MaxLength 512 -FieldName "task.title"
+        }
+        if ($task.PSObject.Properties["scope"] -and $null -ne $task.scope) {
+            $task.scope = Limit-StateTextField -Value ([string]$task.scope) -MaxLength 8192 -FieldName "task.scope"
+        }
+        if ($task.PSObject.Properties["description"] -and $null -ne $task.description) {
+            $task.description = Limit-StateTextField -Value ([string]$task.description) -MaxLength 8192 -FieldName "task.description"
+        }
+        $task.acceptance_criteria = Limit-StateTextArray -Values $task.acceptance_criteria -MaxItemLength 2048 -FieldName "task.acceptance_criteria[]"
         if (-not $task.PSObject.Properties["task_category"] -or [string]::IsNullOrWhiteSpace([string]$task.task_category)) {
             $task | Add-Member -NotePropertyName task_category -NotePropertyValue "code_change" -Force
         }
@@ -8942,6 +9020,10 @@ switch ($Action) {
         if ([string]::IsNullOrWhiteSpace($Scope)) { throw "-Scope is required" }
         if ([string]::IsNullOrWhiteSpace($AcceptanceCriteria)) { throw "-AcceptanceCriteria is required" }
 
+        $safeTitle = Limit-StateTextField -Value ([string]$Title) -MaxLength 512 -FieldName "task.title"
+        $safeScope = Limit-StateTextField -Value ([string]$Scope) -MaxLength 8192 -FieldName "task.scope"
+        $safeAcceptanceCriteria = Limit-StateTextArray -Values (Split-List -Value $AcceptanceCriteria) -MaxItemLength 2048 -FieldName "task.acceptance_criteria[]"
+
         if (Use-Local -Config $config) {
             $objective = $state.objectives | Where-Object { $_.id -eq $ObjectiveId } | Select-Object -First 1
             if (-not $objective) { throw "Objective not found: $ObjectiveId" }
@@ -8951,12 +9033,12 @@ switch ($Action) {
         $task = [pscustomobject]@{
             id = $id
             objective_id = $ObjectiveId
-            title = $Title
+            title = $safeTitle
             type = $Type
             task_category = $(if ([string]::IsNullOrWhiteSpace($TaskCategory)) { "" } else { $TaskCategory })
-            scope = $Scope
+            scope = $safeScope
             dependencies = [string[]](Split-List -Value $Dependencies)
-            acceptance_criteria = [string[]](Split-List -Value $AcceptanceCriteria)
+            acceptance_criteria = [string[]]$safeAcceptanceCriteria
             status = "planned"
             assigned_executor = $AssignedExecutor
             created_at = Get-UtcNow
@@ -9601,6 +9683,18 @@ switch ($Action) {
 
     "repair-state" {
         $repairReport = Repair-StateFileOversizedStrings -Path $statePath
+        if ($repairReport.PSObject.Properties['swap_pending'] -and [bool]$repairReport.swap_pending) {
+            $currentBytes = (Get-Item -Path $statePath).Length
+
+            [pscustomobject]@{
+                repaired = $repairReport
+                compaction = $null
+                final_state_bytes = [int64]$currentBytes
+                state_access = $stateAccess
+            } | ConvertTo-Json -Depth 12
+            break
+        }
+
         $repairedState = Load-State
         $compaction = Compress-StateForOperationalUse -State $repairedState -Config $config
         Save-State -State $repairedState

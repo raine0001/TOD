@@ -94,6 +94,10 @@ tod/data/avatars/user-avatar.jpg
 # Local state backups
 tod/data/state.backup.*.json
 tod/data/state.repair-*.json.bak
+tod/data/state.repair-*.json.pending
+tod/data/state.*-history.json
+tod/data/state.rewrite-*.json.bak
+tod/data/state.json.repairing
 
 # Local editor and scratch artifacts
 .vscode/
