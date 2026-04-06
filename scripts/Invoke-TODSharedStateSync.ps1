@@ -851,8 +851,7 @@ function Publish-TodStatusToMimArm {
     }
 
     $connections = $null
-    $primaryTempPath = ""
-    $aliasTempPath = ""
+    $tempUploadPaths = New-Object System.Collections.Generic.List[string]
     $consumerTemplateUploaded = $false
     try {
         $connections = New-MimSshConnections -HostAlias $resolvedHost -UserName $resolvedUser -Port $resolvedPort -Password $resolvedPassword
@@ -876,19 +875,31 @@ function Publish-TodStatusToMimArm {
         $payloadDoc.tod_status_publish = [pscustomobject]$status
         $payload = $payloadDoc | ConvertTo-Json -Depth 8
         $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-        $primaryTempPath = Join-Path $tempDir "TOD_INTEGRATION_STATUS.latest.json"
-        $aliasTempPath = Join-Path $tempDir "TOD_integration_status.latest.json"
-        [System.IO.File]::WriteAllText($primaryTempPath, $payload, $utf8NoBom)
-        [System.IO.File]::WriteAllText($aliasTempPath, $payload, $utf8NoBom)
 
-        Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $primaryTempPath -Destination $resolvedRoot -Force -ErrorAction Stop | Out-Null
-        Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $aliasTempPath -Destination $resolvedRoot -Force -ErrorAction Stop | Out-Null
+        function New-TodStatusUploadTempFile {
+            param(
+                [Parameter(Mandatory = $true)][string]$LeafName
+            )
+
+            $tempFilePath = Join-Path $tempDir ("{0}-{1}" -f ([guid]::NewGuid().ToString("N")), $LeafName)
+            [System.IO.File]::WriteAllText($tempFilePath, $payload, $utf8NoBom)
+            [void]$tempUploadPaths.Add($tempFilePath)
+            return $tempFilePath
+        }
+
+        $primaryUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_INTEGRATION_STATUS.latest.json"
+        $aliasUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_integration_status.latest.json"
+
+        Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $primaryUploadPath -Destination $resolvedRoot -Force -ErrorAction Stop | Out-Null
+        Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $aliasUploadPath -Destination $resolvedRoot -Force -ErrorAction Stop | Out-Null
 
         # Keep a MIM-facing copy in sync on the same SSH host; create mirror root when absent.
         $mirrorMkdir = Invoke-SSHCommand -SessionId ([int]$connections.ssh.SessionId) -Command ("mkdir -p '{0}'" -f $status.mim_mirror_root) -TimeOut 15
         if ($mirrorMkdir.ExitStatus -eq 0) {
-            Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $primaryTempPath -Destination $status.mim_mirror_root -Force -ErrorAction Stop | Out-Null
-            Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $aliasTempPath -Destination $status.mim_mirror_root -Force -ErrorAction Stop | Out-Null
+            $mirrorPrimaryUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_INTEGRATION_STATUS.latest.json"
+            $mirrorAliasUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_integration_status.latest.json"
+            Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $mirrorPrimaryUploadPath -Destination $status.mim_mirror_root -Force -ErrorAction Stop | Out-Null
+            Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $mirrorAliasUploadPath -Destination $status.mim_mirror_root -Force -ErrorAction Stop | Out-Null
             $status.mim_mirror_status = "mirrored"
         }
         else {
@@ -944,11 +955,10 @@ function Publish-TodStatusToMimArm {
         $status.error = [string]$_.Exception.Message
     }
     finally {
-        if (-not [string]::IsNullOrWhiteSpace($primaryTempPath) -and (Test-Path -Path $primaryTempPath)) {
-            Remove-Item -Path $primaryTempPath -Force -ErrorAction SilentlyContinue
-        }
-        if (-not [string]::IsNullOrWhiteSpace($aliasTempPath) -and (Test-Path -Path $aliasTempPath)) {
-            Remove-Item -Path $aliasTempPath -Force -ErrorAction SilentlyContinue
+        foreach ($tempUploadPath in @($tempUploadPaths)) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$tempUploadPath) -and (Test-Path -Path ([string]$tempUploadPath))) {
+                Remove-Item -Path ([string]$tempUploadPath) -Force -ErrorAction SilentlyContinue
+            }
         }
         Close-MimSshConnections -Connections $connections
     }
