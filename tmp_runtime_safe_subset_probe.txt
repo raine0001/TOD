@@ -1,5 +1,0 @@
-ok
-dir=True
-recovery=True
-sweep_validation=True
-subset=True

@@ -41,6 +41,7 @@ shared_state/agentmim/
 shared_state/archive/
 shared_state/project_briefs/
 shared_state/conversation_eval/
+shared_state/dialog/
 shared_state/cadence_monitor_ongoing.jsonl
 shared_state/cadence_reliability_baseline.current.json
 shared_state/approval_reduction_summary.json
@@ -71,6 +72,8 @@ shared_state/*.latest.json
 shared_state/*.latest.md
 shared_state/PROTOCOL_FREEZE_PLAN.md
 shared_state/protocol_freeze_config.json
+shared_state/*.log.jsonl
+shared_state/*.lock.json
 shared_state/tod_recovery_watchdog.log.jsonl
 shared_state/voice_listener.pid
 shared_state/recovery_drill_proof.json
@@ -91,3 +94,8 @@ tod/data/avatars/user-avatar.jpg
 # Local state backups
 tod/data/state.backup.*.json
 tod/data/state.repair-*.json.bak
+
+# Local editor and scratch artifacts
+.vscode/
+tmp_*
+raw-sweep*

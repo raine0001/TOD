@@ -1,5 +1,0 @@
-exit=0
-dir=True
-report_json=True
-report_md=True
-subset=True

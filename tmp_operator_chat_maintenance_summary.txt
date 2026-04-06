@@ -1,1 +1,0 @@
-﻿Maintenance is needs_attention with operational severity critical because active_critical_condition.
