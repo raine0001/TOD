@@ -84,13 +84,13 @@ Connectivity check:
 Run a lightweight local UI to inspect TOD output and trigger basic actions:
 
 ```powershell
-.\scripts\Start-TOD-UI.ps1
+.\scripts\Start-TOD-UI.ps1 -AdvertiseHost 192.168.1.161
 ```
 
 Open TOD console in a chromeless app window (no browser controls):
 
 ```powershell
-.\scripts\Start-TOD-UI.ps1 -OpenAppWindow
+.\scripts\Start-TOD-UI.ps1 -AdvertiseHost 192.168.1.161 -OpenAppWindow
 ```
 
 Native fullscreen app window launcher (works even when Edge/Chrome app mode is unavailable):
@@ -132,7 +132,7 @@ Safe launcher + app window mode:
 Then open:
 
 ```text
-http://localhost:8844/
+http://192.168.1.161:8844/
 ```
 
 Notes:
@@ -930,12 +930,12 @@ Use this as a quick day-to-day command map.
 ### TOD Command Console (UI)
 
 ```powershell
-.\scripts\Start-TOD-UI.ps1 -Port 8844
+.\scripts\Start-TOD-UI.ps1 -Port 8844 -AdvertiseHost 192.168.1.161
 ```
 
 Notes:
-- If `8844` is busy, `Start-TOD-UI.ps1` auto-falls forward to the next available port.
-- Open the printed URL in browser (for example `http://localhost:8845/`).
+- `Start-TOD-UI.ps1` stays deterministic on the requested port by default, reuses an already-healthy TOD UI instance when possible, and writes startup diagnostics to `tod/out/tod-ui-startup.latest.json` when startup cannot claim the requested port.
+- Use `-AllowPortFallback` only when you explicitly want the UI to fall forward to a different port.
 
 Optional convenience command:
 

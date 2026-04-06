@@ -1,7 +1,10 @@
 param(
     [int]$Port = 8844,
     [switch]$OpenAppWindow,
-    [switch]$NoAutoOpen
+    [switch]$NoAutoOpen,
+    [string]$AdvertiseHost = '',
+    [switch]$LocalOnly,
+    [switch]$AllowPortFallback
 )
 
 Set-StrictMode -Version Latest
@@ -14,6 +17,8 @@ $todScript = Join-Path $PSScriptRoot "TOD.ps1"
 $configPath = Join-Path $repoRoot "tod/config/tod-config.json"
 $defaultLogPath = Join-Path $repoRoot "tod/out/mim-http.log"
 $uiCrashLogPath = Join-Path $repoRoot "tod/out/tod-ui-crash.log"
+$uiStartupDiagnosticPath = Join-Path $repoRoot "tod/out/tod-ui-startup.latest.json"
+$uiLanProxyScriptPath = Join-Path $PSScriptRoot "tod_ui_lan_proxy.py"
 $statePath = Join-Path $repoRoot "tod/data/state.json"
 $maxStateReadBytes = 256MB
 $lightweightStateBusScript = Join-Path $PSScriptRoot "Get-TODLightweightStateBus.ps1"
@@ -167,6 +172,282 @@ function Resolve-AppBrowserPath {
     return $null
 }
 
+function Get-TodUiBaseUrl {
+    param(
+        [Parameter(Mandatory = $true)][string]$HostName,
+        [Parameter(Mandatory = $true)][int]$Port
+    )
+
+    return ("http://{0}:{1}" -f $HostName.Trim(), $Port)
+}
+
+function Resolve-TodUiAdvertiseHost {
+    param(
+        [string]$ExplicitHost,
+        [bool]$LocalOnlyMode
+    )
+
+    if ($LocalOnlyMode) {
+        return 'localhost'
+    }
+
+    foreach ($candidate in @($ExplicitHost, $env:TOD_UI_HOST, $env:TOD_UI_ADVERTISE_HOST)) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$candidate)) {
+            return [string]$candidate.Trim()
+        }
+    }
+
+    try {
+        $addresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop | Where-Object {
+            $_.IPAddress -and
+            $_.IPAddress -ne '127.0.0.1' -and
+            $_.IPAddress -notlike '169.254.*'
+        })
+
+        $preferred = @($addresses | Where-Object {
+            $_.IPAddress -like '192.168.*' -or
+            [string]$_.InterfaceAlias -match 'Ethernet|Wi-Fi'
+        } | Select-Object -First 1)
+        if (@($preferred).Count -gt 0 -and -not [string]::IsNullOrWhiteSpace([string]$preferred[0].IPAddress)) {
+            return [string]$preferred[0].IPAddress
+        }
+
+        $fallback = @($addresses | Select-Object -First 1)
+        if (@($fallback).Count -gt 0 -and -not [string]::IsNullOrWhiteSpace([string]$fallback[0].IPAddress)) {
+            return [string]$fallback[0].IPAddress
+        }
+    }
+    catch {
+    }
+
+    return 'localhost'
+}
+
+function Get-TodUiListenHosts {
+    param(
+        [string]$AdvertiseHost,
+        [bool]$LocalOnlyMode
+    )
+
+    $hosts = New-Object System.Collections.Generic.List[string]
+    [void]$hosts.Add('localhost')
+    if (-not $LocalOnlyMode -and -not [string]::IsNullOrWhiteSpace([string]$AdvertiseHost) -and -not [string]::Equals([string]$AdvertiseHost, 'localhost', [System.StringComparison]::OrdinalIgnoreCase)) {
+        [void]$hosts.Add([string]$AdvertiseHost)
+    }
+
+    return @($hosts | Select-Object -Unique)
+}
+
+function Get-TodUiListenerPrefixes {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$ListenHosts,
+        [Parameter(Mandatory = $true)][int]$Port
+    )
+
+    $prefixes = foreach ($listenHost in @($ListenHosts | Select-Object -Unique)) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$listenHost)) {
+            "http://{0}:{1}/" -f [string]$listenHost, $Port
+        }
+    }
+
+    return @($prefixes | Select-Object -Unique)
+}
+
+function Test-TodUiProjectStatusUrl {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [int]$TimeoutSeconds = 2
+    )
+
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri (([string]$BaseUrl).TrimEnd('/') + '/api/project-status') -TimeoutSec $TimeoutSeconds
+        return ($response.StatusCode -eq 200)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-TodUiPortOwnerInfo {
+    param([Parameter(Mandatory = $true)][int]$Port)
+
+    $connection = $null
+    try {
+        $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    }
+    catch {
+        $connection = $null
+    }
+
+    if ($null -eq $connection) {
+        return [pscustomobject]@{
+            port = $Port
+            in_use = $false
+            process_id = 0
+            process_name = ''
+            command_line = ''
+            is_tod_ui_process = $false
+            is_tod_ui_proxy_process = $false
+        }
+    }
+
+    $processId = 0
+    try { $processId = [int]$connection.OwningProcess } catch { $processId = 0 }
+    $process = $null
+    if ($processId -gt 0) {
+        try {
+            $process = Get-CimInstance Win32_Process -Filter ("ProcessId = {0}" -f $processId) -ErrorAction SilentlyContinue
+        }
+        catch {
+            $process = $null
+        }
+    }
+
+    $commandLine = if ($process -and $process.CommandLine) { [string]$process.CommandLine } else { '' }
+    $processName = if ($process -and $process.Name) { [string]$process.Name } else { '' }
+
+    return [pscustomobject]@{
+        port = $Port
+        in_use = $true
+        process_id = $processId
+        process_name = $processName
+        command_line = $commandLine
+        is_tod_ui_process = ($commandLine -like '*Start-TOD-UI.ps1*')
+        is_tod_ui_proxy_process = ($commandLine -like '*tod_ui_lan_proxy.py*')
+    }
+}
+
+function Get-TodUiProxyTargetPort {
+    param($PortOwnerInfo)
+
+    if ($null -eq $PortOwnerInfo -or -not $PortOwnerInfo.PSObject.Properties['command_line']) {
+        return 0
+    }
+
+    $commandLine = [string]$PortOwnerInfo.command_line
+    $match = [regex]::Match($commandLine, '--target-port\s+(\d+)')
+    if ($match.Success) {
+        return [int]$match.Groups[1].Value
+    }
+
+    return 0
+}
+
+function Test-TodUiPortFree {
+    param([Parameter(Mandatory = $true)][int]$Port)
+
+    try {
+        $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+        return ($null -eq $connection)
+    }
+    catch {
+        return $true
+    }
+}
+
+function Find-TodUiInternalPort {
+    param(
+        [Parameter(Mandatory = $true)][int]$StartPort,
+        [int]$MaxAttempts = 20
+    )
+
+    for ($i = 0; $i -lt $MaxAttempts; $i++) {
+        $candidate = $StartPort + $i
+        if (Test-TodUiPortFree -Port $candidate) {
+            return $candidate
+        }
+    }
+
+    throw "Unable to find a free internal TOD UI listener port starting at $StartPort."
+}
+
+function Stop-TodUiProcessIfOwned {
+    param([Parameter(Mandatory = $true)]$PortOwnerInfo)
+
+    if (-not $PortOwnerInfo -or -not [bool]$PortOwnerInfo.in_use -or -not [bool]$PortOwnerInfo.is_tod_ui_process -or [int]$PortOwnerInfo.process_id -le 0) {
+        return $false
+    }
+
+    try {
+        Stop-Process -Id ([int]$PortOwnerInfo.process_id) -Force -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function New-TodUiStartupDiagnostic {
+    param(
+        [bool]$Ok,
+        [string]$Status,
+        [string]$Reason,
+        [string]$Message,
+        [int]$Port,
+        [string[]]$ListenHosts,
+        [string[]]$ListenerPrefixes,
+        [string]$AdvertiseHost,
+        [string]$AdvertiseUrl,
+        $PortOwnerInfo,
+        [string]$RecoveryAction = 'none',
+        [string]$FailureDetail = ''
+    )
+
+    return [pscustomobject]@{
+        ok = $Ok
+        status = $Status
+        reason = $Reason
+        message = $Message
+        port = $Port
+        advertise_host = $AdvertiseHost
+        advertise_url = $AdvertiseUrl
+        listen_hosts = @($ListenHosts)
+        listener_prefixes = @($ListenerPrefixes)
+        recovery_action = $RecoveryAction
+        failure_detail = $FailureDetail
+        port_owner = if ($PortOwnerInfo) {
+            [pscustomobject]@{
+                in_use = [bool]$PortOwnerInfo.in_use
+                process_id = if ($PortOwnerInfo.PSObject.Properties['process_id']) { [int]$PortOwnerInfo.process_id } else { 0 }
+                process_name = if ($PortOwnerInfo.PSObject.Properties['process_name']) { [string]$PortOwnerInfo.process_name } else { '' }
+                command_line = if ($PortOwnerInfo.PSObject.Properties['command_line']) { [string]$PortOwnerInfo.command_line } else { '' }
+                is_tod_ui_process = if ($PortOwnerInfo.PSObject.Properties['is_tod_ui_process']) { [bool]$PortOwnerInfo.is_tod_ui_process } else { $false }
+            }
+        }
+        else {
+            $null
+        }
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+}
+
+function Write-TodUiStartupDiagnostic {
+    param(
+        [bool]$Ok,
+        [string]$Status,
+        [string]$Reason,
+        [string]$Message,
+        [int]$Port,
+        [string[]]$ListenHosts,
+        [string[]]$ListenerPrefixes,
+        [string]$AdvertiseHost,
+        [string]$AdvertiseUrl,
+        $PortOwnerInfo,
+        [string]$RecoveryAction = 'none',
+        [string]$FailureDetail = ''
+    )
+
+    $doc = New-TodUiStartupDiagnostic -Ok:$Ok -Status $Status -Reason $Reason -Message $Message -Port $Port -ListenHosts $ListenHosts -ListenerPrefixes $ListenerPrefixes -AdvertiseHost $AdvertiseHost -AdvertiseUrl $AdvertiseUrl -PortOwnerInfo $PortOwnerInfo -RecoveryAction $RecoveryAction -FailureDetail $FailureDetail
+    $directory = Split-Path -Parent $uiStartupDiagnosticPath
+    if (-not (Test-Path -Path $directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($uiStartupDiagnosticPath, (($doc | ConvertTo-Json -Depth 10) -replace "`r`n", "`n"), $utf8NoBom)
+    return $doc
+}
+
 function Wait-TodUiReady {
     param(
         [Parameter(Mandatory = $true)][string]$Url,
@@ -196,6 +477,52 @@ function Wait-TodUiReady {
     }
 
     return $false
+}
+
+function Resolve-TodUiProxyPythonPath {
+    $venvPython = Join-Path $repoRoot '.venv/Scripts/python.exe'
+    if (Test-Path -Path $venvPython) {
+        return $venvPython
+    }
+
+    return 'python'
+}
+
+function Start-TodUiLanProxy {
+    param(
+        [Parameter(Mandatory = $true)][string]$ListenHost,
+        [Parameter(Mandatory = $true)][int]$ListenPort,
+        [Parameter(Mandatory = $true)][int]$TargetPort
+    )
+
+    if (-not (Test-Path -Path $uiLanProxyScriptPath)) {
+        throw "TOD UI LAN proxy script not found at $uiLanProxyScriptPath"
+    }
+
+    $pythonPath = Resolve-TodUiProxyPythonPath
+    $arguments = @(
+        $uiLanProxyScriptPath,
+        '--listen-host', $ListenHost,
+        '--listen-port', [string]$ListenPort,
+        '--target-host', '127.0.0.1',
+        '--target-port', [string]$TargetPort
+    )
+
+    $process = Start-Process -FilePath $pythonPath -ArgumentList $arguments -WorkingDirectory $repoRoot -PassThru -WindowStyle Hidden
+    Start-Sleep -Seconds 1
+
+    if ($process.HasExited) {
+        try {
+            if ($process -and -not $process.HasExited) {
+                Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+        }
+        throw ("TOD UI LAN proxy did not bind http://{0}:{1} within 10 seconds." -f $ListenHost, $ListenPort)
+    }
+
+    return $process
 }
 
 function Open-TodUiClient {
@@ -236,41 +563,138 @@ function Open-TodUiClient {
 
 $listener = $null
 $activePort = $Port
-$maxPortAttempts = 15
+$resolvedAdvertiseHost = Resolve-TodUiAdvertiseHost -ExplicitHost $AdvertiseHost -LocalOnlyMode ([bool]$LocalOnly)
+$listenHosts = Get-TodUiListenHosts -AdvertiseHost $resolvedAdvertiseHost -LocalOnlyMode ([bool]$LocalOnly)
+$bindingHosts = @('localhost')
+$usePublicProxy = (-not [string]::Equals($resolvedAdvertiseHost, 'localhost', [System.StringComparison]::OrdinalIgnoreCase))
+$candidatePorts = if ($AllowPortFallback) { @($Port..($Port + 14)) } else { @($Port) }
+$activePrefixes = @()
+$uiUrl = Get-TodUiBaseUrl -HostName $resolvedAdvertiseHost -Port $Port
+$uiLanProxyProcess = $null
+$activeListenerPort = $Port
 $started = $false
 
-for ($i = 0; $i -lt $maxPortAttempts; $i++) {
-    $candidatePort = $Port + $i
+foreach ($candidatePort in $candidatePorts) {
+    $listenerPort = if ($usePublicProxy) { Find-TodUiInternalPort -StartPort ($candidatePort + 10000) } else { $candidatePort }
+    $candidatePrefixes = Get-TodUiListenerPrefixes -ListenHosts $bindingHosts -Port $listenerPort
+    $candidateUiUrl = Get-TodUiBaseUrl -HostName $resolvedAdvertiseHost -Port $candidatePort
+    $healthyUrls = @($listenHosts | ForEach-Object {
+        $baseUrl = Get-TodUiBaseUrl -HostName ([string]$_) -Port $candidatePort
+        if (Test-TodUiProjectStatusUrl -BaseUrl $baseUrl -TimeoutSeconds 2) {
+            $baseUrl
+        }
+    })
+    $portOwner = Get-TodUiPortOwnerInfo -Port $candidatePort
+
+    if (@($healthyUrls).Count -eq @($listenHosts).Count) {
+        $null = Write-TodUiStartupDiagnostic -Ok:$true -Status 'already_running' -Reason 'healthy_existing_instance' -Message ('TOD UI already running at {0}' -f $candidateUiUrl) -Port $candidatePort -ListenHosts $listenHosts -ListenerPrefixes $candidatePrefixes -AdvertiseHost $resolvedAdvertiseHost -AdvertiseUrl $candidateUiUrl -PortOwnerInfo (Get-TodUiPortOwnerInfo -Port $candidatePort)
+        Write-Host "TOD UI already running at $candidateUiUrl/"
+        if (-not [string]::Equals($resolvedAdvertiseHost, 'localhost', [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host ("TOD UI loopback endpoint also available at {0}/" -f (Get-TodUiBaseUrl -HostName 'localhost' -Port $candidatePort))
+        }
+        Open-TodUiClient -Url $candidateUiUrl -AppMode ([bool]$OpenAppWindow)
+        return
+    }
+
+    $proxyTargetPort = if ([bool]$portOwner.is_tod_ui_proxy_process) { Get-TodUiProxyTargetPort -PortOwnerInfo $portOwner } else { 0 }
+    if ([bool]$portOwner.is_tod_ui_proxy_process -and $proxyTargetPort -gt 0 -and -not (Test-TodUiPortFree -Port $proxyTargetPort)) {
+        $null = Write-TodUiStartupDiagnostic -Ok:$true -Status 'already_running' -Reason 'healthy_existing_proxy' -Message ('TOD UI already running at {0}' -f $candidateUiUrl) -Port $candidatePort -ListenHosts $listenHosts -ListenerPrefixes $candidatePrefixes -AdvertiseHost $resolvedAdvertiseHost -AdvertiseUrl $candidateUiUrl -PortOwnerInfo $portOwner
+        Write-Host "TOD UI already running at $candidateUiUrl/"
+        if (-not [string]::Equals($resolvedAdvertiseHost, 'localhost', [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host ("TOD UI loopback endpoint also available at {0}/" -f (Get-TodUiBaseUrl -HostName 'localhost' -Port $candidatePort))
+        }
+        Open-TodUiClient -Url $candidateUiUrl -AppMode ([bool]$OpenAppWindow)
+        return
+    }
+
+    if ([bool]$portOwner.in_use) {
+        $reclaimed = $false
+        if ([bool]$portOwner.is_tod_ui_process) {
+            $reclaimed = Stop-TodUiProcessIfOwned -PortOwnerInfo $portOwner
+            if ($reclaimed) {
+                Start-Sleep -Milliseconds 750
+                $portOwner = Get-TodUiPortOwnerInfo -Port $candidatePort
+            }
+        }
+
+        if ([bool]$portOwner.in_use) {
+            if ($AllowPortFallback -and $candidatePort -ne @($candidatePorts)[-1]) {
+                continue
+            }
+
+            $reason = if ($reclaimed) { 'stale_tod_ui_port_not_reclaimed' } else { 'port_in_use' }
+            $message = if ($reclaimed) { "Requested UI port $candidatePort could not be reclaimed from a stale TOD UI process." } else { "Requested UI port $candidatePort is already in use." }
+            $null = Write-TodUiStartupDiagnostic -Ok:$false -Status 'failed' -Reason $reason -Message $message -Port $candidatePort -ListenHosts $listenHosts -ListenerPrefixes $candidatePrefixes -AdvertiseHost $resolvedAdvertiseHost -AdvertiseUrl $candidateUiUrl -PortOwnerInfo $portOwner -RecoveryAction $(if ($AllowPortFallback) { 'try_next_port' } else { 'free_requested_port' })
+            throw ("TOD UI startup failed ({0}): {1} See {2}" -f $reason, $message, $uiStartupDiagnosticPath)
+        }
+    }
+
     $candidate = New-Object System.Net.HttpListener
-    $candidate.Prefixes.Add("http://localhost:$candidatePort/")
+    foreach ($prefix in $candidatePrefixes) {
+        [void]$candidate.Prefixes.Add($prefix)
+    }
 
     try {
         $candidate.Start()
         $listener = $candidate
         $activePort = $candidatePort
+        $activeListenerPort = $listenerPort
+        $activePrefixes = $candidatePrefixes
+        $uiUrl = $candidateUiUrl
         $started = $true
         break
     }
     catch {
         $candidate.Close()
-        if ($i -eq ($maxPortAttempts - 1)) {
-            throw
+        $detail = [string]$_.Exception.Message
+        $reason = if ($detail -match 'Access is denied') { 'url_acl_denied' } elseif ($detail -match 'conflict|Cannot create a file when that file already exists|in use') { 'port_in_use' } else { 'listener_start_failed' }
+
+        if ($AllowPortFallback -and $candidatePort -ne @($candidatePorts)[-1]) {
+            continue
         }
+
+        $null = Write-TodUiStartupDiagnostic -Ok:$false -Status 'failed' -Reason $reason -Message 'TOD UI listener could not bind to the requested startup prefixes.' -Port $candidatePort -ListenHosts $listenHosts -ListenerPrefixes $candidatePrefixes -AdvertiseHost $resolvedAdvertiseHost -AdvertiseUrl $candidateUiUrl -PortOwnerInfo (Get-TodUiPortOwnerInfo -Port $candidatePort) -RecoveryAction $(if ($reason -eq 'url_acl_denied') { 'grant_url_acl_or_use_localonly' } else { 'free_requested_port' }) -FailureDetail $detail
+        throw ("TOD UI startup failed ({0}): {1} See {2}" -f $reason, $detail, $uiStartupDiagnosticPath)
     }
 }
 
 if (-not $started -or $null -eq $listener) {
-    throw "Failed to start TOD UI listener."
+    $null = Write-TodUiStartupDiagnostic -Ok:$false -Status 'failed' -Reason 'listener_not_started' -Message 'Failed to start TOD UI listener.' -Port $Port -ListenHosts $listenHosts -ListenerPrefixes (Get-TodUiListenerPrefixes -ListenHosts $listenHosts -Port $Port) -AdvertiseHost $resolvedAdvertiseHost -AdvertiseUrl (Get-TodUiBaseUrl -HostName $resolvedAdvertiseHost -Port $Port) -PortOwnerInfo (Get-TodUiPortOwnerInfo -Port $Port)
+    throw "Failed to start TOD UI listener. See $uiStartupDiagnosticPath"
 }
 
 if ($activePort -ne $Port) {
     Write-Host "Requested port $Port was unavailable; using $activePort instead."
 }
 
-Write-Host "TOD UI running at http://localhost:$activePort/"
+if ($usePublicProxy) {
+    try {
+        $uiLanProxyProcess = Start-TodUiLanProxy -ListenHost '0.0.0.0' -ListenPort $activePort -TargetPort $activeListenerPort
+    }
+    catch {
+        try {
+            if ($listener -and $listener.IsListening) {
+                $listener.Stop()
+            }
+            if ($listener) {
+                $listener.Close()
+            }
+        }
+        catch {
+        }
+
+        $null = Write-TodUiStartupDiagnostic -Ok:$false -Status 'failed' -Reason 'lan_proxy_failed' -Message 'TOD UI localhost listener started, but the LAN proxy failed to publish the advertised URL.' -Port $activePort -ListenHosts $listenHosts -ListenerPrefixes $activePrefixes -AdvertiseHost $resolvedAdvertiseHost -AdvertiseUrl $uiUrl -PortOwnerInfo (Get-TodUiPortOwnerInfo -Port $activePort) -RecoveryAction 'check_bind_address_or_proxy_host' -FailureDetail ([string]$_.Exception.Message)
+        throw ("TOD UI startup failed (lan_proxy_failed): {0} See {1}" -f $_.Exception.Message, $uiStartupDiagnosticPath)
+    }
+}
+
+Write-Host "TOD UI running at $uiUrl/"
+if ($usePublicProxy) {
+    Write-Host ("TOD UI loopback endpoint also available at {0}/" -f (Get-TodUiBaseUrl -HostName 'localhost' -Port $activePort))
+}
 Write-Host "Press Ctrl+C to stop."
 
-$uiUrl = "http://localhost:$activePort/"
+$null = Write-TodUiStartupDiagnostic -Ok:$true -Status $(if ($activePort -eq $Port) { 'started' } else { 'started_with_fallback' }) -Reason $(if ($activePort -eq $Port) { 'listener_started' } else { 'fallback_port_used' }) -Message ('TOD UI ready at {0}' -f $uiUrl) -Port $activePort -ListenHosts $listenHosts -ListenerPrefixes $activePrefixes -AdvertiseHost $resolvedAdvertiseHost -AdvertiseUrl $uiUrl -PortOwnerInfo (Get-TodUiPortOwnerInfo -Port $activePort) -RecoveryAction 'none'
 Open-TodUiClient -Url $uiUrl -AppMode ([bool]$OpenAppWindow)
 
 function Write-UiCrashLog {
@@ -4177,7 +4601,7 @@ function Invoke-OperatorChatGovernedAction {
             }
         }
         'refresh-share-links' {
-            $payload = Get-ShareArtifactsPayload -ActivePort $activePort
+            $payload = Get-ShareArtifactsPayload -ActivePort $activePort -BaseUrl $uiUrl
             $artifacts = if ($payload -and $payload.PSObject.Properties['artifacts']) { @($payload.artifacts) } else { @() }
             $availableCount = @($artifacts | Where-Object { $_.exists -eq $true }).Count
             return [pscustomobject]@{
@@ -4217,7 +4641,7 @@ function Invoke-OperatorChatGovernedAction {
         }
         'quick-refresh-reliability' {
             $statusPayload = $resolvedProjectStatus
-            $sharePayload = Get-ShareArtifactsPayload -ActivePort $activePort
+            $sharePayload = Get-ShareArtifactsPayload -ActivePort $activePort -BaseUrl $uiUrl
             $reliabilityPayload = Invoke-LightweightUiAction -Action 'get-reliability'
             $marker = if ($statusPayload) { $statusPayload.marker } else { $null }
             $bridge = if ($statusPayload) { $statusPayload.bridge_status } else { $null }
@@ -4241,7 +4665,7 @@ function Invoke-OperatorChatGovernedAction {
         }
         'refresh-governance-snapshot' {
             $statusPayload = $resolvedProjectStatus
-            $sharePayload = Get-ShareArtifactsPayload -ActivePort $activePort
+            $sharePayload = Get-ShareArtifactsPayload -ActivePort $activePort -BaseUrl $uiUrl
             $stateBusPayload = Invoke-LightweightUiAction -Action 'get-state-bus'
             $marker = if ($statusPayload) { $statusPayload.marker } else { $null }
             $bridge = if ($statusPayload) { $statusPayload.bridge_status } else { $null }
@@ -4270,7 +4694,7 @@ function Invoke-OperatorChatGovernedAction {
         }
         'refresh-bridge-alignment-bundle' {
             $statusPayload = $resolvedProjectStatus
-            $sharePayload = Get-ShareArtifactsPayload -ActivePort $activePort
+            $sharePayload = Get-ShareArtifactsPayload -ActivePort $activePort -BaseUrl $uiUrl
             $stateBusPayload = Invoke-LightweightUiAction -Action 'get-state-bus'
             $bridgePayload = Invoke-OperatorChatQuery -Query $(if ([string]::IsNullOrWhiteSpace($Query)) { 'What is the current bridge mismatch?' } else { $Query }) -Intent 'explain_bridge_status' -ObjectiveId $resolvedObjectiveId -WindowMinutes $WindowMinutes -ValidationHarness $ValidationHarness
             $artifactsAvailable = if ($sharePayload -and $sharePayload.PSObject.Properties['artifacts']) { @($sharePayload.artifacts | Where-Object { $_.exists -eq $true }).Count } else { 0 }
@@ -6432,7 +6856,10 @@ function Get-MimeTypeForPath {
 }
 
 function Get-ShareArtifactsPayload {
-    param([int]$ActivePort)
+    param(
+        [int]$ActivePort,
+        [string]$BaseUrl
+    )
 
     $items = @()
     foreach ($entry in $shareArtifacts.GetEnumerator()) {
@@ -6462,7 +6889,7 @@ function Get-ShareArtifactsPayload {
     return [pscustomobject]@{
         ok = $true
         generated_at = (Get-Date).ToUniversalTime().ToString("o")
-        base_url = "http://localhost:$ActivePort"
+        base_url = if (-not [string]::IsNullOrWhiteSpace([string]$BaseUrl)) { [string]$BaseUrl } else { (Get-TodUiBaseUrl -HostName 'localhost' -Port $ActivePort) }
         artifacts = @($items)
     }
 }
@@ -9403,7 +9830,7 @@ function Get-TaskStatePayload {
     }
 }
 
-Write-UiCrashLog "UI server started on port $activePort"
+Write-UiCrashLog ("UI server started on public port {0}, internal listener port {1}, advertise host {2}" -f $activePort, $activeListenerPort, $resolvedAdvertiseHost)
 
 try {
     while ($listener.IsListening) {
@@ -9944,7 +10371,7 @@ try {
 
         if ($request.HttpMethod -eq "GET" -and $path -eq "/api/share-artifacts") {
             try {
-                $payload = Get-ShareArtifactsPayload -ActivePort $activePort
+                $payload = Get-ShareArtifactsPayload -ActivePort $activePort -BaseUrl $uiUrl
                 Write-JsonResponse -Response $response -StatusCode 200 -Json ($payload | ConvertTo-Json -Depth 8)
             }
             catch {
@@ -10079,6 +10506,15 @@ try {
     }
 }
 finally {
+    if ($uiLanProxyProcess) {
+        try {
+            if (-not $uiLanProxyProcess.HasExited) {
+                Stop-Process -Id $uiLanProxyProcess.Id -Force -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+        }
+    }
     if ($listener.IsListening) {
         $listener.Stop()
     }

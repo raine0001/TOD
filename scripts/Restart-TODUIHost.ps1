@@ -1,12 +1,14 @@
 param(
     [int]$Port = 8844,
-    [int]$ReadyTimeoutSeconds = 30
+    [int]$ReadyTimeoutSeconds = 30,
+    [string]$AdvertiseHost = ''
 )
 
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $startScript = Join-Path $PSScriptRoot 'Start-TOD-UI.ps1'
+$startupDiagnosticPath = Join-Path $repoRoot 'tod/out/tod-ui-startup.latest.json'
 
 if (-not (Test-Path -Path $startScript)) {
     throw "Start-TOD-UI.ps1 was not found at $startScript"
@@ -29,12 +31,18 @@ foreach ($process in @($processes)) {
 
 Start-Sleep -Seconds 2
 
-$process = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+$argumentList = @(
     '-NoProfile',
     '-ExecutionPolicy', 'Bypass',
     '-File', $startScript,
-    '-Port', $Port
-) -WorkingDirectory $repoRoot -PassThru -WindowStyle Hidden
+    '-Port', $Port,
+    '-NoAutoOpen'
+)
+if (-not [string]::IsNullOrWhiteSpace([string]$AdvertiseHost)) {
+    $argumentList += @('-AdvertiseHost', [string]$AdvertiseHost)
+}
+
+$process = Start-Process -FilePath 'powershell.exe' -ArgumentList $argumentList -WorkingDirectory $repoRoot -PassThru -WindowStyle Hidden
 
 $deadline = (Get-Date).AddSeconds($ReadyTimeoutSeconds)
 $ready = $false
@@ -52,7 +60,8 @@ while ((Get-Date) -lt $deadline) {
 }
 
 if (-not $ready) {
-    throw "TOD UI host did not become ready on port $Port within $ReadyTimeoutSeconds seconds."
+    $diagnosticHint = if (Test-Path -Path $startupDiagnosticPath) { " See $startupDiagnosticPath" } else { '' }
+    throw "TOD UI host did not become ready on port $Port within $ReadyTimeoutSeconds seconds.$diagnosticHint"
 }
 
 [pscustomobject]@{
