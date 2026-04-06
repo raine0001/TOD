@@ -8462,6 +8462,13 @@ function Get-SteadyStateHealth {
     $build = Read-JsonFileIfExists -Path $currentBuildStatePath
     $coordination = Read-JsonFileIfExists -Path $coordinationEscalationPath
     $stallState = Read-JsonFileIfExists -Path $regressionStallStatePath
+    $listenerRequestId = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['latest_request_id']) { [string]$ListenerActivity.latest_request_id } else { '' }
+    $listenerExecutionStatus = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['latest_execution_status']) { [string]$ListenerActivity.latest_execution_status } else { '' }
+    $listenerCycleClassification = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['latest_cycle_classification']) { [string]$ListenerActivity.latest_cycle_classification } else { '' }
+    $listenerResultStatus = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['result_status']) { [string]$ListenerActivity.result_status } else { '' }
+    $listenerTerminal = @('completed', 'succeeded', 'already_processed') -contains $listenerExecutionStatus.ToLowerInvariant()
+    $listenerResultHealthy = [string]::Equals($listenerResultStatus, 'succeeded', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::IsNullOrWhiteSpace($listenerResultStatus)
+    $listenerTerminalHealthy = $listenerTerminal -and $listenerResultHealthy
 
     $regressionAvailable = $false
     $passed = 0
@@ -8483,11 +8490,23 @@ function Get-SteadyStateHealth {
         if ($coordination.PSObject.Properties['last_ack_status']) {
             $coordinationStatus = [string]$coordination.last_ack_status
         }
+
+        $pendingRequestId = if ($coordination.PSObject.Properties['pending_request_id']) { [string]$coordination.pending_request_id } else { '' }
+        if ($pendingCoordination -and $listenerTerminalHealthy -and -not [string]::IsNullOrWhiteSpace($listenerRequestId) -and -not [string]::IsNullOrWhiteSpace($pendingRequestId) -and -not [string]::Equals($pendingRequestId, $listenerRequestId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $pendingCoordination = $false
+            $coordinationStatus = 'superseded_by_completed_listener_request'
+        }
     }
 
     $unchangedCycles = 0
     if ($stallState -and $stallState.PSObject.Properties['unchanged_cycles']) {
         try { $unchangedCycles = [int]$stallState.unchanged_cycles } catch { $unchangedCycles = 0 }
+    }
+    if ($unchangedCycles -gt 0 -and $listenerTerminalHealthy) {
+        $stallRequestId = if ($stallState -and $stallState.PSObject.Properties['last_request_id']) { [string]$stallState.last_request_id } else { '' }
+        if ([string]::IsNullOrWhiteSpace($stallRequestId) -or [string]::IsNullOrWhiteSpace($listenerRequestId) -or [string]::Equals($stallRequestId, $listenerRequestId, [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($listenerCycleClassification, 'duplicate_seen', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $unchangedCycles = 0
+        }
     }
 
     $loopIdleSec = -1
@@ -8516,7 +8535,7 @@ function Get-SteadyStateHealth {
         $bridgeStatus = Get-BridgeStatus
         $bridgeHealthy = ($bridgeStatus -and [bool]$bridgeStatus.available -and [string]::Equals([string]$bridgeStatus.status, 'ok', [System.StringComparison]::OrdinalIgnoreCase))
     }
-    $staleRegressionSuperseded = $regressionAvailable -and ($failed -gt 0) -and ($regressionAgeSeconds -ge 3600) -and $watchdogHealthy -and $bridgeHealthy -and [string]::Equals($cadenceSeverity, 'ok', [System.StringComparison]::OrdinalIgnoreCase)
+    $staleRegressionSuperseded = $regressionAvailable -and ($failed -gt 0) -and ($regressionAgeSeconds -ge 3600) -and $watchdogHealthy -and $bridgeHealthy -and [string]::Equals($cadenceSeverity, 'ok', [System.StringComparison]::OrdinalIgnoreCase) -and ($listenerTerminalHealthy -or (-not $pendingCoordination -and $unchangedCycles -eq 0))
 
     $status = "unknown"
     $summary = "Steady state unavailable"
@@ -8566,6 +8585,7 @@ function Get-SteadyStateHealth {
         loop_idle_sec = $loopIdleSec
         cadence_severity = $cadenceSeverity
         listener_mode = $listenerMode
+        listener_terminal = $listenerTerminal
         regression_age_seconds = $regressionAgeSeconds
         regression_report_stale = $staleRegressionSuperseded
         source_warning = $StateWarning
