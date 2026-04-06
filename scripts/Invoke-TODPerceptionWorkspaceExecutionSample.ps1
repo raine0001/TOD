@@ -2,6 +2,7 @@ param(
     [switch]$RunSampleLoop,
     [string]$SampleLoopScriptPath = "scripts/Invoke-TODBusAdapterSampleLoop.ps1",
     [string]$PolicyPath = "tod/templates/bus/tod_cross_domain_execution_policy.json",
+    [string]$PerceptionSchemaPath = "tod/templates/bus/tod_perception_context.schema.json",
     [string]$SummaryPath = "shared_state/bus_execution_summaries.json",
     [string]$SummaryPointerPath = "shared_state/bus_execution_summaries.index.json",
     [string]$HandoffSamplePath = "shared_state/bus_execution_handoff_integration_sample.json",
@@ -21,6 +22,7 @@ function Get-LocalPath {
 
 $sampleLoopAbs = Get-LocalPath -PathValue $SampleLoopScriptPath
 $policyAbs = Get-LocalPath -PathValue $PolicyPath
+$perceptionSchemaAbs = Get-LocalPath -PathValue $PerceptionSchemaPath
 $summaryAbs = Get-LocalPath -PathValue $SummaryPath
 $summaryPointerAbs = Get-LocalPath -PathValue $SummaryPointerPath
 $handoffAbs = Get-LocalPath -PathValue $HandoffSamplePath
@@ -28,6 +30,7 @@ $outAbs = Get-LocalPath -PathValue $OutputPath
 
 if (-not (Test-Path -Path $sampleLoopAbs)) { throw "Sample loop script not found: $sampleLoopAbs" }
 if (-not (Test-Path -Path $policyAbs)) { throw "Cross-domain execution policy not found: $policyAbs" }
+if (-not (Test-Path -Path $perceptionSchemaAbs)) { throw "Perception context schema not found: $perceptionSchemaAbs" }
 
 if ($RunSampleLoop) {
     $sampleLoopRaw = & $sampleLoopAbs -SourceDomain "workspace.perception" -SourceContext "workspace/mainboard" -PerceptionState "clear" -PerceptionSafety "safe"
@@ -43,6 +46,7 @@ if (-not (Test-Path -Path $summaryPointerAbs)) { throw "Summary pointer artifact
 if (-not (Test-Path -Path $handoffAbs)) { throw "Handoff sample not found: $handoffAbs" }
 
 $policy = Get-Content -Path $policyAbs -Raw | ConvertFrom-Json
+$perceptionSchema = Get-Content -Path $perceptionSchemaAbs -Raw | ConvertFrom-Json
 $summaryDoc = Get-Content -Path $summaryAbs -Raw | ConvertFrom-Json
 $pointerDoc = Get-Content -Path $summaryPointerAbs -Raw | ConvertFrom-Json
 $handoffDoc = Get-Content -Path $handoffAbs -Raw | ConvertFrom-Json
@@ -86,6 +90,12 @@ $sample = [pscustomobject]@{
         version = [string]$policy.version
         reason_codes = @($policy.reason_codes)
     }
+    perception_context = [pscustomobject]@{
+        schema_path = $PerceptionSchemaPath
+        schema_name = [string]$perceptionSchema.schema_name
+        required_fields = @($perceptionSchema.required_fields)
+        validation_enforced = $true
+    }
     bounded_execution_flow = [pscustomobject]@{
         source_domain = $sourceDomain
         source_context = $sourceContext
@@ -97,6 +107,7 @@ $sample = [pscustomobject]@{
         summary_pointer = $pointerDoc
         summary_entry = if ($summaryEntry.Count -gt 0) { $summaryEntry[0] } else { $handoffDoc.execution_summary }
         handoff = $handoffDoc.handoff
+        bus_adapter_status = if ($null -ne $sampleLoopObj -and $sampleLoopObj.PSObject.Properties["bus_adapter_status"]) { $sampleLoopObj.bus_adapter_status } else { $null }
     }
     boundary_assertion = [pscustomobject]@{
         tod_scope = "execution_runtime_only"

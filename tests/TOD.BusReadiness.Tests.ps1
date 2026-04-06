@@ -7,6 +7,7 @@ $samplesPath = Join-Path $repoRoot "tod/templates/bus/tod_execution_event_sample
 $summaryContractPath = Join-Path $repoRoot "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json"
 $handshakeContractPath = Join-Path $repoRoot "tod/templates/bus/tod_unified_state_bus_handshake.contract.json"
 $crossDomainPolicyPath = Join-Path $repoRoot "tod/templates/bus/tod_cross_domain_execution_policy.json"
+$perceptionSchemaPath = Join-Path $repoRoot "tod/templates/bus/tod_perception_context.schema.json"
 $sharedStateSyncScriptPath = Join-Path $repoRoot "scripts/Invoke-TODSharedStateSync.ps1"
 $docPath = Join-Path $repoRoot "docs/tod-unified-state-bus-execution-events-v1.md"
 
@@ -17,6 +18,7 @@ Describe "TOD Bus Readiness Artifacts" {
         (Test-Path -Path $summaryContractPath) | Should Be $true
         (Test-Path -Path $handshakeContractPath) | Should Be $true
         (Test-Path -Path $crossDomainPolicyPath) | Should Be $true
+        (Test-Path -Path $perceptionSchemaPath) | Should Be $true
         (Test-Path -Path $sharedStateSyncScriptPath) | Should Be $true
         (Test-Path -Path $docPath) | Should Be $true
     }

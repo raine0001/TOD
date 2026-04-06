@@ -294,6 +294,51 @@ Describe "TOD Bus Adapter" {
         [int]$status.lifecycle_feedback.successful_runtime | Should BeGreaterThan 0
     }
 
+    It "status exposes policy metrics reliability score boundary metadata and inquiry timeout" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-status-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "ingestion"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-status"; execution_id = "exec-status"; source_domain = "mim" }
+            payload = @{ runtime_action = "get-engineering-loop-summary"; reliability_hints = @{ simulate_retry_once = $true; simulate_drift = $true } }
+        } | ConvertTo-Json -Depth 10 -Compress
+
+        $null = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        $statusResult = Invoke-Adapter -Paths $paths -AdapterAction "status"
+
+        [bool]$statusResult.ok | Should Be $true
+        [int]$statusResult.policy_metrics.allowed | Should BeGreaterThan 0
+        [double]$statusResult.reliability_metrics.engine_reliability_score | Should BeLessThan 1.0
+        [string]$statusResult.reliability_metrics.guardrail_trend.direction | Should Not BeNullOrEmpty
+        [string]$statusResult.autonomy_boundary.tod_scope | Should Be "execution_runtime_only"
+        [int]$statusResult.inquiry_control.pending_timeout_seconds | Should BeGreaterThan 0
+    }
+
+    It "invalid perception context is rejected by schema guardrail" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-schema-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "perception"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-schema"; execution_id = "exec-schema"; source_domain = "workspace.perception"; source_context = "workspace/malformed" }
+            payload = @{ runtime_action = "get-engineering-loop-summary"; perception_context = @{ state = "clear"; context_id = "workspace/malformed" } }
+        } | ConvertTo-Json -Depth 10 -Compress
+
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        [bool]$result.ok | Should Be $false
+        [string]$result.status | Should Be "rejected_guardrail"
+
+        $streamEvents = Get-StreamEvents -StreamPath $paths.Stream
+        $blocked = @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.guardrail_blocked" } | Select-Object -First 1)
+        ($blocked.Count -gt 0) | Should Be $true
+        [string]$blocked[0].reasons[0].code | Should Be "perception_context_invalid"
+    }
+
     It "active cancellation emits execution.cancelled" {
         $paths = New-TestPaths
 

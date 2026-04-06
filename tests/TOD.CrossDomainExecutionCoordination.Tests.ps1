@@ -34,5 +34,8 @@ Describe "TOD Cross-Domain Execution Coordination" {
         ($null -ne $sample.bounded_execution_flow.summary_entry) | Should Be $true
         [string]$sample.bounded_execution_flow.summary_entry.source_domain | Should Be "mim"
         [bool]$sample.boundary_assertion.policy_enforced | Should Be $true
+        ($null -ne $sample.policy_metrics) | Should Be $true
+        [int]$sample.policy_metrics.allowed | Should BeGreaterThan 0
+        [string]$sample.bounded_execution_flow.bus_adapter_status.autonomy_boundary.tod_scope | Should Be "execution_runtime_only"
     }
 }

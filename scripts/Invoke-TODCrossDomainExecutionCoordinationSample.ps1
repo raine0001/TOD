@@ -78,12 +78,14 @@ $sample = [pscustomobject]@{
         summary_pointer = $pointerDoc
         summary_entry = if ($summaryEntry.Count -gt 0) { $summaryEntry[0] } else { $handoffDoc.execution_summary }
         handoff = $handoffDoc.handoff
+        bus_adapter_status = if ($null -ne $sampleLoopObj -and $sampleLoopObj.PSObject.Properties["bus_adapter_status"]) { $sampleLoopObj.bus_adapter_status } else { $null }
     }
     boundary_assertion = [pscustomobject]@{
         tod_scope = "execution_runtime_only"
         mim_scope = "cognition_planning_meaning_governance"
         policy_enforced = $true
     }
+    policy_metrics = if ($null -ne $sampleLoopObj -and $sampleLoopObj.PSObject.Properties["bus_adapter_status"] -and $sampleLoopObj.bus_adapter_status.PSObject.Properties["policy_metrics"]) { $sampleLoopObj.bus_adapter_status.policy_metrics } else { $null }
 }
 
 $outDir = Split-Path -Parent $outAbs

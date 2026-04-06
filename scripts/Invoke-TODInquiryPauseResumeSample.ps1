@@ -1,5 +1,6 @@
 param(
     [string]$AdapterScriptPath = "scripts/Invoke-TODBusAdapter.ps1",
+    [string]$TodConfigPath = "tod/config/tod-config.json",
     [string]$OutputPath = "shared_state/bus_inquiry_pause_resume_sample.json"
 )
 
@@ -15,8 +16,13 @@ function Get-LocalPath {
 }
 
 $adapterAbs = Get-LocalPath -PathValue $AdapterScriptPath
+$todConfigAbs = Get-LocalPath -PathValue $TodConfigPath
 $outAbs = Get-LocalPath -PathValue $OutputPath
 if (-not (Test-Path -Path $adapterAbs)) { throw "Adapter script not found: $adapterAbs" }
+if (-not (Test-Path -Path $todConfigAbs)) { throw "TOD config not found: $todConfigAbs" }
+
+$todConfig = Get-Content -Path $todConfigAbs -Raw | ConvertFrom-Json
+$pendingTimeoutSeconds = if ($todConfig.execution_engine -and $todConfig.execution_engine.inquiry_control -and $todConfig.execution_engine.inquiry_control.PSObject.Properties["pending_timeout_seconds"]) { [int]$todConfig.execution_engine.inquiry_control.pending_timeout_seconds } else { 30 }
 
 $id = [guid]::NewGuid().ToString("N")
 $base = Join-Path $repoRoot ("tod/out/tests/inquiry-sample-" + $id)
@@ -131,6 +137,7 @@ $steps += Invoke-Adapter -AdapterAction "consume-event" -InputParams @{ EventJso
 $steps += Invoke-Adapter -AdapterAction "consume-event" -InputParams @{ EventJson = $clarificationEvent }
 $steps += Invoke-Adapter -AdapterAction "consume-event" -InputParams @{ EventJson = $resumeEvent }
 $summaryResult = Invoke-Adapter -AdapterAction "summarize-executions"
+$statusResult = Invoke-Adapter -AdapterAction "status"
 
 $events = @()
 if (Test-Path -Path $paths.Stream) {
@@ -175,6 +182,11 @@ $artifact = [pscustomobject]@{
         discovery_pointer_path = [string]$summaryResult.discovery_pointer_path
         contract_path = [string]$summaryResult.contract_path
         summary_entry = if ($summaryEntry.Count -gt 0) { $summaryEntry[0] } else { $null }
+    }
+    inquiry_control = [pscustomobject]@{
+        tod_config_path = $TodConfigPath
+        pending_timeout_seconds = $pendingTimeoutSeconds
+        adapter_status = $statusResult
     }
     summary = [pscustomobject]@{
         pause_resume_flow_ok = [bool](@($paused).Count -gt 0 -and @($resumed).Count -gt 0)

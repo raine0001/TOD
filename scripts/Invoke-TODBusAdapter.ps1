@@ -24,6 +24,7 @@ param(
     [string]$ExecutionSummaryIndexPath = "shared_state/bus_execution_summaries.index.json",
     [string]$ExecutionSummaryContractPath = "tod/templates/bus/tod_bus_execution_summary_handoff.schema.json",
     [string]$ExecutionDomainPolicyPath = "tod/templates/bus/tod_cross_domain_execution_policy.json",
+    [string]$PerceptionContextSchemaPath = "tod/templates/bus/tod_perception_context.schema.json",
     [string]$TodScriptPath = "scripts/TOD.ps1",
     [string]$TodConfigPath = "tod/config/tod-config.json"
 )
@@ -107,6 +108,10 @@ function Get-AdapterState {
                 resumed_after_inquiry = 0
                 deferred_for_operator_clarification = 0
                 cancelled_pending_inquiry_timeout = 0
+                domain_policy_allowed = 0
+                domain_policy_blocked = 0
+                domain_policy_deferred = 0
+                domain_policy_dry_run_only = 0
             }
             accepted_execution_ids = @()
             paused_execution_ids = @()
@@ -130,7 +135,8 @@ function Get-AdapterState {
             "inbound_accepted", "inbound_rejected", "inbound_ignored", "inbound_duplicate", "outbound_published",
             "retries_scheduled", "recoveries", "drift_detected", "fallback_applied", "cancelled",
             "guardrail_blocked", "failed_runtime", "successful_runtime", "paused_pending_inquiry",
-            "resumed_after_inquiry", "deferred_for_operator_clarification", "cancelled_pending_inquiry_timeout"
+            "resumed_after_inquiry", "deferred_for_operator_clarification", "cancelled_pending_inquiry_timeout",
+            "domain_policy_allowed", "domain_policy_blocked", "domain_policy_deferred", "domain_policy_dry_run_only"
         )) {
         if (-not $state.counters.PSObject.Properties[$name]) {
             $state.counters | Add-Member -NotePropertyName $name -NotePropertyValue 0 -Force
@@ -158,6 +164,86 @@ function Get-Schema {
         throw "Schema file not found: $SchemaFile"
     }
     return $schema
+}
+
+function Get-TodConfigDocument {
+    param([Parameter(Mandatory = $true)][string]$ConfigFile)
+
+    return (Load-JsonIfExists -Path $ConfigFile)
+}
+
+function Get-InquiryPendingTimeoutSeconds {
+    param($Config)
+
+    if ($null -ne $Config -and
+        $Config.PSObject.Properties["execution_engine"] -and
+        $null -ne $Config.execution_engine -and
+        $Config.execution_engine.PSObject.Properties["inquiry_control"] -and
+        $null -ne $Config.execution_engine.inquiry_control -and
+        $Config.execution_engine.inquiry_control.PSObject.Properties["pending_timeout_seconds"]) {
+        try {
+            return [int]$Config.execution_engine.inquiry_control.pending_timeout_seconds
+        }
+        catch {
+        }
+    }
+
+    return 30
+}
+
+function Get-PerceptionContextSchema {
+    param([Parameter(Mandatory = $true)][string]$SchemaFile)
+
+    return (Load-JsonIfExists -Path $SchemaFile)
+}
+
+function Test-PerceptionContextPayload {
+    param(
+        $Payload,
+        $Schema
+    )
+
+    $result = [pscustomobject]@{
+        has_context = $false
+        valid = $true
+        reason_code = ""
+        message = ""
+    }
+
+    if ($null -eq $Payload -or -not $Payload.PSObject.Properties["perception_context"] -or $null -eq $Payload.perception_context) {
+        return $result
+    }
+
+    $result.has_context = $true
+    $context = $Payload.perception_context
+    if ($null -eq $Schema) {
+        return $result
+    }
+
+    foreach ($field in @($Schema.required_fields)) {
+        if (-not $context.PSObject.Properties[[string]$field] -or [string]::IsNullOrWhiteSpace([string]$context.([string]$field))) {
+            $result.valid = $false
+            $result.reason_code = "perception_context_invalid"
+            $result.message = ("Perception context is missing required field '{0}'." -f [string]$field)
+            return $result
+        }
+    }
+
+    if ($Schema.PSObject.Properties["allowed_state_values"] -and @($Schema.allowed_state_values).Count -gt 0 -and @($Schema.allowed_state_values) -notcontains ([string]$context.state)) {
+        $result.valid = $false
+        $result.reason_code = "perception_context_invalid"
+        $result.message = "Perception context state is not allowed by schema."
+        return $result
+    }
+
+    if ($Schema.PSObject.Properties["allowed_safety_values"] -and @($Schema.allowed_safety_values).Count -gt 0 -and @($Schema.allowed_safety_values) -notcontains ([string]$context.safety)) {
+        $result.valid = $false
+        $result.reason_code = "perception_context_invalid"
+        $result.message = "Perception context safety is not allowed by schema."
+        return $result
+    }
+
+    return $result
 }
 
 function Get-ExecutionDomainPolicy {
@@ -419,6 +505,58 @@ function Get-RecommendedAttention {
     }
 }
 
+function Get-ExecutionReliabilityScore {
+    param(
+        [Parameter(Mandatory = $true)][string]$ReliabilitySignal,
+        [Parameter(Mandatory = $true)][int]$Retries,
+        [Parameter(Mandatory = $true)][int]$Fallbacks,
+        [Parameter(Mandatory = $true)][int]$DriftEvents,
+        [Parameter(Mandatory = $true)][int]$GuardrailBlocks,
+        [Parameter(Mandatory = $true)][int]$PausedEvents,
+        [Parameter(Mandatory = $true)][int]$InquiryDeferrals,
+        [Parameter(Mandatory = $true)][int]$InquiryTimeoutCancellations
+    )
+
+    $score = 1.0
+    switch ($ReliabilitySignal) {
+        "critical" { $score -= 0.45 }
+        "warning" { $score -= 0.2 }
+        "elevated" { $score -= 0.08 }
+    }
+
+    $score -= ([math]::Min($Retries, 3) * 0.05)
+    $score -= ([math]::Min($Fallbacks, 2) * 0.08)
+    $score -= ([math]::Min($DriftEvents, 2) * 0.08)
+    $score -= ([math]::Min($GuardrailBlocks, 2) * 0.12)
+    $score -= ([math]::Min($PausedEvents, 2) * 0.03)
+    $score -= ([math]::Min($InquiryDeferrals, 2) * 0.04)
+    $score -= ([math]::Min($InquiryTimeoutCancellations, 1) * 0.12)
+
+    if ($score -lt 0.0) { $score = 0.0 }
+    return [math]::Round($score, 3)
+}
+
+function Get-GuardrailTrend {
+    param(
+        [Parameter(Mandatory = $true)][int]$Accepted,
+        [Parameter(Mandatory = $true)][int]$Blocked,
+        [Parameter(Mandatory = $true)][int]$Deferred,
+        [Parameter(Mandatory = $true)][int]$DryRunOnly
+    )
+
+    $evaluated = $Accepted + $Blocked + $Deferred + $DryRunOnly
+    $blockedLike = $Blocked + $Deferred
+    $rate = if ($evaluated -gt 0) { [math]::Round(($blockedLike / $evaluated), 3) } else { 0.0 }
+    $direction = if ($rate -ge 0.35) { "elevated" } elseif ($rate -ge 0.15) { "watch" } else { "stable" }
+
+    return [pscustomobject]@{
+        evaluated = $evaluated
+        blocked_like = $blockedLike
+        rate = $rate
+        direction = $direction
+    }
+}
+
 function Build-ExecutionSummaries {
     $events = @()
     if (Test-Path -Path $eventStreamAbs) {
@@ -543,6 +681,7 @@ function Build-ExecutionSummaries {
 
         $reliabilitySignal = Get-ReliabilitySignal -FinalOutcome $finalOutcome -Retries $retries -Fallbacks $fallbacks -DriftEvents $driftEvents -Recovered $recovered
         $recommendedAttention = Get-RecommendedAttention -ReliabilitySignal $reliabilitySignal
+        $reliabilityScore = Get-ExecutionReliabilityScore -ReliabilitySignal $reliabilitySignal -Retries $retries -Fallbacks $fallbacks -DriftEvents $driftEvents -GuardrailBlocks $guardrailBlocks -PausedEvents $pausedEvents -InquiryDeferrals $inquiryDeferrals -InquiryTimeoutCancellations $inquiryTimeoutCancellations
 
         $artifactFromEvents = @(
             $groupEvents |
@@ -575,6 +714,7 @@ function Build-ExecutionSummaries {
             cancelled = $cancelled
             guardrail_blocks = $guardrailBlocks
             reliability_signal = $reliabilitySignal
+            engine_reliability_score = $reliabilityScore
             recommended_attention = $recommendedAttention
             event_count = [int]@($groupEvents).Count
             artifact_links = $artifactLinks
@@ -659,6 +799,17 @@ function Write-StatusArtifact {
         $streamCount = @((Get-Content -Path $eventStreamAbs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })).Count
     }
 
+    $statusReliabilitySignal = "stable"
+    if ([int]$state.counters.failed_runtime -gt 0 -or [int]$state.counters.cancelled_pending_inquiry_timeout -gt 0 -or [int]$state.counters.guardrail_blocked -gt 0) {
+        $statusReliabilitySignal = "critical"
+    }
+    elseif ([int]$state.counters.drift_detected -gt 0 -or [int]$state.counters.fallback_applied -gt 0) {
+        $statusReliabilitySignal = "warning"
+    }
+    elseif ([int]$state.counters.retries_scheduled -gt 0 -or [int]$state.counters.recoveries -gt 0) {
+        $statusReliabilitySignal = "elevated"
+    }
+
     $statusObj = [pscustomobject]@{
         generated_at = (Get-Date).ToUniversalTime().ToString("o")
         source = "tod-bus-adapter-v1"
@@ -686,6 +837,27 @@ function Write-StatusArtifact {
             failed_runtime = [int]$state.counters.failed_runtime
             successful_runtime = [int]$state.counters.successful_runtime
         }
+        policy_metrics = [pscustomobject]@{
+            allowed = [int]$state.counters.domain_policy_allowed
+            blocked = [int]$state.counters.domain_policy_blocked
+            deferred = [int]$state.counters.domain_policy_deferred
+            dry_run_only = [int]$state.counters.domain_policy_dry_run_only
+        }
+        reliability_metrics = [pscustomobject]@{
+            engine_reliability_score = Get-ExecutionReliabilityScore -ReliabilitySignal $statusReliabilitySignal -Retries ([int]$state.counters.retries_scheduled) -Fallbacks ([int]$state.counters.fallback_applied) -DriftEvents ([int]$state.counters.drift_detected) -GuardrailBlocks ([int]$state.counters.guardrail_blocked) -PausedEvents ([int]$state.counters.paused_pending_inquiry) -InquiryDeferrals ([int]$state.counters.deferred_for_operator_clarification) -InquiryTimeoutCancellations ([int]$state.counters.cancelled_pending_inquiry_timeout)
+            guardrail_trend = Get-GuardrailTrend -Accepted ([int]$state.counters.domain_policy_allowed) -Blocked ([int]$state.counters.domain_policy_blocked) -Deferred ([int]$state.counters.domain_policy_deferred) -DryRunOnly ([int]$state.counters.domain_policy_dry_run_only)
+            drift_recovery_ready = ([int]$state.counters.recoveries -ge [int]$state.counters.drift_detected)
+        }
+        autonomy_boundary = [pscustomobject]@{
+            tod_scope = "execution_runtime_only"
+            external_owners = @("mim_reasoning", "perception_normalization", "operator_clarification")
+            policy_path = $ExecutionDomainPolicyPath
+            perception_schema_path = $PerceptionContextSchemaPath
+            enforced = $true
+        }
+        inquiry_control = [pscustomobject]@{
+            pending_timeout_seconds = Get-InquiryPendingTimeoutSeconds -Config $todConfig
+        }
     }
 
     Ensure-ParentDir -FilePath $busStatusAbs
@@ -704,11 +876,14 @@ $executionSummaryAbs = Get-LocalPath -PathValue $ExecutionSummaryPath
 $executionSummaryIndexAbs = Get-LocalPath -PathValue $ExecutionSummaryIndexPath
 $executionSummaryContractAbs = Get-LocalPath -PathValue $ExecutionSummaryContractPath
 $executionDomainPolicyAbs = Get-LocalPath -PathValue $ExecutionDomainPolicyPath
+$perceptionContextSchemaAbs = Get-LocalPath -PathValue $PerceptionContextSchemaPath
 $todScriptAbs = Get-LocalPath -PathValue $TodScriptPath
 $todConfigAbs = Get-LocalPath -PathValue $TodConfigPath
 
 $schema = Get-Schema -SchemaFile $schemaAbs
 $executionDomainPolicy = Get-ExecutionDomainPolicy -PolicyFile $executionDomainPolicyAbs
+$perceptionContextSchema = Get-PerceptionContextSchema -SchemaFile $perceptionContextSchemaAbs
+$todConfig = Get-TodConfigDocument -ConfigFile $todConfigAbs
 $state = Get-AdapterState -StateFile $stateAbs
 
 switch ($Action) {
@@ -746,7 +921,6 @@ switch ($Action) {
         } | ConvertTo-Json -Depth 20 | Write-Output
         break
     }
-
     "consume-event" {
         $event = Get-ParsedEvent -RawJson $EventJson -FilePath $EventFile
         if ($null -eq $event) {
@@ -764,23 +938,25 @@ switch ($Action) {
         }
 
         if (-not (Test-MandatoryCorrelation -Event $event -Schema $schema)) {
+            $malformedEventId = ""
+            if ($event.PSObject.Properties["event_id"]) {
+                $malformedEventId = [string]$event.event_id
+            }
             $state.counters.inbound_rejected = [int]$state.counters.inbound_rejected + 1
             Save-AdapterState -State $state -StateFile $stateAbs
             Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
                     logged_at = (Get-Date).ToUniversalTime().ToString("o")
                     status = "rejected_malformed"
                     reason = "request_malformed"
-                    event_id = if ($event.PSObject.Properties["event_id"]) { [string]$event.event_id } else { "" }
+                    event_id = $malformedEventId
                 })
-            Write-StatusArtifact -LastAction "consume-event" -LastStatus "rejected_malformed" -LastEventId (if ($event.PSObject.Properties["event_id"]) { [string]$event.event_id } else { "" })
+            Write-StatusArtifact -LastAction "consume-event" -LastStatus "rejected_malformed" -LastEventId $malformedEventId
             [pscustomobject]@{ ok = $false; action = "consume-event"; status = "rejected_malformed" } | ConvertTo-Json -Depth 10 | Write-Output
             break
         }
 
         $eventIdValue = [string]$event.event_id
         if (@($state.processed_event_ids) -contains $eventIdValue) {
-            $state.counters.inbound_duplicate = [int]$state.counters.inbound_duplicate + 1
-            Save-AdapterState -State $state -StateFile $stateAbs
             Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
                     logged_at = (Get-Date).ToUniversalTime().ToString("o")
                     status = "duplicate_ignored"
@@ -1073,6 +1249,32 @@ switch ($Action) {
             if ($event.PSObject.Properties["payload"]) {
                 $payloadForPolicy = $event.payload
             }
+            $perceptionValidation = Test-PerceptionContextPayload -Payload $payloadForPolicy -Schema $perceptionContextSchema
+            if ($perceptionValidation.has_context -and -not [bool]$perceptionValidation.valid) {
+                $corrPerceptionInvalid = Build-CorrelationFromEvent -Event $event
+                $perceptionBlockedId = "evt-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 12))
+                $null = Publish-EventInternal -Type "execution.guardrail_blocked" -Id $perceptionBlockedId -Correlation $corrPerceptionInvalid -Payload ([pscustomobject]@{ runtime_action = $runtimeAction; decision = "blocked"; source_domain = $sourceDomainValue; perception_schema_path = $PerceptionContextSchemaPath }) -Reasons @(
+                    New-Reason -Code $perceptionValidation.reason_code -Severity "warning" -Category "guardrail" -Message $perceptionValidation.message -Evidence ([pscustomobject]@{ runtime_action = $runtimeAction; source_domain = $sourceDomainValue })
+                ) -Artifacts @()
+
+                $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
+                $state.counters.inbound_rejected = [int]$state.counters.inbound_rejected + 1
+                $state.counters.guardrail_blocked = [int]$state.counters.guardrail_blocked + 1
+                $state.counters.domain_policy_blocked = [int]$state.counters.domain_policy_blocked + 1
+                Save-AdapterState -State $state -StateFile $stateAbs
+                Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
+                        logged_at = (Get-Date).ToUniversalTime().ToString("o")
+                        status = "rejected_guardrail"
+                        reason = $perceptionValidation.reason_code
+                        event_id = $eventIdValue
+                        event_type = $inboundType
+                        runtime_action = $runtimeAction
+                    })
+                Write-StatusArtifact -LastAction "consume-event" -LastStatus "rejected_guardrail" -LastEventId $eventIdValue
+                [pscustomobject]@{ ok = $false; action = "consume-event"; status = "rejected_guardrail"; event_id = $eventIdValue; event_type = $inboundType } | ConvertTo-Json -Depth 10 | Write-Output
+                break
+            }
+
             $perceptionDecision = Resolve-PerceptionContextDecision -Policy $executionDomainPolicy -SourceDomain $sourceDomainValue -RuntimeAction $runtimeAction -Payload $payloadForPolicy
             $domainDecisionCode = ""
             $domainDecisionMessage = ""
@@ -1115,6 +1317,12 @@ switch ($Action) {
                 $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
                 $state.counters.inbound_rejected = [int]$state.counters.inbound_rejected + 1
                 $state.counters.guardrail_blocked = [int]$state.counters.guardrail_blocked + 1
+                if ([string]$domainPolicy.decision -eq "deferred") {
+                    $state.counters.domain_policy_deferred = [int]$state.counters.domain_policy_deferred + 1
+                }
+                else {
+                    $state.counters.domain_policy_blocked = [int]$state.counters.domain_policy_blocked + 1
+                }
                 Save-AdapterState -State $state -StateFile $stateAbs
                 Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
                         logged_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -1139,6 +1347,7 @@ switch ($Action) {
             if ([string]$domainPolicy.decision -eq "dry_run_only") {
                 $state.processed_event_ids = @($state.processed_event_ids) + @($eventIdValue)
                 $state.counters.inbound_accepted = [int]$state.counters.inbound_accepted + 1
+                $state.counters.domain_policy_dry_run_only = [int]$state.counters.domain_policy_dry_run_only + 1
                 Save-AdapterState -State $state -StateFile $stateAbs
                 Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
                         logged_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -1197,6 +1406,7 @@ switch ($Action) {
                 $state.accepted_execution_ids = @($state.accepted_execution_ids) + @($executionIdValue)
             }
             $state.counters.inbound_accepted = [int]$state.counters.inbound_accepted + 1
+            $state.counters.domain_policy_allowed = [int]$state.counters.domain_policy_allowed + 1
             Save-AdapterState -State $state -StateFile $stateAbs
 
             Append-JsonLine -Path $consumerLogAbs -Object ([pscustomobject]@{
@@ -1385,15 +1595,13 @@ switch ($Action) {
     }
 
     "status" {
-        $statusObj = [pscustomobject]@{
-            ok = $true
-            action = "status"
-            source = "tod-bus-adapter-v1"
-            schema = $schema.schema_name
-            outbound_event_types = @($schema.outbound_event_types)
-            inbound_event_types = @($schema.inbound_event_types)
-            state = $state
-            paths = [pscustomobject]@{
+        Write-StatusArtifact -LastAction "status" -LastStatus "ok"
+
+        $statusObj = Get-Content -Path $busStatusAbs -Raw | ConvertFrom-Json
+        $statusObj | Add-Member -NotePropertyName ok -NotePropertyValue $true -Force
+        $statusObj | Add-Member -NotePropertyName action -NotePropertyValue "status" -Force
+        $statusObj | Add-Member -NotePropertyName state -NotePropertyValue $state -Force
+        $statusObj | Add-Member -NotePropertyName paths -NotePropertyValue ([pscustomobject]@{
                 stream = $eventStreamAbs
                 inbox = $inboxAbs
                 processed = $processedAbs
@@ -1405,11 +1613,10 @@ switch ($Action) {
                 execution_summary_index = $executionSummaryIndexAbs
                 execution_summary_contract = $executionSummaryContractAbs
                 execution_domain_policy = $executionDomainPolicyAbs
-            }
-        }
+                perception_context_schema = $perceptionContextSchemaAbs
+            }) -Force
 
         $statusObj | ConvertTo-Json -Depth 20 | Write-Output
-        Write-StatusArtifact -LastAction "status" -LastStatus "ok"
         break
     }
 

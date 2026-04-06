@@ -5,6 +5,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $adapterScript = Join-Path $repoRoot "scripts/Invoke-TODBusAdapter.ps1"
 $sampleScriptPath = Join-Path $repoRoot "scripts/Invoke-TODPerceptionWorkspaceExecutionSample.ps1"
 $sampleArtifactPath = Join-Path $repoRoot "shared_state/bus_perception_workspace_execution_sample.json"
+$perceptionSchemaPath = Join-Path $repoRoot "tod/templates/bus/tod_perception_context.schema.json"
 
 function New-TestPaths {
     $id = [guid]::NewGuid().ToString("N")
@@ -136,6 +137,28 @@ Describe "TOD Perception Execution Readiness" {
         [string]$blocked[0].correlation.source_context | Should Be "workspace/unsafe-zone"
     }
 
+    It "invalid perception context schema is rejected safely" {
+        $paths = New-TestPaths
+
+        $evt = @{
+            event_id = "evt-p-invalid-001"
+            event_type = "execution.requested"
+            occurred_at = "2026-03-12T00:00:00Z"
+            producer = @{ system = "MIM"; component = "perception"; role = "reasoning_runtime" }
+            correlation = @{ trace_id = "trace-p-invalid"; execution_id = "exec-p-invalid"; source_domain = "workspace.perception"; source_context = "workspace/malformed" }
+            payload = @{ runtime_action = "get-engineering-loop-summary"; perception_context = @{ state = "clear"; context_id = "workspace/malformed" } }
+        } | ConvertTo-Json -Depth 12 -Compress
+
+        $result = Invoke-Adapter -Paths $paths -AdapterAction "consume-event" -InputParams @{ EventJson = $evt }
+        [bool]$result.ok | Should Be $false
+        [string]$result.status | Should Be "rejected_guardrail"
+
+        $streamEvents = Get-StreamEvents -StreamPath $paths.Stream
+        $blocked = @($streamEvents | Where-Object { [string]$_.event_type -eq "execution.guardrail_blocked" } | Select-Object -First 1)
+        ($blocked.Count -gt 0) | Should Be $true
+        [string]$blocked[0].reasons[0].code | Should Be "perception_context_invalid"
+    }
+
     It "source context and reason codes are preserved in summary and handoff sample" {
         (Test-Path -Path $sampleScriptPath) | Should Be $true
         $null = & $sampleScriptPath -RunSampleLoop
@@ -150,5 +173,8 @@ Describe "TOD Perception Execution Readiness" {
         [string]$sample.bounded_execution_flow.summary_entry.source_domain | Should Be "workspace.perception"
         [string]$sample.bounded_execution_flow.summary_entry.source_context | Should Be "workspace/mainboard"
         (@($sample.bounded_execution_flow.lifecycle_reason_codes) -contains "perception_workspace_action_allowed") | Should Be $true
+        [string]$sample.perception_context.schema_path | Should Be "tod/templates/bus/tod_perception_context.schema.json"
+        [string]$sample.perception_context.schema_name | Should Be "tod_perception_context_v1"
+        (Test-Path -Path $perceptionSchemaPath) | Should Be $true
     }
 }

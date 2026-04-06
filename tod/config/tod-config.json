@@ -134,6 +134,9 @@
         "unknown"
       ],
       "degrade_apply_plan": true
+    },
+    "inquiry_control": {
+      "pending_timeout_seconds": 30
     }
   }
 }

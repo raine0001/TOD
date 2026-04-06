@@ -71,6 +71,8 @@ $steps += ($requestedRaw | ConvertFrom-Json)
 
 $summaryRaw = & $adapterAbs -Action "summarize-executions"
 $summaryObj = $summaryRaw | ConvertFrom-Json
+$statusRaw = & $adapterAbs -Action "status"
+$statusObj = $statusRaw | ConvertFrom-Json
 $summaryDoc = $null
 $summaryPathResolved = ""
 if (-not [string]::IsNullOrWhiteSpace([string]$summaryObj.summary_path)) {
@@ -128,6 +130,9 @@ $result = [pscustomobject]@{
     steps = @($steps)
     execution_summary = $executionSummaryEntry
     execution_summary_artifact = [string]$summaryObj.summary_path
+    bus_status_artifact = "shared_state/bus_adapter_status.json"
+    bus_status = if ($statusObj -and $statusObj.PSObject.Properties["state"]) { $statusObj.state } else { $null }
+    bus_adapter_status = $statusObj
     execution_summary_handoff = [pscustomobject]@{
         generated_at = if ($null -ne $summaryDoc) { [string]$summaryDoc.generated_at } else { "" }
         summary_version = [string]$summaryObj.summary_version

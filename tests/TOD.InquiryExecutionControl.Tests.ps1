@@ -238,5 +238,7 @@ Describe "TOD Inquiry Execution Control" {
         [string]$sample.context.source_domain | Should Be "workspace.perception"
         [string]$sample.context.source_context | Should Be "workspace/mainboard"
         [bool]$sample.summary.pause_resume_flow_ok | Should Be $true
+        [int]$sample.inquiry_control.pending_timeout_seconds | Should BeGreaterThan 0
+        [int]$sample.inquiry_control.adapter_status.inquiry_control.pending_timeout_seconds | Should BeGreaterThan 0
     }
 }
