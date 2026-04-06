@@ -90,3 +90,4 @@ tod/data/avatars/user-avatar.jpg
 
 # Local state backups
 tod/data/state.backup.*.json
+tod/data/state.repair-*.json.bak
