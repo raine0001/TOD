@@ -2606,7 +2606,7 @@ if ($mimStatus.is_stale) {
     }
     $blockers += ("mim status stale ({0}h > {1}h)" -f $mimAgeForBlocker, [string]$mimStatus.stale_after_hours)
 }
-if ([string]$objectiveAlignment.status -eq "mismatch") {
+if ([string]$objectiveAlignment.status -eq "mismatch" -and -not ([bool]$listenerDecision.available -and [string]::Equals([string]$listenerDecision.suppressed_reason, 'inactive_authority_reset', [System.StringComparison]::OrdinalIgnoreCase))) {
     $blockers += ("objective mismatch tod={0} mim={1}" -f [string]$objectiveAlignment.tod_current_objective, [string]$objectiveAlignment.mim_objective_active)
 }
 if (@($blockers).Count -eq 0) {
