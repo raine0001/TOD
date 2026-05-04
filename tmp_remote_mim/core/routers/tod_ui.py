@@ -149,6 +149,64 @@ def _should_reuse_live_task_identity(live_task: dict[str, Any], prompt_objective
         return True
     return _same_objective(prompt_objective_id, live_objective_id)
 
+def _select_runtime_live_task_request(integration_live_task: dict[str, Any], active_task: dict[str, Any]) -> dict[str, Any]:
+    live_task = integration_live_task if isinstance(integration_live_task, dict) else {}
+    runtime_task = active_task if isinstance(active_task, dict) else {}
+    runtime_request_id = str(runtime_task.get("request_id") or "").strip()
+    runtime_task_id = str(runtime_task.get("task_id") or "").strip()
+    if not runtime_request_id and not runtime_task_id:
+        return live_task
+
+    runtime_objective = str(
+        runtime_task.get("objective_id")
+        or runtime_task.get("normalized_objective_id")
+        or ""
+    ).strip()
+    live_objective = str(
+        live_task.get("objective_id")
+        or live_task.get("normalized_objective_id")
+        or ""
+    ).strip()
+    if live_task and _same_objective(runtime_objective, live_objective):
+        return live_task
+
+    runtime_generated_at = str(runtime_task.get("updated_at") or runtime_task.get("generated_at") or "").strip()
+    return {
+        **live_task,
+        "request_id": runtime_request_id or str(live_task.get("request_id") or "").strip(),
+        "task_id": runtime_task_id or str(live_task.get("task_id") or "").strip(),
+        "objective_id": runtime_objective or str(live_task.get("objective_id") or "").strip(),
+        "normalized_objective_id": str(
+            runtime_task.get("normalized_objective_id")
+            or _normalize_objective_token(runtime_objective)
+            or live_task.get("normalized_objective_id")
+            or ""
+        ).strip(),
+        "generated_at": runtime_generated_at or str(live_task.get("generated_at") or "").strip(),
+        "promotion_applied": bool(live_task.get("promotion_applied") is True),
+        "promotion_reason": str(live_task.get("promotion_reason") or "").strip(),
+    }
+
+
+def _detect_phase_label(active_task: dict[str, Any], execution_result: dict[str, Any]) -> str:
+    for candidate in (
+        active_task.get("objective_id"),
+        active_task.get("title"),
+        active_task.get("task_focus"),
+        active_task.get("summary"),
+        execution_result.get("objective_id"),
+        execution_result.get("title"),
+        execution_result.get("summary"),
+    ):
+        text = str(candidate or "").strip()
+        if not text:
+            continue
+        match = re.search(r"\bphase[\s_-]*(\d+)\b", text, re.IGNORECASE)
+        if match:
+            return f"Phase {match.group(1)}"
+    return "Phase 1"
+
+
 def _load_remote_recovery_payload() -> tuple[dict[str, Any], str]:
     return _first_existing_payload(
         REMOTE_RECOVERY_ROOT / "TOD_MIM_REMOTE_RECOVERY.latest.json",
@@ -225,6 +283,7 @@ def _derive_phase_progress(
     next_step: str,
     wait_reason: str,
 ) -> dict[str, Any]:
+    phase_label = _detect_phase_label(active_task, execution_result)
     contract = (
         active_task.get("execution_contract")
         if isinstance(active_task.get("execution_contract"), dict)
@@ -294,19 +353,19 @@ def _derive_phase_progress(
     total_count = len(milestones)
     next_gate = "Phase 2 handoff" if percent_complete >= 100 else "Implementation" if implementation_pending else "Focused validation" if not milestones[3]["complete"] else "Evidence publish" if not milestones[4]["complete"] else "Phase 1 closeout"
     if percent_complete >= 100:
-        summary = "Phase 1 complete and verified."
+        summary = f"{phase_label} complete and verified."
     elif implementation_pending:
-        summary = f"Phase 1 is about {percent_complete}% complete. Inspection is done; implementation is the next gate."
+        summary = f"{phase_label} is about {percent_complete}% complete. Inspection is done; implementation is the next gate."
     elif not milestones[3]["complete"]:
-        summary = f"Phase 1 is about {percent_complete}% complete. Focused validation is the next gate."
+        summary = f"{phase_label} is about {percent_complete}% complete. Focused validation is the next gate."
     elif not milestones[4]["complete"]:
-        summary = f"Phase 1 is about {percent_complete}% complete. Evidence publish is the next gate."
+        summary = f"{phase_label} is about {percent_complete}% complete. Evidence publish is the next gate."
     else:
-        summary = f"Phase 1 is about {percent_complete}% complete. Final closeout is the next gate."
+        summary = f"{phase_label} is about {percent_complete}% complete. Final closeout is the next gate."
 
     return {
         "available": bool(contract) or bool(active_task) or bool(execution_result),
-        "label": "Phase 1 progress",
+        "label": f"{phase_label} progress",
         "percent_complete": max(0, min(100, int(percent_complete))),
         "completed_milestones": completed_count,
         "total_milestones": total_count,
@@ -2926,6 +2985,7 @@ def _build_tod_console_state() -> dict[str, Any]:
         if isinstance(integration_payload.get("live_task_request"), dict)
         else {}
     )
+    live_task_request = _select_runtime_live_task_request(live_task_request, active_task_payload)
     listener_decision = (
         integration_payload.get("listener_decision")
         if isinstance(integration_payload.get("listener_decision"), dict)
@@ -3000,6 +3060,8 @@ def _build_tod_console_state() -> dict[str, Any]:
     authority_reset_active = bool(authority_reset.get("active") is True)
     canonical_token = _normalize_objective_token(canonical_objective)
     live_token = _normalize_objective_token(live_objective)
+    if canonical_token and live_token and canonical_token != live_token:
+        alignment_status = "mismatch"
     current_objective_token = canonical_token or live_token
     live_request_token = _normalize_objective_token(
         live_task_request.get("normalized_objective_id") or live_task_request.get("objective_id")
@@ -3317,14 +3379,14 @@ def _build_tod_console_state() -> dict[str, Any]:
             "blockers": str(mim_status.get("blockers") or "").strip(),
         },
         "objective_alignment": {
-            "status": str(alignment.get("status") or "unknown").strip(),
-            "aligned": bool(alignment.get("aligned") is True),
-            "tod_current_objective": str(alignment.get("tod_current_objective") or "").strip(),
+            "status": "mismatch" if alignment_status in {"mismatch", "drift", "out_of_sync"} else str(alignment.get("status") or "unknown").strip(),
+            "aligned": bool(alignment_status in {"match", "aligned", "in_sync", "ok"} and canonical_token and live_token and canonical_token == live_token),
+            "tod_current_objective": str(live_task_request.get("normalized_objective_id") or live_task_request.get("objective_id") or alignment.get("tod_current_objective") or "").strip(),
             "mim_objective_active": str(alignment.get("mim_objective_active") or "").strip(),
             "delta": alignment.get("delta"),
             "summary": (
                 "TOD and MIM objectives are in sync."
-                if alignment_status in {"match", "aligned", "in_sync", "ok"}
+                if alignment_status in {"match", "aligned", "in_sync", "ok"} and canonical_token and live_token and canonical_token == live_token
                 else f"TOD sees {live_objective or 'unknown'}, while MIM canonical state points at {canonical_objective or 'unknown'}."
             ),
         },
