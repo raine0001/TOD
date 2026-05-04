@@ -29,7 +29,7 @@
                                                }
                          },
     "execution_engine":  {
-                             "active":  "local",
+                             "active":  "codex",
                              "fallback":  "local",
                              "allow_fallback":  true,
                              "retry_policy":  {

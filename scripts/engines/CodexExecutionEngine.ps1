@@ -63,26 +63,46 @@ function Invoke-CodexExecutionEngineWrapper {
     }
     else {
         if ($promptExists) {
-            $result.summary = "CodexExecutionEngine wrapper accepted package and prepared normalized result from prompt path: $promptPath"
+            $result.summary = "CodexExecutionEngine wrapper accepted the packaged prompt but did not execute task instructions or produce code-change evidence from prompt path: $promptPath"
+            $result.failures = @(
+                'Codex wrapper only accepted the task package; no patch, command execution, validation artifact, or changed-file evidence was produced.'
+            )
+            $result.recommendations = @(
+                'Attempt safe local fallback for this task when a bounded local executor is available.',
+                'If local fallback is unsupported, publish the blocker details and replan the bounded task instead of counting wrapper acceptance as progress.'
+            )
+            $result.structured_findings = @(
+                [pscustomobject]@{
+                    type = 'blocker'
+                    reason_code = 'codex_wrapper_only_no_execution'
+                    file = 'scripts/engines/CodexExecutionEngine.ps1'
+                    function = 'Invoke-CodexExecutionEngineWrapper'
+                    reason = 'The codex wrapper accepted the packaged prompt path and emitted a normalized envelope without executing task instructions or producing task evidence.'
+                    prompt_path = $promptPath
+                    next_action = 'attempt_local_fallback_or_replan'
+                }
+            )
+            $result.needs_escalation = $false
             $stdout += "[codex-wrapper] package accepted"
             $stdout += "[codex-wrapper] normalized envelope produced"
+            $stdout += "[codex-wrapper] wrapper_only_no_execution"
         }
         else {
             $result.summary = "CodexExecutionEngine wrapper executed without package file; using inline context fallback."
+            $result.failures = @('Codex wrapper could not locate the packaged prompt, so task execution did not start.')
+            $result.recommendations = @('Repackage the task and retry the engine only after the prompt path exists.')
             $stderr += "[codex-wrapper] prompt file not found; inline fallback path used"
         }
 
-        $result.tests_run = @("codex-wrapper package-path check", "engine contract self-check")
-        $result.test_results = @("pass", "pass")
-        $result.recommendations = @(
-            "Persist this normalized output through TOD add-result/review flow.",
-            "Use invoke-engine for package-path orchestration."
-        )
+        $result.tests_run = @("codex-wrapper package-path check", "codex-wrapper execution handoff")
+        $result.test_results = @($(if ($promptExists) { 'pass' } else { 'fail' }), 'not_implemented')
     }
 
     $result.raw_output = [pscustomobject]@{
         engine = $spec
         wrapper_mode = "provider-adapter"
+        execution_performed = $false
+        reason_code = $(if ($promptExists) { 'codex_wrapper_only_no_execution' } else { 'codex_prompt_missing' })
         task_context = [pscustomobject]@{
             task_id = [string]$Context.task_id
             objective_id = [string]$Context.objective_id
@@ -99,7 +119,9 @@ function Invoke-CodexExecutionEngineWrapper {
         generated_at = (Get-Date).ToUniversalTime().ToString("o")
     }
 
-    $result = Complete-EngineExecutionResult -Result $result -Status "completed"
+    $result | Add-Member -NotePropertyName reason_code -NotePropertyValue $(if ($promptExists) { 'codex_wrapper_only_no_execution' } else { 'codex_prompt_missing' }) -Force
+    $result | Add-Member -NotePropertyName recovery_state -NotePropertyValue $(if ($promptExists) { 'local_fallback_or_replan_required' } else { 'repackage_required' }) -Force
+    $result = Complete-EngineExecutionResult -Result $result -Status $(if ($promptExists) { 'not_implemented' } else { 'failed' })
 
     $validation = Test-EngineContract -Context $Context -Result $result
     if (-not [bool]$validation.is_valid) {

@@ -17,6 +17,7 @@ param(
         "codex_handoff",
         "execute-chat-task",
         "run-task",
+        "select-next-task-loop",
         "run-bridge-request",
         "run-task-report",
         "show-engine-performance",
@@ -99,6 +100,8 @@ param(
     ,[bool]$DangerousApproved = $false
     ,[string]$CycleId
     ,[ValidateSet("approve_apply", "reject_apply", "continue_cycle", "freeze_objective", "mark_complete")][string]$CycleReviewAction
+    ,[switch]$SkipNextTaskSelectionLoop
+    ,[string]$SelectionReason
 )
 
 Set-StrictMode -Version Latest
@@ -7185,6 +7188,664 @@ function Get-PreferredTaskSelection {
     return @($Tasks | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
 }
 
+function Get-TodPriorityWeight {
+    param([AllowEmptyString()][string]$Priority)
+
+    switch (([string]$Priority).ToLowerInvariant()) {
+        'critical' { return 4 }
+        'high' { return 3 }
+        'medium' { return 2 }
+        'low' { return 1 }
+        default { return 0 }
+    }
+}
+
+function Test-TodTaskReadyStatus {
+    param($Task)
+
+    if ($null -eq $Task) {
+        return $false
+    }
+
+    $status = if ($Task.PSObject.Properties['status']) { ([string]$Task.status).ToLowerInvariant() } else { '' }
+    return @('open', 'planned', 'todo', 'packaged', 'in_progress') -contains $status
+}
+
+function Read-TodJsonFileIfExists {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -Path $Path)) {
+        return $null
+    }
+
+    try {
+        return (Get-Content -Path $Path -Raw -ErrorAction Stop | ConvertFrom-Json)
+    }
+    catch {
+        return $null
+    }
+}
+
+function Test-TodExecutionSummaryLooksWrapperOnly {
+    param([AllowEmptyString()][string]$Summary)
+
+    $text = ([string]$Summary).Trim().ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $false
+    }
+
+    return ($text -match 'accepted package and prepared normalized result from prompt path')
+}
+
+function Test-TodExecutionHasMeaningfulEvidence {
+    param($ExecutionPayload)
+
+    if ($null -eq $ExecutionPayload) {
+        return $false
+    }
+
+    $executionEvidence = if ($ExecutionPayload.PSObject.Properties['execution_evidence'] -and $ExecutionPayload.execution_evidence) {
+        $ExecutionPayload.execution_evidence
+    }
+    else {
+        $null
+    }
+
+    $meaningfulEvidence = if ($executionEvidence -and $executionEvidence.PSObject.Properties['meaningful_evidence']) {
+        @($executionEvidence.meaningful_evidence | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    else {
+        @()
+    }
+
+    if (@($meaningfulEvidence).Count -gt 0) {
+        return $true
+    }
+
+    $filesChanged = @()
+    if ($ExecutionPayload.PSObject.Properties['files_changed']) {
+        $filesChanged = @($ExecutionPayload.files_changed | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    elseif ($executionEvidence -and $executionEvidence.PSObject.Properties['files_changed']) {
+        $filesChanged = @($executionEvidence.files_changed | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+
+    if (@($filesChanged).Count -gt 0) {
+        return $true
+    }
+
+    $matchedFiles = if ($executionEvidence -and $executionEvidence.PSObject.Properties['matched_files']) {
+        @($executionEvidence.matched_files | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    else {
+        @()
+    }
+    if (@($matchedFiles).Count -gt 0) {
+        return $true
+    }
+
+    $commandOutput = ''
+    if ($ExecutionPayload.PSObject.Properties['command_output']) {
+        $commandOutput = [string]$ExecutionPayload.command_output
+    }
+    elseif ($executionEvidence -and $executionEvidence.PSObject.Properties['command_output']) {
+        $commandOutput = [string]$executionEvidence.command_output
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($commandOutput) -and -not (Test-TodExecutionSummaryLooksWrapperOnly -Summary $commandOutput)) {
+        return $true
+    }
+
+    $summary = if ($ExecutionPayload.PSObject.Properties['summary']) { [string]$ExecutionPayload.summary } else { '' }
+    return (-not [string]::IsNullOrWhiteSpace($summary) -and -not (Test-TodExecutionSummaryLooksWrapperOnly -Summary $summary) -and ($summary -match '\b(updated|patched|modified|applied|created|saved|published|migrated|synchronized|deleted|inserted|changed)\b'))
+}
+
+function Get-TodExistingFollowOnTask {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)][string]$SourceTaskId
+    )
+
+    return @($State.tasks | Where-Object {
+            $_.PSObject.Properties['selection_source_task_id'] -and
+            [string]$_.selection_source_task_id -eq [string]$SourceTaskId
+        })
+}
+
+function Resolve-TodObjectiveIdFromState {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [AllowEmptyString()][string]$ObjectiveId
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ObjectiveId)) {
+        return ''
+    }
+
+    $direct = @($State.objectives | Where-Object { [string]$_.id -eq [string]$ObjectiveId } | Select-Object -First 1)
+    if (@($direct).Count -gt 0) {
+        return [string]$direct[0].id
+    }
+
+    $normalizedObjectiveId = Get-NormalizedObjectiveToken -ObjectiveId $ObjectiveId
+    $normalized = @($State.objectives | Where-Object {
+            (Get-NormalizedObjectiveToken -ObjectiveId ([string]$_.id)) -eq $normalizedObjectiveId
+        } | Select-Object -First 1)
+    if (@($normalized).Count -gt 0) {
+        return [string]$normalized[0].id
+    }
+
+    return [string]$ObjectiveId
+}
+
+function Get-TodReadyObjectiveCandidates {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [string]$ExcludeObjectiveId = '',
+        [string]$ExcludeTaskId = ''
+    )
+
+    $candidates = @()
+    foreach ($objective in @($State.objectives)) {
+        if ($null -eq $objective -or -not $objective.PSObject.Properties['id']) {
+            continue
+        }
+
+        $objectiveId = [string]$objective.id
+        if (-not [string]::IsNullOrWhiteSpace($ExcludeObjectiveId) -and [string]::Equals($objectiveId, $ExcludeObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        $objectiveStatus = if ($objective.PSObject.Properties['status']) { ([string]$objective.status).ToLowerInvariant() } else { '' }
+        if (@('completed', 'closed', 'done', 'cancelled') -contains $objectiveStatus) {
+            continue
+        }
+
+        $tasks = @($State.tasks | Where-Object {
+                [string]$_.objective_id -eq $objectiveId -and
+                (Test-TodTaskReadyStatus -Task $_) -and
+                ([string]$_.id -ne [string]$ExcludeTaskId)
+            })
+        $preferredTask = @(Get-PreferredTaskSelection -Tasks $tasks)
+        if (@($preferredTask).Count -eq 0) {
+            continue
+        }
+
+        $selectedTask = $preferredTask[0]
+        $candidates += [pscustomobject]@{
+            objective = $objective
+            task = $selectedTask
+            priority_weight = Get-TodPriorityWeight -Priority $(if ($objective.PSObject.Properties['priority']) { [string]$objective.priority } else { '' })
+            objective_updated_at = if ($objective.PSObject.Properties['updated_at']) { [string]$objective.updated_at } else { '' }
+            task_updated_at = if ($selectedTask.PSObject.Properties['updated_at']) { [string]$selectedTask.updated_at } else { '' }
+        }
+    }
+
+    return @($candidates | Sort-Object -Property @{ Expression = { [int]$_.priority_weight }; Descending = $true }, @{ Expression = { [string]$_.task_updated_at }; Descending = $true }, @{ Expression = { [string]$_.objective_updated_at }; Descending = $true })
+}
+
+function Get-TodTerminalTaskOutcome {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [AllowNull()]$ActiveTaskArtifact,
+        [AllowNull()]$ExecutionResultArtifact,
+        [AllowNull()]$ExecutionTruthArtifact,
+        [string]$TaskId = ''
+    )
+
+    $recentTruth = if ($ExecutionTruthArtifact -and $ExecutionTruthArtifact.PSObject.Properties['recent_execution_truth']) {
+        @($ExecutionTruthArtifact.recent_execution_truth | Select-Object -First 1)
+    }
+    else {
+        @()
+    }
+    $recentTruth = if (@($recentTruth).Count -gt 0) { $recentTruth[0] } else { $null }
+
+    $resolvedTaskId = if (-not [string]::IsNullOrWhiteSpace($TaskId)) { [string]$TaskId } elseif ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['task_id']) { [string]$ExecutionResultArtifact.task_id } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['task_id']) { [string]$ActiveTaskArtifact.task_id } elseif ($recentTruth -and $recentTruth.PSObject.Properties['task_id']) { [string]$recentTruth.task_id } else { '' }
+    $resolvedObjectiveId = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['objective_id']) { [string]$ExecutionResultArtifact.objective_id } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['objective_id']) { [string]$ActiveTaskArtifact.objective_id } elseif ($recentTruth -and $recentTruth.PSObject.Properties['objective_id']) { [string]$recentTruth.objective_id } else { '' }
+    $summary = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['summary']) { [string]$ExecutionResultArtifact.summary } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['summary']) { [string]$ActiveTaskArtifact.summary } elseif ($recentTruth -and $recentTruth.PSObject.Properties['summary']) { [string]$recentTruth.summary } else { '' }
+    $status = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['status']) { ([string]$ExecutionResultArtifact.status).ToLowerInvariant() } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['status']) { ([string]$ActiveTaskArtifact.status).ToLowerInvariant() } elseif ($recentTruth -and $recentTruth.PSObject.Properties['status']) { ([string]$recentTruth.status).ToLowerInvariant() } else { '' }
+    $executionState = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['execution_state']) { ([string]$ExecutionResultArtifact.execution_state).ToLowerInvariant() } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['execution_state']) { ([string]$ActiveTaskArtifact.execution_state).ToLowerInvariant() } elseif ($recentTruth -and $recentTruth.PSObject.Properties['execution_state']) { ([string]$recentTruth.execution_state).ToLowerInvariant() } else { '' }
+    $reasonCode = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['reason_code']) { ([string]$ExecutionResultArtifact.reason_code).ToLowerInvariant() } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['reason_code']) { ([string]$ActiveTaskArtifact.reason_code).ToLowerInvariant() } elseif ($recentTruth -and $recentTruth.PSObject.Properties['reason_code']) { ([string]$recentTruth.reason_code).ToLowerInvariant() } else { '' }
+    $recoveryState = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['recovery_state']) { ([string]$ExecutionResultArtifact.recovery_state).ToLowerInvariant() } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['recovery_state']) { ([string]$ActiveTaskArtifact.recovery_state).ToLowerInvariant() } elseif ($recentTruth -and $recentTruth.PSObject.Properties['recovery_state']) { ([string]$recentTruth.recovery_state).ToLowerInvariant() } else { '' }
+
+    $meaningfulEvidence = Test-TodExecutionHasMeaningfulEvidence -ExecutionPayload $(if ($ExecutionResultArtifact) { $ExecutionResultArtifact } elseif ($ActiveTaskArtifact) { $ActiveTaskArtifact } else { $recentTruth })
+    $latestReview = @($State.review_decisions | Where-Object { [string]$_.task_id -eq $resolvedTaskId } | Sort-Object created_at -Descending | Select-Object -First 1)
+    $latestReview = if (@($latestReview).Count -gt 0) { $latestReview[0] } else { $null }
+    $reviewDecision = if ($latestReview -and $latestReview.PSObject.Properties['decision']) { ([string]$latestReview.decision).ToLowerInvariant() } else { '' }
+
+    $classification = 'unknown'
+    if ($reasonCode -eq 'no_meaningful_execution_evidence' -or $executionState -eq 'no_op_rejected') {
+        $classification = 'no_op_rejected'
+    }
+    elseif ($recoveryState -eq 'replay_or_replan_required') {
+        $classification = 'replay_required'
+    }
+    elseif ($status -eq 'completed' -and $meaningfulEvidence) {
+        $classification = 'completed_with_evidence'
+    }
+    elseif ($status -eq 'completed' -and -not $meaningfulEvidence) {
+        $classification = 'replay_required'
+    }
+    elseif (($status -eq 'blocked' -or $executionState -eq 'blocked') -and $reviewDecision -eq 'escalate') {
+        $classification = 'failed_blocked'
+    }
+    elseif ($status -eq 'blocked' -or $executionState -eq 'blocked') {
+        $classification = 'failed_recoverable'
+    }
+    elseif ($status -eq 'waiting' -or $executionState -eq 'waiting') {
+        $classification = 'stale_waiting'
+    }
+
+    return [pscustomobject]@{
+        classification = $classification
+        task_id = $resolvedTaskId
+        objective_id = $resolvedObjectiveId
+        summary = $summary
+        status = $status
+        execution_state = $executionState
+        reason_code = $reasonCode
+        recovery_state = $recoveryState
+        review_decision = $reviewDecision
+        meaningful_evidence = $meaningfulEvidence
+        wrapper_only = (Test-TodExecutionSummaryLooksWrapperOnly -Summary $summary)
+    }
+}
+
+function New-TodNextTaskSelectionPlan {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$TerminalOutcome,
+        [bool]$StaleDetected = $false,
+        [string]$StaleReason = ''
+    )
+
+    $rejectedCandidates = New-Object System.Collections.Generic.List[object]
+    $expectedEvidence = New-Object System.Collections.Generic.List[string]
+    $validationPlan = New-Object System.Collections.Generic.List[string]
+    $selectedTask = $null
+    $selectionKind = 'none'
+    $reasonSelected = ''
+    $createTaskSpec = $null
+    $dispatchStatus = 'not_started'
+    $sourceTask = if ($TerminalOutcome.PSObject.Properties['task_id']) {
+        @($State.tasks | Where-Object { [string]$_.id -eq [string]$TerminalOutcome.task_id } | Select-Object -First 1)
+    }
+    else {
+        @()
+    }
+    $sourceTask = if (@($sourceTask).Count -gt 0) { $sourceTask[0] } else { $null }
+    $currentObjectiveId = Resolve-TodObjectiveIdFromState -State $State -ObjectiveId $(if ($sourceTask -and $sourceTask.PSObject.Properties['objective_id']) { [string]$sourceTask.objective_id } elseif ($TerminalOutcome.PSObject.Properties['objective_id']) { [string]$TerminalOutcome.objective_id } else { '' })
+    $currentTaskId = if ($TerminalOutcome.PSObject.Properties['task_id']) { [string]$TerminalOutcome.task_id } else { '' }
+
+    if (@('no_op_rejected', 'replay_required') -contains [string]$TerminalOutcome.classification) {
+        $linkedFollowOn = @(Get-TodExistingFollowOnTask -State $State -SourceTaskId $currentTaskId)
+        $readyFollowOn = @($linkedFollowOn | Where-Object { Test-TodTaskReadyStatus -Task $_ } | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
+        if (@($readyFollowOn).Count -gt 0) {
+            $selectedTask = $readyFollowOn[0]
+            $selectionKind = 'same_task_replan_existing'
+            $reasonSelected = 'Last terminal task ended without meaningful evidence, so TOD reused the existing same-objective replay/replan task.'
+        }
+        elseif (@($linkedFollowOn).Count -lt 2 -and -not [string]::IsNullOrWhiteSpace($currentObjectiveId) -and -not [string]::IsNullOrWhiteSpace($currentTaskId)) {
+            $sourceTitle = if ($sourceTask -and $sourceTask.PSObject.Properties['title']) { [string]$sourceTask.title } else { $currentTaskId }
+            $sourceScope = if ($sourceTask -and $sourceTask.PSObject.Properties['scope']) { [string]$sourceTask.scope } else { 'Re-execute the bounded task with state-changing evidence.' }
+            $createTaskSpec = [pscustomobject]@{
+                objective_mode = 'existing'
+                objective_id = $currentObjectiveId
+                title = ('Replan with evidence: ' + $sourceTitle)
+                type = 'implementation'
+                task_category = 'code_change'
+                assigned_executor = 'codex'
+                scope = ('Previous execution for {0} produced no meaningful evidence. Replan the bounded step so TOD performs a state-changing or artifact-producing action. Original scope: {1}' -f $currentTaskId, $sourceScope)
+                acceptance_criteria = 'Produce meaningful evidence through changed files or accepted result artifacts and rerun focused validation before completion'
+                selection_source_task_id = $currentTaskId
+            }
+            $selectionKind = 'same_task_replan_new'
+            $reasonSelected = 'Last terminal task ended without meaningful evidence, so TOD created a same-objective replay/replan task with an explicit evidence requirement.'
+        }
+        else {
+            $rejectedCandidates.Add([pscustomobject]@{
+                    task_id = $currentTaskId
+                    reason = 'same_task_replay_budget_exhausted'
+                }) | Out-Null
+        }
+        $expectedEvidence.Add('meaningful_execution_evidence') | Out-Null
+        $expectedEvidence.Add('state_change_or_result_artifact') | Out-Null
+        $validationPlan.Add('rerun the bounded task and reject completion unless concrete evidence is published') | Out-Null
+    }
+
+    if ($null -eq $selectedTask -and $null -eq $createTaskSpec -and [string]$TerminalOutcome.classification -eq 'completed_with_evidence') {
+        $sameObjectiveTasks = @($State.tasks | Where-Object {
+                [string]$_.objective_id -eq $currentObjectiveId -and
+                [string]$_.id -ne $currentTaskId -and
+                (Test-TodTaskReadyStatus -Task $_)
+            })
+        $preferredSameObjective = @(Get-PreferredTaskSelection -Tasks $sameObjectiveTasks)
+        if (@($preferredSameObjective).Count -gt 0) {
+            $selectedTask = $preferredSameObjective[0]
+            $selectionKind = 'same_objective_next_task'
+            $reasonSelected = 'The previous task completed with evidence, so TOD selected the next ready task from the same objective.'
+            $expectedEvidence.Add('objective_progress_evidence') | Out-Null
+            $validationPlan.Add('run the next ready task under the same objective and validate bounded progress') | Out-Null
+        }
+    }
+
+    if ($null -eq $selectedTask -and $null -eq $createTaskSpec) {
+        $backlogCandidates = @(Get-TodReadyObjectiveCandidates -State $State -ExcludeObjectiveId $currentObjectiveId -ExcludeTaskId $currentTaskId)
+        if (@($backlogCandidates).Count -gt 0) {
+            $selectedTask = $backlogCandidates[0].task
+            $selectionKind = 'backlog_ready_objective'
+            $reasonSelected = 'No ready same-objective task was available, so TOD selected the highest-priority ready task from the backlog.'
+            $expectedEvidence.Add('bounded_execution_evidence') | Out-Null
+            $validationPlan.Add('dispatch the selected backlog task and confirm fresh execution evidence updates the shared truth') | Out-Null
+        }
+    }
+
+    if ($null -eq $selectedTask -and $null -eq $createTaskSpec) {
+        $selectionKind = if ($StaleDetected) { 'stale_diagnostic' } else { 'maintenance_training' }
+        $reasonSelected = if ($StaleDetected) { 'TOD is stale and no ready task exists, so TOD created a bounded diagnostic task that must publish concrete evidence.' } else { 'No ready task exists, so TOD created a bounded maintenance/training task from the current system weakness.' }
+        $createTaskSpec = [pscustomobject]@{
+            objective_mode = 'new'
+            objective_title = if ($StaleDetected) { 'TOD self-driving recovery: stale selection diagnostics' } else { 'TOD self-driving recovery: maintenance continuation' }
+            objective_description = if ($StaleDetected) { 'TOD detected stale autonomous progress and needs a bounded diagnostic loop that produces concrete evidence instead of another summary-only completion.' } else { 'TOD needs a bounded maintenance/training task that preserves autonomous forward progress when no ready objective task exists.' }
+            objective_priority = 'high'
+            objective_success_criteria = 'A bounded diagnostic or maintenance task is dispatched and publishes concrete evidence'
+            title = if ($StaleDetected) { 'Capture evidence for stale self-driving task selection gap' } else { 'Run bounded maintenance to strengthen autonomous task continuation' }
+            type = 'implementation'
+            task_category = 'initiative_training'
+            assigned_executor = 'codex'
+            scope = if ($StaleDetected) { ('Inspect the current stale condition and publish concrete evidence for why TOD stopped selecting valid work automatically. Reason: {0}' -f $(if ([string]::IsNullOrWhiteSpace($StaleReason)) { 'stale progress detected' } else { $StaleReason })) } else { 'Run a bounded maintenance/training slice that improves TOD autonomous continuation and publishes concrete evidence.' }
+            acceptance_criteria = 'Publish a concrete artifact or changed file that explains the weakness and validates the maintenance response'
+            selection_source_task_id = $currentTaskId
+        }
+        $expectedEvidence.Add('diagnostic_artifact_or_changed_file') | Out-Null
+        $validationPlan.Add('publish concrete stale-diagnostic evidence instead of a summary-only result') | Out-Null
+    }
+
+    if ([string]$TerminalOutcome.classification -eq 'failed_blocked' -and $selectionKind -like 'same_task_replan*') {
+        $rejectedCandidates.Add([pscustomobject]@{
+                task_id = $currentTaskId
+                reason = 'blocked_task_was_not_requeued'
+            }) | Out-Null
+        $selectedTask = $null
+        $createTaskSpec = $null
+        $selectionKind = 'blocked'
+        $reasonSelected = 'The last task is blocked, and TOD refused to loop the same task indefinitely without a new bounded path.'
+        $dispatchStatus = 'blocked_with_reason'
+    }
+
+    return [pscustomobject]@{
+        selection_kind = $selectionKind
+        selected_task_id = if ($selectedTask) { [string]$selectedTask.id } else { '' }
+        source_objective = $currentObjectiveId
+        reason_selected = $reasonSelected
+        rejected_candidates = @($rejectedCandidates.ToArray())
+        dispatch_status = $dispatchStatus
+        expected_evidence = @($expectedEvidence.ToArray())
+        validation_plan = @($validationPlan.ToArray())
+        create_task = $createTaskSpec
+    }
+}
+
+function Resolve-TodSelectionActionEntity {
+    param($Payload)
+
+    if ($null -eq $Payload) {
+        return $null
+    }
+
+    if ($Payload.PSObject.Properties['local'] -and $null -ne $Payload.local) {
+        return $Payload.local
+    }
+
+    return $Payload
+}
+
+function Resolve-TodNextTaskSelectionTask {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)]$Plan,
+        [Parameter(Mandatory = $true)][string]$ResolvedConfigPath,
+        [Parameter(Mandatory = $true)][string]$ResolvedStatePath
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$Plan.selected_task_id)) {
+        $existingTask = @(Get-TaskFromState -State $State -TaskId ([string]$Plan.selected_task_id))
+        if (@($existingTask).Count -gt 0) {
+            return $existingTask[0]
+        }
+    }
+
+    if (-not $Plan.create_task) {
+        return $null
+    }
+
+    $createSpec = $Plan.create_task
+    $objectiveId = ''
+    if ([string]$createSpec.objective_mode -eq 'new') {
+        $newObjectiveAction = Invoke-TodSelfJsonAction -ActionName 'new-objective' -Arguments @{
+            Title = [string]$createSpec.objective_title
+            Description = [string]$createSpec.objective_description
+            Priority = [string]$createSpec.objective_priority
+            SuccessCriteria = [string]$createSpec.objective_success_criteria
+            ConfigPath = $ResolvedConfigPath
+            StatePath = $ResolvedStatePath
+        }
+        $newObjective = Resolve-TodSelectionActionEntity -Payload $newObjectiveAction.payload
+        $objectiveId = if ($newObjective -and $newObjective.PSObject.Properties['id']) { [string]$newObjective.id } else { '' }
+    }
+    else {
+        $objectiveId = [string]$createSpec.objective_id
+    }
+
+    if ([string]::IsNullOrWhiteSpace($objectiveId)) {
+        throw 'Unable to resolve objective ID for next-task selection.'
+    }
+
+    $newTaskAction = Invoke-TodSelfJsonAction -ActionName 'add-task' -Arguments @{
+        ObjectiveId = $objectiveId
+        Title = [string]$createSpec.title
+        Type = [string]$createSpec.type
+        Scope = [string]$createSpec.scope
+        AcceptanceCriteria = [string]$createSpec.acceptance_criteria
+        AssignedExecutor = [string]$createSpec.assigned_executor
+        TaskCategory = [string]$createSpec.task_category
+        ConfigPath = $ResolvedConfigPath
+        StatePath = $ResolvedStatePath
+    }
+    $createdTaskEntity = Resolve-TodSelectionActionEntity -Payload $newTaskAction.payload
+    $createdTaskId = if ($createdTaskEntity -and $createdTaskEntity.PSObject.Properties['id']) { [string]$createdTaskEntity.id } else { '' }
+    if ([string]::IsNullOrWhiteSpace($createdTaskId)) {
+        throw 'Unable to resolve task ID for next-task selection.'
+    }
+
+    $stateAfterCreate = Load-State
+    $createdTask = @($stateAfterCreate.tasks | Where-Object { [string]$_.id -eq $createdTaskId } | Select-Object -First 1)
+    if (@($createdTask).Count -eq 0) {
+        throw "Unable to locate created task '$createdTaskId' after next-task selection."
+    }
+
+    $createdTask[0] | Add-Member -NotePropertyName selection_source_task_id -NotePropertyValue ([string]$createSpec.selection_source_task_id) -Force
+    $createdTask[0] | Add-Member -NotePropertyName selection_generated_at -NotePropertyValue (Get-UtcNow) -Force
+    Save-State -State $stateAfterCreate
+    return $createdTask[0]
+}
+
+function Publish-TodNextTaskSelectionArtifacts {
+    param(
+        [Parameter(Mandatory = $true)]$SelectionPayload,
+        [AllowNull()]$SelectedTask,
+        [Parameter(Mandatory = $true)][string]$RequestId
+    )
+
+    $generatedAt = Get-UtcNow
+    $objectiveId = if ($SelectedTask -and $SelectedTask.PSObject.Properties['objective_id']) { [string]$SelectedTask.objective_id } else { [string]$SelectionPayload.source_objective }
+    $normalizedObjectiveId = Get-NormalizedObjectiveToken -ObjectiveId $objectiveId
+    $taskId = if ($SelectedTask -and $SelectedTask.PSObject.Properties['id']) { [string]$SelectedTask.id } else { '' }
+    $taskTitle = if ($SelectedTask -and $SelectedTask.PSObject.Properties['title']) { [string]$SelectedTask.title } else { 'No task selected' }
+    $taskScope = if ($SelectedTask -and $SelectedTask.PSObject.Properties['scope']) { [string]$SelectedTask.scope } else { '' }
+
+    $activityPayload = [ordered]@{
+        generated_at = $generatedAt
+        updated_at = $generatedAt
+        source = 'tod.next-task-selection'
+        surface = 'tod-next-task-selection'
+        session_key = 'tod-self-driving-selection'
+        request_id = $RequestId
+        task_id = $taskId
+        objective_id = $objectiveId
+        normalized_objective_id = $normalizedObjectiveId
+        title = $taskTitle
+        summary = [string]$SelectionPayload.reason_selected
+        packet_type = 'tod-activity-stream-v1'
+        event = 'next_task_selected'
+        status = 'active'
+        phase = 'selection_loop'
+        execution_state = 'selected_for_dispatch'
+        current_action = 'Selected the next bounded task for autonomous dispatch.'
+        next_step = 'Dispatch the selected task through run-task and require meaningful evidence before completion.'
+        next_validation = (@($SelectionPayload.validation_plan) -join '; ')
+        execution_evidence = [ordered]@{
+            selection_kind = [string]$SelectionPayload.selection_kind
+            reason_selected = [string]$SelectionPayload.reason_selected
+            expected_evidence = @($SelectionPayload.expected_evidence)
+            validation_plan = @($SelectionPayload.validation_plan)
+        }
+        recovery_state = 'not_needed'
+    }
+
+    $activeTaskPayload = [ordered]@{
+        generated_at = $generatedAt
+        updated_at = $generatedAt
+        source = 'tod.next-task-selection'
+        surface = 'tod-next-task-selection'
+        session_key = 'tod-self-driving-selection'
+        request_id = $RequestId
+        task_id = $taskId
+        objective_id = $objectiveId
+        normalized_objective_id = $normalizedObjectiveId
+        title = $taskTitle
+        task_focus = $taskScope
+        summary = [string]$SelectionPayload.reason_selected
+        packet_type = 'tod-active-task-v1'
+        status = 'active'
+        execution_state = 'selected_for_dispatch'
+        current_action = 'Selected the next bounded task for autonomous dispatch.'
+        next_step = 'Run the selected task and require meaningful evidence before completion.'
+        next_validation = (@($SelectionPayload.validation_plan) -join '; ')
+        wait_target = ''
+        wait_target_label = ''
+        wait_reason = ''
+        execution_evidence = [ordered]@{
+            selection_kind = [string]$SelectionPayload.selection_kind
+            reason_selected = [string]$SelectionPayload.reason_selected
+            expected_evidence = @($SelectionPayload.expected_evidence)
+            validation_plan = @($SelectionPayload.validation_plan)
+        }
+        recovery_state = 'not_needed'
+    }
+
+    foreach ($sharedRoot in @(Get-TodExecutionSharedRoots)) {
+        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_NEXT_TASK_SELECTION.latest.json') -Payload $SelectionPayload
+        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVE_TASK.latest.json') -Payload $activeTaskPayload
+        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVITY_STREAM.latest.json') -Payload $activityPayload
+    }
+
+    Publish-RemoteTodExecutionArtifacts -LocalArtifactPaths @(
+        (Join-Path $repoRoot 'runtime/shared/TOD_NEXT_TASK_SELECTION.latest.json'),
+        (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVE_TASK.latest.json'),
+        (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVITY_STREAM.latest.json')
+    ) | Out-Null
+
+    return [pscustomobject]@{
+        selection = $SelectionPayload
+        active_task = $activeTaskPayload
+        activity = $activityPayload
+    }
+}
+
+function Invoke-TodNextTaskSelectionLoop {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)][string]$ResolvedConfigPath,
+        [Parameter(Mandatory = $true)][string]$ResolvedStatePath,
+        [string]$SourceTaskId = '',
+        [string]$TriggerReason = ''
+    )
+
+    $activeTaskArtifact = Read-TodJsonFileIfExists -Path (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVE_TASK.latest.json')
+    $executionResultArtifact = Read-TodJsonFileIfExists -Path (Join-Path $repoRoot 'runtime/shared/TOD_EXECUTION_RESULT.latest.json')
+    $executionTruthArtifact = Read-TodJsonFileIfExists -Path (Join-Path $repoRoot 'runtime/shared/TOD_EXECUTION_TRUTH.latest.json')
+    $integrationStatus = Read-TodJsonFileIfExists -Path (Join-Path $repoRoot 'shared_state/integration_status.json')
+    $autonomyStatus = Read-TodJsonFileIfExists -Path (Join-Path $repoRoot 'shared_state/tod_autonomy_status.latest.json')
+
+    $terminalOutcome = Get-TodTerminalTaskOutcome -State $State -ActiveTaskArtifact $activeTaskArtifact -ExecutionResultArtifact $executionResultArtifact -ExecutionTruthArtifact $executionTruthArtifact -TaskId $SourceTaskId
+    $staleDetected = $false
+    $staleReason = ''
+    if ($autonomyStatus -and $autonomyStatus.PSObject.Properties['blockers'] -and @($autonomyStatus.blockers).Count -gt 0) {
+        $staleReason = (@($autonomyStatus.blockers) -join '; ')
+    }
+    if ($terminalOutcome.classification -eq 'stale_waiting') {
+        $staleDetected = $true
+    }
+    if ($integrationStatus -and $integrationStatus.PSObject.Properties['mim_status'] -and $integrationStatus.mim_status -and $integrationStatus.mim_status.PSObject.Properties['is_stale'] -and [bool]$integrationStatus.mim_status.is_stale) {
+        $staleDetected = $true
+    }
+
+    $plan = New-TodNextTaskSelectionPlan -State $State -TerminalOutcome $terminalOutcome -StaleDetected:$staleDetected -StaleReason $staleReason
+    $selectedTask = Resolve-TodNextTaskSelectionTask -State $State -Plan $plan -ResolvedConfigPath $ResolvedConfigPath -ResolvedStatePath $ResolvedStatePath
+
+    $requestId = ('tod-next-task-selection-{0}-{1}' -f $(if ($selectedTask) { [string]$selectedTask.id } else { 'none' }), (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmssfff'))
+    $selectionPayload = [ordered]@{
+        generated_at = Get-UtcNow
+        source = 'tod-next-task-selection-v1'
+        trigger_reason = $(if (-not [string]::IsNullOrWhiteSpace($TriggerReason)) { [string]$TriggerReason } else { 'automatic_terminal_outcome' })
+        last_terminal_outcome = $terminalOutcome
+        selected_task_id = if ($selectedTask) { [string]$selectedTask.id } else { '' }
+        source_objective = if ($selectedTask) { [string]$selectedTask.objective_id } else { [string]$plan.source_objective }
+        reason_selected = [string]$plan.reason_selected
+        rejected_candidates = @($plan.rejected_candidates)
+        dispatch_status = if ($selectedTask) { 'dispatching' } else { 'blocked_with_reason' }
+        expected_evidence = @($plan.expected_evidence)
+        validation_plan = @($plan.validation_plan)
+        next_check_time = (Get-Date).ToUniversalTime().AddMinutes(5).ToString('o')
+        selection_kind = [string]$plan.selection_kind
+        request_id = $requestId
+        selected_task_title = if ($selectedTask -and $selectedTask.PSObject.Properties['title']) { [string]$selectedTask.title } else { '' }
+        selected_task_scope = if ($selectedTask -and $selectedTask.PSObject.Properties['scope']) { [string]$selectedTask.scope } else { '' }
+    }
+
+    $null = Publish-TodNextTaskSelectionArtifacts -SelectionPayload $selectionPayload -SelectedTask $selectedTask -RequestId $requestId
+
+    $dispatch = $null
+    if ($selectedTask) {
+        if (-not [string]::Equals(([string]$selectedTask.status), 'packaged', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $null = Invoke-TodSelfAction -ActionName 'package-task' -Arguments @{
+                TaskId = [string]$selectedTask.id
+                ConfigPath = $ResolvedConfigPath
+                StatePath = $ResolvedStatePath
+            }
+            $stateAfterPackaging = Load-State
+            $selectedTask = @($stateAfterPackaging.tasks | Where-Object { [string]$_.id -eq [string]$selectedTask.id } | Select-Object -First 1)
+            $selectedTask = if (@($selectedTask).Count -gt 0) { $selectedTask[0] } else { $selectedTask }
+        }
+
+        $dispatchAction = Invoke-TodSelfJsonAction -ActionName 'run-task' -Arguments @{
+            TaskId = [string]$selectedTask.id
+            ObjectiveId = [string]$selectedTask.objective_id
+            ConfigPath = $ResolvedConfigPath
+            StatePath = $ResolvedStatePath
+            SkipNextTaskSelectionLoop = $true
+        }
+        $dispatch = $dispatchAction.payload
+        $selectionPayload.dispatch_status = if ($dispatch -and $dispatch.PSObject.Properties['blocked'] -and [bool]$dispatch.blocked) { 'blocked_with_reason' } elseif ($dispatch -and $dispatch.PSObject.Properties['decision'] -and [string]$dispatch.decision -eq 'revise') { 'blocked_with_reason' } elseif ($dispatch -and $dispatch.PSObject.Properties['decision'] -and [string]$dispatch.decision -eq 'pass') { 'completed' } else { 'dispatched' }
+        $selectionPayload.dispatch_result = $dispatch
+        $null = Publish-TodNextTaskSelectionArtifacts -SelectionPayload $selectionPayload -SelectedTask $selectedTask -RequestId $requestId
+    }
+
+    return [pscustomobject]$selectionPayload
+}
+
 function Resolve-TaskPackagePath {
     param(
         [Parameter(Mandatory = $true)][string]$TaskId,
@@ -7229,6 +7890,9 @@ function Convert-EngineResultToNormalizedEnvelope {
         recommendations = @($EngineResult.recommendations | ForEach-Object { [string]$_ })
         structured_findings = @($EngineResult.structured_findings)
         needs_escalation = [bool]$EngineResult.needs_escalation
+        reason_code = if ($EngineResult.PSObject.Properties['reason_code']) { [string]$EngineResult.reason_code } else { '' }
+        recovery_state = if ($EngineResult.PSObject.Properties['recovery_state']) { [string]$EngineResult.recovery_state } else { '' }
+        command_output = if ($EngineResult.PSObject.Properties['command_output']) { [string]$EngineResult.command_output } else { '' }
         execution_engine = [pscustomobject]@{
             name = [string]$engineName
             version = [string]$EngineResult.engine_version
@@ -7268,7 +7932,104 @@ function Normalize-EngineResultPayload {
         recommendations = @($recommendations)
         structured_findings = @($EngineResult.structured_findings)
         needs_escalation = [bool]$EngineResult.needs_escalation
+        reason_code = if ($EngineResult.PSObject.Properties['reason_code']) { [string]$EngineResult.reason_code } else { '' }
+        recovery_state = if ($EngineResult.PSObject.Properties['recovery_state']) { [string]$EngineResult.recovery_state } else { '' }
+        command_output = if ($EngineResult.PSObject.Properties['command_output']) { [string]$EngineResult.command_output } else { '' }
     }
+}
+
+function New-ExecutionEngineBlockedResult {
+    param(
+        [Parameter(Mandatory = $true)]$Task,
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        [Parameter(Mandatory = $true)][string]$PackagePath,
+        [AllowNull()]$PrimaryResult,
+        [AllowNull()]$FallbackResult,
+        [string[]]$AttemptedEngines = @(),
+        [object[]]$AttemptDetails = @(),
+        [string]$FallbackEngine = ''
+    )
+
+    $engineName = if ($PrimaryResult -and $PrimaryResult.PSObject.Properties['engine_name']) { [string]$PrimaryResult.engine_name } else { 'codex' }
+    $engineVersion = if ($PrimaryResult -and $PrimaryResult.PSObject.Properties['engine_version']) { [string]$PrimaryResult.engine_version } else { 'unknown' }
+    $executionId = if ($PrimaryResult -and $PrimaryResult.PSObject.Properties['execution_id']) { [string]$PrimaryResult.execution_id } else { '' }
+    $result = New-EngineExecutionResult -EngineName $engineName -EngineVersion $engineVersion -TaskId $TaskId
+    if (-not [string]::IsNullOrWhiteSpace($executionId)) {
+        $result.execution_id = $executionId
+    }
+
+    $primaryFailures = if ($PrimaryResult -and $PrimaryResult.PSObject.Properties['failures']) { @($PrimaryResult.failures | ForEach-Object { [string]$_ }) } else { @() }
+    $fallbackFailures = if ($FallbackResult -and $FallbackResult.PSObject.Properties['failures']) { @($FallbackResult.failures | ForEach-Object { [string]$_ }) } else { @() }
+    $primaryRecommendations = if ($PrimaryResult -and $PrimaryResult.PSObject.Properties['recommendations']) { @($PrimaryResult.recommendations | ForEach-Object { [string]$_ }) } else { @() }
+    $fallbackRecommendations = if ($FallbackResult -and $FallbackResult.PSObject.Properties['recommendations']) { @($FallbackResult.recommendations | ForEach-Object { [string]$_ }) } else { @() }
+    $primaryTests = if ($PrimaryResult -and $PrimaryResult.PSObject.Properties['tests_run']) { @($PrimaryResult.tests_run | ForEach-Object { [string]$_ }) } else { @() }
+    $primaryTestResults = if ($PrimaryResult -and $PrimaryResult.PSObject.Properties['test_results']) { @($PrimaryResult.test_results | ForEach-Object { [string]$_ }) } else { @() }
+    $fallbackTests = if ($FallbackResult -and $FallbackResult.PSObject.Properties['tests_run']) { @($FallbackResult.tests_run | ForEach-Object { [string]$_ }) } else { @() }
+    $fallbackTestResults = if ($FallbackResult -and $FallbackResult.PSObject.Properties['test_results']) { @($FallbackResult.test_results | ForEach-Object { [string]$_ }) } else { @() }
+
+    $result.summary = if ($FallbackResult) {
+        'Codex wrapper only accepted the packaged prompt without executing it, and the safe local fallback could not execute this task scope. TOD published an explicit blocker instead of counting wrapper output as progress.'
+    }
+    else {
+        'Codex wrapper only accepted the packaged prompt without executing it, and no safe local fallback was available. TOD published an explicit blocker instead of counting wrapper output as progress.'
+    }
+    $result.files_changed = @()
+    $result.tests_run = @($primaryTests + $fallbackTests)
+    $result.test_results = @($primaryTestResults + $fallbackTestResults)
+    $result.failures = @(
+        @($primaryFailures) +
+        @($fallbackFailures) +
+        @('Wrapper-only codex output did not execute the bounded code-change task.')
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+    $result.recommendations = @(
+        @($primaryRecommendations) +
+        @($fallbackRecommendations) +
+        @('Keep the task blocked_with_reason until either a safe local executor supports this scope or the task is replanned with an explicitly supported bounded implementation target.')
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+    $result.needs_escalation = $false
+    $result.structured_findings = @(
+        [pscustomobject]@{
+            type = 'blocker'
+            reason_code = 'codex_wrapper_only_no_execution'
+            file = 'scripts/engines/CodexExecutionEngine.ps1'
+            function = 'Invoke-CodexExecutionEngineWrapper'
+            reason = 'The codex wrapper accepted the packaged prompt and returned a normalized envelope without executing task instructions or producing evidence.'
+            task_id = $TaskId
+            prompt_path = $PackagePath
+        },
+        [pscustomobject]@{
+            type = 'blocker'
+            reason_code = 'local_execution_scope_not_supported'
+            file = 'scripts/engines/LocalExecutionEngine.ps1'
+            function = 'Invoke-LocalExecutionEngine'
+            reason = $(if ($FallbackResult -and $FallbackResult.PSObject.Properties['summary'] -and -not [string]::IsNullOrWhiteSpace([string]$FallbackResult.summary)) { [string]$FallbackResult.summary } else { 'No safe local execution capability matched this bounded task scope.' })
+            task_id = $TaskId
+            task_scope = if ($Task.PSObject.Properties['scope']) { [string]$Task.scope } else { '' }
+            fallback_engine = $FallbackEngine
+        }
+    )
+    $result.raw_output = [pscustomobject]@{
+        engine = [pscustomobject]@{
+            name = $engineName
+            version = $engineVersion
+        }
+        task_context = [pscustomobject]@{
+            task_id = $TaskId
+            objective_id = if ($Task.PSObject.Properties['objective_id']) { [string]$Task.objective_id } else { '' }
+            title = if ($Task.PSObject.Properties['title']) { [string]$Task.title } else { '' }
+            scope = if ($Task.PSObject.Properties['scope']) { [string]$Task.scope } else { '' }
+            prompt_path = $PackagePath
+        }
+        attempted_engines = @($AttemptedEngines)
+        attempts = @($AttemptDetails)
+        primary_result = if ($PrimaryResult) { $PrimaryResult.raw_output } else { $null }
+        fallback_result = if ($FallbackResult) { $FallbackResult.raw_output } else { $null }
+        blocker_reason = 'codex_wrapper_only_no_execution'
+        generated_at = (Get-UtcNow)
+    }
+    $result | Add-Member -NotePropertyName reason_code -NotePropertyValue 'codex_wrapper_only_no_execution' -Force
+    $result | Add-Member -NotePropertyName recovery_state -NotePropertyValue $(if ($FallbackResult) { 'replan_required_after_local_fallback' } else { 'local_fallback_or_replan_required' }) -Force
+    return (Complete-EngineExecutionResult -Result $result -Status 'failed')
 }
 
 function Test-EngineResultPrecheck {
@@ -7487,11 +8248,21 @@ function Invoke-ExecutionEngine {
                 $selected = $fallback
             }
             else {
-                throw "Fallback engine '$fallback' failed after retries. reason=$([string]$fallbackAttempt.terminal_reason)"
+                if ($primaryAttempt.result -and $primaryAttempt.result.PSObject.Properties['reason_code'] -and [string]$primaryAttempt.result.reason_code -eq 'codex_wrapper_only_no_execution') {
+                    $engineResult = New-ExecutionEngineBlockedResult -Task $Task -TaskId $TaskId -PackagePath $PackagePath -PrimaryResult $primaryAttempt.result -FallbackResult $fallbackAttempt.result -AttemptedEngines @($attempted) -AttemptDetails @($attemptDetails) -FallbackEngine $fallback
+                }
+                else {
+                    throw "Fallback engine '$fallback' failed after retries. reason=$([string]$fallbackAttempt.terminal_reason)"
+                }
             }
         }
         elseif ($null -eq $engineResult) {
-            throw "Execution engine '$selected' failed and fallback is unavailable. $fallbackReason"
+            if ($primaryAttempt.result -and $primaryAttempt.result.PSObject.Properties['reason_code'] -and [string]$primaryAttempt.result.reason_code -eq 'codex_wrapper_only_no_execution') {
+                $engineResult = New-ExecutionEngineBlockedResult -Task $Task -TaskId $TaskId -PackagePath $PackagePath -PrimaryResult $primaryAttempt.result -FallbackResult $null -AttemptedEngines @($attempted) -AttemptDetails @($attemptDetails)
+            }
+            else {
+                throw "Execution engine '$selected' failed and fallback is unavailable. $fallbackReason"
+            }
         }
     }
 
@@ -8687,7 +9458,7 @@ function Ensure-ChatTaskObjectiveRecord {
     return $createdObjective
 }
 
-function Invoke-TodSelfJsonAction {
+function Invoke-TodSelfAction {
     param(
         [Parameter(Mandatory = $true)][string]$ActionName,
         [hashtable]$Arguments = @{}
@@ -8713,18 +9484,53 @@ function Invoke-TodSelfJsonAction {
     }
 
     $raw = & $scriptPath @invokeArgs 2>&1
+    return [pscustomobject]@{
+        action = $ActionName
+        output = [string]($raw | Out-String)
+    }
+}
+
+function Invoke-TodSelfJsonAction {
+    param(
+        [Parameter(Mandatory = $true)][string]$ActionName,
+        [hashtable]$Arguments = @{}
+    )
+
+    $invocation = Invoke-TodSelfAction -ActionName $ActionName -Arguments $Arguments
     $payload = $null
+    $rawText = [string]$invocation.output
     try {
-        $payload = ($raw | ConvertFrom-Json)
+        $payload = ($rawText | ConvertFrom-Json)
     }
     catch {
-        throw ("TOD nested action '{0}' did not return JSON. Output: {1}" -f $ActionName, [string]($raw | Out-String))
+        $lines = @($rawText -split "`r?`n")
+        for ($index = $lines.Length - 1; $index -ge 0; $index--) {
+            if ($lines[$index].Trim() -ne '{') {
+                continue
+            }
+
+            $candidate = (($lines[$index..($lines.Length - 1)]) -join [Environment]::NewLine).Trim()
+            if ([string]::IsNullOrWhiteSpace($candidate)) {
+                continue
+            }
+
+            try {
+                $payload = ($candidate | ConvertFrom-Json)
+                break
+            }
+            catch {
+            }
+        }
+    }
+
+    if ($null -eq $payload) {
+        throw ("TOD nested action '{0}' did not return JSON. Output: {1}" -f $ActionName, $rawText)
     }
 
     return [pscustomobject]@{
         action = $ActionName
         payload = $payload
-        output = [string]($raw | Out-String)
+        output = $rawText
     }
 }
 
@@ -9143,6 +9949,214 @@ function Get-LocalExecutionRollbackState {
     return $null
 }
 
+function Resolve-LocalExecutionTaskClass {
+    param([Parameter(Mandatory = $true)]$Task)
+
+    $explicitValues = @()
+    foreach ($fieldName in @('task_class', 'type', 'task_category')) {
+        if ($Task.PSObject.Properties[$fieldName] -and -not [string]::IsNullOrWhiteSpace([string]$Task.$fieldName)) {
+            $explicitValues += ([string]$Task.$fieldName).Trim().ToLowerInvariant()
+        }
+    }
+
+    foreach ($value in $explicitValues) {
+        switch ($value) {
+            'inspection_only' { return 'inspection_only' }
+            'report_only' { return 'report_only' }
+            'diagnostic_only' { return 'diagnostic_only' }
+            'inventory_only' { return 'inventory_only' }
+        }
+    }
+
+    $blob = (([string]$Task.title + ' ' + [string]$Task.scope + ' ' + [string]$Task.type + ' ' + [string]$Task.task_category)).ToLowerInvariant()
+    if ($blob -match '\binspection[ _-]?only\b') { return 'inspection_only' }
+    if ($blob -match '\breport[ _-]?only\b') { return 'report_only' }
+    if ($blob -match '\bdiagnostic[ _-]?only\b') { return 'diagnostic_only' }
+    if ($blob -match '\binventory[ _-]?only\b') { return 'inventory_only' }
+
+    return 'implementation'
+}
+
+function Test-LocalExecutionPatchRequired {
+    param(
+        [Parameter(Mandatory = $true)]$Task,
+        [string]$TaskClass = ''
+    )
+
+    $resolvedTaskClass = if ([string]::IsNullOrWhiteSpace($TaskClass)) { Resolve-LocalExecutionTaskClass -Task $Task } else { [string]$TaskClass }
+    if (@('inspection_only', 'report_only', 'diagnostic_only', 'inventory_only') -contains $resolvedTaskClass) {
+        return $false
+    }
+
+    $taskType = if ($Task.PSObject.Properties['type']) { ([string]$Task.type).ToLowerInvariant() } else { '' }
+    $taskCategory = Resolve-TaskCategory -Task $Task
+    if (@('code_change', 'refactor', 'test_generation', 'bridge_runtime') -contains $taskCategory) {
+        return $true
+    }
+    if ($taskType -match 'implementation|patch|code_change|refactor|fix') {
+        return $true
+    }
+
+    $blob = (([string]$Task.title + ' ' + [string]$Task.scope)).ToLowerInvariant()
+    return ($blob -match '\bpatch\b|\bimplement\b|\brefactor\b|\bmodify\b|\bupdate\b|\bchange\b|\bfix\b|\brewrite\b|\badd\b|\bremove\b')
+}
+
+function Get-LocalExecutionNoOpAssessment {
+    param(
+        [Parameter(Mandatory = $true)]$Task,
+        [Parameter(Mandatory = $true)]$ResultPayload
+    )
+
+    $taskClass = Resolve-LocalExecutionTaskClass -Task $Task
+    $isExempt = @('inspection_only', 'report_only', 'diagnostic_only', 'inventory_only') -contains $taskClass
+    $patchRequired = Test-LocalExecutionPatchRequired -Task $Task -TaskClass $taskClass
+    $filesChanged = @($ResultPayload.files_changed | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $validationChecks = @(Get-LocalExecutionValidationChecks -ResultPayload $ResultPayload)
+    $commandCapture = Get-LocalExecutionCommandCapture -ResultPayload $ResultPayload
+    $structuredFindings = @($ResultPayload.structured_findings)
+
+    $captureTextParts = @()
+    $commandExitCode = $null
+    $commandIndicatesChange = $false
+    if ($null -ne $commandCapture) {
+        if ($commandCapture.PSObject.Properties['exit_code']) {
+            try {
+                $commandExitCode = [int]$commandCapture.exit_code
+            }
+            catch {
+                $commandExitCode = $null
+            }
+        }
+
+        foreach ($fieldName in @('stdout', 'stderr', 'summary', 'command')) {
+            if ($commandCapture.PSObject.Properties[$fieldName]) {
+                $value = $commandCapture.$fieldName
+                if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+                    $captureTextParts += @($value | ForEach-Object { [string]$_ })
+                }
+                else {
+                    $captureTextParts += [string]$value
+                }
+            }
+        }
+
+        foreach ($flagName in @('state_changed', 'artifact_changed', 'proves_change', 'meaningful_change', 'changed', 'applied', 'published', 'accepted')) {
+            if ($commandCapture.PSObject.Properties[$flagName] -and [bool]$commandCapture.$flagName) {
+                $commandIndicatesChange = $true
+                break
+            }
+        }
+    }
+
+    $commandEvidenceText = (($captureTextParts | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' ').Trim()
+    $commandOutputProvesWork = (($null -eq $commandExitCode) -or $commandExitCode -eq 0) -and (
+        $commandIndicatesChange -or
+        ($commandEvidenceText -match '\b(updated|patched|modified|applied|created|wrote|saved|published|migrated|synchronized|deleted|inserted|changed)\b')
+    )
+
+    $validationArtifactChanged = $false
+    foreach ($check in $validationChecks) {
+        if ($null -eq $check) {
+            continue
+        }
+
+        foreach ($flagName in @('state_changed', 'artifact_changed', 'proves_change', 'meaningful_change', 'changed')) {
+            if ($check.PSObject.Properties[$flagName] -and [bool]$check.$flagName) {
+                $validationArtifactChanged = $true
+                break
+            }
+        }
+
+        if ($validationArtifactChanged) {
+            break
+        }
+    }
+
+    $resultArtifactChanged = $false
+    foreach ($finding in $structuredFindings) {
+        if ($null -eq $finding -or -not $finding.PSObject.Properties['type']) {
+            continue
+        }
+
+        $findingType = ([string]$finding.type).ToLowerInvariant()
+        if (@('result_contract', 'result_artifact', 'external_result', 'artifact_result') -notcontains $findingType) {
+            continue
+        }
+
+        $changedFiles = if ($finding.PSObject.Properties['changed_files']) { @($finding.changed_files | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+        $evidenceText = ''
+        foreach ($fieldName in @('evidence', 'action_taken', 'summary', 'artifact_path', 'validation_result')) {
+            if ($finding.PSObject.Properties[$fieldName]) {
+                $value = $finding.$fieldName
+                if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
+                    $evidenceText += ' ' + ((@($value | ForEach-Object { [string]$_ }) -join ' '))
+                }
+                else {
+                    $evidenceText += ' ' + ([string]$value)
+                }
+            }
+        }
+
+        foreach ($flagName in @('accepted', 'published', 'persisted', 'artifact_changed', 'state_changed', 'proves_change', 'meaningful_change', 'changed', 'applied')) {
+            if ($finding.PSObject.Properties[$flagName] -and [bool]$finding.$flagName) {
+                $resultArtifactChanged = $true
+                break
+            }
+        }
+
+        if (-not $resultArtifactChanged -and @($changedFiles).Count -gt 0) {
+            $resultArtifactChanged = $true
+        }
+        if (-not $resultArtifactChanged -and $evidenceText -match '\b(updated|patched|modified|applied|created|wrote|saved|published|migrated|synchronized|deleted|inserted|changed)\b') {
+            $resultArtifactChanged = $true
+        }
+
+        if ($resultArtifactChanged) {
+            break
+        }
+    }
+
+    $meaningfulEvidence = @()
+    if (@($filesChanged).Count -gt 0) { $meaningfulEvidence += 'files_changed' }
+    if ($commandOutputProvesWork) { $meaningfulEvidence += 'command_output' }
+    if ($validationArtifactChanged) { $meaningfulEvidence += 'validation_artifact' }
+    if ($resultArtifactChanged) { $meaningfulEvidence += 'result_artifact' }
+    $meaningfulEvidence = @($meaningfulEvidence)
+    $hasAlternativeEvidence = $commandOutputProvesWork -or $validationArtifactChanged -or $resultArtifactChanged
+
+    $patchWriterStatus = if (@($filesChanged).Count -gt 0) { 'completed' } elseif ($hasAlternativeEvidence) { 'evidence_only' } else { 'not_needed' }
+    $patchWriterRejected = $patchRequired -and [string]::Equals($patchWriterStatus, 'not_needed', [System.StringComparison]::OrdinalIgnoreCase)
+    $noMeaningfulEvidence = (@($meaningfulEvidence).Count -eq 0)
+    $detected = (-not $isExempt) -and ($patchWriterRejected -or $noMeaningfulEvidence)
+    $detail = if ($patchWriterRejected) {
+        'Patch-required task produced no changed files, so patch_writer.status=not_needed is not valid completion evidence.'
+    }
+    elseif ($noMeaningfulEvidence) {
+        'Execution produced no meaningful files, command evidence, validation change, or accepted result artifact.'
+    }
+    else {
+        ''
+    }
+
+    return [pscustomobject]@{
+        task_class = $taskClass
+        exempt = $isExempt
+        patch_required = $patchRequired
+        patch_writer_status = $patchWriterStatus
+        patch_writer_rejected = $patchWriterRejected
+        files_changed_count = [int]@($filesChanged).Count
+        command_output_proves_work = $commandOutputProvesWork
+        validation_artifact_changed = $validationArtifactChanged
+        result_artifact_changed = $resultArtifactChanged
+        meaningful_evidence = @($meaningfulEvidence)
+        detected = $detected
+        reason_code = if ($detected) { 'no_meaningful_execution_evidence' } else { '' }
+        detail = $detail
+        recovery_state = if ($detected) { 'replay_or_replan_required' } else { 'not_needed' }
+        allows_authoritative_completion = (-not $detected)
+    }
+}
+
 function Publish-LocalExecutionArtifacts {
     param(
         [Parameter(Mandatory = $true)]$Task,
@@ -9167,17 +10181,26 @@ function Publish-LocalExecutionArtifacts {
     $commandCapture = Get-LocalExecutionCommandCapture -ResultPayload $ResultPayload
     $rollback = Get-LocalExecutionRollbackState -ResultPayload $ResultPayload
     $filesChanged = @($ResultPayload.files_changed | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-    $strongestEvidence = if ($filesChanged.Count -gt 0) { "Changed files: $($filesChanged -join ', ')" } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stdout']) { [string]$commandCapture.stdout } else { $summary }
-    $commandOutput = if ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stdout']) { [string]$commandCapture.stdout } else { '' }
-    $passed = ($ReviewDecision -eq 'pass')
-    $status = if ($passed) { 'completed' } else { 'blocked' }
-    $executionState = if ($passed) { 'completed' } else { 'blocked' }
-    $activityStatus = if ($passed) { 'completed' } else { 'blocked' }
-    $currentAction = if ($passed) { 'Completed the bounded local task and published local execution artifacts for TOD.' } else { 'Published the bounded local task outcome and marked the execution slice for review.' }
-    $nextStep = if ($passed) { 'Continue with the next bounded local objective and its focused validation path.' } else { 'Review the failing checks, repair the bounded slice, and rerun the focused validation path.' }
-    $nextValidation = if ($validationChecks.Count -gt 0) { [string]$validationChecks[0].name } else { 'review_local_execution_artifacts' }
-    $validationStatus = if ($passed) { 'passed' } else { 'blocked' }
+    $noOpAssessment = if ($ResultPayload.PSObject.Properties['no_op_assessment'] -and $null -ne $ResultPayload.no_op_assessment) { $ResultPayload.no_op_assessment } else { Get-LocalExecutionNoOpAssessment -Task $Task -ResultPayload $ResultPayload }
+    $explicitReasonCode = if ($ResultPayload.PSObject.Properties['reason_code']) { [string]$ResultPayload.reason_code } else { '' }
+    $explicitRecoveryState = if ($ResultPayload.PSObject.Properties['recovery_state']) { [string]$ResultPayload.recovery_state } else { '' }
+    $explicitBlockers = @($ResultPayload.structured_findings | Where-Object { $null -ne $_ -and $_.PSObject.Properties['type'] -and [string]$_.type -eq 'blocker' })
+    $hasExplicitBlocker = -not [string]::IsNullOrWhiteSpace($explicitReasonCode)
+    $strongestEvidence = if (@($filesChanged).Count -gt 0) { "Changed files: $($filesChanged -join ', ')" } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stdout'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stdout)) { [string]$commandCapture.stdout } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stderr'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stderr)) { [string]$commandCapture.stderr } else { $summary }
+    $commandOutput = if ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stdout'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stdout)) { [string]$commandCapture.stdout } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stderr'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stderr)) { [string]$commandCapture.stderr } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['command']) { [string]$commandCapture.command } else { '' }
+    $commandRunnerStatus = if ($null -eq $commandCapture) { 'pending' } elseif ($commandCapture.PSObject.Properties['exit_code'] -and [int]$commandCapture.exit_code -eq 0) { 'completed' } else { 'blocked' }
+    $commandRunnerSummary = if ($null -eq $commandCapture) { 'No validation command output was captured.' } elseif (-not [string]::IsNullOrWhiteSpace($commandOutput)) { $commandOutput } else { 'Validation command executed without captured output.' }
+    $passed = ($ReviewDecision -eq 'pass') -and -not [bool]$noOpAssessment.detected -and -not $hasExplicitBlocker
+    $status = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($passed) { 'completed' } else { 'blocked' }
+    $executionState = if ($hasExplicitBlocker) { 'blocked_with_reason' } elseif ([bool]$noOpAssessment.detected) { 'no_op_rejected' } elseif ($passed) { 'completed' } else { 'blocked' }
+    $activityStatus = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($passed) { 'completed' } else { 'blocked' }
+    $currentAction = if ($hasExplicitBlocker) { 'Blocked execution on an explicit engine/runtime blocker and published the blocker evidence.' } elseif ([bool]$noOpAssessment.detected) { 'Rejected completion because the execution did not produce meaningful work evidence.' } elseif ($passed) { 'Completed the bounded local task and published local execution artifacts for TOD.' } else { 'Published the bounded local task outcome and marked the execution slice for review.' }
+    $nextStep = if ($hasExplicitBlocker) { $(if (-not [string]::IsNullOrWhiteSpace($explicitRecoveryState)) { $explicitRecoveryState } else { 'local_fallback_or_replan_required' }) } elseif ([bool]$noOpAssessment.detected) { 'replay_or_replan_required' } elseif ($passed) { 'Continue with the next bounded local objective and its focused validation path.' } else { 'Review the failing checks, repair the bounded slice, and rerun the focused validation path.' }
+    $nextValidation = if ($hasExplicitBlocker) { if (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'explicit_blocker_review' } } elseif ([bool]$noOpAssessment.detected) { 'meaningful_execution_evidence_required' } elseif (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'review_local_execution_artifacts' }
+    $validationStatus = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($passed) { 'passed' } else { 'blocked' }
     $rollbackState = if ($null -ne $rollback -and $rollback.PSObject.Properties['available'] -and [bool]$rollback.available) { 'available' } else { 'not_needed' }
+    $reasonCode = if ($hasExplicitBlocker) { $explicitReasonCode } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.reason_code } else { '' }
+    $recoveryState = if ($hasExplicitBlocker) { $(if (-not [string]::IsNullOrWhiteSpace($explicitRecoveryState)) { $explicitRecoveryState } else { 'required' }) } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.recovery_state } elseif ($passed) { 'not_needed' } else { 'required' }
     $requestId = [string]$Task.id
     $executionContract = [pscustomobject]@{
         contract_version = 'tod-execution-loop-v1'
@@ -9202,18 +10225,18 @@ function Publish-LocalExecutionArtifacts {
             next_validation = $nextValidation
         }
         command_runner = [pscustomobject]@{
-            status = if ([string]::IsNullOrWhiteSpace($commandOutput)) { 'pending' } else { 'completed' }
-            summary = if ([string]::IsNullOrWhiteSpace($commandOutput)) { 'No validation command output was captured.' } else { $commandOutput }
+            status = $commandRunnerStatus
+            summary = $commandRunnerSummary
             mode = 'local_task_execution'
         }
         patch_writer = [pscustomobject]@{
-            status = if ($filesChanged.Count -gt 0) { 'completed' } else { 'not_needed' }
-            summary = if ($filesChanged.Count -gt 0) { 'The local executor updated the bounded target files.' } else { 'The local executor completed without changing files.' }
+            status = [string]$noOpAssessment.patch_writer_status
+            summary = if (@($filesChanged).Count -gt 0) { 'The local executor updated the bounded target files.' } elseif ([string]$noOpAssessment.patch_writer_status -eq 'evidence_only') { 'The local executor completed without new file deltas on this rerun, and accepted validation or result-artifact evidence preserved the execution outcome.' } elseif ([bool]$noOpAssessment.patch_required) { 'Patch-required execution produced no changed files or accepted alternative evidence, so completion was rejected.' } else { 'The local executor completed without changing files.' }
         }
         validator = [pscustomobject]@{
             status = $validationStatus
             target = $nextValidation
-            summary = $summary
+            summary = if ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.detail } else { $summary }
             checks = @($validationChecks)
         }
         result_publisher = [pscustomobject]@{
@@ -9246,6 +10269,7 @@ function Publish-LocalExecutionArtifacts {
         package_path = $PackagePath
         execution_contract = $executionContract
         execution_readiness = $ExecutionReadiness
+        reason_code = $reasonCode
     }
 
     $executionEvidence = [ordered]@{
@@ -9257,9 +10281,14 @@ function Publish-LocalExecutionArtifacts {
         validation_passed = $passed
         command_output = $commandOutput
         rollback_state = $rollbackState
-        recovery_state = if ($passed) { 'not_needed' } else { 'required' }
+        recovery_state = $recoveryState
         package_path = $PackagePath
         review_decision = $ReviewDecision
+        reason_code = $reasonCode
+        no_op_detected = [bool]$noOpAssessment.detected
+        task_class = [string]$noOpAssessment.task_class
+        meaningful_evidence = @($noOpAssessment.meaningful_evidence)
+        blockers = @($explicitBlockers)
     }
 
     $activeObjectivePayload = [ordered]@{} + $basePayload + @{
@@ -9281,10 +10310,11 @@ function Publish-LocalExecutionArtifacts {
         wait_target_label = ''
         wait_reason = ''
         execution_evidence = $executionEvidence
+        recovery_state = $recoveryState
     }
     $activityPayload = [ordered]@{} + $basePayload + @{
         packet_type = 'tod-activity-stream-v1'
-        event = if ($passed) { 'local_task_completed' } else { 'local_task_blocked' }
+        event = if ([bool]$noOpAssessment.detected) { 'local_task_no_op_rejected' } elseif ($passed) { 'local_task_completed' } else { 'local_task_blocked' }
         status = $activityStatus
         phase = 'local_run_task'
         current_action = $currentAction
@@ -9292,6 +10322,7 @@ function Publish-LocalExecutionArtifacts {
         next_validation = $nextValidation
         execution_state = $executionState
         execution_evidence = $executionEvidence
+        recovery_state = $recoveryState
     }
     $validationPayload = [ordered]@{} + $basePayload + @{
         packet_type = 'tod-validation-result-v1'
@@ -9318,7 +10349,7 @@ function Publish-LocalExecutionArtifacts {
         command_output = $commandOutput
         files_changed = @($filesChanged)
         rollback_state = $rollbackState
-        recovery_state = if ($passed) { 'not_needed' } else { 'required' }
+        recovery_state = $recoveryState
         execution_evidence = $executionEvidence
     }
     $executionTruthPayload = [ordered]@{
@@ -9334,6 +10365,7 @@ function Publish-LocalExecutionArtifacts {
             current_action = $currentAction
             next_step = $nextStep
             validation_passed = $passed
+            reason_code = $reasonCode
         }
         recent_execution_truth = @(
             [ordered]@{
@@ -9349,6 +10381,8 @@ function Publish-LocalExecutionArtifacts {
                 next_step = $nextStep
                 next_validation = $nextValidation
                 validation_passed = $passed
+                reason_code = $reasonCode
+                recovery_state = $recoveryState
                 execution_evidence = $executionEvidence
                 execution_contract = $executionContract
             }
@@ -9372,6 +10406,16 @@ function Publish-LocalExecutionArtifacts {
         (Join-Path $repoRoot 'runtime/shared/TOD_EXECUTION_RESULT.latest.json'),
         (Join-Path $repoRoot 'runtime/shared/TOD_EXECUTION_TRUTH.latest.json')
     ) | Out-Null
+
+    return [pscustomobject]@{
+        no_op_assessment = $noOpAssessment
+        active_objective = $activeObjectivePayload
+        active_task = $activeTaskPayload
+        activity = $activityPayload
+        validation = $validationPayload
+        execution_result = $executionResultPayload
+        execution_truth = $executionTruthPayload
+    }
 }
 
 function Publish-RemoteTodExecutionArtifacts {
@@ -9656,7 +10700,7 @@ $engineConfig = Resolve-ExecutionEngineConfig -Config $config -State $state -Dis
 $capabilityGate = Apply-CapabilityDegrade -Config $config -State $state -ActionName $Action
 $executionReadinessGate = Apply-ExecutionReadinessPolicy -Config $config -ActionName $Action -ApplyPlan:$ApplyPlan
 $ApplyPlan = [bool]$executionReadinessGate.effective_apply_plan
-if ($executionReadinessGate.blocked -and $Action -ne "run-task") {
+if ($executionReadinessGate.blocked -and $Action -notin @("run-task", "select-next-task-loop")) {
     throw "Blocked action '$Action' because execution-readiness is $([string]$executionReadinessGate.signal.readiness.status). Run .\\scripts\\Test-TODOperatorChatSweepArtifact.ps1 and restore a valid certification artifact before executing tasks."
 }
 Assert-ContractGate -ActionName $Action -State $state -AllowDrift:$AllowContractDrift
@@ -10335,6 +11379,14 @@ switch ($Action) {
         }
 
         $resultPayload = $invokeResult.result
+        $hasExplicitEngineBlocker = $resultPayload.PSObject.Properties['reason_code'] -and -not [string]::IsNullOrWhiteSpace([string]$resultPayload.reason_code)
+        $noOpAssessment = Get-LocalExecutionNoOpAssessment -Task $task -ResultPayload $resultPayload
+        $resultPayload | Add-Member -NotePropertyName no_op_assessment -NotePropertyValue $noOpAssessment -Force
+        if ([bool]$noOpAssessment.detected -and -not $hasExplicitEngineBlocker) {
+            $resultPayload.needs_escalation = $false
+            $resultPayload.failures = @(@($resultPayload.failures) + @([string]$noOpAssessment.detail) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $resultPayload.recommendations = @(@($resultPayload.recommendations) + @('Trigger replay_or_replan_required and rerun only after a state-changing execution path is available.') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+        }
         $filesChangedCsv = (@($resultPayload.files_changed) | ForEach-Object { [string]$_ }) -join ","
         $testsRunCsv = (@($resultPayload.tests_run) | ForEach-Object { [string]$_ }) -join ","
         $testResultsCsv = (@($resultPayload.test_results) | ForEach-Object { [string]$_ }) -join ","
@@ -10358,10 +11410,28 @@ switch ($Action) {
                 $reviewDecision = "revise"
             }
         }
+        if ($hasExplicitEngineBlocker) {
+            $precheckWarnings = @($precheckWarnings + @([string]$resultPayload.reason_code) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            if ($reviewDecision -eq 'pass') {
+                $reviewDecision = 'revise'
+            }
+        }
+        elseif ([bool]$noOpAssessment.detected) {
+            $precheckWarnings = @($precheckWarnings + @([string]$noOpAssessment.reason_code) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            if ($reviewDecision -eq 'pass') {
+                $reviewDecision = 'revise'
+            }
+        }
 
         $rationale = "run-task completed via invoke-engine and result persistence."
         if (@($precheckWarnings).Count -gt 0) {
             $rationale = "run-task completed with precheck warnings: $($precheckWarnings -join '; ')"
+        }
+        if ($hasExplicitEngineBlocker) {
+            $rationale = "run-task blocked with explicit engine reason: $([string]$resultPayload.reason_code)"
+        }
+        elseif ([bool]$noOpAssessment.detected) {
+            $rationale = "run-task rejected as a no-op: $([string]$noOpAssessment.detail)"
         }
 
         $unresolvedCsv = (@($resultPayload.failures) + @($precheckWarnings) | ForEach-Object { [string]$_ }) -join ","
@@ -10426,6 +11496,24 @@ switch ($Action) {
             Save-State -State $stateAfter
         }
 
+        $nextTaskSelection = $null
+        $nextTaskSelectionError = ''
+        if (-not $SkipNextTaskSelectionLoop) {
+            try {
+                $selectionAction = Invoke-TodSelfJsonAction -ActionName 'select-next-task-loop' -Arguments @{
+                    TaskId = $TaskId
+                    ObjectiveId = [string]$task.objective_id
+                    ConfigPath = $configPath
+                    StatePath = $statePath
+                    SelectionReason = 'terminal_task_outcome'
+                }
+                $nextTaskSelection = $selectionAction.payload
+            }
+            catch {
+                $nextTaskSelectionError = [string]$_.Exception.Message
+            }
+        }
+
         [pscustomobject]@{
             task_id = $TaskId
             execution_id = [string]$resolvedExecutionId
@@ -10443,9 +11531,21 @@ switch ($Action) {
             routing_decision_preinvoke = $routingPre[0]
             routing_decision = $routingRecord
             engine_performance_record = $perfRecord
+            next_task_selection = $nextTaskSelection
+            next_task_selection_error = $nextTaskSelectionError
             state_access = $stateAccess
             memory_profile = [pscustomobject]$memoryProfile
         } | ConvertTo-Json -Depth 14
+    }
+
+    "select-next-task-loop" {
+        $payload = Invoke-TodNextTaskSelectionLoop -State $state -ResolvedConfigPath $configPath -ResolvedStatePath $statePath -SourceTaskId $TaskId -TriggerReason $SelectionReason
+        if ([bool]$stateAccess.local_cache_enabled) {
+            $state = Load-State
+            Add-Journal -State $state -Actor 'tod' -ActionName 'select_next_task_loop' -EntityType 'task' -EntityId $(if ($payload.PSObject.Properties['selected_task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$payload.selected_task_id)) { [string]$payload.selected_task_id } else { 'none' }) -Payload $payload
+            Save-State -State $state
+        }
+        $payload | ConvertTo-Json -Depth 16
     }
 
     "run-bridge-request" {

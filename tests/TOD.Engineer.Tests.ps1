@@ -30,6 +30,7 @@ function Import-EngineerFunction {
 Describe 'TOD engineer next-step continuation' {
     BeforeAll {
         Import-EngineerFunction -Name 'Resolve-NextStepContinuation'
+        Import-EngineerFunction -Name 'Get-NextStepContinuationTaskSpec'
     }
 
     It 'fails closed when next-step policy is missing or errors' {
@@ -53,5 +54,50 @@ Describe 'TOD engineer next-step continuation' {
         [string]$continuation.effective_loop_decision | Should Be 'await_tod_mim_consensus'
         [bool]$continuation.operator_prompt_allowed | Should Be $false
         [string]$continuation.resolution_source | Should Be 'next_step_policy'
+    }
+
+    It 'builds a follow-on task spec from the selected next-step finding when local continuation is allowed' {
+        $consensus = [pscustomobject]@{
+            consensus = [pscustomobject]@{
+                selected_finding_id = 'finding-123'
+            }
+            findings = @(
+                [pscustomobject]@{
+                    finding = [pscustomobject]@{
+                        finding_id = 'finding-123'
+                        description = 'Run canonical-only validation pass'
+                    }
+                    consensus_reason = 'TOD can continue locally after review.'
+                }
+            )
+        }
+
+        $spec = Get-NextStepContinuationTaskSpec -TaskId 'TSK-001' -ObjectiveId 'OBJ-123' -EffectiveLoopDecision 'proceed_with_local_decision' -NextStepConsensus $consensus
+
+        $spec | Should Not BeNullOrEmpty
+        [string]$spec.title | Should Be 'Follow through: Run canonical-only validation pass'
+        [string]$spec.task_category | Should Be 'next_step_followthrough'
+        [string]$spec.finding_id | Should Be 'finding-123'
+        [string]$spec.scope | Should Match 'TSK-001'
+    }
+
+    It 'does not build a follow-on task spec when continuation is not allowed yet' {
+        $consensus = [pscustomobject]@{
+            consensus = [pscustomobject]@{
+                selected_finding_id = 'finding-123'
+            }
+            findings = @(
+                [pscustomobject]@{
+                    finding = [pscustomobject]@{
+                        finding_id = 'finding-123'
+                        description = 'Run canonical-only validation pass'
+                    }
+                }
+            )
+        }
+
+        $spec = Get-NextStepContinuationTaskSpec -TaskId 'TSK-001' -ObjectiveId 'OBJ-123' -EffectiveLoopDecision 'await_tod_mim_consensus' -NextStepConsensus $consensus
+
+        $spec | Should Be $null
     }
 }

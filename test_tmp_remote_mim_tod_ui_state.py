@@ -408,7 +408,60 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertFalse(execution["stall_signal"]["flagged"])
         self.assertEqual(execution["stall_signal"]["level"], "implementation_pending")
         self.assertIn("Held at implementation gate:", execution["stall_signal"]["summary"])
-        self.assertIn("capped at 60%", execution["activity_summary"])
+        self.assertGreater(execution["phase_progress"]["percent_complete"], 60)
+        self.assertIn("rather than stale output", execution["activity_summary"])
+
+    def test_truth_timestamp_does_not_mask_stale_execution_artifacts(self) -> None:
+        stale_timestamp = "2026-04-26T10:00:00Z"
+        fresh_truth_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        active_task = {
+            "objective_id": "TOD-CONVERSATIONAL-OPERATOR-MODE-PHASE-2",
+            "title": "Make TOD communicate like an execution partner",
+            "summary": "Completed bounded inspection and waiting on the next implementation slice.",
+            "updated_at": stale_timestamp,
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "next_step": "Implement the next bounded local implementation step in the inspected surfaces.",
+            "wait_reason": "TOD is waiting on its own next bounded local implementation step.",
+            "execution_contract": {
+                "task_intake": {"status": "accepted"},
+                "bounded_step_planner": {
+                    "status": "completed",
+                    "active_step": {"status": "completed"},
+                },
+                "command_runner": {"status": "completed"},
+                "patch_writer": {"status": "pending"},
+                "validator": {"status": "passed"},
+                "result_publisher": {"status": "completed"},
+            },
+        }
+        activity = {
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "updated_at": stale_timestamp,
+            "wait_reason": "TOD is waiting on its own next bounded local implementation step.",
+        }
+        validation = {
+            "status": "passed",
+            "updated_at": stale_timestamp,
+        }
+        execution_result = {
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "updated_at": stale_timestamp,
+            "next_step": "Implement the next bounded local implementation step in the inspected surfaces.",
+            "wait_reason": "TOD is waiting on its own next bounded local implementation step.",
+        }
+        truth = {
+            "generated_at": fresh_truth_timestamp,
+        }
+
+        execution = self.tod_ui._normalize_execution_status({}, active_task, activity, validation, execution_result, truth)
+
+        self.assertEqual(execution["updated_at"], stale_timestamp)
+        self.assertTrue(execution["stall_signal"]["flagged"])
+        self.assertEqual(execution["activity_state"], "stalled")
+        self.assertIn("Probable stall:", execution["activity_summary"])
 
     def test_execution_feed_includes_implementation_gate_hold_watch(self) -> None:
         state = {
@@ -418,18 +471,18 @@ class TodUiStateClassificationTests(unittest.TestCase):
                 "updated_at": "2026-04-26T10:00:00Z",
                 "title": "Make TOD communicate like an execution partner",
                 "activity_label": "Waiting",
-                "activity_summary": "Held at implementation gate: Phase 2 is capped at 60% until the next implementation slice starts.",
+                "activity_summary": "Held at implementation gate: Phase 2 is at 63% until the next implementation slice starts. Fresh execution evidence landed 1m ago, so this wait is for the next implementation slice rather than stale output.",
                 "phase_progress": {
                     "available": True,
                     "label": "Phase 2 progress",
-                    "percent_complete": 60,
+                    "percent_complete": 63,
                     "next_gate": "Implementation",
-                    "summary": "Phase 2 is about 60% complete. Inspection is done; implementation is the next gate.",
+                    "summary": "Phase 2 is about 63% complete within the implementation gate. Inspection is done; implementation is the next gate.",
                 },
                 "stall_signal": {
                     "flagged": False,
                     "level": "implementation_pending",
-                    "summary": "Held at implementation gate: Phase 2 is capped at 60% until the next implementation slice starts.",
+                    "summary": "Held at implementation gate: Phase 2 is at 63% until the next implementation slice starts. Fresh execution evidence landed 1m ago, so this wait is for the next implementation slice rather than stale output.",
                 },
             },
         }
@@ -438,7 +491,7 @@ class TodUiStateClassificationTests(unittest.TestCase):
         contents = [item["content"] for item in messages]
 
         self.assertIn(
-            "Stall watch: Held at implementation gate: Phase 2 is capped at 60% until the next implementation slice starts.",
+            "Stall watch: Held at implementation gate: Phase 2 is at 63% until the next implementation slice starts. Fresh execution evidence landed 1m ago, so this wait is for the next implementation slice rather than stale output.",
             contents,
         )
 

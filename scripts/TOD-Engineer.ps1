@@ -256,6 +256,60 @@ function Resolve-NextStepContinuation {
     }
 }
 
+function Get-NextStepContinuationTaskSpec {
+    param(
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        [Parameter(Mandatory = $true)][string]$ObjectiveId,
+        [Parameter(Mandatory = $true)][string]$EffectiveLoopDecision,
+        $NextStepConsensus
+    )
+
+    $allowedDecisions = @('continue', 'proceed_with_local_decision', 'proceed_while_mim_dialog_open')
+    if ($allowedDecisions -notcontains ([string]$EffectiveLoopDecision).ToLowerInvariant()) {
+        return $null
+    }
+
+    if (-not $NextStepConsensus -or -not $NextStepConsensus.PSObject.Properties['consensus'] -or -not $NextStepConsensus.consensus) {
+        return $null
+    }
+
+    $selectedFindingId = if ($NextStepConsensus.consensus.PSObject.Properties['selected_finding_id']) { [string]$NextStepConsensus.consensus.selected_finding_id } else { '' }
+    if ([string]::IsNullOrWhiteSpace($selectedFindingId)) {
+        return $null
+    }
+
+    $selectedEntry = @($NextStepConsensus.findings | Where-Object {
+            $_.PSObject.Properties['finding'] -and $_.finding -and [string]$_.finding.finding_id -eq $selectedFindingId
+        } | Select-Object -First 1)[0]
+    if (-not $selectedEntry) {
+        return $null
+    }
+
+    $finding = $selectedEntry.finding
+    $description = if ($finding.PSObject.Properties['description']) { [string]$finding.description } else { '' }
+    if ([string]::IsNullOrWhiteSpace($description)) {
+        return $null
+    }
+
+    $scopeDetail = if ($selectedEntry.PSObject.Properties['consensus_reason'] -and -not [string]::IsNullOrWhiteSpace([string]$selectedEntry.consensus_reason)) {
+        [string]$selectedEntry.consensus_reason
+    }
+    else {
+        'Continue the reviewed execution lane without operator intervention.'
+    }
+
+    return [pscustomobject]@{
+        title = ('Follow through: ' + $description)
+        type = 'implementation'
+        task_category = 'next_step_followthrough'
+        assigned_executor = 'codex'
+        scope = ('Follow-on task generated after reviewed pass for task {0} under objective {1}. Selected finding {2}: {3} Reason: {4}' -f $TaskId, $ObjectiveId, $selectedFindingId, $description, $scopeDetail)
+        acceptance_criteria = 'Execute the selected next step, capture concrete evidence, and submit a reviewed result artifact.'
+        finding_id = $selectedFindingId
+        description = $description
+    }
+}
+
 function Invoke-TaskExecutionEngine {
     param(
         [Parameter(Mandatory = $true)]$Package,
@@ -1221,8 +1275,17 @@ switch ($Action) {
             $nextStepsScriptPath = Join-Path $PSScriptRoot "New-TODCodexNextSteps.ps1"
             $consensusScriptPath = Join-Path $PSScriptRoot "Resolve-TODNextStepConsensus.ps1"
             $policyScriptPath = Join-Path $PSScriptRoot "Invoke-TODNextStepPolicy.ps1"
+            $sharedStateDir = Join-Path $repoRoot 'shared_state'
+            $latestConsensusPath = Join-Path $sharedStateDir 'NEXT_STEP_CONSENSUS.latest.json'
+            $latestPolicyPath = Join-Path $sharedStateDir 'NEXT_STEP_POLICY.latest.json'
 
             if ((Test-Path -Path $nextStepsScriptPath) -and (Test-Path -Path $consensusScriptPath) -and (Test-Path -Path $policyScriptPath)) {
+                foreach ($staleArtifactPath in @($latestConsensusPath, $latestPolicyPath)) {
+                    if (Test-Path -Path $staleArtifactPath) {
+                        Remove-Item -Path $staleArtifactPath -Force -ErrorAction Stop
+                    }
+                }
+
                 $nextStepsArtifact = (& $nextStepsScriptPath `
                         -TaskId ([string]$TaskId) `
                         -ObjectiveId ([string]$task.objective_id) `
@@ -1248,6 +1311,24 @@ switch ($Action) {
         $continuation = Resolve-NextStepContinuation -LoopDecision ([string]$loopDecision) -NextStepPolicy $nextStepPolicy -NextStepsError $nextStepsError
         $effectiveLoopDecision = [string]$continuation.effective_loop_decision
         $operatorPromptAllowed = [bool]$continuation.operator_prompt_allowed
+        $continuationTask = $null
+
+        $continuationTaskSpec = Get-NextStepContinuationTaskSpec `
+            -TaskId ([string]$TaskId) `
+            -ObjectiveId ([string]$task.objective_id) `
+            -EffectiveLoopDecision $effectiveLoopDecision `
+            -NextStepConsensus $nextStepConsensus
+        if ($continuationTaskSpec) {
+            $continuationTask = (& $todScriptPath -Action add-task -ConfigPath $configPathResolved `
+                    -ObjectiveId ([string]$task.objective_id) `
+                    -Title ([string]$continuationTaskSpec.title) `
+                    -Type ([string]$continuationTaskSpec.type) `
+                    -Scope ([string]$continuationTaskSpec.scope) `
+                    -AcceptanceCriteria ([string]$continuationTaskSpec.acceptance_criteria) `
+                    -AssignedExecutor ([string]$continuationTaskSpec.assigned_executor) `
+                    -TaskCategory ([string]$continuationTaskSpec.task_category) |
+                ConvertFrom-Json)
+        }
 
         [pscustomobject]@{
             task_id = $TaskId
@@ -1263,6 +1344,7 @@ switch ($Action) {
             next_steps_artifact = $nextStepsArtifact
             next_step_consensus = $nextStepConsensus
             next_step_policy = $nextStepPolicy
+            continuation_task = $continuationTask
             next_steps_error = $nextStepsError
         } | ConvertTo-Json -Depth 12
     }

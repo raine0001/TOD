@@ -603,7 +603,7 @@ function Get-RequestBoundaryClass {
     }
     $actionText = $actionText.ToLowerInvariant()
 
-    if ($actionText -match 'credential|secret|password|token|certificate|private key|firewall|production deploy|prod deploy|delete|destroy|reimage|shutdown host|reboot host|open network|public exposure|human safety|operator approval') {
+    if ($actionText -match 'credential|secret|password|api token|auth token|access token|refresh token|bearer token|certificate|private key|firewall|production deploy|prod deploy|delete|destroy|reimage|shutdown host|reboot host|open network|public exposure|human safety|operator approval') {
         return 'hard_boundary'
     }
 
@@ -1036,6 +1036,11 @@ function Limit-ListenerStateText {
 function New-ListenerState {
     param($ExistingState)
 
+    $scopedForcedReplays = @()
+    if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties['scoped_forced_replays'] -and $null -ne $ExistingState.scoped_forced_replays) {
+        $scopedForcedReplays = @($ExistingState.scoped_forced_replays | Where-Object { $null -ne $_ })
+    }
+
     return [pscustomobject]@{
         last_processed_request_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_processed_request_id"]) { [string]$ExistingState.last_processed_request_id } else { "" }
         last_processed_request_signature = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_processed_request_signature"]) { [string]$ExistingState.last_processed_request_signature } else { "" }
@@ -1101,6 +1106,7 @@ function New-ListenerState {
         blocked_resume_recorded_at = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_recorded_at"]) { [string]$ExistingState.blocked_resume_recorded_at } else { "" }
         blocked_resume_retry_attempted = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_retry_attempted"]) { [bool]$ExistingState.blocked_resume_retry_attempted } else { $false }
         blocked_resume_retry_attempted_at = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_retry_attempted_at"]) { [string]$ExistingState.blocked_resume_retry_attempted_at } else { "" }
+        scoped_forced_replays = @($scopedForcedReplays)
     }
 }
 
@@ -2867,6 +2873,73 @@ function Test-RequestOrderingIsStale {
     $requestOrdinal = if ($RequestOrderingInfo.PSObject.Properties['ordinal']) { [long]$RequestOrderingInfo.ordinal } else { 0L }
     $highOrdinal = if ($HighWatermark.PSObject.Properties['ordinal']) { [long]$HighWatermark.ordinal } else { 0L }
     return ($requestOrdinal -gt 0 -and $highOrdinal -gt 0 -and $requestOrdinal -lt $highOrdinal)
+}
+
+function Get-ScopedForcedReplayEntries {
+    param([AllowNull()]$ListenerState)
+
+    if ($null -eq $ListenerState -or -not $ListenerState.PSObject.Properties['scoped_forced_replays'] -or $null -eq $ListenerState.scoped_forced_replays) {
+        return @()
+    }
+
+    return @($ListenerState.scoped_forced_replays | Where-Object { $null -ne $_ })
+}
+
+function Get-ScopedForcedReplayMatch {
+    param(
+        [AllowNull()]$ListenerState,
+        [Parameter(Mandatory = $true)][string]$RequestId,
+        [string]$TaskId = '',
+        [string]$ObjectiveId = ''
+    )
+
+    foreach ($entry in Get-ScopedForcedReplayEntries -ListenerState $ListenerState) {
+        $entryActive = if ($entry.PSObject.Properties['active']) { [bool]$entry.active } else { $true }
+        if (-not $entryActive) {
+            continue
+        }
+
+        $entryRequestId = if ($entry.PSObject.Properties['replay_request_id']) { [string]$entry.replay_request_id } else { '' }
+        if (-not [string]::Equals($entryRequestId, $RequestId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        $entryTaskId = if ($entry.PSObject.Properties['task_id']) { [string]$entry.task_id } else { '' }
+        if (-not [string]::IsNullOrWhiteSpace($TaskId) -and -not [string]::IsNullOrWhiteSpace($entryTaskId) -and -not [string]::Equals($entryTaskId, $TaskId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        $entryObjectiveId = if ($entry.PSObject.Properties['objective_id']) { [string]$entry.objective_id } else { '' }
+        if (-not [string]::IsNullOrWhiteSpace($ObjectiveId) -and -not [string]::IsNullOrWhiteSpace($entryObjectiveId) -and -not [string]::Equals($entryObjectiveId, $ObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        return $entry
+    }
+
+    return $null
+}
+
+function Remove-ScopedForcedReplayMatch {
+    param(
+        [Parameter(Mandatory = $true)]$ListenerState,
+        [Parameter(Mandatory = $true)][string]$RequestId
+    )
+
+    $remaining = New-Object System.Collections.Generic.List[object]
+    $removed = $false
+    foreach ($entry in Get-ScopedForcedReplayEntries -ListenerState $ListenerState) {
+        $entryRequestId = if ($entry.PSObject.Properties['replay_request_id']) { [string]$entry.replay_request_id } else { '' }
+        if ([string]::Equals($entryRequestId, $RequestId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $removed = $true
+            continue
+        }
+
+        $remaining.Add($entry)
+    }
+
+    $ListenerState | Add-Member -NotePropertyName scoped_forced_replays -NotePropertyValue @($remaining.ToArray()) -Force
+    return $removed
 }
 
 function Get-MaxObservedTaskOrdinal {
@@ -5727,7 +5800,39 @@ try {
             $null = Update-TaskHighWatermark -State $listenerState -CandidateInfo $requestOrderingInfo
         }
         $maxObservedOrdinal = Get-ObjectiveHighWatermark -State $listenerState -JournalPath $localJournalPath -ObjectiveId $requestObjectiveId
-        if (Test-RequestOrderingIsStale -RequestOrderingInfo $requestOrderingInfo -HighWatermark $maxObservedOrdinal) {
+        $existingDecision = Read-JsonFileIfExists -PathValue $localDecisionPath
+        $decisionGeneratedAtRaw = if ($existingDecision -and $existingDecision.PSObject.Properties['generated_at']) { [string]$existingDecision.generated_at } else { '' }
+        $lastExecutionAtRaw = if ($listenerState.PSObject.Properties['last_execution_at']) { [string]$listenerState.last_execution_at } else { '' }
+        $decisionGeneratedAt = [datetime]::MinValue
+        $lastExecutionAt = [datetime]::MinValue
+        $decisionHasTimestamp = [datetime]::TryParse($decisionGeneratedAtRaw, [ref]$decisionGeneratedAt)
+        $lastExecutionHasTimestamp = [datetime]::TryParse($lastExecutionAtRaw, [ref]$lastExecutionAt)
+        $decisionNewerThanLastExecution = $decisionHasTimestamp -and ((-not $lastExecutionHasTimestamp) -or $decisionGeneratedAt -gt $lastExecutionAt)
+        $replayDecisionMatchesRequest = $existingDecision -and
+            [string]::Equals((Get-NonEmptyPacketValue -Primary (Get-ObjectFieldText -InputObject $existingDecision -FieldName 'request_id') -Fallback ''), $requestId, [System.StringComparison]::OrdinalIgnoreCase) -and
+            [string]::Equals((Get-NonEmptyPacketValue -Primary (Get-ObjectFieldText -InputObject $existingDecision -FieldName 'decision_outcome') -Fallback ''), 'execute', [System.StringComparison]::OrdinalIgnoreCase) -and
+            [string]::Equals((Get-NonEmptyPacketValue -Primary (Get-ObjectFieldText -InputObject $existingDecision -FieldName 'canonical_objective_id') -Fallback ''), $requestObjectiveId, [System.StringComparison]::OrdinalIgnoreCase) -and
+            [string]::Equals((Get-NonEmptyPacketValue -Primary (Get-ObjectFieldText -InputObject $existingDecision -FieldName 'execution_state') -Fallback ''), 'ready_to_execute', [System.StringComparison]::OrdinalIgnoreCase)
+        $allowAlignedReplay = $replayDecisionMatchesRequest -and $decisionNewerThanLastExecution
+        $requestTaskIdForReplay = Get-NonEmptyPacketValue -Primary (Get-ObjectFieldText -InputObject $request -FieldName 'task_id') -Fallback $requestId
+        $scopedForcedReplay = Get-ScopedForcedReplayMatch -ListenerState $listenerState -RequestId $requestId -TaskId $requestTaskIdForReplay -ObjectiveId $requestObjectiveId
+
+        if ($allowAlignedReplay) {
+            $staleGuardObjective = if ($listenerState.PSObject.Properties['last_stale_guard'] -and $null -ne $listenerState.last_stale_guard -and $listenerState.last_stale_guard.PSObject.Properties['objective_id']) { [string]$listenerState.last_stale_guard.objective_id } else { '' }
+            $dedupMatchesRequest = [string]::Equals([string]$listenerState.last_processed_request_id, $requestId, [System.StringComparison]::OrdinalIgnoreCase)
+            $staleGuardMismatchedObjective = -not [string]::IsNullOrWhiteSpace($staleGuardObjective) -and -not [string]::Equals($staleGuardObjective, $requestObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)
+            if ($dedupMatchesRequest -or $staleGuardMismatchedObjective) {
+                $listenerState.last_processed_request_id = ''
+                $listenerState.last_processed_request_signature = ''
+                $listenerState.last_stale_guard = $null
+                $listenerState.last_command_status = 'replay_override_armed'
+                $listenerState.last_command_detail = 'Cleared stale/dedup listener memory because a fresh aligned execute decision requires a bounded replay.'
+                Write-JsonFile -PathValue $listenerStatePath -Payload $listenerState
+                Write-Host ("[TOD-LISTENER] Cleared stale/dedup state for aligned replay of request {0}." -f $requestId)
+            }
+        }
+
+        if (-not $allowAlignedReplay -and $null -eq $scopedForcedReplay -and (Test-RequestOrderingIsStale -RequestOrderingInfo $requestOrderingInfo -HighWatermark $maxObservedOrdinal)) {
             $requestTaskIdForStaleGuard = Get-NonEmptyPacketValue -Primary (Get-ObjectFieldText -InputObject $request -FieldName 'task_id') -Fallback $requestId
             $staleGuard = New-StaleGuardMetadata -Decision 'stale_request_ignored' -RequestId $requestId -TaskId $requestTaskIdForStaleGuard -ObjectiveId $requestObjectiveId -RequestOrdinalInfo $requestOrderingInfo -RequestOrdinalSourceField $requestOrderingSourceField -HighWatermark $maxObservedOrdinal -TriggerSequence (Get-ObjectFieldLong -InputObject $livenessTrigger -FieldName 'sequence')
             $effectiveTaskId = [string]$maxObservedOrdinal.raw
@@ -5836,7 +5941,8 @@ try {
 
         $lastProcessedSignature = if ($listenerState.PSObject.Properties["last_processed_request_signature"]) { [string]$listenerState.last_processed_request_signature } else { "" }
 
-        if ([string]::Equals($requestId, [string]$listenerState.last_processed_request_id, [System.StringComparison]::OrdinalIgnoreCase) -and
+        if ($null -eq $scopedForcedReplay -and
+            [string]::Equals($requestId, [string]$listenerState.last_processed_request_id, [System.StringComparison]::OrdinalIgnoreCase) -and
             -not [string]::IsNullOrWhiteSpace($requestSignature) -and
             [string]::Equals($requestSignature, $lastProcessedSignature, [System.StringComparison]::OrdinalIgnoreCase) -and
             -not [bool]$objectiveSync.changed -and
@@ -5922,6 +6028,8 @@ try {
             Start-Sleep -Seconds ([int]$cadencePlan.sleep_seconds)
             continue
         }
+
+        $bridgeRuntime = Get-BridgeRuntimeStatus -CurrentTaskId $requestTaskId -CurrentCorrelationId $requestCorrelationId
 
         $ack = [pscustomobject]@{
             generated_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -6384,6 +6492,9 @@ try {
 
         Publish-TriggerAck -ListenerState $listenerState -ListenerStatePath $listenerStatePath -Connections $connections -LocalPath $localTriggerAckPath -RemotePath $remoteTriggerAckPath -RequestId $requestId -CurrentTaskId $currentTaskId -CurrentCorrelationId $currentCorrelationId -TriggerPacket $livenessTrigger -BridgeRuntime $bridgeRuntime
 
+        if ($null -ne $scopedForcedReplay) {
+            $null = Remove-ScopedForcedReplayMatch -ListenerState $listenerState -RequestId $requestId
+        }
         Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt -RequestId $requestId -RequestSignature $requestSignature -MarkProcessed
         $resultRetryReason = if ([string]::Equals([string]$resultPacket.status, "failed", [System.StringComparison]::OrdinalIgnoreCase)) { "failure" } else { "none" }
         $resultClassification = if ([string]::Equals([string]$resultPacket.status, "failed", [System.StringComparison]::OrdinalIgnoreCase)) { "execution_failed" } elseif ([string]::Equals([string]$resultPacket.status, "blocked", [System.StringComparison]::OrdinalIgnoreCase)) { "execution_blocked" } else { "execution_completed" }

@@ -276,6 +276,76 @@ def _stage_is_active(value: Any) -> bool:
     return _normalize_stage_status(value) in {"active", "accepted", "in_progress", "pending", "planned", "running", "waiting"}
 
 
+def _derive_implementation_gate_percent(
+    active_task: dict[str, Any],
+    execution_result: dict[str, Any],
+    validation: dict[str, Any],
+    patch_status: str,
+    command_status: str,
+    result_publisher_status: str,
+) -> int:
+    execution_evidence = (
+        execution_result.get("execution_evidence")
+        if isinstance(execution_result.get("execution_evidence"), dict)
+        else active_task.get("execution_evidence")
+        if isinstance(active_task.get("execution_evidence"), dict)
+        else {}
+    )
+    latest_update = _pick_latest_timestamp(
+        execution_result.get("updated_at"),
+        execution_result.get("generated_at"),
+        validation.get("updated_at"),
+        validation.get("generated_at"),
+        active_task.get("updated_at"),
+        active_task.get("generated_at"),
+    )
+    age_seconds = _age_seconds(latest_update)
+    if age_seconds is None or age_seconds > 1800:
+        return 60
+
+    progress_points = 60
+    if _stage_is_active(patch_status) or _stage_is_active(command_status):
+        progress_points += 1
+
+    detail_text = " ".join(
+        str(item or "")
+        for item in (
+            execution_result.get("current_action"),
+            execution_result.get("summary"),
+            execution_result.get("next_step"),
+            execution_result.get("wait_reason"),
+            active_task.get("current_action"),
+            active_task.get("summary"),
+            active_task.get("next_step"),
+            active_task.get("wait_reason"),
+        )
+    ).lower()
+    if any(term in detail_text for term in ("implementation", "implement", "patch", "slice", "execution-loop")):
+        progress_points += 1
+
+    matched_files = execution_evidence.get("matched_files") if isinstance(execution_evidence.get("matched_files"), list) else []
+    if matched_files:
+        progress_points += min(2, len(matched_files))
+
+    validation_checks = validation.get("checks") if isinstance(validation.get("checks"), list) else execution_evidence.get("validation_checks") if isinstance(execution_evidence.get("validation_checks"), list) else []
+    passed_checks = sum(1 for item in validation_checks if isinstance(item, dict) and item.get("passed") is True)
+    if passed_checks > 0:
+        progress_points += min(3, max(1, (passed_checks + 1) // 2))
+
+    files_changed = execution_result.get("files_changed") if isinstance(execution_result.get("files_changed"), list) else execution_evidence.get("files_changed") if isinstance(execution_evidence.get("files_changed"), list) else []
+    if files_changed:
+        progress_points += min(2, len(files_changed))
+
+    command_output = str(execution_result.get("command_output") or execution_evidence.get("command_output") or "").strip()
+    if command_output:
+        progress_points += 1
+
+    if _stage_is_complete(result_publisher_status):
+        progress_points += 1
+
+    return max(60, min(69, int(progress_points)))
+
+
 def _derive_phase_progress(
     active_task: dict[str, Any],
     execution_result: dict[str, Any],
@@ -300,6 +370,7 @@ def _derive_phase_progress(
     result_publisher = contract.get("result_publisher") if isinstance(contract.get("result_publisher"), dict) else {}
     patch_status = _normalize_stage_status(patch_writer.get("status"))
     command_status = _normalize_stage_status(command_runner.get("status"))
+    result_publisher_status = _normalize_stage_status(result_publisher.get("status"))
     implementation_complete = _stage_is_complete(patch_status) or (not patch_status and _stage_is_complete(command_status))
 
     milestones = [
@@ -335,8 +406,8 @@ def _derive_phase_progress(
             "id": "publication",
             "label": "Evidence publish",
             "weight": 15,
-            "status": _normalize_stage_status(result_publisher.get("status")),
-            "complete": _stage_is_complete(result_publisher.get("status")),
+            "status": result_publisher_status,
+            "complete": _stage_is_complete(result_publisher_status),
         },
     ]
 
@@ -346,7 +417,14 @@ def _derive_phase_progress(
         for phrase in ("implementation", "patch", "bounded execution-loop slice", "bounded local implementation step")
     )
     if implementation_pending:
-        percent_complete = min(percent_complete, 60)
+        percent_complete = _derive_implementation_gate_percent(
+            active_task,
+            execution_result,
+            validation,
+            patch_status,
+            command_status,
+            result_publisher_status,
+        )
     if activity_state == "complete":
         percent_complete = 100
 
@@ -356,7 +434,7 @@ def _derive_phase_progress(
     if percent_complete >= 100:
         summary = f"{phase_label} complete and verified."
     elif implementation_pending:
-        summary = f"{phase_label} is about {percent_complete}% complete. Inspection is done; implementation is the next gate."
+        summary = f"{phase_label} is about {percent_complete}% complete within the implementation gate. Inspection is done; implementation is the next gate."
     elif not milestones[3]["complete"]:
         summary = f"{phase_label} is about {percent_complete}% complete. Focused validation is the next gate."
     elif not milestones[4]["complete"]:
@@ -398,9 +476,14 @@ def _derive_stall_signal(activity_state: str, age_seconds: float | None, phase_p
         implementation_pending = normalized_state == "waiting" and str(phase_progress.get("next_gate") or "").strip().lower() == "implementation" and progress_percent >= 60
         if implementation_pending:
             delay_minutes = max(1, int(round(age_seconds / 60.0)))
+            freshness_text = (
+                f"Fresh execution evidence landed {delay_minutes}m ago, so this wait is for the next implementation slice rather than stale output."
+                if age_seconds <= 180
+                else f"Latest execution evidence is {delay_minutes}m old and still inside the implementation wait window."
+            )
             summary = (
-                f"Held at implementation gate: {phase_display} is capped at {progress_percent}% until the next implementation slice starts. "
-                f"Last update {delay_minutes}m ago. {progress_summary} {detail}"
+                f"Held at implementation gate: {phase_display} is at {progress_percent}% until the next implementation slice starts. "
+                f"{freshness_text} {progress_summary} {detail}"
             )
             return {
                 "flagged": False,
@@ -456,10 +539,13 @@ def _normalize_execution_status(
         activity.get("generated_at"),
         active_task.get("updated_at"),
         active_task.get("generated_at"),
-        active_objective.get("updated_at"),
-        active_objective.get("generated_at"),
-        truth.get("generated_at"),
     )
+    if not updated_at:
+        updated_at = _pick_latest_timestamp(
+            active_objective.get("updated_at"),
+            active_objective.get("generated_at"),
+            truth.get("generated_at"),
+        )
     status = str(
         execution_result.get("status")
         or activity.get("status")
