@@ -1547,6 +1547,55 @@ function Get-LiveTaskRequestSnapshot {
     }
 }
 
+function Get-LiveTaskRequestSnapshotTimestamp {
+    param($Snapshot)
+
+    if ($null -eq $Snapshot) {
+        return $null
+    }
+
+    $generatedAt = if ($Snapshot.PSObject.Properties['generated_at']) { [string]$Snapshot.generated_at } else { '' }
+    return Convert-ToUtcDateOrNull -Value $generatedAt
+}
+
+function Get-PreferredLiveTaskRequestSnapshot {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$CandidatePaths
+    )
+
+    $bestSnapshot = $null
+    $bestTimestamp = $null
+
+    foreach ($candidate in @($CandidatePaths | Select-Object -Unique)) {
+        if ([string]::IsNullOrWhiteSpace([string]$candidate)) {
+            continue
+        }
+
+        $snapshot = Get-LiveTaskRequestSnapshot -PathValue ([string]$candidate)
+        if (-not [bool]$snapshot.available) {
+            continue
+        }
+
+        $snapshotTimestamp = Get-LiveTaskRequestSnapshotTimestamp -Snapshot $snapshot
+        if ($null -eq $bestSnapshot) {
+            $bestSnapshot = $snapshot
+            $bestTimestamp = $snapshotTimestamp
+            continue
+        }
+
+        if ($null -ne $snapshotTimestamp -and ($null -eq $bestTimestamp -or $snapshotTimestamp -gt $bestTimestamp)) {
+            $bestSnapshot = $snapshot
+            $bestTimestamp = $snapshotTimestamp
+        }
+    }
+
+    if ($null -ne $bestSnapshot) {
+        return $bestSnapshot
+    }
+
+    return Get-LiveTaskRequestSnapshot -PathValue ''
+}
+
 function Get-ObjectiveAlignment {
     param(
         [Parameter(Mandatory = $true)][string]$TodObjective,
@@ -2106,15 +2155,18 @@ elseif ($mimContextDoc -and $mimContextDoc.PSObject.Properties["contract_version
 }
 
 $mimStatus = Get-MimStatusSnapshot -PathValue $MimContextExportPath -StaleAfterHours $MimStatusStaleAfterHours
+$mimSharedCandidateRoots = @(
+    [string]$mimRefresh.resolved_source_root,
+    [string]$MimSharedExportRoot,
+    [string]$env:MIM_SHARED_EXPORT_ROOT
+) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique
+
 $handshakeCandidatePaths = @()
 if (-not [string]::IsNullOrWhiteSpace([string]$mimRefresh.source_handshake_packet)) {
     $handshakeCandidatePaths += [string]$mimRefresh.source_handshake_packet
 }
-if (-not [string]::IsNullOrWhiteSpace([string]$mimRefresh.resolved_source_root)) {
-    $handshakeCandidatePaths += (Join-Path ([string]$mimRefresh.resolved_source_root) "MIM_TOD_HANDSHAKE_PACKET.latest.json")
-}
-if (-not [string]::IsNullOrWhiteSpace([string]$MimSharedExportRoot)) {
-    $handshakeCandidatePaths += (Join-Path $MimSharedExportRoot "MIM_TOD_HANDSHAKE_PACKET.latest.json")
+foreach ($candidateRoot in @($mimSharedCandidateRoots)) {
+    $handshakeCandidatePaths += (Join-Path ([string]$candidateRoot) "MIM_TOD_HANDSHAKE_PACKET.latest.json")
 }
 
 $resolvedHandshakePath = ""
@@ -2132,7 +2184,15 @@ if ([string]::IsNullOrWhiteSpace($mimSchemaVersion) -and [bool]$mimHandshake.ava
     $mimSchemaVersion = [string]$mimHandshake.schema_version
 }
 
-$liveTaskRequest = Get-LiveTaskRequestSnapshot -PathValue $ListenerRequestPath
+$liveTaskRequestCandidatePaths = @()
+if (-not [string]::IsNullOrWhiteSpace([string]$ListenerRequestPath)) {
+    $liveTaskRequestCandidatePaths += [string]$ListenerRequestPath
+}
+foreach ($candidateRoot in @($mimSharedCandidateRoots)) {
+    $liveTaskRequestCandidatePaths += (Join-Path ([string]$candidateRoot) 'MIM_TOD_TASK_REQUEST.latest.json')
+}
+
+$liveTaskRequest = Get-PreferredLiveTaskRequestSnapshot -CandidatePaths $liveTaskRequestCandidatePaths
 
 # If legacy context export is stale but live task telemetry is fresh, treat live task as current status freshness.
 if ([bool]$mimStatus.is_stale -and [bool]$liveTaskRequest.available -and -not [string]::IsNullOrWhiteSpace([string]$liveTaskRequest.generated_at)) {
