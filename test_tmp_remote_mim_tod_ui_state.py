@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import importlib.util
 import json
 import sys
@@ -358,6 +359,86 @@ class TodUiStateClassificationTests(unittest.TestCase):
 
         self.assertIn(
             "Stall watch: Probable stall: Phase 1 is holding at 60% for about 30m without a newer execution update.",
+            contents,
+        )
+
+    def test_normalize_execution_status_reports_implementation_gate_hold_before_hard_stall(self) -> None:
+        fresh_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        active_task = {
+            "objective_id": "TOD-CONVERSATIONAL-OPERATOR-MODE-PHASE-2",
+            "title": "Make TOD communicate like an execution partner",
+            "summary": "Completed bounded inspection and waiting on the next implementation slice.",
+            "updated_at": fresh_timestamp,
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "next_step": "Implement the next bounded local implementation step in the inspected surfaces.",
+            "wait_reason": "TOD is waiting on its own next bounded local implementation step.",
+            "execution_contract": {
+                "task_intake": {"status": "accepted"},
+                "bounded_step_planner": {
+                    "status": "completed",
+                    "active_step": {"status": "completed"},
+                },
+                "command_runner": {"status": "completed"},
+                "patch_writer": {"status": "pending"},
+                "validator": {"status": "passed"},
+                "result_publisher": {"status": "completed"},
+            },
+        }
+        activity = {
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "updated_at": fresh_timestamp,
+            "wait_reason": "TOD is waiting on its own next bounded local implementation step.",
+        }
+        validation = {
+            "status": "passed",
+        }
+        execution_result = {
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "updated_at": fresh_timestamp,
+            "next_step": "Implement the next bounded local implementation step in the inspected surfaces.",
+            "wait_reason": "TOD is waiting on its own next bounded local implementation step.",
+        }
+
+        execution = self.tod_ui._normalize_execution_status({}, active_task, activity, validation, execution_result, {})
+
+        self.assertEqual(execution["activity_state"], "waiting")
+        self.assertFalse(execution["stall_signal"]["flagged"])
+        self.assertEqual(execution["stall_signal"]["level"], "implementation_pending")
+        self.assertIn("Held at implementation gate:", execution["stall_signal"]["summary"])
+        self.assertIn("capped at 60%", execution["activity_summary"])
+
+    def test_execution_feed_includes_implementation_gate_hold_watch(self) -> None:
+        state = {
+            "generated_at": "2026-04-26T10:00:00Z",
+            "execution": {
+                "available": True,
+                "updated_at": "2026-04-26T10:00:00Z",
+                "title": "Make TOD communicate like an execution partner",
+                "activity_label": "Waiting",
+                "activity_summary": "Held at implementation gate: Phase 2 is capped at 60% until the next implementation slice starts.",
+                "phase_progress": {
+                    "available": True,
+                    "label": "Phase 2 progress",
+                    "percent_complete": 60,
+                    "next_gate": "Implementation",
+                    "summary": "Phase 2 is about 60% complete. Inspection is done; implementation is the next gate.",
+                },
+                "stall_signal": {
+                    "flagged": False,
+                    "level": "implementation_pending",
+                    "summary": "Held at implementation gate: Phase 2 is capped at 60% until the next implementation slice starts.",
+                },
+            },
+        }
+
+        messages = self.tod_ui._build_execution_feed_messages(state)
+        contents = [item["content"] for item in messages]
+
+        self.assertIn(
+            "Stall watch: Held at implementation gate: Phase 2 is capped at 60% until the next implementation slice starts.",
             contents,
         )
 
