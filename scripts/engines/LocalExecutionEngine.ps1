@@ -30,6 +30,445 @@ function Get-LocalExecutionPromptText {
     return [string](Get-Content -Path $promptPath -Raw)
 }
 
+function Get-LocalExecutionCombinedText {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    return (@(
+            [string]$Context.title,
+            [string]$Context.scope,
+            (Get-LocalExecutionPromptText -Context $Context)
+        ) -join "`n")
+}
+
+function Get-LocalExecutionTaskCategory {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    if ($Context.PSObject.Properties['metadata'] -and $Context.metadata) {
+        if ($Context.metadata.ContainsKey('task_category') -and -not [string]::IsNullOrWhiteSpace([string]$Context.metadata.task_category)) {
+            return ([string]$Context.metadata.task_category).Trim().ToLowerInvariant()
+        }
+        if ($Context.metadata.ContainsKey('task_type') -and -not [string]::IsNullOrWhiteSpace([string]$Context.metadata.task_type)) {
+            return ([string]$Context.metadata.task_type).Trim().ToLowerInvariant()
+        }
+    }
+
+    return ''
+}
+
+function Get-LocalExecutionSafeRoots {
+    return @(
+        'README.md',
+        'docs/',
+        'scripts/',
+        'tests/',
+        'tmp_remote_mim/core/',
+        'tmp_remote_mim/tests/',
+        'tod/config/'
+    )
+}
+
+function Convert-ToLocalExecutionRepoRelativePath {
+    param([Parameter(Mandatory = $true)][string]$PathValue)
+
+    $normalized = ([string]$PathValue).Trim() -replace '[\\/]+', '/'
+    $normalized = $normalized.TrimStart('.')
+    $normalized = $normalized.TrimStart('/')
+    return $normalized
+}
+
+function Test-LocalExecutionSafePath {
+    param([Parameter(Mandatory = $true)][string]$RelativePath)
+
+    $normalized = Convert-ToLocalExecutionRepoRelativePath -PathValue $RelativePath
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return $false
+    }
+    if ($normalized -match '^[A-Za-z]:/' -or $normalized.StartsWith('/') -or $normalized -match '(^|/)\.\.(/|$)') {
+        return $false
+    }
+
+    foreach ($root in Get-LocalExecutionSafeRoots) {
+        $safeRoot = Convert-ToLocalExecutionRepoRelativePath -PathValue $root
+        if ($safeRoot -eq 'README.md' -and [string]::Equals($normalized, 'README.md', [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+        if ($safeRoot.EndsWith('/') -and $normalized.StartsWith($safeRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Get-LocalExecutionTargetFiles {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $combined = Get-LocalExecutionCombinedText -Context $Context
+    $matches = [regex]::Matches($combined, '(?im)(?<![A-Za-z0-9_./-])(README\.md|docs/[A-Za-z0-9_./-]+\.md|scripts/[A-Za-z0-9_./-]+\.(?:ps1|psm1|py|json|md)|tests/[A-Za-z0-9_./-]+\.(?:ps1|py|md)|tmp_remote_mim/(?:core|tests)/[A-Za-z0-9_./-]+\.(?:py|json|md)|tod/config/[A-Za-z0-9_./-]+\.json)(?![A-Za-z0-9_./-])')
+    $paths = New-Object System.Collections.Generic.List[string]
+    foreach ($match in $matches) {
+        $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$match.Groups[1].Value)
+        if (-not [string]::IsNullOrWhiteSpace($value) -and -not $paths.Contains($value)) {
+            $paths.Add($value)
+        }
+    }
+    return @($paths.ToArray())
+}
+
+function Test-LocalExecutionGenericRisk {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $normalized = (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant()
+    return ($normalized -match 'credential|secret|password|private key|certificate|firewall|production deploy|prod deploy|public exposure|open network|reboot host|shutdown host|human safety|operator approval')
+}
+
+function Test-LocalExecutionGenericBoundedTask {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    if (Test-LocalExecutionExecutionLoopContractTask -Context $Context) { return $false }
+    if (Test-LocalExecutionConfigBootstrapTask -Context $Context) { return $false }
+    if (Test-LocalExecutionReadmeDryRunTask -Context $Context) { return $false }
+    if (Test-LocalExecutionGenericRisk -Context $Context) { return $false }
+
+    $taskCategory = Get-LocalExecutionTaskCategory -Context $Context
+    if (@('code_change', 'config_change', 'test_change', 'docs_change') -contains $taskCategory) {
+        return $true
+    }
+
+    return (@(Get-LocalExecutionTargetFiles -Context $Context).Count -gt 0)
+}
+
+function Get-LocalExecutionDirectiveValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$PromptText,
+        [Parameter(Mandatory = $true)][string]$FieldName
+    )
+
+    $match = [regex]::Match($PromptText, ('(?im)^\s*{0}\s*:\s*(.+?)\s*$' -f [regex]::Escape($FieldName)))
+    if ($match.Success) {
+        return ([string]$match.Groups[1].Value).Trim()
+    }
+
+    return ''
+}
+
+function Get-LocalExecutionMarkdownSectionSpec {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)][string]$PromptText,
+        [Parameter(Mandatory = $true)][string]$TargetFile
+    )
+
+    $combined = Get-LocalExecutionCombinedText -Context $Context
+    $explicitTitle = Get-LocalExecutionDirectiveValue -PromptText $PromptText -FieldName 'Section Title'
+    $explicitBody = Get-LocalExecutionDirectiveValue -PromptText $PromptText -FieldName 'Section Body'
+    $sectionTitle = $explicitTitle
+    if ([string]::IsNullOrWhiteSpace($sectionTitle)) {
+        $match = [regex]::Match($combined, '(?im)\b(?:with|add|insert|append)\s+(?:a\s+)?(?:short\s+)?(.+?)\s+section\b')
+        if ($match.Success) {
+            $sectionTitle = ([string]$match.Groups[1].Value).Trim(" .:-`"")
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($sectionTitle)) {
+        return $null
+    }
+
+    $normalizedTitle = ($sectionTitle -replace '\s+', ' ').Trim()
+    $heading = if ($normalizedTitle.StartsWith('#')) { $normalizedTitle } else { '## ' + $normalizedTitle }
+    $body = $explicitBody
+    if ([string]::IsNullOrWhiteSpace($body)) {
+        $body = @(
+            ('TOD can use the local fallback executor for bounded tasks in {0} when Codex only returns wrapper output or no meaningful execution evidence.' -f $TargetFile),
+            '',
+            '- Eligibility stays inside bounded docs, code, config, or test changes under allowed paths.',
+            '- Published evidence includes changed files, diff summary, command output, validation results, blockers, and rollback hints.',
+            '- The executor fails closed when it cannot infer a safe target or bounded patch.'
+        ) -join "`n"
+    }
+
+    return [pscustomobject]@{
+        heading = $heading
+        body = $body -replace "`r`n", "`n"
+        title = $normalizedTitle
+    }
+}
+
+function Get-LocalExecutionDiffSummary {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath,
+        [Parameter(Mandatory = $true)][string]$BeforeContent,
+        [Parameter(Mandatory = $true)][string]$AfterContent,
+        [Parameter(Mandatory = $true)][string]$ActionSummary
+    )
+
+    $beforeLines = @([regex]::Split(($BeforeContent -replace "`r`n", "`n"), "`n"))
+    $afterLines = @([regex]::Split(($AfterContent -replace "`r`n", "`n"), "`n"))
+    $lineDelta = [math]::Abs($afterLines.Count - $beforeLines.Count)
+    return ('{0} [{1}] line_count {2}->{3} delta={4}' -f $ActionSummary, $RelativePath, $beforeLines.Count, $afterLines.Count, $lineDelta)
+}
+
+function New-LocalExecutionBlockedResult {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)]$Spec,
+        [Parameter(Mandatory = $true)][string]$ReasonCode,
+        [Parameter(Mandatory = $true)][string]$Reason,
+        [string]$MissingVariable = ''
+    )
+
+    $Result.summary = $Reason
+    $Result.files_changed = @()
+    $Result.tests_run = @('local-fallback eligibility')
+    $Result.test_results = @('blocked')
+    $Result.failures = @($Reason)
+    $Result.recommendations = @('Keep the bounded task blocked until the missing target, scope, or safe patch directive is explicit.')
+    $Result.needs_escalation = $false
+    $Result.structured_findings = @(
+        [pscustomobject]@{
+            type = 'blocker'
+            reason_code = $ReasonCode
+            file = 'scripts/engines/LocalExecutionEngine.ps1'
+            function = 'Invoke-LocalExecutionGenericBoundedTask'
+            reason = $Reason
+            missing_variable = $MissingVariable
+            task_id = [string]$Context.task_id
+            objective_id = [string]$Context.objective_id
+        }
+    )
+    $Result.raw_output = [pscustomobject]@{
+        engine = $Spec
+        task_context = $Context
+        action = 'generic_bounded_task_blocked'
+        reason_code = $ReasonCode
+        missing_variable = $MissingVariable
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    $Result | Add-Member -NotePropertyName reason_code -NotePropertyValue $ReasonCode -Force
+    $Result | Add-Member -NotePropertyName recovery_state -NotePropertyValue 'blocked_with_reason' -Force
+    $Result | Add-Member -NotePropertyName blockers -NotePropertyValue @($Result.structured_findings) -Force
+    return (Complete-EngineExecutionResult -Result $Result -Status 'failed')
+}
+
+function Invoke-LocalExecutionGenericBoundedTask {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)]$Spec
+    )
+
+    $promptText = Get-LocalExecutionPromptText -Context $Context
+    $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
+    if (@($targets).Count -eq 0) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine could not infer a single bounded target file from the task prompt or scope.' -MissingVariable 'target_file')
+    }
+    if (@($targets).Count -gt 1) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason ('LocalExecutionEngine found multiple candidate target files ({0}) and will not guess which one to patch.' -f (@($targets) -join ', ')) -MissingVariable 'target_file')
+    }
+
+    $targetFile = [string]$targets[0]
+    if (-not (Test-LocalExecutionSafePath -RelativePath $targetFile)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_path_not_allowed' -Reason ('LocalExecutionEngine rejected target path {0} because it is outside the bounded safe roots.' -f $targetFile) -MissingVariable 'allowed_path')
+    }
+
+    $absoluteTargetPath = Join-Path $script:LocalEngineRepoRoot ($targetFile -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -Path $absoluteTargetPath)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason ('LocalExecutionEngine requires an existing target file, but {0} was not found.' -f $targetFile) -MissingVariable 'existing_target_file')
+    }
+    if (Test-LocalExecutionGenericRisk -Context $Context) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_risk_blocked' -Reason 'LocalExecutionEngine rejected the bounded fallback because the task mentions a risky security, production, or safety surface.' -MissingVariable 'safe_scope')
+    }
+
+    $originalContent = [string](Get-Content -Path $absoluteTargetPath -Raw)
+    $updatedContent = $originalContent
+    $actionSummary = ''
+    $validationCommand = ''
+    $mode = (Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Edit Mode').ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($mode) -and $targetFile.ToLowerInvariant().EndsWith('.md') -and (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant() -match '\bsection\b') {
+        $mode = 'append_section'
+    }
+
+    switch ($mode) {
+        'append_section' {
+            $sectionSpec = Get-LocalExecutionMarkdownSectionSpec -Context $Context -PromptText $promptText -TargetFile $targetFile
+            if ($null -eq $sectionSpec) {
+                return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine could not infer the markdown section title for the bounded docs change.' -MissingVariable 'section_title')
+            }
+            $newline = if ($originalContent.Contains("`r`n")) { "`r`n" } else { "`n" }
+            $normalizedOriginal = $originalContent -replace "`r`n", "`n"
+            $sectionBlock = ($sectionSpec.heading + "`n`n" + $sectionSpec.body.Trim()) -replace "`r`n", "`n"
+            $sectionRegex = '(?ms)^' + [regex]::Escape($sectionSpec.heading) + '\s*$.*?(?=^##\s+|\z)'
+            if ([regex]::IsMatch($normalizedOriginal, $sectionRegex)) {
+                $updatedNormalized = [regex]::Replace($normalizedOriginal, $sectionRegex, $sectionBlock + "`n")
+                $actionSummary = ('Updated markdown section {0}' -f $sectionSpec.title)
+            }
+            else {
+                $trimmed = $normalizedOriginal.TrimEnd()
+                $updatedNormalized = ($trimmed + "`n`n" + $sectionBlock + "`n")
+                $actionSummary = ('Added markdown section {0}' -f $sectionSpec.title)
+            }
+            $updatedContent = if ($newline -eq "`r`n") { $updatedNormalized -replace "`n", "`r`n" } else { $updatedNormalized }
+            $validationCommand = "Get-Content -Path '.\\$($targetFile -replace '/', '\\')' | Select-String -SimpleMatch '$($sectionSpec.heading.Replace("'","''"))'"
+        }
+        'insert_after' {
+            $anchor = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Anchor'
+            $snippet = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Snippet'
+            if ([string]::IsNullOrWhiteSpace($anchor)) {
+                return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine requires an Anchor directive for insert_after mode.' -MissingVariable 'anchor')
+            }
+            if ([string]::IsNullOrWhiteSpace($snippet)) {
+                return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine requires a Snippet directive for insert_after mode.' -MissingVariable 'snippet')
+            }
+            if (-not $originalContent.Contains($anchor)) {
+                return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason ('LocalExecutionEngine could not find the requested anchor in {0}.' -f $targetFile) -MissingVariable 'anchor')
+            }
+            $newline = if ($originalContent.Contains("`r`n")) { "`r`n" } else { "`n" }
+            if ($originalContent.Contains($snippet)) {
+                $updatedContent = $originalContent
+            }
+            else {
+                $updatedContent = $originalContent.Replace($anchor, ($anchor + $newline + $snippet))
+            }
+            $actionSummary = ('Inserted bounded snippet after anchor in {0}' -f $targetFile)
+            $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
+            if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $snippet }
+            $validationCommand = "Get-Content -Path '.\\$($targetFile -replace '/', '\\')' | Select-String -SimpleMatch '$($validationPattern.Replace("'","''"))'"
+        }
+        'replace_text' {
+            $oldText = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Old Text'
+            $newText = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'New Text'
+            if ([string]::IsNullOrWhiteSpace($oldText)) {
+                return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine requires an Old Text directive for replace_text mode.' -MissingVariable 'old_text')
+            }
+            if ([string]::IsNullOrWhiteSpace($newText)) {
+                return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine requires a New Text directive for replace_text mode.' -MissingVariable 'new_text')
+            }
+            $updatedContent = Set-StrictTextReplacement -Content $originalContent -OldText $oldText -NewText $newText -Label ('bounded replacement in ' + $targetFile)
+            $actionSummary = ('Replaced bounded text in {0}' -f $targetFile)
+            $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
+            if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $newText }
+            $validationCommand = "Get-Content -Path '.\\$($targetFile -replace '/', '\\')' | Select-String -SimpleMatch '$($validationPattern.Replace("'","''"))'"
+        }
+        default {
+            return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine requires an explicit bounded edit mode or an inferable markdown section update for this task.' -MissingVariable 'edit_mode')
+        }
+    }
+
+    $backupRoot = Join-Path $script:LocalEngineRepoRoot 'tod/out/local-engine-backups'
+    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+    $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+    $fileLeaf = Split-Path -Path $absoluteTargetPath -Leaf
+    $backupPath = Join-Path $backupRoot ('{0}.{1}.bak' -f $fileLeaf, $timestamp)
+    Copy-Item -Path $absoluteTargetPath -Destination $backupPath -Force
+    $prePatchHash = [string](Get-FileHash -Path $absoluteTargetPath -Algorithm SHA256).Hash
+    $changeApplied = ($updatedContent -ne $originalContent)
+    Write-Utf8NoBomFile -Path $absoluteTargetPath -Content $updatedContent
+
+    $commandCapture = Invoke-LocalShellCapture -Command $validationCommand -WorkingDirectory $script:LocalEngineRepoRoot
+    $validatedContent = [string](Get-Content -Path $absoluteTargetPath -Raw)
+    $postPatchHash = [string](Get-FileHash -Path $absoluteTargetPath -Algorithm SHA256).Hash
+    $passed = ([int]$commandCapture.exit_code -eq 0)
+    $diffSummary = Get-LocalExecutionDiffSummary -RelativePath $targetFile -BeforeContent $originalContent -AfterContent $updatedContent -ActionSummary $actionSummary
+    $rollbackState = [pscustomobject]@{
+        available = $true
+        backup_path = $backupPath
+        target_path = $absoluteTargetPath
+        pre_patch_hash = $prePatchHash
+        post_patch_hash = $postPatchHash
+        restore_command = "Copy-Item -Path '$backupPath' -Destination '$absoluteTargetPath' -Force"
+    }
+    $validationChecks = @(
+        [pscustomobject]@{ name = 'target_file_exists'; passed = (Test-Path -Path $absoluteTargetPath) },
+        [pscustomobject]@{ name = 'focused_validation_exit_zero'; passed = $passed },
+        [pscustomobject]@{ name = 'change_or_requested_state_present'; passed = ($changeApplied -or ($validatedContent -eq $updatedContent)) }
+    )
+
+    if (-not $passed) {
+        Copy-Item -Path $backupPath -Destination $absoluteTargetPath -Force
+        $Result.summary = ('LocalExecutionEngine rolled back the bounded local fallback for {0} because focused validation failed.' -f $targetFile)
+        $Result.files_changed = @()
+        $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+        $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+        $Result.failures = @('Focused validation failed after the local fallback patch, so the target file was restored from backup.')
+        $Result.recommendations = @('Keep the task blocked until the bounded patch or validation target is more explicit.')
+        $Result.needs_escalation = $false
+        $Result.structured_findings = @(
+            [pscustomobject]@{ type = 'rollback'; rollback = $rollbackState },
+            [pscustomobject]@{ type = 'validation'; checks = $validationChecks },
+            [pscustomobject]@{ type = 'command'; capture = $commandCapture },
+            [pscustomobject]@{ type = 'blocker'; reason_code = 'local_fallback_validation_failed'; file = 'scripts/engines/LocalExecutionEngine.ps1'; function = 'Invoke-LocalExecutionGenericBoundedTask'; reason = 'Focused validation failed and the bounded patch was rolled back.' }
+        )
+        $Result.raw_output = [pscustomobject]@{
+            engine = $Spec
+            task_context = $Context
+            action = 'generic_bounded_task_rolled_back'
+            target_file = $targetFile
+            diff_summary = $diffSummary
+            validation_checks = $validationChecks
+            command_capture = $commandCapture
+            rollback = $rollbackState
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        $Result | Add-Member -NotePropertyName reason_code -NotePropertyValue 'local_fallback_validation_failed' -Force
+        $Result | Add-Member -NotePropertyName recovery_state -NotePropertyValue 'blocked_with_reason' -Force
+        $Result | Add-Member -NotePropertyName diff_summary -NotePropertyValue $diffSummary -Force
+        $Result | Add-Member -NotePropertyName commands_run -NotePropertyValue @([string]$commandCapture.command) -Force
+        $Result | Add-Member -NotePropertyName validation_results -NotePropertyValue @($validationChecks) -Force
+        $Result | Add-Member -NotePropertyName blockers -NotePropertyValue @($Result.structured_findings | Where-Object { $_.type -eq 'blocker' }) -Force
+        $Result | Add-Member -NotePropertyName confidence -NotePropertyValue 'medium' -Force
+        $Result | Add-Member -NotePropertyName rollback_hint -NotePropertyValue ([string]$rollbackState.restore_command) -Force
+        return (Complete-EngineExecutionResult -Result $Result -Status 'failed')
+    }
+
+    $Result.summary = ('LocalExecutionEngine completed the bounded local fallback for {0} and published real execution evidence.' -f $targetFile)
+    $Result.files_changed = if ($changeApplied) { @($targetFile) } else { @() }
+    $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+    $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+    $Result.failures = @()
+    $Result.recommendations = @('Publish the bounded local fallback evidence and continue only with the next bounded validation slice.')
+    $Result.needs_escalation = $false
+    $Result.structured_findings = @(
+        [pscustomobject]@{
+            type = 'result_contract'
+            understood_task = ('Apply a bounded local fallback patch to {0}.' -f $targetFile)
+            action_taken = $actionSummary
+            changed_files = @($Result.files_changed)
+            evidence = @($diffSummary)
+            validation_result = 'passed'
+            remaining_blocker = ''
+            next_action = 'Publish the bounded local fallback evidence.'
+            confidence = 'medium-high'
+            accepted = $true
+            artifact_changed = $changeApplied
+        },
+        [pscustomobject]@{ type = 'command'; capture = $commandCapture },
+        [pscustomobject]@{ type = 'rollback'; rollback = $rollbackState },
+        [pscustomobject]@{ type = 'validation'; checks = $validationChecks }
+    )
+    $Result.raw_output = [pscustomobject]@{
+        engine = $Spec
+        task_context = $Context
+        action = 'generic_bounded_task_completed'
+        target_file = $targetFile
+        changed = $changeApplied
+        diff_summary = $diffSummary
+        validation_checks = $validationChecks
+        command_capture = $commandCapture
+        rollback = $rollbackState
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    $Result | Add-Member -NotePropertyName diff_summary -NotePropertyValue $diffSummary -Force
+    $Result | Add-Member -NotePropertyName commands_run -NotePropertyValue @([string]$commandCapture.command) -Force
+    $Result | Add-Member -NotePropertyName validation_results -NotePropertyValue @($validationChecks) -Force
+    $Result | Add-Member -NotePropertyName blockers -NotePropertyValue @() -Force
+    $Result | Add-Member -NotePropertyName confidence -NotePropertyValue 'medium-high' -Force
+    $Result | Add-Member -NotePropertyName rollback_hint -NotePropertyValue ([string]$rollbackState.restore_command) -Force
+    $Result | Add-Member -NotePropertyName command_output -NotePropertyValue ([string]$commandCapture.stdout) -Force
+    $Result | Add-Member -NotePropertyName reason_code -NotePropertyValue '' -Force
+    $Result | Add-Member -NotePropertyName recovery_state -NotePropertyValue 'not_needed' -Force
+    return (Complete-EngineExecutionResult -Result $Result -Status 'completed')
+}
+
 function Test-LocalExecutionReadmeDryRunTask {
     param([Parameter(Mandatory = $true)]$Context)
 
@@ -683,7 +1122,7 @@ function Invoke-LocalExecutionExecutionLoopContract {
 function Get-LocalExecutionEngineSpec {
     [pscustomobject]@{
         name = "local"
-        version = "0.4-execution-loop-phase1"
+        version = "0.5-local-fallback-bounded"
         lifecycle = @("prepare", "execute", "finalize")
         supports = @(
             "structured_result_output",
@@ -693,7 +1132,8 @@ function Get-LocalExecutionEngineSpec {
             "command_capture",
             "json_config_update",
             "python_source_patch",
-            "focused_python_unittest"
+            "focused_python_unittest",
+            "generic_bounded_fallback"
         )
         mode = "bounded_local_executor"
     }
@@ -715,6 +1155,9 @@ function Invoke-LocalExecutionEngine {
     }
     elseif (Test-LocalExecutionReadmeDryRunTask -Context $Context) {
         $result = Invoke-LocalExecutionReadmeDryRun -Context $Context -Result $result -Spec $spec
+    }
+    elseif (Test-LocalExecutionGenericBoundedTask -Context $Context) {
+        $result = Invoke-LocalExecutionGenericBoundedTask -Context $Context -Result $result -Spec $spec
     }
     else {
         $result.summary = "LocalExecutionEngine is implemented for bounded execution-loop, README, and TOD config bootstrap objectives, but this task did not match a supported scope."
