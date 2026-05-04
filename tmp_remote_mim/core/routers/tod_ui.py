@@ -124,6 +124,31 @@ def _same_objective(left: Any, right: Any) -> bool:
     return bool(left_token and right_token and left_token == right_token)
 
 
+def _should_reuse_live_task_identity(live_task: dict[str, Any], prompt_objective_id: str) -> bool:
+    if not isinstance(live_task, dict) or not live_task:
+        return False
+    request_id = str(live_task.get("request_id") or "").strip()
+    task_id = str(live_task.get("task_id") or "").strip()
+    if not request_id and not task_id:
+        return False
+    if not prompt_objective_id:
+        return True
+    prompt_text = str(prompt_objective_id or "").strip().lower()
+    live_objective_id = str(
+        live_task.get("objective_id")
+        or live_task.get("normalized_objective_id")
+        or ""
+    ).strip()
+    if prompt_text:
+        request_text = request_id.lower()
+        task_text = task_id.lower()
+        live_objective_text = live_objective_id.lower()
+        if prompt_text in request_text or prompt_text in task_text or prompt_text == live_objective_text:
+            return True
+    if not live_objective_id:
+        return True
+    return _same_objective(prompt_objective_id, live_objective_id)
+
 def _load_remote_recovery_payload() -> tuple[dict[str, Any], str]:
     return _first_existing_payload(
         REMOTE_RECOVERY_ROOT / "TOD_MIM_REMOTE_RECOVERY.latest.json",
@@ -1131,8 +1156,17 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
     ) or "objective-unknown"
     normalized_objective = _normalize_objective_token(objective_id) or objective_id.lower().replace(" ", "-")
     request_sequence = int(datetime.now(timezone.utc).timestamp() * 1000)
-    request_id = str(live_task.get("request_id") or "").strip() or f"{normalized_objective}-task-{request_sequence}"
-    task_id = str(live_task.get("task_id") or "").strip() or request_id
+    reuse_live_identity = _should_reuse_live_task_identity(live_task, prompt_objective_id)
+    request_id = (
+        str(live_task.get("request_id") or "").strip()
+        if reuse_live_identity
+        else ""
+    ) or f"{normalized_objective}-task-{request_sequence}"
+    task_id = (
+        str(live_task.get("task_id") or "").strip()
+        if reuse_live_identity
+        else ""
+    ) or request_id
     correlation_id = f"tod-chat-task-{request_sequence}"
     title = _pick_first_text(prompt_title, _summarize_requested_task(message, 180), "TOD chat execution task")
     task_focus = _pick_first_text(prompt_title, title, _summarize_requested_task(message, 180), "the requested local execution task")
@@ -1393,9 +1427,22 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
     ) or "objective-unknown"
     normalized_objective = _normalize_objective_token(objective_id) or objective_id.lower().replace(" ", "-")
     request_sequence = int(datetime.now(timezone.utc).timestamp() * 1000)
-    request_id = str(live_task.get("request_id") or "").strip() or f"{normalized_objective}-task-{request_sequence}"
-    task_id = str(live_task.get("task_id") or "").strip() or request_id
-    execution_id = str(live_task.get("execution_id") or "").strip() or request_id
+    reuse_live_identity = _should_reuse_live_task_identity(live_task, prompt_objective_id)
+    request_id = (
+        str(live_task.get("request_id") or "").strip()
+        if reuse_live_identity
+        else ""
+    ) or f"{normalized_objective}-task-{request_sequence}"
+    task_id = (
+        str(live_task.get("task_id") or "").strip()
+        if reuse_live_identity
+        else ""
+    ) or request_id
+    execution_id = (
+        str(live_task.get("execution_id") or "").strip()
+        if reuse_live_identity
+        else ""
+    ) or request_id
     existing_runtime = _load_existing_execution_runtime_payloads()
     if _existing_runtime_matches_active_execution(existing_runtime, objective_id, task_id, execution_id):
         existing_execution = existing_runtime.get("execution_result") if isinstance(existing_runtime.get("execution_result"), dict) else {}
