@@ -259,6 +259,7 @@ class TodUiStateClassificationTests(unittest.TestCase):
                 "next_validation": "execute_now",
                 "phase_progress": {
                     "available": True,
+                    "label": "Phase 1 progress",
                     "percent_complete": 55,
                     "next_gate": "Implementation",
                     "summary": "Phase 1 is about 55% complete. Inspection is done; implementation is the next gate.",
