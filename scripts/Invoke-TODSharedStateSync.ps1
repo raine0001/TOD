@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$SharedStateDir = "shared_state",
     [string]$TodScriptPath = "scripts/TOD.ps1",
     [string]$TodConfigPath = "tod/config/tod-config.json",
@@ -2228,6 +2228,11 @@ $normalizedCurrentObjective = Normalize-ObjectiveIdText -Value $currentObjective
 $normalizedMimObjectiveForAlignment = Normalize-ObjectiveIdText -Value $mimObjectiveForAlignment
 $normalizedHandshakeNextObjective = if ([bool]$mimHandshake.available) { Normalize-ObjectiveIdText -Value ([string]$mimHandshake.current_next_objective) } else { "" }
 $normalizedLiveRequestObjective = if ($liveTaskRequest) { [string]$liveTaskRequest.normalized_objective_id } else { "" }
+$liveTaskRequestId = if ($liveTaskRequest -and $liveTaskRequest.PSObject.Properties['request_id']) { [string]$liveTaskRequest.request_id } else { '' }
+$listenerDecisionRequestId = if ($listenerDecision -and $listenerDecision.PSObject.Properties['request_id']) { [string]$listenerDecision.request_id } else { '' }
+$normalizedListenerDecisionObjective = if ($listenerDecision -and $listenerDecision.PSObject.Properties['normalized_objective_id']) { Normalize-ObjectiveIdText -Value ([string]$listenerDecision.normalized_objective_id) } elseif ($listenerDecision -and $listenerDecision.PSObject.Properties['objective_id']) { Normalize-ObjectiveIdText -Value ([string]$listenerDecision.objective_id) } else { '' }
+$listenerDecisionExecutionState = if ($listenerDecision -and $listenerDecision.PSObject.Properties['execution_state']) { ([string]$listenerDecision.execution_state).Trim().ToLowerInvariant() } else { '' }
+$listenerDecisionOutcome = if ($listenerDecision -and $listenerDecision.PSObject.Properties['decision_outcome']) { ([string]$listenerDecision.decision_outcome).Trim().ToLowerInvariant() } else { '' }
 
 if ($listenerCompletedObjectiveBlocksCurrent) {
     $retainCompletedObjectiveAsActive = $false
@@ -2266,6 +2271,20 @@ if ($allowAmbientObjectivePromotion -and -not [string]::IsNullOrWhiteSpace($norm
         if ($liveRequestNumber -ge 0 -and $canonicalObjectiveNumber -ge 0 -and $liveRequestNumber -gt $canonicalObjectiveNumber) {
             $promoteFromLiveRequest = $true
             $promotionReason = "request_objective_ahead_of_canonical_export"
+        }
+    }
+
+    if (-not $promoteFromLiveRequest) {
+        $listenerConfirmsLiveRequest =
+            -not [string]::IsNullOrWhiteSpace($normalizedListenerDecisionObjective) -and
+            [string]::Equals($normalizedLiveRequestObjective, $normalizedListenerDecisionObjective, [System.StringComparison]::OrdinalIgnoreCase) -and
+            -not [string]::IsNullOrWhiteSpace($liveTaskRequestId) -and
+            [string]::Equals($liveTaskRequestId, $listenerDecisionRequestId, [System.StringComparison]::OrdinalIgnoreCase)
+        $listenerStateAllowsPromotion = @('ready_to_execute', 'waiting_on_dependency', 'execute_now') -contains $listenerDecisionExecutionState
+        $listenerOutcomeAllowsPromotion = @('execute', 'acknowledge_and_wait_on_dependency') -contains $listenerDecisionOutcome
+        if ($listenerConfirmsLiveRequest -and ($listenerStateAllowsPromotion -or $listenerOutcomeAllowsPromotion)) {
+            $promoteFromLiveRequest = $true
+            $promotionReason = "request_confirmed_by_listener_decision"
         }
     }
 
