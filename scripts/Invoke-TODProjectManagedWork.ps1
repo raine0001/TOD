@@ -134,7 +134,9 @@ function Get-ManagedWorkConfig {
     $config = if ($Project.PSObject.Properties['managed_work']) { $Project.managed_work } else { $null }
 
     $qaPatterns = @('scripts/qa_', 'qa/', 'tools/qa_')
+    $supportPatterns = @()
     $assetPatterns = @('static/images/', 'assets/', 'media/', 'images/', 'video/', 'audio/')
+    $blockedPatterns = @()
     $rootDocNames = @('README.md', 'TOD.md', 'AGENTS.md')
 
     if ($null -ne $config -and $config.PSObject.Properties['path_classification']) {
@@ -142,8 +144,14 @@ function Get-ManagedWorkConfig {
         if ($pathClass.PSObject.Properties['qa_artifact_patterns']) {
             $qaPatterns = @($qaPatterns + (To-Array -Value $pathClass.qa_artifact_patterns))
         }
+        if ($pathClass.PSObject.Properties['support_artifact_patterns']) {
+            $supportPatterns = @($supportPatterns + (To-Array -Value $pathClass.support_artifact_patterns))
+        }
         if ($pathClass.PSObject.Properties['asset_candidate_patterns']) {
             $assetPatterns = @($assetPatterns + (To-Array -Value $pathClass.asset_candidate_patterns))
+        }
+        if ($pathClass.PSObject.Properties['blocked_scope_patterns']) {
+            $blockedPatterns = @($blockedPatterns + (To-Array -Value $pathClass.blocked_scope_patterns))
         }
         if ($pathClass.PSObject.Properties['root_doc_names']) {
             $rootDocNames = @($rootDocNames + (To-Array -Value $pathClass.root_doc_names))
@@ -152,7 +160,9 @@ function Get-ManagedWorkConfig {
 
     return [pscustomobject]@{
         qa_artifact_patterns = @($qaPatterns | Select-Object -Unique)
+        support_artifact_patterns = @($supportPatterns | Select-Object -Unique)
         asset_candidate_patterns = @($assetPatterns | Select-Object -Unique)
+        blocked_scope_patterns = @($blockedPatterns | Select-Object -Unique)
         root_doc_names = @($rootDocNames | Select-Object -Unique)
     }
 }
@@ -186,6 +196,14 @@ function Classify-ChangeEntry {
             break
         }
     }
+    if (-not $inBlockedScope) {
+        foreach ($blockedPattern in $ManagedWorkConfig.blocked_scope_patterns) {
+            if (Test-PathPrefixMatch -PathValue $path -Prefix ([string]$blockedPattern)) {
+                $inBlockedScope = $true
+                break
+            }
+        }
+    }
 
     $fileName = [System.IO.Path]::GetFileName($path)
     $extension = [System.IO.Path]::GetExtension($path).ToLowerInvariant()
@@ -195,6 +213,18 @@ function Classify-ChangeEntry {
     foreach ($pattern in $ManagedWorkConfig.qa_artifact_patterns) {
         if (Test-PathPrefixMatch -PathValue $path -Prefix ([string]$pattern)) {
             $qaArtifact = $true
+            break
+        }
+    }
+
+    $supportArtifact = $false
+    foreach ($pattern in $ManagedWorkConfig.support_artifact_patterns) {
+        $normalizedPattern = (Normalize-RepoPath -PathValue ([string]$pattern)).ToLowerInvariant()
+        $normalizedPath = (Normalize-RepoPath -PathValue $path).ToLowerInvariant()
+        if ((-not [string]::IsNullOrWhiteSpace($normalizedPattern)) -and (
+                (Test-PathPrefixMatch -PathValue $path -Prefix ([string]$pattern)) -or
+                $normalizedPath.StartsWith($normalizedPattern))) {
+            $supportArtifact = $true
             break
         }
     }
@@ -220,6 +250,11 @@ function Classify-ChangeEntry {
         $classification = 'blocked_scope_change'
         $reason = 'Path falls under a blocked project boundary.'
         $recommendedAction = 'Do not mutate automatically; escalate for human review.'
+    }
+    elseif ($supportArtifact) {
+        $classification = 'qa_support_artifact'
+        $reason = 'File matches a project-specific generated or support-artifact pattern and should stay outside the primary patch set.'
+        $recommendedAction = 'Keep separate from the main product patch and treat it as evidence or generated support output.'
     }
     elseif ($qaArtifact) {
         $classification = 'qa_support_artifact'

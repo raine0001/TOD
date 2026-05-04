@@ -1,0 +1,605 @@
+{
+    "generated_at":  "2026-04-15T15:19:02.1902967Z",
+    "source":  "tod-focused-stale-recovery-prompt-set-v1",
+    "base_prompt_set_path":  "E:\\TOD\\tod\\config\\tod-stale-recovery-prompts-2026-04-14.json",
+    "base_prompt_count":  50,
+    "critical_prompt_ids":  [
+                                "stale-recovery-001",
+                                "stale-recovery-009",
+                                "stale-recovery-012",
+                                "stale-recovery-013",
+                                "stale-recovery-035",
+                                "stale-recovery-039"
+                            ],
+    "variants_per_critical_prompt":  8,
+    "prompts":  [
+                    {
+                        "id":  "stale-recovery-001",
+                        "task_number":  1,
+                        "title":  "Detect stale-loop repeats",
+                        "prompt":  "This is an implementation request. Add a stale_loop_detected artifact that triggers when the same bounded fallback intent repeats twice within 10 minutes. Explain the concrete telemetry, storage path, trigger logic, and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-002",
+                        "task_number":  2,
+                        "title":  "Expire freeze states",
+                        "prompt":  "This is an implementation request. Add a freeze_expiry_utc field to freeze artifacts and require explicit renewal instead of open-ended freeze state. Explain the contract change, expiry policy, safety guardrails, and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-003",
+                        "task_number":  3,
+                        "title":  "Reject stale objective references",
+                        "prompt":  "This is an implementation request. Update Invoke-TODConversationalReply.ps1 so it rejects replies that reference an objective older than integration truth. Explain how you would compare reply content to canonical objective evidence, what to do on mismatch, and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-004",
+                        "task_number":  4,
+                        "title":  "Emit response mode",
+                        "prompt":  "This is an implementation request. Emit a response_mode field on every TOD reply with one of normal, lightweight, recovery, degraded, or escalated. Explain the decision rules for each mode and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-005",
+                        "task_number":  5,
+                        "title":  "Detect low-value phrases",
+                        "prompt":  "This is an implementation request. Add a low-value phrase detector for operator-visible answers so TOD can catch weak fallback language. Explain the phrase policy, artifact path, and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-006",
+                        "task_number":  6,
+                        "title":  "Persist fallback review bundle",
+                        "prompt":  "This is an implementation request. Persist the last 25 fallback replies into a dedicated review artifact. Explain the schema, retention policy, and the next bounded step you would implement first."
+                    },
+                    {
+                        "id":  "stale-recovery-007",
+                        "task_number":  7,
+                        "title":  "Track repeat intent hits",
+                        "prompt":  "This is an implementation request. Add a repeat_intent_window_hits counter to conversational telemetry. Explain how you classify intents, how the sliding window works, and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-008",
+                        "task_number":  8,
+                        "title":  "Fail self-health on unsafe normal mode",
+                        "prompt":  "This is an implementation request. Fail self-health if watchdog is in error and operator chat remains in normal mode. Explain the rule, the exact evidence you would read, and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-009",
+                        "task_number":  9,
+                        "title":  "Create lightweight decision pack",
+                        "prompt":  "This is an implementation request. Add a compact lightweight decision pack under shared_state that never depends on full state.json loading. Explain the minimum fields it must contain and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-010",
+                        "task_number":  10,
+                        "title":  "Explain staleness from artifacts",
+                        "prompt":  "Why are you stale right now if the system is stale? Answer from artifacts, not generic fallback language. Explain the specific stale causes you would cite, the impacted lane, and the next bounded repair action."
+                    },
+                    {
+                        "id":  "stale-recovery-011",
+                        "task_number":  11,
+                        "title":  "Force repair before reply",
+                        "prompt":  "This is an implementation request. Add a forced_repair_before_reply branch when readiness evidence is stale. Explain the gate, the repair sequence, and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-012",
+                        "task_number":  12,
+                        "title":  "Label fallback causes",
+                        "prompt":  "This is an implementation request. Record whether each fallback was caused by stale readiness, watchdog drift, provider failure, remote timeout, or consensus stall. Explain the taxonomy and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-013",
+                        "task_number":  13,
+                        "title":  "Expire pending remote consensus",
+                        "prompt":  "This is an implementation request. Make pending_remote consensus expire after one reminder and force a bounded local recommendation. Explain the timeout policy, override cases, and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-014",
+                        "task_number":  14,
+                        "title":  "Add decision budget exhausted status",
+                        "prompt":  "This is an implementation request. Add a decision_budget_exhausted status for consensus sessions that waited too long. Explain how you compute budget exhaustion and what TOD should do next."
+                    },
+                    {
+                        "id":  "stale-recovery-015",
+                        "task_number":  15,
+                        "title":  "Assert one concrete next action",
+                        "prompt":  "This is an implementation request. Add tests that assert TOD must provide one concrete next action for engineering questions. Explain the test cases and the next bounded test you would add first."
+                    },
+                    {
+                        "id":  "stale-recovery-016",
+                        "task_number":  16,
+                        "title":  "Assert named blocking artifact",
+                        "prompt":  "This is an implementation request. Add tests that assert TOD must name the blocking artifact when it refuses action. Explain the failure cases and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-017",
+                        "task_number":  17,
+                        "title":  "Block wrong governance snapshot advice",
+                        "prompt":  "This is an implementation request. Add tests that assert TOD must not suggest refresh-governance-snapshot unless it is actually the current objective. Explain the assertion logic and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-018",
+                        "task_number":  18,
+                        "title":  "Fresh objective but stale conversation scenario",
+                        "prompt":  "This is an implementation request. Create a scenario set where the current objective is fresh but the conversational lane is stale, and TOD must recover correctly. Explain the fixture shape and the first bounded scenario you would write."
+                    },
+                    {
+                        "id":  "stale-recovery-019",
+                        "task_number":  19,
+                        "title":  "MIM ahead by one request scenario",
+                        "prompt":  "This is an implementation request. Create a scenario where MIM is ahead by one request and TOD must explain recovery steps. Explain the evidence pack and the first bounded scenario you would add."
+                    },
+                    {
+                        "id":  "stale-recovery-020",
+                        "task_number":  20,
+                        "title":  "Already processed must supersede",
+                        "prompt":  "This is an implementation request. Create a scenario where latest_execution_status is already_processed and TOD must supersede, not repeat. Explain the acceptance criteria and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-021",
+                        "task_number":  21,
+                        "title":  "Block warnings-summary leakage",
+                        "prompt":  "This is an implementation request. Add a regression check for repeated warnings-summary dispatch on unrelated engineering intents. Explain the trigger pattern and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-022",
+                        "task_number":  22,
+                        "title":  "Minimal truth refresh",
+                        "prompt":  "This is an implementation request. Add a recovery action that refreshes only the minimum truth artifacts needed for a decision. Explain which artifacts qualify and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-023",
+                        "task_number":  23,
+                        "title":  "Engineering reply contract",
+                        "prompt":  "This is an implementation request. Add a reply contract for engineering questions with summary, evidence, blocker, next step, and owner. Explain how you would enforce it and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-024",
+                        "task_number":  24,
+                        "title":  "Recovery reply contract",
+                        "prompt":  "This is an implementation request. Add a reply contract for recovery questions with stale cause, impacted lane, repair action, confidence, and escalation threshold. Explain the contract and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-025",
+                        "task_number":  25,
+                        "title":  "Score replies",
+                        "prompt":  "This is an implementation request. Score TOD replies for decisiveness, factual grounding, and freshness alignment. Explain the scoring dimensions, thresholds, and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-026",
+                        "task_number":  26,
+                        "title":  "Store worst daily replies",
+                        "prompt":  "This is an implementation request. Store the worst-scoring daily replies in a training review bundle. Explain the artifact format, selection policy, and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-027",
+                        "task_number":  27,
+                        "title":  "Alert on freeze loop count",
+                        "prompt":  "This is an implementation request. Add a freeze_loop_count metric with alerting when more than one freeze occurs in 24 hours. Explain the detection logic and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-028",
+                        "task_number":  28,
+                        "title":  "Promotion-block stale objective references",
+                        "prompt":  "This is an implementation request. Add a stale_objective_reference_count metric and make it promotion-blocking. Explain the counting method and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-029",
+                        "task_number":  29,
+                        "title":  "Dashboard card for repeat fallback",
+                        "prompt":  "This is an implementation request. Build a dashboard card for repeat fallback by intent. Explain the exact metrics to show and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-030",
+                        "task_number":  30,
+                        "title":  "Dashboard card for old consensus sessions",
+                        "prompt":  "This is an implementation request. Build a dashboard card for pending consensus sessions older than threshold. Explain the fields, thresholds, and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-031",
+                        "task_number":  31,
+                        "title":  "Bind watchdog to answer mode",
+                        "prompt":  "This is an implementation request. Add a watchdog-to-conversation authority rule so drift state directly affects answer mode. Explain the authority mapping and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-032",
+                        "task_number":  32,
+                        "title":  "Prefer live request over stale readiness",
+                        "prompt":  "This is an implementation request. Add a synthetic scenario where readiness is stale but live request telemetry is fresh, and TOD must choose the live signal. Explain the scenario and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-033",
+                        "task_number":  33,
+                        "title":  "Recover from stale listener cadence",
+                        "prompt":  "This is an implementation request. Add a synthetic scenario where listener cadence is stale but the last accepted action is known, and TOD must give a bounded recovery path. Explain the scenario and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-034",
+                        "task_number":  34,
+                        "title":  "Useful answer while state file is locked",
+                        "prompt":  "This is an implementation request. Add a scenario where full state.json is locked and TOD must still produce a useful engineering answer from lightweight artifacts. Explain the scenario and your next bounded implementation step."
+                    },
+                    {
+                        "id":  "stale-recovery-035",
+                        "task_number":  35,
+                        "title":  "Reject short confident wrong provider answer",
+                        "prompt":  "This is an implementation request. Add a scenario where the provider returns a short but confident wrong answer and TOD must reject it as unusable. Explain the quality gate and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-036",
+                        "task_number":  36,
+                        "title":  "Stop waiting for remote consensus",
+                        "prompt":  "This is an implementation request. Add a scenario where remote consensus never arrives and TOD must stop waiting. Explain the timeout path and the next bounded step you would implement."
+                    },
+                    {
+                        "id":  "stale-recovery-037",
+                        "task_number":  37,
+                        "title":  "Reset polluted conversation context",
+                        "prompt":  "This is an implementation request. Add a scenario where a prior fallback answer polluted the next conversation turn, and TOD must reset context. Explain the contamination signal and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-038",
+                        "task_number":  38,
+                        "title":  "Prioritize canonical evidence on objective disagreement",
+                        "prompt":  "This is an implementation request. Add a scenario where MIM and TOD objective pointers disagree, and TOD must prioritize canonical evidence. Explain the evidence hierarchy and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-039",
+                        "task_number":  39,
+                        "title":  "Distinguish truth from stale mirrors",
+                        "prompt":  "This is an implementation request. Add a scenario where repair succeeded but local mirrors are stale, and TOD must distinguish truth from lagging copies. Explain the source priority rules and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-040",
+                        "task_number":  40,
+                        "title":  "Daily stale recovery drill",
+                        "prompt":  "This is an implementation request. Add daily 10-question targeted drills focused only on stale and freeze recovery. Explain the drill format, scoring, and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-041",
+                        "task_number":  41,
+                        "title":  "Rolling set of 50 prompts",
+                        "prompt":  "This is an implementation request. Create a rolling set of 50 stale and freeze prompts and retire the weakest 10 each week. Explain the maintenance policy and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-042",
+                        "task_number":  42,
+                        "title":  "Top stale causes artifact",
+                        "prompt":  "This is an implementation request. Add an artifact that names the top three stale causes in the last 24 hours. Explain the aggregation logic and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-043",
+                        "task_number":  43,
+                        "title":  "Top low-value phrases artifact",
+                        "prompt":  "This is an implementation request. Add an artifact that names the top three low-value fallback phrases in the last 24 hours. Explain the extraction logic and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-044",
+                        "task_number":  44,
+                        "title":  "Blocked-by-stale-readiness artifact",
+                        "prompt":  "This is an implementation request. Add an artifact that lists all replies blocked by stale readiness and whether auto-repair fixed them. Explain the schema and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-045",
+                        "task_number":  45,
+                        "title":  "Auto-trigger recovery after low-value replies",
+                        "prompt":  "This is an implementation request. Add a rule that any two consecutive low-value replies on the same session trigger maintenance or recovery mode automatically. Explain the session logic and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-046",
+                        "task_number":  46,
+                        "title":  "Require confidence during watchdog error",
+                        "prompt":  "This is an implementation request. Add a rule that any reply generated during watchdog error must include explicit confidence and blocker fields. Explain the enforcement point and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-047",
+                        "task_number":  47,
+                        "title":  "Write post-repair proof artifacts",
+                        "prompt":  "This is an implementation request. Add a rule that any stale or freeze recovery action must write a post-repair proof artifact. Explain the minimum proof schema and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-048",
+                        "task_number":  48,
+                        "title":  "Gate promotions on stale metrics",
+                        "prompt":  "This is an implementation request. Add promotion gates for repeat_fallback_rate, stale_objective_reference_count, and median_freeze_duration. Explain the thresholds and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-049",
+                        "task_number":  49,
+                        "title":  "Review worst stale transcripts weekly",
+                        "prompt":  "This is an implementation request. Run weekly review sessions against the 20 worst stale-loop transcripts and convert each into a regression case. Explain the workflow and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-050",
+                        "task_number":  50,
+                        "title":  "Operator-facing degraded mode explanation",
+                        "prompt":  "This is an implementation request. Publish a simple operator-facing explanation policy so TOD explains degraded mode honestly without becoming non-actionable. Explain the policy and your next bounded step."
+                    },
+                    {
+                        "id":  "stale-recovery-001-focus-01",
+                        "task_number":  51,
+                        "title":  "Detect stale-loop repeats Focus Variant 1",
+                        "prompt":  "This is an implementation request. Add a stale_loop_detected artifact that triggers when the same bounded fallback intent repeats twice within 10 minutes. Explain the concrete telemetry, storage path, trigger logic, and your next bounded implementation step. Use canonical objective 152 if any local memory still points at 170."
+                    },
+                    {
+                        "id":  "stale-recovery-001-focus-02",
+                        "task_number":  52,
+                        "title":  "Detect stale-loop repeats Focus Variant 2",
+                        "prompt":  "This is an implementation request. Add a stale_loop_detected artifact that triggers when the same bounded fallback intent repeats twice within 10 minutes. Explain the concrete telemetry, storage path, trigger logic, and your next bounded implementation step. Treat stale local mirrors as lower priority than integration truth and name the specific artifact you trust first."
+                    },
+                    {
+                        "id":  "stale-recovery-001-focus-03",
+                        "task_number":  53,
+                        "title":  "Detect stale-loop repeats Focus Variant 3",
+                        "prompt":  "This is an implementation request. Add a stale_loop_detected artifact that triggers when the same bounded fallback intent repeats twice within 10 minutes. Explain the concrete telemetry, storage path, trigger logic, and your next bounded implementation step. If the model answer is short, confident, and wrong, reject it and continue with a bounded repair step."
+                    },
+                    {
+                        "id":  "stale-recovery-001-focus-04",
+                        "task_number":  54,
+                        "title":  "Detect stale-loop repeats Focus Variant 4",
+                        "prompt":  "This is an implementation request. Add a stale_loop_detected artifact that triggers when the same bounded fallback intent repeats twice within 10 minutes. Explain the concrete telemetry, storage path, trigger logic, and your next bounded implementation step. Assume watchdog drift is warning but the live task request is fresh; prefer the live task and explain why."
+                    },
+                    {
+                        "id":  "stale-recovery-001-focus-05",
+                        "task_number":  55,
+                        "title":  "Detect stale-loop repeats Focus Variant 5",
+                        "prompt":  "This is an implementation request. Add a stale_loop_detected artifact that triggers when the same bounded fallback intent repeats twice within 10 minutes. Explain the concrete telemetry, storage path, trigger logic, and your next bounded implementation step. If pending_remote has already reminded once, stop waiting and choose a bounded local recommendation."
+                    },
+                    {
+                        "id":  "stale-recovery-001-focus-06",
+                        "task_number":  56,
+                        "title":  "Detect stale-loop repeats Focus Variant 6",
+                        "prompt":  "This is an implementation request. Add a stale_loop_detected artifact that triggers when the same bounded fallback intent repeats twice within 10 minutes. Explain the concrete telemetry, storage path, trigger logic, and your next bounded implementation step. If readiness is stale, force the minimum truth refresh before answering in normal mode."
+                    },
+                    {
+                        "id":  "stale-recovery-001-focus-07",
+                        "task_number":  57,
+                        "title":  "Detect stale-loop repeats Focus Variant 7",
+                        "prompt":  "This is an implementation request. Add a stale_loop_detected artifact that triggers when the same bounded fallback intent repeats twice within 10 minutes. Explain the concrete telemetry, storage path, trigger logic, and your next bounded implementation step. Name the blocker artifact, the repair artifact, and the next bounded action in the same answer."
+                    },
+                    {
+                        "id":  "stale-recovery-001-focus-08",
+                        "task_number":  58,
+                        "title":  "Detect stale-loop repeats Focus Variant 8",
+                        "prompt":  "This is an implementation request. Add a stale_loop_detected artifact that triggers when the same bounded fallback intent repeats twice within 10 minutes. Explain the concrete telemetry, storage path, trigger logic, and your next bounded implementation step. Avoid low-value memory repetition and keep the answer anchored to the current active task."
+                    },
+                    {
+                        "id":  "stale-recovery-009-focus-01",
+                        "task_number":  59,
+                        "title":  "Create lightweight decision pack Focus Variant 1",
+                        "prompt":  "This is an implementation request. Add a compact lightweight decision pack under shared_state that never depends on full state.json loading. Explain the minimum fields it must contain and your next bounded implementation step. Use canonical objective 152 if any local memory still points at 170."
+                    },
+                    {
+                        "id":  "stale-recovery-009-focus-02",
+                        "task_number":  60,
+                        "title":  "Create lightweight decision pack Focus Variant 2",
+                        "prompt":  "This is an implementation request. Add a compact lightweight decision pack under shared_state that never depends on full state.json loading. Explain the minimum fields it must contain and your next bounded implementation step. Treat stale local mirrors as lower priority than integration truth and name the specific artifact you trust first."
+                    },
+                    {
+                        "id":  "stale-recovery-009-focus-03",
+                        "task_number":  61,
+                        "title":  "Create lightweight decision pack Focus Variant 3",
+                        "prompt":  "This is an implementation request. Add a compact lightweight decision pack under shared_state that never depends on full state.json loading. Explain the minimum fields it must contain and your next bounded implementation step. If the model answer is short, confident, and wrong, reject it and continue with a bounded repair step."
+                    },
+                    {
+                        "id":  "stale-recovery-009-focus-04",
+                        "task_number":  62,
+                        "title":  "Create lightweight decision pack Focus Variant 4",
+                        "prompt":  "This is an implementation request. Add a compact lightweight decision pack under shared_state that never depends on full state.json loading. Explain the minimum fields it must contain and your next bounded implementation step. Assume watchdog drift is warning but the live task request is fresh; prefer the live task and explain why."
+                    },
+                    {
+                        "id":  "stale-recovery-009-focus-05",
+                        "task_number":  63,
+                        "title":  "Create lightweight decision pack Focus Variant 5",
+                        "prompt":  "This is an implementation request. Add a compact lightweight decision pack under shared_state that never depends on full state.json loading. Explain the minimum fields it must contain and your next bounded implementation step. If pending_remote has already reminded once, stop waiting and choose a bounded local recommendation."
+                    },
+                    {
+                        "id":  "stale-recovery-009-focus-06",
+                        "task_number":  64,
+                        "title":  "Create lightweight decision pack Focus Variant 6",
+                        "prompt":  "This is an implementation request. Add a compact lightweight decision pack under shared_state that never depends on full state.json loading. Explain the minimum fields it must contain and your next bounded implementation step. If readiness is stale, force the minimum truth refresh before answering in normal mode."
+                    },
+                    {
+                        "id":  "stale-recovery-009-focus-07",
+                        "task_number":  65,
+                        "title":  "Create lightweight decision pack Focus Variant 7",
+                        "prompt":  "This is an implementation request. Add a compact lightweight decision pack under shared_state that never depends on full state.json loading. Explain the minimum fields it must contain and your next bounded implementation step. Name the blocker artifact, the repair artifact, and the next bounded action in the same answer."
+                    },
+                    {
+                        "id":  "stale-recovery-009-focus-08",
+                        "task_number":  66,
+                        "title":  "Create lightweight decision pack Focus Variant 8",
+                        "prompt":  "This is an implementation request. Add a compact lightweight decision pack under shared_state that never depends on full state.json loading. Explain the minimum fields it must contain and your next bounded implementation step. Avoid low-value memory repetition and keep the answer anchored to the current active task."
+                    },
+                    {
+                        "id":  "stale-recovery-012-focus-01",
+                        "task_number":  67,
+                        "title":  "Label fallback causes Focus Variant 1",
+                        "prompt":  "This is an implementation request. Record whether each fallback was caused by stale readiness, watchdog drift, provider failure, remote timeout, or consensus stall. Explain the taxonomy and your next bounded step. Use canonical objective 152 if any local memory still points at 170."
+                    },
+                    {
+                        "id":  "stale-recovery-012-focus-02",
+                        "task_number":  68,
+                        "title":  "Label fallback causes Focus Variant 2",
+                        "prompt":  "This is an implementation request. Record whether each fallback was caused by stale readiness, watchdog drift, provider failure, remote timeout, or consensus stall. Explain the taxonomy and your next bounded step. Treat stale local mirrors as lower priority than integration truth and name the specific artifact you trust first."
+                    },
+                    {
+                        "id":  "stale-recovery-012-focus-03",
+                        "task_number":  69,
+                        "title":  "Label fallback causes Focus Variant 3",
+                        "prompt":  "This is an implementation request. Record whether each fallback was caused by stale readiness, watchdog drift, provider failure, remote timeout, or consensus stall. Explain the taxonomy and your next bounded step. If the model answer is short, confident, and wrong, reject it and continue with a bounded repair step."
+                    },
+                    {
+                        "id":  "stale-recovery-012-focus-04",
+                        "task_number":  70,
+                        "title":  "Label fallback causes Focus Variant 4",
+                        "prompt":  "This is an implementation request. Record whether each fallback was caused by stale readiness, watchdog drift, provider failure, remote timeout, or consensus stall. Explain the taxonomy and your next bounded step. Assume watchdog drift is warning but the live task request is fresh; prefer the live task and explain why."
+                    },
+                    {
+                        "id":  "stale-recovery-012-focus-05",
+                        "task_number":  71,
+                        "title":  "Label fallback causes Focus Variant 5",
+                        "prompt":  "This is an implementation request. Record whether each fallback was caused by stale readiness, watchdog drift, provider failure, remote timeout, or consensus stall. Explain the taxonomy and your next bounded step. If pending_remote has already reminded once, stop waiting and choose a bounded local recommendation."
+                    },
+                    {
+                        "id":  "stale-recovery-012-focus-06",
+                        "task_number":  72,
+                        "title":  "Label fallback causes Focus Variant 6",
+                        "prompt":  "This is an implementation request. Record whether each fallback was caused by stale readiness, watchdog drift, provider failure, remote timeout, or consensus stall. Explain the taxonomy and your next bounded step. If readiness is stale, force the minimum truth refresh before answering in normal mode."
+                    },
+                    {
+                        "id":  "stale-recovery-012-focus-07",
+                        "task_number":  73,
+                        "title":  "Label fallback causes Focus Variant 7",
+                        "prompt":  "This is an implementation request. Record whether each fallback was caused by stale readiness, watchdog drift, provider failure, remote timeout, or consensus stall. Explain the taxonomy and your next bounded step. Name the blocker artifact, the repair artifact, and the next bounded action in the same answer."
+                    },
+                    {
+                        "id":  "stale-recovery-012-focus-08",
+                        "task_number":  74,
+                        "title":  "Label fallback causes Focus Variant 8",
+                        "prompt":  "This is an implementation request. Record whether each fallback was caused by stale readiness, watchdog drift, provider failure, remote timeout, or consensus stall. Explain the taxonomy and your next bounded step. Avoid low-value memory repetition and keep the answer anchored to the current active task."
+                    },
+                    {
+                        "id":  "stale-recovery-013-focus-01",
+                        "task_number":  75,
+                        "title":  "Expire pending remote consensus Focus Variant 1",
+                        "prompt":  "This is an implementation request. Make pending_remote consensus expire after one reminder and force a bounded local recommendation. Explain the timeout policy, override cases, and your next bounded implementation step. Use canonical objective 152 if any local memory still points at 170."
+                    },
+                    {
+                        "id":  "stale-recovery-013-focus-02",
+                        "task_number":  76,
+                        "title":  "Expire pending remote consensus Focus Variant 2",
+                        "prompt":  "This is an implementation request. Make pending_remote consensus expire after one reminder and force a bounded local recommendation. Explain the timeout policy, override cases, and your next bounded implementation step. Treat stale local mirrors as lower priority than integration truth and name the specific artifact you trust first."
+                    },
+                    {
+                        "id":  "stale-recovery-013-focus-03",
+                        "task_number":  77,
+                        "title":  "Expire pending remote consensus Focus Variant 3",
+                        "prompt":  "This is an implementation request. Make pending_remote consensus expire after one reminder and force a bounded local recommendation. Explain the timeout policy, override cases, and your next bounded implementation step. If the model answer is short, confident, and wrong, reject it and continue with a bounded repair step."
+                    },
+                    {
+                        "id":  "stale-recovery-013-focus-04",
+                        "task_number":  78,
+                        "title":  "Expire pending remote consensus Focus Variant 4",
+                        "prompt":  "This is an implementation request. Make pending_remote consensus expire after one reminder and force a bounded local recommendation. Explain the timeout policy, override cases, and your next bounded implementation step. Assume watchdog drift is warning but the live task request is fresh; prefer the live task and explain why."
+                    },
+                    {
+                        "id":  "stale-recovery-013-focus-05",
+                        "task_number":  79,
+                        "title":  "Expire pending remote consensus Focus Variant 5",
+                        "prompt":  "This is an implementation request. Make pending_remote consensus expire after one reminder and force a bounded local recommendation. Explain the timeout policy, override cases, and your next bounded implementation step. If pending_remote has already reminded once, stop waiting and choose a bounded local recommendation."
+                    },
+                    {
+                        "id":  "stale-recovery-013-focus-06",
+                        "task_number":  80,
+                        "title":  "Expire pending remote consensus Focus Variant 6",
+                        "prompt":  "This is an implementation request. Make pending_remote consensus expire after one reminder and force a bounded local recommendation. Explain the timeout policy, override cases, and your next bounded implementation step. If readiness is stale, force the minimum truth refresh before answering in normal mode."
+                    },
+                    {
+                        "id":  "stale-recovery-013-focus-07",
+                        "task_number":  81,
+                        "title":  "Expire pending remote consensus Focus Variant 7",
+                        "prompt":  "This is an implementation request. Make pending_remote consensus expire after one reminder and force a bounded local recommendation. Explain the timeout policy, override cases, and your next bounded implementation step. Name the blocker artifact, the repair artifact, and the next bounded action in the same answer."
+                    },
+                    {
+                        "id":  "stale-recovery-013-focus-08",
+                        "task_number":  82,
+                        "title":  "Expire pending remote consensus Focus Variant 8",
+                        "prompt":  "This is an implementation request. Make pending_remote consensus expire after one reminder and force a bounded local recommendation. Explain the timeout policy, override cases, and your next bounded implementation step. Avoid low-value memory repetition and keep the answer anchored to the current active task."
+                    },
+                    {
+                        "id":  "stale-recovery-035-focus-01",
+                        "task_number":  83,
+                        "title":  "Reject short confident wrong provider answer Focus Variant 1",
+                        "prompt":  "This is an implementation request. Add a scenario where the provider returns a short but confident wrong answer and TOD must reject it as unusable. Explain the quality gate and your next bounded step. Use canonical objective 152 if any local memory still points at 170."
+                    },
+                    {
+                        "id":  "stale-recovery-035-focus-02",
+                        "task_number":  84,
+                        "title":  "Reject short confident wrong provider answer Focus Variant 2",
+                        "prompt":  "This is an implementation request. Add a scenario where the provider returns a short but confident wrong answer and TOD must reject it as unusable. Explain the quality gate and your next bounded step. Treat stale local mirrors as lower priority than integration truth and name the specific artifact you trust first."
+                    },
+                    {
+                        "id":  "stale-recovery-035-focus-03",
+                        "task_number":  85,
+                        "title":  "Reject short confident wrong provider answer Focus Variant 3",
+                        "prompt":  "This is an implementation request. Add a scenario where the provider returns a short but confident wrong answer and TOD must reject it as unusable. Explain the quality gate and your next bounded step. If the model answer is short, confident, and wrong, reject it and continue with a bounded repair step."
+                    },
+                    {
+                        "id":  "stale-recovery-035-focus-04",
+                        "task_number":  86,
+                        "title":  "Reject short confident wrong provider answer Focus Variant 4",
+                        "prompt":  "This is an implementation request. Add a scenario where the provider returns a short but confident wrong answer and TOD must reject it as unusable. Explain the quality gate and your next bounded step. Assume watchdog drift is warning but the live task request is fresh; prefer the live task and explain why."
+                    },
+                    {
+                        "id":  "stale-recovery-035-focus-05",
+                        "task_number":  87,
+                        "title":  "Reject short confident wrong provider answer Focus Variant 5",
+                        "prompt":  "This is an implementation request. Add a scenario where the provider returns a short but confident wrong answer and TOD must reject it as unusable. Explain the quality gate and your next bounded step. If pending_remote has already reminded once, stop waiting and choose a bounded local recommendation."
+                    },
+                    {
+                        "id":  "stale-recovery-035-focus-06",
+                        "task_number":  88,
+                        "title":  "Reject short confident wrong provider answer Focus Variant 6",
+                        "prompt":  "This is an implementation request. Add a scenario where the provider returns a short but confident wrong answer and TOD must reject it as unusable. Explain the quality gate and your next bounded step. If readiness is stale, force the minimum truth refresh before answering in normal mode."
+                    },
+                    {
+                        "id":  "stale-recovery-035-focus-07",
+                        "task_number":  89,
+                        "title":  "Reject short confident wrong provider answer Focus Variant 7",
+                        "prompt":  "This is an implementation request. Add a scenario where the provider returns a short but confident wrong answer and TOD must reject it as unusable. Explain the quality gate and your next bounded step. Name the blocker artifact, the repair artifact, and the next bounded action in the same answer."
+                    },
+                    {
+                        "id":  "stale-recovery-035-focus-08",
+                        "task_number":  90,
+                        "title":  "Reject short confident wrong provider answer Focus Variant 8",
+                        "prompt":  "This is an implementation request. Add a scenario where the provider returns a short but confident wrong answer and TOD must reject it as unusable. Explain the quality gate and your next bounded step. Avoid low-value memory repetition and keep the answer anchored to the current active task."
+                    },
+                    {
+                        "id":  "stale-recovery-039-focus-01",
+                        "task_number":  91,
+                        "title":  "Distinguish truth from stale mirrors Focus Variant 1",
+                        "prompt":  "This is an implementation request. Add a scenario where repair succeeded but local mirrors are stale, and TOD must distinguish truth from lagging copies. Explain the source priority rules and your next bounded step. Use canonical objective 152 if any local memory still points at 170."
+                    },
+                    {
+                        "id":  "stale-recovery-039-focus-02",
+                        "task_number":  92,
+                        "title":  "Distinguish truth from stale mirrors Focus Variant 2",
+                        "prompt":  "This is an implementation request. Add a scenario where repair succeeded but local mirrors are stale, and TOD must distinguish truth from lagging copies. Explain the source priority rules and your next bounded step. Treat stale local mirrors as lower priority than integration truth and name the specific artifact you trust first."
+                    },
+                    {
+                        "id":  "stale-recovery-039-focus-03",
+                        "task_number":  93,
+                        "title":  "Distinguish truth from stale mirrors Focus Variant 3",
+                        "prompt":  "This is an implementation request. Add a scenario where repair succeeded but local mirrors are stale, and TOD must distinguish truth from lagging copies. Explain the source priority rules and your next bounded step. If the model answer is short, confident, and wrong, reject it and continue with a bounded repair step."
+                    },
+                    {
+                        "id":  "stale-recovery-039-focus-04",
+                        "task_number":  94,
+                        "title":  "Distinguish truth from stale mirrors Focus Variant 4",
+                        "prompt":  "This is an implementation request. Add a scenario where repair succeeded but local mirrors are stale, and TOD must distinguish truth from lagging copies. Explain the source priority rules and your next bounded step. Assume watchdog drift is warning but the live task request is fresh; prefer the live task and explain why."
+                    },
+                    {
+                        "id":  "stale-recovery-039-focus-05",
+                        "task_number":  95,
+                        "title":  "Distinguish truth from stale mirrors Focus Variant 5",
+                        "prompt":  "This is an implementation request. Add a scenario where repair succeeded but local mirrors are stale, and TOD must distinguish truth from lagging copies. Explain the source priority rules and your next bounded step. If pending_remote has already reminded once, stop waiting and choose a bounded local recommendation."
+                    },
+                    {
+                        "id":  "stale-recovery-039-focus-06",
+                        "task_number":  96,
+                        "title":  "Distinguish truth from stale mirrors Focus Variant 6",
+                        "prompt":  "This is an implementation request. Add a scenario where repair succeeded but local mirrors are stale, and TOD must distinguish truth from lagging copies. Explain the source priority rules and your next bounded step. If readiness is stale, force the minimum truth refresh before answering in normal mode."
+                    },
+                    {
+                        "id":  "stale-recovery-039-focus-07",
+                        "task_number":  97,
+                        "title":  "Distinguish truth from stale mirrors Focus Variant 7",
+                        "prompt":  "This is an implementation request. Add a scenario where repair succeeded but local mirrors are stale, and TOD must distinguish truth from lagging copies. Explain the source priority rules and your next bounded step. Name the blocker artifact, the repair artifact, and the next bounded action in the same answer."
+                    },
+                    {
+                        "id":  "stale-recovery-039-focus-08",
+                        "task_number":  98,
+                        "title":  "Distinguish truth from stale mirrors Focus Variant 8",
+                        "prompt":  "This is an implementation request. Add a scenario where repair succeeded but local mirrors are stale, and TOD must distinguish truth from lagging copies. Explain the source priority rules and your next bounded step. Avoid low-value memory repetition and keep the answer anchored to the current active task."
+                    }
+                ]
+}

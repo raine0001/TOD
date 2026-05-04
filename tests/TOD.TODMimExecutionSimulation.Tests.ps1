@@ -26,7 +26,7 @@ Describe 'TOD MIM execution simulation harness' {
         $payload = (& $simulationScript -Scenario all -OutputRoot $base) | ConvertFrom-Json
 
         [bool]$payload.ok | Should Be $true
-        @($payload.scenario_results).Count | Should Be 6
+        @($payload.scenario_results).Count | Should Be 7
         (Test-Path -Path (Join-Path $payload.root 'simulation-summary.json')) | Should Be $true
         (Test-Path -Path (Join-Path $payload.root 'simulation-summary.md')) | Should Be $true
     }
@@ -38,6 +38,7 @@ Describe 'TOD MIM execution simulation harness' {
 
         [bool]$scenario.ok | Should Be $true
         [string]$scenario.steps[0].status | Should Be 'completed'
+        [string]$scenario.steps[0].decision_outcome | Should Be 'execute'
         [int]$scenario.counts.trigger_ack | Should Be 1
         [int]$scenario.counts.task_ack | Should Be 1
         [int]$scenario.counts.result | Should Be 1
@@ -104,5 +105,19 @@ Describe 'TOD MIM execution simulation harness' {
         [int]$scenario.counts.trigger_ack | Should Be 0
         [int]$scenario.counts.task_ack | Should Be 0
         [int]$scenario.counts.result | Should Be 0
+    }
+
+    It 'executes authorized soft-boundary work without human start confirmation' {
+        $base = New-TestArea
+        $payload = (& $simulationScript -Scenario soft_boundary_execute_without_go_order -OutputRoot $base) | ConvertFrom-Json
+        $scenario = Get-Scenario -Payload $payload -ScenarioName 'soft_boundary_execute_without_go_order'
+
+        [bool]$scenario.ok | Should Be $true
+        [string]$scenario.steps[0].status | Should Be 'completed'
+        [string]$scenario.steps[0].decision_outcome | Should Be 'execute'
+        [int]$scenario.steps[0].emitted.trigger_ack | Should Be 1
+        [int]$scenario.steps[0].emitted.task_ack | Should Be 1
+        [int]$scenario.steps[0].emitted.result | Should Be 1
+        [int]$scenario.steps[0].emitted.decision | Should Be 1
     }
 }

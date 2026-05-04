@@ -152,6 +152,19 @@
       white-space: nowrap;
     }
 
+    .drilldown-chip {
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+    }
+
+    .drilldown-chip:hover,
+    .drilldown-chip:focus-visible {
+      border-color: var(--line-strong);
+      box-shadow: 0 0 12px rgba(45, 255, 157, 0.18);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
     .ui-build-chip.since {
       border-color: rgba(255, 209, 102, 0.55);
       color: #ffe7a4;
@@ -168,6 +181,13 @@
       border-color: rgba(255, 209, 102, 0.65);
       color: #ffe7a4;
       background: rgba(58, 43, 10, 0.52);
+    }
+
+    .ui-build-chip.health-idle,
+    .ui-build-chip.health-info {
+      border-color: rgba(120, 196, 255, 0.48);
+      color: #d6eeff;
+      background: rgba(10, 31, 51, 0.50);
     }
 
     .ui-build-chip.health-critical,
@@ -329,6 +349,14 @@
       text-transform: uppercase;
       color: var(--muted);
       background: rgba(4, 18, 16, 0.7);
+    }
+
+    .probe-readout.drilldown-chip,
+    .mim-indicator.drilldown-chip,
+    .tod-indicator.drilldown-chip,
+    .loop-indicator.drilldown-chip,
+    .arm-indicator.drilldown-chip {
+      cursor: pointer;
     }
 
     .loop-dot {
@@ -1448,6 +1476,13 @@
 
     .operator-chat-card {
       padding: 10px;
+      scroll-margin-top: 16px;
+    }
+
+    #todConversationCard {
+      order: -100;
+      border-color: rgba(45, 255, 157, 0.52);
+      box-shadow: 0 0 24px rgba(45, 255, 157, 0.12);
     }
 
     .operator-chat-head {
@@ -1553,6 +1588,109 @@
       color: #ffc4d1;
     }
 
+    .tod-chat-toolbar {
+      display: grid;
+      grid-template-columns: minmax(150px, 220px) auto auto auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .tod-chat-operator {
+      width: 100%;
+      border: 1px solid rgba(97, 219, 191, 0.24);
+      border-radius: 10px;
+      background: rgba(3, 14, 12, 0.92);
+      color: var(--ink);
+      font: inherit;
+      font-size: 0.76rem;
+      padding: 9px 11px;
+      outline: none;
+    }
+
+    .tod-chat-toolbtn {
+      width: auto;
+      margin-top: 0;
+      padding: 9px 11px;
+      border-radius: 10px;
+      border: 1px solid rgba(97, 219, 191, 0.24);
+      background: rgba(4, 20, 17, 0.78);
+      color: #d5ffea;
+      font: inherit;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .tod-chat-toolbtn.active {
+      border-color: rgba(45, 255, 157, 0.48);
+      box-shadow: 0 0 12px rgba(45, 255, 157, 0.16);
+      color: #effff8;
+    }
+
+    .tod-chat-mini-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .tod-chat-mini-card {
+      border: 1px solid rgba(97, 219, 191, 0.16);
+      border-radius: 10px;
+      background: rgba(2, 12, 10, 0.75);
+      padding: 8px;
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+
+    .tod-chat-mini-card .k {
+      display: block;
+      font-size: 0.66rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .tod-chat-mini-card .v {
+      font-size: 0.78rem;
+      line-height: 1.4;
+      color: #ecfff6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .tod-chat-response {
+      border: 1px solid rgba(97, 219, 191, 0.22);
+      border-radius: 10px;
+      background: rgba(3, 15, 13, 0.86);
+      padding: 9px 10px;
+      margin-bottom: 8px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .tod-chat-response-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.66rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .tod-chat-response-body {
+      font-size: 0.82rem;
+      line-height: 1.5;
+      color: #ecfff6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     .operator-chat-latest {
       border: 1px solid rgba(97, 219, 191, 0.22);
       border-radius: 10px;
@@ -1580,6 +1718,86 @@
     }
 
     .operator-chat-latest-body {
+      font-size: 0.8rem;
+      line-height: 1.45;
+      color: #ecfff6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .operator-chat-contract-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .operator-chat-contract-row {
+      border: 1px solid rgba(97, 219, 191, 0.16);
+      border-radius: 10px;
+      background: rgba(2, 12, 10, 0.75);
+      padding: 8px;
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+
+    .operator-chat-contract-row.compact {
+      align-content: start;
+    }
+
+    .operator-chat-contract-row.span-3 {
+      grid-column: 1 / -1;
+    }
+
+    .operator-chat-contract-row .k {
+      display: block;
+      font-size: 0.66rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .operator-chat-contract-row .v {
+      font-size: 0.8rem;
+      line-height: 1.45;
+      color: #ecfff6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .operator-chat-contract-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .operator-chat-contract-row {
+      border: 1px solid rgba(97, 219, 191, 0.16);
+      border-radius: 10px;
+      background: rgba(2, 12, 10, 0.75);
+      padding: 8px;
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+
+    .operator-chat-contract-row.compact {
+      align-content: start;
+    }
+
+    .operator-chat-contract-row.span-3 {
+      grid-column: 1 / -1;
+    }
+
+    .operator-chat-contract-row .k {
+      display: block;
+      font-size: 0.66rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .operator-chat-contract-row .v {
       font-size: 0.8rem;
       line-height: 1.45;
       color: #ecfff6;
@@ -1639,6 +1857,42 @@
     .operator-chat-entry.user .operator-chat-bubble {
       background: linear-gradient(145deg, rgba(8, 34, 30, 0.9), rgba(4, 16, 14, 0.95));
       border-color: rgba(45, 255, 157, 0.3);
+    }
+
+    .operator-chat-entry.mim-state-blocked .operator-chat-bubble {
+      border-color: rgba(255, 98, 121, 0.4);
+      background: rgba(34, 9, 13, 0.82);
+    }
+
+    .operator-chat-entry.mim-state-deferred .operator-chat-bubble {
+      border-color: rgba(255, 205, 84, 0.34);
+      background: rgba(31, 24, 7, 0.82);
+    }
+
+    .operator-chat-entry.mim-state-done .operator-chat-bubble {
+      border-color: rgba(97, 219, 191, 0.3);
+    }
+
+    .operator-chat-entry.mim-state-doing .operator-chat-bubble {
+      border-color: rgba(96, 170, 255, 0.3);
+    }
+
+    .operator-chat-entry.mim-state-blocked .operator-chat-bubble {
+      border-color: rgba(255, 98, 121, 0.4);
+      background: rgba(34, 9, 13, 0.82);
+    }
+
+    .operator-chat-entry.mim-state-deferred .operator-chat-bubble {
+      border-color: rgba(255, 205, 84, 0.34);
+      background: rgba(31, 24, 7, 0.82);
+    }
+
+    .operator-chat-entry.mim-state-done .operator-chat-bubble {
+      border-color: rgba(97, 219, 191, 0.3);
+    }
+
+    .operator-chat-entry.mim-state-doing .operator-chat-bubble {
+      border-color: rgba(96, 170, 255, 0.3);
     }
 
     .operator-chat-summary {
@@ -1990,6 +2244,14 @@
         grid-template-columns: 1fr;
       }
 
+      .tod-chat-toolbar {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .tod-chat-mini-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
       .operator-chat-evidence-grid {
         grid-template-columns: 1fr;
       }
@@ -2070,6 +2332,18 @@
     }
 
     .share-links.flash-highlight {
+      border-color: var(--line-strong);
+      box-shadow: 0 0 0 1px rgba(45, 255, 157, 0.2), 0 0 18px rgba(45, 255, 157, 0.2);
+      animation: shareFlash 700ms ease-in-out 2 alternate;
+    }
+
+    .card.flash-highlight,
+    .probe-readout.flash-highlight,
+    .mim-indicator.flash-highlight,
+    .tod-indicator.flash-highlight,
+    .loop-indicator.flash-highlight,
+    .arm-indicator.flash-highlight,
+    .ui-build-chip.flash-highlight {
       border-color: var(--line-strong);
       box-shadow: 0 0 0 1px rgba(45, 255, 157, 0.2), 0 0 18px rgba(45, 255, 157, 0.2);
       animation: shareFlash 700ms ease-in-out 2 alternate;
@@ -2586,6 +2860,376 @@
     .arm-cmd-time { color: var(--muted); }
     .arm-cmd-endpoint { color: #a8f0ff; }
     .arm-cmd-detail { color: #d7ffe8; word-break: break-word; }
+
+    .console-tabs-shell {
+      padding: 12px 14px 0;
+      border-bottom: 1px solid rgba(102, 255, 188, 0.12);
+      background: linear-gradient(180deg, rgba(6, 16, 20, 0.88), rgba(5, 13, 16, 0.42));
+    }
+
+    .console-tabbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .console-tabbtn {
+      border: 1px solid var(--line);
+      background: rgba(4, 18, 16, 0.7);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 8px 13px;
+      font-size: 0.74rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+    }
+
+    .console-tabbtn:hover,
+    .console-tabbtn:focus-visible {
+      border-color: var(--line-strong);
+      color: var(--ink);
+      box-shadow: 0 0 12px rgba(45, 255, 157, 0.18);
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    .console-tabbtn.active {
+      color: #02110c;
+      background: linear-gradient(135deg, rgba(45, 255, 157, 0.96), rgba(144, 255, 217, 0.9));
+      border-color: rgba(144, 255, 217, 0.96);
+      box-shadow: 0 0 18px rgba(45, 255, 157, 0.25);
+    }
+
+    .console-tabpanel {
+      display: none;
+      padding-bottom: 14px;
+    }
+
+    .console-tabpanel.active {
+      display: block;
+    }
+
+    .tab-grid,
+    .system-grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 12px;
+      align-items: start;
+    }
+
+    .tab-grid > .card,
+    .system-grid > .card {
+      min-width: 0;
+    }
+
+    .tab-grid > .span-2,
+    .system-grid > .span-2 {
+      grid-column: span 6;
+    }
+
+    .tab-grid > .span-3,
+    .system-grid > .span-3,
+    .tab-grid > .query-console-card,
+    .system-grid > .query-console-card,
+    .tab-grid > .operator-chat-card,
+    .system-grid > .operator-chat-card,
+    .tab-grid > .action-workspace-card,
+    .system-grid > .action-workspace-card,
+    .tab-grid > .mim-arm-health-card,
+    .system-grid > .mim-arm-health-card,
+    .tab-grid > .mim-telemetry-card,
+    .system-grid > .mim-telemetry-card {
+      grid-column: 1 / -1;
+    }
+
+    .system-grid .card {
+      padding: 12px;
+    }
+
+    .system-alert-card {
+      grid-column: 1 / -1;
+      border-color: rgba(255, 92, 122, 0.45);
+      background: linear-gradient(135deg, rgba(46, 10, 18, 0.92), rgba(18, 9, 12, 0.94));
+    }
+
+    .system-alert-card.ok {
+      border-color: rgba(45, 255, 157, 0.35);
+      background: linear-gradient(135deg, rgba(8, 30, 20, 0.88), rgba(7, 14, 13, 0.94));
+    }
+
+    .system-alert-kicker {
+      color: #ffc4d1;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      margin-bottom: 5px;
+    }
+
+    .system-alert-card.ok .system-alert-kicker {
+      color: #bfffdc;
+    }
+
+    .system-alert-title {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      margin-bottom: 6px;
+    }
+
+    .system-alert-body {
+      color: #ffe3e9;
+      font-size: 0.84rem;
+      line-height: 1.45;
+    }
+
+    .system-alert-card.ok .system-alert-body {
+      color: #d7ffe8;
+    }
+
+    .system-health-card {
+      grid-column: span 4;
+    }
+
+    .system-state-card {
+      grid-column: span 4;
+    }
+
+    .system-actions-card {
+      grid-column: span 4;
+    }
+
+    .system-chat-card {
+      grid-column: 1 / -1;
+    }
+
+    .system-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .system-card-head h2,
+    .system-chat-card h2 {
+      margin: 0;
+      font-size: 0.86rem;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--neon);
+    }
+
+    .system-health-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .system-health-tile {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(1, 10, 11, 0.88);
+      min-height: 86px;
+    }
+
+    .system-health-label {
+      display: block;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-size: 0.68rem;
+      margin-bottom: 6px;
+    }
+
+    .system-health-value {
+      display: block;
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .system-health-detail {
+      display: block;
+      font-size: 0.76rem;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .system-status-stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    .system-status-row {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 10px;
+      background: rgba(1, 10, 11, 0.88);
+    }
+
+    .system-status-row .k {
+      display: block;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-size: 0.68rem;
+      margin-bottom: 4px;
+    }
+
+    .system-status-row .v {
+      display: block;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .system-quick-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .system-quick-btn {
+      width: 100%;
+      margin: 0;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: rgba(4, 18, 16, 0.72);
+      color: var(--ink);
+      padding: 10px 9px;
+      font-size: 0.73rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .system-quick-btn:hover,
+    .system-quick-btn:focus-visible {
+      border-color: var(--line-strong);
+      box-shadow: 0 0 12px rgba(45, 255, 157, 0.16);
+      outline: none;
+    }
+
+    .system-quick-result {
+      min-height: 52px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 10px;
+      background: rgba(1, 10, 11, 0.88);
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+
+    .system-chat-output {
+      min-height: 76px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(1, 10, 11, 0.9);
+      font-size: 0.84rem;
+      line-height: 1.45;
+      margin-bottom: 10px;
+      white-space: pre-wrap;
+    }
+
+    .system-chat-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+    }
+
+    .system-chat-input {
+      width: 100%;
+      margin: 0;
+      background: rgba(1, 10, 11, 0.9);
+    }
+
+    .system-chat-submit {
+      margin: 0;
+      width: auto;
+      padding: 10px 14px;
+      border-radius: 10px;
+    }
+
+    .system-chat-meta {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      line-height: 1.35;
+    }
+
+    .tab-panel-settings-host .settings-panel {
+      position: static;
+      width: 100%;
+      max-width: none;
+      transform: none;
+      opacity: 1;
+      pointer-events: auto;
+      box-shadow: none;
+      margin-top: 0;
+    }
+
+    .tab-panel-settings-host .settings-panel::before {
+      display: none;
+    }
+
+    #legacyConsoleGrid[hidden] {
+      display: none;
+    }
+
+    @media (max-width: 1080px) {
+      .tab-grid,
+      .system-grid {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+      }
+
+      .tab-grid > .span-2,
+      .system-health-card,
+      .system-state-card,
+      .system-actions-card {
+        grid-column: span 6;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .console-tabs-shell {
+        padding: 10px 10px 0;
+      }
+
+      .tab-grid,
+      .system-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .tab-grid > .span-2,
+      .tab-grid > .span-3,
+      .system-grid > .span-2,
+      .system-grid > .span-3 {
+        grid-column: 1 / -1;
+      }
+
+      .system-health-card,
+      .system-state-card,
+      .system-actions-card,
+      .system-chat-card {
+        grid-column: 1 / -1;
+      }
+
+      .system-health-grid,
+      .system-quick-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .system-chat-form {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -2731,9 +3375,115 @@
       </div>
     </header>
 
-    <section class="grid">
+    <section class="console-tabs-shell">
+      <div class="console-tabbar" role="tablist" aria-label="MIMTOD shared operator surface tabs">
+        <button id="tabBtnOverview" class="console-tabbtn active" type="button" role="tab" aria-selected="true" aria-controls="tabOverviewPanel" data-tab="overview">Overview</button>
+        <button id="tabBtnMim" class="console-tabbtn" type="button" role="tab" aria-selected="false" aria-controls="tabMimPanel" data-tab="mim">MIM</button>
+        <button id="tabBtnTod" class="console-tabbtn" type="button" role="tab" aria-selected="false" aria-controls="tabTodPanel" data-tab="tod">TOD</button>
+        <button id="tabBtnBridge" class="console-tabbtn" type="button" role="tab" aria-selected="false" aria-controls="tabBridgePanel" data-tab="bridge">Bridge</button>
+        <button id="tabBtnQueue" class="console-tabbtn" type="button" role="tab" aria-selected="false" aria-controls="tabQueuePanel" data-tab="queue">Queue / Tasks</button>
+        <button id="tabBtnRecovery" class="console-tabbtn" type="button" role="tab" aria-selected="false" aria-controls="tabRecoveryPanel" data-tab="recovery">Recovery</button>
+        <button id="tabBtnEvidence" class="console-tabbtn" type="button" role="tab" aria-selected="false" aria-controls="tabEvidencePanel" data-tab="evidence">Logs / Evidence</button>
+        <button id="tabBtnSettings" class="console-tabbtn" type="button" role="tab" aria-selected="false" aria-controls="tabSettingsPanel" data-tab="settings">Settings</button>
+      </div>
+
+      <section id="tabOverviewPanel" class="console-tabpanel active" role="tabpanel" aria-labelledby="tabBtnOverview">
+        <div class="system-grid">
+          <div id="systemAlertCard" class="card system-alert-card ok">
+            <div id="systemAlertKicker" class="system-alert-kicker">Alert Surface</div>
+            <div id="systemAlertTitle" class="system-alert-title">Loading operator alert posture...</div>
+            <div id="systemAlertBody" class="system-alert-body">Waiting for project status to populate the live operator summary.</div>
+          </div>
+
+          <div class="card system-health-card">
+            <div class="system-card-head">
+              <h2>Shared Liveness</h2>
+            </div>
+            <div class="system-health-grid">
+              <div class="system-health-tile"><span class="system-health-label">MIM</span><span id="systemHealthMimValue" class="system-health-value">-</span><span id="systemHealthMimDetail" class="system-health-detail">Waiting for transport telemetry.</span></div>
+              <div class="system-health-tile"><span class="system-health-label">TOD</span><span id="systemHealthTodValue" class="system-health-value">-</span><span id="systemHealthTodDetail" class="system-health-detail">Waiting for loop telemetry.</span></div>
+              <div class="system-health-tile"><span class="system-health-label">Bridge</span><span id="systemHealthBridgeValue" class="system-health-value">-</span><span id="systemHealthBridgeDetail" class="system-health-detail">Waiting for bridge status.</span></div>
+              <div class="system-health-tile"><span class="system-health-label">Execution</span><span id="systemHealthExecutionValue" class="system-health-value">-</span><span id="systemHealthExecutionDetail" class="system-health-detail">Waiting for task execution status.</span></div>
+            </div>
+          </div>
+
+          <div class="card system-state-card">
+            <div class="system-card-head">
+              <h2>Current Activity Truth</h2>
+            </div>
+            <div class="system-status-stack">
+              <div class="system-status-row"><span class="k">Active Objective</span><span id="systemObjectiveValue" class="v">Loading objective...</span></div>
+              <div class="system-status-row"><span class="k">Current Activity</span><span id="systemTaskValue" class="v">Loading task...</span></div>
+              <div class="system-status-row"><span class="k">Objective Sync</span><span id="systemObjectiveSyncValue" class="v">Loading objective sync...</span></div>
+              <div class="system-status-row"><span class="k">MIM Liveness</span><span id="systemMimLivenessValue" class="v">Loading MIM liveness...</span></div>
+              <div class="system-status-row"><span class="k">TOD Liveness</span><span id="systemTodLivenessValue" class="v">Loading TOD liveness...</span></div>
+              <div class="system-status-row"><span class="k">Training</span><span id="systemTrainingValue" class="v">Loading training status...</span></div>
+              <div class="system-status-row"><span class="k">Queue / Tasks</span><span id="systemQueueValue" class="v">Loading queue truth...</span></div>
+              <div class="system-status-row"><span class="k">Next Action</span><span id="systemNextActionValue" class="v">Loading next action...</span></div>
+              <div class="system-status-row"><span class="k">Recovery</span><span id="systemRecoveryValue" class="v">Loading recovery status...</span></div>
+            </div>
+          </div>
+
+          <div class="card system-actions-card">
+            <div class="system-card-head">
+              <h2>Bounded Recovery Controls</h2>
+            </div>
+            <div class="system-quick-actions">
+              <button id="quickUseTodOnlyBtn" class="system-quick-btn" type="button">Use TOD Only</button>
+              <button id="quickOpenMimDirectBtn" class="system-quick-btn" type="button">Open MIM Direct</button>
+              <button id="quickRestartMimBtn" class="system-quick-btn" type="button">Restart MIM</button>
+              <button id="quickRestartTodBtn" class="system-quick-btn" type="button">Restart TOD</button>
+              <button id="quickRefreshSyncBtn" class="system-quick-btn" type="button">Refresh Sync</button>
+              <button id="quickClearStuckBtn" class="system-quick-btn" type="button">Clear Stuck State</button>
+              <button id="quickHealthCheckBtn" class="system-quick-btn" type="button">Run Health Check</button>
+            </div>
+            <div id="systemQuickActionResult" class="system-quick-result">Bounded controls are ready. Choose one recovery or sync action to update the live shared state.</div>
+          </div>
+
+          <div class="card system-chat-card">
+            <h2>Overview Chat</h2>
+            <div id="systemTodChatOutput" class="system-chat-output">Ask TOD what is happening right now, what is blocked, or what comes next.</div>
+            <form id="systemTodChatForm" class="system-chat-form">
+              <input id="systemTodChatInput" class="system-chat-input" type="text" maxlength="240" placeholder="Ask TOD for status, blockers, or the next action.">
+              <button id="systemTodChatSubmit" class="btn-primary system-chat-submit" type="submit">Ask TOD</button>
+            </form>
+            <div id="systemTodChatMeta" class="system-chat-meta">Single-turn TOD operator chat. This surface keeps only one live answer visible.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tabMimPanel" class="console-tabpanel" role="tabpanel" aria-labelledby="tabBtnMim">
+        <div id="mimTabGrid" class="tab-grid"></div>
+      </section>
+
+      <section id="tabTodPanel" class="console-tabpanel" role="tabpanel" aria-labelledby="tabBtnTod">
+        <div id="todTabGrid" class="tab-grid"></div>
+      </section>
+
+      <section id="tabBridgePanel" class="console-tabpanel" role="tabpanel" aria-labelledby="tabBtnBridge">
+        <div id="bridgeTabGrid" class="tab-grid"></div>
+      </section>
+
+      <section id="tabQueuePanel" class="console-tabpanel" role="tabpanel" aria-labelledby="tabBtnQueue">
+        <div id="queueTabGrid" class="tab-grid"></div>
+      </section>
+
+      <section id="tabRecoveryPanel" class="console-tabpanel" role="tabpanel" aria-labelledby="tabBtnRecovery">
+        <div id="recoveryTabGrid" class="tab-grid"></div>
+      </section>
+
+      <section id="tabEvidencePanel" class="console-tabpanel" role="tabpanel" aria-labelledby="tabBtnEvidence">
+        <div id="evidenceTabGrid" class="tab-grid"></div>
+      </section>
+
+      <section id="tabSettingsPanel" class="console-tabpanel" role="tabpanel" aria-labelledby="tabBtnSettings">
+        <div id="settingsTabGrid" class="tab-grid tab-panel-settings-host"></div>
+      </section>
+    </section>
+
+    <section id="legacyConsoleGrid" class="grid" hidden aria-hidden="true">
       <div id="queryConsoleCard" class="card query-console-card">
-        <h2>TOD Query Console</h2>
+        <h2>Recovery Probes</h2>
         <div class="query-hint">Read-only snapshots. Free-form query is a future add-on.</div>
         <div class="query-console-layout">
           <div class="query-presets" aria-label="TOD query shortcuts">
@@ -2752,7 +3502,7 @@
       </div>
 
       <div id="projectMarkerCard" class="card span-2">
-        <h2>Current Project Marker</h2>
+        <h2>TOD Activity And Objective Progress</h2>
         <div class="project-wrap">
           <div id="progressRing" class="progress-ring">
             <div id="progressPct" class="progress-ring-inner">0%</div>
@@ -2792,7 +3542,7 @@
       </div>
 
       <div id="bridgeStatusCard" class="card span-3">
-        <h2>Bridge Status</h2>
+        <h2>Bridge Liveness</h2>
         <div id="bridgeStatusSummary" class="project-exec-summary">Loading bridge status...</div>
         <div class="summary-grid">
           <div class="summary-item"><span class="k">Bridge Health</span><span id="bridgeHealth" class="v">-</span></div>
@@ -2811,8 +3561,25 @@
         <div id="bridgeObjectiveDetail" class="project-meta">Objective sync detail unavailable.</div>
       </div>
 
+      <div id="communicationHealthCard" class="card span-3">
+        <h2>MIM Coordination Lane</h2>
+        <div id="communicationHealthSummary" class="project-exec-summary">Loading communication health...</div>
+        <div class="summary-grid">
+          <div class="summary-item"><span class="k">Overall</span><span id="communicationHealthOverall" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Transport</span><span id="communicationHealthTransport" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Coordination</span><span id="communicationHealthCoordination" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Dialog</span><span id="communicationHealthDialog" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Pending Age</span><span id="communicationHealthPendingAge" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Dialog Inquiries</span><span id="communicationHealthInquiryCount" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Pending Request</span><span id="communicationHealthRequest" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Dialog Session</span><span id="communicationHealthSession" class="v">-</span></div>
+        </div>
+        <div id="communicationHealthMeta" class="project-meta">Waiting for coordination and dialog telemetry.</div>
+        <div id="communicationHealthDetail" class="project-meta">Communication detail unavailable.</div>
+      </div>
+
       <div id="dialogStatusCard" class="card span-2">
-        <h2>TOD-MIM Dialog</h2>
+        <h2>Queue And Dialog Lane</h2>
         <div id="dialogSummary" class="project-exec-summary">Loading dialog sessions...</div>
         <div class="summary-grid">
           <div class="summary-item"><span class="k">Open</span><span id="dialogOpenCount" class="v">-</span></div>
@@ -2824,7 +3591,7 @@
       </div>
 
       <div id="maintenanceStatusCard" class="card span-3">
-        <h2>Maintenance Status</h2>
+        <h2>Recovery Watchdog</h2>
         <div id="maintenanceSummary" class="project-exec-summary">Loading self-health maintenance...</div>
         <div class="summary-grid">
           <div class="summary-item"><span class="k">Status</span><span id="maintenanceStatus" class="v">-</span></div>
@@ -2839,13 +3606,443 @@
         <div id="maintenanceMeta" class="project-meta">Waiting for maintenance report...</div>
       </div>
 
+      <div id="todConversationCard" class="card span-3 operator-chat-card">
+        <div class="operator-chat-head">
+          <div class="operator-chat-title-wrap">
+            <h2>TOD Execution Lane</h2>
+            <div class="operator-chat-subtitle">Talk to TOD directly for live execution context, current activity truth, blockers, and the bounded next step already being pursued.</div>
+          </div>
+          <div class="operator-chat-badge">TOD Direct</div>
+        </div>
+        <script>
+          (function () {
+            var TOD_HISTORY_KEY = 'todConversationHistoryV2';
+            var TOD_OPERATOR_KEY = 'todConversationOperatorName';
+            var TOD_TTS_KEY = 'todConversationTtsEnabled';
+
+            function getTodConversationEndpoint() {
+              try {
+                return new URL('/api/tod-conversation', window.location.origin).toString();
+              } catch (_e) {
+                return '/api/tod-conversation';
+              }
+            }
+
+            function parseTodConversationResponse(status, raw) {
+              var parsed;
+              try {
+                parsed = raw ? JSON.parse(raw) : {};
+              } catch (_e) {
+                parsed = { ok: false, error: raw || ('Request failed (' + status + ')') };
+              }
+              if (status < 200 || status >= 300 || !parsed.ok) {
+                throw new Error(parsed.error || ('TOD conversation request failed (' + status + ')'));
+              }
+              return parsed;
+            }
+
+            function loadTodConversationHistory() {
+              try {
+                var raw = window.localStorage.getItem(TOD_HISTORY_KEY);
+                var parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+              } catch (_e) {
+                return [];
+              }
+            }
+
+            function saveTodConversationHistory(entries) {
+              try {
+                window.localStorage.setItem(TOD_HISTORY_KEY, JSON.stringify(Array.isArray(entries) ? entries.slice(-24) : []));
+              } catch (_e) {
+              }
+            }
+
+            function loadTodOperatorName() {
+              try {
+                return String(window.localStorage.getItem(TOD_OPERATOR_KEY) || '').trim();
+              } catch (_e) {
+                return '';
+              }
+            }
+
+            function saveTodOperatorName(value) {
+              try {
+                window.localStorage.setItem(TOD_OPERATOR_KEY, String(value || '').trim());
+              } catch (_e) {
+              }
+            }
+
+            function loadTodTtsEnabled() {
+              try {
+                return String(window.localStorage.getItem(TOD_TTS_KEY) || 'off') === 'on';
+              } catch (_e) {
+                return false;
+              }
+            }
+
+            function saveTodTtsEnabled(enabled) {
+              try {
+                window.localStorage.setItem(TOD_TTS_KEY, enabled ? 'on' : 'off');
+              } catch (_e) {
+              }
+            }
+
+            function renderTodThread(entries) {
+              var thread = document.getElementById('todConversationThread');
+              if (!thread) {
+                return;
+              }
+              thread.innerHTML = '';
+              var list = Array.isArray(entries) && entries.length ? entries : [{ role: 'system', text: 'TOD direct conversation is ready. Ask what TOD is doing, what is blocked, or what action comes next.' }];
+              list.forEach(function (entry) {
+                var item = document.createElement('div');
+                var roleValue = String(entry && entry.role || 'system');
+                item.className = 'operator-chat-entry ' + (roleValue === 'user' ? 'user' : (roleValue === 'assistant' ? 'assistant' : 'system'));
+                var role = document.createElement('div');
+                role.className = 'operator-chat-role';
+                role.textContent = roleValue === 'user' ? 'You' : (roleValue === 'assistant' ? 'TOD' : 'TOD System');
+                var bubble = document.createElement('div');
+                bubble.className = 'operator-chat-bubble';
+                var summary = document.createElement('div');
+                summary.className = 'operator-chat-summary';
+                summary.textContent = String(entry && entry.text || '');
+                bubble.appendChild(summary);
+                item.appendChild(role);
+                item.appendChild(bubble);
+                thread.appendChild(item);
+              });
+              thread.scrollTop = thread.scrollHeight;
+            }
+
+            function speakTodReply(text) {
+              if (!loadTodTtsEnabled() || !('speechSynthesis' in window) || !text) {
+                return;
+              }
+              try {
+                window.speechSynthesis.cancel();
+                var utterance = new SpeechSynthesisUtterance(String(text));
+                utterance.rate = 1;
+                utterance.pitch = 1;
+                window.speechSynthesis.speak(utterance);
+              } catch (_e) {
+              }
+            }
+
+            function updateTodSummary(parsed) {
+              var operatorNameEl = document.getElementById('todConversationOperatorNameValue');
+              var objectiveEl = document.getElementById('todConversationObjectiveValue');
+              var activeTaskEl = document.getElementById('todConversationActiveTaskValue');
+              var nextActionEl = document.getElementById('todConversationNextActionValue');
+              var blockerEl = document.getElementById('todConversationBlockerValue');
+              var responseEl = document.getElementById('todConversationLatestSummary');
+              var memoryCountEl = document.getElementById('todConversationMemoryCountValue');
+              var latestSource = document.getElementById('todConversationLatestSource');
+
+              if (operatorNameEl) {
+                operatorNameEl.textContent = String(parsed.operator && parsed.operator.operator_name || parsed.current_work && parsed.current_work.operator_name || 'Operator');
+              }
+              if (objectiveEl) {
+                objectiveEl.textContent = String(parsed.initiative && parsed.initiative.objective_id || parsed.current_work && parsed.current_work.objective_id || '-');
+              }
+              if (activeTaskEl) {
+                activeTaskEl.textContent = String(parsed.initiative && parsed.initiative.active_task || parsed.current_work && parsed.current_work.active_task || 'No active task surfaced yet.');
+              }
+              if (nextActionEl) {
+                nextActionEl.textContent = String(parsed.initiative && parsed.initiative.next_action || parsed.current_work && parsed.current_work.next_action || 'No next action surfaced yet.');
+              }
+              if (blockerEl) {
+                blockerEl.textContent = String(parsed.initiative && parsed.initiative.blocker || parsed.current_work && parsed.current_work.blocker || 'No hard blocker surfaced.');
+              }
+              if (responseEl) {
+                responseEl.textContent = String(parsed.reply_text || 'No TOD direct reply yet.');
+              }
+              if (memoryCountEl) {
+                memoryCountEl.textContent = String(parsed.conversation_memory && parsed.conversation_memory.turn_count || parsed.operator && parsed.operator.turn_count || 0);
+              }
+              if (latestSource) {
+                latestSource.textContent = String(parsed.source || 'tod direct');
+              }
+            }
+
+            function requestTodConversation(payload) {
+              var endpoint = getTodConversationEndpoint();
+              var body = JSON.stringify(payload || {});
+
+              function requestViaXhr() {
+                return new Promise(function (resolve, reject) {
+                  var xhr = new XMLHttpRequest();
+                  xhr.open('POST', endpoint, true);
+                  xhr.setRequestHeader('Content-Type', 'application/json');
+                  xhr.setRequestHeader('Cache-Control', 'no-store, no-cache, max-age=0');
+                  xhr.setRequestHeader('Pragma', 'no-cache');
+                  xhr.timeout = 45000;
+                  xhr.onload = function () {
+                    try {
+                      resolve(parseTodConversationResponse(xhr.status || 0, xhr.responseText || ''));
+                    } catch (err) {
+                      reject(err);
+                    }
+                  };
+                  xhr.onerror = function () {
+                    reject(new Error('TOD conversation request could not reach the local UI server.'));
+                  };
+                  xhr.ontimeout = function () {
+                    reject(new Error('TOD conversation request timed out waiting for the local UI server.'));
+                  };
+                  xhr.send(body);
+                });
+              }
+
+              if (typeof window.fetch !== 'function') {
+                return requestViaXhr();
+              }
+
+              return window.fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Cache-Control': 'no-store, no-cache, max-age=0',
+                  'Pragma': 'no-cache'
+                },
+                cache: 'no-store',
+                credentials: 'same-origin',
+                body: body
+              }).then(function (res) {
+                return res.text().then(function (raw) {
+                  return parseTodConversationResponse(res.status || 0, raw);
+                });
+              }).catch(function (err) {
+                var message = err && err.message ? String(err.message) : '';
+                if (message && message !== 'Failed to fetch') {
+                  throw err;
+                }
+                return requestViaXhr();
+              });
+            }
+
+            function appendTodConversationEntry(text, roleLabel, isError) {
+              var thread = document.getElementById('todConversationThread');
+              var meta = document.getElementById('todConversationMeta');
+              if (meta) {
+                meta.textContent = isError ? String(text || 'TOD conversation error.') : 'TOD direct reply received.';
+                meta.classList.toggle('error', Boolean(isError));
+              }
+              if (!thread) {
+                return;
+              }
+              var entry = document.createElement('div');
+              entry.className = 'operator-chat-entry ' + (isError ? 'system' : 'assistant');
+              var role = document.createElement('div');
+              role.className = 'operator-chat-role';
+              role.textContent = roleLabel;
+              var bubble = document.createElement('div');
+              bubble.className = 'operator-chat-bubble';
+              var summary = document.createElement('div');
+              summary.className = 'operator-chat-summary';
+              summary.textContent = String(text || 'No response text.');
+              bubble.appendChild(summary);
+              entry.appendChild(role);
+              entry.appendChild(bubble);
+              thread.appendChild(entry);
+              thread.scrollTop = thread.scrollHeight;
+            }
+
+            function getTodSpeechRecognitionCtor() {
+              return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+            }
+
+            function syncTodTtsButton() {
+              var button = document.getElementById('todConversationTtsToggle');
+              if (!button) {
+                return;
+              }
+              var enabled = loadTodTtsEnabled();
+              button.classList.toggle('active', enabled);
+              button.textContent = enabled ? 'TTS On' : 'TTS Off';
+            }
+
+            function initializeTodConversationUi() {
+              var operatorEl = document.getElementById('todConversationOperatorName');
+              var micBtn = document.getElementById('todConversationMic');
+              var ttsBtn = document.getElementById('todConversationTtsToggle');
+              var clearBtn = document.getElementById('todConversationClear');
+              var operatorName = loadTodOperatorName();
+              if (operatorEl) {
+                operatorEl.value = operatorName;
+                operatorEl.addEventListener('change', function () {
+                  saveTodOperatorName(operatorEl.value || '');
+                });
+              }
+              syncTodTtsButton();
+              if (ttsBtn) {
+                ttsBtn.addEventListener('click', function () {
+                  var nextValue = !loadTodTtsEnabled();
+                  saveTodTtsEnabled(nextValue);
+                  syncTodTtsButton();
+                });
+              }
+              if (clearBtn) {
+                clearBtn.addEventListener('click', function () {
+                  saveTodConversationHistory([]);
+                  renderTodThread([]);
+                  updateTodSummary({});
+                });
+              }
+              if (micBtn) {
+                var SpeechRecognitionCtor = getTodSpeechRecognitionCtor();
+                if (!SpeechRecognitionCtor) {
+                  micBtn.disabled = true;
+                  micBtn.textContent = 'Mic N/A';
+                } else {
+                  micBtn.addEventListener('click', function () {
+                    var recognition = new SpeechRecognitionCtor();
+                    recognition.lang = 'en-US';
+                    recognition.interimResults = false;
+                    recognition.maxAlternatives = 1;
+                    micBtn.classList.add('active');
+                    recognition.onresult = function (event) {
+                      var inputEl = document.getElementById('todConversationInput');
+                      var transcript = event && event.results && event.results[0] && event.results[0][0] ? String(event.results[0][0].transcript || '') : '';
+                      if (inputEl && transcript) {
+                        inputEl.value = transcript;
+                      }
+                    };
+                    recognition.onend = function () {
+                      micBtn.classList.remove('active');
+                    };
+                    recognition.onerror = function () {
+                      micBtn.classList.remove('active');
+                    };
+                    recognition.start();
+                  });
+                }
+              }
+              renderTodThread(loadTodConversationHistory());
+              updateTodSummary({
+                operator: { operator_name: operatorName || 'Operator', turn_count: loadTodConversationHistory().length },
+                conversation_memory: { turn_count: loadTodConversationHistory().length }
+              });
+            }
+
+            window.handleTodConversationSubmit = function (evt) {
+              if (evt && typeof evt.preventDefault === 'function') {
+                evt.preventDefault();
+              }
+
+              var inputEl = document.getElementById('todConversationInput');
+              var submitBtn = document.getElementById('todConversationSubmit');
+              var operatorEl = document.getElementById('todConversationOperatorName');
+              var query = inputEl ? String(inputEl.value || '').trim() : '';
+              var operatorName = operatorEl ? String(operatorEl.value || '').trim() : '';
+              if (!query) {
+                appendTodConversationEntry('Enter a message for TOD first.', 'TOD Conversation Error', true);
+                return false;
+              }
+
+              if (operatorName) {
+                saveTodOperatorName(operatorName);
+              }
+
+              var history = loadTodConversationHistory();
+              history.push({ role: 'user', text: query, timestamp: new Date().toISOString() });
+              saveTodConversationHistory(history);
+              renderTodThread(history);
+
+              if (submitBtn) {
+                submitBtn.disabled = true;
+              }
+
+              requestTodConversation({
+                  query: query,
+                  objective_id: '',
+                  operator_name: operatorName,
+                  conversation_history_json: JSON.stringify(history.slice(-12)),
+                  window_minutes: 10
+                }).then(function (parsed) {
+                history.push({ role: 'assistant', text: String(parsed.reply_text || 'TOD replied without text.'), timestamp: new Date().toISOString() });
+                saveTodConversationHistory(history);
+                renderTodThread(history);
+                updateTodSummary(parsed);
+                speakTodReply(String(parsed.reply_text || ''));
+                if (inputEl) {
+                  inputEl.value = '';
+                }
+              }).catch(function (err) {
+                history.push({ role: 'system', text: err && err.message ? err.message : 'TOD conversation request failed.', timestamp: new Date().toISOString() });
+                saveTodConversationHistory(history);
+                renderTodThread(history);
+                appendTodConversationEntry(err && err.message ? err.message : 'TOD conversation request failed.', 'TOD Conversation Error', true);
+              }).finally(function () {
+                if (submitBtn) {
+                  submitBtn.disabled = false;
+                }
+              });
+
+              return false;
+            };
+
+            window.handleTodConversationPreset = function (buttonEl) {
+              var query = buttonEl && buttonEl.getAttribute ? String(buttonEl.getAttribute('data-query') || '') : '';
+              var inputEl = document.getElementById('todConversationInput');
+              if (inputEl) {
+                inputEl.value = query;
+              }
+              return window.handleTodConversationSubmit();
+            };
+
+            initializeTodConversationUi();
+          })();
+        </script>
+        <div class="operator-chat-preset-row">
+          <button class="operator-chat-preset" type="button" onclick="handleTodConversationPreset(this); return false;" data-query="Summarize your current work conversationally.">Current Work</button>
+          <button class="operator-chat-preset" type="button" onclick="handleTodConversationPreset(this); return false;" data-query="What active task are you executing right now and what is the next step?">Next Step</button>
+          <button class="operator-chat-preset" type="button" onclick="handleTodConversationPreset(this); return false;" data-query="You say you are in critical condition. What recovery plan are you already pursuing?">Unstuck Plan</button>
+          <button class="operator-chat-preset" type="button" onclick="handleTodConversationPreset(this); return false;" data-query="Turn this into an implementation request and give me bounded steps.">Implementation</button>
+        </div>
+        <div class="tod-chat-toolbar">
+          <input id="todConversationOperatorName" class="tod-chat-operator" type="text" maxlength="80" placeholder="Who is TOD talking to?">
+          <button id="todConversationMic" class="tod-chat-toolbtn" type="button">Mic</button>
+          <button id="todConversationTtsToggle" class="tod-chat-toolbtn" type="button">TTS Off</button>
+          <button id="todConversationClear" class="tod-chat-toolbtn" type="button">Clear</button>
+        </div>
+        <form id="todConversationForm" class="operator-chat-form" onsubmit="handleTodConversationSubmit(event); return false;">
+          <input id="todConversationInput" class="operator-chat-input" type="text" maxlength="280" placeholder="Talk to TOD directly. Example: what are you doing right now, what is blocked, and what comes next?">
+          <button id="todConversationSubmit" class="btn-primary operator-chat-submit" type="button" onclick="handleTodConversationSubmit(event); return false;">Talk To TOD</button>
+        </form>
+        <div id="todConversationMeta" class="operator-chat-meta">TOD direct conversation is live. Ask for current work, active task, blockers, and the next action already being pursued.</div>
+        <div class="tod-chat-mini-grid">
+          <div class="tod-chat-mini-card"><span class="k">Talking To</span><span id="todConversationOperatorNameValue" class="v">Operator</span></div>
+          <div class="tod-chat-mini-card"><span class="k">Objective</span><span id="todConversationObjectiveValue" class="v">-</span></div>
+          <div class="tod-chat-mini-card"><span class="k">Active Task</span><span id="todConversationActiveTaskValue" class="v">No active task surfaced yet.</span></div>
+          <div class="tod-chat-mini-card"><span class="k">Next Action</span><span id="todConversationNextActionValue" class="v">No next action surfaced yet.</span></div>
+          <div class="tod-chat-mini-card"><span class="k">Blocker</span><span id="todConversationBlockerValue" class="v">No hard blocker surfaced.</span></div>
+          <div class="tod-chat-mini-card"><span class="k">Memory Turns</span><span id="todConversationMemoryCountValue" class="v">0</span></div>
+        </div>
+        <div id="todConversationLatest" class="tod-chat-response">
+          <div class="tod-chat-response-head">
+            <span>Latest TOD Turn</span>
+            <span id="todConversationLatestSource" class="operator-chat-latest-source">waiting</span>
+          </div>
+          <div id="todConversationLatestSummary" class="tod-chat-response-body">No TOD direct reply yet.</div>
+        </div>
+        <div id="todConversationThread" class="operator-chat-thread">
+          <div class="operator-chat-entry system">
+            <div class="operator-chat-role">TOD System</div>
+            <div class="operator-chat-bubble">
+              <div class="operator-chat-summary">TOD direct conversation is now a first-class browser lane. Ask what TOD is executing, what is blocked, and what action comes next.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div id="operatorChatCard" class="card span-3 operator-chat-card">
         <div class="operator-chat-head">
           <div class="operator-chat-title-wrap">
-            <h2>TOD Operator Chat</h2>
-            <div class="operator-chat-subtitle">MIM-primary operational chat routed through TOD for live state, diagnostics, bridge posture, cadence, maintenance, and bounded confirmed actions. TOD falls back locally only if MIM is unavailable.</div>
+            <h2>MIM Operator Lane</h2>
+            <div class="operator-chat-subtitle">Human to MIM is the primary browser interaction path. TOD remains visible here as bounded execution, diagnostics, and coordination context only.</div>
           </div>
-          <div class="operator-chat-badge">Objective 86</div>
+          <div class="operator-chat-badge">MIM First</div>
         </div>
         <script>
           (function () {
@@ -2856,7 +4053,7 @@
               var latestSummary = document.getElementById('operatorChatLatestSummary');
               var latestSource = document.getElementById('operatorChatLatestSource');
               if (meta) {
-                meta.textContent = isError ? String(text || 'Operator chat error.') : 'Operator answer received via TOD fallback path.';
+                meta.textContent = isError ? String(text || 'MIM command error.') : 'MIM command reply received.';
                 if (isError) {
                   meta.classList.add('error');
                 } else {
@@ -2864,10 +4061,10 @@
                 }
               }
               if (latestSummary) {
-                latestSummary.textContent = String(text || (isError ? 'Operator chat error.' : 'No response text.'));
+                latestSummary.textContent = String(text || (isError ? 'MIM command error.' : 'No response text.'));
               }
               if (latestSource) {
-                latestSource.textContent = isError ? 'fallback error' : 'fallback path';
+                latestSource.textContent = isError ? 'mim unavailable' : 'mim direct';
               }
               if (latest) {
                 if (isError) {
@@ -2883,7 +4080,7 @@
               entry.className = 'operator-chat-entry ' + (isError ? 'system' : 'assistant');
               var role = document.createElement('div');
               role.className = 'operator-chat-role';
-              role.textContent = isError ? 'Operator Console Error' : 'TOD Fallback';
+              role.textContent = isError ? 'MIM Command Error' : 'MIM';
               var bubble = document.createElement('div');
               bubble.className = 'operator-chat-bubble';
               var summary = document.createElement('div');
@@ -2915,7 +4112,7 @@
               var submitBtn = document.getElementById('operatorChatSubmit');
               var query = inputEl ? String(inputEl.value || '').trim() : '';
               if (!query) {
-                appendFallbackChatEntry('Enter a question or use a guided prompt.', true);
+                appendFallbackChatEntry('Enter a message for MIM or use a guided prompt.', true);
                 return false;
               }
 
@@ -2930,7 +4127,7 @@
                 }
                 }, 30000);
 
-              fetch('/api/operator-chat', {
+              fetch('/api/mim-command', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 signal: fallbackController ? fallbackController.signal : undefined,
@@ -2950,11 +4147,11 @@
                     parsed = { ok: false, error: raw || ('Request failed (' + res.status + ')') };
                   }
                   if (!res.ok || !parsed.ok) {
-                    throw new Error(parsed.error || ('Operator chat request failed (' + res.status + ')'));
+                    throw new Error(parsed.error || ('MIM command request failed (' + res.status + ')'));
                   }
-                  var summary = parsed && parsed.response && parsed.response.summary
-                    ? String(parsed.response.summary)
-                    : 'Operator response returned without summary text.';
+                  var summary = parsed && parsed.result && parsed.result.contract && parsed.result.contract.summary
+                    ? String(parsed.result.contract.summary)
+                    : 'MIM response returned without summary text.';
                   appendFallbackChatEntry(summary, false);
                   if (inputEl) {
                     inputEl.value = '';
@@ -2962,8 +4159,8 @@
                 });
               }).catch(function (err) {
                 var fallbackMessage = (err && (err.name === 'AbortError' || /aborted|abort/i.test(String(err.message || ''))))
-                  ? 'Operator chat timed out after 30s. Retry, or use a guided preset (Recent Changes / Summarize Status) while the system is under load.'
-                  : (err && err.message ? err.message : 'Operator chat request failed.');
+                  ? 'MIM command timed out after 30s. Retry when MIM is available.'
+                  : (err && err.message ? err.message : 'MIM command request failed.');
                 appendFallbackChatEntry(fallbackMessage, true);
               }).finally(function () {
                 clearTimeout(fallbackTimeoutId);
@@ -2992,33 +4189,59 @@
           })();
         </script>
         <div class="operator-chat-preset-row">
-          <button class="operator-chat-preset" type="button" onclick="handleTodOperatorChatPreset(this); return false;" data-intent="summarize_status" data-query="Summarize dashboard state in operator language.">Summarize Status</button>
-          <button class="operator-chat-preset" type="button" onclick="handleTodOperatorChatPreset(this); return false;" data-intent="explain_warning" data-query="What is blocking progress right now?">Explain Warning</button>
-          <button class="operator-chat-preset" type="button" onclick="handleTodOperatorChatPreset(this); return false;" data-intent="explain_bridge_status" data-query="What is the current bridge mismatch?">Bridge Status</button>
-          <button class="operator-chat-preset" type="button" onclick="handleTodOperatorChatPreset(this); return false;" data-intent="explain_cadence" data-query="Why is cadence warning?">Cadence</button>
-          <button class="operator-chat-preset" type="button" onclick="handleTodOperatorChatPreset(this); return false;" data-intent="explain_maintenance" data-query="Why am I in healthy_with_fallback?">Maintenance</button>
-          <button class="operator-chat-preset" type="button" onclick="handleTodOperatorChatPreset(this); return false;" data-intent="suggest_next_action" data-query="What should I do next?">Next Action</button>
-          <button class="operator-chat-preset" type="button" onclick="handleTodOperatorChatPreset(this); return false;" data-intent="summarize_recent_changes" data-query="What changed in the last 10 minutes?">Recent Changes</button>
+          <button class="operator-chat-preset" type="button" onclick="handleTodOperatorChatPreset(this); return false;" data-intent="summarize_status" data-query="Summarize the current operating state for the human.">Status</button>
+          <button class="operator-chat-preset" type="button" onclick="handleTodOperatorChatPreset(this); return false;" data-intent="suggest_next_action" data-query="Choose the next bounded action and explain why.">Next Action</button>
+          <button class="operator-chat-preset" type="button" onclick="handleTodOperatorChatPreset(this); return false;" data-intent="explain_warning" data-query="What is blocked right now and why?">Blocked</button>
+          <button class="operator-chat-preset" type="button" onclick="handleTodOperatorChatPreset(this); return false;" data-intent="explain_bridge_status" data-query="Explain the current MIM to TOD coordination posture.">Coordination</button>
         </div>
         <form id="operatorChatForm" class="operator-chat-form" onsubmit="handleTodOperatorChatSubmit(event); return false;">
-          <input id="operatorChatInput" class="operator-chat-input" type="text" maxlength="240" placeholder="Ask operational questions like: why is cadence warning, summarize bridge mismatch, what is objective 83 doing right now">
-          <button id="operatorChatSubmit" class="btn-primary operator-chat-submit" type="button" onclick="handleTodOperatorChatSubmit(event); return false;">Ask MIM</button>
+          <input id="operatorChatInput" class="operator-chat-input" type="text" maxlength="240" placeholder="Talk to MIM directly. Example: summarize what is happening, choose the next bounded action, or explain what is blocked.">
+          <button id="operatorChatSubmit" class="btn-primary operator-chat-submit" type="button" onclick="handleTodOperatorChatSubmit(event); return false;">Send To MIM</button>
         </form>
-        <div id="operatorChatMeta" class="operator-chat-meta">Ask a constrained operational question. TOD sends it to MIM first and falls back locally only if MIM does not answer.</div>
+        <div id="operatorChatMeta" class="operator-chat-meta">Send a human request to MIM. This panel shows MIM's live session, bounded next action, execution state, and result or blocker.</div>
         <div id="operatorChatLatest" class="operator-chat-latest">
           <div class="operator-chat-latest-head">
-            <span>Latest MIM Response</span>
+            <span>Latest MIM Turn</span>
             <span id="operatorChatLatestSource" class="operator-chat-latest-source">waiting</span>
           </div>
-          <div id="operatorChatLatestSummary" class="operator-chat-latest-body">No response yet. Ask MIM to populate this panel.</div>
+          <div class="operator-chat-contract-grid">
+            <div class="operator-chat-contract-row compact">
+              <span class="k">Session</span>
+              <span id="operatorChatSessionId" class="v">-</span>
+            </div>
+            <div class="operator-chat-contract-row compact">
+              <span class="k">Request</span>
+              <span id="operatorChatRequestId" class="v">-</span>
+            </div>
+            <div class="operator-chat-contract-row compact">
+              <span class="k">State</span>
+              <span id="operatorChatExecutionState" class="v">-</span>
+            </div>
+            <div class="operator-chat-contract-row span-3">
+              <span class="k">Understanding</span>
+              <span id="operatorChatUnderstanding" class="v">No MIM understanding yet.</span>
+            </div>
+            <div class="operator-chat-contract-row span-3">
+              <span class="k">Next Action</span>
+              <span id="operatorChatNextAction" class="v">No bounded next action yet.</span>
+            </div>
+            <div class="operator-chat-contract-row span-3">
+              <span id="operatorChatOutcomeLabel" class="k">Result</span>
+              <span id="operatorChatOutcome" class="v">No result or blocker yet.</span>
+            </div>
+            <div class="operator-chat-contract-row span-3">
+              <span class="k">Summary</span>
+              <span id="operatorChatLatestSummary" class="v">No response yet. Ask MIM to populate this panel.</span>
+            </div>
+          </div>
         </div>
         <div class="operator-chat-legend">
-          <span class="operator-chat-tag notice" title="Dashboard is using listener telemetry fallback because full state.json is too large or unavailable.">listener fallback</span>
-          <span class="operator-chat-tag warning" title="Requested last-successful-completion baseline was unavailable, so operator chat used a bounded recent-time window.">baseline fallback</span>
-          <span class="operator-chat-legend-text">These tags describe evidence posture, not execution authority.</span>
+          <span class="operator-chat-tag notice" title="MIM owns the human-facing reply on this panel.">MIM authority</span>
+          <span class="operator-chat-tag" title="TOD remains visible as execution and diagnostic support.">TOD secondary</span>
+          <span class="operator-chat-legend-text">The browser shell stays TOD, but the main conversation path is MIM first.</span>
         </div>
         <div class="operator-chat-audit-head">
-          <div class="operator-chat-audit-title">Governed Action Audit</div>
+          <div class="operator-chat-audit-title">TOD Governed Action Audit</div>
           <button id="operatorChatAuditRefreshBtn" class="operator-chat-citation-btn" type="button">Refresh Audit</button>
         </div>
         <div class="operator-chat-audit-controls">
@@ -3045,24 +4268,24 @@
         <div id="operatorChatAuditMeta" class="operator-chat-meta">Loading governed action audit...</div>
         <div id="operatorChatAuditList" class="operator-chat-audit-list">
           <div class="operator-chat-audit-entry">
-            <div class="operator-chat-audit-summary">Governed action audit will appear here after the first preview or confirm event.</div>
+            <div class="operator-chat-audit-summary">TOD governed action audit remains available here as secondary operational context.</div>
           </div>
         </div>
         <div class="operator-chat-audit-head">
-          <div class="operator-chat-audit-title">Operator Commitment Loop</div>
+          <div class="operator-chat-audit-title">TOD Commitment Loop</div>
           <button id="operatorChatCommitmentRefreshBtn" class="operator-chat-citation-btn" type="button">Refresh Commitments</button>
         </div>
-        <div id="operatorChatCommitmentMeta" class="operator-chat-meta">Loading operator commitments...</div>
+        <div id="operatorChatCommitmentMeta" class="operator-chat-meta">Loading TOD commitments...</div>
         <div id="operatorChatCommitmentList" class="operator-chat-audit-list">
           <div class="operator-chat-audit-entry">
-            <div class="operator-chat-audit-summary">Operator commitments will appear here after the first committed proposal.</div>
+            <div class="operator-chat-audit-summary">TOD commitments will appear here after the first governed action is committed.</div>
           </div>
         </div>
         <div class="operator-chat-audit-head">
-          <div class="operator-chat-audit-title">Trust Chain Inspector</div>
+          <div class="operator-chat-audit-title">TOD Trust Chain Inspector</div>
           <button id="operatorChatTrustChainClearBtn" class="operator-chat-citation-btn" type="button">Clear Inspector</button>
         </div>
-        <div id="operatorChatTrustChainMeta" class="operator-chat-meta">Select an audit or commitment row to inspect audit, reasoning, and linked evidence together.</div>
+        <div id="operatorChatTrustChainMeta" class="operator-chat-meta">Select a TOD audit or commitment row to inspect reasoning and linked evidence together.</div>
         <div id="operatorChatTrustChainDetail" class="operator-chat-audit-list">
           <div class="operator-chat-audit-entry">
             <div class="operator-chat-audit-summary">Trust-chain inspection will appear here after you inspect a governed action or commitment row.</div>
@@ -3070,18 +4293,15 @@
         </div>
         <div id="operatorChatThread" class="operator-chat-thread">
           <div class="operator-chat-entry system">
-            <div class="operator-chat-role">Operator Console</div>
+            <div class="operator-chat-role">MIM Command Shell</div>
             <div class="operator-chat-bubble">
-              <div class="operator-chat-summary">This chat explains live TOD state, warnings, cadence, bridge posture, maintenance, and safe next actions. Governed actions require preview, confirmation, and audit; arbitrary commands are not allowed.</div>
+              <div class="operator-chat-summary">This panel sends the human message to MIM first and renders one bounded next action, one execution state, one result or blocker, and a fresh request id for each turn.</div>
               <div class="operator-chat-tags">
-                <span class="operator-chat-tag">summarize_status</span>
-                <span class="operator-chat-tag">explain_warning</span>
-                <span class="operator-chat-tag">explain_bridge_status</span>
-                <span class="operator-chat-tag">explain_cadence</span>
-                <span class="operator-chat-tag">explain_maintenance</span>
-                <span class="operator-chat-tag">suggest_next_action</span>
-                <span class="operator-chat-tag">summarize_current_objective</span>
-                <span class="operator-chat-tag">summarize_recent_changes</span>
+                <span class="operator-chat-tag">understanding</span>
+                <span class="operator-chat-tag">next action</span>
+                <span class="operator-chat-tag">doing | blocked | deferred | done</span>
+                <span class="operator-chat-tag">result or blocker</span>
+                <span class="operator-chat-tag">session continuity</span>
               </div>
             </div>
           </div>
@@ -3089,7 +4309,7 @@
       </div>
 
       <div id="actionWorkspaceCard" class="card span-3 action-workspace-card">
-        <h2>Action Workspace</h2>
+        <h2>Queue And Task Workspace</h2>
         <div id="actionWorkspace" class="split-workspace">
           <div id="actionPane" class="split-pane pane-left">
             <div class="pane-title">
@@ -3183,7 +4403,7 @@
       </div>
 
       <div id="sharedStateBusCard" class="card span-3">
-        <h2>Shared State Bus</h2>
+        <h2>Bridge And Shared State Bus</h2>
         <button id="loadBusBtn" class="btn-secondary">Refresh State Bus</button>
         <div id="busMeta" class="log-meta"></div>
         <div class="log-meta">Refresh reads a state snapshot only (no writes), but it can be heavy while tasks are actively executing.</div>
@@ -3246,8 +4466,8 @@
         <div id="busScoreHistory" class="bus-list">No scorecard samples recorded.</div>
       </div>
 
-      <div class="card span-3">
-        <h2>Engineering Loop</h2>
+      <div id="engineeringLoopCard" class="card span-3">
+        <h2>TOD Execution Loop</h2>
         <div class="log-meta">Shows engineering-cycle health, maturity, approval pressure, and top penalties affecting delivery speed.</div>
         <div class="summary-grid">
           <div class="summary-item"><span class="k">Current Run</span><span id="loopCurrentRun" class="v">-</span></div>
@@ -3392,6 +4612,50 @@
     const uiHelpBtnEl = document.getElementById('uiHelpBtn');
     const uiSettingsBtnEl = document.getElementById('uiSettingsBtn');
     const uiSettingsPanelEl = document.getElementById('uiSettingsPanel');
+    const legacyConsoleGridEl = document.getElementById('legacyConsoleGrid');
+    const consoleTabButtonEls = Array.from(document.querySelectorAll('.console-tabbtn'));
+    const consoleTabPanelEls = Array.from(document.querySelectorAll('.console-tabpanel'));
+    const mimTabGridEl = document.getElementById('mimTabGrid');
+    const todTabGridEl = document.getElementById('todTabGrid');
+    const bridgeTabGridEl = document.getElementById('bridgeTabGrid');
+    const queueTabGridEl = document.getElementById('queueTabGrid');
+    const recoveryTabGridEl = document.getElementById('recoveryTabGrid');
+    const evidenceTabGridEl = document.getElementById('evidenceTabGrid');
+    const settingsTabGridEl = document.getElementById('settingsTabGrid');
+    const systemAlertCardEl = document.getElementById('systemAlertCard');
+    const systemAlertKickerEl = document.getElementById('systemAlertKicker');
+    const systemAlertTitleEl = document.getElementById('systemAlertTitle');
+    const systemAlertBodyEl = document.getElementById('systemAlertBody');
+    const systemHealthMimValueEl = document.getElementById('systemHealthMimValue');
+    const systemHealthMimDetailEl = document.getElementById('systemHealthMimDetail');
+    const systemHealthTodValueEl = document.getElementById('systemHealthTodValue');
+    const systemHealthTodDetailEl = document.getElementById('systemHealthTodDetail');
+    const systemHealthBridgeValueEl = document.getElementById('systemHealthBridgeValue');
+    const systemHealthBridgeDetailEl = document.getElementById('systemHealthBridgeDetail');
+    const systemHealthExecutionValueEl = document.getElementById('systemHealthExecutionValue');
+    const systemHealthExecutionDetailEl = document.getElementById('systemHealthExecutionDetail');
+    const systemObjectiveValueEl = document.getElementById('systemObjectiveValue');
+    const systemTaskValueEl = document.getElementById('systemTaskValue');
+    const systemObjectiveSyncValueEl = document.getElementById('systemObjectiveSyncValue');
+    const systemMimLivenessValueEl = document.getElementById('systemMimLivenessValue');
+    const systemTodLivenessValueEl = document.getElementById('systemTodLivenessValue');
+    const systemTrainingValueEl = document.getElementById('systemTrainingValue');
+    const systemQueueValueEl = document.getElementById('systemQueueValue');
+    const systemNextActionValueEl = document.getElementById('systemNextActionValue');
+    const systemRecoveryValueEl = document.getElementById('systemRecoveryValue');
+    const quickRestartMimBtnEl = document.getElementById('quickRestartMimBtn');
+    const quickRestartTodBtnEl = document.getElementById('quickRestartTodBtn');
+    const quickRefreshSyncBtnEl = document.getElementById('quickRefreshSyncBtn');
+    const quickClearStuckBtnEl = document.getElementById('quickClearStuckBtn');
+    const quickHealthCheckBtnEl = document.getElementById('quickHealthCheckBtn');
+    const quickUseTodOnlyBtnEl = document.getElementById('quickUseTodOnlyBtn');
+    const quickOpenMimDirectBtnEl = document.getElementById('quickOpenMimDirectBtn');
+    const systemQuickActionResultEl = document.getElementById('systemQuickActionResult');
+    const systemTodChatFormEl = document.getElementById('systemTodChatForm');
+    const systemTodChatInputEl = document.getElementById('systemTodChatInput');
+    const systemTodChatSubmitEl = document.getElementById('systemTodChatSubmit');
+    const systemTodChatOutputEl = document.getElementById('systemTodChatOutput');
+    const systemTodChatMetaEl = document.getElementById('systemTodChatMeta');
     const settingsRefreshBtnEl = document.getElementById('settingsRefreshBtn');
     const settingsHelpBtnEl = document.getElementById('settingsHelpBtn');
     const settingsLogsToggleEl = document.getElementById('settingsLogsToggle');
@@ -3431,6 +4695,7 @@
     const busEngineerRunHistoryEl = document.getElementById('busEngineerRunHistory');
     const busScoreSparklineEl = document.getElementById('busScoreSparkline');
     const busScoreHistoryEl = document.getElementById('busScoreHistory');
+    const directMimUrl = 'https://mim.mimtod.com/mim';
     const postureAgentEl = document.getElementById('postureAgent');
     const postureAlertEl = document.getElementById('postureAlert');
     const postureGoalsEl = document.getElementById('postureGoals');
@@ -3485,6 +4750,17 @@
     const bridgeConsumerEl = document.getElementById('bridgeConsumer');
     const bridgePathEl = document.getElementById('bridgePath');
     const bridgeHeartbeatEl = document.getElementById('bridgeHeartbeat');
+    const communicationHealthSummaryEl = document.getElementById('communicationHealthSummary');
+    const communicationHealthOverallEl = document.getElementById('communicationHealthOverall');
+    const communicationHealthTransportEl = document.getElementById('communicationHealthTransport');
+    const communicationHealthCoordinationEl = document.getElementById('communicationHealthCoordination');
+    const communicationHealthDialogEl = document.getElementById('communicationHealthDialog');
+    const communicationHealthPendingAgeEl = document.getElementById('communicationHealthPendingAge');
+    const communicationHealthInquiryCountEl = document.getElementById('communicationHealthInquiryCount');
+    const communicationHealthRequestEl = document.getElementById('communicationHealthRequest');
+    const communicationHealthSessionEl = document.getElementById('communicationHealthSession');
+    const communicationHealthMetaEl = document.getElementById('communicationHealthMeta');
+    const communicationHealthDetailEl = document.getElementById('communicationHealthDetail');
     const dialogSummaryEl = document.getElementById('dialogSummary');
     const dialogOpenCountEl = document.getElementById('dialogOpenCount');
     const dialogTimedOutCountEl = document.getElementById('dialogTimedOutCount');
@@ -3508,6 +4784,13 @@
     const operatorChatLatestEl = document.getElementById('operatorChatLatest');
     const operatorChatLatestSummaryEl = document.getElementById('operatorChatLatestSummary');
     const operatorChatLatestSourceEl = document.getElementById('operatorChatLatestSource');
+    const operatorChatSessionIdEl = document.getElementById('operatorChatSessionId');
+    const operatorChatRequestIdEl = document.getElementById('operatorChatRequestId');
+    const operatorChatExecutionStateEl = document.getElementById('operatorChatExecutionState');
+    const operatorChatUnderstandingEl = document.getElementById('operatorChatUnderstanding');
+    const operatorChatNextActionEl = document.getElementById('operatorChatNextAction');
+    const operatorChatOutcomeLabelEl = document.getElementById('operatorChatOutcomeLabel');
+    const operatorChatOutcomeEl = document.getElementById('operatorChatOutcome');
     const operatorChatAuditMetaEl = document.getElementById('operatorChatAuditMeta');
     const operatorChatAuditListEl = document.getElementById('operatorChatAuditList');
     const operatorChatAuditRefreshBtnEl = document.getElementById('operatorChatAuditRefreshBtn');
@@ -3575,7 +4858,12 @@
     let projectAutoRefreshEnabled = true;
     let actionPaneState = 'expanded';
     let actionPaneStateBeforeCompact = 'expanded';
+    let activeConsoleTab = 'overview';
+    let tabbedSurfaceInitialized = false;
+    let systemQuickActionPending = false;
+    let systemTodChatPending = false;
     let lastKnownTaskState = 'idle';
+    let lastProjectStatusSnapshot = null;
     let operatorChatPending = false;
     let operatorChatActionPending = false;
     let operatorChatAuditPending = false;
@@ -3596,9 +4884,10 @@
       search: ''
     });
     let operatorChatAuditFilters = { ...OPERATOR_CHAT_AUDIT_DEFAULT_FILTERS };
-    const UI_BUILD_VERSION = '2026.03.24-b26';
+    const UI_BUILD_VERSION = '2026.04.13-conversation-b1';
     const OPERATOR_CHAT_VALIDATION_HARNESS = new URLSearchParams(window.location.search).get('validation_harness') || '';
     let operatorChatLastRequest = { query: '', intent: '', windowMinutes: 10 };
+    let operatorChatSessionId = '';
     const OPERATOR_CHAT_ACTION_REFRESH_PLAN = Object.freeze({
       'refresh-share-links': [() => loadShareArtifacts(), () => loadOperatorChatActionAudit()],
       'refresh-project-status': [() => loadProjectStatus(), () => loadOperatorChatActionAudit()],
@@ -3614,6 +4903,14 @@
       default: [() => loadProjectStatus(), () => loadOperatorChatActionAudit()]
     });
     const UI_CHANGELOG = [
+      {
+        version: '2026.04.13-conversation-b1',
+        notes: [
+          'Added a direct TOD Conversation panel so the browser can talk to TOD directly instead of only routing through MIM or bounded status summaries.',
+          'Added the TOD conversational reply engine and /api/tod-conversation route backed by the local-first conversation provider with bounded fallback.',
+          'TOD direct replies now classify implementation requests, report current communication skills, and expose bounded steps toward a more robust communication stack.'
+        ]
+      },
       {
         version: '2026.03.24-b26',
         notes: [
@@ -3818,7 +5115,7 @@
       }
 
       const severityRaw = cadenceHealth && cadenceHealth.available
-        ? String(cadenceHealth.severity || 'unknown').toLowerCase()
+        ? String((cadenceHealth.governance && cadenceHealth.governance.adjusted_severity) || cadenceHealth.severity || 'unknown').toLowerCase()
         : 'unknown';
       const severity = ['ok', 'warning', 'critical'].includes(severityRaw) ? severityRaw : 'unknown';
 
@@ -3832,7 +5129,7 @@
       cadenceHealthChipEl.textContent = `Cadence: ${severity.toUpperCase()} p95:${p95}`;
     }
 
-    function renderObjectiveDetailSurface(marker, progress) {
+    function renderObjectiveDetailSurface(marker, progress, trainingStatus = null) {
       const setValue = (el, value) => {
         if (el) {
           el.textContent = value;
@@ -3850,7 +5147,10 @@
       setValue(objectiveMarkerIdEl, String(marker.objective_id || '-'));
       setValue(objectiveMarkerStatusEl, String(marker.status || '-').toUpperCase());
       setValue(objectiveMarkerTitleEl, String(marker.title || '(untitled objective)'));
-      setValue(objectiveMarkerProgressSourceEl, String(progress && progress.source ? progress.source : '-'));
+      const progressSource = trainingStatus && trainingStatus.available && trainingStatus.active
+        ? `training:${String(trainingStatus.phase || trainingStatus.current_step || 'active')}`
+        : String(progress && progress.source ? progress.source : '-');
+      setValue(objectiveMarkerProgressSourceEl, progressSource);
     }
 
     function renderCadenceDetailSurface(cadenceHealth) {
@@ -3897,14 +5197,14 @@
       const statusRaw = steadyState && steadyState.available
         ? String(steadyState.status || 'unknown').toLowerCase()
         : 'unknown';
-      const status = ['ok', 'warning', 'critical'].includes(statusRaw) ? statusRaw : 'unknown';
+      const status = ['ok', 'warning', 'critical', 'idle', 'info'].includes(statusRaw) ? statusRaw : 'unknown';
       const passed = Number(steadyState && steadyState.passed);
       const total = Number(steadyState && steadyState.total);
       const score = Number.isFinite(passed) && Number.isFinite(total) && total > 0
         ? `${passed}/${total}`
         : '--';
 
-      steadyStateChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-unknown');
+      steadyStateChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-idle', 'health-info', 'health-unknown');
       steadyStateChipEl.classList.add(`health-${status}`);
       steadyStateChipEl.textContent = `Steady: ${status.toUpperCase()} ${score}`;
       steadyStateChipEl.title = steadyState && steadyState.summary ? String(steadyState.summary) : 'Steady-state signal unavailable';
@@ -3920,18 +5220,23 @@
       const total = Number(steadyState && steadyState.total);
       const failed = Number(steadyState && steadyState.failed);
       const hasScore = available && Number.isFinite(passed) && Number.isFinite(total) && total > 0;
+      const staleArchived = Boolean(steadyState && steadyState.regression_report_stale);
       const status = hasScore
-        ? (Number.isFinite(failed) && failed <= 0 ? 'ok' : 'critical')
+        ? (staleArchived
+          ? 'idle'
+          : (Number.isFinite(failed) && failed <= 0 ? 'ok' : ((Number.isFinite(failed) && failed >= total) ? 'critical' : 'warning')))
         : 'unknown';
 
-      regressionChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-unknown');
+      regressionChipEl.classList.remove('health-ok', 'health-warning', 'health-critical', 'health-idle', 'health-info', 'health-unknown');
       regressionChipEl.classList.add(`health-${status}`);
       regressionChipEl.textContent = hasScore ? `Regression: ${passed}/${total}` : 'Regression: --';
       const generatedAt = steadyState && steadyState.regression_generated_at
         ? formatRelativeAge(String(steadyState.regression_generated_at))
         : 'n/a';
       regressionChipEl.title = hasScore
-        ? `Failed: ${Number.isFinite(failed) ? failed : '-'} | generated ${generatedAt}`
+        ? (staleArchived
+          ? `Archived regression snapshot | Failed: ${Number.isFinite(failed) ? failed : '-'} | generated ${generatedAt}`
+          : `Failed: ${Number.isFinite(failed) ? failed : '-'} | generated ${generatedAt}`)
         : 'Regression score unavailable';
     }
 
@@ -4055,6 +5360,88 @@
       setValue(bridgeConsumerEl, `${consumerHost} / ${consumerService}`);
       setValue(bridgePathEl, `${sharedPath} @ ${pollSeconds}`);
       setValue(bridgeHeartbeatEl, `${heartbeatAge} (${freshnessState})`);
+    }
+
+    function renderCommunicationHealth(communicationHealth) {
+      if (!communicationHealthSummaryEl || !communicationHealthMetaEl || !communicationHealthDetailEl) {
+        return;
+      }
+
+      const setValue = (el, value) => {
+        if (el) {
+          el.textContent = value;
+        }
+      };
+
+      if (!communicationHealth || !communicationHealth.available) {
+        communicationHealthSummaryEl.textContent = 'Communication health unavailable.';
+        communicationHealthMetaEl.textContent = 'Waiting for bridge, coordination, and dialog telemetry.';
+        communicationHealthDetailEl.textContent = 'Communication detail unavailable.';
+        setValue(communicationHealthOverallEl, '-');
+        setValue(communicationHealthTransportEl, '-');
+        setValue(communicationHealthCoordinationEl, '-');
+        setValue(communicationHealthDialogEl, '-');
+        setValue(communicationHealthPendingAgeEl, '-');
+        setValue(communicationHealthInquiryCountEl, '-');
+        setValue(communicationHealthRequestEl, '-');
+        setValue(communicationHealthSessionEl, '-');
+        return;
+      }
+
+      const overall = String(communicationHealth.status || 'unknown').toUpperCase();
+      const transport = String(communicationHealth.transport_status || 'unknown').toUpperCase();
+      const coordination = String(communicationHealth.coordination_status || 'clear');
+      const emergency = String(communicationHealth.emergency_status || 'clear');
+      const dialog = String(communicationHealth.dialog_status || 'clear');
+      const pendingAge = Number.isFinite(Number(communicationHealth.pending_age_seconds)) && Number(communicationHealth.pending_age_seconds) >= 0
+        ? `${Math.round(Number(communicationHealth.pending_age_seconds))}s`
+        : 'clear';
+      const inquiryCount = Number.isFinite(Number(communicationHealth.dialog_inquiry_count))
+        ? String(Number(communicationHealth.dialog_inquiry_count))
+        : '0';
+      const pendingRequest = String(communicationHealth.pending_request_id || '-');
+      const dialogSession = String(communicationHealth.dialog_session_id || '-');
+      const coordinationDecision = String(communicationHealth.coordination_decision || '-');
+      const issueCode = String(communicationHealth.pending_issue_code || '-');
+      const emergencyRequest = String(communicationHealth.emergency_request_id || '-');
+      const emergencyIssue = String(communicationHealth.emergency_issue_code || '-');
+      const emergencyDecision = String(communicationHealth.emergency_ack_decision || communicationHealth.emergency_ack_status || '-');
+      const dialogMessageType = String(communicationHealth.dialog_message_type || '-');
+      const nextStepStatus = String(communicationHealth.next_step_status || 'clear');
+      const nextStepDecision = String(communicationHealth.next_step_continuation_decision || '-');
+      const nextStepRoute = String(communicationHealth.next_step_continuation_route || '-');
+      const nextStepSession = String(communicationHealth.next_step_session_id || '-');
+      const nextStepDialogStatus = String(communicationHealth.next_step_dialog_status || 'clear');
+      const nextStepAge = Number.isFinite(Number(communicationHealth.next_step_age_seconds)) && Number(communicationHealth.next_step_age_seconds) >= 0
+        ? `${Math.round(Number(communicationHealth.next_step_age_seconds))}s`
+        : 'n/a';
+      const nextStepAction = String(communicationHealth.next_step_recommended_action || '').trim();
+      const openDialogs = Number.isFinite(Number(communicationHealth.open_dialog_count)) ? Number(communicationHealth.open_dialog_count) : 0;
+      const staleOpenDialogs = Number.isFinite(Number(communicationHealth.stale_open_dialog_count)) ? Number(communicationHealth.stale_open_dialog_count) : 0;
+      const timedOutDialogs = Number.isFinite(Number(communicationHealth.timed_out_dialog_count)) ? Number(communicationHealth.timed_out_dialog_count) : 0;
+      const dialogUpdated = communicationHealth.dialog_updated_at ? formatTimestamp(String(communicationHealth.dialog_updated_at)) : 'n/a';
+      const inquiryAt = communicationHealth.last_dialog_inquiry_at ? formatTimestamp(String(communicationHealth.last_dialog_inquiry_at)) : 'n/a';
+      const reason = String(communicationHealth.coordination_reason || '').trim();
+      const emergencyReason = String(communicationHealth.emergency_ack_reason || communicationHealth.emergency_issue_summary || '').trim();
+      const dialogSummary = String(communicationHealth.dialog_summary || '').trim();
+      const detailParts = [];
+      if (reason) detailParts.push(`ACK reason: ${reason}`);
+      if (emergencyReason) detailParts.push(`Emergency: ${emergencyReason}`);
+      if (dialogSummary) detailParts.push(`Dialog: ${dialogSummary}`);
+      if (nextStepStatus !== 'clear') detailParts.push(`Next step: ${nextStepStatus}${nextStepAction ? ` (${nextStepAction})` : ''}`);
+      if (!detailParts.length && communicationHealth.summary) detailParts.push(String(communicationHealth.summary));
+
+      communicationHealthSummaryEl.textContent = String(communicationHealth.summary || 'Communication health available.');
+      communicationHealthMetaEl.textContent = `Open dialogs ${openDialogs} | Stale dialogs ${staleOpenDialogs} | Timed out ${timedOutDialogs} | Coordination decision ${coordinationDecision} | Emergency ${emergency}/${emergencyDecision} | Next step ${nextStepStatus}/${nextStepDecision} | Next-step route ${nextStepRoute} | Next-step session ${nextStepSession} | Next-step dialog ${nextStepDialogStatus} | Next-step age ${nextStepAge} | Emergency request ${emergencyRequest} | Emergency issue ${emergencyIssue} | Issue ${issueCode} | Dialog type ${dialogMessageType} | Last inquiry ${inquiryAt} | Dialog updated ${dialogUpdated}`;
+      communicationHealthDetailEl.textContent = detailParts.join(' | ');
+      setValue(communicationHealthOverallEl, overall);
+      setValue(communicationHealthTransportEl, transport);
+      setValue(communicationHealthCoordinationEl, `${coordination}${emergency !== 'clear' ? ` / ${emergency}` : ''}`);
+      setValue(communicationHealthDialogEl, dialog);
+      setValue(communicationHealthPendingAgeEl, pendingAge);
+      setValue(communicationHealthInquiryCountEl, inquiryCount);
+      setValue(communicationHealthRequestEl, pendingRequest);
+      setValue(communicationHealthSessionEl, dialogSession);
     }
 
     function renderMaintenanceStatus(maintenance) {
@@ -4208,6 +5595,9 @@
       if (!uiSettingsPanelEl || !uiSettingsBtnEl) {
         return;
       }
+      if (settingsTabGridEl && settingsTabGridEl.contains(uiSettingsPanelEl)) {
+        activateConsoleTab('settings');
+      }
       syncSettingsPanelState();
       uiSettingsPanelEl.classList.add('open');
       uiSettingsPanelEl.setAttribute('aria-hidden', 'false');
@@ -4217,6 +5607,13 @@
 
     function closeSettingsPanel() {
       if (!uiSettingsPanelEl || !uiSettingsBtnEl) {
+        return;
+      }
+      if (settingsTabGridEl && settingsTabGridEl.contains(uiSettingsPanelEl)) {
+        uiSettingsPanelEl.classList.add('open');
+        uiSettingsPanelEl.setAttribute('aria-hidden', 'false');
+        uiSettingsBtnEl.classList.add('active');
+        uiSettingsBtnEl.setAttribute('aria-expanded', 'true');
         return;
       }
       uiSettingsPanelEl.classList.remove('open');
@@ -4234,6 +5631,786 @@
         return;
       }
       openSettingsPanel();
+    }
+
+    function activateConsoleTab(tabName) {
+      const desired = String(tabName || 'overview').toLowerCase();
+      activeConsoleTab = desired;
+      consoleTabButtonEls.forEach((buttonEl) => {
+        const isActive = String(buttonEl.dataset.tab || '') === desired;
+        buttonEl.classList.toggle('active', isActive);
+        buttonEl.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      consoleTabPanelEls.forEach((panelEl) => {
+        const isActive = panelEl.id === `tab${desired.charAt(0).toUpperCase()}${desired.slice(1)}Panel`;
+        panelEl.classList.toggle('active', isActive);
+        panelEl.hidden = !isActive;
+      });
+
+      if (desired === 'settings' && uiSettingsPanelEl && uiSettingsBtnEl) {
+        syncSettingsPanelState();
+        uiSettingsPanelEl.classList.add('open');
+        uiSettingsPanelEl.setAttribute('aria-hidden', 'false');
+        uiSettingsBtnEl.classList.add('active');
+        uiSettingsBtnEl.setAttribute('aria-expanded', 'true');
+      } else if (uiSettingsBtnEl) {
+        uiSettingsBtnEl.classList.remove('active');
+        uiSettingsBtnEl.setAttribute('aria-expanded', 'false');
+      }
+    }
+
+    function appendCardToTab(cardId, targetGridEl) {
+      const cardEl = document.getElementById(cardId);
+      if (!cardEl || !targetGridEl || cardEl.parentElement === targetGridEl) {
+        return cardEl;
+      }
+      targetGridEl.appendChild(cardEl);
+      return cardEl;
+    }
+
+    function ensureTabUtilityCard(cardId, title, targetGridEl) {
+      if (!targetGridEl) {
+        return null;
+      }
+
+      let cardEl = document.getElementById(cardId);
+      if (!cardEl) {
+        cardEl = document.createElement('div');
+        cardEl.id = cardId;
+        cardEl.className = 'card span-3';
+        const titleEl = document.createElement('h2');
+        titleEl.textContent = title;
+        cardEl.appendChild(titleEl);
+      }
+      if (cardEl.parentElement !== targetGridEl) {
+        targetGridEl.appendChild(cardEl);
+      }
+      return cardEl;
+    }
+
+    function inferQuickActionFromText(text) {
+      const normalized = String(text || '').trim().toLowerCase();
+      if (!normalized) {
+        return '';
+      }
+      if (normalized.includes('restart mim')) {
+        return 'restart-mim';
+      }
+      if (normalized.includes('tod only') || normalized.includes('local decision') || normalized.includes('tod direct')) {
+        return 'use-tod-only';
+      }
+      if (normalized.includes('open mim') || normalized.includes('mim direct') || normalized.includes('direct mim')) {
+        return 'open-mim-direct';
+      }
+      if (normalized.includes('restart tod')) {
+        return 'restart-tod';
+      }
+      if (normalized.includes('health check')) {
+        return 'run-health-check';
+      }
+      if (normalized.includes('clear stuck')) {
+        return 'clear-stuck-state';
+      }
+      if (normalized.includes('refresh')) {
+        return 'refresh-sync';
+      }
+      return '';
+    }
+
+    function getQuickActionLabel(actionName) {
+      switch (String(actionName || '')) {
+        case 'use-tod-only':
+          return 'Use TOD Only';
+        case 'open-mim-direct':
+          return 'Open MIM Direct';
+        case 'restart-mim':
+          return 'Restart MIM';
+        case 'restart-tod':
+          return 'Restart TOD';
+        case 'refresh-sync':
+          return 'Refresh Sync';
+        case 'clear-stuck-state':
+          return 'Clear Stuck State';
+        case 'run-health-check':
+          return 'Run Health Check';
+        default:
+          return String(actionName || 'Unknown Action');
+      }
+    }
+
+    function ensureRecoveryActionBoardCard() {
+      const cardEl = ensureTabUtilityCard('recoveryActionBoardCard', 'Recovery Action Board', recoveryTabGridEl);
+      if (!cardEl || cardEl.dataset.initialized === 'true') {
+        return cardEl;
+      }
+
+      cardEl.innerHTML = `
+        <h2>Recovery Action Board</h2>
+        <div id="recoveryActionSummary" class="project-exec-summary">Loading shared recovery posture...</div>
+        <div class="summary-grid">
+          <div class="summary-item"><span class="k">Recovery</span><span id="recoveryActionRecoveryState" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Queue</span><span id="recoveryActionQueueState" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Primary Blocker</span><span id="recoveryActionBlocker" class="v">-</span></div>
+          <div class="summary-item"><span class="k">Bounded Next Step</span><span id="recoveryActionNextStep" class="v">-</span></div>
+        </div>
+        <div id="recoveryActionButtons" class="system-quick-actions"></div>
+        <div id="recoveryActionMeta" class="log-meta">Shared recovery truth will prioritize bounded actions here.</div>
+      `;
+      cardEl.dataset.initialized = 'true';
+      return cardEl;
+    }
+
+    function buildRecoveryActionPlan(shellState, communicationHealth, recoveryWatchdog, maintenance) {
+      const sharedOps = shellState && shellState.shared_ops ? shellState.shared_ops : null;
+      const queueTruth = sharedOps && sharedOps.queue ? sharedOps.queue : null;
+      const recoveryTruth = sharedOps && sharedOps.recovery ? sharedOps.recovery : null;
+      const sharedLiveness = sharedOps && sharedOps.liveness ? sharedOps.liveness : null;
+      const mimLiveness = sharedLiveness && sharedLiveness.mim ? sharedLiveness.mim : null;
+      const todLiveness = sharedLiveness && sharedLiveness.tod ? sharedLiveness.tod : null;
+      const shellAlignment = shellState && shellState.alignment ? shellState.alignment : null;
+      const blockers = Array.isArray(shellState && shellState.blockers) ? shellState.blockers : [];
+      const primaryBlocker = blockers.length ? blockers[0] : null;
+      const nextActionText = String(
+        shellState && shellState.next_action && shellState.next_action.value
+          || recoveryTruth && recoveryTruth.recommended_next_action
+          || queueTruth && queueTruth.recommended_next_action
+          || ''
+      ).trim();
+      const recoveryState = String(
+        recoveryTruth && recoveryTruth.staleness_state
+          || recoveryWatchdog && recoveryWatchdog.effective_state
+          || recoveryWatchdog && recoveryWatchdog.state
+          || 'unknown'
+      ).trim().toLowerCase();
+      const queueState = String(queueTruth && queueTruth.staleness_state || 'unknown').trim().toLowerCase();
+      const actionItems = [];
+      const seenActions = new Set();
+
+      function addAction(actionName, reason) {
+        const normalizedAction = String(actionName || '').trim();
+        if (!normalizedAction || seenActions.has(normalizedAction)) {
+          return;
+        }
+        seenActions.add(normalizedAction);
+        actionItems.push({
+          action: normalizedAction,
+          label: getQuickActionLabel(normalizedAction),
+          reason: String(reason || '').trim()
+        });
+      }
+
+      const inferredPrimaryAction = inferQuickActionFromText(nextActionText);
+      if (inferredPrimaryAction) {
+        addAction(inferredPrimaryAction, 'Primary bounded next step surfaced by the shared shell state.');
+      }
+      if (shellAlignment && (shellAlignment.objective_authority_mismatch || shellAlignment.divergence_detected)) {
+        addAction('use-tod-only', 'TOD authority and MIM are not on the same objective, so keep the decision local to TOD until coordination closes.');
+      }
+      if (queueState === 'stale' || queueState === 'frozen' || (shellState && shellState.next_action && shellState.next_action.waiting_on_mim)) {
+        addAction('refresh-sync', 'Queue truth is stale, frozen, or waiting on MIM; refresh the shared surfaces first.');
+      }
+      if ((shellState && shellState.next_action && shellState.next_action.waiting_on_mim) || (mimLiveness && ['frozen', 'stale', 'warning'].includes(String(mimLiveness.staleness_state || '').toLowerCase()))) {
+        addAction('use-tod-only', 'MIM is waiting or stale, so bypass the peer lane and ask TOD directly for the bounded next step.');
+      }
+      if (recoveryState === 'stale' || recoveryState === 'frozen' || (recoveryWatchdog && String(recoveryWatchdog.state || '').toLowerCase() !== 'healthy')) {
+        addAction('run-health-check', 'Recovery truth is not healthy; verify the bounded watchdog posture before escalating.');
+      }
+      if ((todLiveness && ['frozen', 'stale', 'warning'].includes(String(todLiveness.staleness_state || '').toLowerCase())) || (primaryBlocker && ['recovery_watchdog', 'steady_state'].includes(String(primaryBlocker.source || '').toLowerCase()))) {
+        addAction('open-mim-direct', 'TOD is the blocked side, so open the direct MIM surface instead of waiting on the local relay.');
+      }
+      if (primaryBlocker && ['communication_health', 'bridge_status'].includes(String(primaryBlocker.source || '').toLowerCase())) {
+        addAction('restart-mim', 'The primary blocker sits on the MIM or bridge lane, so restart MIM only if refresh does not clear it.');
+      }
+      if (primaryBlocker && ['recovery_watchdog', 'steady_state'].includes(String(primaryBlocker.source || '').toLowerCase())) {
+        addAction('clear-stuck-state', 'The primary blocker is local to TOD execution or watchdog state, so clear bounded residue before a runtime restart.');
+        addAction('restart-tod', 'Restart TOD only after a bounded cleanup or health-check pass still leaves recovery frozen.');
+      }
+      if (!actionItems.length) {
+        addAction('refresh-sync', 'No dominant blocker is surfaced; refresh the shared surfaces before taking a stronger action.');
+        addAction('run-health-check', 'Use a bounded health check if the refreshed view still looks suspicious.');
+      }
+
+      return {
+        summary: buildInlineSystemText([
+          buildOverviewLivenessText(recoveryTruth, ''),
+          buildOverviewLivenessText(queueTruth, ''),
+          primaryBlocker && primaryBlocker.summary
+        ], 'Recovery action board is waiting for shared truth.'),
+        meta: buildInlineSystemText([
+          nextActionText ? `Bounded next step: ${nextActionText}` : '',
+          actionItems[0] && actionItems[0].reason,
+          maintenance && maintenance.summary,
+          communicationHealth && communicationHealth.summary
+        ], 'Choose a bounded action only when the shared queue or recovery surface clearly justifies it.'),
+        recoveryState,
+        queueState,
+        blockerText: primaryBlocker
+          ? String(primaryBlocker.source || primaryBlocker.code || primaryBlocker.summary || 'Live blocker').replace(/_/g, ' ')
+          : 'none',
+        nextActionText: nextActionText || 'Observe and refresh if the surface becomes stale.',
+        actions: actionItems.slice(0, 3)
+      };
+    }
+
+    function renderRecoveryActionBoard(shellState, communicationHealth, recoveryWatchdog, maintenance) {
+      const cardEl = ensureRecoveryActionBoardCard();
+      if (!cardEl) {
+        return;
+      }
+
+      const plan = buildRecoveryActionPlan(shellState, communicationHealth, recoveryWatchdog, maintenance);
+      const summaryEl = document.getElementById('recoveryActionSummary');
+      const recoveryStateEl = document.getElementById('recoveryActionRecoveryState');
+      const queueStateEl = document.getElementById('recoveryActionQueueState');
+      const blockerEl = document.getElementById('recoveryActionBlocker');
+      const nextStepEl = document.getElementById('recoveryActionNextStep');
+      const buttonsEl = document.getElementById('recoveryActionButtons');
+      const metaEl = document.getElementById('recoveryActionMeta');
+
+      if (summaryEl) {
+        summaryEl.textContent = plan.summary;
+      }
+      if (recoveryStateEl) {
+        recoveryStateEl.textContent = String(plan.recoveryState || 'unknown').toUpperCase();
+      }
+      if (queueStateEl) {
+        queueStateEl.textContent = String(plan.queueState || 'unknown').toUpperCase();
+      }
+      if (blockerEl) {
+        blockerEl.textContent = String(plan.blockerText || 'none').toUpperCase();
+      }
+      if (nextStepEl) {
+        nextStepEl.textContent = plan.nextActionText;
+      }
+      if (metaEl) {
+        metaEl.textContent = plan.meta;
+      }
+      if (buttonsEl) {
+        buttonsEl.innerHTML = '';
+        plan.actions.forEach((item) => {
+          const buttonEl = document.createElement('button');
+          buttonEl.type = 'button';
+          buttonEl.className = 'system-quick-btn';
+          buttonEl.textContent = item.label;
+          buttonEl.title = item.reason || item.label;
+          buttonEl.addEventListener('click', () => runSystemQuickAction(item.action));
+          buttonsEl.appendChild(buttonEl);
+        });
+      }
+    }
+
+    function buildInlineSystemText(parts, fallbackText) {
+      const filtered = (Array.isArray(parts) ? parts : [])
+        .map(part => String(part || '').trim())
+        .filter(Boolean)
+        .filter(part => part !== '-' && part.toLowerCase() !== 'n/a');
+      return filtered.length ? filtered.join(' | ') : fallbackText;
+    }
+
+    function isMeaningfulSurfaceText(value, fallbackNeedle) {
+      const text = String(value || '').trim();
+      if (!text) {
+        return false;
+      }
+      return fallbackNeedle ? text.toLowerCase() !== String(fallbackNeedle).toLowerCase() : true;
+    }
+
+    function moveOperatorChatDiagnosticsDeck() {
+      const operatorChatCardEl = document.getElementById('operatorChatCard');
+      if (!operatorChatCardEl || !evidenceTabGridEl) {
+        return;
+      }
+
+      const diagnosticsCardEl = ensureTabUtilityCard('operatorChatDiagnosticsCard', 'Governed Operator Diagnostics', evidenceTabGridEl);
+      const sectionGroups = [
+        [operatorChatCardEl.querySelector('.operator-chat-audit-head'), operatorChatCardEl.querySelector('.operator-chat-audit-controls'), operatorChatAuditMetaEl, operatorChatAuditListEl],
+        [operatorChatCardEl.querySelectorAll('.operator-chat-audit-head')[1], operatorChatCommitmentMetaEl, operatorChatCommitmentListEl],
+        [operatorChatCardEl.querySelectorAll('.operator-chat-audit-head')[2], operatorChatTrustChainMetaEl, operatorChatTrustChainDetailEl]
+      ];
+
+      sectionGroups.forEach((group) => {
+        group.filter(Boolean).forEach((node) => {
+          if (node.parentElement !== diagnosticsCardEl) {
+            diagnosticsCardEl.appendChild(node);
+          }
+        });
+      });
+    }
+
+    function moveOperatorChatHistoryDeck() {
+      if (!operatorChatThreadEl || !evidenceTabGridEl) {
+        return;
+      }
+
+      const historyCardEl = ensureTabUtilityCard('operatorChatHistoryCard', 'MIM Command History', evidenceTabGridEl);
+      if (!historyCardEl.dataset.summaryInjected) {
+        const summaryEl = document.createElement('div');
+        summaryEl.className = 'log-meta';
+        summaryEl.textContent = 'MIM-first dialog history stays here so Control remains focused on the current bounded turn.';
+        historyCardEl.appendChild(summaryEl);
+        historyCardEl.dataset.summaryInjected = 'true';
+      }
+      if (operatorChatThreadEl.parentElement !== historyCardEl) {
+        historyCardEl.appendChild(operatorChatThreadEl);
+      }
+    }
+
+    function initializeTabbedSurface() {
+      if (tabbedSurfaceInitialized) {
+        return;
+      }
+
+      appendCardToTab('operatorChatCard', mimTabGridEl);
+      appendCardToTab('communicationHealthCard', mimTabGridEl);
+      appendCardToTab('mimArmHealthCard', mimTabGridEl);
+      appendCardToTab('mimTelemetryCard', mimTabGridEl);
+
+      appendCardToTab('projectMarkerCard', todTabGridEl);
+      appendCardToTab('todConversationCard', todTabGridEl);
+      appendCardToTab('engineeringLoopCard', todTabGridEl);
+
+      appendCardToTab('bridgeStatusCard', bridgeTabGridEl);
+      appendCardToTab('sharedStateBusCard', bridgeTabGridEl);
+
+      appendCardToTab('actionWorkspaceCard', queueTabGridEl);
+      appendCardToTab('dialogStatusCard', queueTabGridEl);
+
+      ensureRecoveryActionBoardCard();
+      appendCardToTab('maintenanceStatusCard', recoveryTabGridEl);
+      appendCardToTab('queryConsoleCard', recoveryTabGridEl);
+
+      moveOperatorChatDiagnosticsDeck();
+      moveOperatorChatHistoryDeck();
+
+      if (uiSettingsPanelEl) {
+        const settingsCardEl = ensureTabUtilityCard('operatorSettingsCard', 'Operator Settings', settingsTabGridEl);
+        if (uiSettingsPanelEl.parentElement !== settingsCardEl) {
+          settingsCardEl.appendChild(uiSettingsPanelEl);
+        }
+        uiSettingsPanelEl.classList.add('open');
+        uiSettingsPanelEl.setAttribute('aria-hidden', 'false');
+      }
+
+      if (legacyConsoleGridEl) {
+        legacyConsoleGridEl.hidden = true;
+        legacyConsoleGridEl.setAttribute('aria-hidden', 'true');
+      }
+
+      consoleTabButtonEls.forEach((buttonEl) => {
+        buttonEl.addEventListener('click', () => activateConsoleTab(buttonEl.dataset.tab || 'overview'));
+      });
+
+      tabbedSurfaceInitialized = true;
+      activateConsoleTab(activeConsoleTab || 'overview');
+    }
+
+    function renderSystemTile(valueEl, detailEl, value, detail, fallbackValue, fallbackDetail) {
+      if (valueEl) {
+        valueEl.textContent = String(value || fallbackValue || '-');
+      }
+      if (detailEl) {
+        detailEl.textContent = String(detail || fallbackDetail || 'Waiting for data.');
+      }
+    }
+
+    function buildOverviewLivenessText(snapshot, fallbackText) {
+      if (!snapshot) {
+        return fallbackText;
+      }
+
+      const pieces = [];
+      const state = String(snapshot.staleness_state || snapshot.status || '').trim();
+      if (state) {
+        pieces.push(state.toUpperCase());
+      }
+      if (Number.isFinite(Number(snapshot.last_heartbeat_age_seconds)) && Number(snapshot.last_heartbeat_age_seconds) >= 0) {
+        pieces.push(`heartbeat ${formatRelativeAge(snapshot.last_heartbeat_at || '')}`);
+      }
+      if (Number.isFinite(Number(snapshot.last_task_progress_age_seconds)) && Number(snapshot.last_task_progress_age_seconds) >= 0) {
+        pieces.push(`progress ${formatRelativeAge(snapshot.last_task_progress_at || '')}`);
+      }
+      if (snapshot.freeze_reason) {
+        pieces.push(String(snapshot.freeze_reason));
+      }
+      if (snapshot.recommended_next_action) {
+        pieces.push(`next ${String(snapshot.recommended_next_action)}`);
+      }
+      return pieces.length ? pieces.join(' | ') : fallbackText;
+    }
+
+    function renderSystemSurface(shellState, marker, progress, listenerActivity, recoveryWatchdog, steadyState, bridgeStatus, communicationHealth, maintenance, cadenceHealth, trainingStatus = null) {
+      const shellObjective = shellState && shellState.objective ? shellState.objective : null;
+      const shellTask = shellState && shellState.task ? shellState.task : null;
+      const shellNextAction = shellState && shellState.next_action ? shellState.next_action : null;
+      const shellHealth = shellState && shellState.health ? shellState.health : null;
+      const shellHealthComponents = shellHealth && shellHealth.components ? shellHealth.components : null;
+      const shellAlignment = shellState && shellState.alignment ? shellState.alignment : null;
+      const shellBlockers = shellState && Array.isArray(shellState.blockers) ? shellState.blockers : [];
+      const sharedOps = shellState && shellState.shared_ops ? shellState.shared_ops : null;
+      const sharedLiveness = sharedOps && sharedOps.liveness ? sharedOps.liveness : null;
+      const mimLiveness = sharedLiveness && sharedLiveness.mim ? sharedLiveness.mim : null;
+      const todLiveness = sharedLiveness && sharedLiveness.tod ? sharedLiveness.tod : null;
+      const bridgeLiveness = sharedLiveness && sharedLiveness.bridge ? sharedLiveness.bridge : null;
+      const queueLiveness = sharedOps && sharedOps.queue ? sharedOps.queue : null;
+      const recoveryLiveness = sharedOps && sharedOps.recovery ? sharedOps.recovery : null;
+      const markerStatus = String(marker && marker.status || '').trim();
+      const bridgeStatusValue = String(bridgeStatus && bridgeStatus.status || '').trim();
+      const communicationStatus = String(communicationHealth && communicationHealth.status || '').trim();
+      const watchdogState = String(recoveryWatchdog && recoveryWatchdog.state || '').trim();
+      const steadyStateStatus = String(steadyState && steadyState.status || '').trim();
+      const executionStatus = String(listenerActivity && (listenerActivity.latest_execution_status || listenerActivity.result_status) || '').trim();
+      const currentTaskId = String(shellTask && shellTask.id || bridgeStatus && bridgeStatus.current_task_id || listenerActivity && listenerActivity.latest_request_id || '').trim();
+      const objectiveId = String(shellObjective && shellObjective.id || marker && marker.objective_id || bridgeStatus && bridgeStatus.canonical_mim_objective_id || bridgeStatus && bridgeStatus.task_request_objective_id || selectedObjectiveId || '-').trim() || '-';
+      const objectiveTitle = String(shellObjective && shellObjective.title || marker && marker.title || '').trim();
+      const objectiveText = buildInlineSystemText([
+        objectiveId,
+        objectiveTitle,
+        String(shellObjective && shellObjective.status || markerStatus || '').trim() ? String(shellObjective && shellObjective.status || markerStatus || '').trim().toUpperCase() : ''
+      ], 'No live objective surfaced yet.');
+      const objectiveSyncText = buildInlineSystemText([
+        shellAlignment && shellAlignment.status ? String(shellAlignment.status).toUpperCase() : '',
+        shellAlignment && shellAlignment.authority_objective_id ? `TOD ${String(shellAlignment.authority_objective_id)}` : '',
+        shellAlignment && shellAlignment.integration_mim_objective_id ? `MIM ${String(shellAlignment.integration_mim_objective_id)}` : '',
+        shellAlignment && shellAlignment.live_task_publication_objective_id ? `publication ${String(shellAlignment.live_task_publication_objective_id)}` : '',
+        shellAlignment && shellAlignment.summary
+      ], 'Objective sync unavailable.');
+      const nextActionText = buildInlineSystemText([
+        shellNextAction && shellNextAction.value,
+        communicationHealth && communicationHealth.next_step_recommended_action,
+        isMeaningfulSurfaceText(document.getElementById('todConversationNextActionValue') && document.getElementById('todConversationNextActionValue').textContent, 'No next action surfaced yet.')
+          ? document.getElementById('todConversationNextActionValue').textContent
+          : '',
+        maintenance && maintenance.recommendation
+      ], 'No bounded next action surfaced yet.');
+
+      const blockerText = buildInlineSystemText([
+        ...shellBlockers.map((item) => String(item && item.summary || item && item.code || '').trim()).filter(Boolean),
+        communicationHealth && communicationHealth.pending_issue_code && communicationHealth.pending_issue_code !== '-' ? `Issue ${communicationHealth.pending_issue_code}` : '',
+        communicationHealth && communicationHealth.summary,
+        recoveryWatchdog && recoveryWatchdog.last_issue,
+        steadyState && steadyState.status && String(steadyState.status).toLowerCase() !== 'ok' ? steadyState.summary : '',
+        isMeaningfulSurfaceText(document.getElementById('todConversationBlockerValue') && document.getElementById('todConversationBlockerValue').textContent, 'No hard blocker surfaced.')
+          ? document.getElementById('todConversationBlockerValue').textContent
+          : ''
+      ], 'No hard blocker surfaced.');
+
+      let alertKicker = 'Stable Surface';
+      let alertTitle = 'System is readable at a glance.';
+      let alertBody = buildInlineSystemText([
+        bridgeStatus && bridgeStatus.summary,
+        maintenance && maintenance.summary,
+        `Progress ${Math.max(0, Math.min(100, Number(progress && progress.percent) || 0))}%`
+      ], 'Live status is available and no urgent recovery item is surfaced.');
+      let alertIsOk = true;
+
+      if (trainingStatus && trainingStatus.available && trainingStatus.active) {
+        alertKicker = 'Training Active';
+        alertTitle = `${String(trainingStatus.state_label || 'TRAINING ACTIVE')} - ${Math.max(0, Math.min(100, Number(trainingStatus.percent_complete) || 0))}% complete.`;
+        alertBody = buildInlineSystemText([
+          trainingStatus.phase_detail || trainingStatus.summary,
+          trainingStatus.runtime_seconds >= 0 ? `runtime ${formatDurationCompact(trainingStatus.runtime_seconds)}` : '',
+          Number.isFinite(Number(trainingStatus.eta_seconds)) ? `eta ${formatDurationCompact(Number(trainingStatus.eta_seconds))}` : '',
+          trainingStatus.latest_error ? `error ${trainingStatus.latest_error}` : '',
+          trainingStatus.latest_resolution ? `resolution ${trainingStatus.latest_resolution}` : ''
+        ], 'Live training status is active.');
+      } else if (shellAlignment && (shellAlignment.divergence_detected || String(shellAlignment.status || '').toLowerCase() === 'diverged')) {
+        alertKicker = 'Objective Divergence';
+        alertTitle = 'TOD and MIM are not aligned on the live objective.';
+        alertBody = buildInlineSystemText([
+          shellAlignment.summary,
+          shellAlignment.canonical_mim_objective_id ? `canonical ${shellAlignment.canonical_mim_objective_id}` : '',
+          shellAlignment.live_task_publication_objective_id ? `live publication ${shellAlignment.live_task_publication_objective_id}` : '',
+          nextActionText
+        ], 'Bridge objective mismatch requires coordination.');
+        alertIsOk = false;
+      } else if (bridgeStatus && bridgeStatus.objective_mismatch) {
+        alertKicker = 'Objective Divergence';
+        alertTitle = 'Canonical and live bridge objectives are misaligned.';
+        alertBody = buildInlineSystemText([
+          bridgeStatus.objective_mismatch_detail,
+          communicationHealth && communicationHealth.summary,
+          nextActionText
+        ], 'Bridge objective mismatch requires coordination.');
+        alertIsOk = false;
+      } else if (communicationStatus && !['ok', 'clear', 'healthy'].includes(communicationStatus.toLowerCase())) {
+        alertKicker = 'Coordination Alert';
+        alertTitle = `Communication posture is ${communicationStatus.toUpperCase()}.`;
+        alertBody = buildInlineSystemText([
+          communicationHealth && communicationHealth.summary,
+          communicationHealth && communicationHealth.coordination_reason,
+          communicationHealth && communicationHealth.next_step_recommended_action
+        ], 'Communication telemetry raised an operator-visible issue.');
+        alertIsOk = false;
+      } else if (watchdogState && watchdogState.toLowerCase() !== 'healthy') {
+        alertKicker = 'Recovery Watchdog';
+        alertTitle = `Watchdog state: ${watchdogState.toUpperCase()}.`;
+        alertBody = buildInlineSystemText([
+          recoveryWatchdog && recoveryWatchdog.last_issue,
+          recoveryWatchdog && recoveryWatchdog.progress_classification,
+          recoveryWatchdog && Number.isFinite(Number(recoveryWatchdog.heartbeat_age_seconds)) ? `Heartbeat age ${Math.round(Number(recoveryWatchdog.heartbeat_age_seconds))}s` : ''
+        ], 'Recovery watchdog is tracking a live issue.');
+        alertIsOk = false;
+      } else if (steadyStateStatus && ['critical', 'warning'].includes(steadyStateStatus.toLowerCase())) {
+        alertKicker = 'Steady-State Signal';
+        alertTitle = `Steady-state posture is ${steadyStateStatus.toUpperCase()}.`;
+        alertBody = buildInlineSystemText([
+          steadyState && steadyState.summary,
+          nextActionText
+        ], 'Steady-state validation needs attention.');
+        alertIsOk = false;
+      }
+
+      if (systemAlertCardEl) {
+        systemAlertCardEl.classList.toggle('ok', alertIsOk);
+      }
+      if (systemAlertKickerEl) {
+        systemAlertKickerEl.textContent = alertKicker;
+      }
+      if (systemAlertTitleEl) {
+        systemAlertTitleEl.textContent = alertTitle;
+      }
+      if (systemAlertBodyEl) {
+        systemAlertBodyEl.textContent = alertBody;
+      }
+
+      renderSystemTile(
+        systemHealthMimValueEl,
+        systemHealthMimDetailEl,
+        String(shellHealthComponents && shellHealthComponents.mim && shellHealthComponents.mim.status || communicationHealth && communicationHealth.transport_status || communicationStatus || 'unknown').toUpperCase(),
+        buildInlineSystemText([
+          mimLiveness && mimLiveness.staleness_state ? `liveness ${String(mimLiveness.staleness_state).toUpperCase()}` : '',
+          shellHealthComponents && shellHealthComponents.mim && shellHealthComponents.mim.summary,
+          communicationHealth && communicationHealth.summary,
+          communicationHealth && communicationHealth.pending_request_id ? `pending ${communicationHealth.pending_request_id}` : '',
+          communicationHealth && Number.isFinite(Number(communicationHealth.open_dialog_count)) ? `${Number(communicationHealth.open_dialog_count)} open dialogs` : ''
+        ], 'Waiting for transport telemetry.'),
+        '-',
+        'Waiting for transport telemetry.'
+      );
+      renderSystemTile(
+        systemHealthTodValueEl,
+        systemHealthTodDetailEl,
+        String(shellHealthComponents && shellHealthComponents.tod && shellHealthComponents.tod.status || cadenceHealth && cadenceHealth.severity || maintenance && maintenance.overall_status || markerStatus || 'unknown').toUpperCase(),
+        buildInlineSystemText([
+          todLiveness && todLiveness.staleness_state ? `liveness ${String(todLiveness.staleness_state).toUpperCase()}` : '',
+          shellHealthComponents && shellHealthComponents.tod && shellHealthComponents.tod.summary,
+          maintenance && maintenance.summary,
+          cadenceHealth && cadenceHealth.available && cadenceHealth.cadence && Number.isFinite(Number(cadenceHealth.cadence.p95_sec)) ? `p95 ${Number(cadenceHealth.cadence.p95_sec)}s` : '',
+          listenerActivity && listenerActivity.latest_timestamp ? `updated ${formatRelativeAge(String(listenerActivity.latest_timestamp))}` : ''
+        ], 'Waiting for loop telemetry.'),
+        '-',
+        'Waiting for loop telemetry.'
+      );
+      renderSystemTile(
+        systemHealthBridgeValueEl,
+        systemHealthBridgeDetailEl,
+        String(shellHealthComponents && shellHealthComponents.bridge && shellHealthComponents.bridge.status || bridgeStatusValue || 'unknown').toUpperCase(),
+        buildInlineSystemText([
+          bridgeLiveness && bridgeLiveness.staleness_state ? `liveness ${String(bridgeLiveness.staleness_state).toUpperCase()}` : '',
+          shellHealthComponents && shellHealthComponents.bridge && shellHealthComponents.bridge.summary,
+          bridgeStatus && bridgeStatus.summary,
+          currentTaskId ? `task ${currentTaskId}` : '',
+          bridgeStatus && bridgeStatus.listener_freshness_state ? `listener ${bridgeStatus.listener_freshness_state}` : ''
+        ], 'Waiting for bridge status.'),
+        '-',
+        'Waiting for bridge status.'
+      );
+      renderSystemTile(
+        systemHealthExecutionValueEl,
+        systemHealthExecutionDetailEl,
+        String(shellHealthComponents && shellHealthComponents.execution && shellHealthComponents.execution.status || executionStatus || recoveryWatchdog && recoveryWatchdog.task_state || 'unknown').toUpperCase(),
+        buildInlineSystemText([
+          shellHealthComponents && shellHealthComponents.execution && shellHealthComponents.execution.summary,
+          projectStatus && projectStatus.autonomous_training && projectStatus.autonomous_training.summary,
+          currentTaskId ? `task ${currentTaskId}` : '',
+          listenerActivity && listenerActivity.latest_timestamp ? `updated ${formatRelativeAge(String(listenerActivity.latest_timestamp))}` : '',
+          recoveryWatchdog && recoveryWatchdog.progress_classification
+        ], 'Waiting for task execution status.'),
+        '-',
+        'Waiting for task execution status.'
+      );
+
+      if (systemObjectiveValueEl) {
+        systemObjectiveValueEl.textContent = objectiveText;
+      }
+      if (systemTaskValueEl) {
+        systemTaskValueEl.textContent = buildInlineSystemText([
+          currentTaskId ? `task ${currentTaskId}` : '',
+          shellTask && shellTask.status ? `status ${String(shellTask.status).toUpperCase()}` : '',
+          listenerActivity && listenerActivity.latest_execution_status ? `execution ${String(listenerActivity.latest_execution_status).toUpperCase()}` : '',
+          bridgeStatus && bridgeStatus.current_correlation_id ? `corr ${String(bridgeStatus.current_correlation_id)}` : ''
+        ], 'No live task surfaced yet.');
+      }
+      if (systemObjectiveSyncValueEl) {
+        systemObjectiveSyncValueEl.textContent = objectiveSyncText;
+      }
+      if (systemMimLivenessValueEl) {
+        systemMimLivenessValueEl.textContent = buildOverviewLivenessText(mimLiveness, 'MIM liveness unavailable.');
+      }
+      if (systemTodLivenessValueEl) {
+        systemTodLivenessValueEl.textContent = buildOverviewLivenessText(todLiveness, 'TOD liveness unavailable.');
+      }
+      if (systemTrainingValueEl) {
+        const training = projectStatus && projectStatus.autonomous_training ? projectStatus.autonomous_training : null;
+        if (training && training.available) {
+          const trainingPhase = String(training.phase || training.status || 'unknown').replace(/_/g, ' ');
+          const trainingSummary = String(training.summary || '').trim();
+          systemTrainingValueEl.textContent = trainingSummary
+            ? `${trainingPhase.toUpperCase()} - ${trainingSummary}`
+            : trainingPhase.toUpperCase();
+        } else {
+          systemTrainingValueEl.textContent = 'Autonomous campaign status unavailable.';
+        }
+      }
+      if (systemQueueValueEl) {
+        systemQueueValueEl.textContent = buildOverviewLivenessText(queueLiveness, 'Queue truth unavailable.');
+      }
+      if (systemNextActionValueEl) {
+        systemNextActionValueEl.textContent = nextActionText;
+      }
+      if (systemRecoveryValueEl) {
+        systemRecoveryValueEl.textContent = buildInlineSystemText([
+          buildOverviewLivenessText(recoveryLiveness, ''),
+          blockerText
+        ], 'Recovery status unavailable.');
+      }
+      renderRecoveryActionBoard(shellState, communicationHealth, recoveryWatchdog, maintenance);
+    }
+
+    function setSystemQuickActionResult(message, isError = false) {
+      if (!systemQuickActionResultEl) {
+        return;
+      }
+      systemQuickActionResultEl.textContent = String(message || '');
+      systemQuickActionResultEl.style.borderColor = isError ? 'rgba(255, 92, 122, 0.55)' : 'var(--line)';
+      systemQuickActionResultEl.style.color = isError ? '#ffc4d1' : 'var(--muted)';
+    }
+
+    async function runSystemQuickAction(actionName) {
+      if (systemQuickActionPending) {
+        return;
+      }
+
+      const action = String(actionName || '').trim().toLowerCase();
+      if (!action) {
+        return;
+      }
+
+      systemQuickActionPending = true;
+      const buttons = [quickUseTodOnlyBtnEl, quickOpenMimDirectBtnEl, quickRestartMimBtnEl, quickRestartTodBtnEl, quickRefreshSyncBtnEl, quickClearStuckBtnEl, quickHealthCheckBtnEl].filter(Boolean);
+      buttons.forEach((buttonEl) => { buttonEl.disabled = true; });
+      setSystemQuickActionResult(`Running ${action.replace(/-/g, ' ')}...`);
+
+      try {
+        if (action === 'use-tod-only') {
+          const query = 'TOD-only status. Ignore the peer lane for now, use the local authoritative objective, and tell me the next bounded step plus current blockers.';
+          activateConsoleTab('overview');
+          if (systemTodChatInputEl) {
+            systemTodChatInputEl.value = query;
+          }
+          await runSystemTodChat(query);
+          setSystemQuickActionResult('TOD-only lane engaged. Review the Overview chat reply for the bounded local next step.');
+        } else if (action === 'open-mim-direct') {
+          const openedWindow = window.open(directMimUrl, '_blank', 'noopener');
+          if (!openedWindow) {
+            throw new Error(`Direct MIM surface blocked by the browser. Open ${directMimUrl} manually.`);
+          }
+          setSystemQuickActionResult(`Opened the direct MIM surface at ${directMimUrl}. Use that lane only as a bounded bypass while TOD is impaired.`);
+        } else if (action === 'restart-mim') {
+          activateConsoleTab('mim');
+          await runOperatorChatQuery({
+            query: 'Restart MIM, restore the bridge if needed, and report the recovery status.',
+            intent: '',
+            windowMinutes: 10,
+            echoUser: true
+          });
+          setSystemQuickActionResult('Restart MIM request sent through the MIM-first control lane. Review the Control tab for the live bounded turn.');
+        } else if (action === 'refresh-sync') {
+          await Promise.all([loadProjectStatus(), loadShareArtifacts(), loadDialogSessions(), loadOperatorChatCommitments()]);
+          setSystemQuickActionResult('Sync surfaces refreshed from the latest project, share-artifact, and dialog snapshots.');
+        } else {
+          const { res, data } = await fetchJsonSafe('/api/quick-action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action })
+          });
+          if (!res.ok || !data.ok) {
+            throw new Error(data && data.error ? data.error : `Quick action failed (${res.status})`);
+          }
+          await Promise.all([loadProjectStatus(), loadShareArtifacts()]);
+          setSystemQuickActionResult(String(data.summary || `${action} completed.`));
+        }
+      } catch (err) {
+        setSystemQuickActionResult(err && err.message ? err.message : 'Quick action failed.', true);
+      } finally {
+        buttons.forEach((buttonEl) => { buttonEl.disabled = false; });
+        systemQuickActionPending = false;
+      }
+    }
+
+    async function runSystemTodChat(queryText) {
+      const query = String(queryText || '').trim();
+      if (!query) {
+        if (systemTodChatOutputEl) {
+          systemTodChatOutputEl.textContent = 'Enter a TOD question first.';
+        }
+        return;
+      }
+      if (systemTodChatPending) {
+        return;
+      }
+
+      systemTodChatPending = true;
+      if (systemTodChatSubmitEl) {
+        systemTodChatSubmitEl.disabled = true;
+      }
+      if (systemTodChatOutputEl) {
+        systemTodChatOutputEl.textContent = 'Waiting for TOD reply...';
+      }
+      if (systemTodChatMetaEl) {
+        systemTodChatMetaEl.textContent = 'Single-turn TOD operator chat. Fetching a fresh bounded reply.';
+      }
+
+      try {
+        const { res, data } = await fetchJsonSafe('/api/tod-conversation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query,
+            objective_id: selectedObjectiveId || '',
+            operator_name: '',
+            conversation_history_json: '[]',
+            window_minutes: 10
+          })
+        });
+
+        if (!res.ok || !data.ok) {
+          throw new Error(data && data.error ? data.error : `TOD conversation request failed (${res.status})`);
+        }
+
+        if (systemTodChatOutputEl) {
+          systemTodChatOutputEl.textContent = String(data.reply_text || 'TOD replied without text.');
+        }
+        if (systemTodChatMetaEl) {
+          const objectiveText = data && data.current_objective ? `Objective ${data.current_objective}` : 'No explicit objective reported';
+          systemTodChatMetaEl.textContent = `${objectiveText} | reply updated ${new Date().toLocaleTimeString()}`;
+        }
+        if (systemTodChatInputEl) {
+          systemTodChatInputEl.value = '';
+        }
+      } catch (err) {
+        if (systemTodChatOutputEl) {
+          systemTodChatOutputEl.textContent = err && err.message ? err.message : 'TOD conversation request failed.';
+        }
+        if (systemTodChatMetaEl) {
+          systemTodChatMetaEl.textContent = 'Single-turn TOD operator chat failed. Retry when TOD is reachable.';
+        }
+      } finally {
+        if (systemTodChatSubmitEl) {
+          systemTodChatSubmitEl.disabled = false;
+        }
+        systemTodChatPending = false;
+      }
     }
 
     function setLogsAutoRefreshPreference(enabled, persist = true) {
@@ -4726,6 +6903,18 @@
       return `${Math.round(ageSec / 60)}m ago`;
     }
 
+    function formatDurationCompact(totalSeconds) {
+      const value = Number(totalSeconds);
+      if (!Number.isFinite(value) || value < 0) return 'n/a';
+      const rounded = Math.max(0, Math.round(value));
+      const hours = Math.floor(rounded / 3600);
+      const minutes = Math.floor((rounded % 3600) / 60);
+      const seconds = rounded % 60;
+      if (hours > 0) return `${hours}h ${minutes}m`;
+      if (minutes > 0) return `${minutes}m ${seconds}s`;
+      return `${seconds}s`;
+    }
+
     function computeLiveThroughput(listenerActivity, objectiveId) {
       const entries = listenerActivity && Array.isArray(listenerActivity.recent_entries)
         ? listenerActivity.recent_entries
@@ -4825,24 +7014,32 @@
         return marker;
       }
 
+      const canonicalObjective = bridgeStatus && bridgeStatus.canonical_mim_objective_id
+        ? String(bridgeStatus.canonical_mim_objective_id)
+        : '';
       const bridgeObjective = bridgeStatus && bridgeStatus.task_request_objective_id
         ? String(bridgeStatus.task_request_objective_id)
         : '';
+      const objectiveMismatch = Boolean(bridgeStatus && bridgeStatus.objective_mismatch);
       const selectedObjective = selectedObjectiveId ? String(selectedObjectiveId) : '';
       const taskObjective = parseRequestTaskInfo(listenerActivity && listenerActivity.latest_request_id);
       const taskObjectiveId = taskObjective && taskObjective.objective
         ? `objective-${taskObjective.objective}`
         : '';
-      const fallbackObjectiveId = bridgeObjective || selectedObjective || taskObjectiveId;
+      const fallbackObjectiveId = canonicalObjective || selectedObjective || bridgeObjective || taskObjectiveId;
 
       if (!fallbackObjectiveId) {
         return null;
       }
 
+      const title = objectiveMismatch && canonicalObjective && bridgeObjective && canonicalObjective !== bridgeObjective
+        ? `Canonical MIM Objective ${fallbackObjectiveId}`
+        : `Listener Objective ${fallbackObjectiveId}`;
+
       return {
         objective_id: fallbackObjectiveId,
         remote_objective_id: fallbackObjectiveId,
-        title: `Listener Objective ${fallbackObjectiveId}`,
+        title,
         status: listenerActivity && listenerActivity.latest_execution_status
           ? String(listenerActivity.latest_execution_status)
           : 'listener',
@@ -5098,8 +7295,24 @@
       };
     }
 
-    function renderExecutiveSummary(marker, progress, listenerActivity, recoveryWatchdog, syncStatus = null, steadyState = null) {
+    function renderExecutiveSummary(marker, progress, listenerActivity, recoveryWatchdog, syncStatus = null, steadyState = null, bridgeStatus = null, communicationHealth = null, trainingStatus = null) {
       if (!todExecutiveSummaryEl) {
+        return;
+      }
+
+      if (trainingStatus && trainingStatus.available && trainingStatus.active) {
+        const percent = Math.max(0, Math.min(100, Number(trainingStatus.percent_complete) || 0));
+        const runtimeText = formatDurationCompact(trainingStatus.runtime_seconds);
+        const etaText = Number.isFinite(Number(trainingStatus.eta_seconds))
+          ? `ETA ${formatDurationCompact(Number(trainingStatus.eta_seconds))}.`
+          : 'ETA is stabilizing.';
+        const issueText = trainingStatus.latest_error
+          ? `Latest error: ${String(trainingStatus.latest_error)}.`
+          : 'No live training error is currently surfaced.';
+        const resolutionText = trainingStatus.latest_resolution
+          ? `Latest resolution: ${String(trainingStatus.latest_resolution)}.`
+          : '';
+        todExecutiveSummaryEl.textContent = `TOD is training now. ${String(trainingStatus.phase_detail || trainingStatus.summary || trainingStatus.phase || 'Training stage active.')} Progress is ${percent}% across ${Number(trainingStatus.completed_steps) || 0}/${Number(trainingStatus.total_steps) || 0} stages with runtime ${runtimeText}. ${etaText} ${issueText} ${resolutionText}`.trim();
         return;
       }
 
@@ -5150,6 +7363,11 @@
       const watchdogState = String(recoveryWatchdog && recoveryWatchdog.state || 'unknown').toLowerCase();
       const steadyStateStatus = String(steadyState && steadyState.status || 'unknown').toLowerCase();
       const steadyStateSummary = String(steadyState && steadyState.summary || '').trim();
+      const watchdogIssue = String(recoveryWatchdog && recoveryWatchdog.last_issue || '').toLowerCase();
+      const emergencyStatus = String(communicationHealth && communicationHealth.emergency_status || '').toLowerCase();
+      const canonicalObjectiveId = String(bridgeStatus && bridgeStatus.canonical_mim_objective_id || '').trim();
+      const liveTaskObjectiveId = String(bridgeStatus && bridgeStatus.task_request_objective_id || '').trim();
+      const publicationDivergence = Boolean((bridgeStatus && bridgeStatus.objective_mismatch) || watchdogIssue === 'publication_surface_divergence' || String(communicationHealth && communicationHealth.pending_issue_code || '').toLowerCase() === 'publication_surface_divergence');
       const healthText = resultStatus === 'failed'
         ? 'Reliability attention is required because the latest execution failed.'
         : ((steadyStateStatus === 'critical' || steadyStateStatus === 'warning') && steadyStateSummary
@@ -5160,6 +7378,17 @@
       const purpose = title && title !== '(untitled objective)'
         ? `Project purpose: ${title}.`
         : 'Project purpose text is not populated for this objective yet.';
+
+      if (publicationDivergence && canonicalObjectiveId) {
+        const liveObjectiveText = liveTaskObjectiveId || objectiveId || 'unknown';
+        const emergencyText = emergencyStatus === 'pending'
+          ? 'Emergency coordination is active because the normal repair request missed its response SLA.'
+          : (emergencyStatus === 'acknowledged'
+            ? 'Emergency coordination is active and MIM has acknowledged the case.'
+            : 'TOD and MIM should resolve this through communication by republishing or acknowledging the newer objective so live task publication catches up.');
+        todExecutiveSummaryEl.textContent = `TOD completed stale publication objective ${liveObjectiveText}, but canonical MIM objective is ${canonicalObjectiveId}. ${emergencyText} ${purpose} ${healthText}`;
+        return;
+      }
 
       if (resultStatus === 'failed') {
         const gateText = resultGatePassed === false ? 'Review gate failed.' : '';
@@ -5197,7 +7426,7 @@
         : `TOD is working objective ${objectiveId} assigned by MIM. Progress is ${percent}% with ${remaining} tasks remaining out of ${totalTasks}. ${etaText} ${purpose} ${healthText}`;
     }
 
-    function renderActionLiveStatus(listenerActivity, progress, recoveryWatchdog, syncStatus = null, cadenceHealth = null, mimProposal = null, mimProposalConflict = null, mimProposalArbitration = null, mimProposalMergePolicy = null, mimProposalAcknowledgment = null, mimProposalClosure = null) {
+    function renderActionLiveStatus(listenerActivity, progress, recoveryWatchdog, syncStatus = null, cadenceHealth = null, mimProposal = null, mimProposalConflict = null, mimProposalArbitration = null, mimProposalMergePolicy = null, mimProposalAcknowledgment = null, mimProposalClosure = null, trainingStatus = null) {
       if (!actionLiveStatusEl) return;
 
       const terminalTaskSnapshot = getTerminalAwareTaskSnapshot(null, progress, listenerActivity, recoveryWatchdog);
@@ -5259,8 +7488,15 @@
       const proposalClosureText = mimProposalClosure && mimProposalClosure.available
         ? ` | closure ${String(mimProposalClosure.status || 'unknown')} disposition:${String(mimProposalClosure.disposition || 'unknown')}: ${String(mimProposalClosure.summary || '-')}`
         : '';
+      const trainingText = trainingStatus && trainingStatus.available
+        ? ` | training ${String(trainingStatus.state || 'unknown')} ${Math.max(0, Math.min(100, Number(trainingStatus.percent_complete) || 0))}% phase:${String(trainingStatus.phase || trainingStatus.current_step || '-')}` +
+          ` runtime:${formatDurationCompact(trainingStatus.runtime_seconds)}` +
+          `${Number.isFinite(Number(trainingStatus.eta_seconds)) ? ` eta:${formatDurationCompact(Number(trainingStatus.eta_seconds))}` : ''}` +
+          `${trainingStatus.latest_error ? ` error:${String(trainingStatus.latest_error)}` : ''}` +
+          `${trainingStatus.latest_resolution ? ` resolution:${String(trainingStatus.latest_resolution)}` : ''}`
+        : '';
 
-      actionLiveStatusEl.textContent = `Live | comms ${commState} | state ${taskState} | class ${classification} | req ${req} | exec ${exec} | gate ${gate} | validator ${validator} | sync ${syncText} | cadence ${cadenceSeverity} p95:${cadenceP95}s retry:${cadenceRetryPct}% | update ${age} | hb ${hbAge}s/${stallSec}s | source ${source} | watchdog ${watchdog}${proposalText}${proposalConflictText}${proposalArbitrationText}${proposalMergePolicyText}${proposalAcknowledgmentText}${proposalClosureText}`;
+      actionLiveStatusEl.textContent = `Live | comms ${commState} | state ${taskState} | class ${classification} | req ${req} | exec ${exec} | gate ${gate} | validator ${validator} | sync ${syncText} | cadence ${cadenceSeverity} p95:${cadenceP95}s retry:${cadenceRetryPct}% | update ${age} | hb ${hbAge}s/${stallSec}s | source ${source} | watchdog ${watchdog}${trainingText}${proposalText}${proposalConflictText}${proposalArbitrationText}${proposalMergePolicyText}${proposalAcknowledgmentText}${proposalClosureText}`;
     }
 
     function renderActionTimeline(listenerActivity, objectiveId) {
@@ -5520,6 +7756,7 @@
     }
 
     async function loadProjectStatus() {
+      initializeTabbedSurface();
       loadDialogSessions();
       try {
         const params = appendOperatorChatValidationHarness(new URLSearchParams());
@@ -5527,13 +7764,19 @@
           params.set('objective_id', selectedObjectiveId);
         }
         const query = params.toString();
-        const { res, data } = await fetchJsonSafe(`/api/project-status${query ? `?${query}` : ''}`);
+        const [{ res, data }, shellResponse] = await Promise.all([
+          fetchJsonSafe(`/api/project-status${query ? `?${query}` : ''}`),
+          fetchJsonSafe(`/shell/state${query ? `?${query}` : ''}`).catch(() => ({ res: { ok: false, status: 0 }, data: null }))
+        ]);
         if (!res.ok || !data.ok) {
           if (res.status === 404) {
             throw new Error('Project status endpoint not found. Restart .\\scripts\\Start-TOD-UI.ps1 to load latest routes.');
           }
           throw new Error(data.error || `Project status request failed (${res.status})`);
         }
+        const shellState = shellResponse && shellResponse.res && shellResponse.res.ok && shellResponse.data && shellResponse.data.ok
+          ? shellResponse.data
+          : null;
 
         renderObjectiveOptions(data.objective_options, data.selected_objective_id);
         renderTaskFunnel(data.task_funnel);
@@ -5549,10 +7792,12 @@
         const syncStatus = listenerActivity && listenerActivity.sync ? listenerActivity.sync : null;
         const recoveryWatchdog = data.recovery_watchdog || null;
         const cadenceHealth = data.cadence_health || null;
+        const trainingStatus = data.training_status || null;
         const bridgeStatus = data.bridge_status || null;
         const selfHealthMaintenance = data.self_health_maintenance || null;
         const engineeringSignal = data.engineering_signal || null;
         const steadyState = data.steady_state || null;
+        const communicationHealth = data.communication_health || null;
         const dataSources = data.data_sources || null;
         const voiceAdapter = data.voice_adapter || null;
         const mimProposal = data.mim_proposal || null;
@@ -5561,31 +7806,51 @@
         const mimProposalMergePolicy = data.mim_proposal_merge_policy || null;
         const mimProposalAcknowledgment = data.mim_proposal_acknowledgment || null;
         const mimProposalClosure = data.mim_proposal_closure || null;
+        lastProjectStatusSnapshot = {
+          cadenceHealth,
+          steadyState,
+          communicationHealth,
+          bridgeStatus,
+          selfHealthMaintenance,
+          engineeringSignal,
+          voiceAdapter,
+          trainingStatus,
+          listenerActivity,
+          recoveryWatchdog,
+          syncStatus,
+          marker,
+          progress
+        };
         renderCadenceHealthChip(cadenceHealth);
         renderCadenceDetailSurface(cadenceHealth);
         renderSteadyStateChip(steadyState);
         renderRegressionChip(steadyState);
         renderRequestChip(listenerActivity);
         renderBridgeStatus(bridgeStatus);
+        renderCommunicationHealth(communicationHealth);
         renderMaintenanceStatus(selfHealthMaintenance);
         renderVoiceChip(voiceAdapter);
         renderVoiceAdapterPanel(voiceAdapter);
+        renderSystemSurface(shellState, marker, progress, listenerActivity, recoveryWatchdog, steadyState, bridgeStatus, communicationHealth, selfHealthMaintenance, cadenceHealth, trainingStatus);
         lastKnownTaskState = recoveryWatchdog && recoveryWatchdog.task_state
           ? String(recoveryWatchdog.task_state)
           : 'idle';
-        renderActionLiveStatus(listenerActivity, progress, recoveryWatchdog, syncStatus, cadenceHealth, mimProposal, mimProposalConflict, mimProposalArbitration, mimProposalMergePolicy, mimProposalAcknowledgment, mimProposalClosure);
+        renderActionLiveStatus(listenerActivity, progress, recoveryWatchdog, syncStatus, cadenceHealth, mimProposal, mimProposalConflict, mimProposalArbitration, mimProposalMergePolicy, mimProposalAcknowledgment, mimProposalClosure, trainingStatus);
         const percent = Number(progress.percent) || 0;
         const status = marker && marker.status ? marker.status : 'unknown';
         const objectiveId = marker && marker.objective_id ? marker.objective_id : '';
         const taskCount = Number(progress.task_count) || 0;
         const cadence = buildCadenceSnapshot(listenerActivity, taskCount);
         renderProgressDual(progress, cadence, listenerActivity, objectiveId);
-        renderObjectiveDetailSurface(marker, progress);
+        renderObjectiveDetailSurface(marker, progress, trainingStatus);
         renderActionTimeline(listenerActivity, objectiveId);
         renderPendingQueue(listenerActivity, progress, objectiveId, syncStatus, cadence);
-        setProgressRing(percent, status, cadence);
+        const displayPercent = trainingStatus && trainingStatus.available
+          ? Math.max(0, Math.min(100, Number(trainingStatus.percent_complete) || percent))
+          : percent;
+        setProgressRing(displayPercent, status, cadence);
         const trendHtml = formatTrend(percent);
-        renderExecutiveSummary(marker, progress, listenerActivity, recoveryWatchdog, syncStatus, steadyState);
+        renderExecutiveSummary(marker, progress, listenerActivity, recoveryWatchdog, syncStatus, steadyState, bridgeStatus, communicationHealth, trainingStatus);
 
         if (engineeringSignal && engineeringSignal.current_engineering_loop_status) {
           const approval = engineeringSignal.pending_approval_state || {};
@@ -5606,9 +7871,12 @@
 
         const title = marker.title || '(untitled objective)';
         const remoteId = marker.remote_objective_id ? ` | MIM ${marker.remote_objective_id}` : '';
-        const syncLine = syncStatus && syncStatus.is_mim_ahead
-          ? `<br>Sync: pending (${escapeHtml(String(syncStatus.pending_request_count || 1))}) | MIM:${escapeHtml(String(syncStatus.request_task_id || '-'))} | TOD:${escapeHtml(String(syncStatus.result_request_id || '-'))}`
-          : '<br>Sync: aligned (MIM and TOD request streams match)';
+        const publicationDivergence = Boolean((bridgeStatus && bridgeStatus.objective_mismatch) || (recoveryWatchdog && String(recoveryWatchdog.last_issue || '').toLowerCase() === 'publication_surface_divergence') || (communicationHealth && String(communicationHealth.pending_issue_code || '').toLowerCase() === 'publication_surface_divergence'));
+        const syncLine = publicationDivergence
+          ? `<br>Sync: publication divergence | canonical MIM:${escapeHtml(String((bridgeStatus && bridgeStatus.canonical_mim_objective_id) || '-'))} | live request:${escapeHtml(String((bridgeStatus && bridgeStatus.task_request_objective_id) || '-'))} | TOD:${escapeHtml(String(syncStatus && syncStatus.result_request_id || '-'))}`
+          : (syncStatus && syncStatus.is_mim_ahead
+            ? `<br>Sync: pending (${escapeHtml(String(syncStatus.pending_request_count || 1))}) | MIM:${escapeHtml(String(syncStatus.request_task_id || '-'))} | TOD:${escapeHtml(String(syncStatus.result_request_id || '-'))}`
+            : '<br>Sync: aligned (MIM and TOD request streams match)');
         const cadenceLine = cadence && cadence.recent
           ? `<br>Live Cadence: ${escapeHtml(cadence.beyondFunnel ? 'active beyond base funnel' : 'active')} | latest:${escapeHtml(cadence.taskId)} | MIM:${escapeHtml(cadence.requestAgeText)} | TOD:${escapeHtml(cadence.resultAgeText)}`
           : '';
@@ -5619,8 +7887,14 @@
         const steadyStateLine = steadyState && steadyState.available
           ? `<br>Steady State: ${escapeHtml(String(steadyState.status || 'unknown'))} | ${escapeHtml(String(steadyState.summary || '-'))}`
           : '';
+        const communicationLine = communicationHealth && communicationHealth.available
+          ? `<br>Comm Health: ${escapeHtml(String(communicationHealth.status || 'unknown'))} | transport:${escapeHtml(String(communicationHealth.transport_status || 'unknown'))} | coordination:${escapeHtml(String(communicationHealth.coordination_status || 'clear'))} | emergency:${escapeHtml(String(communicationHealth.emergency_status || 'clear'))} | dialog:${escapeHtml(String(communicationHealth.dialog_status || 'clear'))}`
+          : '';
         const cadenceHealthLine = cadenceHealth && cadenceHealth.available
           ? `<br>Cadence Health: ${escapeHtml(String(cadenceHealth.severity || 'unknown'))} | p95:${escapeHtml(String((cadenceHealth.cadence && cadenceHealth.cadence.p95_sec !== undefined) ? cadenceHealth.cadence.p95_sec : '-'))}s | idle:${escapeHtml(String((cadenceHealth.stream && cadenceHealth.stream.loop_idle_sec !== undefined) ? cadenceHealth.stream.loop_idle_sec : '-'))}s | retry:${escapeHtml(String(Math.round((Number(cadenceHealth.cadence && cadenceHealth.cadence.retry_rate) || 0) * 100)))}%`
+          : '';
+        const trainingLine = trainingStatus && trainingStatus.available
+          ? `<br>Training: ${escapeHtml(String(trainingStatus.state_label || trainingStatus.state || 'unknown'))} | ${escapeHtml(String(trainingStatus.phase || trainingStatus.current_step || '-'))} | progress:${escapeHtml(String(trainingStatus.percent_complete ?? '-'))}% | runtime:${escapeHtml(formatDurationCompact(trainingStatus.runtime_seconds))} | eta:${escapeHtml(Number.isFinite(Number(trainingStatus.eta_seconds)) ? formatDurationCompact(Number(trainingStatus.eta_seconds)) : 'n/a')}${trainingStatus.latest_error ? ` | error:${escapeHtml(String(trainingStatus.latest_error))}` : ''}${trainingStatus.latest_resolution ? ` | resolution:${escapeHtml(String(trainingStatus.latest_resolution))}` : ''}`
           : '';
         const sourceLine = dataSources && dataSources.project_status_mode
           ? `<br>Data Sources: ${escapeHtml(String(dataSources.project_status_mode))}${dataSources.state_warning ? ` | ${escapeHtml(String(dataSources.state_warning))}` : ''}`
@@ -5636,25 +7910,31 @@
             ` | gate:${String(listenerActivity.latest_review_gate_passed)}` +
             ` | validator:${String(listenerActivity.latest_validator_passed)}`
           : '';
-        const statusText = syncStatus && syncStatus.is_mim_ahead
-          ? `${status} (sync pending)`
-          : (cadence && cadence.beyondFunnel && cadence.recent ? `${status} (live cadence active)` : status);
+        const statusText = (communicationHealth && ['pending', 'acknowledged'].includes(String(communicationHealth.emergency_status || '').toLowerCase()))
+          ? `${status} (emergency coordination active)`
+          : publicationDivergence
+          ? `${status} (coordination repair active)`
+          : (syncStatus && syncStatus.is_mim_ahead
+            ? `${status} (sync pending)`
+            : (cadence && cadence.beyondFunnel && cadence.recent ? `${status} (live cadence active)` : status));
         const progressHeadline = cadence && cadence.beyondFunnel && cadence.recent
           ? `Base Funnel: ${taskCount}/${taskCount} | Live Task: ${escapeHtml(String(cadence.taskNumber || '-'))} (active)`
           : `Progress: ${percent}%`;
-        projectMetaEl.innerHTML = `<strong>${title}</strong><br>ID: ${objectiveId}${remoteId}<br>Status: ${statusText} | Tasks: ${taskCount} | ${progressHeadline} ${trendHtml}${progressSource}${cadenceLine}${syncLine}${steadyStateLine}${sourceLine}${taskStateLine}${listenerLine}${cadenceHealthLine}${recoveryLine}`;
+        projectMetaEl.innerHTML = `<strong>${title}</strong><br>ID: ${objectiveId}${remoteId}<br>Status: ${statusText} | Tasks: ${taskCount} | ${progressHeadline} ${trendHtml}${progressSource}${cadenceLine}${syncLine}${steadyStateLine}${communicationLine}${trainingLine}${sourceLine}${taskStateLine}${listenerLine}${cadenceHealthLine}${recoveryLine}`;
       } catch (err) {
         renderCadenceHealthChip(null);
         renderCadenceDetailSurface(null);
         renderSteadyStateChip(null);
         renderRegressionChip(null);
         renderBridgeStatus(null);
+        renderCommunicationHealth(null);
         renderMaintenanceStatus(null);
         renderRequestChip(null);
         renderVoiceChip(null);
         renderVoiceAdapterPanel(null);
-        renderObjectiveDetailSurface(null, null);
-        renderActionLiveStatus(null, null, null, null, null, null, null, null, null, null, null);
+        renderObjectiveDetailSurface(null, null, null);
+        renderActionLiveStatus(null, null, null, null, null, null, null, null, null, null, null, null);
+        renderSystemSurface(null, null, null, null, null, null, null, null, null, null, null);
         projectMetaEl.textContent = err.message;
         try {
           const { res, data } = await fetchJsonSafe('/api/task-state');
@@ -5680,12 +7960,14 @@
               recovery_attempts: Number.isFinite(Number(data.recovery_attempts)) ? Number(data.recovery_attempts) : 0,
               consecutive_freezes: Number.isFinite(Number(data.consecutive_freezes)) ? Number(data.consecutive_freezes) : 0
             };
+            const fallbackTrainingStatus = data.training_status || null;
 
             renderRequestChip(fallbackListener);
-            renderActionLiveStatus(fallbackListener, fallbackProgress, fallbackWatchdog);
+            renderActionLiveStatus(fallbackListener, fallbackProgress, fallbackWatchdog, null, null, null, null, null, null, null, null, fallbackTrainingStatus);
             const markerFromTaskState = synthesizeMarkerFromListener(null, fallbackListener, '', null);
-            renderObjectiveDetailSurface(markerFromTaskState, fallbackProgress);
-            renderExecutiveSummary(markerFromTaskState, fallbackProgress, fallbackListener, fallbackWatchdog, null, null);
+            renderObjectiveDetailSurface(markerFromTaskState, fallbackProgress, fallbackTrainingStatus);
+            renderExecutiveSummary(markerFromTaskState, fallbackProgress, fallbackListener, fallbackWatchdog, null, null, null, null, fallbackTrainingStatus);
+            renderSystemSurface(null, markerFromTaskState, fallbackProgress, fallbackListener, fallbackWatchdog, null, null, null, null, null, fallbackTrainingStatus);
 
             if (fallbackListener.latest_request_id) {
               projectMetaEl.innerHTML = `Live fallback: request ${escapeHtml(String(fallbackListener.latest_request_id))} | exec ${escapeHtml(String(fallbackListener.latest_execution_status || '-'))} | watchdog ${escapeHtml(String(fallbackWatchdog.state || 'unknown'))}`;
@@ -5944,6 +8226,42 @@
       if (operatorChatLatestEl) {
         operatorChatLatestEl.classList.toggle('error', isError);
       }
+    }
+
+    function setOperatorChatLatestContract(result, options = {}) {
+      const contract = result && result.contract ? result.contract : {};
+      const state = String(contract.execution_state || options.executionState || '-').trim();
+      const normalizedState = state ? state.toLowerCase() : '';
+      const outcomeLabel = normalizedState === 'blocked' ? 'Blocker' : 'Result';
+      const outcomeValue = normalizedState === 'blocked'
+        ? String(contract.blocker || options.outcome || result && result.reply && result.reply.summary || 'No blocker recorded.')
+        : String(contract.result || options.outcome || result && result.reply && result.reply.summary || 'No result recorded.');
+
+      if (operatorChatSessionIdEl) {
+        operatorChatSessionIdEl.textContent = String(result && result.session_id || options.sessionId || '-');
+      }
+      if (operatorChatRequestIdEl) {
+        operatorChatRequestIdEl.textContent = String(contract.request_id || result && result.request_id || options.requestId || '-');
+      }
+      if (operatorChatExecutionStateEl) {
+        operatorChatExecutionStateEl.textContent = state || '-';
+      }
+      if (operatorChatUnderstandingEl) {
+        operatorChatUnderstandingEl.textContent = String(contract.understanding || options.understanding || 'No MIM understanding recorded.');
+      }
+      if (operatorChatNextActionEl) {
+        operatorChatNextActionEl.textContent = String(contract.next_action || options.nextAction || 'No bounded next action recorded.');
+      }
+      if (operatorChatOutcomeLabelEl) {
+        operatorChatOutcomeLabelEl.textContent = outcomeLabel;
+      }
+      if (operatorChatOutcomeEl) {
+        operatorChatOutcomeEl.textContent = outcomeValue;
+      }
+      setOperatorChatLatestResponse(String(contract.summary || result && result.reply && result.reply.summary || options.summary || 'No summary available.'), {
+        source: String(result && result.source_label || options.source || 'MIM'),
+        isError: options.isError === true
+      });
     }
 
     function formatOperatorChatIntentLabel(intent) {
@@ -6294,6 +8612,32 @@
             default:
               return cardOnly('bridgeStatusCard', 'Bridge Status');
           }
+        case 'communication_health':
+          switch (fieldKey) {
+            case 'status':
+              return pointTo('communicationHealthCard', 'TOD-MIM Communication Health', 'communicationHealthOverall', 'Overall');
+            case 'transport_status':
+              return pointTo('communicationHealthCard', 'TOD-MIM Communication Health', 'communicationHealthTransport', 'Transport');
+            case 'coordination_status':
+            case 'coordination_decision':
+              return pointTo('communicationHealthCard', 'TOD-MIM Communication Health', 'communicationHealthCoordination', 'Coordination');
+            case 'dialog_status':
+            case 'dialog_message_type':
+              return pointTo('communicationHealthCard', 'TOD-MIM Communication Health', 'communicationHealthDialog', 'Dialog');
+            case 'pending_request_id':
+              return pointTo('communicationHealthCard', 'TOD-MIM Communication Health', 'communicationHealthRequest', 'Pending Request');
+            case 'dialog_session_id':
+              return pointTo('communicationHealthCard', 'TOD-MIM Communication Health', 'communicationHealthSession', 'Dialog Session');
+            case 'pending_age_seconds':
+            case 'dialog_inquiry_count':
+              return pointTo('communicationHealthCard', 'TOD-MIM Communication Health', 'communicationHealthPendingAge', 'Pending Age');
+            case 'summary':
+            case 'coordination_reason':
+            case 'dialog_summary':
+              return pointTo('communicationHealthCard', 'TOD-MIM Communication Health', 'communicationHealthSummary', 'Communication Summary');
+            default:
+              return cardOnly('communicationHealthCard', 'TOD-MIM Communication Health');
+          }
         case 'self_health_maintenance':
           switch (fieldKey) {
             case 'overall_status':
@@ -6339,13 +8683,13 @@
         case 'mim_proposal_closure':
           return pointTo('actionWorkspaceCard', 'Action Workspace', 'actionLiveStatus', 'Action Live Status');
         case 'operator_action_audit':
-          return pointTo('operatorChatCard', 'TOD Operator Chat', 'operatorChatAuditList', 'Governed Action Audit');
+          return pointTo('operatorChatCard', 'MIM Command Panel', 'operatorChatAuditList', 'TOD Governed Action Audit');
         case 'operator_action_reasoning':
-          return pointTo('operatorChatCard', 'TOD Operator Chat', 'operatorChatThread', 'Operator Reasoning');
+          return pointTo('operatorChatCard', 'MIM Command Panel', 'operatorChatThread', 'MIM Command Thread');
         case 'operator_commitment':
-          return pointTo('operatorChatCard', 'TOD Operator Chat', 'operatorChatCommitmentList', 'Operator Commitments');
+          return pointTo('operatorChatCard', 'MIM Command Panel', 'operatorChatCommitmentList', 'TOD Commitments');
         default:
-          return cardOnly('operatorChatCard', 'TOD Operator Chat');
+          return cardOnly('operatorChatCard', 'MIM Command Panel');
       }
     }
 
@@ -6596,55 +8940,71 @@
         return;
       }
 
-      const response = payload && payload.response ? payload.response : {};
-      const evidence = Array.isArray(response.evidence) ? response.evidence : [];
-      const suggestedActions = Array.isArray(response.suggested_actions) ? response.suggested_actions : [];
-      const limitations = Array.isArray(response.limitations) ? response.limitations : [];
-      const citations = Array.isArray(response.citations) ? response.citations : [];
-      const flags = getOperatorChatResponseFlags(response);
-      const postureLines = getOperatorChatEvidencePosture(payload, response, flags, suggestedActions);
-      const confidence = String(response.confidence || 'medium').toUpperCase();
-      const generatedAt = payload && payload.generated_at ? new Date(payload.generated_at).toLocaleTimeString() : new Date().toLocaleTimeString();
-      const objectiveId = payload && payload.objective_id ? String(payload.objective_id) : '-';
-      const intentLabel = formatOperatorChatIntentLabel(payload && payload.intent);
-      const sourceLabel = String(payload && payload.source_label || 'MIM via TOD');
-
-      const evidenceHtml = evidence.length > 0
-        ? buildOperatorChatEvidenceRows(evidence)
-        : '<div class="operator-chat-evidence-row"><span class="k">Evidence</span><span class="v">No structured evidence available.</span></div>';
-
-      const postureHtml = postureLines.length > 0
-        ? `<div class="operator-chat-posture">${postureLines.map(item => `<div class="operator-chat-posture-line"><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.text)}</div>`).join('')}</div>`
-        : '';
-
-      const actionsHtml = buildOperatorChatSuggestedActionButtons(suggestedActions, {
-        intent: String(payload && payload.intent || ''),
-        query: String(payload && payload.query || ''),
+      const result = payload && payload.result ? payload.result : null;
+      if (!result) {
+        return;
+      }
+      const replyPayload = result.reply && result.reply.payload ? result.reply.payload : {};
+      const limitations = Array.isArray(result.limitations) ? result.limitations : [];
+      const flags = getOperatorChatResponseFlags({ flags: result.flags });
+      const confidence = String(result.confidence || 'medium').toUpperCase();
+      const generatedAt = result.generated_at ? new Date(result.generated_at).toLocaleTimeString() : new Date().toLocaleTimeString();
+      const objectiveId = result.objective_id ? String(result.objective_id) : '-';
+      const intentLabel = formatOperatorChatIntentLabel(result.intent);
+      const sourceLabel = String(result.source_label || 'MIM');
+      const contract = result.contract || {};
+      const executionState = String(contract.execution_state || 'doing').toLowerCase();
+      const outcomeLabel = executionState === 'blocked' ? 'Blocker' : 'Result';
+      const outcomeValue = executionState === 'blocked'
+        ? String(contract.blocker || result.reply && result.reply.summary || 'No blocker recorded.')
+        : String(contract.result || result.reply && result.reply.summary || 'No result recorded.');
+      const actionsHtml = buildOperatorChatSuggestedActionButtons(replyPayload.suggested_actions, {
+        intent: String(result.intent || ''),
+        query: operatorChatLastRequest && operatorChatLastRequest.query ? String(operatorChatLastRequest.query) : '',
         objectiveId
       });
-
       const limitationsHtml = limitations.length > 0
         ? `<div class="operator-chat-limitations">${limitations.map(item => `<div>${escapeHtml(item)}</div>`).join('')}</div>`
         : '';
-
       const flagTagsHtml = flags.length > 0
         ? flags.map((item) => `<span class="operator-chat-tag ${escapeHtml(item.tone || '')}" title="${escapeHtml(item.title || item.label)}">${escapeHtml(item.label)}</span>`).join('')
         : '';
 
-      const citationsHtml = citations.length > 0
-        ? `<div class="operator-chat-tags">${citations.map(item => buildOperatorChatCitationButton(String(item.section || 'section'), String(item.field || 'field'))).join('')}</div>`
-        : '';
+      setOperatorChatLatestContract(result);
 
       const entry = document.createElement('div');
-      entry.className = 'operator-chat-entry system';
+      entry.className = `operator-chat-entry system mim-state-${escapeHtml(executionState || 'doing')}`;
       entry.innerHTML = `
         <div class="operator-chat-role">${escapeHtml(sourceLabel)}</div>
         <div class="operator-chat-bubble">
-          <div class="operator-chat-summary">${escapeHtml(response.summary || 'No summary available.')}</div>
+          <div class="operator-chat-summary">${escapeHtml(String(contract.summary || result.reply && result.reply.summary || 'No summary available.'))}</div>
           <div class="operator-chat-rail">
-            ${postureHtml}
-            ${evidenceHtml}
-            <div class="operator-chat-next-step"><strong>Next:</strong> ${escapeHtml(response.recommended_next_step || 'No next step recorded.')}</div>
+            <div class="operator-chat-contract-grid">
+              <div class="operator-chat-contract-row compact">
+                <span class="k">Session</span>
+                <span class="v">${escapeHtml(String(result.session_id || '-'))}</span>
+              </div>
+              <div class="operator-chat-contract-row compact">
+                <span class="k">Request</span>
+                <span class="v">${escapeHtml(String(contract.request_id || result.request_id || '-'))}</span>
+              </div>
+              <div class="operator-chat-contract-row compact">
+                <span class="k">State</span>
+                <span class="v">${escapeHtml(String(contract.execution_state || '-'))}</span>
+              </div>
+              <div class="operator-chat-contract-row span-3">
+                <span class="k">Understanding</span>
+                <span class="v">${escapeHtml(String(contract.understanding || 'No understanding recorded.'))}</span>
+              </div>
+              <div class="operator-chat-contract-row span-3">
+                <span class="k">Next Action</span>
+                <span class="v">${escapeHtml(String(contract.next_action || 'No bounded next action recorded.'))}</span>
+              </div>
+              <div class="operator-chat-contract-row span-3">
+                <span class="k">${escapeHtml(outcomeLabel)}</span>
+                <span class="v">${escapeHtml(outcomeValue)}</span>
+              </div>
+            </div>
             ${actionsHtml}
             <div class="operator-chat-tags">
               ${flagTagsHtml}
@@ -7439,12 +9799,12 @@
       const trimmedQuery = String(query || '').trim();
       const trimmedIntent = String(intent || '').trim();
       if (!trimmedQuery && !trimmedIntent) {
-        setOperatorChatMeta('Enter a question or use a guided prompt.', true);
+        setOperatorChatMeta('Enter a message for MIM or use a guided prompt.', true);
         return;
       }
 
       if (operatorChatPending) {
-        setOperatorChatMeta('Operator chat is already processing a request.');
+        setOperatorChatMeta('MIM command is already processing a request.');
         return;
       }
 
@@ -7454,9 +9814,9 @@
         operatorChatSubmitEl.disabled = true;
       }
       operatorChatPresetEls.forEach(btn => { btn.disabled = true; });
-      setOperatorChatMeta(`Asking MIM about ${trimmedIntent ? formatOperatorChatIntentLabel(trimmedIntent) : 'current operational state'}...`);
+      setOperatorChatMeta(`Sending to MIM${operatorChatSessionId ? ' on the current browser session' : ''}...`);
       setOperatorChatLatestResponse('Waiting for MIM response...', {
-        source: 'query pending',
+        source: operatorChatSessionId ? 'mim session active' : 'mim session opening',
         isError: false
       });
 
@@ -7467,7 +9827,7 @@
         if (echoUser) {
           appendOperatorChatUserEntry(trimmedQuery || formatOperatorChatIntentLabel(trimmedIntent));
         }
-        const { res, data } = await fetchJsonSafe('/api/operator-chat', {
+        const { res, data } = await fetchJsonSafe('/api/mim-command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
@@ -7476,31 +9836,35 @@
             intent: trimmedIntent,
             objective_id: selectedObjectiveId || '',
             window_minutes: windowMinutes,
-            validation_harness: OPERATOR_CHAT_VALIDATION_HARNESS
+            validation_harness: OPERATOR_CHAT_VALIDATION_HARNESS,
+            session_id: operatorChatSessionId || ''
           })
         });
 
         if (!res.ok || !data.ok) {
-          throw new Error(data.error || `Operator chat request failed (${res.status})`);
+          throw new Error(data.error || `MIM command request failed (${res.status})`);
         }
 
-        appendOperatorChatResponse(data);
-          setOperatorChatMeta(`MIM answer ready at ${new Date().toLocaleTimeString()}.`);
-        const responseSummary = data && data.response && data.response.summary ? data.response.summary : '';
-        if (responseSummary) {
-          const intentLabel = data.intent ? formatOperatorChatIntentLabel(data.intent) : 'operator chat';
-          setOperatorChatLatestResponse(responseSummary, { source: `intent :: ${intentLabel}`, isError: false });
+        if (data.session_id) {
+          operatorChatSessionId = String(data.session_id);
         }
+        appendOperatorChatResponse(data);
+        setOperatorChatMeta(`MIM reply ready at ${new Date().toLocaleTimeString()}${operatorChatSessionId ? ` on session ${operatorChatSessionId}` : ''}.`);
       } catch (err) {
         const isAbort = err && (err.name === 'AbortError' || /aborted|abort/i.test(String(err.message || '')));
         const message = isAbort
-          ? 'Operator chat timed out after 30s. Retry, or use a guided preset (Recent Changes / Summarize Status) while the system is under load.'
-          : String(err.message || 'Operator chat request failed.');
+          ? 'MIM command timed out after 30s. Retry when MIM is available.'
+          : String(err.message || 'MIM command request failed.');
         setOperatorChatMeta(message, true);
-        appendOperatorChatUserEntry(`Operator chat error: ${message}`);
-        setOperatorChatLatestResponse(message, {
-          source: 'operator chat error',
-          isError: true
+        setOperatorChatLatestContract(null, {
+          isError: true,
+          source: 'mim unavailable',
+          summary: message,
+          understanding: 'MIM did not produce a usable reply for this turn.',
+          nextAction: 'Retry this bounded request after MIM is reachable again.',
+          executionState: 'blocked',
+          outcome: message,
+          sessionId: operatorChatSessionId || '-'
         });
       } finally {
         clearTimeout(timeoutId);
@@ -7531,6 +9895,112 @@
       const intent = source && source.getAttribute ? (source.getAttribute('data-intent') || '') : '';
       runOperatorChatQuery({ query, intent, windowMinutes: 10 });
       return false;
+    }
+
+    function buildHeaderDrilldownQuery(topicLabel, emphasis = '') {
+      const subject = String(topicLabel || 'current status').trim() || 'current status';
+      const prefix = String(emphasis || '').trim();
+      return `${prefix ? `${prefix} ` : ''}Provide an operator summary for ${subject}. Include what the current issue or state is, what TOD has already done about it, what MIM has already done about it, and the next bounded step or expectation so progress does not stop or freeze.`;
+    }
+
+    function launchOperatorChatDrilldown({ query = '', intent = 'summarize_status', placeholder = '' } = {}) {
+      const trimmedQuery = String(query || '').trim();
+      const trimmedIntent = String(intent || '').trim();
+
+      focusDashboardCardById('operatorChatCard');
+
+      if (operatorChatInputEl) {
+        operatorChatInputEl.value = trimmedQuery;
+        operatorChatInputEl.focus();
+        operatorChatInputEl.select();
+        if (placeholder) {
+          operatorChatInputEl.placeholder = String(placeholder);
+        }
+      }
+
+      if (operatorChatPending) {
+        setOperatorChatMeta('Operator chat is already processing a request. The drill-down query is loaded in the chat box.');
+        return;
+      }
+
+      runOperatorChatQuery({ query: trimmedQuery, intent: trimmedIntent, windowMinutes: 10 });
+    }
+
+    function getHeaderDrilldownConfigs() {
+      return [
+        { element: uiBuildChipEl, intent: 'summarize_status', getQuery: () => buildHeaderDrilldownQuery('the current dashboard build and served UI host posture'), placeholder: 'Ask about the current UI build and host posture.' },
+        { element: uiSinceChipEl, intent: 'summarize_recent_changes', getQuery: () => buildHeaderDrilldownQuery('changes since the last UI build', 'Summarize the most recent UI changes relevant to current operations.'), placeholder: 'Ask what changed since the last UI build.' },
+        { element: uiPortChipEl, intent: 'summarize_status', getQuery: () => buildHeaderDrilldownQuery('the active TOD UI host and port posture'), placeholder: 'Ask about the active UI host and port.' },
+        { element: cadenceHealthChipEl, intent: 'explain_cadence', getQuery: () => {
+            const snapshot = lastProjectStatusSnapshot || {};
+            const cadenceSeverity = String(snapshot.cadenceHealth && snapshot.cadenceHealth.severity || '').toLowerCase();
+            return buildHeaderDrilldownQuery('cadence health', cadenceSeverity === 'warning' || cadenceSeverity === 'critical' ? 'Explain the cadence warning in bounded operator language.' : 'Summarize why cadence is currently healthy.');
+          }, placeholder: 'Ask why cadence is warning or what TOD is doing to keep it healthy.' },
+        { element: steadyStateChipEl, intent: 'explain_warning', getQuery: () => {
+            const snapshot = lastProjectStatusSnapshot || {};
+            const steadyStatus = String(snapshot.steadyState && snapshot.steadyState.status || '').toLowerCase();
+            return buildHeaderDrilldownQuery('steady-state posture', steadyStatus === 'warning' || steadyStatus === 'critical' ? 'Explain why steady state is not healthy.' : 'Summarize the current steady-state posture.');
+          }, placeholder: 'Ask what is blocking steady state or what keeps it green.' },
+        { element: regressionChipEl, intent: 'explain_warning', getQuery: () => {
+            const snapshot = lastProjectStatusSnapshot || {};
+            const steadyStatus = String(snapshot.steadyState && snapshot.steadyState.status || '').toLowerCase();
+            const regressionArchived = Boolean(snapshot.steadyState && snapshot.steadyState.regression_report_stale);
+            return buildHeaderDrilldownQuery('regression status', regressionArchived ? 'Summarize the archived regression snapshot and explain why live telemetry supersedes it.' : (steadyStatus === 'critical' ? 'Explain the active regression failure posture.' : 'Summarize the current regression posture.'));
+          }, placeholder: 'Ask about regression failures or recent recovery.' },
+        { element: requestChipEl, intent: 'summarize_recent_changes', getQuery: () => buildHeaderDrilldownQuery('the latest TOD/MIM request and execution lane state'), placeholder: 'Ask what the latest request means for the current objective.' },
+        { element: voiceChipEl, intent: 'summarize_status', getQuery: () => {
+            const snapshot = lastProjectStatusSnapshot || {};
+            const voiceSummary = String(snapshot.voiceAdapter && snapshot.voiceAdapter.summary || 'voice listener status').trim();
+            return buildHeaderDrilldownQuery('voice listener status', voiceSummary);
+          }, placeholder: 'Ask about voice listener status.' },
+        { element: probeReadoutEl, intent: 'summarize_status', getQuery: () => buildHeaderDrilldownQuery('MIM probe reachability and response health'), placeholder: 'Ask what the MIM probe result means right now.' },
+        { element: todIndicatorEl, intent: 'summarize_status', getQuery: () => buildHeaderDrilldownQuery('TOD local activity state and what TOD is actively doing'), placeholder: 'Ask what TOD is actively doing right now.' },
+        { element: mimIndicatorEl, intent: 'summarize_status', getQuery: () => {
+            const snapshot = lastProjectStatusSnapshot || {};
+            const communicationStatus = String(snapshot.communicationHealth && snapshot.communicationHealth.status || '').toLowerCase();
+            const communicationCoordination = String(snapshot.communicationHealth && snapshot.communicationHealth.coordination_status || '').toLowerCase();
+            return buildHeaderDrilldownQuery('TOD-MIM communication health', communicationStatus === 'warning' || communicationStatus === 'critical' || communicationCoordination === 'pending' ? 'Explain the current communication warning.' : 'Summarize current TOD-MIM communication health, including whether the link is simply in standby after completion.');
+          }, placeholder: 'Ask what MIM link state means and what happens next.' },
+        { element: loopIndicatorEl, intent: 'explain_warning', getQuery: () => {
+            const snapshot = lastProjectStatusSnapshot || {};
+            const loopStatus = String(snapshot.engineeringSignal && snapshot.engineeringSignal.current_engineering_loop_status || '').toLowerCase();
+            return buildHeaderDrilldownQuery('engineering loop status', loopStatus === 'warning' || loopStatus === 'critical' ? 'Explain the loop warning.' : 'Summarize the current loop posture.');
+          }, placeholder: 'Ask why the loop is warning or what it is doing next.' },
+        { element: armIndicatorEl, intent: 'summarize_status', getQuery: () => buildHeaderDrilldownQuery('MIM ARM endpoint activity and health'), placeholder: 'Ask about ARM activity and whether it is waiting or active.' }
+      ];
+    }
+
+    function bindHeaderDrilldownChip(config) {
+      const element = config && config.element ? config.element : null;
+      if (!element || element.dataset.chatDrilldownBound === 'true') {
+        return;
+      }
+
+      element.dataset.chatDrilldownBound = 'true';
+      element.classList.add('drilldown-chip');
+      element.setAttribute('role', 'button');
+      element.setAttribute('tabindex', '0');
+      element.title = 'Open TOD Operator Chat summary for this status';
+
+      const handler = () => {
+        launchOperatorChatDrilldown({
+          query: typeof config.getQuery === 'function' ? config.getQuery() : config.query,
+          intent: config.intent,
+          placeholder: config.placeholder
+        });
+      };
+
+      element.addEventListener('click', handler);
+      element.addEventListener('keydown', (evt) => {
+        if (evt.key === 'Enter' || evt.key === ' ') {
+          evt.preventDefault();
+          handler();
+        }
+      });
+    }
+
+    function initializeHeaderDrilldowns() {
+      getHeaderDrilldownConfigs().forEach(bindHeaderDrilldownChip);
     }
 
     function renderSystemPosture(posture) {
@@ -7732,8 +10202,12 @@
 
     function updateMimIndicator() {
       const active = Date.now() < mimActiveUntilMs;
+      const snapshot = lastProjectStatusSnapshot || {};
+      const markerStatus = String(snapshot.marker && snapshot.marker.status || '').toLowerCase();
+      const taskState = String(snapshot.recoveryWatchdog && snapshot.recoveryWatchdog.task_state || '').toLowerCase();
+      const linkStandby = !active && (markerStatus === 'completed' || taskState === 'completed');
       mimIndicatorEl.classList.toggle('active', active);
-      mimIndicatorTextEl.textContent = active ? 'MIM Link Active' : 'MIM Link Idle';
+      mimIndicatorTextEl.textContent = active ? 'MIM Link Active' : (linkStandby ? 'MIM Link Standby' : 'MIM Link Idle');
       compactMimBtn.classList.toggle('live', active);
 
       const activePresetBtn = compactModeEnabled
@@ -8201,6 +10675,34 @@
       loadProjectStatus();
     });
 
+    if (systemTodChatFormEl) {
+      systemTodChatFormEl.addEventListener('submit', (evt) => {
+        evt.preventDefault();
+        runSystemTodChat(systemTodChatInputEl && systemTodChatInputEl.value || '');
+      });
+    }
+    if (quickRestartMimBtnEl) {
+      quickRestartMimBtnEl.addEventListener('click', () => runSystemQuickAction('restart-mim'));
+    }
+    if (quickUseTodOnlyBtnEl) {
+      quickUseTodOnlyBtnEl.addEventListener('click', () => runSystemQuickAction('use-tod-only'));
+    }
+    if (quickOpenMimDirectBtnEl) {
+      quickOpenMimDirectBtnEl.addEventListener('click', () => runSystemQuickAction('open-mim-direct'));
+    }
+    if (quickRestartTodBtnEl) {
+      quickRestartTodBtnEl.addEventListener('click', () => runSystemQuickAction('restart-tod'));
+    }
+    if (quickRefreshSyncBtnEl) {
+      quickRefreshSyncBtnEl.addEventListener('click', () => runSystemQuickAction('refresh-sync'));
+    }
+    if (quickClearStuckBtnEl) {
+      quickClearStuckBtnEl.addEventListener('click', () => runSystemQuickAction('clear-stuck-state'));
+    }
+    if (quickHealthCheckBtnEl) {
+      quickHealthCheckBtnEl.addEventListener('click', () => runSystemQuickAction('run-health-check'));
+    }
+
     runBtn.addEventListener('click', () => {
       try {
         run(buildPayload(false));
@@ -8212,6 +10714,7 @@
     actionSelectEl.addEventListener('change', () => syncExecutionLaneInputs());
     loadLogsBtn.addEventListener('click', () => loadLogs());
     loadBusBtn.addEventListener('click', () => safeLoadStateBus());
+    initializeHeaderDrilldowns();
     autoRefreshEl.addEventListener('change', () => {
       const enabled = String(autoRefreshEl.value || 'on') === 'on';
       setLogsAutoRefreshPreference(enabled);

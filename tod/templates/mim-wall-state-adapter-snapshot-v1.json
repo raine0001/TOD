@@ -1,0 +1,44 @@
+{
+  "project_id": "mim_wall",
+  "adapter_id": "mim_wall_state_adapter_v1",
+  "generated_at": "2026-04-13T00:00:00Z",
+  "device": {
+    "device_id": "android_device_01",
+    "platform": "android",
+    "app_package": "com.dave.callguardian"
+  },
+  "control_state": {
+    "mim_enabled": true,
+    "mode": "read_only_phase"
+  },
+  "queue": [
+    {
+      "item_id": "+15551234567:awaiting_reply",
+      "thread_key": "+15551234567",
+      "timestamp_ms": 1712966400000,
+      "status": "awaiting_reply",
+      "summary": "Busy-call follow-up started",
+      "source": "screening"
+    }
+  ],
+  "timeline": [
+    {
+      "timestamp_ms": 1712966400000,
+      "category": "screening",
+      "detail": "Busy-call interception for +15551234567: intercepted=true sms_sent=true"
+    }
+  ],
+  "feedback": [
+    {
+      "timestamp_ms": 1712966500000,
+      "label": "correct_spam",
+      "note": "Caller was marketing spam"
+    }
+  ],
+  "export_meta": {
+    "source_of_truth": "mim_wall_call_session_store",
+    "mutability": "current_state_with_historical_support",
+    "contract": "shared_integration_contract_v1",
+    "rollout_stage": "phase_1_read_state"
+  }
+}

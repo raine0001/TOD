@@ -102,4 +102,12 @@ tod/data/state.json.repairing
 # Local editor and scratch artifacts
 .vscode/
 tmp_*
+tmp/
 raw-sweep*
+
+# Additional generated runtime artifacts
+shared_state/objective_authority_reset.json
+shared_state/remote-recovery/
+
+# Local helper binaries
+tools/cloudflared/

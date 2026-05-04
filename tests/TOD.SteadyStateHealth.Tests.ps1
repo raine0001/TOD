@@ -163,7 +163,7 @@ Describe 'TOD steady-state health hardening' {
 
             [string]$result.status | Should Be 'ok'
             [bool]$result.regression_report_stale | Should Be $true
-            [string]$result.summary | Should Match 'current bridge, cadence, and watchdog telemetry are healthy'
+            [string]$result.summary | Should Match 'superseded by healthy live bridge, cadence, and watchdog telemetry'
         }
         finally {
             Remove-TestFixturePath -PathValue $fixture
@@ -210,7 +210,7 @@ Describe 'TOD steady-state health hardening' {
 
             [string]$result.status | Should Be 'critical'
             [bool]$result.regression_report_stale | Should Be $false
-            [string]$result.summary | Should Be 'Regression failures remain; system is not in steady state.'
+            [string]$result.summary | Should Match 'Regression failures remain and live operational telemetry shows active risk'
         }
         finally {
             Remove-TestFixturePath -PathValue $fixture

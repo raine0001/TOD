@@ -14,6 +14,18 @@ Run:
 .\scripts\Invoke-TODTrainingLoop.ps1
 ```
 
+Three-hour orchestrated runbook executor:
+
+```powershell
+.\scripts\Invoke-TODTrainingRunbook3h.ps1
+```
+
+Compressed validation mode for repo-side testing:
+
+```powershell
+.\scripts\Invoke-TODTrainingRunbook3h.ps1 -DurationHours 0.05 -NoWait
+```
+
 Optional flags:
 
 ```powershell

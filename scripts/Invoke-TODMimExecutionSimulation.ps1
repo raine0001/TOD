@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('all', 'accept_once', 'duplicate_request_dedup', 'stale_request_rejected', 'superseded_request_ignored', 'sequence_preferred_over_suffix', 'wrong_target_rejected')]
+    [ValidateSet('all', 'accept_once', 'duplicate_request_dedup', 'stale_request_rejected', 'superseded_request_ignored', 'sequence_preferred_over_suffix', 'wrong_target_rejected', 'soft_boundary_execute_without_go_order')]
     [string]$Scenario = 'all',
     [string]$OutputRoot = ''
 )
@@ -279,6 +279,7 @@ function New-State {
             task_ack = @()
             result = @()
             command_status = @()
+            decision = @()
         }
     }
 }
@@ -538,6 +539,32 @@ function New-CommandStatusPacket {
     return $packet
 }
 
+function New-DecisionPacket {
+    param(
+        [Parameter(Mandatory = $true)][string]$DecisionOutcome,
+        [Parameter(Mandatory = $true)][string]$ReasonCode,
+        [Parameter(Mandatory = $true)][string]$Summary,
+        [Parameter(Mandatory = $true)]$Request,
+        [string]$BoundaryClass = 'soft_boundary',
+        [string]$AckState = 'not_acked',
+        [string]$ExecutionState = 'rejected'
+    )
+
+    return [pscustomobject]@{
+        generated_at = Get-UtcNowString
+        source = 'tod-mim-execution-decision-v1'
+        request_id = (Get-RequestIdentifier -Request $Request)
+        task_id = if ($Request.PSObject.Properties['task_id']) { [string]$Request.task_id } else { '' }
+        correlation_id = if ($Request.PSObject.Properties['correlation_id']) { [string]$Request.correlation_id } else { '' }
+        decision_outcome = $DecisionOutcome
+        reason_code = $ReasonCode
+        summary = $Summary
+        boundary_class = $BoundaryClass
+        ack_state = $AckState
+        execution_state = $ExecutionState
+    }
+}
+
 function Get-HighWatermark {
     param(
         [Parameter(Mandatory = $true)]$State,
@@ -607,8 +634,10 @@ function Invoke-SyntheticStep {
             trigger_ack = 0
             task_ack = 0
             result = 0
+            decision = 0
         }
         superseded_by_request_id = ''
+        decision_outcome = ''
         artifact_paths = [ordered]@{}
     }
 
@@ -628,10 +657,14 @@ function Invoke-SyntheticStep {
     $triggerAck = $null
     $taskAck = $null
     $result = $null
+    $decision = $null
+    $boundaryClass = if ($Request.PSObject.Properties['execution_policy'] -and $Request.execution_policy -and $Request.execution_policy.PSObject.Properties['class'] -and [string]::Equals([string]$Request.execution_policy.class, 'approval_required', [System.StringComparison]::OrdinalIgnoreCase)) { 'hard_boundary' } else { 'soft_boundary' }
 
     if ($wrongTarget) {
         $stepSummary.status = 'wrong_target_rejected'
         $stepSummary.detail = ('Rejected request {0}; target must be TOD.' -f $requestId)
+        $stepSummary.decision_outcome = 'reject_with_specific_policy_reason'
+        $decision = New-DecisionPacket -DecisionOutcome 'reject_with_specific_policy_reason' -ReasonCode 'wrong_target' -Summary $stepSummary.detail -Request $Request -BoundaryClass $boundaryClass -AckState 'not_acked' -ExecutionState 'rejected'
     }
     elseif (Test-RequestOrderingIsStale -RequestOrderingInfo $orderingInfo -HighWatermark $highWatermark) {
         $triggerAck = New-TriggerAckPacket -State $State -Request $Request -Trigger $Trigger
@@ -658,10 +691,14 @@ function Invoke-SyntheticStep {
         Add-EmissionRecord -State $State -Bucket 'result' -Payload $result -StepName $StepName -StepNumber $StepNumber -LatestPath $resultArtifact.latest_path
         $stepSummary.emitted.result = 1
         $stepSummary.artifact_paths.result = $resultArtifact.latest_path
+        $stepSummary.decision_outcome = 'reject_with_specific_policy_reason'
+        $decision = New-DecisionPacket -DecisionOutcome 'reject_with_specific_policy_reason' -ReasonCode 'stale_request_ignored' -Summary $stepSummary.detail -Request $Request -BoundaryClass $boundaryClass -AckState 'not_acked' -ExecutionState 'rejected'
     }
     elseif ($State.processed.ContainsKey($requestId) -and [string]::Equals([string]$State.processed[$requestId], $requestSignature, [System.StringComparison]::OrdinalIgnoreCase)) {
         $stepSummary.status = 'already_processed'
         $stepSummary.detail = ('Deduplicated duplicate semantic request {0} without emitting a new ACK or RESULT.' -f $requestId)
+        $stepSummary.decision_outcome = 'reject_with_specific_policy_reason'
+        $decision = New-DecisionPacket -DecisionOutcome 'reject_with_specific_policy_reason' -ReasonCode 'already_processed' -Summary $stepSummary.detail -Request $Request -BoundaryClass $boundaryClass -AckState 'not_acked' -ExecutionState 'rejected'
     }
     else {
         $triggerAck = New-TriggerAckPacket -State $State -Request $Request -Trigger $Trigger
@@ -684,6 +721,8 @@ function Invoke-SyntheticStep {
 
         $stepSummary.status = 'completed'
         $stepSummary.detail = ('Accepted request {0} and emitted one trigger ACK, one task ACK, and one terminal RESULT.' -f $requestId)
+        $stepSummary.decision_outcome = 'execute'
+        $decision = New-DecisionPacket -DecisionOutcome 'execute' -ReasonCode 'authorized_routine_request' -Summary 'Synthetic listener executed authorized soft-boundary work without waiting on human start confirmation.' -Request $Request -BoundaryClass $boundaryClass -AckState 'accepted' -ExecutionState 'completed'
         $State.processed[$requestId] = $requestSignature
         $State.last_processed_request_id = $requestId
         $State.last_processed_request_signature = $requestSignature
@@ -692,7 +731,17 @@ function Invoke-SyntheticStep {
         }
     }
 
+    if ($null -ne $decision) {
+        $decisionArtifact = Write-StepArtifact -ScenarioDir $ScenarioDir -StepNumber $StepNumber -FileName 'TOD_MIM_EXECUTION_DECISION.latest.json' -Payload $decision
+        Add-EmissionRecord -State $State -Bucket 'decision' -Payload $decision -StepName $StepName -StepNumber $StepNumber -LatestPath $decisionArtifact.latest_path
+        $stepSummary.emitted.decision = 1
+        $stepSummary.artifact_paths.decision = $decisionArtifact.latest_path
+    }
+
     $commandStatus = New-CommandStatusPacket -State $State -Status ([string]$stepSummary.status) -Detail ([string]$stepSummary.detail) -Request $Request -AckPacket $taskAck -ResultPacket $result
+    if ($null -ne $decision) {
+        $commandStatus | Add-Member -NotePropertyName decision -NotePropertyValue $decision -Force
+    }
     $commandStatusArtifact = Write-StepArtifact -ScenarioDir $ScenarioDir -StepNumber $StepNumber -FileName 'TOD_MIM_COMMAND_STATUS.latest.json' -Payload $commandStatus
     Add-EmissionRecord -State $State -Bucket 'command_status' -Payload $commandStatus -StepName $StepName -StepNumber $StepNumber -LatestPath $commandStatusArtifact.latest_path
     $stepSummary.artifact_paths.command_status = $commandStatusArtifact.latest_path
@@ -856,11 +905,34 @@ function Invoke-WrongTargetRejectedScenario {
     }
 }
 
+function Invoke-SoftBoundaryExecuteWithoutGoOrderScenario {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $scenarioDir = Join-Path $Root 'soft_boundary_execute_without_go_order'
+    Ensure-Directory -PathValue $scenarioDir
+    $state = New-State
+    $request = New-RequestPacket -RequestId 'objective-307-task-soft-boundary-001' -ObjectiveId 'objective-307' -TriggerSequence 8001 -TodAction 'get-state-bus'
+    $request | Add-Member -NotePropertyName execution_policy -NotePropertyValue ([pscustomobject]@{ class = 'auto_execute' }) -Force
+    $request | Add-Member -NotePropertyName assigned_executor -NotePropertyValue 'codex' -Force
+    $steps = @(
+        (Invoke-SyntheticStep -ScenarioDir $scenarioDir -State $state -StepNumber 1 -StepName 'soft boundary execute without go order' -Request $request -Trigger (New-TriggerPacket -RequestId 'objective-307-task-soft-boundary-001' -TriggerSequence 8001))
+    )
+
+    return New-ScenarioResult -ScenarioName 'soft_boundary_execute_without_go_order' -Root $Root -Steps $steps -State $state -Assertion {
+        param($scenarioSteps, $counts)
+        return ([string]$scenarioSteps[0].status -eq 'completed') -and ([string]$scenarioSteps[0].decision_outcome -eq 'execute') -and ($counts.trigger_ack -eq 1) -and ($counts.task_ack -eq 1) -and ($counts.result -eq 1)
+    }
+}
+
 $root = New-SimulationRoot
 $results = @()
 
 if ($Scenario -in @('all', 'accept_once')) {
     $results += Invoke-AcceptOnceScenario -Root $root
+}
+
+if ($Scenario -in @('all', 'soft_boundary_execute_without_go_order')) {
+    $results += Invoke-SoftBoundaryExecuteWithoutGoOrderScenario -Root $root
 }
 if ($Scenario -in @('all', 'duplicate_request_dedup')) {
     $results += Invoke-DuplicateRequestDedupScenario -Root $root

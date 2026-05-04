@@ -2,6 +2,7 @@ param(
     [string]$TaskName = "TOD-GitHubProjectSimulation-Daily",
     [string]$DailyAt = "09:15",
     [switch]$UseAssist,
+    [switch]$VisibleWindow,
     [switch]$RunNow
 )
 
@@ -18,6 +19,7 @@ if (-not (Get-Command -Name Register-ScheduledTask -ErrorAction SilentlyContinue
 }
 
 $argParts = @(
+    if (-not $VisibleWindow) { '-WindowStyle'; 'Hidden' }
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", "`"$dailyScript`""
@@ -47,6 +49,7 @@ $task = Get-ScheduledTask -TaskName $TaskName
     task_name = $TaskName
     state = [string]$task.State
     daily_at = $DailyAt
+    visible_window = [bool]$VisibleWindow
     run_now_requested = [bool]$RunNow
     action = [pscustomobject]@{
         execute = "powershell.exe"

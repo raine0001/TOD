@@ -105,11 +105,11 @@ $reviewDecision = Read-Json -PathValue $ReviewDecisionPath
 $integration = Read-Json -PathValue $IntegrationStatusPath
 
 $requestIdentity = ''
-if ($request.PSObject.Properties['task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$request.task_id)) {
-    $requestIdentity = [string]$request.task_id
-}
-elseif ($request.PSObject.Properties['request_id'] -and -not [string]::IsNullOrWhiteSpace([string]$request.request_id)) {
+if ($request.PSObject.Properties['request_id'] -and -not [string]::IsNullOrWhiteSpace([string]$request.request_id)) {
     $requestIdentity = [string]$request.request_id
+}
+elseif ($request.PSObject.Properties['task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$request.task_id)) {
+    $requestIdentity = [string]$request.task_id
 }
 
 if (-not [string]::Equals([string]$RequestId, $requestIdentity, [System.StringComparison]::OrdinalIgnoreCase)) {

@@ -145,12 +145,56 @@ Describe 'TOD codex next-step artifacts' {
         [bool]$policy.applied | Should Be $false
         [string]$policy.execution_policy.class | Should Be 'auto_execute'
         [string]$policy.applied_reason | Should Be 'phase1_recommendation_only'
+        [string]$policy.continuation.decision | Should Be 'continue'
+        [bool]$policy.continuation.operator_prompt_allowed | Should Be $false
     }
 
-    It 'allows TOD to select the next step locally when parity is green' {
+    It 'projects pending MIM consensus as a dialog-routed continuation instead of an operator prompt' {
+        $base = New-TestArea
+        $consensusPath = Join-Path $base 'NEXT_STEP_CONSENSUS.latest.json'
+        $policyPath = Join-Path $base 'NEXT_STEP_POLICY.latest.json'
+
+        [pscustomobject]@{
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            source = 'test'
+            contract_version = 'tod-next-step-consensus-v1'
+            status = 'pending_mim'
+            mim_position = [pscustomobject]@{
+                decision = 'pending'
+                session_id = 'next-step-session-123'
+            }
+            consensus = [pscustomobject]@{
+                selected_finding_id = 'f-1'
+                action = 'Run canonical-only validation pass'
+                execution_policy = [pscustomobject]@{
+                    class = 'pending_remote'
+                    applied = $false
+                    applied_reason = 'phase1_recommendation_only'
+                }
+            }
+            findings = @(
+                [pscustomobject]@{
+                    finding = [pscustomobject]@{ finding_id = 'f-1'; description = 'Run canonical-only validation pass' }
+                }
+            )
+        } | ConvertTo-Json -Depth 12 | Set-Content -Path $consensusPath
+
+        $payload = (& $policyScript -ConsensusPath $consensusPath -OutputPath $policyPath) | ConvertFrom-Json
+        [bool]$payload.ok | Should Be $true
+
+        $policy = Get-Content -Path $policyPath -Raw | ConvertFrom-Json
+        [string]$policy.status | Should Be 'pending_mim'
+        [string]$policy.continuation.decision | Should Be 'await_tod_mim_consensus'
+        [string]$policy.continuation.route | Should Be 'tod_mim_consensus_dialog'
+        [bool]$policy.continuation.operator_prompt_allowed | Should Be $false
+        [string]$policy.continuation.mim_session_id | Should Be 'next-step-session-123'
+    }
+
+    It 'keeps next-step consensus pending when parity is green but MIM has not answered yet' {
         $base = New-TestArea
         $findingsPath = Join-Path $base 'tod_codex_next_steps.latest.json'
         $parityPath = Join-Path $base 'tod-mim-execution-parity.latest.json'
+        $dialogDir = Join-Path $base 'dialog'
         $consensusPath = Join-Path $base 'NEXT_STEP_CONSENSUS.latest.json'
 
         [pscustomobject]@{
@@ -187,13 +231,15 @@ Describe 'TOD codex next-step artifacts' {
             warning_count = 0
         } | ConvertTo-Json -Depth 8 | Set-Content -Path $parityPath
 
-        $payload = (& $resolveConsensusScript -FindingsPath $findingsPath -ParityArtifactPath $parityPath -OutputPath $consensusPath -WaitSeconds 0 -PollMilliseconds 10) | ConvertFrom-Json
+        $payload = (& $resolveConsensusScript -FindingsPath $findingsPath -DialogDir $dialogDir -ParityArtifactPath $parityPath -OutputPath $consensusPath -WaitSeconds 0 -PollMilliseconds 10) | ConvertFrom-Json
         [bool]$payload.ok | Should Be $true
-        [string]$payload.status | Should Be 'consensus_ready'
+        [string]$payload.status | Should Be 'pending_mim'
 
         $artifact = Get-Content -Path $consensusPath -Raw | ConvertFrom-Json
-        [string]$artifact.mim_position.decision | Should Be 'not_required'
-        [string]$artifact.mim_position.source | Should Be 'tod_parity_green_local_authority'
+        [string]$artifact.mim_position.decision | Should Be 'pending'
+        [string]$artifact.parity_authority.source | Should Be 'parity_signal_only'
+        [bool]$artifact.parity_authority.active | Should Be $false
+        [string]$artifact.mim_position.source | Should Be 'dialog_timeout_reminder_sent'
         [string]$artifact.consensus.selected_finding_id | Should Be '99-finding-001'
     }
 

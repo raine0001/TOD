@@ -20,6 +20,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$authoritativeCommunicationHost = '192.168.1.120'
+$authoritativeCommunicationRoot = '/home/testpilot/mim/runtime/shared'
 
 function Get-LocalPath {
     param([Parameter(Mandatory = $true)][string]$PathValue)
@@ -469,6 +471,17 @@ if ($integration -and $integration.PSObject.Properties["objective_alignment"] -a
     $objectiveInSync = ([string]$integration.objective_alignment.status -eq "in_sync")
 }
 
+$latestCompletedObjectiveId = ''
+if ($integration -and $integration.PSObject.Properties['mim_handshake'] -and $integration.mim_handshake) {
+    $candidateCompleted = Get-StringField -InputObject $integration.mim_handshake -FieldName 'latest_completed_objective'
+    if (-not [string]::IsNullOrWhiteSpace($candidateCompleted) -and $candidateCompleted -notmatch '^(?i)objective-') {
+        $latestCompletedObjectiveId = 'objective-' + $candidateCompleted
+    }
+    else {
+        $latestCompletedObjectiveId = $candidateCompleted
+    }
+}
+
 $bridgeEvidence = if ($integration -and $integration.PSObject.Properties["bridge_canonical_evidence"]) { $integration.bridge_canonical_evidence } else { $null }
 $remotePublishVerified = Get-BoolField -InputObject $bridgeEvidence -FieldName "remote_publish_verified"
 if (-not $remotePublishVerified -and $integration -and $integration.PSObject.Properties["tod_status_publish"]) {
@@ -489,6 +502,19 @@ $expectedObjectiveId = if ($integration -and $integration.PSObject.Properties['o
         $candidate
     }
 } else { '' }
+$expectedTaskId = ''
+if ($integration -and $integration.PSObject.Properties['mim_handshake'] -and $integration.mim_handshake -and $integration.mim_handshake.PSObject.Properties['source_of_truth'] -and $integration.mim_handshake.source_of_truth -and $integration.mim_handshake.source_of_truth.PSObject.Properties['formal_program_truth'] -and $integration.mim_handshake.source_of_truth.formal_program_truth) {
+    $formalProgramTruth = $integration.mim_handshake.source_of_truth.formal_program_truth
+    $formalTaskId = Get-StringField -InputObject $formalProgramTruth -FieldName 'task_id'
+    if (-not [string]::IsNullOrWhiteSpace($formalTaskId)) {
+        if ($formalTaskId -match '^(?i)objective-') {
+            $expectedTaskId = $formalTaskId
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($expectedObjectiveId)) {
+            $expectedTaskId = ('{0}-task-{1}' -f $expectedObjectiveId, $formalTaskId)
+        }
+    }
+}
 
 $remoteProbeAvailable = [bool]($remoteRequestFingerprint -and $remoteRequestFingerprint.PSObject.Properties['available'] -and [bool]$remoteRequestFingerprint.available)
 $remoteBoundaryAvailable = [bool]($remoteBoundaryDiagnostic -and $remoteBoundaryDiagnostic.PSObject.Properties['available'] -and [bool]$remoteBoundaryDiagnostic.available)
@@ -509,9 +535,33 @@ if ($remoteProbeAvailable -and $localRequestFingerprint) {
 
 $publicationSurfaceDivergence = $false
 $staleRemoteRequestIdentity = $false
-if ($remoteProbeAvailable -and -not [string]::IsNullOrWhiteSpace($expectedObjectiveId) -and -not [string]::Equals($remoteObjectiveId, $expectedObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) {
+if ($remoteProbeAvailable -and (
+        (-not [string]::IsNullOrWhiteSpace($expectedObjectiveId) -and -not [string]::Equals($remoteObjectiveId, $expectedObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) -or
+        (-not [string]::IsNullOrWhiteSpace($expectedTaskId) -and -not [string]::Equals($remoteTaskId, $expectedTaskId, [System.StringComparison]::OrdinalIgnoreCase))
+    )) {
     $publicationSurfaceDivergence = $true
     $staleRemoteRequestIdentity = $true
+}
+
+$completedObjectiveResidue = $false
+$localResultTerminal = @('completed', 'succeeded', 'failed', 'blocked', 'already_processed', 'stale_request_ignored') -contains $resultStatus
+if (
+    $publicationSurfaceDivergence -and
+    [string]::IsNullOrWhiteSpace($expectedTaskId) -and
+    $objectiveInSync -and
+    $localResultTerminal -and
+    -not [string]::IsNullOrWhiteSpace($resultTaskId) -and
+    [string]::Equals($resultTaskId, $requestId, [System.StringComparison]::OrdinalIgnoreCase) -and
+    -not [string]::IsNullOrWhiteSpace($latestCompletedObjectiveId) -and
+    [string]::Equals($latestCompletedObjectiveId, $remoteObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)
+) {
+    $completedObjectiveResidue = $true
+    $publicationSurfaceDivergence = $false
+    $staleRemoteRequestIdentity = $false
+}
+
+if ($completedObjectiveResidue) {
+    $localBridgeHealthy = $true
 }
 
 if ($publicationSurfaceDivergence) {
@@ -568,6 +618,9 @@ if (@($failureModes).Count -gt 0) {
     }
 }
 
+$envMap = Get-DotEnvMap -PathValue $DotEnvPath
+$configuredCommunicationHost = Get-DotEnvValue -Map $envMap -Name 'MIM_SSH_HOST' -Default 'mim'
+
 $smoke = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString("o")
     source = "tod-mim-bridge-smoke-v1"
@@ -579,12 +632,15 @@ $smoke = [pscustomobject]@{
     failure_modes = @($failureModes)
     canonical_request = [pscustomobject]@{
         expected_objective_id = $expectedObjectiveId
+        expected_task_id = $expectedTaskId
         local_listener_mirror = $localRequestFingerprint
         remote_surface = $remoteRequestFingerprint
         canonical_request_mismatch = [bool]$canonicalRequestMismatch
         publication_surface_divergence = [bool]$publicationSurfaceDivergence
         noncanonical_remote_surface = [bool]$noncanonicalRemoteSurface
         stale_remote_request_identity = [bool]$staleRemoteRequestIdentity
+        completed_objective_residue = [bool]$completedObjectiveResidue
+        latest_completed_objective_id = $latestCompletedObjectiveId
     }
     remote_boundary = $remoteBoundaryDiagnostic
     local_bridge = [pscustomobject]@{
@@ -606,14 +662,28 @@ $smoke = [pscustomobject]@{
         request_matches_ack = [bool]$requestMatchesAck
         result_matches_request = [bool]$resultMatchesRequest
         review_gate_passed = [bool]$reviewGatePassed
+        local_result_terminal = [bool]$localResultTerminal
+        completed_objective_residue = [bool]$completedObjectiveResidue
     }
     authority_surfaces = [pscustomobject]@{
+        communication = [pscustomobject]@{
+            host = $authoritativeCommunicationHost
+            path = $authoritativeCommunicationRoot
+            role = 'communication_authority'
+            configured_host = $configuredCommunicationHost
+            configured_host_matches_policy = [string]::Equals($configuredCommunicationHost, $authoritativeCommunicationHost, [System.StringComparison]::OrdinalIgnoreCase)
+            non_authoritative_surfaces = @(
+                [pscustomobject]@{ host = '192.168.1.90'; path = '/home/testpilot/mim/runtime/shared'; role = 'arm-side runtime/telemetry'; authoritative_for_communication = $false },
+                [pscustomobject]@{ host = '192.168.1.90'; path = '/home/testpilot/mim_arm/runtime/shared'; role = 'arm-side runtime/telemetry'; authoritative_for_communication = $false },
+                [pscustomobject]@{ host = 'local'; path = 'tod/out/context-sync/*'; role = 'local mirrors'; authoritative_for_communication = $false }
+            )
+        }
         result = [pscustomobject]@{
             source = 'tod_listener_stage_result_latest'
             authoritative_for = 'result_match_and_reconciliation'
             local_path = $resultPath
             local_surface = $localResultFingerprint
-            note = 'This TOD-synced listener-stage result surface is authoritative for this lane; arm-host diagnostic command-status files are not used as result authority here.'
+            note = 'This TOD-synced listener-stage result surface is authoritative for result reconciliation only. Communication truth remains 192.168.1.120:/home/testpilot/mim/runtime/shared; arm-host surfaces and local mirrors are non-authoritative for communication truth.'
         }
     }
     remote_publish = [pscustomobject]@{

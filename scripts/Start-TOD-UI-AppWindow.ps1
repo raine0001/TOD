@@ -132,7 +132,7 @@ $serverArgs = @(
     "-NoAutoOpen"
 )
 
-$serverProc = Start-Process -FilePath "powershell" -ArgumentList $serverArgs -PassThru -WindowStyle Normal
+$serverProc = Start-Process -FilePath "powershell" -ArgumentList $serverArgs -PassThru -WindowStyle Hidden
 
 $ready = $false
 for ($i = 0; $i -lt 80; $i++) {

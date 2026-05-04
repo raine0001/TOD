@@ -43,9 +43,128 @@ function Write-JsonFile {
     [System.IO.File]::WriteAllText($PathValue, (($Payload | ConvertTo-Json -Depth $Depth) -replace "`r`n", "`n"), $utf8NoBom)
 }
 
+function New-MockTodScript {
+    param(
+        [string]$ReadinessStatus = 'valid',
+        [string]$ReadinessReason = 'artifact_valid',
+        [bool]$ReadinessValid = $true,
+        [bool]$ExecutionAllowed = $true,
+        [string[]]$DegradeActions = @()
+    )
+
+    $scriptPath = Join-Path $repoRoot ('tod/out/tests/mock-tod-' + [guid]::NewGuid().ToString('N') + '.ps1')
+    $degradeActionsLiteral = if ($DegradeActions.Count -gt 0) {
+        '@(' + (($DegradeActions | ForEach-Object { "'{0}'" -f $_ }) -join ', ') + ')'
+    }
+    else {
+        '@()'
+    }
+    $scriptContent = @'
+param(
+    [string]$Action,
+    [string]$RequestId,
+        [string]$ObjectiveId,
+        [string]$TaskId,
+        [string]$Title,
+        [string]$Description,
+        [string]$Priority,
+        [string]$Scope,
+        [string]$AcceptanceCriteria,
+        [string]$SuccessCriteria,
+        [string]$AssignedExecutor,
+        [string]$TaskCategory,
+        [string]$Content,
+    [int]$Top = 0
+)
+
+if ($Action -eq 'get-execution-readiness') {
+    @{
+        signal_name = 'execution-readiness'
+        readiness = @{
+            status = '__READINESS_STATUS__'
+            reason = '__READINESS_REASON__'
+            detail = ''
+            valid = __READINESS_VALID__
+            execution_allowed = __EXECUTION_ALLOWED__
+            authoritative = $true
+            freshness_state = 'fresh'
+        }
+        policy = @{
+            block_actions = @()
+            degrade_actions = __DEGRADE_ACTIONS__
+            block_states = @('stale', 'invalid', 'unknown')
+            degrade_states = @('degraded', 'stale', 'invalid', 'unknown')
+        }
+    } | ConvertTo-Json -Depth 8
+    return
+}
+
+if ($Action -eq 'run-bridge-request') {
+    if ([string]::IsNullOrWhiteSpace($RequestId)) {
+        throw '-RequestId is required'
+    }
+
+    @{
+        ok = $true
+        action = $Action
+        request_id = $RequestId
+        top = $Top
+    } | ConvertTo-Json -Depth 8
+    return
+}
+
+if ($Action -eq 'execute-chat-task') {
+    @{
+        ok = $true
+        action = $Action
+        objective_id = $ObjectiveId
+        task_id = $TaskId
+        title = $Title
+        description = $Description
+        priority = $Priority
+        scope = $Scope
+        acceptance_criteria = $AcceptanceCriteria
+        success_criteria = $SuccessCriteria
+        assigned_executor = $AssignedExecutor
+        task_category = $TaskCategory
+        content = $Content
+    } | ConvertTo-Json -Depth 8
+    return
+}
+
+throw ("Unexpected action: {0}" -f $Action)
+'@
+    $scriptContent = $scriptContent.Replace('__READINESS_STATUS__', $ReadinessStatus)
+    $scriptContent = $scriptContent.Replace('__READINESS_REASON__', $ReadinessReason)
+    $scriptContent = $scriptContent.Replace('__READINESS_VALID__', $(if ($ReadinessValid) { '$true' } else { '$false' }))
+    $scriptContent = $scriptContent.Replace('__EXECUTION_ALLOWED__', $(if ($ExecutionAllowed) { '$true' } else { '$false' }))
+    $scriptContent = $scriptContent.Replace('__DEGRADE_ACTIONS__', $degradeActionsLiteral)
+
+    $dir = Split-Path -Parent $scriptPath
+    if (-not (Test-Path -Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($scriptPath, ($scriptContent -replace "`r`n", "`n"), $utf8NoBom)
+    return $scriptPath
+}
+
 Describe 'TOD packet listener ordering hardening' {
     BeforeAll {
+        Import-ListenerFunction -Name 'Get-ObjectiveNumericValue'
+        Import-ListenerFunction -Name 'Normalize-ObjectiveIdText'
+        Import-ListenerFunction -Name 'Test-ObjectiveInvalidatedByAuthority'
+        Import-ListenerFunction -Name 'Get-RequestIdentifier'
+        Import-ListenerFunction -Name 'Get-ExpectedObjectiveFromRequest'
+        Import-ListenerFunction -Name 'Get-RequestExecutorRole'
+        Import-ListenerFunction -Name 'Get-RequestExecutionPolicyClass'
+        Import-ListenerFunction -Name 'Get-RequestBoundaryClass'
         Import-ListenerFunction -Name 'Get-UtcNowString'
+        Import-ListenerFunction -Name 'Get-ExecutionReadinessTrace'
+        Import-ListenerFunction -Name 'Get-MimRequestDecision'
+        Import-ListenerFunction -Name 'Convert-JsonDeserializedValue'
+        Import-ListenerFunction -Name 'ConvertFrom-JsonCaseInsensitiveSafe'
         Import-ListenerFunction -Name 'Get-ObjectFieldLong'
         Import-ListenerFunction -Name 'Get-TaskOrdinalInfo'
         Import-ListenerFunction -Name 'Get-RequestOrderingInfo'
@@ -53,6 +172,109 @@ Describe 'TOD packet listener ordering hardening' {
         Import-ListenerFunction -Name 'Update-TaskHighWatermark'
         Import-ListenerFunction -Name 'Get-RetryWeight'
         Import-ListenerFunction -Name 'Update-CadencePlan'
+        Import-ListenerFunction -Name 'Get-ListenerExecutionFeedbackConfig'
+        Import-ListenerFunction -Name 'Get-RequestExecutionId'
+        Import-ListenerFunction -Name 'Resolve-ExecutionFeedbackEndpoint'
+        Import-ListenerFunction -Name 'Publish-ExecutionFeedbackFromRequest'
+        Import-ListenerFunction -Name 'Invoke-RequestExecution'
+    }
+
+    It 'ignores inactive authority reset ceilings' {
+        $inactiveReset = [pscustomobject]@{
+            active = $false
+            authoritative_current_objective = '216'
+            max_valid_objective = '216'
+            invalidated_objectives = @('720')
+        }
+
+        (Test-ObjectiveInvalidatedByAuthority -ObjectiveId 'objective-720' -AuthorityReset $inactiveReset) | Should Be $false
+        (Test-ObjectiveInvalidatedByAuthority -ObjectiveId '720' -AuthorityReset $inactiveReset) | Should Be $false
+    }
+
+    It 'uses aligned objective when authority reset is inactive' {
+        $mockTodScript = New-MockTodScript
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'objective-2005-task-5327-implement-bounded-work-for-handle-that-thing'
+                task_id = 'objective-2005-task-5327'
+                objective_id = 'objective-2005'
+                assigned_executor = 'TOD'
+                tod_action = 'run-bridge-request'
+            }
+            $integrationStatus = [pscustomobject]@{
+                objective_authority_reset = [pscustomobject]@{
+                    active = $false
+                    authoritative_current_objective = '216'
+                    max_valid_objective = '216'
+                }
+                objective_alignment = [pscustomobject]@{
+                    tod_current_objective = '2005'
+                }
+                live_task_request = [pscustomobject]@{
+                    request_id = 'objective-2005-task-5327-implement-bounded-work-for-handle-that-thing'
+                    normalized_objective_id = '2005'
+                    promotion_applied = $true
+                }
+                bridge_canonical_evidence = [pscustomobject]@{
+                    failure_signals = @()
+                }
+                bridge_operator_guidance = [pscustomobject]@{
+                    recommendation = 'continue_bounded_execution'
+                }
+            }
+
+            $decision = Get-MimRequestDecision -Request $request -GoOrder $null -IntegrationStatus $integrationStatus -ReviewDecision $null -TodScriptAbs $mockTodScript
+
+            [string]$decision.reason_code | Should Not Be 'objective_mismatch'
+            [string]$decision.canonical_objective_id | Should Be '2005'
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
+                Remove-Item -Path $mockTodScript -Force
+            }
+        }
+    }
+
+    It 'degrades codex handoff when readiness is invalid without blocking execution' {
+        $mockTodScript = New-MockTodScript -ReadinessStatus 'invalid' -ReadinessReason 'artifact_failed' -ReadinessValid $false -ExecutionAllowed $false -DegradeActions @('codex_handoff')
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'objective-2007-task-5331-implement-bounded-work-for-handle-that-thing'
+                task_id = 'objective-2007-task-5331'
+                objective_id = 'objective-2007'
+                assigned_executor = 'codex'
+                action = 'codex_handoff'
+            }
+            $integrationStatus = [pscustomobject]@{
+                objective_alignment = [pscustomobject]@{
+                    tod_current_objective = '2007'
+                }
+                live_task_request = [pscustomobject]@{
+                    request_id = 'objective-2007-task-5331-implement-bounded-work-for-handle-that-thing'
+                    normalized_objective_id = '2007'
+                    promotion_applied = $true
+                }
+                bridge_canonical_evidence = [pscustomobject]@{
+                    failure_signals = @()
+                }
+                bridge_operator_guidance = [pscustomobject]@{
+                    recommendation = 'continue_bounded_execution'
+                }
+            }
+
+            $decision = Get-MimRequestDecision -Request $request -GoOrder $null -IntegrationStatus $integrationStatus -ReviewDecision $null -TodScriptAbs $mockTodScript
+
+            [string]$decision.decision_outcome | Should Be 'execute'
+            [string]$decision.reason_code | Should Be 'authorized_routine_request'
+            [string]$decision.execution_readiness.status | Should Be 'invalid'
+            [string]$decision.execution_readiness.source | Should Be 'artifact_failed'
+            [string]$decision.execution_readiness.policy_outcome | Should Be 'degrade'
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
+                Remove-Item -Path $mockTodScript -Force
+            }
+        }
     }
 
     It 'prefers explicit request sequence over request-id suffix ordering' {
@@ -110,5 +332,127 @@ Describe 'TOD packet listener ordering hardening' {
         [string]$state.last_cycle_classification | Should Be 'duplicate_seen'
         ([string]::IsNullOrWhiteSpace([string]$state.cadence_last_success_at)) | Should Be $false
         (Test-Path -Path $statePath) | Should Be $true
+    }
+
+    It 'forwards request_id when dispatching run-bridge-request' {
+        $mockTodScript = New-MockTodScript
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'objective-110-task-mim-arm-capture-frame-20260406235459'
+                objective_id = 'objective-110'
+                tod_action = 'run-bridge-request'
+                top = 3
+            }
+
+            $execution = Invoke-RequestExecution -TodScriptAbs $mockTodScript -Request $request
+
+            [bool]$execution.ok | Should Be $true
+            [string]$execution.action | Should Be 'run-bridge-request'
+            [string]$execution.execution_mode | Should Be 'direct_script_success'
+            [string]$execution.payload.request_id | Should Be 'objective-110-task-mim-arm-capture-frame-20260406235459'
+            [int]$execution.payload.top | Should Be 3
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
+                Remove-Item -Path $mockTodScript -Force
+            }
+        }
+    }
+
+    It 'forwards execute-chat-task metadata when dispatching bounded listener work' {
+        $mockTodScript = New-MockTodScript
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'objective-111-task-implement-local-executor'
+                task_id = 'objective-111-task-implement-local-executor'
+                objective_id = 'objective-111'
+                tod_action = 'execute-chat-task'
+                title = 'Build TOD execution loop contract'
+                description = 'Create and run the next bounded local execution slice.'
+                priority = 'high'
+                scope = 'Implement the execution loop contract in the local TOD surfaces.'
+                acceptance_criteria = 'Execution loop contract is published and validated.'
+                success_criteria = 'Execution loop contract is published and validated.'
+                assigned_executor = 'codex'
+                task_category = 'chat_execution'
+                content = 'OBJECTIVE_ID: objective-111`nTITLE: Build TOD execution loop contract'
+            }
+
+            $execution = Invoke-RequestExecution -TodScriptAbs $mockTodScript -Request $request
+
+            [bool]$execution.ok | Should Be $true
+            [string]$execution.action | Should Be 'execute-chat-task'
+            [string]$execution.execution_mode | Should Be 'direct_script_success'
+            [string]$execution.payload.objective_id | Should Be 'objective-111'
+            [string]$execution.payload.task_id | Should Be 'objective-111-task-implement-local-executor'
+            [string]$execution.payload.title | Should Be 'Build TOD execution loop contract'
+            [string]$execution.payload.scope | Should Be 'Implement the execution loop contract in the local TOD surfaces.'
+            [string]$execution.payload.acceptance_criteria | Should Be 'Execution loop contract is published and validated.'
+            [string]$execution.payload.task_category | Should Be 'chat_execution'
+            [string]$execution.payload.assigned_executor | Should Be 'codex'
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
+                Remove-Item -Path $mockTodScript -Force
+            }
+        }
+    }
+
+    It 'resolves relative feedback endpoint from TOD config and publishes executor timestamps' {
+        $captured = [pscustomobject]@{
+            Uri = ''
+            Method = ''
+            ContentType = ''
+            Headers = $null
+            Body = ''
+        }
+
+        function global:Invoke-RestMethod {
+            param(
+                [string]$Method,
+                [string]$Uri,
+                [string]$ContentType,
+                $Headers,
+                [string]$Body
+            )
+
+            $captured.Uri = $Uri
+            $captured.Method = $Method
+            $captured.ContentType = $ContentType
+            $captured.Headers = $Headers
+            $captured.Body = $Body
+            return [pscustomobject]@{ ok = $true }
+        }
+
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'objective-152-task-mim-arm-safe-home-20260408160030'
+                task_id = 'objective-152-task-mim-arm-safe-home-20260408160030'
+                objective_id = 'objective-152'
+                action = 'safe_home'
+                capability_name = 'mim_arm.execute_safe_home'
+                execution_id = 777
+                feedback_endpoint = '/gateway/capabilities/executions/777/feedback'
+            }
+
+            $result = Publish-ExecutionFeedbackFromRequest -Request $request -Status 'succeeded' -TaskId $request.task_id -HostReceivedTimestamp '2026-04-08T16:00:42Z' -HostCompletedTimestamp '2026-04-08T16:00:43Z' -ResultReasonCode 'execution_completed' -ExecutionMode 'direct_script_success'
+
+            [bool]$result.attempted | Should Be $true
+            [bool]$result.published | Should Be $true
+            [string]$captured.Uri | Should Be 'http://192.168.1.120:8000/gateway/capabilities/executions/777/feedback'
+            [string]$captured.Method | Should Be 'Post'
+            [string]$captured.ContentType | Should Be 'application/json'
+
+            $payload = ($captured.Body | ConvertFrom-Json)
+            [string]$payload.status | Should Be 'succeeded'
+            [string]$payload.details.host_received_timestamp | Should Be '2026-04-08T16:00:42Z'
+            [string]$payload.details.host_completed_timestamp | Should Be '2026-04-08T16:00:43Z'
+            [string]$payload.details.executor_timestamps.host_received_timestamp | Should Be '2026-04-08T16:00:42Z'
+            [string]$payload.details.executor_timestamps.host_completed_timestamp | Should Be '2026-04-08T16:00:43Z'
+            [string]$payload.details.result_reason_code | Should Be 'execution_completed'
+        }
+        finally {
+            Remove-Item Function:\Invoke-RestMethod -ErrorAction SilentlyContinue
+        }
     }
 }

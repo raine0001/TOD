@@ -3,6 +3,7 @@ param(
     [string]$DailyAt = "09:00",
     [ValidateSet("review", "debug", "fixes", "plan", "operator")]
     [string]$Mode = "review",
+    [switch]$VisibleWindow,
     [switch]$RunNow
 )
 
@@ -20,6 +21,7 @@ if (-not (Get-Command -Name Register-ScheduledTask -ErrorAction SilentlyContinue
 }
 
 $argParts = @(
+    if (-not $VisibleWindow) { '-WindowStyle'; 'Hidden' }
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", "`"$dailyScript`"",
@@ -79,6 +81,7 @@ if ($RunNow) {
     user = $currentUser
     state = [string]$task.State
     daily_at = $DailyAt
+    visible_window = [bool]$VisibleWindow
     run_now_requested = [bool]$RunNow
     action = [pscustomobject]@{
         execute = "powershell.exe"

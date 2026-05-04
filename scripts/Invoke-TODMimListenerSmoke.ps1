@@ -9,6 +9,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$authoritativeCommunicationHost = '192.168.1.120'
+$authoritativeCommunicationRoot = '/home/testpilot/mim/runtime/shared'
+
 function Get-DotEnvValue {
     param(
         [Parameter(Mandatory = $true)]
@@ -75,6 +78,10 @@ $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
 $credential = New-Object System.Management.Automation.PSCredential ($userName, $securePassword)
 $connectHost = Resolve-PreferredSshHost -HostName $hostName
 $remoteRoot = "/home/testpilot/mim/runtime/shared"
+
+if (-not [string]::Equals([string]$connectHost, $authoritativeCommunicationHost, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw ("Listener smoke refuses to use non-authoritative communication host '{0}'. Expected {1}:{2}. Arm-side hosts such as 192.168.1.90 are runtime/telemetry only." -f [string]$connectHost, $authoritativeCommunicationHost, $authoritativeCommunicationRoot)
+}
 
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmss")
 $requestId = "{0}-task-smoke-{1}" -f $ObjectiveId, $stamp
@@ -240,6 +247,19 @@ if ($journal -and $journal.PSObject.Properties["entries"]) {
     request_id = $requestId
     objective_id = $ObjectiveId
     tod_action = $TodAction
+    communication_authority = [pscustomobject]@{
+        host = $authoritativeCommunicationHost
+        path = $authoritativeCommunicationRoot
+        role = 'communication_authority'
+        configured_host = $hostName
+        resolved_host = $connectHost
+        resolved_host_matches_policy = [string]::Equals([string]$connectHost, $authoritativeCommunicationHost, [System.StringComparison]::OrdinalIgnoreCase)
+        non_authoritative_surfaces = @(
+            [pscustomobject]@{ host = '192.168.1.90'; path = '/home/testpilot/mim/runtime/shared'; role = 'arm-side runtime/telemetry'; authoritative_for_communication = $false },
+            [pscustomobject]@{ host = '192.168.1.90'; path = '/home/testpilot/mim_arm/runtime/shared'; role = 'arm-side runtime/telemetry'; authoritative_for_communication = $false },
+            [pscustomobject]@{ host = 'local'; path = 'tod/out/context-sync/*'; role = 'local mirrors'; authoritative_for_communication = $false }
+        )
+    }
     result_emitted = ($null -ne $resultPacket)
     result_request_id = if ($resultPacket) { [string]$resultPacket.request_id } else { "" }
     result_status = if ($resultPacket) { [string]$resultPacket.status } else { "" }

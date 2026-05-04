@@ -103,6 +103,29 @@ function Invoke-JsonSafe {
     }
 }
 
+function Wait-TodUiReady {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $deadline = (Get-Date).ToUniversalTime().AddSeconds($TimeoutSeconds)
+    while ((Get-Date).ToUniversalTime() -lt $deadline) {
+        try {
+            $response = Invoke-WebRequest -UseBasicParsing -Uri "$BaseUrl/api/project-status" -TimeoutSec 5
+            if ($response.StatusCode -eq 200) {
+                return
+            }
+        }
+        catch {
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+
+    throw ("Timed out waiting for TOD UI at {0}." -f $BaseUrl)
+}
+
 $uiScript = Join-Path $PSScriptRoot "Start-TOD-UI.ps1"
 if (-not (Test-Path -Path $uiScript)) {
     throw "Missing UI script: $uiScript"
@@ -117,10 +140,11 @@ try {
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
         "-File", $uiScript,
-        "-Port", [string]$port
+        "-Port", [string]$port,
+        "-NoAutoOpen"
     ) -PassThru
 
-    Start-Sleep -Seconds 2
+    Wait-TodUiReady -BaseUrl $baseUrl
 
     $project = Invoke-Json -Uri "$baseUrl/api/project-status" -Method "Get" -Body ""
     $busResponse = Invoke-JsonSafe -Uri "$baseUrl/api/run" -Method "Post" -Body (@{ action = "get-state-bus"; top = $Top } | ConvertTo-Json -Depth 5)

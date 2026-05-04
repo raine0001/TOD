@@ -9,6 +9,7 @@ param(
     [switch]$TriggerMaintenanceOnUnresolved,
     [switch]$TriggerMaintenanceOnDetection,
     [switch]$IncludeLogonTrigger,
+    [switch]$VisibleWindow,
     [switch]$RunNow
 )
 
@@ -30,6 +31,7 @@ $interval = New-TimeSpan -Minutes $intervalMinutes
 $duration = New-TimeSpan -Days 3650
 
 $argParts = @(
+    if (-not $VisibleWindow) { '-WindowStyle'; 'Hidden' }
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", "`"$driftGuardScript`"",
@@ -118,6 +120,7 @@ if ($RunNow) {
     trigger_maintenance_on_unresolved = [bool]$TriggerMaintenanceOnUnresolved
     trigger_maintenance_on_detection = [bool]$TriggerMaintenanceOnDetection
     include_logon_trigger = [bool]$IncludeLogonTrigger
+    visible_window = [bool]$VisibleWindow
     run_now_requested = [bool]$RunNow
     action = [pscustomobject]@{
         execute = "powershell.exe"

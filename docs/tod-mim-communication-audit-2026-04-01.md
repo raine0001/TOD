@@ -22,12 +22,18 @@ The immediate stale-request problem around objective 97 is consistent with this 
 
 - Primary runtime owner: [scripts/Start-TODMimPacketListener.ps1](scripts/Start-TODMimPacketListener.ps1)
 - Main local stage: [tod/out/context-sync/listener](tod/out/context-sync/listener)
-- Main remote shared root: /home/testpilot/mim/runtime/shared
+- Main remote shared root: `192.168.1.120:/home/testpilot/mim/runtime/shared`
 - Core behavior:
   - pulls current request and trigger artifacts from remote shared storage
   - applies deduplication and stale-backfill suppression
   - writes current ACK, result, command-status, trigger-ack, journal, and state artifacts
   - mirrors task state into local listener stage for downstream readers
+
+Communication authority correction:
+
+- Communication authority is only `192.168.1.120:/home/testpilot/mim/runtime/shared`.
+- `192.168.1.90:/home/testpilot/mim/runtime/shared` and `192.168.1.90:/home/testpilot/mim_arm/runtime/shared` are arm-side runtime or telemetry surfaces only.
+- Local mirrors such as [tod/out/context-sync/listener](tod/out/context-sync/listener) and [tod/out/context-sync/ssh-shared](tod/out/context-sync/ssh-shared) are consumable mirrors, not communication authority.
 
 2. Derivative shared-state projection lane
 
@@ -39,6 +45,7 @@ The immediate stale-request problem around objective 97 is consistent with this 
   - produces operator-facing and system-facing projections
 - Important constraint:
   - this lane is derivative and should not be treated as the current live task authority
+  - local mirrors under `tod/out/context-sync/*` are non-authoritative for communication truth
 
 3. UI and state-bus consumption lane
 

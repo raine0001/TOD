@@ -14,6 +14,30 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$authoritativeCommunicationHost = '192.168.1.120'
+$authoritativeCommunicationRoot = '/home/testpilot/mim/runtime/shared'
+
+function New-CommunicationAuthorityDescriptor {
+    param(
+        [Parameter(Mandatory = $true)][string]$ConfiguredHost,
+        [Parameter(Mandatory = $true)][string]$ConfiguredRoot
+    )
+
+    return [pscustomobject]@{
+        host = $authoritativeCommunicationHost
+        path = $authoritativeCommunicationRoot
+        role = 'communication_authority'
+        configured_host = $ConfiguredHost
+        configured_root = $ConfiguredRoot
+        configured_host_matches_policy = [string]::Equals($ConfiguredHost, $authoritativeCommunicationHost, [System.StringComparison]::OrdinalIgnoreCase)
+        configured_root_matches_policy = [string]::Equals($ConfiguredRoot, $authoritativeCommunicationRoot, [System.StringComparison]::OrdinalIgnoreCase)
+        non_authoritative_surfaces = @(
+            [pscustomobject]@{ host = '192.168.1.90'; path = '/home/testpilot/mim/runtime/shared'; role = 'arm-side runtime/telemetry'; authoritative_for_communication = $false },
+            [pscustomobject]@{ host = '192.168.1.90'; path = '/home/testpilot/mim_arm/runtime/shared'; role = 'arm-side runtime/telemetry'; authoritative_for_communication = $false },
+            [pscustomobject]@{ host = 'local'; path = 'tod/out/context-sync/*'; role = 'local mirrors'; authoritative_for_communication = $false }
+        )
+    }
+}
 
 function Resolve-LocalPath {
     param([Parameter(Mandatory = $true)][string]$PathValue)
@@ -167,6 +191,22 @@ function Resolve-RemoteHostClassification {
     $recommendation = 'keep_current_boundary'
     $reason = 'insufficient_remote_boundary_evidence'
 
+    $configuredCanonicalSurface = $false
+    if ($requestArtifact -and $requestArtifact.exists -and $exportArtifact -and $exportArtifact.exists) {
+        $configuredCanonicalSurface = $true
+    }
+
+    $freshCanonicalArtifacts = $false
+    if ($exportAgeSeconds -ne $null -and $requestAgeSeconds -ne $null -and $exportAgeSeconds -le $StaleAfterSeconds -and $requestAgeSeconds -le $StaleAfterSeconds) {
+        $freshCanonicalArtifacts = $true
+    }
+
+    if ($configuredCanonicalSurface -and $publisherProcessActive -and $freshCanonicalArtifacts) {
+        $classification = 'canonical_publish_surface_healthy'
+        $recommendation = 'keep_current_boundary'
+        $reason = 'fresh_canonical_artifacts_with_active_publisher'
+    }
+
     if ($isMinimalRuntimeTree -and -not $mimServiceActive -and -not $publisherProcessActive) {
         $classification = 'noncanonical_remote_surface'
         $recommendation = 'repair_current_boundary'
@@ -181,6 +221,8 @@ function Resolve-RemoteHostClassification {
         classification = $classification
         recommendation = $recommendation
         reason = $reason
+        configured_canonical_surface = [bool]$configuredCanonicalSurface
+        fresh_canonical_artifacts = [bool]$freshCanonicalArtifacts
         is_minimal_runtime_tree = [bool]$isMinimalRuntimeTree
         mim_service_active = [bool]$mimServiceActive
         publisher_process_active = [bool]$publisherProcessActive
@@ -301,6 +343,20 @@ foreach ($line in @($hostInfoLines)) {
 }
 
 $remoteAssessment = Resolve-RemoteHostClassification -Directories $directories -Services $services -Processes $processLines -Artifacts $artifactDoc -StaleAfterSeconds $RecentSeconds
+$communicationAuthority = New-CommunicationAuthorityDescriptor -ConfiguredHost $remoteHost -ConfiguredRoot $RemoteRoot
+
+if (-not [bool]$communicationAuthority.configured_host_matches_policy) {
+    $remoteAssessment = [pscustomobject]@{
+        classification = 'communication_authority_misconfigured'
+        recommendation = 'restore_server_authority_host'
+        reason = 'configured_host_does_not_match_192.168.1.120_communication_authority'
+        is_minimal_runtime_tree = if ($remoteAssessment.PSObject.Properties['is_minimal_runtime_tree']) { [bool]$remoteAssessment.is_minimal_runtime_tree } else { $false }
+        mim_service_active = if ($remoteAssessment.PSObject.Properties['mim_service_active']) { [bool]$remoteAssessment.mim_service_active } else { $false }
+        publisher_process_active = if ($remoteAssessment.PSObject.Properties['publisher_process_active']) { [bool]$remoteAssessment.publisher_process_active } else { $false }
+        request_age_seconds = if ($remoteAssessment.PSObject.Properties['request_age_seconds']) { $remoteAssessment.request_age_seconds } else { $null }
+        export_age_seconds = if ($remoteAssessment.PSObject.Properties['export_age_seconds']) { $remoteAssessment.export_age_seconds } else { $null }
+    }
+}
 
 $result = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString('o')
@@ -310,6 +366,7 @@ $result = [pscustomobject]@{
     remote_port = $remotePort
     remote_root = $RemoteRoot
     remote_request_path = $RemoteRequestPath
+    communication_authority = $communicationAuthority
     request_probe_path = (Resolve-LocalPath -PathValue $ProbeOutputPath)
     request_probe = $remoteProbe
     remote_boundary = $remoteAssessment

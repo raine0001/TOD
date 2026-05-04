@@ -206,6 +206,118 @@ Describe 'TOD bridge request execution lane' {
         }
     }
 
+    It 'accepts capture_frame as a supported bridge action instead of rejecting the lane outright' {
+        $fixture = New-BridgeRequestConfigFixture
+        $backups = Backup-BridgeLaneFiles
+        try {
+            Write-JsonNoBom -PathValue $requestPath -Payload ([pscustomobject]@{
+                request_id = 'objective-401-task-003'
+                task_id = 'objective-401-task-003'
+                objective_id = 'objective-401'
+                target = 'TOD'
+                tod_action = 'capture_frame'
+                generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            })
+
+            $message = ''
+            try {
+                & $todScript -Action 'run-bridge-request' -RequestId 'objective-401-task-003' -ConfigPath $fixture.ConfigPath 2>&1 | Out-String | Out-Null
+            }
+            catch {
+                $message = [string]$_.Exception.Message
+            }
+
+            $message | Should Not Match 'not supported by run-bridge-request'
+        }
+        finally {
+            Restore-BridgeLaneFiles -Backups $backups
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'resolves nested bridge metadata to the bounded capture_frame action' {
+        $fixture = New-BridgeRequestConfigFixture
+        $backups = Backup-BridgeLaneFiles
+        try {
+            Write-JsonNoBom -PathValue $requestPath -Payload ([pscustomobject]@{
+                request_id = 'objective-401-task-004'
+                task_id = 'objective-401-task-004'
+                objective_id = 'objective-401'
+                target = 'TOD'
+                tod_action = 'run-bridge-request'
+                action = 'capture_frame'
+                tod_action_args = [pscustomobject]@{
+                    Action = 'capture_frame'
+                    RequestId = 'objective-401-task-004'
+                }
+                tod_bridge_request = [pscustomobject]@{
+                    action = 'capture_frame'
+                    request_id = 'objective-401-task-004'
+                }
+                generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            })
+
+            $message = ''
+            try {
+                & $todScript -Action 'run-bridge-request' -RequestId 'objective-401-task-004' -ConfigPath $fixture.ConfigPath 2>&1 | Out-String | Out-Null
+            }
+            catch {
+                $message = [string]$_.Exception.Message
+            }
+
+            $message | Should Not Match "resolves to TOD action 'run-bridge-request'"
+            $message | Should Not Match 'not supported by run-bridge-request'
+        }
+        finally {
+            Restore-BridgeLaneFiles -Backups $backups
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'accepts bridge packets with case-colliding nested action keys' {
+        $fixture = New-BridgeRequestConfigFixture
+        $backups = Backup-BridgeLaneFiles
+        try {
+            $rawJson = @'
+{
+  "request_id": "objective-401-task-005",
+  "task_id": "objective-401-task-005",
+  "objective_id": "objective-401",
+  "target": "TOD",
+  "tod_action": "run-bridge-request",
+  "action": "capture_frame",
+  "tod_action_args": {
+    "Action": "capture_frame",
+    "RequestId": "objective-401-task-005"
+  },
+  "tod_bridge_request": {
+    "Action": "capture_frame",
+    "action": "capture_frame",
+    "RequestId": "objective-401-task-005"
+  },
+  "generated_at": "2026-04-07T00:00:00Z"
+}
+'@
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($requestPath, ($rawJson -replace "`r`n", "`n"), $utf8NoBom)
+
+            $message = ''
+            try {
+                & $todScript -Action 'run-bridge-request' -RequestId 'objective-401-task-005' -ConfigPath $fixture.ConfigPath 2>&1 | Out-String | Out-Null
+            }
+            catch {
+                $message = [string]$_.Exception.Message
+            }
+
+            $message | Should Not Match 'not valid JSON'
+            $message | Should Not Match "resolves to TOD action 'run-bridge-request'"
+        }
+        finally {
+            Restore-BridgeLaneFiles -Backups $backups
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
     It 'directs bridge request ids away from run-task and toward run-bridge-request' {
         $fixture = New-BridgeRequestConfigFixture
         $backups = Backup-BridgeLaneFiles

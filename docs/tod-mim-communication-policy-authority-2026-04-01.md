@@ -58,21 +58,35 @@ Cross-domain rule:
 
 Canonical shared root consumed by TOD:
 
-- `/home/testpilot/mim/runtime/shared`
+- `192.168.1.120:/home/testpilot/mim/runtime/shared`
+
+Role:
+
+- communication authority
 
 Canonical dialog root mirrored between TOD and MIM:
 
-- `/home/testpilot/mim/runtime/shared/dialog`
+- `192.168.1.120:/home/testpilot/mim/runtime/shared/dialog`
 
 Local TOD mirrored roots:
 
 - `tod/out/context-sync/listener`
+- `tod/out/context-sync/ssh-shared`
 - `shared_state/dialog`
+
+Non-authoritative for communication truth:
+
+- `192.168.1.90:/home/testpilot/mim/runtime/shared`
+- `192.168.1.90:/home/testpilot/mim_arm/runtime/shared`
+- local mirrors under `tod/out/context-sync/*`
 
 Policy:
 
 - If TOD and MIM disagree about current work, first verify both are reading and writing the same shared root.
+- For communication truth, that shared root is only `192.168.1.120:/home/testpilot/mim/runtime/shared`.
+- The Raspberry Pi at `192.168.1.90` is arm-side runtime and telemetry only; it is not a communication-authority surface.
 - SSH alias or export-root drift is an upstream communication fault, not a policy exception.
+- Any chat or human-facing communication surface on `192.168.1.90` must act as a thin client of MIM communication, not as an independent conversational authority. ARM-local fallback responses may only report bounded unavailability or transport failure; they must not replace MIM reasoning.
 
 ## 4. Listener-Stage Execution Contract
 
@@ -443,4 +457,4 @@ Do not:
 
 Use this verbatim if needed:
 
-"For TOD↔MIM communication, live bounded execution authority is only the listener-stage contract: request, trigger, ACK, and terminal result artifacts. Dialog sessions are the bounded coordination and adjudication channel and must be read from the session index plus the referenced session log, not from the aggregate history log. Shared-state and UI are derivative context only. MIM owns cognition, planning, and governance; TOD owns execution runtime, ACK/result emission, and runtime telemetry. For next-step consensus, answer the open `handoff_request` on the same dialog session with a `handoff_response` containing `summary` and `finding_positions`." 
+"For TOD↔MIM communication, live bounded execution authority is only the listener-stage contract: request, trigger, ACK, and terminal result artifacts. Dialog sessions are the bounded coordination and adjudication channel and must be read from the session index plus the referenced session log, not from the aggregate history log. Shared-state and UI are derivative context only. MIM owns cognition, planning, and governance; TOD owns execution runtime, ACK/result emission, and runtime telemetry. For next-step consensus, answer the open `handoff_request` on the same dialog session with a `handoff_response` containing `summary` and `finding_positions`. Do not ask the operator for next steps when TOD and MIM can decide through the open session; continue based on the TOD-MIM decision." 

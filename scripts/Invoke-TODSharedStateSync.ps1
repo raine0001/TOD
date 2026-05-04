@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$SharedStateDir = "shared_state",
     [string]$TodScriptPath = "scripts/TOD.ps1",
     [string]$TodConfigPath = "tod/config/tod-config.json",
@@ -6,6 +6,7 @@
     [string]$TestSummaryPath = "tod/out/training/test-summary.json",
     [string]$SmokeSummaryPath = "tod/out/training/smoke-summary.json",
     [string]$QualityGatePath = "tod/out/training/quality-gate-summary.json",
+    [string]$TrainingStatusPath = "shared_state/tod_training_status.latest.json",
     [string]$ApprovalReductionPath = "shared_state/approval_reduction_summary.json",
     [string]$ManifestPath = "tod/data/sample-manifest.json",
     [string]$MimContextExportPath = "tod/out/context-sync/MIM_CONTEXT_EXPORT.latest.json",
@@ -36,6 +37,7 @@
     [string]$ScpCommand = "scp",
     [string]$ContextSyncInboxPath = "tod/inbox/context-sync/updates",
     [string]$ListenerRequestPath = "tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json",
+    [string]$ListenerDecisionPath = "tod/out/context-sync/listener/TOD_MIM_EXECUTION_DECISION.latest.json",
     [double]$MimStatusStaleAfterHours = 24,
     [string]$ReleaseTagOverride,
     [string]$NextProposedObjective = "TOD-17",
@@ -310,6 +312,111 @@ function Get-IdNumber {
     $digits = [regex]::Match($Value, "\d+")
     if (-not $digits.Success) { return -1 }
     return [int]$digits.Value
+}
+
+function Get-ObjectiveAuthorityReset {
+    param([Parameter(Mandatory = $true)][string]$PathValue)
+
+    $doc = Get-JsonFileIfExists -PathValue $PathValue
+    if ($null -eq $doc) {
+        return [pscustomobject]@{
+            available = $false
+            source_path = $PathValue
+            active = $false
+            authoritative_current_objective = ""
+            rollback_from_objective = ""
+            rollback_to_objective = ""
+            max_valid_objective = ""
+            invalidated_objectives = @()
+            reason = ""
+            effective_at = ""
+        }
+    }
+
+    $authoritativeCurrentObjectiveRaw = ''
+    if ($doc.PSObject.Properties['authoritative_current_objective']) {
+        $authoritativeCurrentObjectiveRaw = [string]$doc.authoritative_current_objective
+    }
+    elseif ($doc.PSObject.Properties['rollback_to_objective']) {
+        $authoritativeCurrentObjectiveRaw = [string]$doc.rollback_to_objective
+    }
+    $authoritativeCurrentObjective = Normalize-ObjectiveIdText -Value $authoritativeCurrentObjectiveRaw
+    $rollbackFromObjective = if ($doc.PSObject.Properties['rollback_from_objective']) { Normalize-ObjectiveIdText -Value ([string]$doc.rollback_from_objective) } else { '' }
+    $rollbackToObjective = if ($doc.PSObject.Properties['rollback_to_objective']) { Normalize-ObjectiveIdText -Value ([string]$doc.rollback_to_objective) } else { $authoritativeCurrentObjective }
+    $maxValidObjective = if ($doc.PSObject.Properties['max_valid_objective']) { Normalize-ObjectiveIdText -Value ([string]$doc.max_valid_objective) } else { $authoritativeCurrentObjective }
+
+    $invalidatedObjectives = @()
+    if ($doc.PSObject.Properties['invalidate_objectives_above']) {
+        $invalidatedObjectives = @(
+            Convert-ToStringList -Value $doc.invalidate_objectives_above | ForEach-Object {
+                Normalize-ObjectiveIdText -Value ([string]$_)
+            } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        )
+    }
+
+    $active = $true
+    if ($doc.PSObject.Properties['active']) {
+        $active = [bool]$doc.active
+    }
+
+    $rollbackReason = ''
+    if ($doc.PSObject.Properties['rollback_reason']) {
+        $rollbackReason = [string]$doc.rollback_reason
+    }
+    elseif ($doc.PSObject.Properties['reason']) {
+        $rollbackReason = [string]$doc.reason
+    }
+
+    $effectiveAt = ''
+    if ($doc.PSObject.Properties['authoritative_effective_at']) {
+        $effectiveAt = [string]$doc.authoritative_effective_at
+    }
+
+    return [pscustomobject]@{
+        available = $true
+        source_path = $PathValue
+        active = [bool]$active
+        authoritative_current_objective = $authoritativeCurrentObjective
+        rollback_from_objective = $rollbackFromObjective
+        rollback_to_objective = $rollbackToObjective
+        max_valid_objective = $maxValidObjective
+        invalidated_objectives = @($invalidatedObjectives)
+        reason = $rollbackReason
+        effective_at = $effectiveAt
+    }
+}
+
+function Test-ObjectiveInvalidatedByAuthority {
+    param(
+        [string]$ObjectiveId,
+        $AuthorityReset
+    )
+
+    if ($null -eq $AuthorityReset -or -not [bool]$AuthorityReset.available -or -not [bool]$AuthorityReset.active) {
+        return $false
+    }
+
+    $normalizedObjective = Normalize-ObjectiveIdText -Value $ObjectiveId
+    if ([string]::IsNullOrWhiteSpace($normalizedObjective)) {
+        return $false
+    }
+
+    $explicitInvalidations = @()
+    if ($AuthorityReset.PSObject.Properties['invalidated_objectives'] -and $null -ne $AuthorityReset.invalidated_objectives) {
+        $explicitInvalidations = @($AuthorityReset.invalidated_objectives | ForEach-Object { Normalize-ObjectiveIdText -Value ([string]$_) })
+    }
+
+    if ($explicitInvalidations -contains $normalizedObjective) {
+        return $true
+    }
+
+    $objectiveNumber = Get-IdNumber -Value $normalizedObjective
+    $maxValidNumber = Get-IdNumber -Value ([string]$AuthorityReset.max_valid_objective)
+    if ($objectiveNumber -ge 0 -and $maxValidNumber -ge 0 -and $objectiveNumber -gt $maxValidNumber) {
+        return $true
+    }
+
+    return $false
 }
 
 function Convert-ToStringList {
@@ -721,7 +828,9 @@ function Close-MimSshConnections {
 function Publish-TodStatusToMimArm {
     param(
         [Parameter(Mandatory = $true)][string]$LocalStatusPath,
+        [string]$LocalTrainingStatusPath = "",
         [Parameter(Mandatory = $true)][string]$ReceiptPath,
+        [string]$LegacyReceiptPath = "",
         [string]$RemoteHost,
         [string]$RemoteUser,
         [int]$RemotePort,
@@ -742,8 +851,11 @@ function Publish-TodStatusToMimArm {
         enabled = $true
         status = "pending"
         local_status_path = $LocalStatusPath
+        local_training_status_path = $LocalTrainingStatusPath
         local_status_sha256 = Get-FileSha256 -Path $LocalStatusPath
+        local_training_status_sha256 = ""
         receipt_path = $ReceiptPath
+        legacy_receipt_path = $LegacyReceiptPath
         ssh_host = ""
         ssh_resolved_host = ""
         ssh_user = ""
@@ -751,10 +863,18 @@ function Publish-TodStatusToMimArm {
         remote_root = ""
         remote_primary_path = ""
         remote_alias_path = ""
+        remote_training_primary_path = ""
+        remote_training_alias_path = ""
         remote_summary_path = ""
         mim_mirror_root = ""
+        mim_mirror_ssh_host = ""
+        mim_mirror_ssh_resolved_host = ""
+        mim_mirror_ssh_user = ""
+        mim_mirror_ssh_port = 22
         mim_mirror_primary_path = ""
         mim_mirror_alias_path = ""
+        mim_mirror_training_primary_path = ""
+        mim_mirror_training_alias_path = ""
         mim_mirror_status = "not_attempted"
         access_mode = "full"
         remote_access_status = "pending"
@@ -820,17 +940,52 @@ function Publish-TodStatusToMimArm {
     $status.remote_root = $resolvedRoot
     $status.remote_primary_path = ("{0}/TOD_INTEGRATION_STATUS.latest.json" -f $resolvedRoot.TrimEnd('/'))
     $status.remote_alias_path = ("{0}/TOD_integration_status.latest.json" -f $resolvedRoot.TrimEnd('/'))
+    $status.remote_training_primary_path = ("{0}/TOD_TRAINING_STATUS.latest.json" -f $resolvedRoot.TrimEnd('/'))
+    $status.remote_training_alias_path = ("{0}/TOD_training_status.latest.json" -f $resolvedRoot.TrimEnd('/'))
     $status.remote_summary_path = ("{0}/TOD_AUTHORITY_SUMMARY.latest.json" -f $resolvedRoot.TrimEnd('/'))
     $status.remote_consumer_script_path = ("{0}/tod_authority_consumer.py" -f $resolvedToolsRoot.TrimEnd('/'))
     $status.mim_mirror_root = "/home/testpilot/mim/runtime/shared"
+
+    $mirrorHost = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_HOST" -DotEnvPath $dotEnvAbs
+    if ([string]::IsNullOrWhiteSpace($mirrorHost)) {
+        $mirrorHost = $resolvedHost
+    }
+    $mirrorUser = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_USER" -DotEnvPath $dotEnvAbs
+    if ([string]::IsNullOrWhiteSpace($mirrorUser)) {
+        $mirrorUser = "testpilot"
+    }
+    $mirrorPortText = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_PORT" -DotEnvPath $dotEnvAbs
+    $mirrorPort = 22
+    if (-not [string]::IsNullOrWhiteSpace($mirrorPortText)) {
+        $parsedMirrorPort = 0
+        if ([int]::TryParse($mirrorPortText, [ref]$parsedMirrorPort) -and $parsedMirrorPort -gt 0) {
+            $mirrorPort = $parsedMirrorPort
+        }
+    }
+    $mirrorPassword = Resolve-MimSshSettingValue -ExplicitValue "" -EnvVarName "MIM_SSH_PASSWORD" -DotEnvPath $dotEnvAbs
+
+    $status.mim_mirror_ssh_host = $mirrorHost
+    $status.mim_mirror_ssh_user = $mirrorUser
+    $status.mim_mirror_ssh_port = $mirrorPort
     $status.mim_mirror_primary_path = ("{0}/TOD_INTEGRATION_STATUS.latest.json" -f $status.mim_mirror_root.TrimEnd('/'))
     $status.mim_mirror_alias_path = ("{0}/TOD_integration_status.latest.json" -f $status.mim_mirror_root.TrimEnd('/'))
+    $status.mim_mirror_training_primary_path = ("{0}/TOD_TRAINING_STATUS.latest.json" -f $status.mim_mirror_root.TrimEnd('/'))
+    $status.mim_mirror_training_alias_path = ("{0}/TOD_training_status.latest.json" -f $status.mim_mirror_root.TrimEnd('/'))
+
+    function Write-TodStatusReceipts {
+        param([Parameter(Mandatory = $true)]$Payload)
+
+        Write-Utf8NoBomJson -Path $ReceiptPath -Payload $Payload -Depth 8
+        if (-not [string]::IsNullOrWhiteSpace($LegacyReceiptPath)) {
+            Write-Utf8NoBomJson -Path $LegacyReceiptPath -Payload $Payload -Depth 8
+        }
+    }
 
     if (-not (Test-Path -Path $LocalStatusPath)) {
         $status.status = "local_status_missing"
         $status.error = "local_status_missing"
         $receipt = [pscustomobject]$status
-        Write-Utf8NoBomJson -Path $ReceiptPath -Payload $receipt -Depth 8
+        Write-TodStatusReceipts -Payload $receipt
         return $receipt
     }
 
@@ -838,7 +993,7 @@ function Publish-TodStatusToMimArm {
         $status.status = "missing_ssh_host"
         $status.error = "missing_ssh_host"
         $receipt = [pscustomobject]$status
-        Write-Utf8NoBomJson -Path $ReceiptPath -Payload $receipt -Depth 8
+        Write-TodStatusReceipts -Payload $receipt
         return $receipt
     }
 
@@ -846,11 +1001,12 @@ function Publish-TodStatusToMimArm {
         $status.status = "missing_ssh_password"
         $status.error = "missing_ssh_password"
         $receipt = [pscustomobject]$status
-        Write-Utf8NoBomJson -Path $ReceiptPath -Payload $receipt -Depth 8
+        Write-TodStatusReceipts -Payload $receipt
         return $receipt
     }
 
     $connections = $null
+    $mirrorConnections = $null
     $tempUploadPaths = New-Object System.Collections.Generic.List[string]
     $consumerTemplateUploaded = $false
     try {
@@ -872,34 +1028,69 @@ function Publish-TodStatusToMimArm {
         $status.error = ""
 
         $payloadDoc = Get-Content -Path $LocalStatusPath -Raw | ConvertFrom-Json
+        $trainingPayload = ""
+        if (-not [string]::IsNullOrWhiteSpace($LocalTrainingStatusPath) -and (Test-Path -Path $LocalTrainingStatusPath)) {
+            $trainingPayload = Get-Content -Path $LocalTrainingStatusPath -Raw
+            $status.local_training_status_sha256 = Get-FileSha256 -Path $LocalTrainingStatusPath
+        }
         $payloadDoc.tod_status_publish = [pscustomobject]$status
         $payload = $payloadDoc | ConvertTo-Json -Depth 8
         $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
         function New-TodStatusUploadTempFile {
             param(
-                [Parameter(Mandatory = $true)][string]$LeafName
+                [Parameter(Mandatory = $true)][string]$LeafName,
+                [Parameter(Mandatory = $true)][string]$Content
             )
 
-            $tempFilePath = Join-Path $tempDir ("{0}-{1}" -f ([guid]::NewGuid().ToString("N")), $LeafName)
-            [System.IO.File]::WriteAllText($tempFilePath, $payload, $utf8NoBom)
+            $tempLeafDir = Join-Path $tempDir ([guid]::NewGuid().ToString("N"))
+            if (-not (Test-Path -Path $tempLeafDir)) {
+                New-Item -ItemType Directory -Path $tempLeafDir -Force | Out-Null
+            }
+            [void]$tempUploadPaths.Add($tempLeafDir)
+            $tempFilePath = Join-Path $tempLeafDir $LeafName
+            [System.IO.File]::WriteAllText($tempFilePath, $Content, $utf8NoBom)
             [void]$tempUploadPaths.Add($tempFilePath)
             return $tempFilePath
         }
 
-        $primaryUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_INTEGRATION_STATUS.latest.json"
-        $aliasUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_integration_status.latest.json"
+        $primaryUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_INTEGRATION_STATUS.latest.json" -Content $payload
+        $aliasUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_integration_status.latest.json" -Content $payload
 
         Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $primaryUploadPath -Destination $resolvedRoot -Force -ErrorAction Stop | Out-Null
         Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $aliasUploadPath -Destination $resolvedRoot -Force -ErrorAction Stop | Out-Null
+        if (-not [string]::IsNullOrWhiteSpace($trainingPayload)) {
+            $trainingPrimaryUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_TRAINING_STATUS.latest.json" -Content $trainingPayload
+            $trainingAliasUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_training_status.latest.json" -Content $trainingPayload
+            Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $trainingPrimaryUploadPath -Destination $resolvedRoot -Force -ErrorAction Stop | Out-Null
+            Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $trainingAliasUploadPath -Destination $resolvedRoot -Force -ErrorAction Stop | Out-Null
+        }
 
         # Keep a MIM-facing copy in sync on the same SSH host; create mirror root when absent.
-        $mirrorMkdir = Invoke-SSHCommand -SessionId ([int]$connections.ssh.SessionId) -Command ("mkdir -p '{0}'" -f $status.mim_mirror_root) -TimeOut 15
+        $reusePrimaryConnection = [string]::Equals($mirrorHost, $resolvedHost, [System.StringComparison]::OrdinalIgnoreCase) -and [string]::Equals($mirrorUser, $resolvedUser, [System.StringComparison]::OrdinalIgnoreCase) -and ($mirrorPort -eq $resolvedPort) -and [string]::Equals($mirrorPassword, $resolvedPassword, [System.StringComparison]::Ordinal)
+        if ($reusePrimaryConnection) {
+            $mirrorConnections = $connections
+        }
+        else {
+            if ([string]::IsNullOrWhiteSpace($mirrorPassword) -or $mirrorPassword -eq "CHANGE_ME") {
+                throw "missing_mim_mirror_ssh_password"
+            }
+            $mirrorConnections = New-MimSshConnections -HostAlias $mirrorHost -UserName $mirrorUser -Port $mirrorPort -Password $mirrorPassword
+        }
+        $status.mim_mirror_ssh_resolved_host = [string]$mirrorConnections.resolved_host
+
+        $mirrorMkdir = Invoke-SSHCommand -SessionId ([int]$mirrorConnections.ssh.SessionId) -Command ("mkdir -p '{0}'" -f $status.mim_mirror_root) -TimeOut 15
         if ($mirrorMkdir.ExitStatus -eq 0) {
-            $mirrorPrimaryUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_INTEGRATION_STATUS.latest.json"
-            $mirrorAliasUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_integration_status.latest.json"
-            Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $mirrorPrimaryUploadPath -Destination $status.mim_mirror_root -Force -ErrorAction Stop | Out-Null
-            Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $mirrorAliasUploadPath -Destination $status.mim_mirror_root -Force -ErrorAction Stop | Out-Null
+            $mirrorPrimaryUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_INTEGRATION_STATUS.latest.json" -Content $payload
+            $mirrorAliasUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_integration_status.latest.json" -Content $payload
+            Set-SFTPItem -SessionId ([int]$mirrorConnections.sftp.SessionId) -Path $mirrorPrimaryUploadPath -Destination $status.mim_mirror_root -Force -ErrorAction Stop | Out-Null
+            Set-SFTPItem -SessionId ([int]$mirrorConnections.sftp.SessionId) -Path $mirrorAliasUploadPath -Destination $status.mim_mirror_root -Force -ErrorAction Stop | Out-Null
+            if (-not [string]::IsNullOrWhiteSpace($trainingPayload)) {
+                $mirrorTrainingPrimaryUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_TRAINING_STATUS.latest.json" -Content $trainingPayload
+                $mirrorTrainingAliasUploadPath = New-TodStatusUploadTempFile -LeafName "TOD_training_status.latest.json" -Content $trainingPayload
+                Set-SFTPItem -SessionId ([int]$mirrorConnections.sftp.SessionId) -Path $mirrorTrainingPrimaryUploadPath -Destination $status.mim_mirror_root -Force -ErrorAction Stop | Out-Null
+                Set-SFTPItem -SessionId ([int]$mirrorConnections.sftp.SessionId) -Path $mirrorTrainingAliasUploadPath -Destination $status.mim_mirror_root -Force -ErrorAction Stop | Out-Null
+            }
             $status.mim_mirror_status = "mirrored"
         }
         else {
@@ -908,19 +1099,27 @@ function Publish-TodStatusToMimArm {
 
         $remotePrimaryQuoted = [string]$status.remote_primary_path
         $remoteAliasQuoted = [string]$status.remote_alias_path
+        $remoteTrainingPrimaryQuoted = [string]$status.remote_training_primary_path
+        $remoteTrainingAliasQuoted = [string]$status.remote_training_alias_path
         $remoteSummaryQuoted = [string]$status.remote_summary_path
         $remoteConsumerQuoted = [string]$status.remote_consumer_script_path
         $mirrorPrimaryQuoted = [string]$status.mim_mirror_primary_path
         $mirrorAliasQuoted = [string]$status.mim_mirror_alias_path
+        $mirrorTrainingPrimaryQuoted = [string]$status.mim_mirror_training_primary_path
+        $mirrorTrainingAliasQuoted = [string]$status.mim_mirror_training_alias_path
 
         $accessCommand = @(
             "chmod 777 '{0}' '{1}'" -f $resolvedRoot, $resolvedToolsRoot,
             "chmod 666 '{0}' '{1}'" -f $remotePrimaryQuoted, $remoteAliasQuoted,
+            "if [ -f '{0}' ]; then chmod 666 '{0}'; fi" -f $remoteTrainingPrimaryQuoted,
+            "if [ -f '{0}' ]; then chmod 666 '{0}'; fi" -f $remoteTrainingAliasQuoted,
             "if [ -f '{0}' ]; then chmod 666 '{0}'; fi" -f $remoteSummaryQuoted,
             "if [ -f '{0}' ]; then chmod 755 '{0}'; fi" -f $remoteConsumerQuoted,
             "if [ -d '{0}' ]; then chmod 777 '{0}'; fi" -f $status.mim_mirror_root,
             "if [ -f '{0}' ]; then chmod 666 '{0}'; fi" -f $mirrorPrimaryQuoted,
-            "if [ -f '{0}' ]; then chmod 666 '{0}'; fi" -f $mirrorAliasQuoted
+            "if [ -f '{0}' ]; then chmod 666 '{0}'; fi" -f $mirrorAliasQuoted,
+            "if [ -f '{0}' ]; then chmod 666 '{0}'; fi" -f $mirrorTrainingPrimaryQuoted,
+            "if [ -f '{0}' ]; then chmod 666 '{0}'; fi" -f $mirrorTrainingAliasQuoted
         ) -join " ; "
         $accessResult = Invoke-SSHCommand -SessionId ([int]$connections.ssh.SessionId) -Command $accessCommand -TimeOut 30
         if ($accessResult.ExitStatus -eq 0) {
@@ -957,14 +1156,17 @@ function Publish-TodStatusToMimArm {
     finally {
         foreach ($tempUploadPath in @($tempUploadPaths)) {
             if (-not [string]::IsNullOrWhiteSpace([string]$tempUploadPath) -and (Test-Path -Path ([string]$tempUploadPath))) {
-                Remove-Item -Path ([string]$tempUploadPath) -Force -ErrorAction SilentlyContinue
+                Remove-Item -Path ([string]$tempUploadPath) -Recurse -Force -ErrorAction SilentlyContinue
             }
+        }
+        if (($null -ne $mirrorConnections) -and ($mirrorConnections -ne $connections)) {
+            Close-MimSshConnections -Connections $mirrorConnections
         }
         Close-MimSshConnections -Connections $connections
     }
 
     $receipt = [pscustomobject]$status
-    Write-Utf8NoBomJson -Path $ReceiptPath -Payload $receipt -Depth 8
+    Write-TodStatusReceipts -Payload $receipt
     return $receipt
 }
 
@@ -1593,7 +1795,110 @@ function Get-PreferredLiveTaskRequestSnapshot {
         return $bestSnapshot
     }
 
-    return Get-LiveTaskRequestSnapshot -PathValue ''
+    $fallbackPath = if (@($CandidatePaths).Count -gt 0) { [string]$CandidatePaths[0] } else { '' }
+    return Get-LiveTaskRequestSnapshot -PathValue $fallbackPath
+}
+
+function Get-ListenerDecisionSnapshot {
+    param(
+        [string]$PathValue,
+        $AuthorityReset = $null
+    )
+
+    $doc = Get-JsonFileIfExists -PathValue $PathValue
+    if ($null -eq $doc) {
+        return [pscustomobject]@{
+            available = $false
+            source_path = $PathValue
+            generated_at = ""
+            request_id = ""
+            task_id = ""
+            objective_id = ""
+            normalized_objective_id = ""
+            correlation_id = ""
+            decision_outcome = ""
+            reason_code = ""
+            summary = ""
+            boundary_class = ""
+            ack_state = ""
+            execution_state = ""
+            blocker_classification = ""
+            next_step_recommendation = ""
+        }
+    }
+
+    $requestId = if ($doc.PSObject.Properties["request_id"] -and -not [string]::IsNullOrWhiteSpace([string]$doc.request_id)) {
+        [string]$doc.request_id
+    }
+    elseif ($doc.PSObject.Properties["task_id"] -and -not [string]::IsNullOrWhiteSpace([string]$doc.task_id)) {
+        [string]$doc.task_id
+    }
+    else {
+        ""
+    }
+
+    $objectiveId = ""
+    if ($doc.PSObject.Properties["requested_objective_id"] -and -not [string]::IsNullOrWhiteSpace([string]$doc.requested_objective_id)) {
+        $objectiveId = [string]$doc.requested_objective_id
+    }
+    elseif ($doc.PSObject.Properties["objective_id"] -and -not [string]::IsNullOrWhiteSpace([string]$doc.objective_id)) {
+        $objectiveId = [string]$doc.objective_id
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($requestId)) {
+        $objectiveId = Get-ObjectiveIdFromTaskReference -Value $requestId
+    }
+
+    $decisionOutcome = if ($doc.PSObject.Properties["decision_outcome"]) { [string]$doc.decision_outcome } else { "" }
+    $reasonCode = if ($doc.PSObject.Properties["reason_code"]) { [string]$doc.reason_code } else { "" }
+    $summary = if ($doc.PSObject.Properties["summary"]) { [string]$doc.summary } else { "" }
+    $boundaryClass = if ($doc.PSObject.Properties["boundary_class"]) { [string]$doc.boundary_class } else { "" }
+    $ackState = if ($doc.PSObject.Properties["ack_state"]) { [string]$doc.ack_state } else { "" }
+    $executionState = if ($doc.PSObject.Properties["execution_state"]) { [string]$doc.execution_state } else { "" }
+    $blockerClassification = if ($doc.PSObject.Properties["blocker_classification"]) { [string]$doc.blocker_classification } else { "" }
+    $nextStepRecommendation = if ($doc.PSObject.Properties["next_step_recommendation"]) { [string]$doc.next_step_recommendation } else { "" }
+    $suppressedReason = ""
+
+    if ([string]::Equals($reasonCode, 'authority_reset_ceiling_exceeded', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $authorityResetIsActive = $false
+        if ($null -ne $AuthorityReset -and $AuthorityReset.PSObject.Properties['active']) {
+            try {
+                $authorityResetIsActive = [bool]$AuthorityReset.active
+            }
+            catch {
+                $authorityResetIsActive = $false
+            }
+        }
+
+        if (-not $authorityResetIsActive) {
+            $decisionOutcome = 'ignored_stale_listener_decision'
+            $summary = 'Ignored stale authority-reset rejection because objective authority reset is inactive.'
+            $ackState = ''
+            $executionState = 'ignored'
+            $blockerClassification = 'stale_listener_artifact'
+            $nextStepRecommendation = ''
+            $suppressedReason = 'inactive_authority_reset'
+        }
+    }
+
+    return [pscustomobject]@{
+        available = $true
+        source_path = $PathValue
+        generated_at = if ($doc.PSObject.Properties["generated_at"]) { [string]$doc.generated_at } else { "" }
+        request_id = $requestId
+        task_id = if ($doc.PSObject.Properties["task_id"]) { [string]$doc.task_id } else { "" }
+        objective_id = $objectiveId
+        normalized_objective_id = Normalize-ObjectiveIdText -Value $objectiveId
+        correlation_id = if ($doc.PSObject.Properties["correlation_id"]) { [string]$doc.correlation_id } else { "" }
+        decision_outcome = $decisionOutcome
+        reason_code = $reasonCode
+        summary = $summary
+        boundary_class = $boundaryClass
+        ack_state = $ackState
+        execution_state = $executionState
+        blocker_classification = $blockerClassification
+        next_step_recommendation = $nextStepRecommendation
+        suppressed_reason = $suppressedReason
+    }
 }
 
 function Get-ObjectiveAlignment {
@@ -1626,6 +1931,17 @@ function Get-ObjectiveAlignment {
     }
 }
 
+function Test-IsTerminalExecutionStatus {
+    param([string]$Status)
+
+    if ([string]::IsNullOrWhiteSpace($Status)) {
+        return $false
+    }
+
+    $normalized = ([string]$Status).Trim().ToLowerInvariant()
+    return @('completed', 'succeeded', 'already_processed', 'stale_request_ignored', 'stale_backfill_ignored') -contains $normalized
+}
+
 function Get-BridgeCanonicalEvidence {
     param(
         $MimRefresh,
@@ -1644,7 +1960,26 @@ function Get-BridgeCanonicalEvidence {
     $liveTaskAvailable = [bool]($LiveTaskRequest -and $LiveTaskRequest.PSObject.Properties["available"] -and $LiveTaskRequest.available)
     $liveTaskRequestId = if ($LiveTaskRequest -and $LiveTaskRequest.PSObject.Properties["request_id"]) { [string]$LiveTaskRequest.request_id } else { "" }
     $liveTaskObjective = if ($LiveTaskRequest -and $LiveTaskRequest.PSObject.Properties["normalized_objective_id"]) { [string]$LiveTaskRequest.normalized_objective_id } else { "" }
+    $liveTaskPromotionApplied = [bool]($LiveTaskRequest -and $LiveTaskRequest.PSObject.Properties["promotion_applied"] -and $LiveTaskRequest.promotion_applied)
     $objectiveInSync = [bool]($ObjectiveAlignment -and $ObjectiveAlignment.PSObject.Properties["status"] -and [string]$ObjectiveAlignment.status -eq "in_sync")
+    $canonicalObjective = if ($ObjectiveAlignment -and $ObjectiveAlignment.PSObject.Properties["mim_objective_active"] -and -not [string]::IsNullOrWhiteSpace([string]$ObjectiveAlignment.mim_objective_active)) {
+        Normalize-ObjectiveIdText -Value ([string]$ObjectiveAlignment.mim_objective_active)
+    }
+    elseif ($MimHandshake -and $MimHandshake.PSObject.Properties["current_next_objective"] -and -not [string]::IsNullOrWhiteSpace([string]$MimHandshake.current_next_objective)) {
+        Normalize-ObjectiveIdText -Value ([string]$MimHandshake.current_next_objective)
+    }
+    elseif ($MimHandshake -and $MimHandshake.PSObject.Properties["objective_active"] -and -not [string]::IsNullOrWhiteSpace([string]$MimHandshake.objective_active)) {
+        Normalize-ObjectiveIdText -Value ([string]$MimHandshake.objective_active)
+    }
+    else {
+        ""
+    }
+    $liveTaskMatchesCanonical = [bool](
+        -not $liveTaskAvailable -or
+        [string]::IsNullOrWhiteSpace($canonicalObjective) -or
+        [string]::IsNullOrWhiteSpace($liveTaskObjective) -or
+        [string]::Equals($liveTaskObjective, $canonicalObjective, [System.StringComparison]::OrdinalIgnoreCase)
+    )
 
     $statusUploaded = [bool]($TodStatusPublish -and $TodStatusPublish.PSObject.Properties["status"] -and [string]$TodStatusPublish.status -eq "uploaded")
     $mirrorSatisfied = [bool]($TodStatusPublish -and $TodStatusPublish.PSObject.Properties["mim_mirror_status"] -and [string]$TodStatusPublish.mim_mirror_status -eq "mirrored")
@@ -1657,15 +1992,22 @@ function Get-BridgeCanonicalEvidence {
         $copiedManifest -and
         (-not [string]::IsNullOrWhiteSpace($sourceManifest)) -and
         (-not [string]::IsNullOrWhiteSpace($sourceHandshakePacket)) -and
-        $handshakeAvailable
+        $handshakeAvailable -and
+        $liveTaskMatchesCanonical
     )
 
-    $liveBridgePublishSatisfied = [bool]($liveTaskAvailable -and $objectiveInSync -and $remotePublishVerified)
+    $liveBridgePublishSatisfied = [bool]($liveTaskAvailable -and $objectiveInSync -and $remotePublishVerified -and $liveTaskMatchesCanonical)
     $canonicalRefreshSatisfied = [bool]($explicitRefreshSatisfied -or $liveBridgePublishSatisfied)
 
     $failureSignals = @()
     if (-not $liveTaskAvailable) {
         $failureSignals += "listener_task_request_missing"
+    }
+    if (-not $liveTaskMatchesCanonical) {
+        $failureSignals += "live_task_request_objective_mismatch"
+    }
+    if ($liveTaskAvailable -and -not $liveTaskPromotionApplied -and -not $liveTaskMatchesCanonical) {
+        $failureSignals += "live_task_request_not_promoted"
     }
     if (-not $objectiveInSync) {
         $failureSignals += "objective_alignment_not_in_sync"
@@ -1756,6 +2098,22 @@ function Get-BridgeOperatorGuidance {
                     severity = "warning"
                     summary = "Live task request evidence is missing from the listener stage."
                     recommended_action = "Verify the listener request file is being written before restarting broader bridge components."
+                })
+            }
+            "live_task_request_objective_mismatch" {
+                $guidance.Add([pscustomobject]@{
+                    code = "live_task_request_objective_mismatch"
+                    severity = "critical"
+                    summary = "Handshake truth and the live task-request packet disagree about the active objective."
+                    recommended_action = "Treat the live publication surface as stale until it matches the canonical objective or an explicit ACK explains the divergence."
+                })
+            }
+            "live_task_request_not_promoted" {
+                $guidance.Add([pscustomobject]@{
+                    code = "live_task_request_not_promoted"
+                    severity = "critical"
+                    summary = "The live task request was not promoted to the current canonical objective."
+                    recommended_action = "Inspect the publisher or promotion path that should republish the live task-request surface from the canonical objective."
                 })
             }
             "objective_alignment_not_in_sync" {
@@ -1893,13 +2251,16 @@ $devJournalPath = Join-Path $sharedDirAbs "dev_journal.jsonl"
 $latestSummaryPath = Join-Path $sharedDirAbs "latest_summary.md"
 $chatgptUpdatePath = Join-Path $sharedDirAbs "chatgpt_update.md"
 $chatgptUpdateJsonPath = Join-Path $sharedDirAbs "chatgpt_update.json"
+$objectiveAuthorityResetPath = Join-Path $sharedDirAbs "objective_authority_reset.json"
 $sharedDevLogPlanPath = Join-Path $sharedDirAbs "shared_development_log_plan.json"
 $integrationStatusPath = Join-Path $sharedDirAbs "integration_status.json"
 $todStatusPublishReceiptPath = Join-Path $sharedDirAbs "TOD_MIM_ARM_STATUS_UPLOAD_RECEIPT.latest.json"
+$todStatusPublishLegacyReceiptPath = Join-Path $sharedDirAbs "TOD_INTEGRATION_STATUS_UPLOAD_RECEIPT.latest.json"
 $executionEvidencePath = Join-Path $sharedDirAbs "execution_evidence.json"
 $objectiveRoadmapPath = Join-Path $sharedDirAbs "tod_objective_roadmap.json"
 $executionReadinessSignalPath = Join-Path $sharedDirAbs "tod_operator_chat_sweep_artifact_smoke.latest.json"
 $listenerRequestAbs = Get-LocalPath -PathValue $ListenerRequestPath
+$listenerDecisionAbs = Get-LocalPath -PathValue $ListenerDecisionPath
 $listenerStageDirAbs = Split-Path -Parent $listenerRequestAbs
 $listenerJournalPath = Join-Path $listenerStageDirAbs "TOD_LOOP_JOURNAL.latest.json"
 $listenerResultPath = Join-Path $listenerStageDirAbs "TOD_MIM_TASK_RESULT.latest.json"
@@ -1950,6 +2311,7 @@ if (-not $state) {
 $testSummary = Get-JsonFileIfExists -PathValue $TestSummaryPath
 $smokeSummary = Get-JsonFileIfExists -PathValue $SmokeSummaryPath
 $qualityGate = Get-JsonFileIfExists -PathValue $QualityGatePath
+$trainingStatus = Get-JsonFileIfExists -PathValue $TrainingStatusPath
 $approvalReduction = Get-JsonFileIfExists -PathValue $ApprovalReductionPath
 $manifest = Get-JsonFileIfExists -PathValue $ManifestPath
 
@@ -1963,9 +2325,11 @@ $branch = Get-GitValue -CommandText "git rev-parse --abbrev-ref HEAD"
 $commitSha = Get-GitValue -CommandText "git rev-parse HEAD"
 $releaseTag = if (-not [string]::IsNullOrWhiteSpace($ReleaseTagOverride)) { $ReleaseTagOverride } else { Get-GitValue -CommandText "git describe --tags --abbrev=0 2>$null" }
 $listenerRequestDoc = Get-JsonFileIfExists -PathValue $listenerRequestAbs
+$listenerDecisionDoc = Get-JsonFileIfExists -PathValue $listenerDecisionAbs
 $listenerJournalDoc = Get-JsonFileIfExists -PathValue $listenerJournalPath
 $listenerResultDoc = Get-JsonFileIfExists -PathValue $listenerResultPath
 $listenerObjectiveProgressMap = Get-ListenerObjectiveProgressMap -JournalDoc $listenerJournalDoc
+$objectiveAuthorityReset = Get-ObjectiveAuthorityReset -PathValue $objectiveAuthorityResetPath
 
 $objectives = @()
 if ($state -and $state.PSObject.Properties["objectives"]) {
@@ -2004,7 +2368,7 @@ if ([string]::IsNullOrWhiteSpace($listenerCompletionObjective)) {
 }
 
 $listenerCompletionStable =
-    [string]::Equals($listenerResultStatus, "completed", [System.StringComparison]::OrdinalIgnoreCase) -and
+    (Test-IsTerminalExecutionStatus -Status $listenerResultStatus) -and
     -not [string]::IsNullOrWhiteSpace($listenerCompletionObjective) -and
     (
         [string]::IsNullOrWhiteSpace($listenerRequestTaskId) -or
@@ -2020,6 +2384,10 @@ if ($listenerCompletionStable) {
         }
 
         if (-not [string]::Equals($normalizedObjectiveId, $listenerCompletionObjective, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        if (Test-ObjectiveInvalidatedByAuthority -ObjectiveId $normalizedObjectiveId -AuthorityReset $objectiveAuthorityReset) {
             continue
         }
 
@@ -2045,6 +2413,50 @@ if ($listenerCompletionStable) {
     }
 }
 
+if ([bool]$objectiveAuthorityReset.available -and [bool]$objectiveAuthorityReset.active) {
+    $sanitizedObjectives = New-Object System.Collections.Generic.List[object]
+    $authorityObjectivePresent = $false
+
+    foreach ($objective in $objectives) {
+        $normalizedObjectiveId = if ($objective.PSObject.Properties['id']) { Normalize-ObjectiveIdText -Value ([string]$objective.id) } else { '' }
+        if ([string]::IsNullOrWhiteSpace($normalizedObjectiveId)) {
+            continue
+        }
+
+        if (Test-ObjectiveInvalidatedByAuthority -ObjectiveId $normalizedObjectiveId -AuthorityReset $objectiveAuthorityReset) {
+            if ($objective.PSObject.Properties['status']) {
+                $objective.status = 'invalidated'
+            }
+            else {
+                $objective | Add-Member -NotePropertyName status -NotePropertyValue 'invalidated' -Force
+            }
+            continue
+        }
+
+        if ([string]::Equals($normalizedObjectiveId, [string]$objectiveAuthorityReset.authoritative_current_objective, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $authorityObjectivePresent = $true
+            if ($objective.PSObject.Properties['status']) {
+                $objective.status = 'in_progress'
+            }
+            else {
+                $objective | Add-Member -NotePropertyName status -NotePropertyValue 'in_progress' -Force
+            }
+        }
+
+        $sanitizedObjectives.Add($objective)
+    }
+
+    if (-not $authorityObjectivePresent -and -not [string]::IsNullOrWhiteSpace([string]$objectiveAuthorityReset.authoritative_current_objective)) {
+        $sanitizedObjectives.Add([pscustomobject]@{
+            id = [string]$objectiveAuthorityReset.authoritative_current_objective
+            title = ('Objective {0} authority-reset baseline' -f [string]$objectiveAuthorityReset.authoritative_current_objective)
+            status = 'in_progress'
+        })
+    }
+
+    $objectives = @($sanitizedObjectives.ToArray())
+}
+
 $latestCompleted = Get-ObjectiveByStatusOrder -Objectives $objectives -Statuses @("completed", "closed", "done", "reviewed_pass")
 $currentInProgress = Get-ObjectiveByStatusOrder -Objectives $objectives -Statuses @("in_progress", "open", "planned")
 
@@ -2052,7 +2464,12 @@ $latestCompletedObjective = if ($null -ne $latestCompleted) { Normalize-Objectiv
 $currentObjective = if ($null -ne $currentInProgress) { Normalize-ObjectiveIdText -Value ([string]$currentInProgress.id) } else { "none" }
 $fallbackCurrentObjective = $currentObjective
 
-$listenerCompletedObjectiveBlocksCurrent = $listenerCompletionStable -and [string]::Equals($listenerResultStatus, "completed", [System.StringComparison]::OrdinalIgnoreCase) -and -not [string]::IsNullOrWhiteSpace($listenerCompletionObjective)
+if ([bool]$objectiveAuthorityReset.available -and [bool]$objectiveAuthorityReset.active -and -not [string]::IsNullOrWhiteSpace([string]$objectiveAuthorityReset.authoritative_current_objective)) {
+    $currentObjective = [string]$objectiveAuthorityReset.authoritative_current_objective
+    $fallbackCurrentObjective = $currentObjective
+}
+
+$listenerCompletedObjectiveBlocksCurrent = $listenerCompletionStable -and -not [string]::IsNullOrWhiteSpace($listenerCompletionObjective)
 if ($listenerCompletedObjectiveBlocksCurrent -and [string]::Equals($currentObjective, $listenerCompletionObjective, [System.StringComparison]::OrdinalIgnoreCase)) {
     $currentObjective = $fallbackCurrentObjective
 }
@@ -2193,6 +2610,7 @@ foreach ($candidateRoot in @($mimSharedCandidateRoots)) {
 }
 
 $liveTaskRequest = Get-PreferredLiveTaskRequestSnapshot -CandidatePaths $liveTaskRequestCandidatePaths
+$listenerDecision = Get-ListenerDecisionSnapshot -PathValue $ListenerDecisionPath -AuthorityReset $objectiveAuthorityReset
 
 # If legacy context export is stale but live task telemetry is fresh, treat live task as current status freshness.
 if ([bool]$mimStatus.is_stale -and [bool]$liveTaskRequest.available -and -not [string]::IsNullOrWhiteSpace([string]$liveTaskRequest.generated_at)) {
@@ -2233,11 +2651,31 @@ $listenerDecisionRequestId = if ($listenerDecision -and $listenerDecision.PSObje
 $normalizedListenerDecisionObjective = if ($listenerDecision -and $listenerDecision.PSObject.Properties['normalized_objective_id']) { Normalize-ObjectiveIdText -Value ([string]$listenerDecision.normalized_objective_id) } elseif ($listenerDecision -and $listenerDecision.PSObject.Properties['objective_id']) { Normalize-ObjectiveIdText -Value ([string]$listenerDecision.objective_id) } else { '' }
 $listenerDecisionExecutionState = if ($listenerDecision -and $listenerDecision.PSObject.Properties['execution_state']) { ([string]$listenerDecision.execution_state).Trim().ToLowerInvariant() } else { '' }
 $listenerDecisionOutcome = if ($listenerDecision -and $listenerDecision.PSObject.Properties['decision_outcome']) { ([string]$listenerDecision.decision_outcome).Trim().ToLowerInvariant() } else { '' }
+$liveRequestResolvedByListenerCompletion =
+    $listenerCompletionStable -and
+    -not [string]::IsNullOrWhiteSpace($liveTaskRequestId) -and
+    [string]::Equals($liveTaskRequestId, $listenerResultRequestId, [System.StringComparison]::OrdinalIgnoreCase)
+$authorityObjectiveForAlignment = if ([bool]$objectiveAuthorityReset.available -and [bool]$objectiveAuthorityReset.active -and -not [string]::IsNullOrWhiteSpace([string]$objectiveAuthorityReset.authoritative_current_objective)) {
+    Normalize-ObjectiveIdText -Value ([string]$objectiveAuthorityReset.authoritative_current_objective)
+} else { "" }
+
+if (-not [string]::IsNullOrWhiteSpace($authorityObjectiveForAlignment)) {
+    $mimObjectiveInvalidatedByAuthority = [string]::IsNullOrWhiteSpace($normalizedMimObjectiveForAlignment) -or (Test-ObjectiveInvalidatedByAuthority -ObjectiveId $normalizedMimObjectiveForAlignment -AuthorityReset $objectiveAuthorityReset)
+    if ($mimObjectiveInvalidatedByAuthority) {
+        $mimObjectiveForAlignment = $authorityObjectiveForAlignment
+        $normalizedMimObjectiveForAlignment = $authorityObjectiveForAlignment
+        $mimObjectiveSource = "objective_authority_reset"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($normalizedHandshakeNextObjective) -and (Test-ObjectiveInvalidatedByAuthority -ObjectiveId $normalizedHandshakeNextObjective -AuthorityReset $objectiveAuthorityReset)) {
+        $normalizedHandshakeNextObjective = $authorityObjectiveForAlignment
+    }
+}
 
 if ($listenerCompletedObjectiveBlocksCurrent) {
     $retainCompletedObjectiveAsActive = $false
     if ([string]::Equals($normalizedLiveRequestObjective, $listenerCompletionObjective, [System.StringComparison]::OrdinalIgnoreCase)) {
-        $retainCompletedObjectiveAsActive = $true
+        $retainCompletedObjectiveAsActive = -not $liveRequestResolvedByListenerCompletion
     }
     elseif ([string]::Equals($normalizedHandshakeNextObjective, $listenerCompletionObjective, [System.StringComparison]::OrdinalIgnoreCase)) {
         $retainCompletedObjectiveAsActive = $true
@@ -2249,6 +2687,10 @@ if ($listenerCompletedObjectiveBlocksCurrent) {
     if (-not $retainCompletedObjectiveAsActive) {
         if ([string]::Equals($normalizedLiveRequestObjective, $listenerCompletionObjective, [System.StringComparison]::OrdinalIgnoreCase)) {
             $normalizedLiveRequestObjective = ""
+            if ($liveTaskRequest) {
+                $liveTaskRequest.promotion_applied = $false
+                $liveTaskRequest.promotion_reason = 'cleared_after_matched_terminal_result'
+            }
         }
         if ([string]::Equals($normalizedMimObjectiveForAlignment, $listenerCompletionObjective, [System.StringComparison]::OrdinalIgnoreCase)) {
             $normalizedMimObjectiveForAlignment = ""
@@ -2288,6 +2730,10 @@ if ($allowAmbientObjectivePromotion -and -not [string]::IsNullOrWhiteSpace($norm
         }
     }
 
+    if ($promoteFromLiveRequest -and (Test-ObjectiveInvalidatedByAuthority -ObjectiveId $normalizedLiveRequestObjective -AuthorityReset $objectiveAuthorityReset)) {
+        $promoteFromLiveRequest = $false
+    }
+
     if ($promoteFromLiveRequest) {
         $currentObjective = $normalizedLiveRequestObjective
         $normalizedCurrentObjective = $normalizedLiveRequestObjective
@@ -2300,7 +2746,8 @@ if ($allowAmbientObjectivePromotion -and -not [string]::IsNullOrWhiteSpace($norm
 }
 
 if ($allowAmbientObjectivePromotion -and -not [string]::IsNullOrWhiteSpace($normalizedMimObjectiveForAlignment) -and $normalizedMimObjectiveForAlignment -ne "none") {
-    if ([string]::IsNullOrWhiteSpace($normalizedCurrentObjective) -or $normalizedCurrentObjective -eq "none" -or $normalizedCurrentObjective -ne $normalizedMimObjectiveForAlignment) {
+    $canonicalObjectiveAllowed = -not (Test-ObjectiveInvalidatedByAuthority -ObjectiveId $normalizedMimObjectiveForAlignment -AuthorityReset $objectiveAuthorityReset)
+    if ($canonicalObjectiveAllowed -and ([string]::IsNullOrWhiteSpace($normalizedCurrentObjective) -or $normalizedCurrentObjective -eq "none" -or $normalizedCurrentObjective -ne $normalizedMimObjectiveForAlignment)) {
         # Canonical live MIM objective should win over stale local pins/open-objective fallbacks.
         $currentObjective = $normalizedMimObjectiveForAlignment
         $normalizedCurrentObjective = $normalizedMimObjectiveForAlignment
@@ -2377,16 +2824,19 @@ $integrationStatus = [pscustomobject]@{
     mim_status = $mimStatus
     mim_handshake = $mimHandshake
     live_task_request = $liveTaskRequest
+    listener_decision = $listenerDecision
     mim_refresh = $mimRefresh
     objective_alignment = $objectiveAlignment
     bridge_canonical_evidence = $bridgeCanonicalEvidence
     bridge_operator_guidance = @($bridgeOperatorGuidance)
+    training_status = $trainingStatus
     tod_status_publish = $todStatusPublish
+    objective_authority_reset = $objectiveAuthorityReset
 }
 Write-Utf8NoBomJson -Path $integrationStatusPath -Payload $integrationStatus -Depth 8
 
 if ($PublishTodStatusToMimArm) {
-    $todStatusPublish = Publish-TodStatusToMimArm -LocalStatusPath $integrationStatusPath -ReceiptPath $todStatusPublishReceiptPath -RemoteHost $MimArmSshHost -RemoteUser $MimArmSshUser -RemotePort $MimArmSshPort -RemotePassword $MimArmSshPassword -RemoteRoot $MimArmSshRemoteRoot -RemoteToolsRoot $MimArmSshToolsRoot -ConsumerTemplatePath $MimArmConsumerTemplatePath -DotEnvPath $DotEnvPath
+    $todStatusPublish = Publish-TodStatusToMimArm -LocalStatusPath $integrationStatusPath -LocalTrainingStatusPath $TrainingStatusPath -ReceiptPath $todStatusPublishReceiptPath -LegacyReceiptPath $todStatusPublishLegacyReceiptPath -RemoteHost $MimArmSshHost -RemoteUser $MimArmSshUser -RemotePort $MimArmSshPort -RemotePassword $MimArmSshPassword -RemoteRoot $MimArmSshRemoteRoot -RemoteToolsRoot $MimArmSshToolsRoot -ConsumerTemplatePath $MimArmConsumerTemplatePath -DotEnvPath $DotEnvPath
     $bridgeCanonicalEvidence = Get-BridgeCanonicalEvidence -MimRefresh $mimRefresh -MimHandshake $mimHandshake -LiveTaskRequest $liveTaskRequest -ObjectiveAlignment $objectiveAlignment -TodStatusPublish $todStatusPublish
     $bridgeOperatorGuidance = Get-BridgeOperatorGuidance -BridgeCanonicalEvidence $bridgeCanonicalEvidence
     $integrationStatus.bridge_canonical_evidence = $bridgeCanonicalEvidence
@@ -2468,6 +2918,7 @@ $currentBuildState = [pscustomobject]@{
     current_prod_test_status = $currentProdTestStatus
     execution_readiness = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["readiness"]) { $executionReadinessPayload.readiness } else { [pscustomobject]@{ status = "unknown"; valid = $false } }
     execution_readiness_history = if ($executionReadinessPayload -and $executionReadinessPayload.PSObject.Properties["history"]) { $executionReadinessPayload.history } else { $null }
+    objective_authority_reset = $objectiveAuthorityReset
     active_capabilities = @($activeCapabilities)
     known_local_drift = $knownLocalDrift
     last_regression_result = $lastRegressionResult
@@ -2628,6 +3079,21 @@ if ($mimStatus.is_stale) {
 if ([string]$objectiveAlignment.status -eq "mismatch" -and -not ([bool]$listenerDecision.available -and [string]::Equals([string]$listenerDecision.suppressed_reason, 'inactive_authority_reset', [System.StringComparison]::OrdinalIgnoreCase))) {
     $blockers += ("objective mismatch tod={0} mim={1}" -f [string]$objectiveAlignment.tod_current_objective, [string]$objectiveAlignment.mim_objective_active)
 }
+if ([bool]$listenerDecision.available) {
+    $decisionOutcome = [string]$listenerDecision.decision_outcome
+    $decisionReason = if (-not [string]::IsNullOrWhiteSpace([string]$listenerDecision.reason_code)) { [string]$listenerDecision.reason_code } else { [string]$listenerDecision.blocker_classification }
+    switch ($decisionOutcome) {
+        "acknowledge_and_wait_on_dependency" {
+            $blockers += ("listener waiting on dependency ({0})" -f $(if ([string]::IsNullOrWhiteSpace($decisionReason)) { 'unspecified' } else { $decisionReason }))
+        }
+        "escalate_hard_boundary" {
+            $blockers += ("listener escalated hard boundary ({0})" -f $(if ([string]::IsNullOrWhiteSpace($decisionReason)) { 'unspecified' } else { $decisionReason }))
+        }
+        "reject_with_specific_policy_reason" {
+            $blockers += ("listener rejected request ({0})" -f $(if ([string]::IsNullOrWhiteSpace($decisionReason)) { 'unspecified' } else { $decisionReason }))
+        }
+    }
+}
 if (@($blockers).Count -eq 0) {
     $blockers += "none"
 }
@@ -2655,6 +3121,12 @@ if ([bool]$mimStatus.is_stale) {
     )
 }
 
+if ([bool]$listenerDecision.available -and -not [string]::IsNullOrWhiteSpace([string]$listenerDecision.next_step_recommendation)) {
+    $recommendedRecoveryActions += ("Listener recommendation: {0}" -f [string]$listenerDecision.next_step_recommendation)
+}
+
+$recommendedRecoveryActions = @($recommendedRecoveryActions | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+
 $failedRegressionTestNames = @()
 if ($testSummary -and $testSummary.PSObject.Properties["failed_tests"] -and $null -ne $testSummary.failed_tests) {
     $failedRegressionTestNames = @($testSummary.failed_tests | ForEach-Object {
@@ -2670,6 +3142,7 @@ $nextActions = [pscustomobject]@{
     blockers = @($blockers)
     mim_freshness_alert = $mimFreshnessAlert
     recommended_recovery_actions = @($recommendedRecoveryActions)
+    training_status = $trainingStatus
     required_verification = @(
         "focused quality gate",
         "full regression suite",
@@ -2684,6 +3157,7 @@ $nextActions = [pscustomobject]@{
     failing_regression_tests = @($failedRegressionTestNames)
     approval_backlog_snapshot = $approvalBacklog
     integration_status = $integrationStatus
+    objective_authority_reset = $objectiveAuthorityReset
     tod_catchup_roadmap = @($todCatchupRoadmap.objectives)
     approval_reduction_summary = if ($approvalReduction) {
         [pscustomobject]@{
@@ -2957,6 +3431,7 @@ $chatgptLines += "- Integration status: mim_schema=$($integrationStatus.mim_sche
 $chatgptLines += "- MIM freshness: available=$([bool]$integrationStatus.mim_status.available) stale=$([bool]$integrationStatus.mim_status.is_stale) age_hours=$($integrationStatus.mim_status.age_hours)"
 $chatgptLines += "- Objective alignment: status=$($integrationStatus.objective_alignment.status) tod=$($integrationStatus.objective_alignment.tod_current_objective) mim=$($integrationStatus.objective_alignment.mim_objective_active)"
 $chatgptLines += "- Objective alignment source: $($integrationStatus.objective_alignment.mim_objective_source)"
+$chatgptLines += "- Listener decision: available=$([bool]$integrationStatus.listener_decision.available) outcome=$($integrationStatus.listener_decision.decision_outcome) reason=$($integrationStatus.listener_decision.reason_code) execution_state=$($integrationStatus.listener_decision.execution_state)"
 $chatgptLines += "- Bridge canonical evidence: source=$($integrationStatus.bridge_canonical_evidence.evidence_source) canonical_refresh=$([bool]$integrationStatus.bridge_canonical_evidence.canonical_refresh_satisfied) remote_publish_verified=$([bool]$integrationStatus.bridge_canonical_evidence.remote_publish_verified)"
 $chatgptLines += "- Bridge failure signals: $(if (@($integrationStatus.bridge_canonical_evidence.failure_signals).Count -gt 0) { (@($integrationStatus.bridge_canonical_evidence.failure_signals) -join '; ') } else { 'none' })"
 $chatgptLines += "- Bridge operator guidance: $(if (@($integrationStatus.bridge_operator_guidance).Count -gt 0) { ((@($integrationStatus.bridge_operator_guidance | ForEach-Object { [string]$_.recommended_action })) -join '; ') } else { 'none' })"
@@ -3004,6 +3479,7 @@ $result = [pscustomobject]@{
         next_actions = $nextActionsPath
         integration_status = $integrationStatusPath
         tod_status_publish_receipt = $todStatusPublishReceiptPath
+        tod_status_publish_receipt_legacy = $todStatusPublishLegacyReceiptPath
         execution_evidence = $executionEvidencePath
         tod_objective_roadmap = $objectiveRoadmapPath
         shared_development_log_plan = $sharedDevLogPlanPath

@@ -8,6 +8,7 @@ param(
     [switch]$RestartUiOnFailure,
     [switch]$RefreshAgentMimReadiness,
     [switch]$IncludeLogonTrigger,
+    [switch]$VisibleWindow,
     [switch]$RunNow
 )
 
@@ -35,6 +36,7 @@ if (@($normalizedDailyTimes).Count -eq 0) {
 }
 
 $argParts = @(
+    if (-not $VisibleWindow) { '-WindowStyle'; 'Hidden' }
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", "`"$maintenanceScript`"",
@@ -113,6 +115,7 @@ if ($RunNow) {
     fallback_warning_window_hours = $FallbackWarningWindowHours
     daily_at = @($normalizedDailyTimes)
     include_logon_trigger = [bool]$IncludeLogonTrigger
+    visible_window = [bool]$VisibleWindow
     run_now_requested = [bool]$RunNow
     action = [pscustomobject]@{
         execute = "powershell.exe"

@@ -1,5 +1,6 @@
 param(
     [int]$Port = 8844,
+    [string]$BaseUrl = 'https://mim.mimtod.com',
     [string]$ValidationHarness = 'multi_objective_compare',
     [string]$RawArtifactPath = 'tmp_live_sweep_raw.json',
     [string]$IneffectiveSummaryPath = 'tmp_ineffective_sweep_summary.json',
@@ -124,7 +125,7 @@ try {
 
     try {
         $global:LASTEXITCODE = 0
-        $sweepOutput = & $sweepScript -ArtifactOnly -Port $Port -ValidationHarness $ValidationHarness -RawArtifactPath $resolvedRawArtifactPath -IneffectiveSummaryPath $resolvedSummaryArtifactPath 2>&1
+        $sweepOutput = & $sweepScript -ArtifactOnly -Port $Port -BaseUrl $BaseUrl -ValidationHarness $ValidationHarness -RawArtifactPath $resolvedRawArtifactPath -IneffectiveSummaryPath $resolvedSummaryArtifactPath 2>&1
         $lastExitCodeVar = Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue
         $sweepExitCode = if ($null -ne $lastExitCodeVar) { [int]$lastExitCodeVar.Value } else { 0 }
         if ($null -ne $sweepOutput) {
@@ -200,6 +201,7 @@ $report = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString('o')
     source = 'tod-operator-chat-sweep-artifact-smoke-v1'
     port = $Port
+    base_url = $BaseUrl
     validation_harness = $ValidationHarness
     wait_timeout_seconds = $WaitTimeoutSeconds
     poll_milliseconds = $PollMilliseconds

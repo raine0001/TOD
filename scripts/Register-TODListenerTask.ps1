@@ -4,6 +4,7 @@ param(
     [int]$RegressionNoDeltaThreshold = 4,
     [switch]$PublishIntegrationStatus,
     [switch]$SystemStartup,
+    [switch]$VisibleWindow,
     [string]$EnvFile = ".env",
     [string]$RemoteRoot = "/home/testpilot/mim/runtime/shared",
     [string]$StageDir = "tod/out/context-sync/listener"
@@ -24,6 +25,7 @@ if (-not (Get-Command -Name Register-ScheduledTask -ErrorAction SilentlyContinue
 }
 
 $argParts = @(
+    if (-not $VisibleWindow) { '-WindowStyle'; 'Hidden' }
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", "`"$listenerScript`"",
@@ -117,6 +119,7 @@ catch {
     user = $currentUser
     startup_trigger_enabled = $startupAdded
     state = [string]$task.State
+    visible_window = [bool]$VisibleWindow
     action = [pscustomobject]@{
         execute = "powershell.exe"
         arguments = $actionArgs

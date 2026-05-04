@@ -175,7 +175,8 @@ Verified closure after rerunning TOD shared-state sync against the refreshed MIM
 
 Authoritative host model:
 
-- Canonical export and handshake originate on the MIM host at `/home/testpilot/mim/runtime/shared`.
+- Canonical export and handshake originate on the MIM communication-authority host at `192.168.1.120:/home/testpilot/mim/runtime/shared`.
+- `192.168.1.90:/home/testpilot/mim/runtime/shared` and `192.168.1.90:/home/testpilot/mim_arm/runtime/shared` are arm-side runtime or telemetry surfaces only and are non-authoritative for communication truth.
 - TOD is the consumer/mirror host; it stages those artifacts locally, derives `shared_state/integration_status.json`, and serves the live operator status surfaces.
 
 Operational takeaway:

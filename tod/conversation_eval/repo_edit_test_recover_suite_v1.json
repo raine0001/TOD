@@ -1,0 +1,121 @@
+{
+  "schema": "tod-repo-edit-test-recover-suite-v1",
+  "updated_at": "2026-05-02T00:00:00Z",
+  "description": "Simulation-only training scenarios that force TOD through the concrete local execution loop: inspect repo, understand task, choose bounded patch targets, identify validation commands, prepare recovery steps, and explain results.",
+  "simulation_only": true,
+  "required_core_loop": [
+    "inspect",
+    "understand",
+    "patch",
+    "validate",
+    "recover",
+    "explain"
+  ],
+  "scenarios": [
+    {
+      "id": "RETR-001",
+      "project_id": "tod",
+      "mode": "debug",
+      "task": "Inspect the active TOD public chat surface, identify the most likely router and test files for a stale status regression, and prepare a bounded patch-validate-recover plan.",
+      "target_hints": ["tod_ui", "chat", "router", "integration", "test"],
+      "relative_path_candidates": ["tmp_remote_mim/core/routers", "tmp_remote_mim/tests", "scripts"],
+      "required_loop_stages": ["inspect", "understand", "patch", "validate", "recover", "explain"],
+      "expected_outcome": [
+        "identify the likely owning router file",
+        "identify at least one nearby validation surface",
+        "prepare a bounded rollback or recovery note"
+      ],
+      "recovery_expectations": [
+        "if the wrong runtime owns the port, recycle the stale process before retesting",
+        "if the first patch misses the control path, step one hop closer and retry"
+      ]
+    },
+    {
+      "id": "RETR-002",
+      "project_id": "comm_app",
+      "mode": "fixes",
+      "task": "Simulate a repo change where TOD must inspect the application service layer, propose a minimal patch, identify the narrowest validation command, and explain the expected result before commit prep.",
+      "target_hints": ["app", "service", "admin", "parser", "test"],
+      "relative_path_candidates": ["app", "tests"],
+      "required_loop_stages": ["inspect", "understand", "patch", "validate", "explain"],
+      "expected_outcome": [
+        "discover the likely application service files",
+        "prepare a minimal patch scope",
+        "choose a narrow behavior-scoped validation command"
+      ],
+      "recovery_expectations": [
+        "if validation fails, repair the same slice before widening scope"
+      ]
+    },
+    {
+      "id": "RETR-003",
+      "project_id": "coachmim",
+      "mode": "review",
+      "task": "Review a coaching app request as if TOD were the local execution agent: inspect the repo, find the probable implementation files, identify test commands, and produce an operator-facing explanation of the safest next step.",
+      "target_hints": ["app", "route", "template", "test", "config"],
+      "relative_path_candidates": ["app", "routes", "templates", "tests"],
+      "required_loop_stages": ["inspect", "understand", "validate", "explain"],
+      "expected_outcome": [
+        "name one primary implementation surface",
+        "name one validation surface",
+        "produce a concise operator explanation"
+      ],
+      "recovery_expectations": [
+        "if evidence is ambiguous, ask one narrow clarifying question instead of guessing"
+      ]
+    },
+    {
+      "id": "RETR-004",
+      "project_id": "mim_pulz",
+      "mode": "operator",
+      "task": "Simulate a bounded backend regression where TOD must inspect service-facing files, prepare a patch plan, identify restart or rollout commands, and prepare a recovery path if the first restart does not pick up the change.",
+      "target_hints": ["service", "router", "config", "deploy", "test"],
+      "relative_path_candidates": ["src", "app", "tests", "scripts"],
+      "required_loop_stages": ["inspect", "understand", "patch", "validate", "recover", "explain"],
+      "expected_outcome": [
+        "identify at least one service or router surface",
+        "prepare a restart-safe validation note",
+        "prepare a stale-runtime recovery step"
+      ],
+      "recovery_expectations": [
+        "if a stale foreground process owns the port, recycle it before concluding the patch failed",
+        "re-validate on the direct host before blaming the public proxy"
+      ]
+    },
+    {
+      "id": "RETR-005",
+      "project_id": "tod",
+      "mode": "plan",
+      "task": "Plan a local execution objective where TOD must edit code, run a narrow test, recover from a failed validation, and publish a change summary. Focus on the concrete repo-edit-test-recover loop rather than generic autonomy claims.",
+      "target_hints": ["training", "simulation", "test", "scripts", "conversation_eval"],
+      "relative_path_candidates": ["scripts", "tod/conversation_eval", "tests"],
+      "required_loop_stages": ["inspect", "understand", "patch", "validate", "recover", "explain"],
+      "expected_outcome": [
+        "prepare a task list with explicit validation and recovery steps",
+        "point to the files that would own the change",
+        "prepare a final operator-facing report contract"
+      ],
+      "recovery_expectations": [
+        "if the first validation is ambiguous, do one local disambiguation read and retry",
+        "if the validation falsifies the hypothesis, move to the nearest controlling file"
+      ]
+    },
+    {
+      "id": "RETR-006",
+      "project_id": "tod",
+      "mode": "review",
+      "task": "Simulate the final explanation phase after a local repo patch: TOD must summarize what changed, how it validated the result, what remains risky, and the next numbered options for the operator.",
+      "target_hints": ["tests", "scripts", "routers", "validation", "summary"],
+      "relative_path_candidates": ["scripts", "tests", "tmp_remote_mim/core/routers"],
+      "required_loop_stages": ["understand", "validate", "explain"],
+      "expected_outcome": [
+        "summarize the root cause and fix",
+        "state the exact validation result",
+        "end with crisp next-step options"
+      ],
+      "recovery_expectations": [
+        "if live validation is blocked by infrastructure, report the direct-host result and isolate the remaining proxy issue"
+      ]
+    }
+  ]
+}

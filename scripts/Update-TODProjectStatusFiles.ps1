@@ -67,6 +67,20 @@ function Get-GitInfo {
     [pscustomobject]@{ is_repo = $inside; branch = $branch; remote_origin = $remote; status = $status }
 }
 
+function Resolve-StatusRefreshScriptPath {
+    param([string]$ScriptPath)
+
+    if ([string]::IsNullOrWhiteSpace($ScriptPath)) {
+        return ""
+    }
+
+    if ([System.IO.Path]::IsPathRooted($ScriptPath)) {
+        return [System.IO.Path]::GetFullPath($ScriptPath)
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $ScriptPath))
+}
+
 $index = Get-Content -Path (Resolve-LocalPath -PathValue $ProjectIndexPath) -Raw | ConvertFrom-Json
 $registry = Get-Content -Path (Resolve-LocalPath -PathValue $RegistryPath) -Raw | ConvertFrom-Json
 $simPath = Resolve-LocalPath -PathValue $SimulationArtifactPath
@@ -74,6 +88,14 @@ $sim = if (Test-Path $simPath) { Get-Content -Path $simPath -Raw | ConvertFrom-J
 
 $written = @()
 foreach ($proj in @($registry.projects)) {
+    $customStatusScript = if ($proj.PSObject.Properties['status_refresh_script']) { Resolve-StatusRefreshScriptPath -ScriptPath ([string]$proj.status_refresh_script) } else { '' }
+    if (-not [string]::IsNullOrWhiteSpace($customStatusScript) -and (Test-Path -Path $customStatusScript)) {
+        $target = Join-Path ([string]$proj.path) $FileName
+        $customResult = & $customStatusScript -ProjectPath ([string]$proj.path) -FileName $FileName
+        $written += [pscustomobject]@{ project_id = [string]$proj.id; path = $target; mode = 'custom'; result = $customResult }
+        continue
+    }
+
     $idxProj = @($index.projects | Where-Object { [string]$_.id -eq [string]$proj.id } | Select-Object -First 1)
     $git = Get-GitInfo -ProjectPath ([string]$proj.path)
     $simScenario = if ($sim) { @($sim.scenarios | Where-Object { [string]$_.project_id -eq [string]$proj.id } | Select-Object -First 1) } else { $null }

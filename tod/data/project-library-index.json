@@ -1,10 +1,10 @@
 {
     "ok":  true,
     "source":  "tod-project-library-index-v1",
-    "generated_at":  "2026-03-31T17:35:40.7617703Z",
+    "generated_at":  "2026-05-04T13:25:30.6310055Z",
     "library_root":  "E:/",
     "registry_path":  "E:/TOD/tod/config/project-registry.json",
-    "registered_project_count":  11,
+    "registered_project_count":  12,
     "projects":  [
                      {
                          "id":  "tod",
@@ -45,39 +45,39 @@
                                             "notes":  "Runtime/state artifacts are read-only by default; code/docs require review gates."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-03-31T17:35:40.1246819Z",
+                                           "scanned_at":  "2026-05-04T13:25:29.6167570Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
+                                                                 "shared_state/integration_status.json",
+                                                                 "shared_state/tod_training_status.latest.json",
                                                                  "shared_state/tod_execution_readiness_history.latest.json",
-                                                                 "shared_state/tod_recovery_watchdog.latest.json",
-                                                                 "shared_state/TOD_MIM_BRIDGE_SMOKE.latest.json",
+                                                                 "shared_state/tod_catchup_gate_watcher.log.jsonl",
+                                                                 "shared_state/tod_catchup_gate_watcher.latest.json",
+                                                                 "shared_state/tod_recoupling_gate_state.latest.json",
+                                                                 "shared_state/tod_recoupling_gate_state.latest.json.writer.lock.json",
+                                                                 "tod/state/engineering_memory.json",
+                                                                 "tod/data/engineering-memory.json",
+                                                                 "tod/out/tod-ui-crash.log",
                                                                  "shared_state/chatgpt_update.md",
                                                                  "shared_state/chatgpt_update.json",
-                                                                 "shared_state/latest_summary.md",
                                                                  "shared_state/dev_journal.jsonl",
+                                                                 "shared_state/latest_summary.md",
                                                                  "shared_state/shared_development_log_plan.json",
                                                                  "shared_state/next_actions.json",
                                                                  "shared_state/contracts.json",
                                                                  "shared_state/objectives.json",
+                                                                 "tod/data/state.json",
                                                                  "shared_state/current_build_state.json",
                                                                  "shared_state/execution_evidence.json",
-                                                                 "shared_state/integration_status.json",
+                                                                 "shared_state/TOD_INTEGRATION_STATUS_UPLOAD_RECEIPT.latest.json",
                                                                  "shared_state/TOD_MIM_ARM_STATUS_UPLOAD_RECEIPT.latest.json",
                                                                  "shared_state/tod_objective_roadmap.json",
-                                                                 "scripts/Start-TODMimPacketListener.ps1",
-                                                                 "tod/out/tod-ui-crash.log",
-                                                                 "scripts/Start-TOD-UI.ps1",
-                                                                 "shared_state/tod_watchdog_drift_guard.log.jsonl",
-                                                                 "shared_state/tod_watchdog_drift_guard.latest.json",
-                                                                 "scripts/Invoke-TODSharedStateSync.ps1",
-                                                                 "tod/out/mim-http.log",
-                                                                 "shared_state/tod_recovery_watchdog.log.jsonl",
-                                                                 "shared_state/TOD_SELF_HEAL_ORDER.latest.json"
+                                                                 "shared_state/bus_unified_state_multidomain_integration_sample.json"
                                                              ],
                                            "extension_summary":  [
                                                                      {
                                                                          "extension":  ".bak",
-                                                                         "count":  3
+                                                                         "count":  5
                                                                      },
                                                                      {
                                                                          "extension":  ".bat",
@@ -88,8 +88,16 @@
                                                                          "count":  1
                                                                      },
                                                                      {
+                                                                         "extension":  ".cmd",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
                                                                          "extension":  ".code-workspace",
                                                                          "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".csv",
+                                                                         "count":  4
                                                                      },
                                                                      {
                                                                          "extension":  ".dll",
@@ -101,7 +109,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".exe",
-                                                                         "count":  46
+                                                                         "count":  47
                                                                      },
                                                                      {
                                                                          "extension":  ".fish",
@@ -117,7 +125,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".html",
-                                                                         "count":  3
+                                                                         "count":  11
                                                                      },
                                                                      {
                                                                          "extension":  ".jpg",
@@ -129,31 +137,39 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".json",
-                                                                         "count":  149
+                                                                         "count":  2924
                                                                      },
                                                                      {
                                                                          "extension":  ".jsonl",
-                                                                         "count":  11
+                                                                         "count":  2708
                                                                      },
                                                                      {
                                                                          "extension":  ".log",
-                                                                         "count":  52
+                                                                         "count":  4652
                                                                      },
                                                                      {
                                                                          "extension":  ".md",
-                                                                         "count":  42
+                                                                         "count":  74
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pending",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pid",
+                                                                         "count":  1
                                                                      },
                                                                      {
                                                                          "extension":  ".ps1",
-                                                                         "count":  154
+                                                                         "count":  253
                                                                      },
                                                                      {
                                                                          "extension":  ".py",
-                                                                         "count":  17
+                                                                         "count":  37
                                                                      },
                                                                      {
                                                                          "extension":  ".pyc",
-                                                                         "count":  4
+                                                                         "count":  13
                                                                      },
                                                                      {
                                                                          "extension":  ".sample",
@@ -165,7 +181,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".txt",
-                                                                         "count":  27
+                                                                         "count":  39
                                                                      },
                                                                      {
                                                                          "extension":  ".yml",
@@ -177,20 +193,20 @@
                                                                      },
                                                                      {
                                                                          "extension":  "\u003cnone\u003e",
-                                                                         "count":  10
+                                                                         "count":  11
                                                                      }
                                                                  ],
                                            "detected_test_artifacts":  [
+                                                                           "test_probe_canonical_task_request.py",
+                                                                           "test_tmp_remote_mim_mim_ui_state.py",
+                                                                           "test_tmp_remote_mim_play_routine.py",
+                                                                           "test_tmp_remote_mim_tod_ui_state.py",
+                                                                           "test_tod_social_conversation_simulation.py",
+                                                                           "tmp_tod_ui_console_live_test_output.txt",
+                                                                           "tmp_tod_ui_console_live_test_output_utf8.txt",
                                                                            "scripts/Invoke-TODExecutionSelfTest.ps1",
                                                                            "scripts/Invoke-TODMimIntegrationLoopTest.ps1",
-                                                                           "scripts/Invoke-TODTests.CI.ps1",
-                                                                           "scripts/Invoke-TODTests.ps1",
-                                                                           "scripts/Test-TODOperatorChatSweepArtifact.ps1",
-                                                                           "scripts/Test-TODProjectAccessPolicy.ps1",
-                                                                           "scripts/Test-TODSpokesperson.ps1",
-                                                                           "shared_state/integration_loop_test.json",
-                                                                           "shared_state/latest_summary.md",
-                                                                           "shared_state/mim_artifact_consumption_test.json"
+                                                                           "scripts/Invoke-TODRepoEditTestRecoverSimulation.ps1"
                                                                        ],
                                            "detected_entrypoints":  [
                                                                         "README.md",
@@ -244,34 +260,34 @@
                                             "notes":  "Business logic and workflow routes require explicit test plans before write operations. Feature-scoped verification should start with the AgentMIM admin marketing avatar/video surface before broader app edits. Use the TOD comm_app managed-work command to separate product patch scope from QA/support artifacts before live edits."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-03-31T17:35:40.2910157Z",
+                                           "scanned_at":  "2026-05-04T13:25:30.0111263Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  ".git/gk/config",
-                                                                 "instance/flask_session/2029240f6d1128be89ddc32729463129",
-                                                                 "routes/__pycache__/routes.cpython-311.pyc",
-                                                                 "app/__pycache__/__init__.cpython-311.pyc",
                                                                  ".git/index",
                                                                  "routes/routes.py",
                                                                  "tests/test_forum_post_quality.py",
-                                                                 "app/__init__.py",
+                                                                 "routes/admin/__init__.py",
                                                                  ".git/logs/HEAD",
                                                                  ".git/COMMIT_EDITMSG",
+                                                                 "instance/flask_session/2029240f6d1128be89ddc32729463129",
                                                                  "tests/__pycache__/test_forum_post_quality.cpython-311-pytest-8.4.2.pyc",
-                                                                 "tests/test_agent_mim_documents.py",
-                                                                 "instance/flask_session/953e4ccc3fa3d64293b4db676718766b",
-                                                                 "instance/flask_session/54b0940ba11ce900b0ec73c23de9c0f8",
-                                                                 "instance/flask_session/df6c21d9287eb7836b0b68b3d2960df7",
-                                                                 "instance/flask_session/2bff91abb7d450120d66f4643ba0281c",
-                                                                 "instance/flask_session/06c557d81c43c022b124375c8b4a2c4e",
-                                                                 "instance/flask_session/5bd6260b7d951c311378c9c6e6a4b39f",
-                                                                 "instance/flask_session/22725cf902c257a51076a78635a780cf",
-                                                                 "instance/flask_session/ed1e6c16ffbc664f047a2b9a47ed9bfc",
-                                                                 "tests/__pycache__/test_agent_mim_documents.cpython-311-pytest-8.4.2.pyc",
-                                                                 "instance/flask_session/72c7c43f541739e0193d8e4fd79599b1",
-                                                                 "instance/flask_session/2169bb17284926d47162df134c4e4467",
-                                                                 "instance/flask_session/b6d6e533269c78455a6873a502727636",
-                                                                 "instance/flask_session/4874d058ab6e1f846df40c7ebf8942dd"
+                                                                 "routes/__pycache__/routes.cpython-311.pyc",
+                                                                 "instance/flask_session/3e2980bc7e17543cbb6a6ffd29ed737b",
+                                                                 ".git/rss_stage.patch",
+                                                                 "app/__pycache__/models.cpython-311.pyc",
+                                                                 "app/__pycache__/__init__.cpython-311.pyc",
+                                                                 "app/models.py",
+                                                                 "migrations/versions/20260420123000_add_forum_image_ratings.py",
+                                                                 "app/__init__.py",
+                                                                 "tests/test_admin_customer_directory.py",
+                                                                 "instance/flask_session/bb8ef7dad0ba444281c2b4eea98d412d",
+                                                                 "instance/flask_session/621b29a08cacdf1aa7d2969997b0e171",
+                                                                 "tests/__pycache__/test_admin_customer_directory.cpython-311-pytest-8.4.2.pyc",
+                                                                 "migrations/versions/20260420110000_add_forum_image_training_profiles.py",
+                                                                 "tmp_forum_training_debug.db",
+                                                                 "tests/__pycache__/test_forum_post_quality.cpython-311.pyc",
+                                                                 "tests/test_agent_tools.py"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -300,7 +316,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".db",
-                                                                         "count":  5
+                                                                         "count":  12
                                                                      },
                                                                      {
                                                                          "extension":  ".dockerignore",
@@ -328,7 +344,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".html",
-                                                                         "count":  68
+                                                                         "count":  72
                                                                      },
                                                                      {
                                                                          "extension":  ".ico",
@@ -344,7 +360,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".js",
-                                                                         "count":  11
+                                                                         "count":  12
                                                                      },
                                                                      {
                                                                          "extension":  ".json",
@@ -356,7 +372,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".md",
-                                                                         "count":  25
+                                                                         "count":  26
                                                                      },
                                                                      {
                                                                          "extension":  ".mjs",
@@ -371,6 +387,10 @@
                                                                          "count":  244
                                                                      },
                                                                      {
+                                                                         "extension":  ".patch",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
                                                                          "extension":  ".pdf",
                                                                          "count":  74
                                                                      },
@@ -380,7 +400,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".png",
-                                                                         "count":  263
+                                                                         "count":  265
                                                                      },
                                                                      {
                                                                          "extension":  ".ps1",
@@ -388,11 +408,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".py",
-                                                                         "count":  245
+                                                                         "count":  265
                                                                      },
                                                                      {
                                                                          "extension":  ".pyc",
-                                                                         "count":  86
+                                                                         "count":  94
                                                                      },
                                                                      {
                                                                          "extension":  ".sample",
@@ -420,7 +440,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".txt",
-                                                                         "count":  14
+                                                                         "count":  19
                                                                      },
                                                                      {
                                                                          "extension":  ".wav",
@@ -444,7 +464,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  "\u003cnone\u003e",
-                                                                         "count":  125
+                                                                         "count":  97
                                                                      }
                                                                  ],
                                            "detected_test_artifacts":  [
@@ -456,8 +476,8 @@
                                                                            "tmp_sharp_pytest.txt",
                                                                            "instance/agent_smoke_test.db",
                                                                            "tests/conftest.py",
-                                                                           "tests/test_admin_usage_analytics.py",
-                                                                           "tests/test_agent_api_regressions.py"
+                                                                           "tests/test_admin_customer_directory.py",
+                                                                           "tests/test_admin_usage_analytics.py"
                                                                        ],
                                            "detected_entrypoints":  [
                                                                         "package.json",
@@ -500,7 +520,7 @@
                                             "notes":  "Prefer advisory mode first; promote to patch mode after baseline test map is stable."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-03-31T17:35:40.3305254Z",
+                                           "scanned_at":  "2026-05-04T13:25:30.0651447Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -657,7 +677,7 @@
                                             "notes":  "Architecture-sensitive domain; start in read-only and advisory modes."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-03-31T17:35:40.4376216Z",
+                                           "scanned_at":  "2026-05-04T13:25:30.1866855Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -841,16 +861,17 @@
                                             "notes":  "Hardware-facing changes should require explicit human approval and rollback plans."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-03-31T17:35:40.4961827Z",
+                                           "scanned_at":  "2026-05-04T13:25:30.2467485Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
+                                                                 "TOD.md",
+                                                                 "MIM_ARM/routes.live.py",
                                                                  "MIM_ARM/camera_routes.live.py",
                                                                  "MIM_ARM/__pycache__/camera_routes.live.cpython-313.pyc",
-                                                                 "MIM_ARM/routes.live.py",
                                                                  "MIM_ARM/__pycache__/routes.live.cpython-313.pyc",
                                                                  "MIM_ARM/model_loader.live.py",
-                                                                 "MIM_ARM/settings_routes.live.py",
                                                                  "MIM_ARM/app.live.py",
+                                                                 "MIM_ARM/settings_routes.live.py",
                                                                  "MIM_ARM/config_paths.live.py",
                                                                  "MIM_ARM/__pycache__/app.live.cpython-313.pyc",
                                                                  "MIM_ARM/__pycache__/model_loader.live.cpython-313.pyc",
@@ -858,8 +879,8 @@
                                                                  "MIM_ARM/__pycache__/config_paths.live.cpython-313.pyc",
                                                                  "MIM_ARM/mim_app.live.env",
                                                                  "MIM_ARM/shared.live.py",
-                                                                 "MIM_ARM/voice_routes.live.py",
                                                                  "MIM_ARM/command_processor.live.py",
+                                                                 "MIM_ARM/voice_routes.live.py",
                                                                  "MIM_ARM/__pycache__/command_processor.live.cpython-313.pyc",
                                                                  "MIM_ARM/__pycache__/voice_routes.live.cpython-313.pyc",
                                                                  "MIM_ARM/explore_action_script_probe.txt",
@@ -867,8 +888,7 @@
                                                                  "MIM_ARM/MIM_arm.py",
                                                                  "MIM_ARM/__pycache__/MIM_arm.cpython-313.pyc",
                                                                  "MIM_ARM/chat_routes.live.py",
-                                                                 "MIM_ARM/__pycache__/chat_routes.live.cpython-313.pyc",
-                                                                 "MIM_ARM/mim_arm_cleanup_plan.md"
+                                                                 "MIM_ARM/__pycache__/chat_routes.live.cpython-313.pyc"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -1090,7 +1110,7 @@
                                             "notes":  "ML model weights, training outputs and frame caches are data-critical and excluded from automated edits. Deployed on Render — validate changes against Dockerfile before push."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-03-31T17:35:40.5955497Z",
+                                           "scanned_at":  "2026-05-04T13:25:30.4469066Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1328,7 +1348,7 @@
                                             "notes":  "Enable controlled implementation once baseline architecture map is generated."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-03-31T17:35:40.6525315Z",
+                                           "scanned_at":  "2026-05-04T13:25:30.5015469Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1506,9 +1526,11 @@
                                             "notes":  "Treat as experimental domain; prioritize architecture summaries and drift tracking."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-03-31T17:35:40.6824386Z",
+                                           "scanned_at":  "2026-05-04T13:25:30.5225123Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
+                                                                 "~$ project MIM devl.docx",
+                                                                 "12 project MIM devl.docx",
                                                                  "TOD.md",
                                                                  "Who or what is MIM.docx",
                                                                  "agneteams.docx",
@@ -1531,9 +1553,7 @@
                                                                  "mimenv/Scripts/toco.exe",
                                                                  "mimenv/Scripts/tf_upgrade_v2.exe",
                                                                  "mimenv/Scripts/tflite_convert.exe",
-                                                                 "mimenv/Scripts/tensorboard.exe",
-                                                                 "mimenv/Scripts/saved_model_cli.exe",
-                                                                 "mimenv/Scripts/import_pb_to_tensorboard.exe"
+                                                                 "mimenv/Scripts/tensorboard.exe"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -1554,7 +1574,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".docx",
-                                                                         "count":  4
+                                                                         "count":  6
                                                                      },
                                                                      {
                                                                          "extension":  ".exe",
@@ -1639,34 +1659,34 @@
                                             "notes":  "Use as pattern library and experiments workspace; avoid unmanaged refactors."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-03-31T17:35:40.7469236Z",
+                                           "scanned_at":  "2026-05-04T13:25:30.5701551Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
-                                                                 "Investment deck/~$M Core Pitch.docx",
+                                                                 "accounting/may-jun-2026/linkedin marketing invoice_1006.pdf",
+                                                                 "Investment deck/~$M Robots LLC capital raise overview.docx",
                                                                  "Investment deck/MIM Core Pitch.docx",
-                                                                 "accounting/Alignment on CAC.docx",
-                                                                 "accounting/~$ignment on CAC.docx",
-                                                                 "accounting/~WRL1793.tmp",
-                                                                 "Marketing media/MIM Architecture.png",
-                                                                 "Training \u0026 content/MIM Architecture Overview.docx",
-                                                                 "accounting/MAR-APR-2026-DR/zoom INV347117220_A26051480_03242026.pdf",
-                                                                 "Marketing media/AI crazy.png",
-                                                                 "Training \u0026 content/MIM_TOD update.docx",
-                                                                 "Marketing media/MIM upgrade.png",
-                                                                 "Marketing media/MIM mad doctor.png",
-                                                                 "app development/avatar tools.docx",
-                                                                 "Training \u0026 content/Why AI in HR Remains Fragmented.docx",
-                                                                 "Marketing media/AI in the workplace.png",
-                                                                 "Marketing media/ai in the workplace 2.png",
-                                                                 "Marketing media/AI strugle.png",
-                                                                 "accounting/MAR-APR-2026-DR/hosting A-INV-984384.pdf",
-                                                                 "Marketing media/MIM overworked.png",
-                                                                 "accounting/MAR-APR-2026-DR/Social Media-linkedin followers - 2- Your USDC transfer is on its way.pdf",
-                                                                 "accounting/MAR-APR-2026-DR/Social Media-linkedin followers - Your USDC transfer is on its way.pdf",
-                                                                 "accounting/MAR-APR-2026-DR/x Receipt-2834-5312-0497.pdf",
+                                                                 "accounting/may-jun-2026/RemotePC account has been created.pdf",
+                                                                 "accounting/may-jun-2026/hosting A-INV-1046377.pdf",
+                                                                 "accounting/may-jun-2026/Gmail - [PythonAnywhere] Billing.pdf",
+                                                                 "accounting/may-jun-2026/zoom INV351235613_A26051480_04242026.pdf",
+                                                                 "accounting/may-jun-2026/bito Receipt-2827-9815.pdf",
+                                                                 "accounting/may-jun-2026/digital ocean 152117717.pdf",
+                                                                 "accounting/may-jun-2026/hosting- Invoice payment received.pdf",
+                                                                 "accounting/MAR-APR-2026-DR/Gmail - Your receipt from X #2710-0228-8017.pdf",
+                                                                 "Training \u0026 content/MIM_TOD Deep Architecture Appendix.docx",
+                                                                 "accounting/MAR-APR-2026-DR/Linkedin followers - paid usdc-dr_invoice_1005.pdf",
+                                                                 "accounting/MAR-APR-2026-DR/Google Play Order Receipt from Apr 15, 2026.pdf",
+                                                                 "Training \u0026 content/MIM-TOD_dr_4_2026.docx",
+                                                                 "app development/AgentMIM link pyramid by 3 tier backlinks.xlsx",
+                                                                 "app development/Link pyramid by 3 tier backlinks.zip",
+                                                                 "Training \u0026 content/~$M_TOD Deep Architecture Appendix.docx",
+                                                                 "Training \u0026 content/MIM_TOD whitepaper Mar 2026.pdf",
+                                                                 "Marketing media/agentmim upload commissions.png",
                                                                  "TOD.md",
-                                                                 "accounting/MAR-APR-2026-DR/github-raine0001-receipt-2026-03-17.pdf",
-                                                                 "Marketing media/MIM autonomous.png"
+                                                                 "accounting/MAR-APR-2026-DR/github-raine0001-receipt-2026-04-11.pdf",
+                                                                 "accounting/MAR-APR-2026-DR/Render Receipt-2357-3238.pdf",
+                                                                 "Marketing media/push_pull.png",
+                                                                 "accounting/MAR-APR-2026-DR/linked in leads payment Gmail - Your USDC transfer is on its way.pdf"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -1675,7 +1695,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".docx",
-                                                                         "count":  73
+                                                                         "count":  76
                                                                      },
                                                                      {
                                                                          "extension":  ".drp",
@@ -1699,11 +1719,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".pdf",
-                                                                         "count":  155
+                                                                         "count":  173
                                                                      },
                                                                      {
                                                                          "extension":  ".png",
-                                                                         "count":  75
+                                                                         "count":  77
                                                                      },
                                                                      {
                                                                          "extension":  ".pptx",
@@ -1715,7 +1735,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".tmp",
-                                                                         "count":  4
+                                                                         "count":  3
                                                                      },
                                                                      {
                                                                          "extension":  ".txt",
@@ -1735,11 +1755,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".xlsx",
-                                                                         "count":  8
+                                                                         "count":  10
                                                                      },
                                                                      {
                                                                          "extension":  ".zip",
-                                                                         "count":  1
+                                                                         "count":  2
                                                                      }
                                                                  ],
                                            "detected_test_artifacts":  [
@@ -1788,7 +1808,7 @@
                                             "notes":  "Primary domain for generated media/content workflows; keep secret-bearing config out of automated edits."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-03-31T17:35:40.7531230Z",
+                                           "scanned_at":  "2026-05-04T13:25:30.5753350Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1849,7 +1869,7 @@
                                             "notes":  "Dedicated media creation and processing domain for TOD image/video/audio outputs and workflow indexing."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-03-31T17:35:40.7595708Z",
+                                           "scanned_at":  "2026-05-04T13:25:30.5799980Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1894,10 +1914,176 @@
 
                                                                     ]
                                        }
+                     },
+                     {
+                         "id":  "mim_wall",
+                         "name":  "MIM Assist",
+                         "type":  "android-app",
+                         "path":  "E:/mim_wall",
+                         "exists":  true,
+                         "risk_level":  "high",
+                         "write_access":  "guarded",
+                         "language_hint":  [
+                                               "kotlin",
+                                               "java"
+                                           ],
+                         "configured_entry_points":  [
+                                                         "README.md",
+                                                         "MIM_ASSIST_SPEC.md",
+                                                         "DEVELOPMENT_PLAN.md",
+                                                         "app"
+                                                     ],
+                         "configured_test_commands":  [
+                                                          "./gradlew.bat assembleDebug",
+                                                          "./gradlew.bat lintDebug",
+                                                          "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/automated_dialog_regression.ps1 -Iterations 1"
+                                                      ],
+                         "boundaries":  {
+                                            "allowed_paths":  [
+                                                                  "app",
+                                                                  "scripts",
+                                                                  "artifacts",
+                                                                  "docs"
+                                                              ],
+                                            "blocked_paths":  [
+                                                                  "local.properties",
+                                                                  ".gradle",
+                                                                  ".tools",
+                                                                  ".android-sdk",
+                                                                  "build"
+                                                              ],
+                                            "notes":  "Android app changes should keep build, lint, and automated dialog regression gates green before publish. Prefer README.md, TOD.md, MIM_ASSIST_SPEC.md, DEVELOPMENT_PLAN.md, and sprint plan docs as the default familiarization path."
+                                        },
+                         "discovery":  {
+                                           "scanned_at":  "2026-05-04T13:25:30.6245428Z",
+                                           "max_depth":  2,
+                                           "sampled_files":  [
+                                                                 ".git/gk/config",
+                                                                 "scripts/device_smoke_test.ps1",
+                                                                 "scripts/automated_dialog_regression.ps1",
+                                                                 ".gradle/buildOutputCleanup/buildOutputCleanup.lock",
+                                                                 ".gradle/buildOutputCleanup/outputFiles.bin",
+                                                                 ".gradle/file-system.probe",
+                                                                 "local.properties",
+                                                                 ".gradle/8.7/gc.properties",
+                                                                 ".gradle/vcs-1/gc.properties",
+                                                                 "DEVELOPMENT_PLAN.md",
+                                                                 "TOD.md",
+                                                                 "README.md",
+                                                                 ".git/info/refs",
+                                                                 ".git/logs/HEAD",
+                                                                 ".git/COMMIT_EDITMSG",
+                                                                 ".git/index",
+                                                                 ".vscode/tasks.json",
+                                                                 "artifacts/dialog-regression/latest_results.csv",
+                                                                 "artifacts/dialog-regression/latest_summary.json",
+                                                                 ".gitignore",
+                                                                 "SPRINT_1_PLAN.md",
+                                                                 "scripts/verify_busy_intercept.ps1",
+                                                                 "MIM_ASSIST_SPEC.md",
+                                                                 "app/build.gradle.kts",
+                                                                 ".git/config"
+                                                             ],
+                                           "extension_summary":  [
+                                                                     {
+                                                                         "extension":  ".bat",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".bin",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".conf",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".csv",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".dll",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".exe",
+                                                                         "count":  8
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".gitignore",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".jar",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".json",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".kts",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".lock",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".md",
+                                                                         "count":  6
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".pro",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".probe",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".properties",
+                                                                         "count":  7
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".ps1",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".sample",
+                                                                         "count":  14
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".txt",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".xml",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".zip",
+                                                                         "count":  2
+                                                                     },
+                                                                     {
+                                                                         "extension":  "\u003cnone\u003e",
+                                                                         "count":  20
+                                                                     }
+                                                                 ],
+                                           "detected_test_artifacts":  [
+                                                                           "scripts/device_smoke_test.ps1",
+                                                                           "artifacts/dialog-regression/latest_results.csv",
+                                                                           "artifacts/dialog-regression/latest_summary.json"
+                                                                       ],
+                                           "detected_entrypoints":  [
+                                                                        "README.md"
+                                                                    ]
+                                       }
                      }
                  ],
     "unregistered_top_level_directories":  [
                                                "E:/app",
+                                               "E:/literature",
                                                "E:/Viasion"
                                            ]
 }

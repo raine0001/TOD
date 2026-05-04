@@ -1,0 +1,19 @@
+{
+  "ui": {
+    "port": 8844,
+    "allow_port_fallback": true,
+    "startup_timeout_seconds": 120,
+    "probe_timeout_seconds": 10
+  },
+  "tunnel": {
+    "mode": "quick",
+    "download_url": "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe",
+    "startup_timeout_seconds": 90,
+    "remote_probe_grace_seconds": 60,
+    "remote_probe_poll_seconds": 5
+  },
+  "health": {
+    "loop_interval_seconds": 30
+  },
+  "artifacts_root": "tod/out/remote-access/mim-shell"
+}

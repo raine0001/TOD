@@ -2,7 +2,8 @@ param(
     [string]$TaskName = "TOD-CatchupGateWatcher",
     [int]$CheckEverySeconds = 30,
     [int]$WriterLeaseSeconds = 600,
-    [string]$WriterId = "tod-catchup-gate-watcher"
+    [string]$WriterId = "tod-catchup-gate-watcher",
+    [switch]$VisibleWindow
 )
 
 Set-StrictMode -Version Latest
@@ -19,6 +20,7 @@ if (-not (Get-Command -Name Register-ScheduledTask -ErrorAction SilentlyContinue
 }
 
 $argParts = @(
+    if (-not $VisibleWindow) { '-WindowStyle'; 'Hidden' }
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", "`"$watcherScript`"",
@@ -96,6 +98,7 @@ catch {
     user = $currentUser
     startup_trigger_enabled = $startupAdded
     state = [string]$task.State
+    visible_window = [bool]$VisibleWindow
     action = [pscustomobject]@{
         execute = "powershell.exe"
         arguments = $actionArgs

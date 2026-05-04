@@ -15,6 +15,7 @@ These scenarios validate:
 - reminder behavior
 - supersede and reissue semantics
 - inbox/index semantics for actionable sessions
+- bounded status, help, blocker, and emergency coordination exchanges
 
 These scenarios do not validate:
 
@@ -29,7 +30,9 @@ All scenarios must run against a synthetic dialog root under a test output direc
 
 Required policy:
 
-- never point the harness at `/home/testpilot/mim/runtime/shared`
+- never point the harness at `192.168.1.120:/home/testpilot/mim/runtime/shared`
+- never point the harness at `192.168.1.90:/home/testpilot/mim/runtime/shared`
+- never point the harness at `192.168.1.90:/home/testpilot/mim_arm/runtime/shared`
 - never point the harness at production-like `shared_state/dialog`
 - never let simulation writers compete with live canonical artifacts
 
@@ -96,6 +99,78 @@ Pass criteria:
 - the reissued request becomes the new actionable open reply
 - MIM can answer the reissued request without creating a new session
 
+### 4. Status Exchange Roundtrip
+
+Goal:
+
+- prove routine status questions do not hang unanswered
+
+Flow:
+
+1. TOD sends `status_request`
+2. The request asks where MIM is, what happened, and what MIM is working on
+3. MIM replies with `status_reply`
+
+Pass criteria:
+
+- MIM inbox surfaces the actionable request
+- the reply clears the open expectation
+- the reply includes current location and active work context
+
+### 5. Help Offer Roundtrip
+
+Goal:
+
+- prove one side can offer help and get an explicit answer
+
+Flow:
+
+1. TOD sends `status_request` with help-offer intent
+2. MIM replies with `status_reply`
+3. MIM either declines help or names the support it needs
+
+Pass criteria:
+
+- there is no silent pending session
+- the reply explicitly states whether help is needed
+- requested support is structured when help is needed
+
+### 6. Blocker Assistance Roundtrip
+
+Goal:
+
+- prove “I need help” and “I am stuck” become actionable, not silent
+
+Flow:
+
+1. MIM sends `blocker_notice`
+2. TOD reads the actionable inbox
+3. TOD replies with `diagnostic_reply`
+
+Pass criteria:
+
+- TOD inbox surfaces the blocker
+- TOD acknowledges the blocker with a concrete next step
+- the open reply expectation is cleared
+
+### 7. Emergency Assistance Roundtrip
+
+Goal:
+
+- prove emergency coordination receives an immediate explicit response
+
+Flow:
+
+1. MIM sends `blocker_notice` marked as emergency
+2. TOD acknowledges immediately
+3. The session closes explicitly
+
+Pass criteria:
+
+- TOD inbox surfaces the emergency immediately
+- TOD acknowledges the emergency on the same session
+- the session does not remain open or ambiguous
+
 ## Required Assertions
 
 Each scenario must assert:
@@ -115,6 +190,11 @@ The next-step consensus scenario must additionally assert:
 - decision values per finding
 - deterministic consensus output
 
+The status/help/emergency scenarios must additionally assert:
+
+- no silent hanging open reply remains after the response
+- the response includes an explicit stance: status, help needed, blocker acknowledged, or emergency acknowledged
+
 ## Output Artifacts
 
 The harness should emit:
@@ -127,6 +207,10 @@ The harness should emit:
 Recommended output root:
 
 - `tod/out/tests/tod-mim-conversation-simulations/<run-id>/`
+
+Recommended soak root:
+
+- `tod/out/tests/tod-mim-communication-soak/<run-id>/`
 
 ## Acceptance Link
 

@@ -1,4 +1,4 @@
-# TOD
+﻿# TOD
 
 Development orchestration workspace for the MIM ecosystem.
 
@@ -15,6 +15,11 @@ Primary specification:
 - [docs/local-execution-engine-v1.md](docs/local-execution-engine-v1.md)
 - [docs/mim-tod-alpha-link.md](docs/mim-tod-alpha-link.md)
 - [docs/codex-result-format-v1.md](docs/codex-result-format-v1.md)
+
+Autonomy and continuity:
+- [docs/tod-autonomy-continuity-v1.md](docs/tod-autonomy-continuity-v1.md)
+- [docs/tod-completion-status-contract-v1.md](docs/tod-completion-status-contract-v1.md)
+- [docs/README.md](docs/README.md)
 
 ## TOD v1 Local Runner
 
@@ -211,9 +216,9 @@ Current operating standard (promoted 2026-03-18):
 - known-good baseline overall score: `0.7483` *(promoted from 0.7446)*
 
 Promotion criteria met (2026-03-18, run `20260318T001825Z`):
-- Gate 1: no late degradation — late_avg_pr=0.7512 ≥ early_avg_pr=0.7471 ✓
-- Gate 2: drift-lock clean — 0 violations in last 4 cycles ✓
-- Gate 3: no fresh failure cluster — late_fail=10.25 < early_fail=13.75, max_streak=2 ✓
+- Gate 1: no late degradation â€” late_avg_pr=0.7512 â‰¥ early_avg_pr=0.7471 âœ“
+- Gate 2: drift-lock clean â€” 0 violations in last 4 cycles âœ“
+- Gate 3: no fresh failure cluster â€” late_fail=10.25 < early_fail=13.75, max_streak=2 âœ“
 
 Governed expansion status (2026-03-18):
 - drift-lock suite expanded to 18 locked scenarios: replay-lock core + `MESS-001..004` + `BRG-001..004` + `OPR-001..004`
@@ -312,7 +317,7 @@ Do **not** promote baseline until the guarded replay or mixed soak passes these 
 
 | Gate | Required |
 |------|----------|
-| `final_failures` on governed soak | ≤ 1 |
+| `final_failures` on governed soak | â‰¤ 1 |
 | Late utility floor | `late_avg_developer_utility >= 0.73` |
 | Utility slope | `late_avg_developer_utility >= early_avg_developer_utility` |
 | Late consistency | `late_avg_consistency >= early_avg_consistency` |
@@ -326,12 +331,12 @@ When all gates pass, run a guarded 60-minute full soak then promote:
 ```
 
 **Current status (2026-03-18):**
-- Narrowed 175-cycle replay-pack soak: `final_failures=0`, `late_fail=0`, `late_avg_cons=0.833` ✓
-- PR gate: `drift_lock_passed=true`, `drift_lock_failures=0`, `gate_passed=true` ✓
-- Full guarded 60-min soak (run `20260318T001825Z`): 12 cycles, `avg_pr=0.750`, `regressed=false` ✓
-- Governed exact messy + bridge soak (`mixed_mess_bridge_120_governed_bounded_report.json`, bounded late violations): `avg_overall=0.7816`, `avg_developer_utility=0.7908`, `late_drift_lock_violations=3`, `promotion_gate_passed=true` ✓
-- Full mixed governed soak (run `20260318T065414Z`, 18 scenarios): `cycles_completed=120`, `avg_overall=0.7770`, `avg_developer_utility=0.7833`, `final_failures=0`, `late_drift_lock_violations=0`, `promotion_gate_passed=true` ✓
-- OPR closure soak (run `20260318T064913Z`): `cycles_completed=60`, `avg_overall=0.7695`, `avg_developer_utility=0.7669`, `late_drift_lock_violations=0`, `promotion_gate_passed=true` ✓
+- Narrowed 175-cycle replay-pack soak: `final_failures=0`, `late_fail=0`, `late_avg_cons=0.833` âœ“
+- PR gate: `drift_lock_passed=true`, `drift_lock_failures=0`, `gate_passed=true` âœ“
+- Full guarded 60-min soak (run `20260318T001825Z`): 12 cycles, `avg_pr=0.750`, `regressed=false` âœ“
+- Governed exact messy + bridge soak (`mixed_mess_bridge_120_governed_bounded_report.json`, bounded late violations): `avg_overall=0.7816`, `avg_developer_utility=0.7908`, `late_drift_lock_violations=3`, `promotion_gate_passed=true` âœ“
+- Full mixed governed soak (run `20260318T065414Z`, 18 scenarios): `cycles_completed=120`, `avg_overall=0.7770`, `avg_developer_utility=0.7833`, `final_failures=0`, `late_drift_lock_violations=0`, `promotion_gate_passed=true` âœ“
+- OPR closure soak (run `20260318T064913Z`): `cycles_completed=60`, `avg_overall=0.7695`, `avg_developer_utility=0.7669`, `late_drift_lock_violations=0`, `promotion_gate_passed=true` âœ“
 - **Baseline promoted to 0.7483** (from 0.7446, +0.004 lift)
 - **Multi-domain governed baseline frozen (`baseline_release_v2.json`)**
 
@@ -340,27 +345,27 @@ Governance freeze artifact:
 - `tod/conversation_eval/baseline_release_v2.json`
 
 Seed data files:
-- `tod/conversation_eval/scenario_cards.json` — 74 scenarios across 18 buckets (48 conversational + 10 engineering + 8 messy/bridge + 4 operator-friction + 4 real-repo-review)
+- `tod/conversation_eval/scenario_cards.json` â€” 74 scenarios across 18 buckets (48 conversational + 10 engineering + 8 messy/bridge + 4 operator-friction + 4 real-repo-review)
 - `tod/conversation_eval/conversation_profiles.json`
-- `tod/conversation_eval/drift_lock_suite.json` — 18 locked invariant scenarios
-- `tod/conversation_eval/codex_readiness_suite_v1.json` — single-domain expansion suite for real repo change review
+- `tod/conversation_eval/drift_lock_suite.json` â€” 18 locked invariant scenarios
+- `tod/conversation_eval/codex_readiness_suite_v1.json` â€” single-domain expansion suite for real repo change review
 
 Engineering task scenario buckets (added 2026-03-18):
 
 | Bucket | IDs | Focus |
 |--------|-----|-------|
-| `implementation_planning` | ENG-001–004 | Concrete structure, circuit breakers, queue/pipe tradeoffs, auto-merge governance |
-| `code_review_coaching` | ENG-005–007 | Antipattern detection, priority-ranked review, pattern reuse |
-| `debugging_loop` | ENG-008–010 | Targeted diagnosis, NullRef root cause, diff-first isolation |
+| `implementation_planning` | ENG-001â€“004 | Concrete structure, circuit breakers, queue/pipe tradeoffs, auto-merge governance |
+| `code_review_coaching` | ENG-005â€“007 | Antipattern detection, priority-ranked review, pattern reuse |
+| `debugging_loop` | ENG-008â€“010 | Targeted diagnosis, NullRef root cause, diff-first isolation |
 
 Messy real-world and cross-domain bridge scenarios:
 
 | Bucket | IDs | Focus |
 |--------|-----|-------|
-| `debugging_loop` + `implementation_planning` + `code_review_coaching` + `unclear_requests` | MESS-001–004 | Incomplete logs, conflicting requirements, partial code, ambiguous intent |
-| `mim_tod_bridge` | BRG-001–004 | MIM plans -> TOD critiques -> TOD executes -> MIM validates |
-| `operator_friction` | OPR-001–004 | Incomplete bug reports, urgency pressure, rollback conflict, wrong diagnosis confidence |
-| `real_repo_change_review` | RRV-001–004 | Security review, partial diffs, conflicting constraints, incident triage under repo pressure |
+| `debugging_loop` + `implementation_planning` + `code_review_coaching` + `unclear_requests` | MESS-001â€“004 | Incomplete logs, conflicting requirements, partial code, ambiguous intent |
+| `mim_tod_bridge` | BRG-001â€“004 | MIM plans -> TOD critiques -> TOD executes -> MIM validates |
+| `operator_friction` | OPR-001â€“004 | Incomplete bug reports, urgency pressure, rollback conflict, wrong diagnosis confidence |
+| `real_repo_change_review` | RRV-001â€“004 | Security review, partial diffs, conflicting constraints, incident triage under repo pressure |
 
 Run engineering task coaching drills:
 
@@ -449,6 +454,34 @@ Simulation suite and output:
 - `shared_state/conversation_eval/github_project_simulation/tod_github_project_simulation.latest.json`
 - `shared_state/conversation_eval/github_project_simulation/tod_github_project_simulation.trend.latest.json`
 
+Repo edit / test / recover execution-loop simulation:
+
+```powershell
+# Rehearse the concrete local execution loop over registered repos
+.\scripts\Invoke-TODRepoEditTestRecoverSimulation.ps1 -EmitJson
+
+# Same pack through the daily wrapper shape used by the autonomous bundle
+.\scripts\Invoke-TODRepoEditTestRecoverSimulationDaily.ps1 -EmitJson
+```
+
+Execution-loop suite and output:
+- `tod/conversation_eval/repo_edit_test_recover_suite_v1.json`
+- `shared_state/conversation_eval/repo_edit_test_recover/tod_repo_edit_test_recover.latest.json`
+
+Execution-loop training goals:
+- force TOD through `inspect -> understand -> patch -> validate -> recover -> explain`
+- verify candidate patch files stay inside allowed project boundaries
+- require configured test commands when the scenario expects validation
+- require an explicit recovery note before the scenario counts as recovery-ready
+- prepare an operator-ready packet with validation commands, recovery notes, and a publish checklist
+
+Idle training policy:
+- `Register-TODAutonomousTrainingCampaignTasks.ps1` now defaults the idle daemon to `IdleThresholdMinutes = 0`
+- when TOD is not actively executing an objective, the daemon immediately resumes training on the next idle cycle
+- MIM solicitation is rate-limited separately with `SolicitationCooldownMinutes = 60` so continuous training does not spam direction requests
+- simulation fallback cooldown defaults to `0`, which means training resumes every idle cycle unless higher-priority work appears
+- the idle daemon ignores completed campaign state by default, so background training continues even after the original 12-day campaign has finished
+
 Default operating assumption:
 - TOD should treat GitHub-enabled cross-project work as the default mode where credentials and repo permissions allow.
 - Simulation mode prepares discovery, solution, commit, and push checklists without making live edits.
@@ -485,6 +518,45 @@ Project wording:
 - The synthetic TOD<->MIM conversation harness is now promoted as a standing regression gate for communication-contract integrity.
 - Its scope remains synthetic-only and limited to dialog/adjudication behavior.
 - Live execution authority remains governed and validated separately through the listener-stage execution contract.
+
+TOD<->MIM communication simulation soak (synthetic-only, repeated coordination rehearsals):
+
+```powershell
+# Run a strict multi-iteration synthetic communication rehearsal and fail if any iteration or scenario regresses
+.\scripts\Invoke-TODMimCommunicationSimulationSoak.ps1 -Iterations 300 -FailOnFailure -EmitJson
+```
+
+Simulation-soak scope:
+
+- synthetic-only
+- routine status exchange: where are you, what happened, what are you working on
+- explicit help offer and help request handling
+- blocker and emergency acknowledgement behavior
+- zero silent hanging sessions across the requested iteration count
+
+Formal TOD<->MIM contract agreement:
+
+```powershell
+# Re-accept the authoritative contract, verify the remote lock and receipt agree,
+# and publish a dialog follow-up if MIM's projection files need refresh.
+.\scripts\Invoke-TODMimFormalContractAgreement.ps1 -PublishDialogRemote -EmitJson
+```
+
+TOD managed work loop for unstaged changes:
+
+```powershell
+# Classify the current TOD working tree into managed patch scope, support artifacts,
+# and blocked runtime/generated surfaces before starting another guarded write loop.
+.\scripts\Invoke-TODManagedWork.ps1 -EmitJson
+```
+
+TOD managed work cleanup for tracked runtime-memory noise:
+
+```powershell
+# Archive tracked blocked-scope files, restore them from HEAD, remove disposable
+# untracked support artifacts, and emit both pre/post cleanup reports.
+.\scripts\Invoke-TODManagedWork.ps1 -ApplyCleanup -EmitJson
+```
 
 TOD<->MIM execution contract gate (synthetic-only, listener execution lane only):
 
@@ -1118,3 +1190,15 @@ These provide:
 - engine reliability scores and recovery state
 - execution/reliability capability metadata
 - TOD runtime/policy version metadata
+
+
+## TOD Local Execution Mode
+
+TOD can execute bounded local objectives directly when execution_engine.active is set to local and the task scope stays inside the declared file boundaries.
+
+In local execution mode, TOD is responsible for:
+- inspecting the repo and identifying the bounded target file
+- applying the scoped change with rollback metadata and backup coverage
+- validating the result and recording execution evidence
+- publishing changed files, validation outcomes, and the next action without routing through Codex
+

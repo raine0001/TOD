@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('all', 'diagnostic_roundtrip', 'next_step_consensus_roundtrip', 'supersede_reissue_roundtrip')]
+    [ValidateSet('all', 'diagnostic_roundtrip', 'next_step_consensus_roundtrip', 'supersede_reissue_roundtrip', 'status_exchange_roundtrip', 'help_offer_roundtrip', 'blocker_assistance_roundtrip', 'emergency_assistance_roundtrip')]
     [string]$Scenario = 'all',
     [string]$OutputRoot = ''
 )
@@ -342,6 +342,220 @@ function Invoke-SupersedeReissueRoundtripScenario {
     }
 }
 
+function Invoke-StatusExchangeRoundtripScenario {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $dialogDir = Join-Path $Root 'dialog'
+    $sessionId = 'simulation-status-exchange'
+
+    $null = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'send'
+        SessionId = $sessionId
+        Actor = 'TOD'
+        PeerActor = 'MIM'
+        MessageType = 'status_request'
+        Intent = 'status_alignment'
+        TaskId = 'simulation-status'
+        Summary = 'Where are you, what happened, and what are you working on right now?'
+        PayloadJson = '{"questions":["where_are_you","what_happened","current_work"]}'
+        RequiresReply = $true
+    }
+
+    $mimInbox = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'read-inbox'
+        Actor = 'MIM'
+    }
+
+    $null = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'send'
+        SessionId = $sessionId
+        Actor = 'MIM'
+        PeerActor = 'TOD'
+        MessageType = 'status_reply'
+        Intent = 'status_alignment'
+        TaskId = 'simulation-status'
+        Summary = 'MIM reports current location, latest event, and active work item.'
+        PayloadJson = '{"location":"listener_stage","last_event":"republished canonical request boundary","current_work":"verifying live publication alignment","needs_help":false}'
+    }
+
+    $status = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'get-session-status'
+        SessionId = $sessionId
+    }
+    $messages = @(Get-Content -Path (Get-DialogSessionLogPath -DialogDir $dialogDir -SessionId $sessionId) | ForEach-Object { $_ | ConvertFrom-Json })
+    $reply = @($messages | Where-Object { [string]$_.message_type -eq 'status_reply' } | Select-Object -Last 1)[0]
+
+    return [pscustomobject]@{
+        scenario = 'status_exchange_roundtrip'
+        ok = (@($mimInbox.open_sessions).Count -eq 1) -and ([string]$status.session_state.status -eq 'resolved') -and ($null -ne $reply) -and ($reply.payload.location -eq 'listener_stage') -and ($reply.payload.current_work -eq 'verifying live publication alignment')
+        session_id = $sessionId
+        final_status = [string]$status.session_state.status
+        inbox_count = @($mimInbox.open_sessions).Count
+    }
+}
+
+function Invoke-HelpOfferRoundtripScenario {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $dialogDir = Join-Path $Root 'dialog'
+    $sessionId = 'simulation-help-offer'
+
+    $null = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'send'
+        SessionId = $sessionId
+        Actor = 'TOD'
+        PeerActor = 'MIM'
+        MessageType = 'status_request'
+        Intent = 'assistance_offer'
+        TaskId = 'simulation-help-offer'
+        Summary = 'Do you need help, or are you clear to continue?'
+        PayloadJson = '{"offer":"support_available","topics":["need_help","blocking_dependency"]}'
+        RequiresReply = $true
+    }
+
+    $null = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'send'
+        SessionId = $sessionId
+        Actor = 'MIM'
+        PeerActor = 'TOD'
+        MessageType = 'status_reply'
+        Intent = 'assistance_offer'
+        TaskId = 'simulation-help-offer'
+        Summary = 'MIM requests help validating the republished boundary and asks TOD to confirm the next update window.'
+        PayloadJson = '{"needs_help":true,"requested_support":["validate_republished_boundary","confirm_next_update_window"]}'
+    }
+
+    $status = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'get-session-status'
+        SessionId = $sessionId
+    }
+    $messages = @(Get-Content -Path (Get-DialogSessionLogPath -DialogDir $dialogDir -SessionId $sessionId) | ForEach-Object { $_ | ConvertFrom-Json })
+    $reply = @($messages | Where-Object { [string]$_.message_type -eq 'status_reply' } | Select-Object -Last 1)[0]
+
+    return [pscustomobject]@{
+        scenario = 'help_offer_roundtrip'
+        ok = ([string]$status.session_state.status -eq 'resolved') -and ($null -ne $reply) -and [bool]$reply.payload.needs_help -and (@($reply.payload.requested_support).Count -eq 2)
+        session_id = $sessionId
+        final_status = [string]$status.session_state.status
+        requested_support_count = if ($reply) { @($reply.payload.requested_support).Count } else { 0 }
+    }
+}
+
+function Invoke-BlockerAssistanceRoundtripScenario {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $dialogDir = Join-Path $Root 'dialog'
+    $sessionId = 'simulation-blocker-assistance'
+
+    $null = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'send'
+        SessionId = $sessionId
+        Actor = 'MIM'
+        PeerActor = 'TOD'
+        MessageType = 'blocker_notice'
+        Intent = 'stuck_requesting_help'
+        TaskId = 'simulation-blocker'
+        Summary = 'I need help. I am stuck on publication realignment and cannot confirm whether the stale surface is safe to clear.'
+        PayloadJson = '{"needs_help":true,"stuck":true,"blocking_issue":"publication_surface_divergence"}'
+        RequiresReply = $true
+    }
+
+    $todInbox = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'read-inbox'
+        Actor = 'TOD'
+    }
+
+    $null = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'send'
+        SessionId = $sessionId
+        Actor = 'TOD'
+        PeerActor = 'MIM'
+        MessageType = 'diagnostic_reply'
+        Intent = 'stuck_requesting_help'
+        TaskId = 'simulation-blocker'
+        Summary = 'TOD confirms the blocker, provides the safe next diagnostic step, and keeps the coordination lane active.'
+        PayloadJson = '{"support_acknowledged":true,"next_step":"compare canonical objective to live task request and republish if identities differ"}'
+    }
+
+    $status = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'get-session-status'
+        SessionId = $sessionId
+    }
+    $messages = @(Get-Content -Path (Get-DialogSessionLogPath -DialogDir $dialogDir -SessionId $sessionId) | ForEach-Object { $_ | ConvertFrom-Json })
+    $reply = @($messages | Where-Object { [string]$_.message_type -eq 'diagnostic_reply' } | Select-Object -Last 1)[0]
+
+    return [pscustomobject]@{
+        scenario = 'blocker_assistance_roundtrip'
+        ok = (@($todInbox.open_sessions).Count -eq 1) -and ([string]$status.session_state.status -eq 'resolved') -and ($null -ne $reply) -and [bool]$reply.payload.support_acknowledged
+        session_id = $sessionId
+        final_status = [string]$status.session_state.status
+        inbox_count = @($todInbox.open_sessions).Count
+    }
+}
+
+function Invoke-EmergencyAssistanceRoundtripScenario {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $dialogDir = Join-Path $Root 'dialog'
+    $sessionId = 'simulation-emergency-assistance'
+
+    $null = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'send'
+        SessionId = $sessionId
+        Actor = 'MIM'
+        PeerActor = 'TOD'
+        MessageType = 'blocker_notice'
+        Intent = 'emergency_assistance'
+        TaskId = 'simulation-emergency'
+        Summary = 'This is an emergency. Canonical state and live publication disagree and the operator view may be misleading.'
+        PayloadJson = '{"severity":"emergency","needs_immediate_response":true,"blocking_issue":"publication_surface_divergence"}'
+        RequiresReply = $true
+    }
+
+    $todInbox = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'read-inbox'
+        Actor = 'TOD'
+    }
+
+    $null = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'send'
+        SessionId = $sessionId
+        Actor = 'TOD'
+        PeerActor = 'MIM'
+        MessageType = 'status_reply'
+        Intent = 'emergency_assistance'
+        TaskId = 'simulation-emergency'
+        Summary = 'TOD acknowledges the emergency immediately and switches to the emergency coordination lane.'
+        PayloadJson = '{"emergency_acknowledged":true,"lane":"emergency_coordination","decision":"investigating"}'
+    }
+
+    $null = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'close-session'
+        SessionId = $sessionId
+        Actor = 'MIM'
+        PeerActor = 'TOD'
+        TaskId = 'simulation-emergency'
+        Intent = 'emergency_acknowledged'
+        Summary = 'Emergency session confirmed; both sides have an explicit response path.'
+        PayloadJson = '{"resolution":"emergency_response_confirmed"}'
+    }
+
+    $status = Invoke-DialogJson -DialogDir $dialogDir -Arguments @{
+        Action = 'get-session-status'
+        SessionId = $sessionId
+    }
+    $messages = @(Get-Content -Path (Get-DialogSessionLogPath -DialogDir $dialogDir -SessionId $sessionId) | ForEach-Object { $_ | ConvertFrom-Json })
+    $reply = @($messages | Where-Object { [string]$_.message_type -eq 'status_reply' } | Select-Object -Last 1)[0]
+
+    return [pscustomobject]@{
+        scenario = 'emergency_assistance_roundtrip'
+        ok = (@($todInbox.open_sessions).Count -eq 1) -and ([string]$status.session_state.status -eq 'closed') -and ($null -ne $reply) -and [bool]$reply.payload.emergency_acknowledged
+        session_id = $sessionId
+        final_status = [string]$status.session_state.status
+        inbox_count = @($todInbox.open_sessions).Count
+    }
+}
+
 $root = New-SimulationRoot
 $results = @()
 
@@ -353,6 +567,18 @@ if ($Scenario -in @('all', 'next_step_consensus_roundtrip')) {
 }
 if ($Scenario -in @('all', 'supersede_reissue_roundtrip')) {
     $results += Invoke-SupersedeReissueRoundtripScenario -Root $root
+}
+if ($Scenario -in @('all', 'status_exchange_roundtrip')) {
+    $results += Invoke-StatusExchangeRoundtripScenario -Root $root
+}
+if ($Scenario -in @('all', 'help_offer_roundtrip')) {
+    $results += Invoke-HelpOfferRoundtripScenario -Root $root
+}
+if ($Scenario -in @('all', 'blocker_assistance_roundtrip')) {
+    $results += Invoke-BlockerAssistanceRoundtripScenario -Root $root
+}
+if ($Scenario -in @('all', 'emergency_assistance_roundtrip')) {
+    $results += Invoke-EmergencyAssistanceRoundtripScenario -Root $root
 }
 
 $summary = [pscustomobject]@{

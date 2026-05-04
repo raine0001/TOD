@@ -8,6 +8,7 @@ param(
     [string]$SharedStateSyncScriptPath = "scripts/Invoke-TODSharedStateSync.ps1",
     [string]$RecoveryWatchdogScriptPath = "scripts/Start-TODRecoveryWatchdog.ps1",
     [string]$WatchdogDriftGuardScriptPath = "scripts/Invoke-TODWatchdogDriftGuard.ps1",
+    [string]$PublicRouteHealthScriptPath = "scripts/Invoke-TODPublicRouteHealthCheck.ps1",
     [string]$ReadinessScriptPath = "scripts/Invoke-TODCodexReadinessDaily.ps1",
     [string]$LocalVerificationScriptPath = "scripts/Invoke-TODAgentMimLocalVerification.ps1",
     [string]$LocalVerificationQueuePath = "shared_state/agentmim/MIM_TOD_AGENT_TASK_QUEUE.latest.json",
@@ -563,6 +564,7 @@ $stateBusAbs = Resolve-LocalPath -PathValue $LightweightStateBusScriptPath
 $syncAbs = Resolve-LocalPath -PathValue $SharedStateSyncScriptPath
 $watchdogAbs = Resolve-LocalPath -PathValue $RecoveryWatchdogScriptPath
 $driftGuardAbs = Resolve-LocalPath -PathValue $WatchdogDriftGuardScriptPath
+$publicRouteHealthAbs = Resolve-LocalPath -PathValue $PublicRouteHealthScriptPath
 $readinessAbs = Resolve-LocalPath -PathValue $ReadinessScriptPath
 $localVerificationAbs = Resolve-LocalPath -PathValue $LocalVerificationScriptPath
 $localVerificationQueueAbs = Resolve-LocalPath -PathValue $LocalVerificationQueuePath
@@ -727,6 +729,33 @@ $postflightBus = if ($postflightStep.ok) { $postflightStep.result } else { $null
 $postflightSummary = Get-HealthSnapshotSummary -StateBus $postflightBus
 $actions.Add((New-ActionRecord -Name "postflight_snapshot" -Attempted $true -Ok $postflightStep.ok -Summary $(if ($postflightStep.ok) { $postflightSummary.summary } else { $postflightStep.error }) -Details $(if ($postflightStep.ok) { $postflightSummary } else { [pscustomobject]@{ error = $postflightStep.error } }) -DurationMs $postflightStep.duration_ms))
 
+$publicRouteHealthStep = if (Test-Path -Path $publicRouteHealthAbs) {
+    Invoke-Step -Name "public_route_health" -Action {
+        & $publicRouteHealthAbs -EmitJson | ConvertFrom-Json
+    }
+}
+else {
+    [pscustomobject]@{
+        ok = $true
+        duration_ms = 0
+        result = $null
+        error = ""
+        name = "public_route_health"
+    }
+}
+
+$publicRouteHealthSummary = if ($publicRouteHealthStep.ok -and $publicRouteHealthStep.result) {
+    [string]$publicRouteHealthStep.result.summary
+}
+elseif ($publicRouteHealthStep.ok) {
+    "Skipped because the public route health script was not present."
+}
+else {
+    $publicRouteHealthStep.error
+}
+
+$actions.Add((New-ActionRecord -Name "public_route_health" -Attempted $(Test-Path -Path $publicRouteHealthAbs) -Ok $publicRouteHealthStep.ok -Summary $publicRouteHealthSummary -Artifact (Join-Path $sharedStateAbs "tod_public_route_health.latest.json") -Details $(if ($publicRouteHealthStep.ok) { $publicRouteHealthStep.result } else { [pscustomobject]@{ error = $publicRouteHealthStep.error } }) -DurationMs $publicRouteHealthStep.duration_ms))
+
 if ($shouldRunLocalVerification -and (Test-Path -Path $localVerificationAbs) -and (Test-Path -Path $localVerificationQueueAbs)) {
     $localVerificationStep = Invoke-Step -Name "local_verification" -Action {
         & $localVerificationAbs -TaskQueuePath $localVerificationQueueAbs -EmitJson | ConvertFrom-Json
@@ -795,6 +824,16 @@ $historySummary = Get-MaintenanceHistorySummary -LogPathValue $logAbs -CurrentIn
 $overallSeverity = [string]$postflightSummary.operational_severity
 $sourceSeverity = [string]$postflightSummary.severity
 $overallSeverityReason = [string]$postflightSummary.severity_reason
+$publicRouteBlockers = @()
+if ($publicRouteHealthStep.ok -and $publicRouteHealthStep.result -and $publicRouteHealthStep.result.PSObject.Properties['blockers']) {
+    $publicRouteBlockers = @($publicRouteHealthStep.result.blockers | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+}
+
+if (@($publicRouteBlockers).Count -gt 0 -and (Get-SeverityRank -Value $overallSeverity) -lt 2) {
+    $overallSeverity = 'warning'
+    $overallSeverityReason = 'public_tod_route_divergence'
+}
+
 if ([bool]$historySummary.threshold_exceeded -and $overallSeverity -eq 'notice') {
     $overallSeverity = 'warning'
     $overallSeverityReason = 'fallback_persistence_threshold_exceeded'
@@ -819,6 +858,9 @@ if ($overallStatus -eq "needs_attention") {
 }
 if ($postflightSummary.mim_is_ahead) {
     $recommendations += "MIM still appears ahead of TOD; verify upstream canonical export freshness and request publication."
+}
+if (@($publicRouteBlockers).Count -gt 0) {
+    $recommendations += "Public /tod is not serving the expected full UI or is exposing inconsistent canonical state; monitor shared_state/tod_public_route_health.latest.json and treat the route definition itself as external until it becomes repo-managed."
 }
 if (@($failedActions).Count -gt 0) {
     $recommendations += "One or more maintenance steps failed; review the action log in shared_state/TOD_SELF_HEALTH_RUN.log.jsonl."

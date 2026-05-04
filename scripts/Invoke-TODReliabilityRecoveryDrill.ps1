@@ -94,6 +94,37 @@ function Invoke-JsonPost {
     return ($response.Content | ConvertFrom-Json)
 }
 
+function Invoke-TodActionJson {
+    param(
+        [Parameter(Mandatory = $true)][string]$RequestedAction,
+        [string]$TaskId = '',
+        [int]$Top = 0,
+        [string]$StatePath = '',
+        [string]$ConfigPath = '',
+        [switch]$ApplyPlan
+    )
+
+    $extraArgs = @{}
+    if (-not [string]::IsNullOrWhiteSpace($TaskId)) {
+        $extraArgs.TaskId = $TaskId
+    }
+    if ($Top -gt 0) {
+        $extraArgs.Top = $Top.ToString()
+    }
+    if (-not [string]::IsNullOrWhiteSpace($StatePath)) {
+        $extraArgs.StatePath = $StatePath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
+        $extraArgs.ConfigPath = $ConfigPath
+    }
+    if ($ApplyPlan) {
+        $extraArgs.ApplyPlan = $true
+    }
+
+    $raw = & $todScript -Action $RequestedAction @extraArgs
+    return (($raw | Out-String) | ConvertFrom-Json)
+}
+
 function ConvertFrom-EmbeddedJsonRaw {
     param([Parameter(Mandatory = $true)][string]$Raw)
 
@@ -240,23 +271,9 @@ try {
     Set-RecoveryFixtureArtifact -ArtifactPath $fixture.ArtifactPath -Scenario 'stale'
     $staleReadiness = (& $todScript -Action 'get-execution-readiness' -ConfigPath $fixture.ConfigPath) | ConvertFrom-Json
 
-    $blockedRun = Invoke-JsonPost -BaseUrl $baseUrl -Path '/api/run' -Body @{
-        action = 'run-task'
-        taskId = '45'
-        statePath = [string]$fixture.StatePath
-        configPath = [string]$fixture.ConfigPath
-    }
+    $blockedRun = Invoke-TodActionJson -RequestedAction 'run-task' -TaskId '45' -StatePath ([string]$fixture.StatePath) -ConfigPath ([string]$fixture.ConfigPath)
 
-    $degradedRunEnvelope = Invoke-JsonPost -BaseUrl $baseUrl -Path '/api/run' -Body @{
-        action = 'engineer-run'
-        top = 1
-        statePath = [string]$fixture.StatePath
-        configPath = [string]$fixture.ConfigPath
-    }
-    $degradedRun = $null
-    if ($degradedRunEnvelope.PSObject.Properties['result'] -and $degradedRunEnvelope.result -and $degradedRunEnvelope.result.PSObject.Properties['raw']) {
-        $degradedRun = ConvertFrom-EmbeddedJsonRaw -Raw ([string]$degradedRunEnvelope.result.raw)
-    }
+    $degradedRun = Invoke-TodActionJson -RequestedAction 'engineer-run' -Top 1 -StatePath ([string]$fixture.StatePath) -ConfigPath ([string]$fixture.ConfigPath) -ApplyPlan
 
     Set-RecoveryFixtureArtifact -ArtifactPath $fixture.ArtifactPath -Scenario 'valid'
     $recoveredReadiness = (& $todScript -Action 'get-execution-readiness' -ConfigPath $fixture.ConfigPath) | ConvertFrom-Json
@@ -272,13 +289,11 @@ try {
     $summary = [pscustomobject]@{
         stale_status = [string]$staleReadiness.readiness.status
         blocked_enforced = [bool](
-            $blockedRun.PSObject.Properties['result'] -and
-            [string]$blockedRun.result.decision -eq 'blocked' -and
-            [string]$blockedRun.result.execution_readiness.policy_outcome -eq 'block'
+            [string]$blockedRun.decision -eq 'blocked' -and
+            [string]$blockedRun.execution_readiness.policy_outcome -eq 'block'
         )
         degraded_enforced = [bool](
             $null -ne $degradedRun -and
-            $degradedRun.PSObject.Properties['execution_trace'] -and
             [string]$degradedRun.execution_trace.execution_readiness.policy_outcome -eq 'degrade' -and
             [bool]$degradedRun.execution_readiness_degraded
         )
@@ -312,10 +327,10 @@ try {
             artifact_age_minutes = if ($staleReadiness.readiness.PSObject.Properties['artifact_age_minutes']) { [double]$staleReadiness.readiness.artifact_age_minutes } else { -1 }
         }
         blocked_run_task = [pscustomobject]@{
-            decision = if ($blockedRun.PSObject.Properties['result']) { [string]$blockedRun.result.decision } else { '' }
-            blocked = if ($blockedRun.PSObject.Properties['result']) { [bool]$blockedRun.result.blocked } else { $false }
-            policy_outcome = if ($blockedRun.PSObject.Properties['result']) { [string]$blockedRun.result.execution_readiness.policy_outcome } else { '' }
-            message = if ($blockedRun.PSObject.Properties['result']) { [string]$blockedRun.result.message } else { '' }
+            decision = if ($blockedRun.PSObject.Properties['decision']) { [string]$blockedRun.decision } else { '' }
+            blocked = if ($blockedRun.PSObject.Properties['blocked']) { [bool]$blockedRun.blocked } else { $false }
+            policy_outcome = if ($blockedRun.PSObject.Properties['execution_readiness']) { [string]$blockedRun.execution_readiness.policy_outcome } else { '' }
+            message = if ($blockedRun.PSObject.Properties['message']) { [string]$blockedRun.message } else { '' }
         }
         degraded_engineer_run = [pscustomobject]@{
             policy_outcome = if ($null -ne $degradedRun -and $degradedRun.PSObject.Properties['execution_trace']) { [string]$degradedRun.execution_trace.execution_readiness.policy_outcome } else { '' }

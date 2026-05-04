@@ -33,11 +33,48 @@ Rule:
   "task_id": "string",
   "objective_id": "string",
   "title": "string",
+  "type": "string",
   "scope": "string",
   "dependencies": ["string"],
   "acceptance_criteria": ["string"],
+  "priority": "string",
+  "origin": "human|tod|mim",
+  "emergency": false,
   "status": "string",
   "assigned_to": "string"
+}
+```
+
+### TaskPlan
+```json
+{
+  "task_id": "string",
+  "objective_id": "string",
+  "goal": "string",
+  "implementation_strategy": "string",
+  "dependencies": ["string"],
+  "ordering_reason": "string",
+  "risks": ["string"],
+  "expected_outcomes": ["string"],
+  "test_plan": ["string"],
+  "verification_plan": ["string"],
+  "completion_definition": ["string"],
+  "prompt_required": false,
+  "prompt_reason": "string"
+}
+```
+
+### TaskStatus
+```json
+{
+  "task_id": "string",
+  "objective_id": "string",
+  "queue_rank": 1,
+  "status": "string",
+  "blocked_reason": "string",
+  "next_action": "string",
+  "last_updated_at": "string",
+  "active": false
 }
 ```
 
@@ -118,3 +155,4 @@ Rule:
 - MIM currently uses integer IDs in API responses for core records.
 - TOD keeps local IDs (OBJ-xxxx, TSK-xxxx, etc.) and stores remote ID mappings for bridge operations.
 - TOD client normalizes MIM responses into canonical contract shapes above before returning them.
+- Task lifecycle flow, queue artifacts, autonomous prompt rules, and console status expectations are defined in [docs/tod-mim-task-lifecycle-contract-v1.md](../docs/tod-mim-task-lifecycle-contract-v1.md).

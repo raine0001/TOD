@@ -228,6 +228,34 @@ function Load-ExecutionEngineConfig {
     }
 }
 
+function Resolve-NextStepContinuation {
+    param(
+        [Parameter(Mandatory = $true)][string]$LoopDecision,
+        $NextStepPolicy,
+        [string]$NextStepsError = ''
+    )
+
+    $effectiveLoopDecision = $LoopDecision
+    $operatorPromptAllowed = $false
+    $resolutionSource = if ([string]::IsNullOrWhiteSpace($NextStepsError)) { 'default_fail_closed' } else { 'next_step_policy_error_fail_closed' }
+
+    if ($NextStepPolicy -and $NextStepPolicy.PSObject.Properties['continuation'] -and $NextStepPolicy.continuation) {
+        if ($NextStepPolicy.continuation.PSObject.Properties['decision'] -and -not [string]::IsNullOrWhiteSpace([string]$NextStepPolicy.continuation.decision)) {
+            $effectiveLoopDecision = [string]$NextStepPolicy.continuation.decision
+        }
+        if ($NextStepPolicy.continuation.PSObject.Properties['operator_prompt_allowed']) {
+            $operatorPromptAllowed = [bool]$NextStepPolicy.continuation.operator_prompt_allowed
+        }
+        $resolutionSource = 'next_step_policy'
+    }
+
+    return [pscustomobject]@{
+        effective_loop_decision = $effectiveLoopDecision
+        operator_prompt_allowed = $operatorPromptAllowed
+        resolution_source = $resolutionSource
+    }
+}
+
 function Invoke-TaskExecutionEngine {
     param(
         [Parameter(Mandatory = $true)]$Package,
@@ -1217,6 +1245,10 @@ switch ($Action) {
             $nextStepsError = [string]$_.Exception.Message
         }
 
+        $continuation = Resolve-NextStepContinuation -LoopDecision ([string]$loopDecision) -NextStepPolicy $nextStepPolicy -NextStepsError $nextStepsError
+        $effectiveLoopDecision = [string]$continuation.effective_loop_decision
+        $operatorPromptAllowed = [bool]$continuation.operator_prompt_allowed
+
         [pscustomobject]@{
             task_id = $TaskId
             package = $package
@@ -1225,6 +1257,9 @@ switch ($Action) {
             review_report = $reviewReport
             review_response = $reviewResponse
             loop_decision = $loopDecision
+            effective_loop_decision = $effectiveLoopDecision
+            operator_prompt_allowed = $operatorPromptAllowed
+            continuation_resolution_source = [string]$continuation.resolution_source
             next_steps_artifact = $nextStepsArtifact
             next_step_consensus = $nextStepConsensus
             next_step_policy = $nextStepPolicy

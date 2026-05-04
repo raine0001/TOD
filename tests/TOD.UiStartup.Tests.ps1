@@ -110,6 +110,17 @@ function Stop-TodUiDisposableProcesses {
     }
 }
 
+function Start-StaleTodUiProxyForTest {
+    param(
+        [Parameter(Mandatory = $true)][int]$Port,
+        [Parameter(Mandatory = $true)][int]$TargetPort
+    )
+
+    $pythonPath = if (Test-Path (Join-Path $repoRoot '.venv/Scripts/python.exe')) { Join-Path $repoRoot '.venv/Scripts/python.exe' } else { 'python' }
+    $proxyScript = Join-Path $repoRoot 'scripts/tod_ui_lan_proxy.py'
+    return (Start-Process -FilePath $pythonPath -ArgumentList @($proxyScript, '--listen-host', '0.0.0.0', '--listen-port', [string]$Port, '--target-host', '127.0.0.1', '--target-port', [string]$TargetPort) -WorkingDirectory $repoRoot -PassThru -WindowStyle Hidden)
+}
+
 Describe 'TOD UI startup hardening' {
     It 'reuses a healthy UI instance on repeated launch without changing the requested port and advertises the LAN URL when available' {
         $port = 8864
@@ -165,6 +176,69 @@ Describe 'TOD UI startup hardening' {
             if ($process -and -not $process.HasExited) {
                 try {
                     Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+                }
+                catch {
+                }
+            }
+            Stop-TodUiDisposableProcesses -Port $port
+            Restore-PathContent -Backup $startupBackup
+        }
+    }
+
+    It 'reclaims a stale TOD LAN proxy that occupies the requested public port' {
+        $port = 8866
+        $advertiseHost = Get-LanAdvertiseHostForTest
+        if ([string]::IsNullOrWhiteSpace([string]$advertiseHost)) {
+            $advertiseHost = 'localhost'
+        }
+
+        $startupBackup = Backup-PathContent -PathValue $startupDiagnosticPath
+        $proxyProcess = $null
+        $process = $null
+        $stdoutPath = Join-Path $repoRoot 'tod/out/ui-startup-proxy-reclaim.stdout.log'
+        $stderrPath = Join-Path $repoRoot 'tod/out/ui-startup-proxy-reclaim.stderr.log'
+
+        try {
+            Stop-TodUiDisposableProcesses -Port $port
+            Remove-Item -Path $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+
+            $proxyProcess = Start-StaleTodUiProxyForTest -Port $port -TargetPort ($port + 10000)
+            Start-Sleep -Seconds 1
+
+            $argumentList = @(
+                '-NoProfile',
+                '-ExecutionPolicy', 'Bypass',
+                '-File', $startScript,
+                '-Port', $port,
+                '-NoAutoOpen',
+                '-AdvertiseHost', [string]$advertiseHost
+            )
+
+            $process = Start-Process -FilePath 'powershell.exe' -ArgumentList $argumentList -WorkingDirectory $repoRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+
+            $localhostReady = Wait-TodUrlReady -BaseUrl ("http://localhost:{0}" -f $port) -TimeoutSeconds 25
+            if (-not $localhostReady) {
+                $process.Refresh()
+                throw ("TOD UI localhost endpoint did not become ready after stale proxy reclaim. HasExited={0}; ExitCode={1}; stdout={2}; stderr={3}" -f $process.HasExited, $(if ($process.HasExited) { $process.ExitCode } else { 'running' }), (Get-FileContentOrEmpty -PathValue $stdoutPath), (Get-FileContentOrEmpty -PathValue $stderrPath))
+            }
+
+            $doc = Get-Content -Path $startupDiagnosticPath -Raw | ConvertFrom-Json
+            [bool]$doc.ok | Should Be $true
+            [string]$doc.status | Should Be 'started'
+            [int]$doc.port | Should Be $port
+            [string]$doc.advertise_url | Should Be ("http://{0}:{1}" -f $advertiseHost, $port)
+        }
+        finally {
+            if ($process -and -not $process.HasExited) {
+                try {
+                    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+                }
+                catch {
+                }
+            }
+            if ($proxyProcess -and -not $proxyProcess.HasExited) {
+                try {
+                    Stop-Process -Id $proxyProcess.Id -Force -ErrorAction SilentlyContinue
                 }
                 catch {
                 }

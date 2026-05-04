@@ -146,6 +146,17 @@ function Get-TaskProgressWeight {
     }
 }
 
+function Test-IsTerminalExecutionStatus {
+    param([string]$Status)
+
+    if ([string]::IsNullOrWhiteSpace($Status)) {
+        return $false
+    }
+
+    $normalized = ([string]$Status).Trim().ToLowerInvariant()
+    return @('completed', 'succeeded', 'already_processed', 'stale_request_ignored', 'stale_backfill_ignored') -contains $normalized
+}
+
 function Get-ListenerActivity {
     $journal = Read-JsonFileIfExists -Path $listenerJournalPath
     $resultPacket = Read-JsonFileIfExists -Path $listenerResultPath
@@ -368,7 +379,7 @@ function Get-ListenerActivity {
     }
     elseif ($requestSyncRef -and -not $resultRef) {
         $isMimAhead = $true
-        $pendingCount = [long]$requestSyncRef.task_number
+        $pendingCount = 1
     }
 
     return [pscustomobject]@{
@@ -714,6 +725,23 @@ function Get-SteadyStateHealth {
         }
     }
 
+    $latestRequestId = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['latest_request_id']) { [string]$ListenerActivity.latest_request_id } else { '' }
+    $latestExecutionStatus = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['latest_execution_status']) { [string]$ListenerActivity.latest_execution_status } else { '' }
+    $resultRequestId = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['result_request_id']) { [string]$ListenerActivity.result_request_id } else { '' }
+    $resultStatus = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['result_status']) { [string]$ListenerActivity.result_status } else { '' }
+    $coordinationResolvedByTerminalResult =
+        $pendingCoordination -and
+        (Test-IsTerminalExecutionStatus -Status $latestExecutionStatus) -and
+        (Test-IsTerminalExecutionStatus -Status $resultStatus) -and
+        -not [string]::IsNullOrWhiteSpace($latestRequestId) -and
+        [string]::Equals($latestRequestId, $resultRequestId, [System.StringComparison]::OrdinalIgnoreCase)
+    if ($coordinationResolvedByTerminalResult) {
+        $pendingCoordination = $false
+        if ([string]::IsNullOrWhiteSpace($coordinationStatus) -or [string]::Equals($coordinationStatus, 'pending', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $coordinationStatus = 'resolved_by_terminal_result'
+        }
+    }
+
     $unchangedCycles = 0
     if ($stallState -and $stallState.PSObject.Properties['unchanged_cycles']) {
         try { $unchangedCycles = [int]$stallState.unchanged_cycles } catch { }
@@ -815,15 +843,26 @@ function Get-TrainingSystemPosture {
 
     $pendingCount = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['sync']) { [int]$ListenerActivity.sync.pending_request_count } else { 0 }
     $latestStatus = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['latest_execution_status']) { [string]$ListenerActivity.latest_execution_status } else { 'unknown' }
+    $resultStatus = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['result_status']) { [string]$ListenerActivity.result_status } else { '' }
+    $latestRequestId = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['latest_request_id']) { [string]$ListenerActivity.latest_request_id } else { '' }
+    $resultRequestId = if ($ListenerActivity -and $ListenerActivity.PSObject.Properties['result_request_id']) { [string]$ListenerActivity.result_request_id } else { '' }
     $loopIdleSec = if ($CadenceHealth -and $CadenceHealth.PSObject.Properties['stream']) { [double]$CadenceHealth.stream.loop_idle_sec } else { -1 }
+    $matchedTerminalResult =
+        (Test-IsTerminalExecutionStatus -Status $latestStatus) -and
+        (Test-IsTerminalExecutionStatus -Status $resultStatus) -and
+        -not [string]::IsNullOrWhiteSpace($latestRequestId) -and
+        [string]::Equals($latestRequestId, $resultRequestId, [System.StringComparison]::OrdinalIgnoreCase)
     $activeExecutions = 0
-    if ($latestStatus -eq 'in_progress') {
+    if ($matchedTerminalResult) {
+        $activeExecutions = 0
+    }
+    elseif ($latestStatus -eq 'in_progress') {
         $activeExecutions = 1
     }
     elseif ($pendingCount -gt 0) {
         $activeExecutions = 1
     }
-    elseif ($loopIdleSec -ge 0 -and $loopIdleSec -lt 90 -and $latestStatus -ne 'completed') {
+    elseif ($loopIdleSec -ge 0 -and $loopIdleSec -lt 90 -and -not (Test-IsTerminalExecutionStatus -Status $latestStatus)) {
         $activeExecutions = 1
     }
 
@@ -844,7 +883,7 @@ function Get-TrainingSystemPosture {
         blocked_items = @($blocks).Count
         registered_capabilities = 0
         current_executor_health = if ($alertState -eq 'critical') { 'degraded' } elseif ($alertState -eq 'warning') { 'watch' } else { 'healthy' }
-        summary = if ($activeExecutions -gt 0) { 'Listener telemetry indicates active execution is in progress.' } elseif ($pendingCount -gt 0) { 'MIM is ahead of TOD and work is queued.' } else { 'Listener telemetry indicates TOD is between task handoffs.' }
+        summary = if ($matchedTerminalResult) { 'Listener telemetry indicates the latest request is already resolved with a matched terminal result.' } elseif ($activeExecutions -gt 0) { 'Listener telemetry indicates active execution is in progress.' } elseif ($pendingCount -gt 0) { 'MIM is ahead of TOD and work is queued.' } else { 'Listener telemetry indicates TOD is between task handoffs.' }
     }
 }
 

@@ -99,9 +99,9 @@ The panel includes:
 - clickable citations back to dashboard cards
 - confidence and limitation tags
 
-## Next Steps
+## TOD-MIM Directed Continuation
 
-Objective 86 should add governed action confirmation and audit, not general execution.
+Operator chat should not ask the operator to choose natural next steps when TOD and MIM can decide through their bounded coordination path. Objective 86 should add governed action confirmation and audit, not general execution.
 
 See `docs/tod-operator-chat-console-v2-objective86.md` for the initial design scaffold.
 

@@ -1,5 +1,6 @@
 param(
     [int]$Port = 8844,
+    [string]$BaseUrl = '',
     [int]$WindowMinutes = 10,
     [string]$ObjectiveId = '',
     [string]$ValidationHarness = 'multi_objective_compare',
@@ -21,7 +22,7 @@ if ([string]::IsNullOrWhiteSpace($IneffectiveSummaryPath)) {
 }
 $script:SweepReadinessFixture = $null
 
-$baseUrl = "http://localhost:$Port"
+$baseUrl = if ([string]::IsNullOrWhiteSpace($BaseUrl)) { "http://localhost:$Port" } else { ([string]$BaseUrl).TrimEnd('/') }
 $queries = @(
     @{ intent = 'summarize_status'; query = 'Summarize dashboard state in operator language.' },
     @{ intent = 'explain_warning'; query = 'What is blocking progress right now?' },
@@ -86,6 +87,171 @@ function Invoke-JsonGet {
     }
 
     return ($response.Content | ConvertFrom-Json)
+}
+
+function Get-ArtifactOnlySessionKey {
+    param([string]$Prefix = 'tod-sweep-artifact')
+
+    return ('{0}-{1}' -f $Prefix, ([guid]::NewGuid().ToString('N')))
+}
+
+function Get-ReplyLineValue {
+    param(
+        [string]$Content,
+        [string]$Prefix
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Content) -or [string]::IsNullOrWhiteSpace($Prefix)) {
+        return ''
+    }
+
+    foreach ($line in ($Content -split "`r?`n")) {
+        $trimmed = [string]$line
+        if ($trimmed.StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $trimmed.Substring($Prefix.Length).Trim()
+        }
+    }
+
+    return ''
+}
+
+function Invoke-TodUiChatMessage {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [string]$SessionKey = ''
+    )
+
+    if ([string]::IsNullOrWhiteSpace($SessionKey)) {
+        $SessionKey = Get-ArtifactOnlySessionKey -Prefix 'tod-sweep-message'
+    }
+
+    return Invoke-JsonPost -Path '/tod/ui/chat/message' -Body @{
+        session_key = [string]$SessionKey
+        mode = 'tod'
+        message = [string]$Message
+    }
+}
+
+function Invoke-TodUiChatHandoff {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [string]$SessionKey = ''
+    )
+
+    if ([string]::IsNullOrWhiteSpace($SessionKey)) {
+        $SessionKey = Get-ArtifactOnlySessionKey -Prefix 'tod-sweep-handoff'
+    }
+
+    return Invoke-JsonPost -Path '/tod/ui/chat/handoff' -Body @{
+        session_key = [string]$SessionKey
+        mode = 'tod'
+        message = [string]$Message
+    }
+}
+
+function Invoke-ArtifactOnlyOperatorChatQuery {
+    param(
+        [Parameter(Mandatory = $true)][string]$Query,
+        [Parameter(Mandatory = $true)][string]$Intent
+    )
+
+    $messagePayload = (Invoke-TodUiChatMessage -Message $Query).payload
+    $messages = @($messagePayload.messages)
+    $replyEntry = @($messages | Where-Object { [string]$_.role -eq 'tod' } | Select-Object -Last 1)
+    $replyText = if (@($replyEntry).Count -gt 0) { [string]$replyEntry[0].content } else { '' }
+    $summary = Get-ReplyLineValue -Content $replyText -Prefix 'TOD status:'
+    if ([string]::IsNullOrWhiteSpace($summary)) {
+        $summary = Get-ReplyLineValue -Content $replyText -Prefix 'Drift summary:'
+    }
+    if ([string]::IsNullOrWhiteSpace($summary)) {
+        $summary = Get-ReplyLineValue -Content $replyText -Prefix 'Current blocker posture:'
+    }
+    if ([string]::IsNullOrWhiteSpace($summary)) {
+        $summary = Get-ReplyLineValue -Content $replyText -Prefix 'Current sync gap:'
+    }
+    if ([string]::IsNullOrWhiteSpace($summary)) {
+        $summary = [string]$replyText
+    }
+
+    $recommendedNextStep = Get-ReplyLineValue -Content $replyText -Prefix 'Next bounded repair:'
+    if ([string]::IsNullOrWhiteSpace($recommendedNextStep)) {
+        $recommendedNextStep = Get-ReplyLineValue -Content $replyText -Prefix 'Current repair step:'
+    }
+    if ([string]::IsNullOrWhiteSpace($recommendedNextStep)) {
+        $recommendedNextStep = Get-ReplyLineValue -Content $replyText -Prefix 'Validation after repair:'
+    }
+
+    $evidenceDetail = Get-ReplyLineValue -Content $replyText -Prefix 'Strongest evidence:'
+    if ([string]::IsNullOrWhiteSpace($evidenceDetail)) {
+        $evidenceDetail = Get-ReplyLineValue -Content $replyText -Prefix 'Evidence:'
+    }
+
+    return [pscustomobject]@{
+        ok = (-not [string]::IsNullOrWhiteSpace($replyText))
+        response = [pscustomobject]@{
+            summary = [string]$summary
+            recommended_next_step = [string]$recommendedNextStep
+            flags = @()
+            evidence = if ([string]::IsNullOrWhiteSpace($evidenceDetail)) { @() } else { @([string]$evidenceDetail) }
+            citations = @()
+            suggested_actions = if ([string]::Equals([string]$Intent, 'suggest_next_action', [System.StringComparison]::OrdinalIgnoreCase)) {
+                @([pscustomobject]@{
+                        action = 'refresh-governance-snapshot'
+                        intent = [string]$Intent
+                        mode = 'read_only'
+                        reason = 'Derived from the TOD public chat readiness sweep.'
+                    })
+            }
+            else {
+                @()
+            }
+        }
+    }
+}
+
+function Convert-TodUiStateToProjectStatusPayload {
+    param([Parameter(Mandatory = $true)]$StatePayload)
+
+    $quickFacts = if ($StatePayload.PSObject.Properties['quick_facts'] -and $StatePayload.quick_facts) { $StatePayload.quick_facts } else { [pscustomobject]@{} }
+    $bridgeEvidence = if ($StatePayload.PSObject.Properties['bridge_canonical_evidence'] -and $StatePayload.bridge_canonical_evidence) { $StatePayload.bridge_canonical_evidence } else { [pscustomobject]@{} }
+    $statusBlock = if ($StatePayload.PSObject.Properties['status'] -and $StatePayload.status) { $StatePayload.status } else { [pscustomobject]@{} }
+    $liveTaskRequest = if ($StatePayload.PSObject.Properties['live_task_request'] -and $StatePayload.live_task_request) { $StatePayload.live_task_request } else { [pscustomobject]@{} }
+
+    $selectedObjectiveId = ''
+    foreach ($candidate in @(
+            $(if ($quickFacts.PSObject.Properties['canonical_objective']) { [string]$quickFacts.canonical_objective } else { '' }),
+            $(if ($quickFacts.PSObject.Properties['live_request_objective']) { [string]$quickFacts.live_request_objective } else { '' }),
+            $(if ($liveTaskRequest.PSObject.Properties['normalized_objective_id']) { [string]$liveTaskRequest.normalized_objective_id } else { '' }),
+            $(if ($liveTaskRequest.PSObject.Properties['objective_id']) { ([string]$liveTaskRequest.objective_id) -replace '^objective-', '' } else { '' })
+        )) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$candidate)) {
+            $selectedObjectiveId = [string]$candidate
+            break
+        }
+    }
+
+    return [pscustomobject]@{
+        ok = $true
+        selected_objective_id = [string]$selectedObjectiveId
+        objective_options = @()
+        validation_harness = [pscustomobject]@{
+            active = $false
+            compare_objective_id = ''
+            comparison_profile = ''
+        }
+        marker = [pscustomobject]@{
+            status = if ($statusBlock.PSObject.Properties['code']) { [string]$statusBlock.code } else { '' }
+        }
+        bridge_status = [pscustomobject]@{
+            status = if ($bridgeEvidence.PSObject.Properties['status']) { [string]$bridgeEvidence.status } else { '' }
+            status_reason = if ($bridgeEvidence.PSObject.Properties['summary']) { [string]$bridgeEvidence.summary } else { '' }
+            listener_freshness_state = ''
+            listener_fresh_threshold_seconds = 0
+            sequence_state = ''
+            artifact_completeness = ''
+            missing_artifacts = @()
+        }
+    }
 }
 
 function Invoke-TextGet {
@@ -257,6 +423,16 @@ function Invoke-CommitmentWrite {
 }
 
 function Get-IneffectiveValidationSpec {
+    if ($ArtifactOnly) {
+        return [pscustomobject]@{
+            action = 'refresh-governance-snapshot'
+            intent = 'suggest_next_action'
+            query = 'What should I do next?'
+            suggested_reason = 'Sweep validation for ineffective operator commitment derivation.'
+            mode = 'read_only'
+        }
+    }
+
     $payload = (Invoke-JsonPost -Path '/api/operator-chat' -Body @{
         query = 'What should I do next?'
         intent = 'suggest_next_action'
@@ -319,13 +495,27 @@ try {
     $html = if ($ArtifactOnly) { '' } else { Invoke-TextGet -Uri "$baseUrl/" }
     $validationHarnessQuery = Get-ValidationHarnessQueryFragment
     $projectStatusUrl = if ([string]::IsNullOrWhiteSpace($validationHarnessQuery)) { "$baseUrl/api/project-status" } else { "$baseUrl/api/project-status?$validationHarnessQuery" }
-    $projectStatusPayload = Invoke-JsonGet -Uri $projectStatusUrl
+    $projectStatusPayload = if ($ArtifactOnly) {
+        Convert-TodUiStateToProjectStatusPayload -StatePayload (Invoke-JsonGet -Uri "$baseUrl/tod/ui/state")
+    }
+    else {
+        Invoke-JsonGet -Uri $projectStatusUrl
+    }
     $selectedObjectiveId = if ($projectStatusPayload -and $projectStatusPayload.PSObject.Properties['selected_objective_id']) { [string]$projectStatusPayload.selected_objective_id } else { [string]$ObjectiveId }
     if ([string]::IsNullOrWhiteSpace([string]$script:EffectiveObjectiveId)) {
         $script:EffectiveObjectiveId = $selectedObjectiveId
     }
     Write-SweepProgress -Stage 'project_status_loaded' -Detail ('Loaded project status for objective {0}.' -f [string]$script:EffectiveObjectiveId)
-    $alternateObjectiveId = @($projectStatusPayload.objective_options | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.objective_id) -and -not [string]::Equals([string]$_.objective_id, $selectedObjectiveId, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1).objective_id
+    $alternateObjectiveId = ''
+    $alternateObjectiveEntry = @($projectStatusPayload.objective_options | Where-Object {
+            $null -ne $_ -and
+            $_.PSObject.Properties['objective_id'] -and
+            -not [string]::IsNullOrWhiteSpace([string]$_.objective_id) -and
+            -not [string]::Equals([string]$_.objective_id, $selectedObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)
+        } | Select-Object -First 1)
+    if (@($alternateObjectiveEntry).Count -gt 0 -and $alternateObjectiveEntry[0].PSObject.Properties['objective_id']) {
+        $alternateObjectiveId = [string]$alternateObjectiveEntry[0].objective_id
+    }
     $alternateProjectStatusPayload = if ($ArtifactOnly -or [string]::IsNullOrWhiteSpace([string]$alternateObjectiveId)) {
         [pscustomobject]@{}
     }
@@ -389,7 +579,12 @@ try {
             validation_harness = $ValidationHarness
         }
 
-        $payload = (Invoke-JsonPost -Path '/api/operator-chat' -Body $body).payload
+        $payload = if ($ArtifactOnly) {
+            Invoke-ArtifactOnlyOperatorChatQuery -Query ([string]$item.query) -Intent ([string]$item.intent)
+        }
+        else {
+            (Invoke-JsonPost -Path '/api/operator-chat' -Body $body).payload
+        }
 
         $summary = [string]$payload.response.summary
         if ($summary.Length -gt 140) {
@@ -533,10 +728,12 @@ try {
 
     if ($ArtifactOnly) {
         $artifactOnlyIneffectiveProbe = Get-IneffectiveValidationSpec
+        $artifactOnlyHandoffPayload = (Invoke-TodUiChatHandoff -Message 'TOD, package the current issue, evidence, and next bounded repair request for Copilot-style troubleshooting and report the handoff summary in this thread.').payload
         $artifactOnlyStableContractOk = [bool](@($results | Where-Object { -not [bool]$_.ok }).Count -eq 0 -and
             @($coverage | Where-Object { -not ([bool]$_.preview_ok -and [bool]$_.confirm_ok -and [string]$_.confirm_status -eq 'succeeded') }).Count -eq 0 -and
             [bool]$auditPayload.ok -and
-            [bool]$reasoningPayload.ok)
+            [bool]$reasoningPayload.ok -and
+            [bool]($artifactOnlyHandoffPayload -and $artifactOnlyHandoffPayload.PSObject.Properties['handoff'] -and [bool]$artifactOnlyHandoffPayload.handoff.ok))
         $artifactOnlyIneffectiveSummaryPayload = [pscustomobject]@{
             ineffective_smoke_ok = $true
             ineffective_probe_action = if ($artifactOnlyIneffectiveProbe) { [string]$artifactOnlyIneffectiveProbe.action } else { 'refresh-governance-snapshot' }
@@ -560,6 +757,7 @@ try {
                     governed_actions_ok = @($coverage | Where-Object { -not ([bool]$_.preview_ok -and [bool]$_.confirm_ok -and [string]$_.confirm_status -eq 'succeeded') }).Count -eq 0
                     audit_ok = [bool]$auditPayload.ok
                     reasoning_ok = [bool]$reasoningPayload.ok
+                    handoff_ok = [bool]($artifactOnlyHandoffPayload -and $artifactOnlyHandoffPayload.PSObject.Properties['handoff'] -and [bool]$artifactOnlyHandoffPayload.handoff.ok)
                     commitments_ok = $true
                     ineffective_smoke_ok = $true
                 }
@@ -588,6 +786,7 @@ try {
                     governed_actions_ok = @($coverage | Where-Object { -not ([bool]$_.preview_ok -and [bool]$_.confirm_ok -and [string]$_.confirm_status -eq 'succeeded') }).Count -eq 0
                     audit_ok = [bool]$auditPayload.ok
                     reasoning_ok = [bool]$reasoningPayload.ok
+                    handoff_ok = [bool]($artifactOnlyHandoffPayload -and $artifactOnlyHandoffPayload.PSObject.Properties['handoff'] -and [bool]$artifactOnlyHandoffPayload.handoff.ok)
                     commitments_ok = $true
                     ineffective_smoke_ok = $true
                 }

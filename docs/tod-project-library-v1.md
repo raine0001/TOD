@@ -127,6 +127,32 @@ That QA gate should:
 - capture the JSON result as advisory evidence
 - remain non-blocking until TOD policy explicitly promotes it to a stricter gate
 
+For TOD itself, the equivalent managed-work loop is now explicit as well:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File E:/TOD/scripts/Invoke-TODManagedWork.ps1 -ProjectRoot E:/TOD -EmitJson
+```
+
+That TOD-managed-work command should:
+
+- classify current unstaged changes into active patch scope versus generated/support artifacts
+- keep runtime and engineering-memory surfaces out of automated patch scope
+- emit a stable artifact at `shared_state/agentmim/tod_managed_work.latest.json`
+- give TOD a formal pre-edit checkpoint instead of relying on ad hoc `git status`
+
+When TOD needs to clean tracked runtime-memory noise directly, use:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File E:/TOD/scripts/Invoke-TODManagedWork.ps1 -ProjectRoot E:/TOD -ApplyCleanup -EmitJson
+```
+
+That cleanup path should:
+
+- archive blocked tracked engineering-memory files before changing them
+- restore those blocked files from `HEAD`
+- remove only untracked support artifacts that match TOD cleanup policy
+- emit `shared_state/agentmim/tod_managed_work_cleanup.latest.json` as the cleanup record
+
 For help-asset preparation on the marketing surface, TOD now also has a docs-prep command:
 
 ```powershell

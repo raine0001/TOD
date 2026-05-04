@@ -38,6 +38,14 @@ Describe 'TOD stateless action startup' {
         $message | Should Not Match 'OutOfMemoryException'
     }
 
+    It 'capture_frame does not require loading the operational state file at startup' {
+        $missingStatePath = Join-Path $repoRoot ('tod/out/tests/missing-state-' + [guid]::NewGuid().ToString('N') + '.json')
+        $message = Invoke-TodStatelessActionFailure -ActionName 'capture_frame' -StatePath $missingStatePath
+
+        $message | Should Not Match 'State file not found'
+        $message | Should Not Match 'OutOfMemoryException'
+    }
+
     It 'ping-mim does not require loading the operational state file at startup' {
         $missingStatePath = Join-Path $repoRoot ('tod/out/tests/missing-state-' + [guid]::NewGuid().ToString('N') + '.json')
         $message = Invoke-TodStatelessActionFailure -ActionName 'ping-mim' -StatePath $missingStatePath

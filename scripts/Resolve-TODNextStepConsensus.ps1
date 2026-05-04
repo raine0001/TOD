@@ -179,9 +179,9 @@ function Get-ParityAuthority {
     $parityGreen = $compatible -and ($mismatchCount -eq 0) -and ($warningCount -eq 0)
 
     return [pscustomobject]@{
-        active = $parityGreen
-        source = if ($parityGreen) { 'tod_parity_green_local_authority' } else { 'parity_not_green' }
-        summary = if ($parityGreen) { 'Execution parity is green, so TOD may select the next natural step locally without waiting for MIM.' } else { 'Execution parity is not green enough for TOD-only next-step authority.' }
+        active = $false
+        source = if ($parityGreen) { 'parity_signal_only' } else { 'parity_not_green' }
+        summary = if ($parityGreen) { 'Execution parity is green, but next-step direction still requires TOD-MIM consensus through the dialog session.' } else { 'Execution parity is not green and does not grant local next-step authority.' }
         path = $ParityPathValue
         compatible = $compatible
         mismatch_count = $mismatchCount
@@ -499,10 +499,6 @@ foreach ($finding in @($artifact.findings)) {
         $consensusStatus = 'pending_remote'
         $consensusReason = 'TOD is waiting for the MIM position before selecting this finding.'
     }
-    elseif ([bool]$finding.needs_cross_system_consensus -and -not ($mimPosition) -and [bool]$parityAuthority.active) {
-        $consensusStatus = 'approved'
-        $consensusReason = 'Execution parity is green, so TOD can select this next-step finding locally without waiting for MIM.'
-    }
     elseif ([string]$todPosition.decision -eq 'defer' -or ($mimPosition -and [string]$mimPosition.decision -eq 'defer')) {
         $consensusStatus = 'deferred'
         $consensusReason = 'The finding remains valid, but ownership or timing was deferred.'
@@ -570,7 +566,7 @@ $consensus = [pscustomobject]@{
         finding_positions = @($todFindingPositions)
     }
     mim_position = [pscustomobject]@{
-        decision = if ([bool]$mimPositions.available) { 'complete' } elseif ([bool]$parityAuthority.active) { 'not_required' } else { 'pending' }
+        decision = if ([bool]$mimPositions.available) { 'complete' } else { 'pending' }
         summary = [string]$mimPositions.summary
         source = [string]$mimPositions.source
         session_id = if ($mimPositions.PSObject.Properties['session_id']) { [string]$mimPositions.session_id } else { '' }

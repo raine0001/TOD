@@ -153,6 +153,12 @@ message_kinds:
     }
 }
 
+function Get-JsonFile {
+    param([Parameter(Mandatory = $true)][string]$PathValue)
+
+    return (Get-Content -Path $PathValue -Raw | ConvertFrom-Json)
+}
+
 function Remove-FixturePath {
     param([string]$PathValue)
     if (-not [string]::IsNullOrWhiteSpace($PathValue) -and (Test-Path -Path $PathValue)) {
@@ -194,6 +200,66 @@ Describe 'TOD MIM runtime contract packet validator' {
             $result = $raw | ConvertFrom-Json
             [bool]$result.passed | Should Be $true
             [bool]$result.binding_active | Should Be $true
+        }
+        finally {
+            Remove-FixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'rejects an ACK packet whose bridge runtime current_processing still points to an older task' {
+        $fixture = New-RuntimeBindingFixture
+        try {
+            $ack = Get-JsonFile -PathValue $fixture.AckPath
+            $ack | Add-Member -NotePropertyName bridge_runtime -NotePropertyValue ([pscustomobject]@{
+                    current_processing = [pscustomobject]@{
+                        task_id = 'objective-152-task-008'
+                        correlation_id = 'obj152-task008'
+                    }
+                }) -Force
+            Write-JsonNoBom -PathValue $fixture.AckPath -Payload $ack
+
+            $raw = & $pythonPath $validatorScript --contract $fixture.ContractPath --receipt $fixture.ReceiptPath --packet $fixture.AckPath --kind ack
+            $result = $raw | ConvertFrom-Json
+            [bool]$result.passed | Should Be $false
+            [string]($result.errors | ConvertTo-Json -Depth 10) | Should Match 'bridge_runtime.current_processing.task_id'
+        }
+        finally {
+            Remove-FixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'rejects a RESULT packet whose embedded validator and integration snapshots are stale' {
+        $fixture = New-RuntimeBindingFixture
+        try {
+            $resultPacket = Get-JsonFile -PathValue $fixture.ResultPath
+            $resultPacket | Add-Member -NotePropertyName bridge_runtime -NotePropertyValue ([pscustomobject]@{
+                    current_processing = [pscustomobject]@{
+                        task_id = 'objective-152-task-008'
+                        correlation_id = 'obj152-task008'
+                    }
+                }) -Force
+            $resultPacket | Add-Member -NotePropertyName validator -NotePropertyValue ([pscustomobject]@{
+                    attempted = $true
+                    passed = $true
+                    request_id = 'objective-152-task-008'
+                    task_id = 'objective-152-task-008'
+                    objective_id = 'objective-152'
+                    correlation_id = 'obj152-task008'
+                }) -Force
+            $resultPacket | Add-Member -NotePropertyName integration -NotePropertyValue ([pscustomobject]@{
+                    compatible = $true
+                    tod_current_objective = '152'
+                    mim_objective_active = 'objective-152'
+                    request_id = 'objective-152-task-008'
+                }) -Force
+            Write-JsonNoBom -PathValue $fixture.ResultPath -Payload $resultPacket
+
+            $raw = & $pythonPath $validatorScript --contract $fixture.ContractPath --receipt $fixture.ReceiptPath --packet $fixture.ResultPath --kind result
+            $result = $raw | ConvertFrom-Json
+            [bool]$result.passed | Should Be $false
+            [string]($result.errors | ConvertTo-Json -Depth 10) | Should Match 'validator.request_id'
+            [string]($result.errors | ConvertTo-Json -Depth 10) | Should Match 'integration.tod_current_objective'
+            [string]($result.errors | ConvertTo-Json -Depth 10) | Should Match 'bridge_runtime.current_processing.task_id'
         }
         finally {
             Remove-FixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })

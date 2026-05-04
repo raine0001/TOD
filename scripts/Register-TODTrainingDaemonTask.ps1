@@ -4,7 +4,8 @@ param(
     [int]$IdleCadenceMinutes = 30,
     [int]$FullCadenceHours = 24,
     [int]$Top = 15,
-    [string]$ConfigPath
+    [string]$ConfigPath,
+    [switch]$VisibleWindow
 )
 
 Set-StrictMode -Version Latest
@@ -33,6 +34,7 @@ if (-not (Get-Command -Name Register-ScheduledTask -ErrorAction SilentlyContinue
 }
 
 $argParts = @(
+    if (-not $VisibleWindow) { '-WindowStyle'; 'Hidden' }
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", "`"$daemonScript`"",
@@ -108,6 +110,7 @@ $result = [pscustomobject]@{
     user = $currentUser
     startup_trigger_enabled = $startupAdded
     state = [string]$task.State
+    visible_window = [bool]$VisibleWindow
     action = [pscustomobject]@{
         execute = "powershell.exe"
         arguments = $actionArgs

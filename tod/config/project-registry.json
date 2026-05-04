@@ -23,6 +23,13 @@
         "allowed_paths": ["scripts", "tests", "ui", "docs", "tod/config"],
         "blocked_paths": ["tod/data", "tod/state", "tod/out"],
         "notes": "Runtime/state artifacts are read-only by default; code/docs require review gates."
+      },
+      "managed_work": {
+        "path_classification": {
+          "support_artifact_patterns": ["tmp_", "raw-sweep"],
+          "blocked_scope_patterns": ["tod/knowledge/engineering-memory", "tod/data/engineering-memory.json"],
+          "root_doc_names": ["README.md", "TOD.md"]
+        }
       }
     },
     {
@@ -193,6 +200,30 @@
         "allowed_paths": ["assets", "images", "video", "audio", "pipelines", "scripts", "docs"],
         "blocked_paths": ["licenses", "secrets", ".env"],
         "notes": "Dedicated media creation and processing domain for TOD image/video/audio outputs and workflow indexing."
+      }
+    },
+    {
+      "id": "mim_wall",
+      "name": "MIM Assist",
+      "path": "E:/mim_wall",
+      "type": "android-app",
+      "languages": ["kotlin", "java"],
+      "entry_points": ["README.md", "MIM_ASSIST_SPEC.md", "DEVELOPMENT_PLAN.md", "app"],
+      "test_commands": ["./gradlew.bat assembleDebug", "./gradlew.bat lintDebug", "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/automated_dialog_regression.ps1 -Iterations 1"],
+      "risk_level": "high",
+      "write_access": "guarded",
+      "status_refresh_script": "scripts/Update-TODMimWallStatus.ps1",
+      "github_remote": "https://github.com/raine0001/mim_wall.git",
+      "default_branch": "main",
+      "boundaries": {
+        "allowed_paths": ["app", "scripts", "artifacts", "docs"],
+        "blocked_paths": ["local.properties", ".gradle", ".tools", ".android-sdk", "build"],
+        "notes": "Android app changes should keep build, lint, and automated dialog regression gates green before publish. Prefer README.md, TOD.md, MIM_ASSIST_SPEC.md, DEVELOPMENT_PLAN.md, and sprint plan docs as the default familiarization path."
+      },
+      "managed_work": {
+        "path_classification": {
+          "root_doc_names": ["README.md", "TOD.md", "MIM_ASSIST_SPEC.md", "DEVELOPMENT_PLAN.md", "SPRINT_1_PLAN.md"]
+        }
       }
     }
   ]

@@ -85,6 +85,72 @@ function Get-SafeDialogSessionId {
     return ($safe -replace '[^a-zA-Z0-9._-]', '_')
 }
 
+function Normalize-ObjectiveIdentity {
+    param([string]$Value)
+
+    $text = ([string]$Value).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return ''
+    }
+
+    $match = [regex]::Match($text, '^(?i:objective-)?(?<id>.+)$')
+    if ($match.Success) {
+        return ([string]$match.Groups['id'].Value).Trim().ToLowerInvariant()
+    }
+
+    return $text.ToLowerInvariant()
+}
+
+function Test-PublicationSurfaceRecoveryNeeded {
+    param(
+        [AllowNull()]$BridgeSmoke = $null,
+        [AllowEmptyCollection()][string[]]$BridgeFailureModes = @(),
+        [bool]$LocalTerminalRequestFinished = $false
+    )
+
+    if ($null -eq $BridgeSmoke -or [bool]$BridgeSmoke.passed) {
+        return $false
+    }
+
+    $failureModes = @(
+        $BridgeFailureModes |
+            ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    $hasPublicationIssue = @(
+        'publication_surface_divergence',
+        'stale_remote_request_identity',
+        'canonical_request_mismatch'
+    ) | Where-Object { $failureModes -contains $_ } | Select-Object -First 1
+
+    if ($null -eq $hasPublicationIssue) {
+        return $false
+    }
+
+    if (-not $LocalTerminalRequestFinished) {
+        return $true
+    }
+
+    $canonicalRequest = if ($BridgeSmoke.PSObject.Properties['canonical_request']) { $BridgeSmoke.canonical_request } else { $null }
+    $remoteSurface = if ($canonicalRequest -and $canonicalRequest.PSObject.Properties['remote_surface']) { $canonicalRequest.remote_surface } else { $null }
+    $localBridge = if ($BridgeSmoke.PSObject.Properties['local_bridge']) { $BridgeSmoke.local_bridge } else { $null }
+    $expectedObjectiveId = if ($canonicalRequest -and $canonicalRequest.PSObject.Properties['expected_objective_id']) { Normalize-ObjectiveIdentity -Value ([string]$canonicalRequest.expected_objective_id) } else { '' }
+    $remoteObjectiveId = if ($remoteSurface -and $remoteSurface.PSObject.Properties['objective_id']) { Normalize-ObjectiveIdentity -Value ([string]$remoteSurface.objective_id) } else { '' }
+    $remoteRequestId = if ($remoteSurface -and $remoteSurface.PSObject.Properties['request_id']) { [string]$remoteSurface.request_id } elseif ($remoteSurface -and $remoteSurface.PSObject.Properties['task_id']) { [string]$remoteSurface.task_id } else { '' }
+    $localRequestId = if ($localBridge -and $localBridge.PSObject.Properties['request_id']) { [string]$localBridge.request_id } else { '' }
+
+    if (-not [string]::IsNullOrWhiteSpace($expectedObjectiveId) -and -not [string]::IsNullOrWhiteSpace($remoteObjectiveId) -and -not [string]::Equals($expectedObjectiveId, $remoteObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($remoteRequestId) -and -not [string]::IsNullOrWhiteSpace($localRequestId) -and -not [string]::Equals($remoteRequestId, $localRequestId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    # A terminal local request does not clear a stale remote publication boundary.
+    return $true
+}
+
 function Get-DotEnvValue {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -442,15 +508,30 @@ function Get-AlertSignature {
             ) -join "|").ToLowerInvariant())
 }
 
-function Publish-RecoveryAlertToMim {
+function Get-DateOrMinValue {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return [datetime]::MinValue
+    }
+
+    try {
+        return [datetime]::Parse([string]$Value).ToUniversalTime()
+    }
+    catch {
+        return [datetime]::MinValue
+    }
+}
+
+function Publish-PacketToMim {
     param(
-        [Parameter(Mandatory = $true)]$AlertPayload,
+        [Parameter(Mandatory = $true)]$Payload,
         [Parameter(Mandatory = $true)][string]$LocalPacketPath,
         [Parameter(Mandatory = $true)][string]$EnvPath,
         [string]$RemoteRoot = "/home/testpilot/mim/runtime/shared"
     )
 
-    Write-JsonFile -PathValue $LocalPacketPath -Payload $AlertPayload
+    Write-JsonFile -PathValue $LocalPacketPath -Payload $Payload
 
     try {
         if (-not (Get-Module -ListAvailable -Name Posh-SSH)) {
@@ -493,6 +574,396 @@ function Publish-RecoveryAlertToMim {
     }
 }
 
+function Publish-RecoveryAlertToMim {
+    param(
+        [Parameter(Mandatory = $true)]$AlertPayload,
+        [Parameter(Mandatory = $true)][string]$LocalPacketPath,
+        [Parameter(Mandatory = $true)][string]$EnvPath,
+        [string]$RemoteRoot = "/home/testpilot/mim/runtime/shared"
+    )
+
+    return Publish-PacketToMim -Payload $AlertPayload -LocalPacketPath $LocalPacketPath -EnvPath $EnvPath -RemoteRoot $RemoteRoot
+}
+
+function New-PublicationSurfaceCoordinationRequest {
+    param(
+        [Parameter(Mandatory = $true)][string]$IssueCode,
+        [Parameter(Mandatory = $true)][string]$IssueDetail,
+        [Parameter(Mandatory = $true)][string]$AlertSignature,
+        [string]$RequestId = '',
+        [string[]]$BridgeFailureModes = @(),
+        [AllowNull()]$BridgeSmoke = $null
+    )
+
+    $generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    $canonicalRequest = if ($BridgeSmoke -and $BridgeSmoke.PSObject.Properties['canonical_request']) { $BridgeSmoke.canonical_request } else { $null }
+    $localBridge = if ($BridgeSmoke -and $BridgeSmoke.PSObject.Properties['local_bridge']) { $BridgeSmoke.local_bridge } else { $null }
+    $remoteBoundary = if ($BridgeSmoke -and $BridgeSmoke.PSObject.Properties['remote_boundary']) { $BridgeSmoke.remote_boundary } else { $null }
+    $expectedObjectiveId = if ($canonicalRequest -and $canonicalRequest.PSObject.Properties['expected_objective_id']) { [string]$canonicalRequest.expected_objective_id } else { '' }
+    $remoteSurface = if ($canonicalRequest -and $canonicalRequest.PSObject.Properties['remote_surface']) { $canonicalRequest.remote_surface } else { $null }
+    $remoteObjectiveId = if ($remoteSurface -and $remoteSurface.PSObject.Properties['objective_id']) { [string]$remoteSurface.objective_id } else { '' }
+    $remoteTaskId = if ($remoteSurface -and $remoteSurface.PSObject.Properties['task_id']) { [string]$remoteSurface.task_id } else { '' }
+    $localRequestId = if ($localBridge -and $localBridge.PSObject.Properties['request_id']) { [string]$localBridge.request_id } else { '' }
+    $coordinationRequestId = if (-not [string]::IsNullOrWhiteSpace($RequestId)) {
+        ('coordination-{0}-{1}' -f $RequestId, $IssueCode)
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($expectedObjectiveId)) {
+        ('coordination-{0}-{1}' -f $expectedObjectiveId, $IssueCode)
+    }
+    else {
+        ('coordination-{0}' -f $IssueCode)
+    }
+
+    return [pscustomobject]@{
+        generated_at = $generatedAt
+        source = 'tod-mim-coordination-request-v1'
+        priority = 'high'
+        escalation_level = 1
+        request_id = $coordinationRequestId
+        objective_id = $expectedObjectiveId
+        task_id = $RequestId
+        correlation_id = $AlertSignature
+        issue_code = $IssueCode
+        issue_summary = $IssueDetail
+        requested_action = 'Republish the live task-request surface from the canonical MIM objective, or acknowledge why the canonical export should remain ahead of live publication.'
+        required_ack = [pscustomobject]@{
+            ack_file = 'MIM_TOD_COORDINATION_ACK.latest.json'
+            ack_fields = @('acknowledged', 'acknowledged_at', 'request_id', 'decision', 'reason', 'target_dispatch_task_id')
+            timeout_seconds = 60
+        }
+        evidence = [pscustomobject]@{
+            canonical_expected_objective_id = $expectedObjectiveId
+            stale_live_task_request_objective_id = $remoteObjectiveId
+            stale_live_task_request_id = $remoteTaskId
+            local_listener_request_id = $localRequestId
+            bridge_classification = if ($BridgeSmoke -and $BridgeSmoke.PSObject.Properties['classification']) { [string]$BridgeSmoke.classification } else { '' }
+            bridge_failure_modes = @($BridgeFailureModes)
+            remote_boundary = $remoteBoundary
+        }
+    }
+}
+
+function New-PublicationSurfaceEmergencyRequest {
+    param(
+        [Parameter(Mandatory = $true)][string]$IssueCode,
+        [Parameter(Mandatory = $true)][string]$IssueDetail,
+        [Parameter(Mandatory = $true)][string]$ParentRequestId,
+        [Parameter(Mandatory = $true)][int]$ElapsedIssueSeconds,
+        [AllowNull()]$BridgeSmoke = $null,
+        [string]$CoordinationRequestId = ''
+    )
+
+    $canonicalRequest = if ($BridgeSmoke -and $BridgeSmoke.PSObject.Properties['canonical_request']) { $BridgeSmoke.canonical_request } else { $null }
+    $remoteSurface = if ($canonicalRequest -and $canonicalRequest.PSObject.Properties['remote_surface']) { $canonicalRequest.remote_surface } else { $null }
+    $expectedObjectiveId = if ($canonicalRequest -and $canonicalRequest.PSObject.Properties['expected_objective_id']) { [string]$canonicalRequest.expected_objective_id } else { '' }
+    $remoteObjectiveId = if ($remoteSurface -and $remoteSurface.PSObject.Properties['objective_id']) { [string]$remoteSurface.objective_id } else { '' }
+    $remoteTaskId = if ($remoteSurface -and $remoteSurface.PSObject.Properties['task_id']) { [string]$remoteSurface.task_id } else { '' }
+
+    return [pscustomobject]@{
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        source = 'tod-mim-emergency-request-v1'
+        status = 'active'
+        priority = 'critical'
+        escalation_level = 4
+        request_id = ('tod-watchdog-emergency-{0}-{1}' -f $ParentRequestId, $IssueCode)
+        parent_request_id = $CoordinationRequestId
+        objective_id = $expectedObjectiveId
+        task_id = $ParentRequestId
+        issue_code = $IssueCode + '_emergency'
+        issue_summary = $IssueDetail
+        emergency_reason = ('Watchdog has observed {0} for {1}s without the live publication surface recovering.' -f $IssueCode, [int]$ElapsedIssueSeconds)
+        requested_action = 'Reply immediately on MIM_TOD_EMERGENCY_ACK.latest.json, republish or explicitly reject the stale live publication surface, and explain the next update if the canonical surface must remain ahead temporarily.'
+        required_ack = [pscustomobject]@{
+            ack_file = 'MIM_TOD_EMERGENCY_ACK.latest.json'
+            ack_fields = @('acknowledged', 'acknowledged_at', 'request_id', 'decision', 'reason', 'next_update_at')
+            timeout_seconds = 15
+        }
+        evidence = [pscustomobject]@{
+            canonical_expected_objective_id = $expectedObjectiveId
+            stale_live_task_request_objective_id = $remoteObjectiveId
+            stale_live_task_request_id = $remoteTaskId
+            bridge_classification = if ($BridgeSmoke -and $BridgeSmoke.PSObject.Properties['classification']) { [string]$BridgeSmoke.classification } else { '' }
+            coordination_request_id = $CoordinationRequestId
+            elapsed_issue_seconds = [int]$ElapsedIssueSeconds
+        }
+    }
+}
+
+function Publish-CoordinationRequestToMim {
+    param(
+        [Parameter(Mandatory = $true)]$CoordinationRequest,
+        [Parameter(Mandatory = $true)][string]$LocalPacketPath,
+        [Parameter(Mandatory = $true)][string]$EnvPath,
+        [string]$RemoteRoot = "/home/testpilot/mim/runtime/shared"
+    )
+
+    return Publish-PacketToMim -Payload $CoordinationRequest -LocalPacketPath $LocalPacketPath -EnvPath $EnvPath -RemoteRoot $RemoteRoot
+}
+
+function Publish-EmergencyRequestToMim {
+    param(
+        [Parameter(Mandatory = $true)]$EmergencyRequest,
+        [Parameter(Mandatory = $true)][string]$LocalPacketPath,
+        [Parameter(Mandatory = $true)][string]$EnvPath,
+        [string]$RemoteRoot = "/home/testpilot/mim/runtime/shared"
+    )
+
+    return Publish-PacketToMim -Payload $EmergencyRequest -LocalPacketPath $LocalPacketPath -EnvPath $EnvPath -RemoteRoot $RemoteRoot
+}
+
+function Publish-ResolvedEmergencyToMim {
+    param(
+        [Parameter(Mandatory = $true)][string]$RequestId,
+        [Parameter(Mandatory = $true)][string]$IssueCode,
+        [Parameter(Mandatory = $true)][string]$LocalPacketPath,
+        [Parameter(Mandatory = $true)][string]$EnvPath,
+        [string]$ObjectiveId = '',
+        [string]$ResolutionReason = '',
+        [string]$RemoteRoot = "/home/testpilot/mim/runtime/shared"
+    )
+
+    $payload = [pscustomobject]@{
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        source = 'tod-mim-emergency-request-v1'
+        status = 'resolved'
+        priority = 'none'
+        escalation_level = 0
+        request_id = $RequestId
+        objective_id = $ObjectiveId
+        issue_code = ('{0}_emergency_resolved' -f $IssueCode)
+        issue_summary = ('TOD cleared the prior emergency request for {0}.' -f $IssueCode)
+        requested_action = 'none'
+        resolution_reason = $ResolutionReason
+        resolved_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+
+    return Publish-PacketToMim -Payload $payload -LocalPacketPath $LocalPacketPath -EnvPath $EnvPath -RemoteRoot $RemoteRoot
+}
+
+function Publish-ResolvedCoordinationToMim {
+    param(
+        [Parameter(Mandatory = $true)][string]$RequestId,
+        [Parameter(Mandatory = $true)][string]$IssueCode,
+        [Parameter(Mandatory = $true)][string]$LocalPacketPath,
+        [Parameter(Mandatory = $true)][string]$EnvPath,
+        [string]$ObjectiveId = '',
+        [string]$ResolutionReason = '',
+        [string]$RemoteRoot = "/home/testpilot/mim/runtime/shared"
+    )
+
+    $payload = [pscustomobject]@{
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        source = 'tod-mim-coordination-request-v1'
+        status = 'resolved'
+        priority = 'none'
+        escalation_level = 0
+        request_id = $RequestId
+        objective_id = $ObjectiveId
+        issue_code = ('{0}_resolved' -f $IssueCode)
+        issue_summary = ('TOD cleared prior coordination request for {0}.' -f $IssueCode)
+        requested_action = 'none'
+        resolution_reason = $ResolutionReason
+        resolved_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+
+    return Publish-PacketToMim -Payload $payload -LocalPacketPath $LocalPacketPath -EnvPath $EnvPath -RemoteRoot $RemoteRoot
+}
+
+function Convert-ToObjectiveLabel {
+    param([string]$ObjectiveId)
+
+    $normalized = Normalize-ObjectiveIdentity -Value $ObjectiveId
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return ''
+    }
+
+    return ('objective-{0}' -f $normalized)
+}
+
+function Get-CanonicalObjectiveForSelfHeal {
+    param(
+        [AllowNull()]$IntegrationStatus = $null,
+        [AllowNull()]$BridgeSmoke = $null
+    )
+
+    if ($IntegrationStatus -and $IntegrationStatus.PSObject.Properties['objective_authority_reset'] -and $IntegrationStatus.objective_authority_reset) {
+        $authorityReset = $IntegrationStatus.objective_authority_reset
+        if ([bool]$authorityReset.active -and $authorityReset.PSObject.Properties['authoritative_current_objective']) {
+            $authorityObjective = Convert-ToObjectiveLabel -ObjectiveId ([string]$authorityReset.authoritative_current_objective)
+            if (-not [string]::IsNullOrWhiteSpace($authorityObjective)) {
+                return $authorityObjective
+            }
+        }
+    }
+
+    if ($IntegrationStatus -and $IntegrationStatus.PSObject.Properties['objective_alignment'] -and $IntegrationStatus.objective_alignment -and $IntegrationStatus.objective_alignment.PSObject.Properties['tod_current_objective']) {
+        $todObjective = Convert-ToObjectiveLabel -ObjectiveId ([string]$IntegrationStatus.objective_alignment.tod_current_objective)
+        if (-not [string]::IsNullOrWhiteSpace($todObjective)) {
+            return $todObjective
+        }
+    }
+
+    if ($BridgeSmoke -and $BridgeSmoke.PSObject.Properties['canonical_request'] -and $BridgeSmoke.canonical_request -and $BridgeSmoke.canonical_request.PSObject.Properties['expected_objective_id']) {
+        $expectedObjective = Convert-ToObjectiveLabel -ObjectiveId ([string]$BridgeSmoke.canonical_request.expected_objective_id)
+        if (-not [string]::IsNullOrWhiteSpace($expectedObjective)) {
+            return $expectedObjective
+        }
+    }
+
+    return ''
+}
+
+function New-CanonicalRepublishTaskRequest {
+    param(
+        [Parameter(Mandatory = $true)][string]$ObjectiveId,
+        [string]$CorrelationId = 'watchdog-publication-surface-self-heal'
+    )
+
+    $objectiveLabel = Convert-ToObjectiveLabel -ObjectiveId $ObjectiveId
+    if ([string]::IsNullOrWhiteSpace($objectiveLabel)) {
+        throw 'canonical_objective_missing'
+    }
+
+    $normalizedObjective = Normalize-ObjectiveIdentity -Value $objectiveLabel
+    $sequence = [int64][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $taskId = ('objective-{0}-task-{1}' -f $normalizedObjective, $sequence)
+    $generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+
+    return [pscustomobject]@{
+        generated_at = $generatedAt
+        emitted_at = $generatedAt
+        request_id = $taskId
+        task_id = $taskId
+        objective_id = $objectiveLabel
+        correlation_id = $CorrelationId
+        sequence = $sequence
+        source_service = 'tod_watchdog_autorepair'
+        source_instance_id = $env:COMPUTERNAME
+    }
+}
+
+function Invoke-PublicationSurfaceSelfHeal {
+    param(
+        [AllowNull()]$BridgeSmoke = $null,
+        [Parameter(Mandatory = $true)][string]$IntegrationStatusPath,
+        [Parameter(Mandatory = $true)][string]$EnvPath,
+        [Parameter(Mandatory = $true)][string]$LocalRepairPacketPath,
+        [string]$RemoteRoot = '/home/testpilot/mim/runtime/shared'
+    )
+
+    $integrationStatus = Read-JsonFileIfExists -PathValue $IntegrationStatusPath
+    $canonicalObjective = Get-CanonicalObjectiveForSelfHeal -IntegrationStatus $integrationStatus -BridgeSmoke $BridgeSmoke
+    if ([string]::IsNullOrWhiteSpace($canonicalObjective)) {
+        return [pscustomobject]@{
+            attempted = $false
+            repaired = $false
+            method = 'none'
+            canonical_objective = ''
+            request_id = ''
+            reason = 'canonical_objective_missing'
+            remote_host = ''
+        }
+    }
+
+    if (-not (Get-Module -ListAvailable -Name Posh-SSH)) {
+        return [pscustomobject]@{
+            attempted = $false
+            repaired = $false
+            method = 'none'
+            canonical_objective = $canonicalObjective
+            request_id = ''
+            reason = 'posh_ssh_not_installed'
+            remote_host = ''
+        }
+    }
+
+    $hostAlias = Get-DotEnvValue -Path $EnvPath -Name 'MIM_SSH_HOST'
+    if ([string]::IsNullOrWhiteSpace($hostAlias)) { $hostAlias = 'mim' }
+    $userName = Get-DotEnvValue -Path $EnvPath -Name 'MIM_SSH_USER'
+    if ([string]::IsNullOrWhiteSpace($userName)) { $userName = 'testpilot' }
+    $portText = Get-DotEnvValue -Path $EnvPath -Name 'MIM_SSH_PORT'
+    $password = Get-DotEnvValue -Path $EnvPath -Name 'MIM_SSH_PASSWORD'
+    if ([string]::IsNullOrWhiteSpace($password) -or $password -eq 'CHANGE_ME') {
+        return [pscustomobject]@{
+            attempted = $false
+            repaired = $false
+            method = 'none'
+            canonical_objective = $canonicalObjective
+            request_id = ''
+            reason = 'ssh_password_not_set'
+            remote_host = $hostAlias
+        }
+    }
+
+    $port = 22
+    $parsedPort = 0
+    if ([int]::TryParse([string]$portText, [ref]$parsedPort) -and $parsedPort -gt 0) {
+        $port = $parsedPort
+    }
+
+    $normalizedObjective = Normalize-ObjectiveIdentity -Value $canonicalObjective
+    $requestPayload = New-CanonicalRepublishTaskRequest -ObjectiveId $canonicalObjective
+    $requestId = [string]$requestPayload.request_id
+
+    try {
+        Import-Module Posh-SSH -ErrorAction Stop | Out-Null
+        $resolvedHost = Resolve-SshHostAlias -RemoteHost $hostAlias
+        $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+        $credential = New-Object System.Management.Automation.PSCredential ($userName, $securePassword)
+        $session = New-SSHSession -ComputerName $resolvedHost -Port $port -Credential $credential -AcceptKey -ConnectionTimeout 15000
+
+        try {
+            $remoteCommand = @"
+bash -lc 'if [ -x /home/testpilot/mim/scripts/continuous_task_dispatch.sh ]; then cd /home/testpilot/mim && ALLOW_LOCAL_ONLY_CANONICAL_WRITE=1 OBJECTIVE_ID=$normalizedObjective COUNT=1 ./scripts/continuous_task_dispatch.sh; printf "\\n__TOD_EXIT__0\\n"; else printf "\\n__TOD_EXIT__127\\n"; fi'
+"@
+            $commandResult = Invoke-SSHCommand -SessionId ([int]$session.SessionId) -Command $remoteCommand -TimeOut 120
+            $commandOutput = [string]($commandResult.Output | Out-String)
+            if ($commandOutput -match '__TOD_EXIT__0') {
+                return [pscustomobject]@{
+                    attempted = $true
+                    repaired = $true
+                    method = 'remote_dispatch_script'
+                    canonical_objective = $canonicalObjective
+                    request_id = ''
+                    reason = 'ok'
+                    remote_host = $resolvedHost
+                }
+            }
+
+            $packetDir = Split-Path -Parent $LocalRepairPacketPath
+            if (-not (Test-Path -Path $packetDir)) {
+                New-Item -ItemType Directory -Path $packetDir -Force | Out-Null
+            }
+            Write-JsonFile -PathValue $LocalRepairPacketPath -Payload $requestPayload
+            Set-SFTPItem -SessionId ([int]$session.SessionId) -Path $LocalRepairPacketPath -Destination $RemoteRoot -Force -ErrorAction Stop | Out-Null
+
+            return [pscustomobject]@{
+                attempted = $true
+                repaired = $true
+                method = 'sftp_direct_request_republish'
+                canonical_objective = $canonicalObjective
+                request_id = $requestId
+                reason = 'ok'
+                remote_host = $resolvedHost
+            }
+        }
+        finally {
+            Remove-SSHSession -SessionId ([int]$session.SessionId) | Out-Null
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            attempted = $true
+            repaired = $false
+            method = 'failed'
+            canonical_objective = $canonicalObjective
+            request_id = $requestId
+            reason = [string]$_.Exception.Message
+            remote_host = $hostAlias
+        }
+    }
+}
+
 $envAbs = Get-LocalPath -PathValue $EnvFile
 $listenerAbs = Get-LocalPath -PathValue $ListenerScriptPath
 $listenerStartupAbs = Get-LocalPath -PathValue $ListenerStartupScriptPath
@@ -515,6 +986,9 @@ $selfHealOrderPath = Join-Path $sharedAbs "TOD_SELF_HEAL_ORDER.latest.json"
 $bridgeSmokeOutputPath = Join-Path $sharedAbs "TOD_MIM_BRIDGE_SMOKE.latest.json"
 $integrationStatusPath = Join-Path $sharedAbs "integration_status.json"
 $alertPacketPath = Join-Path $stageAbs "TOD_MIM_RECOVERY_ALERT.latest.json"
+$coordinationRequestPath = Join-Path $stageAbs "TOD_MIM_COORDINATION_REQUEST.latest.json"
+$emergencyRequestPath = Join-Path $stageAbs "TOD_MIM_EMERGENCY_REQUEST.latest.json"
+$publicationRepairPacketPath = Join-Path $sharedAbs "watchdog-repair/MIM_TOD_TASK_REQUEST.latest.json"
 $stallThresholdSeconds = [Math]::Max(30, [int]($FreezeAfterMinutes * 60))
 
 Write-Host "[TOD-WATCHDOG] Started."
@@ -535,6 +1009,10 @@ while ($true) {
     $lastAlertSignature = ""
     $lastAlertPublishedAt = ""
     $lastDialogSessionId = ""
+    $lastCoordinationRequestId = ""
+    $lastIssueStartedAt = ""
+    $lastEmergencyRequestId = ""
+    $lastEmergencyPublishedAt = ""
     if ($previousState) {
         if ($previousState.PSObject.Properties["recovery_attempts"]) {
             try { $recoveryAttempts = [int]$previousState.recovery_attempts } catch { $recoveryAttempts = 0 }
@@ -553,6 +1031,18 @@ while ($true) {
         }
         if ($previousState.PSObject.Properties["last_dialog_session_id"]) {
             $lastDialogSessionId = [string]$previousState.last_dialog_session_id
+        }
+        if ($previousState.PSObject.Properties["last_coordination_request_id"]) {
+            $lastCoordinationRequestId = [string]$previousState.last_coordination_request_id
+        }
+        if ($previousState.PSObject.Properties["last_issue_started_at"]) {
+            $lastIssueStartedAt = [string]$previousState.last_issue_started_at
+        }
+        if ($previousState.PSObject.Properties["last_emergency_request_id"]) {
+            $lastEmergencyRequestId = [string]$previousState.last_emergency_request_id
+        }
+        if ($previousState.PSObject.Properties["last_emergency_published_at"]) {
+            $lastEmergencyPublishedAt = [string]$previousState.last_emergency_published_at
         }
     }
 
@@ -679,7 +1169,7 @@ while ($true) {
         $issueCode = "bridge_objective_misaligned"
         $issueDetail = "Live objective alignment is not in sync across TOD and MIM."
     }
-    elseif ((-not [bool]$bridgeSmoke.passed) -and -not $localTerminalRequestFinished -and (@($bridgeFailureModes) -contains "publication_surface_divergence" -or @($bridgeFailureModes) -contains "stale_remote_request_identity" -or @($bridgeFailureModes) -contains "canonical_request_mismatch")) {
+    elseif (Test-PublicationSurfaceRecoveryNeeded -BridgeSmoke $bridgeSmoke -BridgeFailureModes @($bridgeFailureModes) -LocalTerminalRequestFinished:$localTerminalRequestFinished) {
         $issueCode = "publication_surface_divergence"
         $issueDetail = "Remote canonical request surface diverges from the expected live publication boundary."
     }
@@ -716,6 +1206,7 @@ while ($true) {
         $operatorGuidance = @(Get-RecoveryGuidance -IssueCode $issueCode -BridgeFailureModes $bridgeFailureModes)
 
         $recoveryAction = "restart_listener"
+        $publicationRepairResult = $null
         if ($issueCode -eq "bridge_remote_publish_unverified" -or $issueCode -eq "bridge_objective_misaligned") {
             $recoveryAction = "refresh_shared_state_sync"
             if (Test-Path -Path $sharedStateSyncAbs) {
@@ -727,7 +1218,18 @@ while ($true) {
             }
         }
         elseif ($issueCode -eq "publication_surface_divergence") {
-            $recoveryAction = "observe_publication_boundary"
+            $recoveryAction = "republish_authoritative_request"
+            $publicationRepairResult = Invoke-PublicationSurfaceSelfHeal -BridgeSmoke $bridgeSmoke -IntegrationStatusPath $integrationStatusPath -EnvPath $envAbs -LocalRepairPacketPath $publicationRepairPacketPath
+            if ([bool]$publicationRepairResult.repaired -and (Test-Path -Path $sharedStateSyncAbs)) {
+                try {
+                    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sharedStateSyncAbs -RefreshMimContextFromSsh -PublishTodStatusToMimArm | Out-Null
+                }
+                catch {
+                }
+            }
+            elseif (-not [bool]$publicationRepairResult.attempted) {
+                $recoveryAction = "observe_publication_boundary"
+            }
         }
         else {
             Stop-ScriptProcesses -ScriptAbs @($listenerAbs, $listenerStartupAbs)
@@ -770,6 +1272,7 @@ while ($true) {
                 bridge_smoke_passed = [bool]$bridgeSmokeAfter.passed
                 passed = $recoveryOk
             }
+            publication_surface_self_heal = $publicationRepairResult
             status = if ($recoveryOk) { "completed" } else { "failed" }
         }
         Write-JsonFile -PathValue $selfHealOrderPath -Payload $selfHealOrder
@@ -800,11 +1303,16 @@ while ($true) {
             bridge_failure_modes = @($bridgeFailureModes)
             operator_guidance = @($operatorGuidance)
             self_heal_order_path = $selfHealOrderPath
+            publication_surface_self_heal = $publicationRepairResult
         }
 
         $alertSignature = Get-AlertSignature -IssueCode $issueCode -IssueDetail $issueDetail -RecoveryAction $recoveryAction -RequestId $requestId -LastProcessedId $lastProcessedId
         $alertPublished = $false
         $alertPublishReason = "cooldown_skipped"
+        $coordinationPublished = $false
+        $coordinationPublishReason = 'not_attempted'
+        $emergencyPublished = $false
+        $emergencyPublishReason = 'not_attempted'
         $shouldPublishAlert = $true
         if (-not [string]::IsNullOrWhiteSpace($lastAlertPublishedAt) -and [string]::Equals($alertSignature, $lastAlertSignature, [System.StringComparison]::OrdinalIgnoreCase)) {
             try {
@@ -819,6 +1327,15 @@ while ($true) {
             }
         }
 
+        if ([string]::Equals([string]$previousState.last_issue, $issueCode, [System.StringComparison]::OrdinalIgnoreCase) -and -not [string]::IsNullOrWhiteSpace($lastIssueStartedAt)) {
+            $issueStartedAt = $lastIssueStartedAt
+        }
+        else {
+            $issueStartedAt = $nowUtc.ToString('o')
+        }
+        $issueStartedUtc = Get-DateOrMinValue -Value $issueStartedAt
+        $elapsedIssueSeconds = if ($issueStartedUtc -eq [datetime]::MinValue) { 0 } else { [int][math]::Floor((New-TimeSpan -Start $issueStartedUtc -End $nowUtc).TotalSeconds) }
+
         if ($shouldPublishAlert) {
             $publishResult = Publish-RecoveryAlertToMim -AlertPayload $alertPayload -LocalPacketPath $alertPacketPath -EnvPath $envAbs
             $alertPublished = [bool]$publishResult.uploaded
@@ -826,6 +1343,34 @@ while ($true) {
             if ($alertPublished) {
                 $lastAlertSignature = $alertSignature
                 $lastAlertPublishedAt = $nowUtc.ToString("o")
+            }
+
+            if ($issueCode -eq 'publication_surface_divergence') {
+                $coordinationRequest = New-PublicationSurfaceCoordinationRequest -IssueCode $issueCode -IssueDetail $issueDetail -AlertSignature $alertSignature -RequestId $requestId -BridgeFailureModes @($bridgeFailureModes) -BridgeSmoke $bridgeSmoke
+                $coordinationPublishResult = Publish-CoordinationRequestToMim -CoordinationRequest $coordinationRequest -LocalPacketPath $coordinationRequestPath -EnvPath $envAbs
+                $coordinationPublished = [bool]$coordinationPublishResult.uploaded
+                $coordinationPublishReason = [string]$coordinationPublishResult.reason
+                if ($coordinationPublished) {
+                    $lastCoordinationRequestId = [string]$coordinationRequest.request_id
+                }
+            }
+        }
+
+        if ($issueCode -eq 'publication_surface_divergence' -and $elapsedIssueSeconds -ge 120) {
+            $lastEmergencyPublishUtc = Get-DateOrMinValue -Value $lastEmergencyPublishedAt
+            $secondsSinceEmergencyPublish = if ($lastEmergencyPublishUtc -eq [datetime]::MinValue) { 999999 } else { [int][math]::Floor((New-TimeSpan -Start $lastEmergencyPublishUtc -End $nowUtc).TotalSeconds) }
+            if ($secondsSinceEmergencyPublish -ge 120) {
+                $emergencyRequest = New-PublicationSurfaceEmergencyRequest -IssueCode $issueCode -IssueDetail $issueDetail -ParentRequestId $requestId -ElapsedIssueSeconds $elapsedIssueSeconds -BridgeSmoke $bridgeSmoke -CoordinationRequestId $lastCoordinationRequestId
+                $emergencyPublishResult = Publish-EmergencyRequestToMim -EmergencyRequest $emergencyRequest -LocalPacketPath $emergencyRequestPath -EnvPath $envAbs
+                $emergencyPublished = [bool]$emergencyPublishResult.uploaded
+                $emergencyPublishReason = [string]$emergencyPublishResult.reason
+                if ($emergencyPublished) {
+                    $lastEmergencyRequestId = [string]$emergencyRequest.request_id
+                    $lastEmergencyPublishedAt = $nowUtc.ToString('o')
+                }
+            }
+            else {
+                $emergencyPublishReason = 'cooldown_active'
             }
         }
 
@@ -881,10 +1426,17 @@ while ($true) {
             publish_uploaded = $alertPublished
             publish_reason = $alertPublishReason
             dialog_status = if ($null -ne $dialogNoticeResult) { [string]$dialogNoticeResult.status } else { "not_attempted" }
+            coordination_request_id = $lastCoordinationRequestId
+            coordination_publish_uploaded = $coordinationPublished
+            coordination_publish_reason = $coordinationPublishReason
+            emergency_request_id = $lastEmergencyRequestId
+            emergency_publish_uploaded = $emergencyPublished
+            emergency_publish_reason = $emergencyPublishReason
             bridge_smoke_passed = [bool]$bridgeSmokeAfter.passed
             bridge_failure_modes = @($bridgeFailureModes)
             request_id = $requestId
             last_processed_request_id = $lastProcessedId
+            publication_surface_self_heal = $publicationRepairResult
         }
         Add-JsonLine -PathValue $watchdogLogPath -Payload $logEntry
 
@@ -908,12 +1460,17 @@ while ($true) {
             last_alert_signature = $lastAlertSignature
             last_alert_published_at = $lastAlertPublishedAt
             last_dialog_session_id = $lastDialogSessionId
+            last_coordination_request_id = $lastCoordinationRequestId
+            last_issue_started_at = $issueStartedAt
+            last_emergency_request_id = $lastEmergencyRequestId
+            last_emergency_published_at = $lastEmergencyPublishedAt
             listener_running = $listenerRecovered
             ui_healthy = $uiRecovered
             bridge_smoke = $bridgeSmokeAfter
             operator_guidance = @($operatorGuidance)
             request_id = $requestId
             last_processed_request_id = $lastProcessedId
+            publication_surface_self_heal = $publicationRepairResult
         }
         Write-JsonFile -PathValue $watchdogStatePath -Payload $stateDoc
 
@@ -944,6 +1501,20 @@ while ($true) {
             }
             $null = Invoke-DialogNotice -ScriptAbs $dialogScriptAbs -Action 'close-session' -SessionId $resolutionSessionId -MessageType 'resolution_notice' -Intent 'watchdog_issue_cleared' -Summary ("Watchdog cleared {0}; listener, UI, and bridge checks are healthy again." -f [string]$previousState.last_issue) -Payload $resolutionPayload -TaskId $requestId -CorrelationId $lastAlertSignature -EnvPath $envAbs -PublishRemote:$PublishDialogRemote
             $lastDialogSessionId = ''
+
+            if ([string]::Equals([string]$previousState.last_issue, 'publication_surface_divergence', [System.StringComparison]::OrdinalIgnoreCase) -and -not [string]::IsNullOrWhiteSpace($lastCoordinationRequestId)) {
+                $resolvedObjectiveId = ''
+                if ($bridgeSmoke -and $bridgeSmoke.PSObject.Properties['canonical_request'] -and $bridgeSmoke.canonical_request -and $bridgeSmoke.canonical_request.PSObject.Properties['expected_objective_id']) {
+                    $resolvedObjectiveId = [string]$bridgeSmoke.canonical_request.expected_objective_id
+                }
+                $null = Publish-ResolvedCoordinationToMim -RequestId $lastCoordinationRequestId -IssueCode 'publication_surface_divergence' -LocalPacketPath $coordinationRequestPath -EnvPath $envAbs -ObjectiveId $resolvedObjectiveId -ResolutionReason 'Watchdog now sees listener, UI, and bridge health restored with no publication-surface divergence.'
+                $lastCoordinationRequestId = ''
+                if (-not [string]::IsNullOrWhiteSpace($lastEmergencyRequestId)) {
+                    $null = Publish-ResolvedEmergencyToMim -RequestId $lastEmergencyRequestId -IssueCode 'publication_surface_divergence' -LocalPacketPath $emergencyRequestPath -EnvPath $envAbs -ObjectiveId $resolvedObjectiveId -ResolutionReason 'Watchdog no longer sees publication-surface divergence, so the emergency lane can stand down.'
+                    $lastEmergencyRequestId = ''
+                    $lastEmergencyPublishedAt = ''
+                }
+            }
         }
 
         $stateDoc = [pscustomobject]@{
@@ -966,6 +1537,10 @@ while ($true) {
             last_alert_signature = $lastAlertSignature
             last_alert_published_at = $lastAlertPublishedAt
             last_dialog_session_id = $lastDialogSessionId
+            last_coordination_request_id = $lastCoordinationRequestId
+            last_issue_started_at = ''
+            last_emergency_request_id = $lastEmergencyRequestId
+            last_emergency_published_at = $lastEmergencyPublishedAt
             listener_running = $listenerRunning
             ui_healthy = $uiHealthy
             bridge_smoke = $bridgeSmoke

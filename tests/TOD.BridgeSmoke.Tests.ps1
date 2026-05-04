@@ -25,10 +25,13 @@ function New-BridgeSmokeFixture {
         [string]$ExpectedObjective = 'objective-97',
         [string]$RequestObjective = 'objective-75',
         [string]$RequestTaskId = 'objective-75-task-3422',
+        [string]$FormalProgramTaskId = '',
         [string]$RemoteBoundaryClassification = 'canonical_remote_surface',
         [string]$TaskAckStatus = 'accepted',
         [string]$HighWatermarkTaskId = '',
-        [bool]$EmitResult = $true
+        [bool]$EmitResult = $true,
+        [string]$LatestCompletedObjective = '',
+        [string]$TriggerAckAcknowledges = ''
     )
 
     $base = Join-Path $repoRoot ('tod/out/tests/bridge-smoke-' + [guid]::NewGuid().ToString('N'))
@@ -47,7 +50,7 @@ function New-BridgeSmokeFixture {
     })
     Write-JsonNoBom -PathValue (Join-Path $listener 'TOD_TO_MIM_TRIGGER_ACK.latest.json') -Payload ([pscustomobject]@{
         generated_at = $now.AddSeconds(-20).ToString('o')
-        acknowledges = $RequestTaskId
+        acknowledges = if ([string]::IsNullOrWhiteSpace($TriggerAckAcknowledges)) { $RequestTaskId } else { $TriggerAckAcknowledges }
         acknowledged_trigger_sequence = 11
     })
     Write-JsonNoBom -PathValue (Join-Path $listener 'TOD_MIM_TASK_ACK.latest.json') -Payload ([pscustomobject]@{
@@ -78,6 +81,14 @@ function New-BridgeSmokeFixture {
             status = 'in_sync'
             tod_current_objective = ($ExpectedObjective -replace '^objective-', '')
             mim_objective_active = ($ExpectedObjective -replace '^objective-', '')
+        }
+        mim_handshake = [pscustomobject]@{
+            latest_completed_objective = if ([string]::IsNullOrWhiteSpace($LatestCompletedObjective)) { ($RequestObjective -replace '^objective-', '') } else { ($LatestCompletedObjective -replace '^objective-', '') }
+            source_of_truth = [pscustomobject]@{
+                formal_program_truth = [pscustomobject]@{
+                    task_id = if ([string]::IsNullOrWhiteSpace($FormalProgramTaskId)) { '' } else { $FormalProgramTaskId }
+                }
+            }
         }
         tod_status_publish = [pscustomobject]@{
             status = 'uploaded'
@@ -129,7 +140,7 @@ function Remove-TestFixturePath {
 
 Describe 'TOD bridge smoke' {
     It 'classifies stale remote canonical request as publication surface divergence' {
-        $fixture = New-BridgeSmokeFixture
+        $fixture = New-BridgeSmokeFixture -LatestCompletedObjective 'objective-74'
         try {
             try {
                 & $bridgeSmokeScript -ListenerStageDir $fixture.Listener -IntegrationStatusPath $fixture.Integration -OutputPath $fixture.Output -RemoteProbeJsonPath $fixture.RemoteProbe -RemoteBoundaryDiagnosticJsonPath $fixture.RemoteBoundary | Out-Null
@@ -160,6 +171,30 @@ Describe 'TOD bridge smoke' {
             [bool]$doc.passed | Should Be $true
             [string]$doc.classification | Should Be 'pass'
             @($doc.failure_modes).Count | Should Be 0
+        }
+        finally {
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'fails when the remote request task id diverges from formal program truth even if the objective matches' {
+        $fixture = New-BridgeSmokeFixture -ExpectedObjective 'objective-216' -RequestObjective 'objective-216' -RequestTaskId 'objective-216-task-008' -FormalProgramTaskId '1721'
+        try {
+            try {
+                & $bridgeSmokeScript -ListenerStageDir $fixture.Listener -IntegrationStatusPath $fixture.Integration -OutputPath $fixture.Output -RemoteProbeJsonPath $fixture.RemoteProbe -RemoteBoundaryDiagnosticJsonPath $fixture.RemoteBoundary | Out-Null
+            }
+            catch {
+            }
+
+            $doc = Get-Content -Path $fixture.Output -Raw | ConvertFrom-Json
+            [bool]$doc.passed | Should Be $false
+            [string]$doc.classification | Should Be 'publication_surface_divergence'
+            [string]$doc.failure_reason | Should Be 'publication_surface_divergence'
+            (@($doc.failure_modes) -contains 'publication_surface_divergence') | Should Be $true
+            (@($doc.failure_modes) -contains 'stale_remote_request_identity') | Should Be $true
+            [string]$doc.canonical_request.expected_objective_id | Should Be 'objective-216'
+            [string]$doc.canonical_request.expected_task_id | Should Be 'objective-216-task-1721'
+            [string]$doc.canonical_request.remote_surface.task_id | Should Be 'objective-216-task-008'
         }
         finally {
             Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
@@ -198,6 +233,24 @@ Describe 'TOD bridge smoke' {
             (@($doc.failure_modes) -contains 'noncanonical_remote_surface') | Should Be $true
             [bool]$doc.canonical_request.publication_surface_divergence | Should Be $false
             [bool]$doc.canonical_request.noncanonical_remote_surface | Should Be $true
+        }
+        finally {
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'passes when the stale remote request only reflects the latest completed objective residue' {
+        $fixture = New-BridgeSmokeFixture -ExpectedObjective 'objective-170' -RequestObjective 'objective-152' -RequestTaskId 'objective-152-task-mim-arm-safe-home-20260408160030' -LatestCompletedObjective 'objective-152' -TriggerAckAcknowledges 'coordination-objective-152-task-mim-arm-safe-home-20260408160030-publication_surface_divergence'
+        try {
+            $raw = & $bridgeSmokeScript -ListenerStageDir $fixture.Listener -IntegrationStatusPath $fixture.Integration -OutputPath $fixture.Output -RemoteProbeJsonPath $fixture.RemoteProbe -RemoteBoundaryDiagnosticJsonPath $fixture.RemoteBoundary
+            $doc = ($raw | Out-String | ConvertFrom-Json)
+            [bool]$doc.passed | Should Be $true
+            [string]$doc.classification | Should Be 'pass'
+            (@($doc.failure_modes) -contains 'publication_surface_divergence') | Should Be $false
+            [bool]$doc.canonical_request.completed_objective_residue | Should Be $true
+            [bool]$doc.local_bridge.completed_objective_residue | Should Be $true
+            [bool]$doc.local_bridge.healthy | Should Be $true
+            [string]$doc.canonical_request.latest_completed_objective_id | Should Be 'objective-152'
         }
         finally {
             Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })

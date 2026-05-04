@@ -30,6 +30,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$conversationReplyScript = Join-Path $PSScriptRoot 'Invoke-TODConversationalReply.ps1'
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -175,7 +176,7 @@ function Invoke-TodSpeechReply {
     return $SpeechSynth.SpeakAsync($ReplyText)
 }
 
-function Get-IntentFromCommand {
+function Get-LegacyIntentFromCommand {
     param([Parameter(Mandatory = $true)][string]$Command)
     $c = $Command.Trim().ToLower()
     if ([string]::IsNullOrWhiteSpace($c)) {
@@ -219,6 +220,64 @@ function Get-IntentFromCommand {
     }
 
     return "command.request"
+}
+
+function Get-IntentTarget {
+    param([Parameter(Mandatory = $true)][string]$QueryText)
+
+    $normalized = $QueryText.ToLowerInvariant()
+    if ($normalized -match 'mic|microphone|audio|speaker|mute|unmute|voice|listen') {
+        return 'UI / audio'
+    }
+    if ($normalized -match 'training|runbook|campaign|learn') {
+        return 'training'
+    }
+    if ($normalized -match 'service|listener|watchdog|bridge|health|runtime|process') {
+        return 'runtime / services'
+    }
+    if ($normalized -match 'file|path|repo|workspace|folder|directory') {
+        return 'files / workspace'
+    }
+    return 'general'
+}
+
+function Get-IntentRoute {
+    param([Parameter(Mandatory = $true)][string]$QueryText)
+
+    $normalized = $QueryText.Trim().ToLowerInvariant()
+    $intent = 'CONVERSATION'
+    $action = 'direct reply'
+    $requestKind = 'general_request'
+
+    if ($normalized -match '^(override|control|force|policy|priority|admin|elevat|restart tod|freeze|unfreeze|disable restriction)\b') {
+        $intent = 'SYSTEM'
+        $action = 'override / control'
+        $requestKind = 'implementation_request'
+    }
+    elseif ($normalized -match '^(why|what|show|explain|diagnose|inspect|debug|status|summary|health|logs?|trace|where|which)\b') {
+        $intent = 'DIAGNOSTIC'
+        $action = 'explain system'
+        $requestKind = 'status_request'
+    }
+    elseif ($normalized -match '^(fix|create|add|remove|update|run|start|stop|restart|enable|disable|make|repair|sync|deploy|train|turn|open|close|package|dispatch)\b') {
+        $intent = 'COMMAND'
+        $action = 'create + dispatch task'
+        $requestKind = 'implementation_request'
+    }
+
+    [pscustomobject]@{
+        intent = $intent
+        target = (Get-IntentTarget -QueryText $QueryText)
+        action = $action
+        request_kind = $requestKind
+        query = $QueryText
+    }
+}
+
+function Get-LegacyIntentForRoute {
+    param([Parameter(Mandatory = $true)][string]$CommandText)
+
+    return (Get-LegacyIntentFromCommand -Command $CommandText)
 }
 
 function Convert-SecondsToHumanText {
@@ -275,21 +334,15 @@ function Normalize-CommandForIntent {
 }
 
 function Test-DirectQueryIntent {
-    param([Parameter(Mandatory = $true)][string]$Intent)
+    param([Parameter(Mandatory = $true)]$IntentRoute)
 
-    return @(
-        'query.status',
-        'query.progress',
-        'query.eta',
-        'query.health',
-        'query.summary',
-        'query.help'
-    ) -contains $Intent
+    return [string]::Equals([string]$IntentRoute.intent, 'DIAGNOSTIC', [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 function Get-IntentConfidenceThreshold {
     param(
         [Parameter(Mandatory = $true)][string]$Intent,
+        [string]$LegacyIntent = '',
         [double]$DefaultThreshold,
         $ThresholdMap
     )
@@ -301,7 +354,50 @@ function Get-IntentConfidenceThreshold {
         }
     }
 
+    if (-not [string]::IsNullOrWhiteSpace($LegacyIntent) -and $ThresholdMap -and $ThresholdMap.PSObject.Properties[$LegacyIntent]) {
+        $legacyValue = [double]$ThresholdMap.PSObject.Properties[$LegacyIntent].Value
+        if ($legacyValue -ge 0 -and $legacyValue -le 1) {
+            return $legacyValue
+        }
+    }
+
     return $DefaultThreshold
+}
+
+function Invoke-VoiceConversationReply {
+    param(
+        [Parameter(Mandatory = $true)][string]$QueryText,
+        [string]$ObjectiveId = ''
+    )
+
+    if (-not (Test-Path -Path $conversationReplyScript)) {
+        throw 'Conversation reply script is missing.'
+    }
+
+    $invokeArgs = @(
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', $conversationReplyScript,
+        '-Query', $QueryText,
+        '-AsJson'
+    )
+    if (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) {
+        $invokeArgs += '-ObjectiveId'
+        $invokeArgs += $ObjectiveId
+    }
+
+    $output = powershell @invokeArgs 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw ([string]($output | Out-String))
+    }
+
+    $raw = [string]($output | Out-String)
+    $jsonStart = $raw.IndexOf('{')
+    if ($jsonStart -lt 0) {
+        throw 'Conversation reply did not return JSON.'
+    }
+
+    return ($raw.Substring($jsonStart) | ConvertFrom-Json)
 }
 
 function Test-UsefulOpenConversation {
@@ -424,7 +520,8 @@ function Emit-ConfirmationTone {
 function Write-VoiceEvent {
     param(
         [Parameter(Mandatory = $true)][string]$Transcript,
-        [Parameter(Mandatory = $true)][string]$Intent,
+        [Parameter(Mandatory = $true)]$IntentRoute,
+        [Parameter(Mandatory = $true)][string]$LegacyIntent,
         [Parameter(Mandatory = $true)][double]$Confidence,
         [Parameter(Mandatory = $true)][string]$InboxPath,
         [Parameter(Mandatory = $true)][string]$TelemetryPath,
@@ -440,7 +537,9 @@ function Write-VoiceEvent {
         source        = "tod-voice-adapter-v1"
         payload       = [pscustomobject]@{
             transcript      = $Transcript
-            intent          = $Intent
+            intent          = [string]$IntentRoute.intent
+            legacy_intent   = $LegacyIntent
+            intent_route    = $IntentRoute
             confidence      = [Math]::Round($Confidence, 3)
             objective_hint  = ""
             camera_used     = $false
@@ -467,14 +566,15 @@ function Write-VoiceEvent {
         mode             = "live"
         dry_run          = $false
         last_event_id    = $eventId
-        last_intent      = $Intent
+        last_intent      = [string]$IntentRoute.intent
+        last_legacy_intent = $LegacyIntent
         last_transcript  = $Transcript
     }
     Initialize-ParentDir -FilePath $TelemetryPath
     $telemetry | ConvertTo-Json -Depth 10 | Set-Content -Path $TelemetryPath -Encoding UTF8
 
     Write-Log -Message ("Intent queued | intent:{0} | conf:{1} | transcript:`"{2}`" | id:{3}" -f `
-        $Intent, [Math]::Round($Confidence, 2), $Transcript, $eventId) -LogPath $LogPath
+        [string]$IntentRoute.intent, [Math]::Round($Confidence, 2), $Transcript, $eventId) -LogPath $LogPath
 
     return $eventId
 }
@@ -822,19 +922,19 @@ Current project context:
     switch ($Intent) {
         "query.status" {
             if (-not $hasLiveProjectStatus) {
-                return "I am listening, but I cannot reach live project status right now."
+                return "I am listening, and the live project status source is temporarily out of reach. I am proceeding from local runtime truth while the status lane recovers."
             }
             return (Get-ObjectiveSummaryNarrative -StatusPayload $ProjectStatus)
         }
         "query.progress" {
             if (-not $hasLiveProjectStatus) {
-                return "I am listening, but I cannot reach live project progress right now."
+                return "I am listening, and the live project progress source is temporarily out of reach. I am proceeding from local runtime truth while the progress lane recovers."
             }
             return (Get-ObjectiveSummaryNarrative -StatusPayload $ProjectStatus)
         }
         "query.eta" {
             if (-not $hasLiveProjectStatus) {
-                return "I cannot estimate timing right now because the live project status endpoint is unavailable."
+                return "The live project status endpoint is temporarily out of reach, so I am holding ETA as pending while the status lane recovers."
             }
             $progressObj = if ($ProjectStatus -and $ProjectStatus.PSObject.Properties["progress"]) { $ProjectStatus.progress } else { $null }
             $cadenceObj = if ($ProjectStatus -and $ProjectStatus.PSObject.Properties["cadence_health"] -and $ProjectStatus.cadence_health.PSObject.Properties["cadence"]) { $ProjectStatus.cadence_health.cadence } else { $null }
@@ -868,11 +968,11 @@ Current project context:
                 return "Based on my current cadence, I estimate we have about $etaText remaining."
             }
 
-            return "I can estimate more accurately once I have a few more cadence and progress samples."
+            return "I will estimate more accurately once I have a few more cadence and progress samples."
         }
         "query.health" {
             if (-not $hasLiveProjectStatus) {
-                return "Voice recognition is online, but I cannot reach live project health right now."
+                return "Voice recognition is online, and the live project health lane is temporarily out of reach. I am proceeding with local health context while that lane recovers."
             }
             $cadence = if ($ProjectStatus -and $ProjectStatus.PSObject.Properties["cadence_health"] -and $ProjectStatus.cadence_health.PSObject.Properties["severity"]) { [string]$ProjectStatus.cadence_health.severity } else { "unknown" }
             $watchdog = if ($ProjectStatus -and $ProjectStatus.PSObject.Properties["recovery_watchdog"] -and $ProjectStatus.recovery_watchdog.PSObject.Properties["state"]) { [string]$ProjectStatus.recovery_watchdog.state } else { "unknown" }
@@ -880,7 +980,7 @@ Current project context:
         }
         "query.summary" {
             if (-not $hasLiveProjectStatus) {
-                return "I am listening, but I cannot reach the live project summary right now."
+                return "I am listening, and the live project summary lane is temporarily out of reach. I am proceeding from local runtime truth while that lane recovers."
             }
             return (Get-ObjectiveSummaryNarrative -StatusPayload $ProjectStatus)
         }
@@ -1160,8 +1260,10 @@ try {
                 $wakeParse = Split-WakeAndCommand -Transcript $transcript -WakeVariants $wakeVariants
                 $hasWake = [bool]$wakeParse.is_wake
                 $withinFollowUpWindow = (-not $hasWake) -and (($lastConversationTimestamp -ne [datetime]::MinValue) -and ((([datetime]::UtcNow - $lastConversationTimestamp).TotalSeconds) -le $followUpWindowSec))
-                $directIntent = Get-IntentFromCommand -Command (Normalize-CommandForIntent -CommandText $transcript)
-                $isDirectQuery = (Test-DirectQueryIntent -Intent $directIntent)
+                $directCommand = Normalize-CommandForIntent -CommandText $transcript
+                $directIntentRoute = Get-IntentRoute -QueryText $directCommand
+                $directLegacyIntent = Get-LegacyIntentForRoute -CommandText $directCommand
+                $isDirectQuery = (Test-DirectQueryIntent -IntentRoute $directIntentRoute)
 
                 if (-not $hasWake -and -not $withinFollowUpWindow -and -not $isDirectQuery) {
                     continue
@@ -1187,24 +1289,26 @@ try {
                 $commandPartRaw = if ($hasWake) { [string]$wakeParse.command } else { [string]$wakeParse.normalized }
                 $commandPart = Normalize-CommandForIntent -CommandText $commandPartRaw
 
-                $intent = if ($hasWake -or $withinFollowUpWindow) { Get-IntentFromCommand -Command $commandPart } else { $directIntent }
-                if ($intent -eq 'command.request' -and -not (Test-UsefulOpenConversation -CommandText $commandPart -HasWake:$hasWake)) {
+                $intentRoute = if ($hasWake -or $withinFollowUpWindow) { Get-IntentRoute -QueryText $commandPart } else { $directIntentRoute }
+                $legacyIntent = if ($hasWake -or $withinFollowUpWindow) { Get-LegacyIntentForRoute -CommandText $commandPart } else { $directLegacyIntent }
+                $intent = [string]$intentRoute.intent
+                if ($intent -eq 'CONVERSATION' -and -not (Test-UsefulOpenConversation -CommandText $commandPart -HasWake:$hasWake)) {
                     Write-Log -Message ("Discarding low-signal open conversation fragment: `"{0}`"" -f $transcript) -LogPath $logAbs
                     continue
                 }
-                $intentMinConfidence = Get-IntentConfidenceThreshold -Intent $intent -DefaultThreshold $effectiveMinConf -ThresholdMap $intentThresholds
+                $intentMinConfidence = Get-IntentConfidenceThreshold -Intent $intent -LegacyIntent $legacyIntent -DefaultThreshold $effectiveMinConf -ThresholdMap $intentThresholds
                 if ($confidence -lt $intentMinConfidence) {
                     Write-Log -Message ("Confidence below threshold for {0} (conf:{1} < min:{2}) transcript:`"{3}`"" -f $intent, [Math]::Round($confidence, 2), [Math]::Round($intentMinConfidence, 2), $transcript) -LogPath $logAbs
                     continue
                 }
 
-                $eventId = Write-VoiceEvent -Transcript $transcript -Intent $intent -Confidence $confidence `
+                $eventId = Write-VoiceEvent -Transcript $transcript -IntentRoute $intentRoute -LegacyIntent $legacyIntent -Confidence $confidence `
                     -InboxPath $inboxAbs -TelemetryPath $telemetryAbs `
                     -LogPath $logAbs -SessionId $sessionId
                 $recognitions++
                 $lastConversationTimestamp = [datetime]::UtcNow
 
-                if ($autoExecute -and ($intent.StartsWith("query.") -or $intent -eq "command.request")) {
+                if ($autoExecute) {
                     $projectStatus = $null
                     $statusApiAvailable = $false
                     try {
@@ -1215,7 +1319,11 @@ try {
                     }
 
                     try {
-                        $replyText = Get-VoiceReplyText -Intent $intent -CommandText $commandPart -ProjectStatus $projectStatus
+                        $conversationReply = Invoke-VoiceConversationReply -QueryText $commandPart
+                        $replyText = if ($conversationReply -and $conversationReply.PSObject.Properties['reply_text']) { [string]$conversationReply.reply_text } else { '' }
+                        if ([string]::IsNullOrWhiteSpace($replyText)) {
+                            $replyText = Get-VoiceReplyText -Intent $legacyIntent -CommandText $commandPart -ProjectStatus $projectStatus
+                        }
                         $responsePayload = [pscustomobject]@{
                             source = "tod-voice-listener"
                             timestamp_utc = (Get-Date).ToUniversalTime().ToString("o")
@@ -1223,9 +1331,12 @@ try {
                             transcript = $transcript
                             command = $commandPart
                             intent = $intent
+                            legacy_intent = $legacyIntent
+                            intent_route = $intentRoute
                             status_api_url = $statusApiUrl
                             status_api_available = $statusApiAvailable
                             reply_text = $replyText
+                            conversation_reply = $conversationReply
                             project_status = $projectStatus
                         }
                         $saved = Save-VoiceResponse -OutDir $outAbs -Payload $responsePayload

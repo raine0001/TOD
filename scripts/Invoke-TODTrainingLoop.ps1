@@ -67,7 +67,63 @@ if (-not (Test-Path -Path $effectiveOutputDir)) {
     New-Item -ItemType Directory -Path $effectiveOutputDir -Force | Out-Null
 }
 
+$sharedStateDir = Join-Path $repoRoot 'shared_state'
+$trainingStatusPath = Join-Path $sharedStateDir 'tod_training_status.latest.json'
+$integrationStatusPath = Join-Path $sharedStateDir 'integration_status.json'
 $trainingTracePath = Join-Path $effectiveOutputDir 'training-trace.log'
+$trainingStartedAtUtc = (Get-Date).ToUniversalTime()
+$trainingRunId = [guid]::NewGuid().ToString('N')
+
+function New-DirectoryIfMissing {
+    param([Parameter(Mandatory = $true)][string]$PathValue)
+
+    if (-not (Test-Path -Path $PathValue)) {
+        New-Item -ItemType Directory -Path $PathValue -Force | Out-Null
+    }
+}
+
+function Write-Utf8NoBomJson {
+    param(
+        [Parameter(Mandatory = $true)][string]$PathValue,
+        [Parameter(Mandatory = $true)]$Payload,
+        [int]$Depth = 20
+    )
+
+    $directory = Split-Path -Parent $PathValue
+    if (-not [string]::IsNullOrWhiteSpace($directory)) {
+        New-DirectoryIfMissing -PathValue $directory
+    }
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $json = ($Payload | ConvertTo-Json -Depth $Depth) -replace "`r`n", "`n"
+    [System.IO.File]::WriteAllText($PathValue, $json, $utf8NoBom)
+}
+
+function Update-IntegrationTrainingStatus {
+    param([Parameter(Mandatory = $true)]$TrainingStatus)
+
+    try {
+        if (-not (Test-Path -Path $integrationStatusPath)) {
+            return
+        }
+
+        $integrationStatus = Get-Content -Path $integrationStatusPath -Raw | ConvertFrom-Json
+        if ($null -eq $integrationStatus) {
+            return
+        }
+
+        if ($integrationStatus.PSObject.Properties['training_status']) {
+            $integrationStatus.training_status = $TrainingStatus
+        }
+        else {
+            $integrationStatus | Add-Member -NotePropertyName training_status -NotePropertyValue $TrainingStatus
+        }
+
+        Write-Utf8NoBomJson -PathValue $integrationStatusPath -Payload $integrationStatus -Depth 20
+    }
+    catch {
+    }
+}
 
 function Write-TrainingTrace {
     param([Parameter(Mandatory = $true)][string]$Message)
@@ -80,7 +136,191 @@ function Write-TrainingTrace {
     }
 }
 
+$trainingStageState = [ordered]@{}
+$trainingCurrentStageId = ''
+$trainingLatestError = ''
+$trainingLatestResolution = ''
+$trainingLatestErrorAt = ''
+$trainingLatestResolutionAt = ''
+$errors = @()
+$warnings = @()
+$trainingRecentEvents = New-Object System.Collections.Generic.List[object]
+
+function Add-TrainingEvent {
+    param(
+        [Parameter(Mandatory = $true)][string]$Type,
+        [Parameter(Mandatory = $true)][string]$Summary
+    )
+
+    $trainingRecentEvents.Add([pscustomobject]@{
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            type = $Type
+            summary = $Summary
+        }) | Out-Null
+
+    while ($trainingRecentEvents.Count -gt 12) {
+        $trainingRecentEvents.RemoveAt(0)
+    }
+}
+
+function Publish-TrainingStatus {
+    param(
+        [Parameter(Mandatory = $true)][string]$State,
+        [Parameter(Mandatory = $true)][string]$Phase,
+        [string]$Summary = '',
+        [string]$StateLabel = '',
+        [string]$PhaseDetail = ''
+    )
+
+    $now = (Get-Date).ToUniversalTime()
+    $elapsedSeconds = [int][math]::Max(0, [math]::Round(($now - $trainingStartedAtUtc).TotalSeconds))
+    $stageValues = @()
+    foreach ($stageKey in @($trainingStageState.Keys)) {
+        $stageValues += $trainingStageState[[string]$stageKey]
+    }
+
+    $completedSteps = @($stageValues | Where-Object { [string]$_.status -eq 'completed' }).Count
+    $failedSteps = @($stageValues | Where-Object { [string]$_.status -eq 'failed' }).Count
+    $totalSteps = [math]::Max(1, @($stageValues).Count)
+    $percentComplete = [int][math]::Max(0, [math]::Min(100, [math]::Round(($completedSteps / [double]$totalSteps) * 100)))
+
+    if ([string]::Equals($State, 'completed', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($State, 'completed_with_errors', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $percentComplete = 100
+    }
+
+    $etaSeconds = $null
+    $expectedCompletionUtc = ''
+    if ($percentComplete -gt 0 -and $percentComplete -lt 100) {
+        $estimatedTotalSeconds = [int][math]::Round(($elapsedSeconds / [double]$percentComplete) * 100)
+        $etaSeconds = [int][math]::Max(0, $estimatedTotalSeconds - $elapsedSeconds)
+        $expectedCompletionUtc = $now.AddSeconds($etaSeconds).ToString('o')
+    }
+
+    $resolvedStateLabel = ''
+    if ([string]::IsNullOrWhiteSpace($StateLabel)) {
+        $resolvedStateLabel = (($State -replace '_', ' ').ToUpperInvariant())
+    }
+    else {
+        $resolvedStateLabel = $StateLabel
+    }
+
+    $currentStep = ''
+    if (-not [string]::IsNullOrWhiteSpace($trainingCurrentStageId)) {
+        $currentStep = $trainingCurrentStageId
+    }
+    $activeState = [bool]([string]::Equals($State, 'running', [System.StringComparison]::OrdinalIgnoreCase))
+
+    $resolutionSummaries = @()
+    foreach ($event in $trainingRecentEvents) {
+        if ([string]$event.type -eq 'resolution') {
+            $resolutionSummaries += [string]$event.summary
+        }
+    }
+
+    $recentEvents = @()
+    foreach ($event in $trainingRecentEvents) {
+        $recentEvents += $event
+    }
+
+    $payload = [ordered]@{}
+    $payload.generated_at = $now.ToString('o')
+    $payload.source = 'tod-training-status-v1'
+    $payload.run_id = $trainingRunId
+    $payload.state = $State
+    $payload.state_label = $resolvedStateLabel
+    $payload.active = $activeState
+    $payload.started_at = $trainingStartedAtUtc.ToString('o')
+    $payload.updated_at = $now.ToString('o')
+    $payload.runtime_seconds = $elapsedSeconds
+    $payload.percent_complete = $percentComplete
+    $payload.completed_steps = $completedSteps
+    $payload.failed_steps = $failedSteps
+    $payload.total_steps = $totalSteps
+    $payload.phase = $Phase
+    $payload.phase_label = $Phase
+    $payload.phase_detail = $PhaseDetail
+    $payload.current_step = $currentStep
+    $payload.eta_seconds = $etaSeconds
+    $payload.expected_completion_utc = $expectedCompletionUtc
+    $payload.summary = $Summary
+    $payload.latest_error = $trainingLatestError
+    $payload.latest_error_at = $trainingLatestErrorAt
+    $payload.latest_resolution = $trainingLatestResolution
+    $payload.latest_resolution_at = $trainingLatestResolutionAt
+    $payload.warnings = @($warnings)
+    $payload.errors = @($errors)
+    $payload.resolutions = @($resolutionSummaries)
+    $payload.recent_events = @($recentEvents)
+    $payload.stages = @($stageValues)
+    $payload.artifacts = [ordered]@{
+        output_dir = $effectiveOutputDir
+        trace_path = $trainingTracePath
+    }
+
+    Write-Utf8NoBomJson -PathValue $trainingStatusPath -Payload $payload -Depth 20
+    Update-IntegrationTrainingStatus -TrainingStatus $payload
+}
+
+function Start-TrainingStage {
+    param(
+        [Parameter(Mandatory = $true)][string]$StageId,
+        [Parameter(Mandatory = $true)][string]$Detail
+    )
+
+    if ($trainingStageState.Contains($StageId)) {
+        $trainingStageState[$StageId].status = 'running'
+        $trainingStageState[$StageId].started_at = (Get-Date).ToUniversalTime().ToString('o')
+        $trainingStageState[$StageId].detail = $Detail
+        $trainingCurrentStageId = $StageId
+    }
+
+    Add-TrainingEvent -Type 'stage' -Summary $Detail
+    Publish-TrainingStatus -State 'running' -Phase $StageId -StateLabel 'TRAINING ACTIVE' -Summary $Detail -PhaseDetail $Detail
+}
+
+function Complete-TrainingStage {
+    param(
+        [Parameter(Mandatory = $true)][string]$StageId,
+        [Parameter(Mandatory = $true)][string]$Resolution
+    )
+
+    if ($trainingStageState.Contains($StageId)) {
+        $trainingStageState[$StageId].status = 'completed'
+        $trainingStageState[$StageId].completed_at = (Get-Date).ToUniversalTime().ToString('o')
+        $trainingStageState[$StageId].detail = $Resolution
+    }
+
+    $trainingLatestResolution = $Resolution
+    $trainingLatestResolutionAt = (Get-Date).ToUniversalTime().ToString('o')
+    Add-TrainingEvent -Type 'resolution' -Summary $Resolution
+    Publish-TrainingStatus -State 'running' -Phase $StageId -StateLabel 'TRAINING ACTIVE' -Summary $Resolution -PhaseDetail $Resolution
+}
+
+function Fail-TrainingStage {
+    param(
+        [Parameter(Mandatory = $true)][string]$StageId,
+        [Parameter(Mandatory = $true)][string]$ErrorText,
+        [Parameter(Mandatory = $true)][string]$Resolution
+    )
+
+    if ($trainingStageState.Contains($StageId)) {
+        $trainingStageState[$StageId].status = 'failed'
+        $trainingStageState[$StageId].completed_at = (Get-Date).ToUniversalTime().ToString('o')
+        $trainingStageState[$StageId].detail = $ErrorText
+    }
+
+    $trainingLatestError = $ErrorText
+    $trainingLatestErrorAt = (Get-Date).ToUniversalTime().ToString('o')
+    $trainingLatestResolution = $Resolution
+    $trainingLatestResolutionAt = (Get-Date).ToUniversalTime().ToString('o')
+    Add-TrainingEvent -Type 'error' -Summary $ErrorText
+    Add-TrainingEvent -Type 'resolution' -Summary $Resolution
+    Publish-TrainingStatus -State 'running' -Phase $StageId -StateLabel 'TRAINING ACTIVE' -Summary $ErrorText -PhaseDetail $Resolution
+}
+
 Write-TrainingTrace -Message 'training-loop-started'
+Add-TrainingEvent -Type 'lifecycle' -Summary 'Training loop started.'
+Publish-TrainingStatus -State 'running' -Phase 'startup' -StateLabel 'TRAINING ACTIVE' -Summary 'Training loop started.' -PhaseDetail 'Initializing bounded training run.'
 
 function Invoke-TodJsonAction {
     param(
@@ -251,6 +491,25 @@ catch {
     $preferBoundedRuntimeSubset = $false
 }
 
+$trainingStages = @(
+    [pscustomobject]@{ id = 'tests'; label = 'Regression tests'; enabled = (-not $SkipTests) },
+    [pscustomobject]@{ id = 'smoke'; label = 'Smoke checks'; enabled = (-not $SkipSmoke) },
+    [pscustomobject]@{ id = 'reliability_recovery'; label = 'Reliability recovery'; enabled = (-not $preferBoundedRuntimeSubset) },
+    [pscustomobject]@{ id = 'runtime_safe_subset'; label = 'Runtime-safe subset'; enabled = $true },
+    [pscustomobject]@{ id = 'project_discovery'; label = 'Project discovery'; enabled = (-not $SkipProjectDiscovery) },
+    [pscustomobject]@{ id = 'report'; label = 'Report publish'; enabled = $true }
+)
+foreach ($stage in @($trainingStages | Where-Object { [bool]$_.enabled })) {
+    $trainingStageState[$stage.id] = [pscustomobject]@{
+        id = [string]$stage.id
+        label = [string]$stage.label
+        status = 'pending'
+        started_at = ''
+        completed_at = ''
+        detail = ''
+    }
+}
+
 if (-not $SkipTests) {
     try {
         $statePath = Join-Path $repoRoot "tod/data/state.json"
@@ -276,6 +535,7 @@ if (-not $SkipSmoke -and ($preferBoundedRuntimeSubset -or -not $stateFileWritabl
 
 if (-not $SkipTests) {
     try {
+        Start-TrainingStage -StageId 'tests' -Detail 'Running regression tests.'
         Write-TrainingTrace -Message 'tests-start'
         $testsOut = Join-Path $effectiveOutputDir "test-summary.json"
         $testsRaw = Invoke-ChildPowerShellJsonScript -ScriptPath $testsScript -Arguments @{
@@ -287,31 +547,33 @@ if (-not $SkipTests) {
             $testSummary = $testsRaw | ConvertFrom-Json
         }
         Write-TrainingTrace -Message 'tests-complete'
+        Complete-TrainingStage -StageId 'tests' -Resolution ('Regression tests completed. Passed={0} Failed={1}.' -f $(if ($testSummary -and $testSummary.PSObject.Properties['passed']) { [string]$testSummary.passed } else { '?' }), $(if ($testSummary -and $testSummary.PSObject.Properties['failed']) { [string]$testSummary.failed } else { '?' }))
     }
     catch {
         Write-TrainingTrace -Message ("tests-error: {0}" -f $_.Exception.Message)
         $errors += "tests: $($_.Exception.Message)"
+        Fail-TrainingStage -StageId 'tests' -ErrorText ('Regression tests failed: {0}' -f $_.Exception.Message) -Resolution 'Continue with bounded training, capture the failure in the live status feed, and rely on downstream runtime-safe validation.'
     }
 }
 
 if (-not $SkipSmoke) {
     try {
+        Start-TrainingStage -StageId 'smoke' -Detail 'Running smoke checks.'
         Write-TrainingTrace -Message 'smoke-start'
         $smokeOut = Join-Path $effectiveOutputDir "smoke-summary.json"
-        $smokeRaw = Invoke-ChildPowerShellJsonScript -ScriptPath $smokeScript -Arguments @{
-            Top = $Top
-            JsonOutputPath = $smokeOut
-        }
+        $smokeRaw = (& $smokeScript -Top $Top -JsonOutputPath $smokeOut -SkipSharedStateSync | Out-String)
         $smokeSummary = Read-JsonFileIfExists -Path $smokeOut
         if ($null -eq $smokeSummary) {
             $smokeSummary = $smokeRaw | ConvertFrom-Json
             $smokeSummary | ConvertTo-Json -Depth 12 | Set-Content -Path $smokeOut
         }
         Write-TrainingTrace -Message 'smoke-complete'
+        Complete-TrainingStage -StageId 'smoke' -Resolution ('Smoke checks completed. PassedAll={0}.' -f $(if ($smokeSummary -and $smokeSummary.PSObject.Properties['passed_all']) { [string][bool]$smokeSummary.passed_all } else { '?' }))
     }
     catch {
         Write-TrainingTrace -Message ("smoke-error: {0}" -f $_.Exception.Message)
         $errors += "smoke: $($_.Exception.Message)"
+        Fail-TrainingStage -StageId 'smoke' -ErrorText ('Smoke checks failed: {0}' -f $_.Exception.Message) -Resolution 'Keep training moving, record the smoke failure, and continue into bounded runtime-safe validation.'
     }
 }
 
@@ -320,6 +582,7 @@ if ($preferBoundedRuntimeSubset) {
 }
 else {
     try {
+        Start-TrainingStage -StageId 'reliability_recovery' -Detail 'Running reliability recovery drill.'
         Write-TrainingTrace -Message 'reliability-recovery-start'
         $recoveryRaw = Invoke-ChildPowerShellJsonScript -ScriptPath $reliabilityRecoveryDrillScript -Arguments @{
             ConfigPath = $effectiveConfigPath
@@ -339,14 +602,17 @@ else {
             $warnings += "reliability-drill: executed runtime-safe readiness recovery validation while full tests were skipped"
         }
         Write-TrainingTrace -Message 'reliability-recovery-complete'
+        Complete-TrainingStage -StageId 'reliability_recovery' -Resolution ('Reliability recovery completed. Recovered={0}.' -f $(if ($reliabilityRecovery -and $reliabilityRecovery.PSObject.Properties['summary'] -and $reliabilityRecovery.summary.PSObject.Properties['recovered']) { [string][bool]$reliabilityRecovery.summary.recovered } else { '?' }))
     }
     catch {
         Write-TrainingTrace -Message ("reliability-recovery-error: {0}" -f $_.Exception.Message)
         $errors += "reliability-recovery: $($_.Exception.Message)"
+        Fail-TrainingStage -StageId 'reliability_recovery' -ErrorText ('Reliability recovery failed: {0}' -f $_.Exception.Message) -Resolution 'Capture the failure and continue into runtime-safe subset validation for bounded recovery evidence.'
     }
 }
 
 try {
+    Start-TrainingStage -StageId 'runtime_safe_subset' -Detail 'Running runtime-safe validation subset.'
     Write-TrainingTrace -Message 'runtime-safe-subset-start'
     $runtimeSafeSubsetArgs = @{
         ConfigPath = $effectiveConfigPath
@@ -376,22 +642,27 @@ try {
         $warnings += "runtime-safe-subset: executed bounded under-lock validation while full tests were skipped"
     }
     Write-TrainingTrace -Message 'runtime-safe-subset-complete'
+    Complete-TrainingStage -StageId 'runtime_safe_subset' -Resolution ('Runtime-safe validation completed. PassedAll={0} RecoveryOk={1}.' -f $(if ($runtimeSafeSubset -and $runtimeSafeSubset.PSObject.Properties['summary'] -and $runtimeSafeSubset.summary.PSObject.Properties['passed_all']) { [string][bool]$runtimeSafeSubset.summary.passed_all } else { '?' }), $(if ($runtimeSafeSubset -and $runtimeSafeSubset.PSObject.Properties['summary'] -and $runtimeSafeSubset.summary.PSObject.Properties['recovery_ok']) { [string][bool]$runtimeSafeSubset.summary.recovery_ok } else { '?' }))
 }
 catch {
     Write-TrainingTrace -Message ("runtime-safe-subset-error: {0}" -f $_.Exception.Message)
     $errors += "runtime-safe-subset: $($_.Exception.Message)"
+    Fail-TrainingStage -StageId 'runtime_safe_subset' -ErrorText ('Runtime-safe validation failed: {0}' -f $_.Exception.Message) -Resolution 'Record the bounded validation failure and keep producing the training report so the UI shows the exact fault.'
 }
 
 if (-not $SkipProjectDiscovery) {
     try {
+        Start-TrainingStage -StageId 'project_discovery' -Detail 'Refreshing project discovery index.'
         Write-TrainingTrace -Message 'project-discovery-start'
         $projectLibraryRaw = & $projectLibraryScript -RootPath $LibraryRoot -RegistryPath 'tod/config/project-registry.json' -OutputPath 'tod/data/project-library-index.json'
         $projectLibrary = $projectLibraryRaw | ConvertFrom-Json
         Write-TrainingTrace -Message 'project-discovery-complete'
+        Complete-TrainingStage -StageId 'project_discovery' -Resolution ('Project discovery completed. Projects={0}.' -f $(if ($projectLibrary -and $projectLibrary.PSObject.Properties['projects']) { [string]@($projectLibrary.projects).Count } else { '?' }))
     }
     catch {
         Write-TrainingTrace -Message ("project-discovery-error: {0}" -f $_.Exception.Message)
         $errors += "project-discovery: $($_.Exception.Message)"
+        Fail-TrainingStage -StageId 'project_discovery' -ErrorText ('Project discovery failed: {0}' -f $_.Exception.Message) -Resolution 'Leave project discovery degraded for this run and finish the report with the captured failure context.'
     }
 }
 
@@ -613,11 +884,13 @@ $report = [pscustomobject]@{
 
 $jsonPath = Join-Path $effectiveOutputDir "training-report.json"
 $mdPath = Join-Path $effectiveOutputDir "training-report.md"
+Start-TrainingStage -StageId 'report' -Detail 'Publishing training report artifacts.'
 Write-TrainingTrace -Message 'report-write-start'
 $report | ConvertTo-Json -Depth 30 | Set-Content -Path $jsonPath
 
 $md = @()
 $md += "# TOD Training Report"
+Complete-TrainingStage -StageId 'report' -Resolution 'Training report artifacts were written.'
 $md += ""
 $md += "Generated: $($report.generated_at)"
 $md += ""
@@ -691,7 +964,11 @@ $result = [pscustomobject]@{
     resources_count = @($resources).Count
     warnings = @($warnings)
     errors = @($errors)
+    training_status = $trainingStatusPath
 }
+
+Add-TrainingEvent -Type 'lifecycle' -Summary 'Training loop finished.'
+Publish-TrainingStatus -State $(if (@($errors).Count -gt 0) { 'completed_with_errors' } else { 'completed' }) -Phase 'complete' -StateLabel $(if (@($errors).Count -gt 0) { 'TRAINING COMPLETE WITH ERRORS' } else { 'TRAINING COMPLETE' }) -Summary $(if (@($errors).Count -gt 0) { 'Training completed with captured errors.' } else { 'Training completed successfully.' }) -PhaseDetail 'Final report and artifacts are available.'
 
 $result | ConvertTo-Json -Depth 10 | Write-Output
 Write-TrainingTrace -Message 'training-loop-complete'

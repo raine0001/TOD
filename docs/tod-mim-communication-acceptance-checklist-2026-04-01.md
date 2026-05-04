@@ -41,8 +41,13 @@ Purpose: provide one bounded checklist TOD and MIM can use to confirm the commun
 - Diagnostic roundtrip passes.
 - Next-step consensus roundtrip passes.
 - Supersede and reissue roundtrip passes.
+- Status exchange roundtrip passes.
+- Help offer roundtrip passes.
+- Blocker assistance roundtrip passes.
+- Emergency assistance roundtrip passes.
 - Harness runs only against synthetic roots.
 - Harness does not write into live shared roots.
+- Communication soak reaches the target iteration count with zero failed iterations.
 
 ## Operator And Projection Boundaries
 

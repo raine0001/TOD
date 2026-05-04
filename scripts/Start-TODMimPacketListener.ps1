@@ -8,7 +8,9 @@ param(
     [string]$SyncStageDir = "tod/out/context-sync/ssh-shared",
     [string]$SyncScriptPath = "scripts/Invoke-TODSharedStateSync.ps1",
     [string]$TodScriptPath = "scripts/TOD.ps1",
+    [string]$ReadinessScriptPath = "scripts/Test-TODOperatorChatSweepArtifact.ps1",
     [string]$ValidatorScriptPath = "scripts/Invoke-TODMimListenerValidator.ps1",
+    [string]$DialogScriptPath = "scripts/Invoke-TODMimDialog.ps1",
     [string]$RuntimeContractValidatorScriptPath = "scripts/validate_tod_mim_runtime_packet.py",
     [string]$ContractSourceDir = "tod/out/context-sync/contracts",
     [int]$PollSeconds = 2,
@@ -20,6 +22,7 @@ param(
     [switch]$RunOnce,
     [switch]$ProcessWithoutGoOrder,
     [switch]$PublishIntegrationStatus,
+    [switch]$PublishDialogRemote,
     [switch]$FailOnError
 )
 
@@ -27,6 +30,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $scriptVersion = "2026-03-30T15:20Z"
 $script:ListenerMutexName = "Global\TOD-MimPacketListener"
+$script:ListenerMutexFallbackName = "Local\TOD-MimPacketListener"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
@@ -34,6 +38,28 @@ function Get-LocalPath {
     param([Parameter(Mandatory = $true)][string]$PathValue)
     if ([System.IO.Path]::IsPathRooted($PathValue)) { return $PathValue }
     return (Join-Path $repoRoot $PathValue)
+}
+
+function New-ListenerMutexHandle {
+    param(
+        [Parameter(Mandatory = $true)][string]$PreferredName,
+        [Parameter(Mandatory = $true)][string]$FallbackName
+    )
+
+    try {
+        return [pscustomobject]@{
+            mutex = (New-Object System.Threading.Mutex($false, $PreferredName))
+            name = $PreferredName
+            scope = 'global'
+        }
+    }
+    catch [System.UnauthorizedAccessException] {
+        return [pscustomobject]@{
+            mutex = (New-Object System.Threading.Mutex($false, $FallbackName))
+            name = $FallbackName
+            scope = 'local'
+        }
+    }
 }
 
 function Get-DotEnvValue {
@@ -96,10 +122,346 @@ function Read-JsonFileIfExists {
     param([Parameter(Mandatory = $true)][string]$PathValue)
     if (-not (Test-Path -Path $PathValue)) { return $null }
     try {
-        return (Get-Content -Path $PathValue -Raw | ConvertFrom-Json)
+        return (ConvertFrom-JsonCaseInsensitiveSafe -Text (Get-Content -Path $PathValue -Raw))
     }
     catch {
         return $null
+    }
+}
+
+function Get-SafeDialogSessionId {
+    param([Parameter(Mandatory = $true)][string]$Seed)
+
+    $safe = ([string]$Seed).Trim()
+    if ([string]::IsNullOrWhiteSpace($safe)) {
+        $safe = 'tod-listener'
+    }
+
+    return ($safe -replace '[^a-zA-Z0-9._-]', '_')
+}
+
+function Invoke-DialogNotice {
+    param(
+        [Parameter(Mandatory = $true)][string]$ScriptAbs,
+        [Parameter(Mandatory = $true)][ValidateSet('send', 'close-session')][string]$Action,
+        [Parameter(Mandatory = $true)][string]$SessionId,
+        [Parameter(Mandatory = $true)][string]$MessageType,
+        [Parameter(Mandatory = $true)][string]$Intent,
+        [Parameter(Mandatory = $true)][string]$Summary,
+        [Parameter(Mandatory = $true)]$Payload,
+        [string]$TaskId = '',
+        [string]$CorrelationId = '',
+        [string]$EnvPath = '',
+        [switch]$PublishRemote
+    )
+
+    if (-not (Test-Path -Path $ScriptAbs)) {
+        return [pscustomobject]@{ ok = $false; status = 'dialog_script_missing' }
+    }
+
+    try {
+        $payloadJson = $Payload | ConvertTo-Json -Depth 12 -Compress
+        $invokeParams = @{
+            Action = $Action
+            SessionId = $SessionId
+            Actor = 'TOD'
+            PeerActor = 'MIM'
+            MessageType = $MessageType
+            Intent = $Intent
+            Summary = $Summary
+            PayloadJson = $payloadJson
+            TaskId = $TaskId
+            CorrelationId = $CorrelationId
+            RequiresReply = $true
+            EmitJson = $true
+        }
+        if (-not [string]::IsNullOrWhiteSpace($EnvPath) -and (Test-Path -Path $EnvPath)) {
+            $invokeParams.DotEnvPath = $EnvPath
+        }
+        if ($PublishRemote) {
+            $invokeParams.PublishRemote = $true
+        }
+
+        $null = & $ScriptAbs @invokeParams
+        return [pscustomobject]@{ ok = $true; status = 'sent' }
+    }
+    catch {
+        return [pscustomobject]@{ ok = $false; status = 'send_failed'; error = [string]$_.Exception.Message }
+    }
+}
+
+function Invoke-TaskTroubleshootingGuidance {
+    param(
+        [Parameter(Mandatory = $true)][string]$ConversationProviderScriptAbs,
+        [Parameter(Mandatory = $true)][string]$RequestId,
+        [string]$ObjectiveId = '',
+        [string]$TaskId = '',
+        [string]$CorrelationId = '',
+        [string]$Action = '',
+        [AllowNull()]$Execution = $null,
+        [AllowNull()]$DecisionPayload = $null,
+        [AllowNull()]$ReviewGate = $null,
+        [AllowNull()]$ValidatorResult = $null,
+        [AllowNull()]$IntegrationStatus = $null
+    )
+
+    $executionBlocked = ($null -ne $Execution -and $Execution.PSObject.Properties['blocked'] -and [bool]$Execution.blocked)
+    $executionOk = ($null -ne $Execution -and $Execution.PSObject.Properties['ok'] -and [bool]$Execution.ok)
+    $reviewPassed = ($null -ne $ReviewGate -and $ReviewGate.PSObject.Properties['passed'] -and [bool]$ReviewGate.passed)
+    $validatorPassed = ($null -ne $ValidatorResult -and $ValidatorResult.PSObject.Properties['passed'] -and [bool]$ValidatorResult.passed)
+    $resultStatus = if ($executionBlocked) { 'blocked' } elseif ($executionOk -and $reviewPassed -and $validatorPassed) { 'succeeded' } else { 'failed' }
+    if ([string]::Equals($resultStatus, 'succeeded', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $null
+    }
+
+    $executionMode = if ($null -ne $Execution -and $Execution.PSObject.Properties['execution_mode']) { [string]$Execution.execution_mode } else { 'unknown' }
+    $executionError = if ($null -ne $Execution -and $Execution.PSObject.Properties['error']) { [string]$Execution.error } else { '' }
+    $decisionOutcome = if ($null -ne $DecisionPayload -and $DecisionPayload.PSObject.Properties['decision_outcome']) { [string]$DecisionPayload.decision_outcome } else { '' }
+    $decisionReasonCode = if ($null -ne $DecisionPayload -and $DecisionPayload.PSObject.Properties['reason_code']) { [string]$DecisionPayload.reason_code } else { '' }
+    $decisionNextStep = if ($null -ne $DecisionPayload -and $DecisionPayload.PSObject.Properties['next_step_recommendation']) { [string]$DecisionPayload.next_step_recommendation } else { '' }
+    $alignmentStatus = if ($null -ne $IntegrationStatus -and $IntegrationStatus.PSObject.Properties['objective_alignment'] -and $IntegrationStatus.objective_alignment -and $IntegrationStatus.objective_alignment.PSObject.Properties['status']) { [string]$IntegrationStatus.objective_alignment.status } else { 'unknown' }
+    $readinessStatus = if ($null -ne $Execution -and $Execution.PSObject.Properties['execution_readiness'] -and $Execution.execution_readiness -and $Execution.execution_readiness.PSObject.Properties['status']) { [string]$Execution.execution_readiness.status } else { 'unknown' }
+    $outputPreview = if ($null -ne $Execution -and $Execution.PSObject.Properties['output'] -and -not [string]::IsNullOrWhiteSpace([string]$Execution.output)) { ([string]$Execution.output).Substring(0, [Math]::Min(800, ([string]$Execution.output).Length)) } else { '' }
+
+    $fallbackLikelyCause = if ($executionBlocked) {
+        'Execution was blocked by a local guardrail or missing dependency before TOD could complete the task.'
+    }
+    elseif (-not $reviewPassed) {
+        'The task execution finished, but the review gate did not pass.'
+    }
+    elseif (-not $validatorPassed) {
+        'The task execution finished, but the runtime validator rejected the result payload.'
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($executionError)) {
+        'The underlying TOD action raised an execution error.'
+    }
+    else {
+        'The task did not reach a clean success state and needs bounded troubleshooting.'
+    }
+
+    $fallbackGuidance = @(
+        '1. Inspect the execution mode, error text, and readiness status to identify whether the failure is local execution, validation, or coordination related.',
+        '2. Re-run the minimum freshness and readiness checks before retrying the task so TOD does not loop on stale inputs.',
+        '3. If review or validator failed, repair that specific gate first instead of re-running the full task unchanged.',
+        '4. Publish the blocker and the next bounded corrective action back to MIM so the task stays governed while troubleshooting continues.',
+        '5. Retry only after the blocker clears and the authoritative objective alignment is still valid.'
+    ) -join ' '
+
+    $guidanceText = $fallbackGuidance
+    $providerStatus = [pscustomobject]@{
+        used = $false
+        source = 'deterministic_fallback'
+        detail = 'Local conversation provider was not used.'
+        error = ''
+    }
+
+    if (Test-Path -Path $ConversationProviderScriptAbs) {
+        try {
+            $prompt = @"
+You are generating bounded troubleshooting guidance for TOD after a MIM-issued task did not succeed.
+
+Return one concise paragraph followed by a numbered list with exactly 4 items.
+Keep the answer under 220 words.
+Focus on safe next steps, not broad redesign.
+
+Context:
+- request_id: $RequestId
+- objective_id: $ObjectiveId
+- task_id: $TaskId
+- correlation_id: $CorrelationId
+- action: $Action
+- result_status: $resultStatus
+- execution_mode: $executionMode
+- execution_error: $executionError
+- decision_outcome: $decisionOutcome
+- decision_reason_code: $decisionReasonCode
+- decision_next_step: $decisionNextStep
+- readiness_status: $readinessStatus
+- alignment_status: $alignmentStatus
+- review_gate_passed: $reviewPassed
+- validator_passed: $validatorPassed
+- output_preview: $outputPreview
+
+Required structure:
+- likely cause
+- first corrective check
+- bounded repair step
+- what TOD should report back to MIM next
+"@
+
+            $providerRaw = & $ConversationProviderScriptAbs -Action 'chat' -Prompt $prompt -ObjectiveSummary 'MIM task troubleshooting' -TaskState $resultStatus -ObjectiveId $ObjectiveId -AsJson
+            $providerPayload = $null
+            try {
+                $providerPayload = ($providerRaw | ConvertFrom-Json)
+            }
+            catch {
+                $providerPayload = $null
+            }
+
+            if ($providerPayload -and $providerPayload.PSObject.Properties['reply_text'] -and -not [string]::IsNullOrWhiteSpace([string]$providerPayload.reply_text)) {
+                $guidanceText = ([string]$providerPayload.reply_text).Trim()
+                $providerStatus.used = $true
+                $providerStatus.source = 'local_conversation_provider'
+                $providerStatus.detail = 'Troubleshooting guidance came from the OpenAI-compatible local conversation provider.'
+            }
+            else {
+                $providerStatus.detail = 'Local conversation provider returned no troubleshooting guidance, so TOD used deterministic fallback guidance.'
+            }
+        }
+        catch {
+            $providerStatus.error = [string]$_.Exception.Message
+            $providerStatus.detail = 'Local conversation provider failed during troubleshooting guidance generation, so TOD used deterministic fallback guidance.'
+        }
+    }
+    else {
+        $providerStatus.detail = 'Local conversation provider script is missing, so TOD used deterministic fallback guidance.'
+    }
+
+    return [pscustomobject]@{
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        source = 'tod-mim-task-troubleshooting-v1'
+        request_id = $RequestId
+        objective_id = $ObjectiveId
+        task_id = $TaskId
+        correlation_id = $CorrelationId
+        action = $Action
+        result_status = $resultStatus
+        likely_cause = $fallbackLikelyCause
+        guidance_text = $guidanceText
+        recommended_report_back = if (-not [string]::IsNullOrWhiteSpace($decisionNextStep)) { $decisionNextStep } else { 'publish_blocker_and_next_bounded_step' }
+        provider_status = $providerStatus
+        execution = [pscustomobject]@{
+            execution_mode = $executionMode
+            readiness_status = $readinessStatus
+            review_gate_passed = $reviewPassed
+            validator_passed = $validatorPassed
+            error = $executionError
+        }
+        decision = [pscustomobject]@{
+            decision_outcome = $decisionOutcome
+            reason_code = $decisionReasonCode
+            next_step_recommendation = $decisionNextStep
+        }
+        integration = [pscustomobject]@{
+            alignment_status = $alignmentStatus
+        }
+    }
+}
+
+function Publish-TaskTroubleshootingRequest {
+    param(
+        [Parameter(Mandatory = $true)][string]$DialogScriptAbs,
+        [string]$EnvPath = '',
+        [Parameter(Mandatory = $true)][string]$RequestId,
+        [string]$ObjectiveId = '',
+        [string]$TaskId = '',
+        [string]$CorrelationId = '',
+        [Parameter(Mandatory = $true)]$Troubleshooting,
+        [AllowNull()]$Execution = $null,
+        [AllowNull()]$DecisionPayload = $null,
+        [switch]$PublishRemote
+    )
+
+    if ($null -eq $Troubleshooting) {
+        return $null
+    }
+
+    if (-not (Test-Path -Path $DialogScriptAbs)) {
+        return [pscustomobject]@{ ok = $false; status = 'dialog_script_missing'; session_id = '' }
+    }
+
+    $sessionId = ('tod-troubleshoot-' + [string]$RequestId) -replace '[^a-zA-Z0-9._-]', '_'
+    $summary = if ($Troubleshooting.PSObject.Properties['likely_cause'] -and -not [string]::IsNullOrWhiteSpace([string]$Troubleshooting.likely_cause)) {
+        'TOD needs troubleshooting help for request ' + [string]$RequestId + ': ' + [string]$Troubleshooting.likely_cause
+    }
+    else {
+        'TOD needs troubleshooting help for request ' + [string]$RequestId + '.'
+    }
+
+    $payload = [pscustomobject]@{
+        source = 'tod-listener-task-troubleshooting-request-v1'
+        request_id = $RequestId
+        objective_id = $ObjectiveId
+        task_id = $TaskId
+        correlation_id = $CorrelationId
+        troubleshooting = $Troubleshooting
+        execution = if ($null -ne $Execution) {
+            [pscustomobject]@{
+                ok = if ($Execution.PSObject.Properties['ok']) { [bool]$Execution.ok } else { $false }
+                blocked = if ($Execution.PSObject.Properties['blocked']) { [bool]$Execution.blocked } else { $false }
+                action = if ($Execution.PSObject.Properties['action']) { [string]$Execution.action } else { '' }
+                execution_mode = if ($Execution.PSObject.Properties['execution_mode']) { [string]$Execution.execution_mode } else { '' }
+                error = if ($Execution.PSObject.Properties['error']) { [string]$Execution.error } else { '' }
+            }
+        } else { $null }
+        decision = if ($null -ne $DecisionPayload) {
+            [pscustomobject]@{
+                decision_outcome = if ($DecisionPayload.PSObject.Properties['decision_outcome']) { [string]$DecisionPayload.decision_outcome } else { '' }
+                reason_code = if ($DecisionPayload.PSObject.Properties['reason_code']) { [string]$DecisionPayload.reason_code } else { '' }
+                next_step_recommendation = if ($DecisionPayload.PSObject.Properties['next_step_recommendation']) { [string]$DecisionPayload.next_step_recommendation } else { '' }
+            }
+        } else { $null }
+        requested_reply = [pscustomobject]@{
+            needed = $true
+            fields = @('missing_fields', 'missing_artifacts', 'repair_step', 'next_update')
+        }
+    }
+
+    $dialogResult = Invoke-DialogNotice -ScriptAbs $DialogScriptAbs -Action 'send' -SessionId $sessionId -MessageType 'handoff_request' -Intent 'task_troubleshooting' -Summary $summary -Payload $payload -TaskId $TaskId -CorrelationId $CorrelationId -EnvPath $EnvPath -PublishRemote:$PublishRemote
+    return [pscustomobject]@{
+        ok = [bool]$dialogResult.ok
+        status = [string]$dialogResult.status
+        session_id = $sessionId
+        message_type = 'handoff_request'
+        intent = 'task_troubleshooting'
+        error = if ($dialogResult.PSObject.Properties['error']) { [string]$dialogResult.error } else { '' }
+    }
+}
+
+function Convert-JsonDeserializedValue {
+    param([AllowNull()]$Value)
+
+    if ($null -eq $Value) {
+        return $null
+    }
+
+    if ($Value -is [System.Collections.IDictionary]) {
+        $map = [ordered]@{}
+        foreach ($key in @($Value.Keys)) {
+            $existingKey = $null
+            foreach ($candidateKey in @($map.Keys)) {
+                if ([string]::Equals([string]$candidateKey, [string]$key, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $existingKey = [string]$candidateKey
+                    break
+                }
+            }
+
+            if ($null -ne $existingKey) {
+                $null = $map.Remove($existingKey)
+            }
+
+            $map[[string]$key] = Convert-JsonDeserializedValue -Value $Value[$key]
+        }
+        return [pscustomobject]$map
+    }
+
+    if (($Value -is [System.Collections.IEnumerable]) -and -not ($Value -is [string])) {
+        return @($Value | ForEach-Object { Convert-JsonDeserializedValue -Value $_ })
+    }
+
+    return $Value
+}
+
+function ConvertFrom-JsonCaseInsensitiveSafe {
+    param([Parameter(Mandatory = $true)][string]$Text)
+
+    try {
+        return ($Text | ConvertFrom-Json)
+    }
+    catch {
+        Add-Type -AssemblyName System.Web.Extensions -ErrorAction Stop
+        $serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+        return Convert-JsonDeserializedValue -Value ($serializer.DeserializeObject($Text))
     }
 }
 
@@ -122,6 +484,471 @@ function Get-ObjectiveNumericValue {
     }
 
     return $numericValue
+}
+
+function Normalize-ObjectiveIdText {
+    param([string]$ObjectiveId)
+
+    $text = ([string]$ObjectiveId).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return ""
+    }
+
+    $numericValue = Get-ObjectiveNumericValue -ObjectiveId $text
+    if ($numericValue -ge 0) {
+        return [string]$numericValue
+    }
+
+    return $text
+}
+
+function Test-ObjectiveInvalidatedByAuthority {
+    param(
+        [string]$ObjectiveId,
+        $AuthorityReset
+    )
+
+    $normalizedObjectiveId = Normalize-ObjectiveIdText -ObjectiveId $ObjectiveId
+    if ([string]::IsNullOrWhiteSpace($normalizedObjectiveId) -or $null -eq $AuthorityReset) {
+        return $false
+    }
+
+    if ($AuthorityReset.PSObject.Properties['active']) {
+        try {
+            if (-not [bool]$AuthorityReset.active) {
+                return $false
+            }
+        }
+        catch {
+            return $false
+        }
+    }
+
+    $explicitInvalidations = @()
+    if ($AuthorityReset.PSObject.Properties['invalidated_objectives'] -and $null -ne $AuthorityReset.invalidated_objectives) {
+        $explicitInvalidations = @($AuthorityReset.invalidated_objectives | ForEach-Object { Normalize-ObjectiveIdText -ObjectiveId ([string]$_) })
+    }
+
+    if (@($explicitInvalidations | Where-Object { [string]::Equals($_, $normalizedObjectiveId, [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0) {
+        return $true
+    }
+
+    $maxValidObjective = if ($AuthorityReset.PSObject.Properties['max_valid_objective']) { Normalize-ObjectiveIdText -ObjectiveId ([string]$AuthorityReset.max_valid_objective) } else { '' }
+    $objectiveNumber = Get-ObjectiveNumericValue -ObjectiveId $normalizedObjectiveId
+    $maxValidNumber = Get-ObjectiveNumericValue -ObjectiveId $maxValidObjective
+    if ($objectiveNumber -ge 0 -and $maxValidNumber -ge 0 -and $objectiveNumber -gt $maxValidNumber) {
+        return $true
+    }
+
+    return $false
+}
+
+function Get-RequestExecutorRole {
+    param($Request)
+
+    if ($null -eq $Request) {
+        return 'codex'
+    }
+
+    foreach ($propertyName in @('assigned_executor', 'assigned_to', 'executor_role')) {
+        if ($Request.PSObject.Properties[$propertyName] -and -not [string]::IsNullOrWhiteSpace([string]$Request.$propertyName)) {
+            return ([string]$Request.$propertyName).Trim()
+        }
+    }
+
+    return 'codex'
+}
+
+function Get-RequestExecutionPolicyClass {
+    param($Request)
+
+    if ($null -eq $Request) {
+        return ''
+    }
+
+    if ($Request.PSObject.Properties['execution_policy'] -and $null -ne $Request.execution_policy) {
+        if ($Request.execution_policy.PSObject.Properties['class'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.execution_policy.class)) {
+            return ([string]$Request.execution_policy.class).Trim()
+        }
+        if ($Request.execution_policy.PSObject.Properties['boundary'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.execution_policy.boundary)) {
+            return ([string]$Request.execution_policy.boundary).Trim()
+        }
+    }
+
+    foreach ($propertyName in @('execution_policy_class', 'boundary_class', 'boundary')) {
+        if ($Request.PSObject.Properties[$propertyName] -and -not [string]::IsNullOrWhiteSpace([string]$Request.$propertyName)) {
+            return ([string]$Request.$propertyName).Trim()
+        }
+    }
+
+    return ''
+}
+
+function Get-RequestBoundaryClass {
+    param($Request)
+
+    $policyClass = (Get-RequestExecutionPolicyClass -Request $Request).ToLowerInvariant()
+    if (@('approval_required', 'hard_boundary', 'human_approval', 'manual_gate', 'escalate') -contains $policyClass) {
+        return 'hard_boundary'
+    }
+    if (@('auto_execute', 'soft_boundary', 'routine', 'bounded') -contains $policyClass) {
+        return 'soft_boundary'
+    }
+
+    $actionText = ''
+    foreach ($propertyName in @('tod_action', 'action', 'title', 'scope', 'task_classification', 'capability_name')) {
+        if ($Request -and $Request.PSObject.Properties[$propertyName] -and -not [string]::IsNullOrWhiteSpace([string]$Request.$propertyName)) {
+            $actionText += (' ' + ([string]$Request.$propertyName))
+        }
+    }
+    $actionText = $actionText.ToLowerInvariant()
+
+    if ($actionText -match 'credential|secret|password|token|certificate|private key|firewall|production deploy|prod deploy|delete|destroy|reimage|shutdown host|reboot host|open network|public exposure|human safety|operator approval') {
+        return 'hard_boundary'
+    }
+
+    return 'soft_boundary'
+}
+
+function Get-ExecutionReadinessTrace {
+    param(
+        [Parameter(Mandatory = $true)][string]$TodScriptAbs,
+        [Parameter(Mandatory = $true)][string]$Action
+    )
+
+    $readinessRaw = & $TodScriptAbs -Action 'get-execution-readiness' -Top 1 2>&1
+    $readinessPayload = $null
+    try {
+        $readinessPayload = ($readinessRaw | ConvertFrom-Json)
+    }
+    catch {
+        $readinessPayload = $null
+    }
+
+    if ($null -eq $readinessPayload -or -not $readinessPayload.PSObject.Properties['readiness']) {
+        return $null
+    }
+
+    $policyOutcome = 'allow'
+    $blockActions = if ($readinessPayload.PSObject.Properties['policy'] -and $readinessPayload.policy.PSObject.Properties['block_actions']) { @($readinessPayload.policy.block_actions | ForEach-Object { [string]$_ }) } else { @() }
+    $degradeActions = if ($readinessPayload.PSObject.Properties['policy'] -and $readinessPayload.policy.PSObject.Properties['degrade_actions']) { @($readinessPayload.policy.degrade_actions | ForEach-Object { [string]$_ }) } else { @() }
+    $blockStates = if ($readinessPayload.PSObject.Properties['policy'] -and $readinessPayload.policy.PSObject.Properties['block_states']) { @($readinessPayload.policy.block_states | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @('stale', 'invalid', 'unknown') }
+    $degradeStates = if ($readinessPayload.PSObject.Properties['policy'] -and $readinessPayload.policy.PSObject.Properties['degrade_states']) { @($readinessPayload.policy.degrade_states | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @('degraded', 'stale', 'invalid', 'unknown') }
+    $readinessValid = if ($readinessPayload.readiness.PSObject.Properties['valid']) { [bool]$readinessPayload.readiness.valid } else { $false }
+    $executionAllowed = if ($readinessPayload.readiness.PSObject.Properties['execution_allowed']) { [bool]$readinessPayload.readiness.execution_allowed } else { $false }
+    $readinessStatus = if ($readinessPayload.readiness.PSObject.Properties['status']) { ([string]$readinessPayload.readiness.status).ToLowerInvariant() } else { 'unknown' }
+    if (@($blockActions | Where-Object { [string]::Equals($_, $Action, [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0 -and ($blockStates -contains $readinessStatus)) {
+        $policyOutcome = 'block'
+    }
+    elseif (@($degradeActions | Where-Object { [string]::Equals($_, $Action, [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0 -and ($degradeStates -contains $readinessStatus)) {
+        $policyOutcome = 'degrade'
+    }
+
+    return [pscustomobject]@{
+        status = if ($readinessPayload.readiness.PSObject.Properties['status']) { [string]$readinessPayload.readiness.status } else { 'unknown' }
+        source = if ($readinessPayload.readiness.PSObject.Properties['reason']) { [string]$readinessPayload.readiness.reason } else { 'unknown' }
+        detail = if ($readinessPayload.readiness.PSObject.Properties['detail']) { [string]$readinessPayload.readiness.detail } else { '' }
+        valid = $readinessValid
+        execution_allowed = $executionAllowed
+        authoritative = if ($readinessPayload.readiness.PSObject.Properties['authoritative']) { [bool]$readinessPayload.readiness.authoritative } else { $true }
+        freshness_state = if ($readinessPayload.readiness.PSObject.Properties['freshness_state']) { [string]$readinessPayload.readiness.freshness_state } else { 'unknown' }
+        signal_name = if ($readinessPayload.PSObject.Properties['signal_name']) { [string]$readinessPayload.signal_name } else { 'execution-readiness' }
+        evaluated_action = $Action
+        policy_outcome = $policyOutcome
+        decision_path = @(
+            'signal:execution-readiness',
+            "status:$(if ($readinessPayload.readiness.PSObject.Properties['status']) { [string]$readinessPayload.readiness.status } else { 'unknown' })",
+            "source:$(if ($readinessPayload.readiness.PSObject.Properties['reason']) { [string]$readinessPayload.readiness.reason } else { 'unknown' })",
+            "action:$Action",
+            "policy_outcome:$policyOutcome"
+        )
+    }
+}
+
+function Get-MimRequestDecision {
+    param(
+        [Parameter(Mandatory = $true)]$Request,
+        [AllowNull()]$GoOrder,
+        [AllowNull()]$IntegrationStatus,
+        [AllowNull()]$ReviewDecision,
+        [Parameter(Mandatory = $true)][string]$TodScriptAbs,
+        [switch]$ProcessWithoutGoOrder,
+        [string]$SharedStateSyncError = ''
+    )
+
+    $requestId = Get-RequestIdentifier -Request $Request
+    $requestObjectiveId = Normalize-ObjectiveIdText -ObjectiveId (Get-ExpectedObjectiveFromRequest -Request $Request)
+    $requestTarget = if ($Request.PSObject.Properties['target']) { ([string]$Request.target).Trim() } else { '' }
+    $requestedExecutor = (Get-RequestExecutorRole -Request $Request).ToLowerInvariant()
+    $boundaryClass = Get-RequestBoundaryClass -Request $Request
+    $action = if ($Request.PSObject.Properties['tod_action'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.tod_action)) { [string]$Request.tod_action } elseif ($Request.PSObject.Properties['action'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.action)) { [string]$Request.action } else { 'get-state-bus' }
+    $authorityReset = if ($IntegrationStatus -and $IntegrationStatus.PSObject.Properties['objective_authority_reset']) { $IntegrationStatus.objective_authority_reset } else { $null }
+    $authorityResetActive = $false
+    if ($authorityReset -and $authorityReset.PSObject.Properties['active']) {
+        $authorityResetActiveValue = $authorityReset.active
+        if ($authorityResetActiveValue -is [bool]) {
+            $authorityResetActive = [bool]$authorityResetActiveValue
+        }
+        elseif ($null -ne $authorityResetActiveValue) {
+            $authorityResetActive = [string]::Equals(([string]$authorityResetActiveValue).Trim(), 'true', [System.StringComparison]::OrdinalIgnoreCase)
+        }
+    }
+    $liveTaskRequest = if ($IntegrationStatus -and $IntegrationStatus.PSObject.Properties['live_task_request']) { $IntegrationStatus.live_task_request } else { $null }
+    $bridgeEvidence = if ($IntegrationStatus -and $IntegrationStatus.PSObject.Properties['bridge_canonical_evidence']) { $IntegrationStatus.bridge_canonical_evidence } else { $null }
+    $bridgeGuidance = if ($IntegrationStatus -and $IntegrationStatus.PSObject.Properties['bridge_operator_guidance']) { $IntegrationStatus.bridge_operator_guidance } else { $null }
+    $objectiveAlignment = if ($IntegrationStatus -and $IntegrationStatus.PSObject.Properties['objective_alignment']) { $IntegrationStatus.objective_alignment } else { $null }
+    $canonicalObjective = if ($authorityResetActive -and $authorityReset -and $authorityReset.PSObject.Properties['authoritative_current_objective']) { Normalize-ObjectiveIdText -ObjectiveId ([string]$authorityReset.authoritative_current_objective) } elseif ($objectiveAlignment -and $objectiveAlignment.PSObject.Properties['tod_current_objective']) { Normalize-ObjectiveIdText -ObjectiveId ([string]$objectiveAlignment.tod_current_objective) } else { '' }
+    $liveRequestObjective = if ($liveTaskRequest -and $liveTaskRequest.PSObject.Properties['normalized_objective_id']) { Normalize-ObjectiveIdText -ObjectiveId ([string]$liveTaskRequest.normalized_objective_id) } else { '' }
+    $liveRequestId = if ($liveTaskRequest -and $liveTaskRequest.PSObject.Properties['request_id']) { [string]$liveTaskRequest.request_id } else { '' }
+    $promotionApplied = if ($liveTaskRequest -and $liveTaskRequest.PSObject.Properties['promotion_applied']) { [bool]$liveTaskRequest.promotion_applied } else { $false }
+    $validationReasons = New-Object System.Collections.Generic.List[string]
+    $failureSignals = @()
+    if ($bridgeEvidence -and $bridgeEvidence.PSObject.Properties['failure_signals']) {
+        $failureSignals = @($bridgeEvidence.failure_signals | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    $readinessTrace = Get-ExecutionReadinessTrace -TodScriptAbs $TodScriptAbs -Action $action
+    $goAllowed = $true
+    if ($null -ne $GoOrder -and -not $ProcessWithoutGoOrder) {
+        if ($GoOrder.PSObject.Properties['authorization'] -and -not [string]::IsNullOrWhiteSpace([string]$GoOrder.authorization)) {
+            $goAllowed = ([string]$GoOrder.authorization).Trim().ToLowerInvariant() -eq 'go'
+        }
+        elseif ($GoOrder.PSObject.Properties['allow_execute']) {
+            $goAllowed = [bool]$GoOrder.allow_execute
+        }
+        elseif ($GoOrder.PSObject.Properties['go']) {
+            $goAllowed = [bool]$GoOrder.go
+        }
+    }
+
+    $requestMatchesCanonical = ([string]::IsNullOrWhiteSpace($canonicalObjective) -or [string]::IsNullOrWhiteSpace($requestObjectiveId) -or [string]::Equals($requestObjectiveId, $canonicalObjective, [System.StringComparison]::OrdinalIgnoreCase))
+    $requestMatchesLiveRequest = ([string]::IsNullOrWhiteSpace($liveRequestId) -or [string]::IsNullOrWhiteSpace($requestId) -or [string]::Equals($liveRequestId, $requestId, [System.StringComparison]::OrdinalIgnoreCase))
+    if (-not [string]::IsNullOrWhiteSpace($liveRequestObjective) -and -not [string]::IsNullOrWhiteSpace($requestObjectiveId)) {
+        $requestMatchesLiveRequest = ($requestMatchesLiveRequest -and [string]::Equals($liveRequestObjective, $requestObjectiveId, [System.StringComparison]::OrdinalIgnoreCase))
+    }
+
+    $externalCoordinationSignals = @('listener_task_request_missing', 'live_task_request_objective_mismatch', 'live_task_request_not_promoted', 'remote_consumer_not_executed', 'remote_delivery_not_confirmed')
+    $hasExternalCoordinationBlocker = (@($failureSignals | Where-Object { $externalCoordinationSignals -contains $_ }).Count -gt 0)
+    $defaultNextStep = if ($bridgeGuidance -and $bridgeGuidance.PSObject.Properties['recommendation'] -and -not [string]::IsNullOrWhiteSpace([string]$bridgeGuidance.recommendation)) { [string]$bridgeGuidance.recommendation } else { 'continue_bounded_execution' }
+
+    if (-not [string]::IsNullOrWhiteSpace($SharedStateSyncError)) {
+        $validationReasons.Add(('shared_state_sync_failed:' + $SharedStateSyncError)) | Out-Null
+    }
+    if ($null -ne $readinessTrace) {
+        $validationReasons.Add(('readiness:' + [string]$readinessTrace.status)) | Out-Null
+        $validationReasons.Add(('freshness:' + [string]$readinessTrace.freshness_state)) | Out-Null
+    }
+    if (-not [string]::IsNullOrWhiteSpace($canonicalObjective)) {
+        $validationReasons.Add(('authoritative_objective:' + $canonicalObjective)) | Out-Null
+    }
+    if (-not [string]::IsNullOrWhiteSpace($requestObjectiveId)) {
+        $validationReasons.Add(('request_objective:' + $requestObjectiveId)) | Out-Null
+    }
+    $validationReasons.Add(('boundary:' + $boundaryClass)) | Out-Null
+    $validationReasons.Add(('executor:' + $requestedExecutor)) | Out-Null
+
+    if (-not [string]::IsNullOrWhiteSpace($requestTarget) -and -not [string]::Equals($requestTarget, 'TOD', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{
+            decision_outcome = 'reject_with_specific_policy_reason'
+            reason_code = 'wrong_target'
+            summary = 'Request target does not match TOD.'
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = $canonicalObjective
+            live_request_promotion_applied = $promotionApplied
+            execution_readiness = $readinessTrace
+            validation_reasoning = @($validationReasons)
+            unmet_dependency = ''
+            blocker_classification = 'policy_rejection'
+            next_step_recommendation = 'reissue_request_for_tod'
+            requires_human = $false
+        }
+    }
+
+    if (@('codex', 'tod', 'tod_listener', 'listener') -notcontains $requestedExecutor) {
+        return [pscustomobject]@{
+            decision_outcome = 'reject_with_specific_policy_reason'
+            reason_code = 'executor_role_mismatch'
+            summary = 'Request assigned to a non-TOD executor role.'
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = $canonicalObjective
+            live_request_promotion_applied = $promotionApplied
+            execution_readiness = $readinessTrace
+            validation_reasoning = @($validationReasons)
+            unmet_dependency = ''
+            blocker_classification = 'policy_rejection'
+            next_step_recommendation = 'reassign_executor_to_tod'
+            requires_human = $false
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($requestObjectiveId) -and (Test-ObjectiveInvalidatedByAuthority -ObjectiveId $requestObjectiveId -AuthorityReset $authorityReset)) {
+        return [pscustomobject]@{
+            decision_outcome = 'reject_with_specific_policy_reason'
+            reason_code = 'authority_reset_ceiling_exceeded'
+            summary = 'Request objective is invalidated by the current authority ceiling.'
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = $canonicalObjective
+            live_request_promotion_applied = $promotionApplied
+            execution_readiness = $readinessTrace
+            validation_reasoning = @($validationReasons)
+            unmet_dependency = ''
+            blocker_classification = 'policy_rejection'
+            next_step_recommendation = 'refresh_authoritative_objective_then_reissue'
+            requires_human = $false
+        }
+    }
+
+    if ([string]::Equals($boundaryClass, 'hard_boundary', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{
+            decision_outcome = 'escalate_hard_boundary'
+            reason_code = 'hard_boundary_requires_human'
+            summary = 'Request crosses a hard boundary and requires human escalation.'
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = $canonicalObjective
+            live_request_promotion_applied = $promotionApplied
+            execution_readiness = $readinessTrace
+            validation_reasoning = @($validationReasons)
+            unmet_dependency = 'human_boundary_decision'
+            blocker_classification = 'hard_boundary'
+            next_step_recommendation = 'request_human_boundary_decision'
+            requires_human = $true
+        }
+    }
+
+    if (-not $requestMatchesCanonical) {
+        if ($hasExternalCoordinationBlocker) {
+            return [pscustomobject]@{
+                decision_outcome = 'acknowledge_and_wait_on_dependency'
+                reason_code = 'external_coordination_blocker'
+                summary = 'Request is waiting on external bridge coordination to restore canonical objective alignment.'
+                boundary_class = $boundaryClass
+                requested_executor = $requestedExecutor
+                requested_objective_id = $requestObjectiveId
+                canonical_objective_id = $canonicalObjective
+                live_request_promotion_applied = $promotionApplied
+                execution_readiness = $readinessTrace
+                validation_reasoning = @($validationReasons + @($failureSignals))
+                unmet_dependency = 'bridge_publication_alignment'
+                blocker_classification = 'external_coordination_blocker'
+                next_step_recommendation = $defaultNextStep
+                requires_human = $false
+            }
+        }
+
+        return [pscustomobject]@{
+            decision_outcome = 'reject_with_specific_policy_reason'
+            reason_code = 'objective_mismatch'
+            summary = 'Request objective does not match the current authoritative objective.'
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = $canonicalObjective
+            live_request_promotion_applied = $promotionApplied
+            execution_readiness = $readinessTrace
+            validation_reasoning = @($validationReasons)
+            unmet_dependency = ''
+            blocker_classification = 'policy_rejection'
+            next_step_recommendation = 'publish_request_for_authoritative_objective'
+            requires_human = $false
+        }
+    }
+
+    if (-not $requestMatchesLiveRequest -or ((-not $promotionApplied) -and -not [string]::IsNullOrWhiteSpace($liveRequestId))) {
+        $decisionOutcome = 'reject_with_specific_policy_reason'
+        $reasonCode = 'request_not_promoted'
+        $summary = 'Request is not the promoted live task request.'
+        $blockerClassification = 'policy_rejection'
+        $unmetDependency = ''
+        $nextStepRecommendation = 'promote_live_task_request_then_retry'
+
+        if ($hasExternalCoordinationBlocker) {
+            $decisionOutcome = 'acknowledge_and_wait_on_dependency'
+            $reasonCode = 'external_coordination_blocker'
+            $summary = 'Request is waiting on remote publication or promotion to become authoritative.'
+            $blockerClassification = 'external_coordination_blocker'
+            $unmetDependency = 'live_task_request_promotion'
+            $nextStepRecommendation = $defaultNextStep
+        }
+
+        return [pscustomobject]@{
+            decision_outcome = $decisionOutcome
+            reason_code = $reasonCode
+            summary = $summary
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = $canonicalObjective
+            live_request_promotion_applied = $promotionApplied
+            execution_readiness = $readinessTrace
+            validation_reasoning = @($validationReasons + @($failureSignals))
+            unmet_dependency = $unmetDependency
+            blocker_classification = $blockerClassification
+            next_step_recommendation = $nextStepRecommendation
+            requires_human = $false
+        }
+    }
+
+    if ($null -ne $readinessTrace -and [string]::Equals([string]$readinessTrace.policy_outcome, 'block', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{
+            decision_outcome = 'acknowledge_and_wait_on_dependency'
+            reason_code = 'execution_readiness_blocked'
+            summary = 'Execution readiness is blocking the requested action.'
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = $canonicalObjective
+            live_request_promotion_applied = $promotionApplied
+            execution_readiness = $readinessTrace
+            validation_reasoning = @($validationReasons)
+            unmet_dependency = 'execution_readiness_refresh'
+            blocker_classification = 'local_readiness_blocker'
+            next_step_recommendation = 'refresh_execution_readiness'
+            requires_human = $false
+        }
+    }
+
+    if (-not $goAllowed -and -not [string]::Equals($boundaryClass, 'soft_boundary', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{
+            decision_outcome = 'acknowledge_and_wait_on_dependency'
+            reason_code = 'missing_go_order'
+            summary = 'Execution is waiting for GO order because the request is not routine soft-boundary work.'
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = $canonicalObjective
+            live_request_promotion_applied = $promotionApplied
+            execution_readiness = $readinessTrace
+            validation_reasoning = @($validationReasons)
+            unmet_dependency = 'go_order'
+            blocker_classification = 'execution_gate_wait'
+            next_step_recommendation = 'publish_go_order'
+            requires_human = $false
+        }
+    }
+
+    return [pscustomobject]@{
+        decision_outcome = 'execute'
+        reason_code = 'authorized_routine_request'
+        summary = 'Request is aligned with authority and ready for immediate TOD execution.'
+        boundary_class = $boundaryClass
+        requested_executor = $requestedExecutor
+        requested_objective_id = $requestObjectiveId
+        canonical_objective_id = $canonicalObjective
+        live_request_promotion_applied = $promotionApplied
+        execution_readiness = $readinessTrace
+        validation_reasoning = @($validationReasons)
+        unmet_dependency = ''
+        blocker_classification = ''
+        next_step_recommendation = 'execute_now'
+        requires_human = $false
+    }
 }
 
 function Test-AllowManagedObjectiveOverrideFromRequest {
@@ -257,6 +1084,23 @@ function New-ListenerState {
         last_liveness_trigger_snapshot_path = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_liveness_trigger_snapshot_path"]) { [string]$ExistingState.last_liveness_trigger_snapshot_path } else { "" }
         last_handoff_coordination_signature = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_handoff_coordination_signature"]) { [string]$ExistingState.last_handoff_coordination_signature } else { "" }
         last_handoff_coordination_request_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_handoff_coordination_request_id"]) { [string]$ExistingState.last_handoff_coordination_request_id } else { "" }
+        last_readiness_status = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_readiness_status"]) { [string]$ExistingState.last_readiness_status } else { "" }
+        last_readiness_source = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_readiness_source"]) { [string]$ExistingState.last_readiness_source } else { "" }
+        last_readiness_policy_outcome = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_readiness_policy_outcome"]) { [string]$ExistingState.last_readiness_policy_outcome } else { "" }
+        last_readiness_execution_allowed = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_readiness_execution_allowed"]) { [bool]$ExistingState.last_readiness_execution_allowed } else { $false }
+        last_readiness_valid = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_readiness_valid"]) { [bool]$ExistingState.last_readiness_valid } else { $false }
+        last_readiness_recorded_at = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_readiness_recorded_at"]) { [string]$ExistingState.last_readiness_recorded_at } else { "" }
+        blocked_resume_request_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_request_id"]) { [string]$ExistingState.blocked_resume_request_id } else { "" }
+        blocked_resume_request_signature = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_request_signature"]) { [string]$ExistingState.blocked_resume_request_signature } else { "" }
+        blocked_resume_task_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_task_id"]) { [string]$ExistingState.blocked_resume_task_id } else { "" }
+        blocked_resume_objective_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_objective_id"]) { [string]$ExistingState.blocked_resume_objective_id } else { "" }
+        blocked_resume_correlation_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_correlation_id"]) { [string]$ExistingState.blocked_resume_correlation_id } else { "" }
+        blocked_resume_action = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_action"]) { [string]$ExistingState.blocked_resume_action } else { "" }
+        blocked_resume_reason_code = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_reason_code"]) { [string]$ExistingState.blocked_resume_reason_code } else { "" }
+        blocked_resume_summary = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_summary"]) { [string]$ExistingState.blocked_resume_summary } else { "" }
+        blocked_resume_recorded_at = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_recorded_at"]) { [string]$ExistingState.blocked_resume_recorded_at } else { "" }
+        blocked_resume_retry_attempted = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_retry_attempted"]) { [bool]$ExistingState.blocked_resume_retry_attempted } else { $false }
+        blocked_resume_retry_attempted_at = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["blocked_resume_retry_attempted_at"]) { [string]$ExistingState.blocked_resume_retry_attempted_at } else { "" }
     }
 }
 
@@ -431,6 +1275,22 @@ function New-CoordinationEscalationState {
         last_ack_status = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_ack_status"]) { [string]$ExistingState.last_ack_status } else { "" }
         last_ack_decision = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_ack_decision"]) { [string]$ExistingState.last_ack_decision } else { "" }
         last_ack_reason = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_ack_reason"]) { [string]$ExistingState.last_ack_reason } else { "" }
+        pending_emergency_request_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["pending_emergency_request_id"]) { [string]$ExistingState.pending_emergency_request_id } else { "" }
+        pending_emergency_issue_code = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["pending_emergency_issue_code"]) { [string]$ExistingState.pending_emergency_issue_code } else { "" }
+        pending_emergency_issue_summary = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["pending_emergency_issue_summary"]) { [string]$ExistingState.pending_emergency_issue_summary } else { "" }
+        pending_emergency_parent_request_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["pending_emergency_parent_request_id"]) { [string]$ExistingState.pending_emergency_parent_request_id } else { "" }
+        pending_emergency_since = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["pending_emergency_since"]) { [string]$ExistingState.pending_emergency_since } else { "" }
+        last_emergency_emit_at = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_emergency_emit_at"]) { [string]$ExistingState.last_emergency_emit_at } else { "" }
+        emergency_emit_count = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["emergency_emit_count"]) { [int]$ExistingState.emergency_emit_count } else { 0 }
+        last_emergency_ack_request_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_emergency_ack_request_id"]) { [string]$ExistingState.last_emergency_ack_request_id } else { "" }
+        last_emergency_acknowledged_at = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_emergency_acknowledged_at"]) { [string]$ExistingState.last_emergency_acknowledged_at } else { "" }
+        last_emergency_ack_generated_at = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_emergency_ack_generated_at"]) { [string]$ExistingState.last_emergency_ack_generated_at } else { "" }
+        last_emergency_ack_status = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_emergency_ack_status"]) { [string]$ExistingState.last_emergency_ack_status } else { "" }
+        last_emergency_ack_decision = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_emergency_ack_decision"]) { [string]$ExistingState.last_emergency_ack_decision } else { "" }
+        last_emergency_ack_reason = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_emergency_ack_reason"]) { [string]$ExistingState.last_emergency_ack_reason } else { "" }
+        last_dialog_session_id = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_dialog_session_id"]) { [string]$ExistingState.last_dialog_session_id } else { "" }
+        last_dialog_inquiry_at = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_dialog_inquiry_at"]) { [string]$ExistingState.last_dialog_inquiry_at } else { "" }
+        dialog_inquiry_count = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["dialog_inquiry_count"]) { [int]$ExistingState.dialog_inquiry_count } else { 0 }
     }
 }
 
@@ -454,9 +1314,236 @@ function Clear-CoordinationEscalationState {
     $State.last_acknowledged_at = (Get-Date).ToUniversalTime().ToString("o")
     $State.last_ack_status = "resolved"
     $State.last_ack_decision = "auto_resolved_regression_green"
+    $State.pending_emergency_request_id = ""
+    $State.pending_emergency_issue_code = ""
+    $State.pending_emergency_issue_summary = ""
+    $State.pending_emergency_parent_request_id = ""
+    $State.pending_emergency_since = ""
+    $State.last_emergency_emit_at = ""
+    $State.emergency_emit_count = 0
+    $State.last_dialog_session_id = ""
+    $State.last_dialog_inquiry_at = ""
+    $State.dialog_inquiry_count = 0
     if (-not [string]::IsNullOrWhiteSpace($Reason)) {
         $State.last_ack_reason = $Reason
     }
+}
+
+function Test-IsTerminalExecutionStatus {
+    param([string]$Status)
+
+    if ([string]::IsNullOrWhiteSpace($Status)) {
+        return $false
+    }
+
+    $normalized = ([string]$Status).Trim().ToLowerInvariant()
+    return @('completed', 'succeeded', 'already_processed', 'stale_request_ignored', 'stale_backfill_ignored') -contains $normalized
+}
+
+function Publish-CoordinationPendingInquiry {
+    param(
+        [Parameter(Mandatory = $true)]$CoordinationEscalationState,
+        [Parameter(Mandatory = $true)][string]$CoordinationEscalationStatePath,
+        [Parameter(Mandatory = $true)][string]$DialogScriptAbs,
+        [Parameter(Mandatory = $true)][string]$EnvPath,
+        [Parameter(Mandatory = $true)][string]$RequestId,
+        [string]$ObjectiveId = '',
+        [string]$IssueCode = '',
+        [string]$IssueSummary = '',
+        [string]$AckStatus = '',
+        [string]$AckDecision = '',
+        [string]$AckReason = '',
+        [int]$TimeoutSeconds = 60,
+        [int]$ElapsedSeconds = 0,
+        [AllowNull()]$CoordinationRequest = $null,
+        [AllowNull()]$BridgeRuntime = $null,
+        [bool]$PublishRemote = $true
+    )
+
+    $nowUtc = (Get-Date).ToUniversalTime()
+    $sessionSeed = if (-not [string]::IsNullOrWhiteSpace($IssueCode)) {
+        'tod-coordination-' + [string]$RequestId + '-' + [string]$IssueCode
+    }
+    else {
+        'tod-coordination-' + [string]$RequestId
+    }
+    $sessionId = Get-SafeDialogSessionId -Seed $sessionSeed
+    $sessionLogPath = Get-LocalPath -PathValue ('shared_state/dialog/MIM_TOD_DIALOG.session-' + $sessionId + '.jsonl')
+    $sessionStatePath = Get-LocalPath -PathValue ('shared_state/dialog/MIM_TOD_DIALOG.session-' + $sessionId + '.latest.json')
+    $lastInquiryUtc = Get-DateOrMinValue -Value ([string]$CoordinationEscalationState.last_dialog_inquiry_at)
+    $cooldownSeconds = [Math]::Max(60, [int]$TimeoutSeconds)
+    $secondsSinceInquiry = if ($lastInquiryUtc -eq [datetime]::MinValue) { 999999 } else { [int][math]::Floor((New-TimeSpan -Start $lastInquiryUtc -End $nowUtc).TotalSeconds) }
+    $dialogArtifactsExist = (Test-Path -Path $sessionLogPath) -or (Test-Path -Path $sessionStatePath)
+    if (-not $dialogArtifactsExist) {
+        $secondsSinceInquiry = 999999
+    }
+    if ($secondsSinceInquiry -lt $cooldownSeconds) {
+        return $null
+    }
+
+    $summary = ('TOD observed coordination request {0} still pending after {1}s; what is missing for closure?' -f [string]$RequestId, [int]$TimeoutSeconds)
+    $payload = [pscustomobject]@{
+        source = 'tod-listener-coordination-followup-v1'
+        request_id = [string]$RequestId
+        objective_id = [string]$ObjectiveId
+        issue_code = [string]$IssueCode
+        issue_summary = [string]$IssueSummary
+        coordination_ack_status = [string]$AckStatus
+        coordination_ack_decision = [string]$AckDecision
+        coordination_ack_reason = [string]$AckReason
+        timeout_seconds = [int]$TimeoutSeconds
+        elapsed_seconds = [int]$ElapsedSeconds
+        requested_feedback = @(
+            'missing_fields',
+            'missing_artifacts',
+            'expected_values',
+            'next_action'
+        )
+        coordination_request = $CoordinationRequest
+        bridge_runtime = $BridgeRuntime
+    }
+    $dialogResult = Invoke-DialogNotice -ScriptAbs $DialogScriptAbs -Action 'send' -SessionId $sessionId -MessageType 'status_request' -Intent 'coordination_pending_timeout' -Summary $summary -Payload $payload -TaskId $RequestId -CorrelationId ([string]$IssueCode) -EnvPath $EnvPath -PublishRemote:$PublishRemote
+    if (-not [bool]$dialogResult.ok) {
+        return $dialogResult
+    }
+
+    $CoordinationEscalationState.last_dialog_session_id = $sessionId
+    $CoordinationEscalationState.last_dialog_inquiry_at = $nowUtc.ToString('o')
+    $CoordinationEscalationState.dialog_inquiry_count = [int]$CoordinationEscalationState.dialog_inquiry_count + 1
+    Write-JsonFile -PathValue $CoordinationEscalationStatePath -Payload $CoordinationEscalationState
+
+    return [pscustomobject]@{ ok = $true; status = 'sent'; session_id = $sessionId }
+}
+
+function Publish-EmergencyCoordinationRequest {
+    param(
+        [Parameter(Mandatory = $true)]$CoordinationEscalationState,
+        [Parameter(Mandatory = $true)][string]$CoordinationEscalationStatePath,
+        [Parameter(Mandatory = $true)][string]$LocalEmergencyRequestPath,
+        [Parameter(Mandatory = $true)][string]$RemoteEmergencyRequestPath,
+        [Parameter(Mandatory = $true)]$Connections,
+        [Parameter(Mandatory = $true)][string]$ParentRequestId,
+        [string]$ObjectiveId = '',
+        [string]$IssueCode = '',
+        [string]$IssueSummary = '',
+        [string]$AckStatus = '',
+        [string]$AckDecision = '',
+        [string]$AckReason = '',
+        [int]$CoordinationTimeoutSeconds = 60,
+        [int]$ElapsedSeconds = 0,
+        [AllowNull()]$CoordinationRequest = $null,
+        [AllowNull()]$BridgeRuntime = $null
+    )
+
+    $utcNow = (Get-Date).ToUniversalTime()
+    $normalizedIssueCode = if ([string]::IsNullOrWhiteSpace($IssueCode)) { 'coordination_timeout' } else { [string]$IssueCode }
+    $emergencyRequestId = if (-not [string]::IsNullOrWhiteSpace([string]$CoordinationEscalationState.pending_emergency_request_id) -and
+        [string]::Equals([string]$CoordinationEscalationState.pending_emergency_parent_request_id, [string]$ParentRequestId, [System.StringComparison]::OrdinalIgnoreCase) -and
+        [string]::Equals([string]$CoordinationEscalationState.pending_emergency_issue_code, ($normalizedIssueCode + '_emergency'), [System.StringComparison]::OrdinalIgnoreCase)) {
+        [string]$CoordinationEscalationState.pending_emergency_request_id
+    }
+    else {
+        'tod-emergency-' + [string]$ParentRequestId + '-' + $normalizedIssueCode
+    }
+
+    $lastEmergencyEmitUtc = Get-DateOrMinValue -Value ([string]$CoordinationEscalationState.last_emergency_emit_at)
+    $secondsSinceLastEmergencyEmit = if ($lastEmergencyEmitUtc -eq [datetime]::MinValue) { 999999 } else { [int][math]::Floor((New-TimeSpan -Start $lastEmergencyEmitUtc -End $utcNow).TotalSeconds) }
+    if ($secondsSinceLastEmergencyEmit -lt [Math]::Max(60, [int]$CoordinationTimeoutSeconds)) {
+        return $null
+    }
+
+    $emergencyPayload = [pscustomobject]@{
+        generated_at = $utcNow.ToString('o')
+        source = 'tod-mim-emergency-request-v1'
+        status = 'active'
+        priority = 'critical'
+        escalation_level = 4
+        request_id = $emergencyRequestId
+        parent_request_id = [string]$ParentRequestId
+        objective_id = [string]$ObjectiveId
+        issue_code = $normalizedIssueCode + '_emergency'
+        issue_summary = if ([string]::IsNullOrWhiteSpace($IssueSummary)) { 'TOD did not receive a timely coordination response from MIM.' } else { [string]$IssueSummary }
+        emergency_reason = ('TOD coordination request exceeded its response SLA ({0}s elapsed, base timeout {1}s).' -f [int]$ElapsedSeconds, [int]$CoordinationTimeoutSeconds)
+        requested_action = 'Reply immediately on MIM_TOD_EMERGENCY_ACK.latest.json, say whether MIM is investigating, accepting, or rejecting the request, and publish the next update or repair action without waiting for another TOD prompt.'
+        required_ack = [pscustomobject]@{
+            ack_file = 'MIM_TOD_EMERGENCY_ACK.latest.json'
+            ack_fields = @('acknowledged', 'acknowledged_at', 'request_id', 'decision', 'reason', 'next_update_at')
+            timeout_seconds = 15
+        }
+        coordination = [pscustomobject]@{
+            coordination_status = [string]$AckStatus
+            coordination_decision = [string]$AckDecision
+            coordination_reason = [string]$AckReason
+            elapsed_seconds = [int]$ElapsedSeconds
+            parent_timeout_seconds = [int]$CoordinationTimeoutSeconds
+        }
+        coordination_request = $CoordinationRequest
+        bridge_runtime = $BridgeRuntime
+    }
+
+    Write-JsonFile -PathValue $LocalEmergencyRequestPath -Payload $emergencyPayload
+    $emergencyJson = Get-Content -Path $LocalEmergencyRequestPath -Raw
+    Write-RemoteFileFromText -Connections $Connections -RemotePath $RemoteEmergencyRequestPath -Content $emergencyJson
+
+    $CoordinationEscalationState.pending_emergency_request_id = $emergencyRequestId
+    $CoordinationEscalationState.pending_emergency_issue_code = $normalizedIssueCode + '_emergency'
+    $CoordinationEscalationState.pending_emergency_issue_summary = [string]$emergencyPayload.issue_summary
+    $CoordinationEscalationState.pending_emergency_parent_request_id = [string]$ParentRequestId
+    if ([string]::IsNullOrWhiteSpace([string]$CoordinationEscalationState.pending_emergency_since)) {
+        $CoordinationEscalationState.pending_emergency_since = $utcNow.ToString('o')
+    }
+    $CoordinationEscalationState.last_emergency_emit_at = $utcNow.ToString('o')
+    $CoordinationEscalationState.emergency_emit_count = [int]$CoordinationEscalationState.emergency_emit_count + 1
+    Write-JsonFile -PathValue $CoordinationEscalationStatePath -Payload $CoordinationEscalationState
+
+    return $emergencyPayload
+}
+
+function Publish-ResolvedEmergencyCoordination {
+    param(
+        [Parameter(Mandatory = $true)]$CoordinationEscalationState,
+        [Parameter(Mandatory = $true)][string]$CoordinationEscalationStatePath,
+        [Parameter(Mandatory = $true)][string]$LocalEmergencyRequestPath,
+        [Parameter(Mandatory = $true)][string]$RemoteEmergencyRequestPath,
+        [Parameter(Mandatory = $true)]$Connections,
+        [string]$ResolutionReason = '',
+        [string]$ObjectiveId = ''
+    )
+
+    if ([string]::IsNullOrWhiteSpace([string]$CoordinationEscalationState.pending_emergency_request_id)) {
+        return $null
+    }
+
+    $resolvedPayload = [pscustomobject]@{
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        source = 'tod-mim-emergency-request-v1'
+        status = 'resolved'
+        priority = 'none'
+        escalation_level = 0
+        request_id = [string]$CoordinationEscalationState.pending_emergency_request_id
+        parent_request_id = [string]$CoordinationEscalationState.pending_emergency_parent_request_id
+        objective_id = [string]$ObjectiveId
+        issue_code = if ([string]::IsNullOrWhiteSpace([string]$CoordinationEscalationState.pending_emergency_issue_code)) { 'coordination_timeout_emergency_resolved' } else { [string]$CoordinationEscalationState.pending_emergency_issue_code + '_resolved' }
+        issue_summary = 'TOD cleared the prior emergency coordination case.'
+        requested_action = 'none'
+        resolution_reason = if ([string]::IsNullOrWhiteSpace($ResolutionReason)) { 'Coordination is no longer pending.' } else { [string]$ResolutionReason }
+        resolved_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+
+    Write-JsonFile -PathValue $LocalEmergencyRequestPath -Payload $resolvedPayload
+    $resolvedJson = Get-Content -Path $LocalEmergencyRequestPath -Raw
+    Write-RemoteFileFromText -Connections $Connections -RemotePath $RemoteEmergencyRequestPath -Content $resolvedJson
+
+    $CoordinationEscalationState.pending_emergency_request_id = ''
+    $CoordinationEscalationState.pending_emergency_issue_code = ''
+    $CoordinationEscalationState.pending_emergency_issue_summary = ''
+    $CoordinationEscalationState.pending_emergency_parent_request_id = ''
+    $CoordinationEscalationState.pending_emergency_since = ''
+    $CoordinationEscalationState.last_emergency_emit_at = ''
+    $CoordinationEscalationState.emergency_emit_count = 0
+    Write-JsonFile -PathValue $CoordinationEscalationStatePath -Payload $CoordinationEscalationState
+
+    return $resolvedPayload
 }
 
 function Get-IdleSeconds {
@@ -476,20 +1563,424 @@ function New-IdleWakeupState {
         last_wakeup_at          = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_wakeup_at"])          { [string]$ExistingState.last_wakeup_at }          else { "" }
         last_wakeup_reason      = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_wakeup_reason"])      { [string]$ExistingState.last_wakeup_reason }      else { "" }
         last_self_task_id       = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_self_task_id"])       { [string]$ExistingState.last_self_task_id }       else { "" }
+        last_self_task_catalog_index = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_self_task_catalog_index"]) { [int]$ExistingState.last_self_task_catalog_index } else { -1 }
         last_objective_advanced = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_objective_advanced"]) { [string]$ExistingState.last_objective_advanced } else { "" }
+        last_engineer_run_signature = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_engineer_run_signature"]) { [string]$ExistingState.last_engineer_run_signature } else { "" }
+        last_engineer_run_at        = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_engineer_run_at"])        { [string]$ExistingState.last_engineer_run_at }        else { "" }
+        last_readiness_refresh_at   = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["last_readiness_refresh_at"])   { [string]$ExistingState.last_readiness_refresh_at }   else { "" }
         wakeup_count            = if ($null -ne $ExistingState -and $ExistingState.PSObject.Properties["wakeup_count"])            { [int]$ExistingState.wakeup_count }                else { 0 }
     }
 }
 
+function Get-IdleWakeupPreferredTask {
+    param([Parameter(Mandatory = $true)]$Tasks)
+
+    $taskList = @($Tasks)
+    if ($taskList.Count -eq 0) {
+        return $null
+    }
+
+    $preferred = @($taskList | Where-Object {
+            $status = if ($_.PSObject.Properties['status']) { ([string]$_.status).ToLowerInvariant() } else { '' }
+            $status -in @('in_progress', 'open', 'planned', 'todo')
+        } | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)
+    if ($preferred.Count -gt 0) {
+        return $preferred[0]
+    }
+
+    return @($taskList | Sort-Object updated_at, created_at -Descending | Select-Object -First 1)[0]
+}
+
+function Get-IdleWakeupCandidateTask {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [string]$CurrentObjectiveId = ""
+    )
+
+    $terminalStatuses = @('pass', 'reviewed_pass', 'completed', 'closed', 'cancelled')
+    $allTasks = if ($State -and $State.PSObject.Properties['tasks']) { @($State.tasks) } else { @() }
+    $pendingTasks = @($allTasks | Where-Object {
+            $status = if ($_.PSObject.Properties['status']) { ([string]$_.status).ToLowerInvariant() } else { '' }
+            $status -notin $terminalStatuses
+        })
+    if ($pendingTasks.Count -eq 0) {
+        return $null
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($CurrentObjectiveId)) {
+        $currentObjectiveTasks = @($pendingTasks | Where-Object { [string]$_.objective_id -eq $CurrentObjectiveId })
+        if ($currentObjectiveTasks.Count -gt 0) {
+            $currentTask = Get-IdleWakeupPreferredTask -Tasks $currentObjectiveTasks
+            if ($null -ne $currentTask) {
+                return [pscustomobject]@{
+                    objective_id = [string]$CurrentObjectiveId
+                    task = $currentTask
+                }
+            }
+        }
+    }
+
+    $openObjectives = if ($State -and $State.PSObject.Properties['objectives']) {
+        @($State.objectives | Where-Object {
+                $_.PSObject.Properties['status'] -and
+                @('open', 'active', 'in_progress', 'planned') -contains ([string]$_.status).ToLowerInvariant()
+            } | Sort-Object updated_at, created_at -Descending)
+    }
+    else {
+        @()
+    }
+
+    foreach ($objective in $openObjectives) {
+        $objectiveId = if ($objective.PSObject.Properties['id']) { [string]$objective.id } else { '' }
+        if ([string]::IsNullOrWhiteSpace($objectiveId)) {
+            continue
+        }
+
+        $objectiveTasks = @($pendingTasks | Where-Object { [string]$_.objective_id -eq $objectiveId })
+        if ($objectiveTasks.Count -eq 0) {
+            continue
+        }
+
+        $objectiveTask = Get-IdleWakeupPreferredTask -Tasks $objectiveTasks
+        if ($null -ne $objectiveTask) {
+            return [pscustomobject]@{
+                objective_id = $objectiveId
+                task = $objectiveTask
+            }
+        }
+    }
+
+    $fallbackTask = Get-IdleWakeupPreferredTask -Tasks $pendingTasks
+    if ($null -eq $fallbackTask) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        objective_id = if ($fallbackTask.PSObject.Properties['objective_id']) { [string]$fallbackTask.objective_id } else { '' }
+        task = $fallbackTask
+    }
+}
+
+function Invoke-ExecutionReadinessRefresh {
+    param(
+        [Parameter(Mandatory = $true)][string]$ReadinessScriptAbs,
+        [string]$Reason = ""
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ReadinessScriptAbs) -or -not (Test-Path -Path $ReadinessScriptAbs)) {
+        return [pscustomobject]@{
+            ok = $false
+            reason = 'script_missing'
+            detail = $ReadinessScriptAbs
+            payload = $null
+        }
+    }
+
+    $refreshError = ''
+    $payload = $null
+    try {
+        $raw = powershell -NoProfile -ExecutionPolicy Bypass -File $ReadinessScriptAbs -EmitJson 2>&1
+        if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            $refreshError = ("readiness refresh exited {0}" -f $LASTEXITCODE)
+        }
+        elseif ($null -ne $raw) {
+            $payload = ConvertFrom-JsonCaseInsensitiveSafe -Text ($raw -join "`n")
+        }
+    }
+    catch {
+        $refreshError = [string]$_.Exception.Message
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($refreshError)) {
+        if ([string]::IsNullOrWhiteSpace($Reason)) {
+            Write-Warning ("[TOD-LISTENER] Execution-readiness refresh failed; continuing with latest available artifact: {0}" -f $refreshError)
+        }
+        else {
+            Write-Warning ("[TOD-LISTENER] Execution-readiness refresh failed during {0}; continuing with latest available artifact: {1}" -f $Reason, $refreshError)
+        }
+
+        return [pscustomobject]@{
+            ok = $false
+            reason = 'refresh_failed'
+            detail = $refreshError
+            payload = $payload
+        }
+    }
+
+    return [pscustomobject]@{
+        ok = $true
+        reason = 'refreshed'
+        detail = if ($payload -and $payload.PSObject.Properties['output_path']) { [string]$payload.output_path } else { $ReadinessScriptAbs }
+        payload = $payload
+    }
+}
+
+function Set-ListenerReadinessSnapshot {
+    param(
+        [Parameter(Mandatory = $true)]$ListenerState,
+        [AllowNull()]$ReadinessTrace = $null
+    )
+
+    if ($null -eq $ReadinessTrace) {
+        return
+    }
+
+    $ListenerState.last_readiness_status = if ($ReadinessTrace.PSObject.Properties['status']) { [string]$ReadinessTrace.status } else { '' }
+    $ListenerState.last_readiness_source = if ($ReadinessTrace.PSObject.Properties['source']) { [string]$ReadinessTrace.source } else { '' }
+    $ListenerState.last_readiness_policy_outcome = if ($ReadinessTrace.PSObject.Properties['policy_outcome']) { [string]$ReadinessTrace.policy_outcome } else { '' }
+    $ListenerState.last_readiness_execution_allowed = if ($ReadinessTrace.PSObject.Properties['execution_allowed']) { [bool]$ReadinessTrace.execution_allowed } else { $false }
+    $ListenerState.last_readiness_valid = if ($ReadinessTrace.PSObject.Properties['valid']) { [bool]$ReadinessTrace.valid } else { $false }
+    $ListenerState.last_readiness_recorded_at = (Get-Date).ToUniversalTime().ToString('o')
+}
+
+function Clear-BlockedRecoveryState {
+    param([Parameter(Mandatory = $true)]$ListenerState)
+
+    $ListenerState.blocked_resume_request_id = ''
+    $ListenerState.blocked_resume_request_signature = ''
+    $ListenerState.blocked_resume_task_id = ''
+    $ListenerState.blocked_resume_objective_id = ''
+    $ListenerState.blocked_resume_correlation_id = ''
+    $ListenerState.blocked_resume_action = ''
+    $ListenerState.blocked_resume_reason_code = ''
+    $ListenerState.blocked_resume_summary = ''
+    $ListenerState.blocked_resume_recorded_at = ''
+    $ListenerState.blocked_resume_retry_attempted = $false
+    $ListenerState.blocked_resume_retry_attempted_at = ''
+}
+
+function Save-BlockedRecoveryState {
+    param(
+        [Parameter(Mandatory = $true)]$ListenerState,
+        [string]$RequestId = '',
+        [string]$RequestSignature = '',
+        [string]$TaskId = '',
+        [string]$ObjectiveId = '',
+        [string]$CorrelationId = '',
+        [string]$Action = '',
+        [string]$ReasonCode = '',
+        [string]$Summary = '',
+        [AllowNull()]$ReadinessTrace = $null
+    )
+
+    $ListenerState.blocked_resume_request_id = [string]$RequestId
+    $ListenerState.blocked_resume_request_signature = [string]$RequestSignature
+    $ListenerState.blocked_resume_task_id = [string]$TaskId
+    $ListenerState.blocked_resume_objective_id = [string]$ObjectiveId
+    $ListenerState.blocked_resume_correlation_id = [string]$CorrelationId
+    $ListenerState.blocked_resume_action = [string]$Action
+    $ListenerState.blocked_resume_reason_code = [string]$ReasonCode
+    $ListenerState.blocked_resume_summary = [string]$Summary
+    $ListenerState.blocked_resume_recorded_at = (Get-Date).ToUniversalTime().ToString('o')
+    $ListenerState.blocked_resume_retry_attempted = $false
+    $ListenerState.blocked_resume_retry_attempted_at = ''
+    Set-ListenerReadinessSnapshot -ListenerState $ListenerState -ReadinessTrace $ReadinessTrace
+}
+
+function Invoke-BlockedRecoveryContinuationIfNeeded {
+    param(
+        [Parameter(Mandatory = $true)]$ListenerState,
+        [Parameter(Mandatory = $true)][string]$ListenerStatePath,
+        [Parameter(Mandatory = $true)][string]$TodScript,
+        [AllowNull()]$IdleWakeupState = $null,
+        [string]$IdleWakeupStatePath = ''
+    )
+
+    $requestId = if ($ListenerState.PSObject.Properties['blocked_resume_request_id']) { [string]$ListenerState.blocked_resume_request_id } else { '' }
+    $taskId = if ($ListenerState.PSObject.Properties['blocked_resume_task_id']) { [string]$ListenerState.blocked_resume_task_id } else { '' }
+    $objectiveId = if ($ListenerState.PSObject.Properties['blocked_resume_objective_id']) { [string]$ListenerState.blocked_resume_objective_id } else { '' }
+    $action = if ($ListenerState.PSObject.Properties['blocked_resume_action'] -and -not [string]::IsNullOrWhiteSpace([string]$ListenerState.blocked_resume_action)) { [string]$ListenerState.blocked_resume_action } else { 'run-bridge-request' }
+
+    if ([string]::IsNullOrWhiteSpace($taskId)) {
+        return [pscustomobject]@{ resumed = $false; attempted = $false; reason = 'no_blocked_task' }
+    }
+
+    if ($ListenerState.PSObject.Properties['blocked_resume_retry_attempted'] -and [bool]$ListenerState.blocked_resume_retry_attempted) {
+        return [pscustomobject]@{ resumed = $false; attempted = $false; reason = 'retry_already_attempted'; request_id = $requestId; task_id = $taskId; objective_id = $objectiveId }
+    }
+
+    $previousPolicyOutcome = if ($ListenerState.PSObject.Properties['last_readiness_policy_outcome']) { [string]$ListenerState.last_readiness_policy_outcome } else { '' }
+    $previousExecutionAllowed = if ($ListenerState.PSObject.Properties['last_readiness_execution_allowed']) { [bool]$ListenerState.last_readiness_execution_allowed } else { $false }
+    $currentReadiness = Get-ExecutionReadinessTrace -TodScriptAbs $TodScript -Action $action
+    $currentExecutionAllowed = ($null -ne $currentReadiness -and $currentReadiness.PSObject.Properties['execution_allowed'] -and [bool]$currentReadiness.execution_allowed)
+    $currentValid = ($null -ne $currentReadiness -and $currentReadiness.PSObject.Properties['valid'] -and [bool]$currentReadiness.valid)
+    $currentPolicyBlocked = ($null -ne $currentReadiness -and $currentReadiness.PSObject.Properties['policy_outcome'] -and [string]::Equals([string]$currentReadiness.policy_outcome, 'block', [System.StringComparison]::OrdinalIgnoreCase))
+    $previousBlocked = ([string]::Equals($previousPolicyOutcome, 'block', [System.StringComparison]::OrdinalIgnoreCase) -or (-not $previousExecutionAllowed))
+    $recovered = ($previousBlocked -and $currentExecutionAllowed -and $currentValid -and (-not $currentPolicyBlocked))
+    $eventPath = [System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($ListenerStatePath), 'TOD_BLOCKED_RECOVERY_EVENT.latest.json')
+
+    Set-ListenerReadinessSnapshot -ListenerState $ListenerState -ReadinessTrace $currentReadiness
+
+    if (-not $recovered) {
+        Write-JsonFile -PathValue $ListenerStatePath -Payload $ListenerState
+        return [pscustomobject]@{ resumed = $false; attempted = $false; reason = 'readiness_not_recovered'; request_id = $requestId; task_id = $taskId; objective_id = $objectiveId; readiness = $currentReadiness }
+    }
+
+    $attemptedAt = (Get-Date).ToUniversalTime().ToString('o')
+    $ListenerState.blocked_resume_retry_attempted = $true
+    $ListenerState.blocked_resume_retry_attempted_at = $attemptedAt
+
+    try {
+        $engineerRunRaw = & $TodScript engineer-run -ObjectiveId $objectiveId -TaskId $taskId -Top 5 2>&1
+        $engineerRun = ($engineerRunRaw -join '') | ConvertFrom-Json -ErrorAction SilentlyContinue
+        $ListenerState.last_execution_at = $attemptedAt
+
+        if ($null -ne $IdleWakeupState) {
+            $IdleWakeupState.last_engineer_run_signature = ('{0}|{1}|recovery_resume|{2}' -f $objectiveId, $taskId, $attemptedAt)
+            $IdleWakeupState.last_engineer_run_at = $attemptedAt
+            if (-not [string]::IsNullOrWhiteSpace($IdleWakeupStatePath)) {
+                Write-JsonFile -PathValue $IdleWakeupStatePath -Payload $IdleWakeupState
+            }
+        }
+
+        Write-JsonFile -PathValue $ListenerStatePath -Payload $ListenerState
+        Write-JsonFile -PathValue $eventPath -Payload ([pscustomobject]@{
+            generated_at = $attemptedAt
+            source = 'tod-blocked-recovery-v1'
+            status = 'resumed'
+            recovery_transition = 'blocked_to_valid'
+            request_id = $requestId
+            task_id = $taskId
+            objective_id = $objectiveId
+            action = $action
+            retry_attempted = $true
+            previous_readiness = [pscustomobject]@{
+                policy_outcome = $previousPolicyOutcome
+                execution_allowed = $previousExecutionAllowed
+            }
+            current_readiness = $currentReadiness
+            engineer_run = $engineerRun
+        })
+
+        return [pscustomobject]@{ resumed = $true; attempted = $true; reason = 'blocked_task_resumed'; request_id = $requestId; task_id = $taskId; objective_id = $objectiveId; action = $action; readiness = $currentReadiness; engineer_run = $engineerRun }
+    }
+    catch {
+        $errorMessage = [string]$_.Exception.Message
+        Write-JsonFile -PathValue $ListenerStatePath -Payload $ListenerState
+        Write-JsonFile -PathValue $eventPath -Payload ([pscustomobject]@{
+            generated_at = $attemptedAt
+            source = 'tod-blocked-recovery-v1'
+            status = 'resume_failed'
+            recovery_transition = 'blocked_to_valid'
+            request_id = $requestId
+            task_id = $taskId
+            objective_id = $objectiveId
+            action = $action
+            retry_attempted = $true
+            current_readiness = $currentReadiness
+            error = $errorMessage
+        })
+
+        return [pscustomobject]@{ resumed = $false; attempted = $true; reason = 'resume_failed'; request_id = $requestId; task_id = $taskId; objective_id = $objectiveId; action = $action; readiness = $currentReadiness; error = $errorMessage }
+    }
+}
+
 # Self-improvement task catalog — rotated through when MIM has no pending work.
+$script:IdleAdvancementObjectiveTitle = 'TOD Autonomous Advancement Loop'
 $script:SelfImprovementTasks = @(
-    [pscustomobject]@{ title = "Run full regression suite and document any new failures or flakiness";                    scope = "scripts/TOD.ps1, tod/tests";                                              criteria = "Regression report produced; any failures triaged and recorded in failure taxonomy." }
-    [pscustomobject]@{ title = "Review engineering loop history and identify top-3 reliability gaps";                    scope = "scripts/Start-TODMimPacketListener.ps1, tod/data/state.json";             criteria = "Gap analysis written to journal; at least one concrete improvement task proposed." }
-    [pscustomobject]@{ title = "Audit MIM-TOD packet protocol for latency, retry, and edge-case coverage";              scope = "scripts/Start-TODMimPacketListener.ps1, scripts/Push-SyntheticResult.ps1"; criteria = "Protocol audit complete; any gaps filed as follow-on tasks." }
-    [pscustomobject]@{ title = "Verify quarantine, cadence-reset, and idle-wakeup improvements end-to-end";             scope = "scripts/Start-TODMimPacketListener.ps1, scripts/Start-TOD-UI.ps1";        criteria = "All three mechanisms exercised and pass a manual smoke check." }
-    [pscustomobject]@{ title = "Review failure taxonomy and propose routing-confidence penalty updates";                 scope = "scripts/TOD.ps1, tod/config/tod-config.json";                               criteria = "Taxonomy reviewed; penalty update either applied or documented as future work." }
-    [pscustomobject]@{ title = "Scan state.json for OOM risk and apply compaction if size exceeds 2 MiB";               scope = "tod/data/state.json, scripts/TOD.ps1";                                      criteria = "state.json size confirmed below 2 MiB or compacted; no data loss." }
+    [pscustomobject]@{ title = "Improve listener reliability and retry discipline";                                      scope = "scripts/Start-TODMimPacketListener.ps1, tests/TOD.PacketListener*.Tests.ps1"; criteria = "One concrete reliability improvement is implemented or a bounded follow-on task is added with evidence."; category = 'improve' }
+    [pscustomobject]@{ title = "Learn from recent engineer runs and summarize failure patterns";                         scope = "tod/data/state.json, scripts/TOD-Engineer.ps1, shared_state";               criteria = "A short failure-pattern summary is produced and at least one mitigation task is added or updated."; category = 'learn' }
+    [pscustomobject]@{ title = "Explore next-stage TOD autonomy opportunities while MIM is quiet";                      scope = "docs, scripts, shared_state";                                              criteria = "At least three candidate advancement directions are identified and one is converted into a bounded task."; category = 'explore' }
+    [pscustomobject]@{ title = "Run full regression suite and document any new failures or flakiness";                  scope = "scripts/TOD.ps1, tod/tests";                                                criteria = "Regression report produced; any failures triaged and recorded in failure taxonomy."; category = 'improve' }
+    [pscustomobject]@{ title = "Audit MIM-TOD packet protocol for latency, retry, and edge-case coverage";            scope = "scripts/Start-TODMimPacketListener.ps1, scripts/Push-SyntheticResult.ps1"; criteria = "Protocol audit complete; any gaps filed as follow-on tasks."; category = 'learn' }
+    [pscustomobject]@{ title = "Scan state.json for OOM risk and apply compaction if size exceeds 2 MiB";             scope = "tod/data/state.json, scripts/TOD.ps1";                                      criteria = "state.json size confirmed below 2 MiB or compacted; no data loss."; category = 'improve' }
 )
+
+function Get-IdleAdvancementObjective {
+    param([Parameter(Mandatory = $true)]$State)
+
+    if ($null -eq $State -or -not $State.PSObject.Properties['objectives']) {
+        return $null
+    }
+
+    $openStatuses = @('open', 'active', 'in_progress', 'planned')
+    $matchingObjective = $State.objectives | Where-Object {
+        $status = if ($_.PSObject.Properties['status']) { ([string]$_.status).ToLowerInvariant() } else { '' }
+        $title = if ($_.PSObject.Properties['title']) { [string]$_.title } else { '' }
+        $status -in $openStatuses -and $title -like ("{0}*" -f $script:IdleAdvancementObjectiveTitle)
+    } | Sort-Object updated_at, created_at -Descending | Select-Object -First 1
+
+    return $matchingObjective
+}
+
+function Get-NextSelfImprovementTaskTemplate {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)][string]$ObjectiveId,
+        [Parameter(Mandatory = $true)]$IdleWakeupState
+    )
+
+    $terminalStatuses = @('pass', 'reviewed_pass', 'completed', 'closed', 'cancelled')
+    $objectiveTasks = if ($State -and $State.PSObject.Properties['tasks']) {
+        @($State.tasks | Where-Object { [string]$_.objective_id -eq $ObjectiveId })
+    }
+    else {
+        @()
+    }
+
+    $pendingTitles = @($objectiveTasks | Where-Object {
+            $status = if ($_.PSObject.Properties['status']) { ([string]$_.status).ToLowerInvariant() } else { '' }
+            $status -notin $terminalStatuses
+        } | ForEach-Object { if ($_.PSObject.Properties['title']) { [string]$_.title } })
+
+    $catalog = @($script:SelfImprovementTasks)
+    if ($catalog.Count -eq 0) {
+        return $null
+    }
+
+    $startIndex = [Math]::Max(-1, [int]$IdleWakeupState.last_self_task_catalog_index)
+    for ($offset = 1; $offset -le $catalog.Count; $offset++) {
+        $index = ($startIndex + $offset) % $catalog.Count
+        $candidate = $catalog[$index]
+        if ($null -eq ($pendingTitles | Where-Object { [string]::Equals([string]$_, [string]$candidate.title, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1)) {
+            return [pscustomobject]@{
+                template = $candidate
+                index = $index
+            }
+        }
+    }
+
+    return $null
+}
+
+function Ensure-IdleAdvancementObjective {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)][string]$TodScript,
+        [Parameter(Mandatory = $true)][int]$IdleSeconds
+    )
+
+    $existingObjective = Get-IdleAdvancementObjective -State $State
+    if ($null -ne $existingObjective -and $existingObjective.PSObject.Properties['id']) {
+        return [pscustomobject]@{
+            objective_id = [string]$existingObjective.id
+            created = $false
+        }
+    }
+
+    try {
+        $newObjectiveRaw = & $TodScript new-objective `
+            -Title $script:IdleAdvancementObjectiveTitle `
+            -Description ("Autonomous idle-development loop created after {0}s of inactivity so TOD can improve, learn, and explore while waiting on MIM." -f $IdleSeconds) `
+            -SuccessCriteria "At least one bounded advancement task reaches reviewed_pass and produces a concrete follow-on improvement, learning note, or exploration artifact." 2>&1
+        $newObjective = ($newObjectiveRaw -join '') | ConvertFrom-Json -ErrorAction SilentlyContinue
+        $newObjectiveId = if ($newObjective -and $newObjective.PSObject.Properties['id']) { [string]$newObjective.id } elseif ($newObjective -and $newObjective.PSObject.Properties['local']) { [string]$newObjective.local.id } else { '' }
+        if (-not [string]::IsNullOrWhiteSpace($newObjectiveId)) {
+            return [pscustomobject]@{
+                objective_id = $newObjectiveId
+                created = $true
+            }
+        }
+    }
+    catch {
+        Write-Warning ("[TOD-LISTENER][IDLE-WAKEUP] Failed to create idle advancement objective: {0}" -f $_.Exception.Message)
+    }
+
+    return [pscustomobject]@{
+        objective_id = ''
+        created = $false
+    }
+}
 
 function Invoke-IdleWakeupIfNeeded {
     param(
@@ -498,6 +1989,7 @@ function Invoke-IdleWakeupIfNeeded {
         [Parameter(Mandatory=$true)][string]$IdleWakeupStatePath,
         [Parameter(Mandatory=$true)][string]$TodScript,
         [Parameter(Mandatory=$true)][string]$SyncScript,
+        [Parameter(Mandatory=$true)][string]$ReadinessScript,
         [Parameter(Mandatory=$true)][string]$HostAlias,
         [Parameter(Mandatory=$true)][string]$RemoteRoot,
         [Parameter(Mandatory=$true)][string]$SyncStageRoot,
@@ -518,6 +2010,11 @@ function Invoke-IdleWakeupIfNeeded {
 
     Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] Idle for {0}s (threshold={1}s). Running proactive wake-up." -f $idleSec, $IdleThreshold)
 
+    $readinessRefresh = Invoke-ExecutionReadinessRefresh -ReadinessScriptAbs $ReadinessScript -Reason "idle wakeup"
+    if ([bool]$readinessRefresh.ok) {
+        $IdleWakeupState.last_readiness_refresh_at = (Get-Date).ToUniversalTime().ToString("o")
+    }
+
     # Refresh shared state before evaluating using the same SSH-backed path as canonical publication.
     $null = Invoke-SharedStateSyncRefresh -SyncScriptAbs $SyncScript -HostAlias $HostAlias -RemoteRoot $RemoteRoot -SyncStageRoot $SyncStageRoot -Reason "idle wakeup"
 
@@ -530,11 +2027,13 @@ function Invoke-IdleWakeupIfNeeded {
     $roadmap      = if ($nextActions -and $nextActions.PSObject.Properties["tod_catchup_roadmap"])           { @($nextActions.tod_catchup_roadmap) } else { @() }
     $wakeupReason = "idle_check"
     $actionTaken  = ""
+    $engineerRun  = $null
 
     if ($null -ne $state) {
         $terminalStatuses = @("pass", "reviewed_pass", "completed", "closed", "cancelled")
         $currentTasks = @($state.tasks | Where-Object { [string]$_.objective_id -eq $currentObjId })
         $pendingTasks = @($currentTasks | Where-Object { [string]$_.status -notin $terminalStatuses })
+        $allPendingTasks = @($state.tasks | Where-Object { [string]$_.status -notin $terminalStatuses })
         $openObjective = $state.objectives | Where-Object { [string]$_.status -eq "open" } | Select-Object -First 1
 
         if ($currentTasks.Count -gt 0 -and $pendingTasks.Count -eq 0) {
@@ -581,44 +2080,79 @@ function Invoke-IdleWakeupIfNeeded {
             }
         }
 
-        # Self-improvement when no MIM work is pending
-        if ([string]::IsNullOrWhiteSpace($actionTaken) -and $null -ne $openObjective) {
-            $existingTitles = @($state.tasks | Where-Object { [string]$_.objective_id -eq [string]$openObjective.id } | ForEach-Object { [string]$_.title })
-            $selfTask = $script:SelfImprovementTasks | Where-Object {
-                $t = [string]$_.title
-                -not ($existingTitles | Where-Object { [string]$_ -like "*$($t.Substring(0, [math]::Min(40, $t.Length)))*" })
-            } | Select-Object -First 1
-
-            if ($null -ne $selfTask -and -not [string]::IsNullOrWhiteSpace([string]$IdleWakeupState.last_self_task_id)) {
-                $lastCreatedTitle = ($state.tasks | Where-Object { [string]$_.id -eq [string]$IdleWakeupState.last_self_task_id } | Select-Object -ExpandProperty title -First 1)
-                if ([string]::Equals([string]$selfTask.title, $lastCreatedTitle, [System.StringComparison]::OrdinalIgnoreCase)) {
-                    $selfTask = $null
-                }
+        # Self-improvement only when there is no actionable pending work left to resume.
+        if ([string]::IsNullOrWhiteSpace($actionTaken) -and $allPendingTasks.Count -eq 0) {
+            $advancementObjective = Ensure-IdleAdvancementObjective -State $state -TodScript $TodScript -IdleSeconds $idleSec
+            $advancementObjectiveId = if ($advancementObjective -and $advancementObjective.PSObject.Properties['objective_id']) { [string]$advancementObjective.objective_id } else { '' }
+            if ($advancementObjective.created -and -not [string]::IsNullOrWhiteSpace($advancementObjectiveId)) {
+                $actionTaken = "created_advancement_objective_$advancementObjectiveId"
+                $wakeupReason = 'self_improve_bootstrap'
+                Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] Created idle advancement objective: {0}" -f $advancementObjectiveId)
             }
 
-            if ($null -ne $selfTask) {
-                $wakeupReason = "self_improve"
-                Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] No pending MIM work. Creating self-improvement task: {0}" -f [string]$selfTask.title)
-                try {
-                    $taskRaw = & $TodScript add-task `
-                        -ObjectiveId ([string]$openObjective.id) `
-                        -Title ([string]$selfTask.title) `
-                        -Description ("Autonomous self-improvement task created by idle wake-up after {0}s of inactivity." -f $idleSec) `
-                        -Scope ([string]$selfTask.scope) `
-                        -AcceptanceCriteria ([string]$selfTask.criteria) 2>&1
-                    $newTask   = ($taskRaw -join "") | ConvertFrom-Json -ErrorAction SilentlyContinue
-                    $newTaskId = if ($newTask -and $newTask.PSObject.Properties["id"]) { [string]$newTask.id } else { "" }
-                    if (-not [string]::IsNullOrWhiteSpace($newTaskId)) {
-                        $IdleWakeupState.last_self_task_id = $newTaskId
-                        $actionTaken = "created_self_task_$newTaskId"
-                        Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] Self-improvement task created: {0}" -f $newTaskId)
+            if (-not [string]::IsNullOrWhiteSpace($advancementObjectiveId)) {
+                $taskTemplateSelection = Get-NextSelfImprovementTaskTemplate -State $state -ObjectiveId $advancementObjectiveId -IdleWakeupState $IdleWakeupState
+                if ($null -ne $taskTemplateSelection -and $taskTemplateSelection.template) {
+                    $selfTask = $taskTemplateSelection.template
+                    $category = if ($selfTask.PSObject.Properties['category']) { [string]$selfTask.category } else { 'self-improvement' }
+                    Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] No pending MIM work. Creating self-improvement task: {0}" -f [string]$selfTask.title)
+                    try {
+                        $taskRaw = & $TodScript add-task `
+                            -ObjectiveId $advancementObjectiveId `
+                            -Title ([string]$selfTask.title) `
+                            -Description ("Autonomous {0} task created by idle wake-up after {1}s of inactivity so TOD can improve while waiting on MIM." -f $category, $idleSec) `
+                            -Scope ([string]$selfTask.scope) `
+                            -AcceptanceCriteria ([string]$selfTask.criteria) 2>&1
+                        $newTask   = ($taskRaw -join '') | ConvertFrom-Json -ErrorAction SilentlyContinue
+                        $newTaskId = if ($newTask -and $newTask.PSObject.Properties['id']) { [string]$newTask.id } else { '' }
+                        if (-not [string]::IsNullOrWhiteSpace($newTaskId)) {
+                            $IdleWakeupState.last_self_task_id = $newTaskId
+                            $IdleWakeupState.last_self_task_catalog_index = [int]$taskTemplateSelection.index
+                            $actionTaken = "created_self_task_$newTaskId"
+                            $wakeupReason = 'self_improve'
+                            Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] Self-improvement task created: {0}" -f $newTaskId)
+                        }
+                    } catch {
+                        Write-Warning ("[TOD-LISTENER][IDLE-WAKEUP] Failed to create self-improvement task: {0}" -f $_.Exception.Message)
                     }
-                } catch {
-                    Write-Warning ("[TOD-LISTENER][IDLE-WAKEUP] Failed to create self-improvement task: {0}" -f $_.Exception.Message)
+                } else {
+                    $wakeupReason = 'self_improve_no_candidates'
+                    Write-Host '[TOD-LISTENER][IDLE-WAKEUP] No eligible self-improvement tasks remaining. Waiting for the next idle-development cycle.'
                 }
-            } else {
-                $wakeupReason = "self_improve_no_candidates"
-                Write-Host "[TOD-LISTENER][IDLE-WAKEUP] No eligible self-improvement tasks remaining. Waiting for MIM."
+            }
+        }
+
+        $stateAfterWakeup = Read-JsonFileIfExists -PathValue $statePath
+        if ($null -eq $stateAfterWakeup) {
+            $stateAfterWakeup = $state
+        }
+
+        $candidateTask = Get-IdleWakeupCandidateTask -State $stateAfterWakeup -CurrentObjectiveId $currentObjId
+        if ($null -ne $candidateTask -and $candidateTask.task) {
+            $candidateTaskId = if ($candidateTask.task.PSObject.Properties['id']) { [string]$candidateTask.task.id } else { '' }
+            $candidateObjectiveId = if (-not [string]::IsNullOrWhiteSpace([string]$candidateTask.objective_id)) { [string]$candidateTask.objective_id } elseif ($candidateTask.task.PSObject.Properties['objective_id']) { [string]$candidateTask.task.objective_id } else { '' }
+            $candidateTaskStatus = if ($candidateTask.task.PSObject.Properties['status']) { [string]$candidateTask.task.status } else { '' }
+            $candidateTaskUpdatedAt = if ($candidateTask.task.PSObject.Properties['updated_at']) { [string]$candidateTask.task.updated_at } elseif ($candidateTask.task.PSObject.Properties['created_at']) { [string]$candidateTask.task.created_at } else { '' }
+            $candidateSignature = ("{0}|{1}|{2}|{3}" -f $candidateObjectiveId, $candidateTaskId, $candidateTaskStatus, $candidateTaskUpdatedAt)
+
+            $sameEngineerSignature = [string]::Equals($candidateSignature, [string]$IdleWakeupState.last_engineer_run_signature, [System.StringComparison]::OrdinalIgnoreCase)
+            $engineerRunAgeSec = Get-IdleSeconds -Since ([string]$IdleWakeupState.last_engineer_run_at)
+            $engineerRepingSeconds = [Math]::Max($Cooldown, [Math]::Max(120, $IdleThreshold))
+
+            if (-not [string]::IsNullOrWhiteSpace($candidateTaskId) -and ((-not $sameEngineerSignature) -or ($engineerRunAgeSec -ge $engineerRepingSeconds))) {
+                Write-Host ("[TOD-LISTENER][IDLE-WAKEUP] Resuming pending task via engineer-run: {0}" -f $candidateTaskId)
+                try {
+                    $engineerRunRaw = & $TodScript engineer-run -ObjectiveId $candidateObjectiveId -TaskId $candidateTaskId -Top 5 2>&1
+                    $engineerRun = ($engineerRunRaw -join "") | ConvertFrom-Json -ErrorAction SilentlyContinue
+                    $IdleWakeupState.last_engineer_run_signature = $candidateSignature
+                    $IdleWakeupState.last_engineer_run_at = (Get-Date).ToUniversalTime().ToString("o")
+                    $ListenerState.last_execution_at = (Get-Date).ToUniversalTime().ToString("o")
+                    $actionTaken = "engineer_run_$candidateTaskId"
+                    $wakeupReason = if ($sameEngineerSignature) { 'resume_pending_task_reping' } else { 'resume_pending_task' }
+                }
+                catch {
+                    Write-Warning ("[TOD-LISTENER][IDLE-WAKEUP] Failed to run engineer-run for task {0}: {1}" -f $candidateTaskId, $_.Exception.Message)
+                }
             }
         }
     }
@@ -636,6 +2170,12 @@ function Invoke-IdleWakeupIfNeeded {
         idle_sec      = $idleSec
         threshold_sec = $IdleThreshold
         reason        = $wakeupReason
+        readiness_refresh = [pscustomobject]@{
+            ok = if ($null -ne $readinessRefresh) { [bool]$readinessRefresh.ok } else { $false }
+            reason = if ($null -ne $readinessRefresh -and $readinessRefresh.PSObject.Properties['reason']) { [string]$readinessRefresh.reason } else { '' }
+            detail = if ($null -ne $readinessRefresh -and $readinessRefresh.PSObject.Properties['detail']) { [string]$readinessRefresh.detail } else { '' }
+        }
+        engineer_run = if ($null -ne $engineerRun) { $engineerRun } else { $null }
         action_taken  = $actionTaken
         wakeup_count  = [int]$IdleWakeupState.wakeup_count
     })
@@ -661,6 +2201,178 @@ function Get-CoordinationPriority {
         3 { return "P0-ESC-2" }
         default { return "P0-CRITICAL" }
     }
+}
+
+function Publish-ContractViolationCoordination {
+    param(
+        [Parameter(Mandatory = $true)]$CoordinationEscalationState,
+        [Parameter(Mandatory = $true)][string]$CoordinationEscalationStatePath,
+        [Parameter(Mandatory = $true)][string]$LocalCoordinationRequestPath,
+        [Parameter(Mandatory = $true)][string]$RemoteCoordinationRequestPath,
+        [Parameter(Mandatory = $true)]$Connections,
+        [Parameter(Mandatory = $true)][string]$RequestId,
+        [string]$ObjectiveId = '',
+        [string]$TaskId = '',
+        [string]$CorrelationId = '',
+        [Parameter(Mandatory = $true)][string]$PacketKind,
+        [AllowNull()]$Packet = $null,
+        [AllowNull()]$Violation = $null,
+        [string]$Action = '',
+        [AllowNull()]$BridgeRuntime = $null,
+        [string]$RuntimeViolationPath = ''
+    )
+
+    $utcNow = (Get-Date).ToUniversalTime()
+    $violationEntries = @()
+    if ($Violation -and $Violation.PSObject.Properties['violations']) {
+        foreach ($entry in @($Violation.violations)) {
+            if ($null -eq $entry) { continue }
+            $violationEntries += [pscustomobject]@{
+                code = if ($entry.PSObject.Properties['code']) { [string]$entry.code } else { '' }
+                detail = if ($entry.PSObject.Properties['detail']) { [string]$entry.detail } else { '' }
+                field = if ($entry.PSObject.Properties['field']) { [string]$entry.field } else { '' }
+                expected = if ($entry.PSObject.Properties['expected']) { [string]$entry.expected } else { '' }
+                actual = if ($entry.PSObject.Properties['actual']) { [string]$entry.actual } else { '' }
+            }
+        }
+    }
+
+    $packetKindLabel = [string]$PacketKind
+    $packetKindIssueCode = if ([string]::IsNullOrWhiteSpace($packetKindLabel)) { 'unknown' } else { $packetKindLabel.ToLowerInvariant() }
+    $violationSummary = if ($violationEntries.Count -gt 0) {
+        ($violationEntries | ForEach-Object { [string]$_.code + ':' + [string]$_.detail }) -join '; '
+    }
+    else {
+        'runtime_contract_validation_failed'
+    }
+    $issueCode = 'runtime_contract_violation_' + $packetKindIssueCode
+
+    if (
+        -not [string]::Equals([string]$CoordinationEscalationState.pending_request_id, [string]$RequestId, [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([string]$CoordinationEscalationState.pending_issue_code, $issueCode, [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals([string]$CoordinationEscalationState.pending_issue_summary, $violationSummary, [System.StringComparison]::Ordinal)
+    ) {
+        $CoordinationEscalationState.pending_request_id = [string]$RequestId
+        $CoordinationEscalationState.pending_issue_code = $issueCode
+        $CoordinationEscalationState.pending_issue_summary = $violationSummary
+        $CoordinationEscalationState.pending_since = $utcNow.ToString('o')
+        $CoordinationEscalationState.last_emit_at = ''
+        $CoordinationEscalationState.last_emitted_level = 0
+        $CoordinationEscalationState.emit_count = 0
+    }
+
+    $pendingSinceUtc = Get-DateOrMinValue -Value ([string]$CoordinationEscalationState.pending_since)
+    if ($pendingSinceUtc -eq [datetime]::MinValue) {
+        $pendingSinceUtc = $utcNow
+        $CoordinationEscalationState.pending_since = $pendingSinceUtc.ToString('o')
+    }
+
+    $elapsedMinutes = 0
+    try {
+        $elapsedMinutes = [int][math]::Floor((New-TimeSpan -Start $pendingSinceUtc -End $utcNow).TotalMinutes)
+    }
+    catch {
+        $elapsedMinutes = 0
+    }
+
+    $targetEscalationLevel = [math]::Max(1, ([int][math]::Floor($elapsedMinutes / 1) + 1))
+    $lastEmitUtc = Get-DateOrMinValue -Value ([string]$CoordinationEscalationState.last_emit_at)
+    $minutesSinceLastEmit = if ($lastEmitUtc -eq [datetime]::MinValue) { 9999 } else { [int][math]::Floor((New-TimeSpan -Start $lastEmitUtc -End $utcNow).TotalMinutes) }
+    $shouldEmitCoordination = ($CoordinationEscalationState.last_emitted_level -lt $targetEscalationLevel) -or ($minutesSinceLastEmit -ge 1)
+    if (-not $shouldEmitCoordination) {
+        return $null
+    }
+
+    $coordinationRequest = [pscustomobject]@{
+        generated_at = $utcNow.ToString('o')
+        source = 'tod-mim-coordination-request-v1'
+        priority = Get-CoordinationPriority -EscalationLevel $targetEscalationLevel
+        escalation_level = [int]$targetEscalationLevel
+        request_id = [string]$RequestId
+        objective_id = [string]$ObjectiveId
+        task_id = [string]$TaskId
+        correlation_id = [string]$CorrelationId
+        issue_code = $issueCode
+        issue_summary = ('TOD rejected {0} because runtime contract validation failed.' -f $packetKindLabel.ToUpperInvariant())
+        packet_kind = $packetKindIssueCode
+        contract_delta = @($violationEntries)
+        evidence = [pscustomobject]@{
+            command_status = 'contract_violation_rejected'
+            action = [string]$Action
+            packet_status = if ($Packet -and $Packet.PSObject.Properties['status']) { [string]$Packet.status } else { '' }
+            result_reason_code = if ($Packet -and $Packet.PSObject.Properties['result_reason_code']) { [string]$Packet.result_reason_code } else { '' }
+            runtime_violation_path = [string]$RuntimeViolationPath
+            summary = $violationSummary
+        }
+        requested_action = 'Align the shared runtime contract with TOD, acknowledge the mismatch, and reissue only after the packet schema/fields are corrected.'
+        required_ack = [pscustomobject]@{
+            ack_file = 'MIM_TOD_COORDINATION_ACK.latest.json'
+            ack_fields = @('acknowledged', 'acknowledged_at', 'request_id', 'decision', 'reason', 'target_dispatch_task_id')
+            timeout_seconds = 60
+        }
+        bridge_runtime = $BridgeRuntime
+    }
+
+    Write-JsonFile -PathValue $LocalCoordinationRequestPath -Payload $coordinationRequest
+    $coordinationJson = Get-Content -Path $LocalCoordinationRequestPath -Raw
+    Write-RemoteFileFromText -Connections $Connections -RemotePath $RemoteCoordinationRequestPath -Content $coordinationJson
+
+    $CoordinationEscalationState.last_emit_at = $utcNow.ToString('o')
+    $CoordinationEscalationState.last_emitted_level = [int]$targetEscalationLevel
+    $CoordinationEscalationState.emit_count = [int]$CoordinationEscalationState.emit_count + 1
+    Write-JsonFile -PathValue $CoordinationEscalationStatePath -Payload $CoordinationEscalationState
+
+    return $coordinationRequest
+}
+
+function Publish-ResolvedCoordination {
+    param(
+        [Parameter(Mandatory = $true)]$CoordinationEscalationState,
+        [Parameter(Mandatory = $true)][string]$CoordinationEscalationStatePath,
+        [Parameter(Mandatory = $true)][string]$LocalCoordinationRequestPath,
+        [Parameter(Mandatory = $true)][string]$RemoteCoordinationRequestPath,
+        [Parameter(Mandatory = $true)]$Connections,
+        [Parameter(Mandatory = $true)][string]$RequestId,
+        [string]$ObjectiveId = '',
+        [string]$IssueCode = '',
+        [string]$IssueSummary = '',
+        [AllowNull()]$Evidence = $null,
+        [string]$ResolutionReason = '',
+        [AllowNull()]$BridgeRuntime = $null,
+        [string]$ResolutionDecision = 'auto_resolved'
+    )
+
+    Clear-CoordinationEscalationState -State $CoordinationEscalationState -Reason $ResolutionReason -RequestId $RequestId
+    $CoordinationEscalationState.last_ack_decision = $ResolutionDecision
+    Write-JsonFile -PathValue $CoordinationEscalationStatePath -Payload $CoordinationEscalationState
+
+    $coordinationResolved = [pscustomobject]@{
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        source = 'tod-mim-coordination-request-v1'
+        status = 'resolved'
+        priority = 'none'
+        escalation_level = 0
+        request_id = [string]$RequestId
+        objective_id = [string]$ObjectiveId
+        issue_code = [string]$IssueCode
+        issue_summary = [string]$IssueSummary
+        evidence = $Evidence
+        requested_action = 'none'
+        resolution_reason = [string]$ResolutionReason
+        resolved_at = (Get-Date).ToUniversalTime().ToString('o')
+        bridge_runtime = $BridgeRuntime
+    }
+
+    Write-JsonFile -PathValue $LocalCoordinationRequestPath -Payload $coordinationResolved
+    try {
+        $coordinationResolvedJson = Get-Content -Path $LocalCoordinationRequestPath -Raw
+        Write-RemoteFileFromText -Connections $Connections -RemotePath $RemoteCoordinationRequestPath -Content $coordinationResolvedJson
+    }
+    catch {
+        Write-Warning ('[TOD-LISTENER] Unable to publish resolved coordination status to remote: {0}' -f $_.Exception.Message)
+    }
+
+    return $coordinationResolved
 }
 
 function Get-StateFileFootprint {
@@ -824,7 +2536,8 @@ function Publish-CommandStatus {
         [AllowNull()]$AckPacket = $null,
         [AllowNull()]$ResultPacket = $null,
         [AllowNull()]$BridgeRuntime = $null,
-        [AllowNull()]$StaleGuard = $null
+        [AllowNull()]$StaleGuard = $null,
+        [AllowNull()]$DecisionPayload = $null
     )
 
     try {
@@ -859,6 +2572,11 @@ function Publish-CommandStatus {
         $ListenerState | Add-Member -NotePropertyName last_observed_task_id -NotePropertyValue ([string]$effectiveTaskId) -Force
         $ListenerState | Add-Member -NotePropertyName last_observed_correlation_id -NotePropertyValue ([string]$effectiveCorrelationId) -Force
         $ListenerState | Add-Member -NotePropertyName last_stale_guard -NotePropertyValue $effectiveStaleGuard -Force
+        if ($null -ne $DecisionPayload -and $DecisionPayload.PSObject.Properties['decision_outcome']) {
+            $decisionReasonCode = if ($DecisionPayload.PSObject.Properties['reason_code']) { [string]$DecisionPayload.reason_code } else { '' }
+            $ListenerState | Add-Member -NotePropertyName last_decision_outcome -NotePropertyValue ([string]$DecisionPayload.decision_outcome) -Force
+            $ListenerState | Add-Member -NotePropertyName last_decision_reason_code -NotePropertyValue $decisionReasonCode -Force
+        }
 
         if ($null -ne $triggerContext) {
             $ListenerState | Add-Member -NotePropertyName last_observed_trigger_type -NotePropertyValue ([string]$triggerContext.trigger) -Force
@@ -924,6 +2642,7 @@ function Publish-CommandStatus {
             result = $resultPayload
             bridge_runtime = $BridgeRuntime
             stale_guard = $effectiveStaleGuard
+            decision = $DecisionPayload
         }
 
         Write-JsonFile -PathValue $LocalPath -Payload $payload
@@ -943,6 +2662,58 @@ function Publish-CommandStatus {
     }
 }
 
+function Publish-ExecutionDecision {
+    param(
+        [Parameter(Mandatory = $true)][string]$LocalPath,
+        [string]$RemotePath = '',
+        [AllowNull()]$Connections = $null,
+        [Parameter(Mandatory = $true)]$DecisionPayload,
+        [string]$RequestId = '',
+        [string]$TaskId = '',
+        [string]$CorrelationId = '',
+        [AllowNull()]$TriggerPacket = $null,
+        [AllowNull()]$BridgeRuntime = $null
+    )
+
+    try {
+        $triggerContext = Get-TriggerContext -TriggerPacket $TriggerPacket
+        $payload = [pscustomobject]@{
+            generated_at = Get-UtcNowString
+            source = 'tod-mim-execution-decision-v1'
+            request_id = [string]$RequestId
+            task_id = [string](Get-NonEmptyPacketValue -Primary ([string]$TaskId) -Fallback ([string]$RequestId))
+            correlation_id = [string](Get-NonEmptyPacketValue -Primary ([string]$CorrelationId) -Fallback ([string]$RequestId))
+            decision_outcome = if ($DecisionPayload.PSObject.Properties['decision_outcome']) { [string]$DecisionPayload.decision_outcome } else { '' }
+            reason_code = if ($DecisionPayload.PSObject.Properties['reason_code']) { [string]$DecisionPayload.reason_code } else { '' }
+            summary = if ($DecisionPayload.PSObject.Properties['summary']) { [string]$DecisionPayload.summary } else { '' }
+            ack_state = if ($DecisionPayload.PSObject.Properties['decision_outcome'] -and [string]::Equals([string]$DecisionPayload.decision_outcome, 'execute', [System.StringComparison]::OrdinalIgnoreCase)) { 'accepted' } elseif ($DecisionPayload.PSObject.Properties['decision_outcome'] -and [string]::Equals([string]$DecisionPayload.decision_outcome, 'acknowledge_and_wait_on_dependency', [System.StringComparison]::OrdinalIgnoreCase)) { 'acknowledged_waiting_dependency' } else { 'not_acked' }
+            execution_state = if ($DecisionPayload.PSObject.Properties['decision_outcome'] -and [string]::Equals([string]$DecisionPayload.decision_outcome, 'execute', [System.StringComparison]::OrdinalIgnoreCase)) { 'ready_to_execute' } elseif ($DecisionPayload.PSObject.Properties['decision_outcome'] -and [string]::Equals([string]$DecisionPayload.decision_outcome, 'acknowledge_and_wait_on_dependency', [System.StringComparison]::OrdinalIgnoreCase)) { 'waiting_on_dependency' } elseif ($DecisionPayload.PSObject.Properties['decision_outcome'] -and [string]::Equals([string]$DecisionPayload.decision_outcome, 'escalate_hard_boundary', [System.StringComparison]::OrdinalIgnoreCase)) { 'awaiting_human_boundary' } else { 'rejected' }
+            boundary_class = if ($DecisionPayload.PSObject.Properties['boundary_class']) { [string]$DecisionPayload.boundary_class } else { '' }
+            requested_executor = if ($DecisionPayload.PSObject.Properties['requested_executor']) { [string]$DecisionPayload.requested_executor } else { '' }
+            requested_objective_id = if ($DecisionPayload.PSObject.Properties['requested_objective_id']) { [string]$DecisionPayload.requested_objective_id } else { '' }
+            canonical_objective_id = if ($DecisionPayload.PSObject.Properties['canonical_objective_id']) { [string]$DecisionPayload.canonical_objective_id } else { '' }
+            live_request_promotion_applied = if ($DecisionPayload.PSObject.Properties['live_request_promotion_applied']) { [bool]$DecisionPayload.live_request_promotion_applied } else { $false }
+            unmet_dependency = if ($DecisionPayload.PSObject.Properties['unmet_dependency']) { [string]$DecisionPayload.unmet_dependency } else { '' }
+            blocker_classification = if ($DecisionPayload.PSObject.Properties['blocker_classification']) { [string]$DecisionPayload.blocker_classification } else { '' }
+            next_step_recommendation = if ($DecisionPayload.PSObject.Properties['next_step_recommendation']) { [string]$DecisionPayload.next_step_recommendation } else { '' }
+            requires_human = if ($DecisionPayload.PSObject.Properties['requires_human']) { [bool]$DecisionPayload.requires_human } else { $false }
+            execution_readiness = if ($DecisionPayload.PSObject.Properties['execution_readiness']) { $DecisionPayload.execution_readiness } else { $null }
+            validation_reasoning = if ($DecisionPayload.PSObject.Properties['validation_reasoning']) { @($DecisionPayload.validation_reasoning | ForEach-Object { [string]$_ }) } else { @() }
+            trigger = $triggerContext
+            bridge_runtime = $BridgeRuntime
+        }
+
+        Write-JsonFile -PathValue $LocalPath -Payload $payload -Depth 100
+        if ($Connections -and -not [string]::IsNullOrWhiteSpace($RemotePath)) {
+            $payloadJson = Get-Content -Path $LocalPath -Raw
+            Write-RemoteFileFromText -Connections $Connections -RemotePath $RemotePath -Content $payloadJson
+        }
+    }
+    catch {
+        Write-Warning ("[TOD-LISTENER] Unable to publish execution decision artifact: {0}" -f $_.Exception.Message)
+    }
+}
+
 function Get-RequestSignature {
     param(
         [Parameter(Mandatory = $true)][string]$RequestPath,
@@ -955,7 +2726,7 @@ function Get-RequestSignature {
 
     if ($SemanticTaskPacket) {
         try {
-            $payload = Get-Content -Path $RequestPath -Raw | ConvertFrom-Json
+            $payload = ConvertFrom-JsonCaseInsensitiveSafe -Text (Get-Content -Path $RequestPath -Raw)
             $volatileFields = @(
                 'generated_at',
                 'emitted_at',
@@ -2063,20 +3834,48 @@ function Invoke-SharedStateSyncRefresh {
         [Parameter(Mandatory = $true)][string]$HostAlias,
         [Parameter(Mandatory = $true)][string]$RemoteRoot,
         [Parameter(Mandatory = $true)][string]$SyncStageRoot,
+        [string]$ListenerRequestPath = "",
         [string]$Reason = ""
     )
 
     $syncError = ""
     try {
-        $null = powershell -NoProfile -ExecutionPolicy Bypass -File $SyncScriptAbs -RefreshMimContextFromSsh -PublishTodStatusToMimArm -MimSshHost $HostAlias -MimSshSharedRoot $RemoteRoot -MimSshStagingRoot $SyncStageRoot 2>&1
-        if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-            $syncError = ("sync exited {0}" -f $LASTEXITCODE)
-            if ([string]::IsNullOrWhiteSpace($Reason)) {
-                Write-Warning ("[TOD-LISTENER] Shared-state sync exited {0}; continuing with latest available status." -f $LASTEXITCODE)
+        $syncRepoRoot = Split-Path -Parent (Split-Path -Parent $SyncScriptAbs)
+        $syncArgs = @(
+            '-NoProfile'
+            '-ExecutionPolicy'
+            'Bypass'
+            '-File'
+            $SyncScriptAbs
+            '-RefreshMimContextFromSsh'
+            '-PublishTodStatusToMimArm'
+            '-MimSshHost'
+            $HostAlias
+            '-MimSshSharedRoot'
+            $RemoteRoot
+            '-MimSshStagingRoot'
+            $SyncStageRoot
+        )
+
+        if (-not [string]::IsNullOrWhiteSpace($ListenerRequestPath) -and (Test-Path -Path $ListenerRequestPath)) {
+            $syncArgs += @('-ListenerRequestPath', $ListenerRequestPath)
+        }
+
+        Push-Location $syncRepoRoot
+        try {
+            $null = powershell @syncArgs 2>&1
+            if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+                $syncError = ("sync exited {0}" -f $LASTEXITCODE)
+                if ([string]::IsNullOrWhiteSpace($Reason)) {
+                    Write-Warning ("[TOD-LISTENER] Shared-state sync exited {0}; continuing with latest available status." -f $LASTEXITCODE)
+                }
+                else {
+                    Write-Warning ("[TOD-LISTENER] Shared-state sync exited {0} during {1}; continuing with latest available status." -f $LASTEXITCODE, $Reason)
+                }
             }
-            else {
-                Write-Warning ("[TOD-LISTENER] Shared-state sync exited {0} during {1}; continuing with latest available status." -f $LASTEXITCODE, $Reason)
-            }
+        }
+        finally {
+            Pop-Location
         }
     }
     catch {
@@ -2897,53 +4696,7 @@ function Invoke-RequestExecution {
     }
 
     $startUtc = (Get-Date).ToUniversalTime().ToString("o")
-
-    $readinessRaw = & $TodScriptAbs -Action "get-execution-readiness" -Top 1 2>&1
-    $readinessPayload = $null
-    try {
-        $readinessPayload = ($readinessRaw | ConvertFrom-Json)
-    }
-    catch {
-        $readinessPayload = $null
-    }
-
-    $readinessTrace = $null
-    if ($null -ne $readinessPayload -and $readinessPayload.PSObject.Properties["readiness"]) {
-        $policyOutcome = "allow"
-        $blockActions = if ($readinessPayload.PSObject.Properties["policy"] -and $readinessPayload.policy.PSObject.Properties["block_actions"]) { @($readinessPayload.policy.block_actions | ForEach-Object { [string]$_ }) } else { @() }
-        $degradeActions = if ($readinessPayload.PSObject.Properties["policy"] -and $readinessPayload.policy.PSObject.Properties["degrade_actions"]) { @($readinessPayload.policy.degrade_actions | ForEach-Object { [string]$_ }) } else { @() }
-        $blockStates = if ($readinessPayload.PSObject.Properties["policy"] -and $readinessPayload.policy.PSObject.Properties["block_states"]) { @($readinessPayload.policy.block_states | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @("stale", "invalid", "unknown") }
-        $degradeStates = if ($readinessPayload.PSObject.Properties["policy"] -and $readinessPayload.policy.PSObject.Properties["degrade_states"]) { @($readinessPayload.policy.degrade_states | ForEach-Object { ([string]$_).ToLowerInvariant() }) } else { @("degraded", "stale", "invalid", "unknown") }
-        $readinessValid = if ($readinessPayload.readiness.PSObject.Properties["valid"]) { [bool]$readinessPayload.readiness.valid } else { $false }
-        $executionAllowed = if ($readinessPayload.readiness.PSObject.Properties["execution_allowed"]) { [bool]$readinessPayload.readiness.execution_allowed } else { $false }
-        $readinessStatus = if ($readinessPayload.readiness.PSObject.Properties["status"]) { ([string]$readinessPayload.readiness.status).ToLowerInvariant() } else { "unknown" }
-        if (@($blockActions | Where-Object { [string]::Equals($_, $action, [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0 -and ($blockStates -contains $readinessStatus)) {
-            $policyOutcome = "block"
-        }
-        elseif (@($degradeActions | Where-Object { [string]::Equals($_, $action, [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0 -and ($degradeStates -contains $readinessStatus)) {
-            $policyOutcome = "degrade"
-        }
-
-        $readinessTrace = [pscustomobject]@{
-            status = if ($readinessPayload.readiness.PSObject.Properties["status"]) { [string]$readinessPayload.readiness.status } else { "unknown" }
-            source = if ($readinessPayload.readiness.PSObject.Properties["reason"]) { [string]$readinessPayload.readiness.reason } else { "unknown" }
-            detail = if ($readinessPayload.readiness.PSObject.Properties["detail"]) { [string]$readinessPayload.readiness.detail } else { "" }
-            valid = $readinessValid
-            execution_allowed = $executionAllowed
-            authoritative = if ($readinessPayload.readiness.PSObject.Properties["authoritative"]) { [bool]$readinessPayload.readiness.authoritative } else { $true }
-            freshness_state = if ($readinessPayload.readiness.PSObject.Properties["freshness_state"]) { [string]$readinessPayload.readiness.freshness_state } else { "unknown" }
-            signal_name = if ($readinessPayload.PSObject.Properties["signal_name"]) { [string]$readinessPayload.signal_name } else { "execution-readiness" }
-            evaluated_action = $action
-            policy_outcome = $policyOutcome
-            decision_path = @(
-                "signal:execution-readiness",
-                    "status:$(if ($readinessPayload.readiness.PSObject.Properties['status']) { [string]$readinessPayload.readiness.status } else { 'unknown' })",
-                    "source:$(if ($readinessPayload.readiness.PSObject.Properties['reason']) { [string]$readinessPayload.readiness.reason } else { 'unknown' })",
-                "action:$action",
-                "policy_outcome:$policyOutcome"
-            )
-        }
-    }
+    $readinessTrace = Get-ExecutionReadinessTrace -TodScriptAbs $TodScriptAbs -Action $action
 
     # For get-state-bus: always return lightweight; TOD state.json is too large
     # to deserialize safely in-process. Any action that would load the full state
@@ -2997,8 +4750,45 @@ function Invoke-RequestExecution {
     if ($Request.PSObject.Properties["content"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.content)) {
         $todArgs["Content"] = [string]$Request.content
     }
+    if ($Request.PSObject.Properties["title"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.title)) {
+        $todArgs["Title"] = [string]$Request.title
+    }
+    if ($Request.PSObject.Properties["description"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.description)) {
+        $todArgs["Description"] = [string]$Request.description
+    }
+    if ($Request.PSObject.Properties["priority"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.priority)) {
+        $todArgs["Priority"] = [string]$Request.priority
+    }
+    if ($Request.PSObject.Properties["scope"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.scope)) {
+        $todArgs["Scope"] = [string]$Request.scope
+    }
+    if ($Request.PSObject.Properties["acceptance_criteria"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.acceptance_criteria)) {
+        $todArgs["AcceptanceCriteria"] = [string]$Request.acceptance_criteria
+    }
+    if ($Request.PSObject.Properties["success_criteria"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.success_criteria)) {
+        $todArgs["SuccessCriteria"] = [string]$Request.success_criteria
+    }
+    if ($Request.PSObject.Properties["assigned_executor"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.assigned_executor)) {
+        $todArgs["AssignedExecutor"] = [string]$Request.assigned_executor
+    }
+    if ($Request.PSObject.Properties["task_category"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_category)) {
+        $todArgs["TaskCategory"] = [string]$Request.task_category
+    }
     if ($Request.PSObject.Properties["apply_plan"] -and [bool]$Request.apply_plan) {
         $todArgs["ApplyPlan"] = $true
+    }
+    if ([string]::Equals($action, "run-bridge-request", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $bridgeRequestId = ""
+        if ($Request.PSObject.Properties["request_id"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.request_id)) {
+            $bridgeRequestId = [string]$Request.request_id
+        }
+        elseif ($Request.PSObject.Properties["task_id"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_id)) {
+            $bridgeRequestId = [string]$Request.task_id
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($bridgeRequestId)) {
+            $todArgs["RequestId"] = $bridgeRequestId
+        }
     }
 
     try {
@@ -3218,8 +5008,11 @@ function Invoke-OptionalValidator {
 }
 
 $envAbs = Get-LocalPath -PathValue $EnvFile
+$dialogScriptAbs = Get-LocalPath -PathValue $DialogScriptPath
+$conversationProviderScriptAbs = Join-Path $PSScriptRoot 'Invoke-TODConversationProvider.ps1'
 $syncScriptAbs = Get-LocalPath -PathValue $SyncScriptPath
 $todScriptAbs = Get-LocalPath -PathValue $TodScriptPath
+$readinessScriptAbs = Get-LocalPath -PathValue $ReadinessScriptPath
 $validatorAbs = if ([string]::IsNullOrWhiteSpace($ValidatorScriptPath)) { "" } else { Get-LocalPath -PathValue $ValidatorScriptPath }
 $runtimeContractValidatorAbs = Get-LocalPath -PathValue $RuntimeContractValidatorScriptPath
 $stageAbs = Get-LocalPath -PathValue $StageDir
@@ -3233,6 +5026,7 @@ $localRuntimeViolationPath = Join-Path $stageAbs "TOD_MIM_RUNTIME_CONTRACT_VIOLA
 
 if (-not (Test-Path -Path $syncScriptAbs)) { throw "Sync script not found: $syncScriptAbs" }
 if (-not (Test-Path -Path $todScriptAbs)) { throw "TOD script not found: $todScriptAbs" }
+if (-not (Test-Path -Path $readinessScriptAbs)) { throw "Readiness script not found: $readinessScriptAbs" }
 if (-not (Test-Path -Path $envAbs)) { throw "Env file not found: $envAbs" }
 if (-not (Test-Path -Path $runtimeContractValidatorAbs)) { throw "Runtime contract validator not found: $runtimeContractValidatorAbs" }
 
@@ -3268,7 +5062,9 @@ $localGoOrderPath = Join-Path $stageAbs "MIM_TOD_GO_ORDER.latest.json"
 $localReviewPath = Join-Path $stageAbs "MIM_TOD_REVIEW_DECISION.latest.json"
 $localAckPath = Join-Path $stageAbs "TOD_MIM_TASK_ACK.latest.json"
 $localResultPath = Join-Path $stageAbs "TOD_MIM_TASK_RESULT.latest.json"
+$localTroubleshootingPath = Join-Path $stageAbs "TOD_MIM_TASK_TROUBLESHOOTING.latest.json"
 $localCommandStatusPath = Join-Path $stageAbs "TOD_MIM_COMMAND_STATUS.latest.json"
+$localDecisionPath = Join-Path $stageAbs "TOD_MIM_EXECUTION_DECISION.latest.json"
 $localJournalPath = Join-Path $stageAbs "TOD_LOOP_JOURNAL.latest.json"
 $localRemoteStatusFile = Join-Path $stageAbs "TOD_INTEGRATION_STATUS.latest.json"
 $localRemoteStatusAliasFile = Join-Path $stageAbs "TOD_integration_status.latest.json"
@@ -3281,6 +5077,8 @@ $localRegressionStallPath = Join-Path $stageAbs "TOD_REGRESSION_STALL_STATE.late
 $localStallAlertPath = Join-Path $stageAbs "TOD_MIM_STALL_ALERT.latest.json"
 $localCoordinationRequestPath = Join-Path $stageAbs "TOD_MIM_COORDINATION_REQUEST.latest.json"
 $localCoordinationAckPath = Join-Path $stageAbs "MIM_TOD_COORDINATION_ACK.latest.json"
+$localEmergencyRequestPath = Join-Path $stageAbs "TOD_MIM_EMERGENCY_REQUEST.latest.json"
+$localEmergencyAckPath = Join-Path $stageAbs "MIM_TOD_EMERGENCY_ACK.latest.json"
 $localCoordinationEscalationStatePath = Join-Path $stageAbs "TOD_MIM_COORDINATION_ESCALATION_STATE.latest.json"
 $localQuarantineStatePath = Join-Path $stageAbs "TOD_MIM_QUARANTINE_STATE.latest.json"
 $localIdleWakeupStatePath  = Join-Path $stageAbs "TOD_IDLE_WAKEUP_STATE.latest.json"
@@ -3292,7 +5090,9 @@ $remoteGoOrderPath = ("{0}/MIM_TOD_GO_ORDER.latest.json" -f $RemoteRoot.TrimEnd(
 $remoteReviewPath = ("{0}/MIM_TOD_REVIEW_DECISION.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteAckPath = ("{0}/TOD_MIM_TASK_ACK.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteResultPath = ("{0}/TOD_MIM_TASK_RESULT.latest.json" -f $RemoteRoot.TrimEnd('/'))
+$remoteTroubleshootingPath = ("{0}/TOD_MIM_TASK_TROUBLESHOOTING.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteCommandStatusPath = ("{0}/TOD_MIM_COMMAND_STATUS.latest.json" -f $RemoteRoot.TrimEnd('/'))
+$remoteDecisionPath = ("{0}/TOD_MIM_EXECUTION_DECISION.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteStatusPath = ("{0}/TOD_INTEGRATION_STATUS.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteStatusAliasPath = ("{0}/TOD_integration_status.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteJournalPath = ("{0}/TOD_LOOP_JOURNAL.latest.json" -f $RemoteRoot.TrimEnd('/'))
@@ -3304,6 +5104,8 @@ $remoteLivenessResponsePath = ("{0}/TOD_TO_MIM_PING.latest.json" -f $RemoteRoot.
 $remoteStallAlertPath = ("{0}/TOD_MIM_STALL_ALERT.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteCoordinationRequestPath = ("{0}/TOD_MIM_COORDINATION_REQUEST.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteCoordinationAckPath = ("{0}/MIM_TOD_COORDINATION_ACK.latest.json" -f $RemoteRoot.TrimEnd('/'))
+$remoteEmergencyRequestPath = ("{0}/TOD_MIM_EMERGENCY_REQUEST.latest.json" -f $RemoteRoot.TrimEnd('/'))
+$remoteEmergencyAckPath = ("{0}/MIM_TOD_EMERGENCY_ACK.latest.json" -f $RemoteRoot.TrimEnd('/'))
 
 $listenerState = New-ListenerState -ExistingState (Read-JsonFileIfExists -PathValue $listenerStatePath)
 $pythonCommand = Get-PythonCommand
@@ -3311,10 +5113,16 @@ $contractBinding = Get-ContractBindingMetadata -ContractDirPath $contractDirAbs 
 Write-RuntimeBindingState -StatePath $localRuntimeBindingStatePath -State (Read-RuntimeBindingState -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding)
 $regressionStallState = New-RegressionStallState -ExistingState (Read-JsonFileIfExists -PathValue $localRegressionStallPath)
 $coordinationEscalationState = New-CoordinationEscalationState -ExistingState (Read-JsonFileIfExists -PathValue $localCoordinationEscalationStatePath)
+$publishDialogRemoteByDefault = $true
+if ($PSBoundParameters.ContainsKey('PublishDialogRemote')) {
+    $publishDialogRemoteByDefault = [bool]$PublishDialogRemote
+}
 $quarantineState = New-QuarantineState -ExistingState (Read-JsonFileIfExists -PathValue $localQuarantineStatePath)
 $idleWakeupState  = New-IdleWakeupState  -ExistingState (Read-JsonFileIfExists -PathValue $localIdleWakeupStatePath)
 
-$listenerMutex = New-Object System.Threading.Mutex($false, $script:ListenerMutexName)
+$listenerMutexHandle = New-ListenerMutexHandle -PreferredName $script:ListenerMutexName -FallbackName $script:ListenerMutexFallbackName
+$listenerMutex = $listenerMutexHandle.mutex
+$script:ListenerMutexName = [string]$listenerMutexHandle.name
 $listenerHasHandle = $false
 
 try {
@@ -3367,6 +5175,7 @@ try {
         $livenessTriggerAltExists = Download-RemoteFile -Connections $connections -RemotePath $remoteLivenessTriggerAltPath -LocalPath $localLivenessTriggerAltPath
         $livenessPingExists = Download-RemoteFile -Connections $connections -RemotePath $remoteLivenessPingPath -LocalPath $localLivenessPingPath
         $coordinationAckExists = Download-RemoteFile -Connections $connections -RemotePath $remoteCoordinationAckPath -LocalPath $localCoordinationAckPath
+        $emergencyAckExists = Download-RemoteFile -Connections $connections -RemotePath $remoteEmergencyAckPath -LocalPath $localEmergencyAckPath
 
         if (-not $livenessTriggerExists -and $livenessTriggerAltExists) {
             Copy-Item -Path $localLivenessTriggerAltPath -Destination $localLivenessTriggerPath -Force
@@ -3397,6 +5206,9 @@ try {
         elseif ($requestPreview -and $requestPreview.PSObject.Properties["task_id"] -and -not [string]::IsNullOrWhiteSpace([string]$requestPreview.task_id)) {
             [string]$requestPreview.task_id
         }
+        elseif ($requestPreview -and $requestPreview.PSObject.Properties["request_id"] -and -not [string]::IsNullOrWhiteSpace([string]$requestPreview.request_id)) {
+            [string]$requestPreview.request_id
+        }
         elseif (-not [string]::IsNullOrWhiteSpace([string]$listenerState.last_processed_request_id)) {
             [string]$listenerState.last_processed_request_id
         }
@@ -3404,6 +5216,156 @@ try {
             ""
         }
         $currentCorrelationId = if (-not [string]::IsNullOrWhiteSpace($triggerCorrelationId)) {
+
+            function Get-ListenerExecutionFeedbackConfig {
+                $defaultConfig = [pscustomobject]@{
+                    mim_base_url = ''
+                    auth_token = ''
+                }
+
+                $configPath = Join-Path $repoRoot 'tod/config/tod-config.json'
+                if (-not (Test-Path -Path $configPath)) {
+                    return $defaultConfig
+                }
+
+                try {
+                    $config = ConvertFrom-JsonCaseInsensitiveSafe -Text (Get-Content -Path $configPath -Raw)
+                    $baseUrl = if ($config.PSObject.Properties['mim_base_url']) { [string]$config.mim_base_url } else { '' }
+                    $authToken = ''
+                    if ($config.PSObject.Properties['execution_feedback'] -and $null -ne $config.execution_feedback -and $config.execution_feedback.PSObject.Properties['auth_token']) {
+                        $authToken = [string]$config.execution_feedback.auth_token
+                    }
+
+                    return [pscustomobject]@{
+                        mim_base_url = $baseUrl
+                        auth_token = $authToken
+                    }
+                }
+                catch {
+                    return $defaultConfig
+                }
+            }
+
+            function Get-RequestExecutionId {
+                param([Parameter(Mandatory = $true)]$Request)
+
+                if ($Request.PSObject.Properties['execution_id'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.execution_id)) {
+                    return [string]$Request.execution_id
+                }
+                if ($Request.PSObject.Properties['remote_execution_id'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.remote_execution_id)) {
+                    return [string]$Request.remote_execution_id
+                }
+
+                return ''
+            }
+
+            function Resolve-ExecutionFeedbackEndpoint {
+                param([Parameter(Mandatory = $true)]$Request)
+
+                $feedbackEndpoint = if ($Request.PSObject.Properties['feedback_endpoint']) { [string]$Request.feedback_endpoint } else { '' }
+                if ([string]::IsNullOrWhiteSpace($feedbackEndpoint)) {
+                    return ''
+                }
+
+                if ([System.Uri]::IsWellFormedUriString($feedbackEndpoint, [System.UriKind]::Absolute)) {
+                    return $feedbackEndpoint
+                }
+
+                $config = Get-ListenerExecutionFeedbackConfig
+                $baseUrl = ([string]$config.mim_base_url).Trim()
+                if ([string]::IsNullOrWhiteSpace($baseUrl)) {
+                    return ''
+                }
+
+                try {
+                    $baseUri = [System.Uri]$baseUrl
+                    $resolvedUri = [System.Uri]::new($baseUri, $feedbackEndpoint)
+                    return $resolvedUri.AbsoluteUri
+                }
+                catch {
+                    return ''
+                }
+            }
+
+            function Publish-ExecutionFeedbackFromRequest {
+                param(
+                    [Parameter(Mandatory = $true)]$Request,
+                    [Parameter(Mandatory = $true)][string]$Status,
+                    [Parameter(Mandatory = $true)][string]$TaskId,
+                    [string]$HostReceivedTimestamp = '',
+                    [string]$HostCompletedTimestamp = '',
+                    [string]$ResultReasonCode = '',
+                    [string]$ExecutionMode = '',
+                    [string]$FailureCategory = '',
+                    [string]$ErrorDetail = '',
+                    [bool]$GuardrailBlocked = $false,
+                    [bool]$Recovered = $false,
+                    [bool]$UnrecoveredFailure = $false,
+                    [bool]$ReviewGatePassed = $true,
+                    [bool]$ValidatorPassed = $true
+                )
+
+                $executionId = Get-RequestExecutionId -Request $Request
+                if ([string]::IsNullOrWhiteSpace($executionId)) {
+                    return [pscustomobject]@{ attempted = $false; published = $false; reason = 'missing_execution_id' }
+                }
+
+                $feedbackUri = Resolve-ExecutionFeedbackEndpoint -Request $Request
+                if ([string]::IsNullOrWhiteSpace($feedbackUri)) {
+                    return [pscustomobject]@{ attempted = $false; published = $false; reason = 'missing_feedback_endpoint'; execution_id = $executionId }
+                }
+
+                $details = [ordered]@{
+                    request_id = if ($Request.PSObject.Properties['request_id']) { [string]$Request.request_id } else { '' }
+                    objective_id = if ($Request.PSObject.Properties['objective_id']) { [string]$Request.objective_id } else { '' }
+                    action = if ($Request.PSObject.Properties['action']) { [string]$Request.action } else { '' }
+                    capability = if ($Request.PSObject.Properties['capability_name']) { [string]$Request.capability_name } else { '' }
+                    execution_mode = $ExecutionMode
+                    result_reason_code = $ResultReasonCode
+                    guardrail_blocked = $GuardrailBlocked
+                    recovered = $Recovered
+                    unrecovered_failure = $UnrecoveredFailure
+                    failure_category = $FailureCategory
+                    review_gate_passed = $ReviewGatePassed
+                    validator_passed = $ValidatorPassed
+                    executor_timestamps = [ordered]@{}
+                }
+
+                if (-not [string]::IsNullOrWhiteSpace($HostReceivedTimestamp)) {
+                    $details.host_received_timestamp = $HostReceivedTimestamp
+                    $details.executor_timestamps.host_received_timestamp = $HostReceivedTimestamp
+                }
+                if (-not [string]::IsNullOrWhiteSpace($HostCompletedTimestamp)) {
+                    $details.host_completed_timestamp = $HostCompletedTimestamp
+                    $details.executor_timestamps.host_completed_timestamp = $HostCompletedTimestamp
+                }
+                if (-not [string]::IsNullOrWhiteSpace($ErrorDetail)) {
+                    $details.error = $ErrorDetail
+                }
+
+                $payload = [ordered]@{
+                    status = $Status
+                    source = 'tod-listener'
+                    task_id = $TaskId
+                    timestamp = (Get-Date).ToUniversalTime().ToString('o')
+                    details = [pscustomobject]$details
+                }
+
+                $config = Get-ListenerExecutionFeedbackConfig
+                $headers = @{}
+                if (-not [string]::IsNullOrWhiteSpace([string]$config.auth_token)) {
+                    $headers['Authorization'] = 'Bearer ' + [string]$config.auth_token
+                }
+
+                try {
+                    $response = Invoke-RestMethod -Method Post -Uri $feedbackUri -ContentType 'application/json' -Headers $headers -Body (($payload | ConvertTo-Json -Depth 12) -replace "`r`n", "`n")
+                    return [pscustomobject]@{ attempted = $true; published = $true; reason = 'ok'; execution_id = $executionId; endpoint = $feedbackUri; response = $response }
+                }
+                catch {
+                    return [pscustomobject]@{ attempted = $true; published = $false; reason = 'error'; execution_id = $executionId; endpoint = $feedbackUri; error = [string]$_.Exception.Message }
+                }
+            }
+
             $triggerCorrelationId
         }
         elseif ($requestPreview -and $requestPreview.PSObject.Properties["correlation_id"] -and -not [string]::IsNullOrWhiteSpace([string]$requestPreview.correlation_id)) {
@@ -3585,6 +5547,87 @@ try {
             }
         }
 
+        if ($emergencyAckExists) {
+            $emergencyAck = Read-JsonFileIfExists -PathValue $localEmergencyAckPath
+            if ($null -ne $emergencyAck) {
+                $emergencyAcknowledged = $false
+                $emergencyAckRequestId = if ($emergencyAck.PSObject.Properties['request_id']) { [string]$emergencyAck.request_id } else { '' }
+                $emergencyAckGeneratedAt = if ($emergencyAck.PSObject.Properties['generated_at']) { [string]$emergencyAck.generated_at } else { '' }
+                $emergencyAckStatus = if ($emergencyAck.PSObject.Properties['status']) { [string]$emergencyAck.status } else { '' }
+                $emergencyAckDecision = if ($emergencyAck.PSObject.Properties['decision']) { [string]$emergencyAck.decision } else { '' }
+                $emergencyAckReason = if ($emergencyAck.PSObject.Properties['reason']) { [string]$emergencyAck.reason } else { '' }
+                if ($emergencyAck.PSObject.Properties['acknowledged']) {
+                    $emergencyAcknowledged = [bool]$emergencyAck.acknowledged
+                }
+                if (-not $emergencyAcknowledged) {
+                    $emergencyAcknowledged =
+                        [string]::Equals($emergencyAckStatus, 'acknowledged', [System.StringComparison]::OrdinalIgnoreCase) -or
+                        [string]::Equals($emergencyAckStatus, 'accepted', [System.StringComparison]::OrdinalIgnoreCase) -or
+                        [string]::Equals($emergencyAckDecision, 'investigating', [System.StringComparison]::OrdinalIgnoreCase) -or
+                        [string]::Equals($emergencyAckDecision, 'accepted', [System.StringComparison]::OrdinalIgnoreCase)
+                }
+
+                $coordinationEscalationState.last_emergency_ack_request_id = $emergencyAckRequestId
+                $coordinationEscalationState.last_emergency_ack_generated_at = $emergencyAckGeneratedAt
+                $coordinationEscalationState.last_emergency_ack_status = $emergencyAckStatus
+                $coordinationEscalationState.last_emergency_ack_decision = $emergencyAckDecision
+                $coordinationEscalationState.last_emergency_ack_reason = $emergencyAckReason
+                if ($emergencyAcknowledged -and -not [string]::IsNullOrWhiteSpace($emergencyAckRequestId) -and
+                    [string]::Equals($emergencyAckRequestId, [string]$coordinationEscalationState.pending_emergency_request_id, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $coordinationEscalationState.last_emergency_acknowledged_at = if ($emergencyAck.PSObject.Properties['acknowledged_at']) { [string]$emergencyAck.acknowledged_at } else { (Get-Date).ToUniversalTime().ToString('o') }
+                }
+
+                Write-JsonFile -PathValue $localCoordinationEscalationStatePath -Payload $coordinationEscalationState
+            }
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace([string]$coordinationEscalationState.pending_request_id)) {
+            $existingCoordPayload = Read-JsonFileIfExists -PathValue $localCoordinationRequestPath
+            $pendingRequestId = [string]$coordinationEscalationState.pending_request_id
+            $existingResultPacket = Read-JsonFileIfExists -PathValue $localResultPath
+            $existingResultRequestId = if ($existingResultPacket -and $existingResultPacket.PSObject.Properties['request_id']) { [string]$existingResultPacket.request_id } else { '' }
+            $existingResultStatus = if ($existingResultPacket -and $existingResultPacket.PSObject.Properties['status']) { [string]$existingResultPacket.status } else { '' }
+            $resolvedByTerminalResult =
+                -not [string]::IsNullOrWhiteSpace($pendingRequestId) -and
+                [string]::Equals($pendingRequestId, $existingResultRequestId, [System.StringComparison]::OrdinalIgnoreCase) -and
+                (Test-IsTerminalExecutionStatus -Status $existingResultStatus)
+            if ($resolvedByTerminalResult) {
+                $resolveReason = ('Matched terminal result {0} already exists for {1}; stale coordination wait cleared automatically.' -f $existingResultStatus, $pendingRequestId)
+                Clear-CoordinationEscalationState -State $coordinationEscalationState -Reason $resolveReason -RequestId $pendingRequestId
+                Write-JsonFile -PathValue $localCoordinationEscalationStatePath -Payload $coordinationEscalationState
+            }
+            else {
+            $coordinationTimeoutSeconds = 60
+            if ($existingCoordPayload -and $existingCoordPayload.PSObject.Properties['required_ack'] -and $existingCoordPayload.required_ack -and $existingCoordPayload.required_ack.PSObject.Properties['timeout_seconds']) {
+                $coordinationTimeoutSeconds = [int]$existingCoordPayload.required_ack.timeout_seconds
+            }
+            $pendingSinceUtc = Get-DateOrMinValue -Value ([string]$coordinationEscalationState.pending_since)
+            if ($pendingSinceUtc -eq [datetime]::MinValue -and $existingCoordPayload -and $existingCoordPayload.PSObject.Properties['generated_at']) {
+                $pendingSinceUtc = Get-DateOrMinValue -Value ([string]$existingCoordPayload.generated_at)
+            }
+            $elapsedPendingSeconds = if ($pendingSinceUtc -eq [datetime]::MinValue) { 0 } else { [int][math]::Floor((New-TimeSpan -Start $pendingSinceUtc -End (Get-Date).ToUniversalTime()).TotalSeconds) }
+            $effectiveAckStatus = [string]$coordinationEscalationState.last_ack_status
+            $effectiveAckDecision = [string]$coordinationEscalationState.last_ack_decision
+            $effectiveAckReason = [string]$coordinationEscalationState.last_ack_reason
+            $isStillPending = [string]::IsNullOrWhiteSpace($effectiveAckStatus) -or [string]::Equals($effectiveAckStatus, 'pending', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($effectiveAckDecision, 'request_received', [System.StringComparison]::OrdinalIgnoreCase)
+            if ($isStillPending -and $elapsedPendingSeconds -ge $coordinationTimeoutSeconds) {
+                $pendingObjectiveId = if ($existingCoordPayload -and $existingCoordPayload.PSObject.Properties['objective_id']) { [string]$existingCoordPayload.objective_id } else { '' }
+                $pendingIssueCode = if ($existingCoordPayload -and $existingCoordPayload.PSObject.Properties['issue_code']) { [string]$existingCoordPayload.issue_code } else { [string]$coordinationEscalationState.pending_issue_code }
+                $pendingIssueSummary = if ($existingCoordPayload -and $existingCoordPayload.PSObject.Properties['issue_summary']) { [string]$existingCoordPayload.issue_summary } else { [string]$coordinationEscalationState.pending_issue_summary }
+                $null = Publish-CoordinationPendingInquiry -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -DialogScriptAbs $dialogScriptAbs -EnvPath $envAbs -RequestId $pendingRequestId -ObjectiveId $pendingObjectiveId -IssueCode $pendingIssueCode -IssueSummary $pendingIssueSummary -AckStatus $effectiveAckStatus -AckDecision $effectiveAckDecision -AckReason $effectiveAckReason -TimeoutSeconds $coordinationTimeoutSeconds -ElapsedSeconds $elapsedPendingSeconds -CoordinationRequest $existingCoordPayload -BridgeRuntime $bridgeRuntime -PublishRemote:$publishDialogRemoteByDefault
+
+                $emergencyTimeoutSeconds = [Math]::Max(120, [int]($coordinationTimeoutSeconds * 2))
+                if ($elapsedPendingSeconds -ge $emergencyTimeoutSeconds) {
+                    $null = Publish-EmergencyCoordinationRequest -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalEmergencyRequestPath $localEmergencyRequestPath -RemoteEmergencyRequestPath $remoteEmergencyRequestPath -Connections $connections -ParentRequestId $pendingRequestId -ObjectiveId $pendingObjectiveId -IssueCode $pendingIssueCode -IssueSummary $pendingIssueSummary -AckStatus $effectiveAckStatus -AckDecision $effectiveAckDecision -AckReason $effectiveAckReason -CoordinationTimeoutSeconds $coordinationTimeoutSeconds -ElapsedSeconds $elapsedPendingSeconds -CoordinationRequest $existingCoordPayload -BridgeRuntime $bridgeRuntime
+                }
+            }
+            }
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace([string]$coordinationEscalationState.pending_emergency_request_id)) {
+            $resolvedEmergencyObjectiveId = if ($requestPreview -and $requestPreview.PSObject.Properties['objective_id']) { [string]$requestPreview.objective_id } else { '' }
+            $null = Publish-ResolvedEmergencyCoordination -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalEmergencyRequestPath $localEmergencyRequestPath -RemoteEmergencyRequestPath $remoteEmergencyRequestPath -Connections $connections -ResolutionReason 'Coordination request is no longer pending, so the emergency coordination lane can stand down.' -ObjectiveId $resolvedEmergencyObjectiveId
+        }
+
         # Always auto-resolve stale stalled-regression coordination when regression is green,
         # even during polling cycles that skip task execution.
         $loopRegressionSnapshot = Get-RegressionSnapshot -CurrentBuildStatePath $currentBuildStatePath
@@ -3640,11 +5683,22 @@ try {
         }
 
         if (-not $requestExists) {
+            $blockedRecovery = Invoke-BlockedRecoveryContinuationIfNeeded -ListenerState $listenerState -ListenerStatePath $listenerStatePath -TodScript $todScriptAbs -IdleWakeupState $idleWakeupState -IdleWakeupStatePath $localIdleWakeupStatePath
+            if ([bool]$blockedRecovery.resumed) {
+                Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status 'recovered_execution_resumed' -Detail 'Execution readiness recovered; resumed the previously blocked task automatically.' -RequestId ([string]$blockedRecovery.request_id) -TaskId ([string]$blockedRecovery.task_id) -CorrelationId ([string]$listenerState.blocked_resume_correlation_id) -Action 'engineer-run' -ExecutionReadiness $blockedRecovery.readiness
+                Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
+                $cadencePlan = Update-CadencePlan -ListenerState $listenerState -ListenerStatePath $listenerStatePath -CycleClassification 'recovered_execution_resumed' -RetryReason 'none' -BasePollSeconds $PollSeconds
+                Add-LoopJournalEntry -LocalJournalPath $localJournalPath -RequestId ([string]$blockedRecovery.request_id) -ObjectiveId ([string]$blockedRecovery.objective_id) -ExecutionStatus 'recovered_execution_resumed' -Action 'engineer-run' -ExecutionReadiness $blockedRecovery.readiness -CycleClassification 'recovered_execution_resumed' -RetryReason 'none' -CadencePlan $cadencePlan
+                if ($RunOnce) { break }
+                Start-Sleep -Seconds ([int]$cadencePlan.sleep_seconds)
+                continue
+            }
+
             Write-Host "[TOD-LISTENER] No task request packet found."
             Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
             $cadencePlan = Update-CadencePlan -ListenerState $listenerState -ListenerStatePath $listenerStatePath -CycleClassification "no_new_work" -RetryReason "no_new_work" -BasePollSeconds $PollSeconds
             Add-LoopJournalEntry -LocalJournalPath $localJournalPath -RequestId "" -ObjectiveId "" -ExecutionStatus "no_new_work" -CycleClassification "no_new_work" -RetryReason "no_new_work" -CadencePlan $cadencePlan
-            Invoke-IdleWakeupIfNeeded -ListenerState $listenerState -IdleWakeupState $idleWakeupState -IdleWakeupStatePath $localIdleWakeupStatePath -TodScript $todScriptAbs -SyncScript $syncScriptAbs -HostAlias $hostAlias -RemoteRoot $RemoteRoot -SyncStageRoot $SyncStageDir -IdleThreshold $IdleWakeupSeconds -Cooldown $IdleWakeupCooldownSeconds -RunOnce:$RunOnce
+            Invoke-IdleWakeupIfNeeded -ListenerState $listenerState -IdleWakeupState $idleWakeupState -IdleWakeupStatePath $localIdleWakeupStatePath -TodScript $todScriptAbs -SyncScript $syncScriptAbs -ReadinessScript $readinessScriptAbs -HostAlias $hostAlias -RemoteRoot $RemoteRoot -SyncStageRoot $SyncStageDir -IdleThreshold $IdleWakeupSeconds -Cooldown $IdleWakeupCooldownSeconds -RunOnce:$RunOnce
             if ($RunOnce) { break }
             Start-Sleep -Seconds ([int]$cadencePlan.sleep_seconds)
             continue
@@ -3712,6 +5766,7 @@ try {
                 $violation = Publish-RuntimeContractViolation -ViolationPath $localRuntimeViolationPath -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding -PacketKind 'ack' -Packet $staleAck -ValidationResult $staleAckValidation
                 Register-RuntimeValidationResult -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding -PacketKind 'ack' -Packet $staleAck -ValidationResult $staleAckValidation -State 'violation' | Out-Null
                 Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status 'contract_violation_rejected' -Detail ('Rejected stale-ignore ACK because runtime contract validation failed: {0}' -f (($violation.violations | ForEach-Object { [string]$_.code + ':' + [string]$_.detail }) -join '; ')) -RequestId $requestId -TaskId ([string]$staleAck.task_id) -CorrelationId ([string]$staleAck.correlation_id) -TriggerPacket $livenessTrigger -BridgeRuntime $effectiveBridgeRuntime -StaleGuard $staleGuard
+                $null = Publish-ContractViolationCoordination -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalCoordinationRequestPath $localCoordinationRequestPath -RemoteCoordinationRequestPath $remoteCoordinationRequestPath -Connections $connections -RequestId $requestId -ObjectiveId $requestObjectiveId -TaskId ([string]$staleAck.task_id) -CorrelationId ([string]$staleAck.correlation_id) -PacketKind 'ack' -Packet $staleAck -Violation $violation -Action ([string]$staleAck.action) -BridgeRuntime $effectiveBridgeRuntime -RuntimeViolationPath $localRuntimeViolationPath
                 Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
                 $cadencePlan = Update-CadencePlan -ListenerState $listenerState -ListenerStatePath $listenerStatePath -CycleClassification 'contract_violation_rejected' -RetryReason 'failure' -BasePollSeconds $PollSeconds
                 Add-LoopJournalEntry -LocalJournalPath $localJournalPath -RequestId $requestId -ObjectiveId $requestObjectiveId -AckStatus 'contract_violation_rejected' -ExecutionStatus 'contract_violation_rejected' -CycleClassification 'contract_violation_rejected' -RetryReason 'failure' -CadencePlan $cadencePlan
@@ -3720,6 +5775,9 @@ try {
                 continue
             }
             Register-RuntimeValidationResult -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding -PacketKind 'ack' -Packet $staleAck -ValidationResult $staleAckValidation -State 'active' | Out-Null
+            if ([string]::Equals([string]$coordinationEscalationState.pending_issue_code, 'runtime_contract_violation_ack', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $null = Publish-ResolvedCoordination -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalCoordinationRequestPath $localCoordinationRequestPath -RemoteCoordinationRequestPath $remoteCoordinationRequestPath -Connections $connections -RequestId $requestId -ObjectiveId $requestObjectiveId -IssueCode 'runtime_contract_violation_ack_resolved' -IssueSummary 'TOD auto-closed the prior ACK contract-violation notice after ACK validation succeeded again.' -Evidence ([pscustomobject]@{ packet_kind = 'ack'; task_id = [string]$staleAck.task_id; correlation_id = [string]$staleAck.correlation_id; status = [string]$staleAck.status; resolution_basis = 'stale_ack_validation_passed' }) -ResolutionReason 'ACK validation now passes; prior contract delta is resolved.' -BridgeRuntime $effectiveBridgeRuntime -ResolutionDecision 'auto_resolved_contract_valid'
+            }
             Write-JsonFile -PathValue $localAckPath -Payload $staleAck
             $staleAckJson = Get-Content -Path $localAckPath -Raw
             Write-RemoteFileFromText -Connections $connections -RemotePath $remoteAckPath -Content $staleAckJson
@@ -3770,7 +5828,7 @@ try {
             Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
             $cadencePlan = Update-CadencePlan -ListenerState $listenerState -ListenerStatePath $listenerStatePath -CycleClassification "quarantined_failure_retry" -RetryReason "failure" -BasePollSeconds $PollSeconds
             Add-LoopJournalEntry -LocalJournalPath $localJournalPath -RequestId $requestId -ObjectiveId $requestObjectiveId -ExecutionStatus "quarantined" -CycleClassification "quarantined_failure_retry" -RetryReason "failure" -CadencePlan $cadencePlan
-            Invoke-IdleWakeupIfNeeded -ListenerState $listenerState -IdleWakeupState $idleWakeupState -IdleWakeupStatePath $localIdleWakeupStatePath -TodScript $todScriptAbs -SyncScript $syncScriptAbs -HostAlias $hostAlias -RemoteRoot $RemoteRoot -SyncStageRoot $SyncStageDir -IdleThreshold $IdleWakeupSeconds -Cooldown $IdleWakeupCooldownSeconds -RunOnce:$RunOnce
+            Invoke-IdleWakeupIfNeeded -ListenerState $listenerState -IdleWakeupState $idleWakeupState -IdleWakeupStatePath $localIdleWakeupStatePath -TodScript $todScriptAbs -SyncScript $syncScriptAbs -ReadinessScript $readinessScriptAbs -HostAlias $hostAlias -RemoteRoot $RemoteRoot -SyncStageRoot $SyncStageDir -IdleThreshold $IdleWakeupSeconds -Cooldown $IdleWakeupCooldownSeconds -RunOnce:$RunOnce
             if ($RunOnce) { break }
             Start-Sleep -Seconds ([int]$cadencePlan.sleep_seconds)
             continue
@@ -3783,6 +5841,17 @@ try {
             [string]::Equals($requestSignature, $lastProcessedSignature, [System.StringComparison]::OrdinalIgnoreCase) -and
             -not [bool]$objectiveSync.changed -and
             -not [bool]$taskSync.changed) {
+            $blockedRecovery = Invoke-BlockedRecoveryContinuationIfNeeded -ListenerState $listenerState -ListenerStatePath $listenerStatePath -TodScript $todScriptAbs -IdleWakeupState $idleWakeupState -IdleWakeupStatePath $localIdleWakeupStatePath
+            if ([bool]$blockedRecovery.resumed) {
+                Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status 'recovered_execution_resumed' -Detail 'Readiness recovered for a previously processed blocked request; resumed the mirrored task automatically.' -RequestId ([string]$blockedRecovery.request_id) -TaskId ([string]$blockedRecovery.task_id) -CorrelationId ([string]$listenerState.blocked_resume_correlation_id) -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -Action 'engineer-run' -ExecutionReadiness $blockedRecovery.readiness -TriggerPacket $livenessTrigger -BridgeRuntime $bridgeRuntime
+                Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
+                $cadencePlan = Update-CadencePlan -ListenerState $listenerState -ListenerStatePath $listenerStatePath -CycleClassification 'recovered_execution_resumed' -RetryReason 'none' -BasePollSeconds $PollSeconds
+                Add-LoopJournalEntry -LocalJournalPath $localJournalPath -RequestId ([string]$blockedRecovery.request_id) -ObjectiveId ([string]$blockedRecovery.objective_id) -ExecutionStatus 'recovered_execution_resumed' -Action 'engineer-run' -ExecutionReadiness $blockedRecovery.readiness -CycleClassification 'recovered_execution_resumed' -RetryReason 'none' -CadencePlan $cadencePlan
+                if ($RunOnce) { break }
+                Start-Sleep -Seconds ([int]$cadencePlan.sleep_seconds)
+                continue
+            }
+
             $existingResultPacket = Read-JsonFileIfExists -PathValue $localResultPath
             if ($existingResultPacket -and
                 $existingResultPacket.PSObject.Properties['request_id'] -and
@@ -3797,7 +5866,7 @@ try {
             Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
             $cadencePlan = Update-CadencePlan -ListenerState $listenerState -ListenerStatePath $listenerStatePath -CycleClassification "duplicate_seen" -RetryReason "duplicate_seen" -BasePollSeconds $PollSeconds
             Add-LoopJournalEntry -LocalJournalPath $localJournalPath -RequestId $requestId -ObjectiveId $requestObjectiveId -ExecutionStatus "already_processed" -CycleClassification "duplicate_seen" -RetryReason "duplicate_seen" -CadencePlan $cadencePlan
-            Invoke-IdleWakeupIfNeeded -ListenerState $listenerState -IdleWakeupState $idleWakeupState -IdleWakeupStatePath $localIdleWakeupStatePath -TodScript $todScriptAbs -SyncScript $syncScriptAbs -HostAlias $hostAlias -RemoteRoot $RemoteRoot -SyncStageRoot $SyncStageDir -IdleThreshold $IdleWakeupSeconds -Cooldown $IdleWakeupCooldownSeconds -RunOnce:$RunOnce
+            Invoke-IdleWakeupIfNeeded -ListenerState $listenerState -IdleWakeupState $idleWakeupState -IdleWakeupStatePath $localIdleWakeupStatePath -TodScript $todScriptAbs -SyncScript $syncScriptAbs -ReadinessScript $readinessScriptAbs -HostAlias $hostAlias -RemoteRoot $RemoteRoot -SyncStageRoot $SyncStageDir -IdleThreshold $IdleWakeupSeconds -Cooldown $IdleWakeupCooldownSeconds -RunOnce:$RunOnce
             if ($RunOnce) { break }
             Start-Sleep -Seconds ([int]$cadencePlan.sleep_seconds)
             continue
@@ -3820,12 +5889,35 @@ try {
             }
         }
 
-        if (-not $goAllowed) {
-            Write-Host ("[TOD-LISTENER] Request {0} observed; withholding task ACK until GO order is present." -f $requestId)
-            Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status "waiting_go_order" -Detail "Request observed but task ACK withheld until GO order is present so only contract-compliant ACKs are emitted." -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -TriggerPacket $livenessTrigger -BridgeRuntime $bridgeRuntime
+        $preDecisionSyncError = Invoke-SharedStateSyncRefresh -SyncScriptAbs $syncScriptAbs -HostAlias $hostAlias -RemoteRoot $RemoteRoot -SyncStageRoot $SyncStageDir -ListenerRequestPath $localRequestPath -Reason 'pre-execution decision'
+        $integrationStatus = Read-JsonFileIfExists -PathValue $integrationStatusPath
+        $requestDecision = Get-MimRequestDecision -Request $request -GoOrder $goOrder -IntegrationStatus $integrationStatus -ReviewDecision $reviewDecision -TodScriptAbs $todScriptAbs -ProcessWithoutGoOrder:$ProcessWithoutGoOrder -SharedStateSyncError $preDecisionSyncError
+        Set-ListenerReadinessSnapshot -ListenerState $listenerState -ReadinessTrace $requestDecision.execution_readiness
+        Publish-ExecutionDecision -LocalPath $localDecisionPath -RemotePath $remoteDecisionPath -Connections $connections -DecisionPayload $requestDecision -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -TriggerPacket $livenessTrigger -BridgeRuntime $bridgeRuntime
+
+        if (-not [string]::Equals([string]$requestDecision.decision_outcome, 'execute', [System.StringComparison]::OrdinalIgnoreCase)) {
+            if ([string]::Equals([string]$requestDecision.reason_code, 'execution_readiness_blocked', [System.StringComparison]::OrdinalIgnoreCase)) {
+                Save-BlockedRecoveryState -ListenerState $listenerState -RequestId $requestId -RequestSignature $requestSignature -TaskId $requestTaskId -ObjectiveId $requestObjectiveId -CorrelationId $requestCorrelationId -Action $(if ($request.PSObject.Properties['tod_action']) { [string]$request.tod_action } elseif ($request.PSObject.Properties['action']) { [string]$request.action } else { 'run-bridge-request' }) -ReasonCode ([string]$requestDecision.reason_code) -Summary ([string]$requestDecision.summary) -ReadinessTrace $requestDecision.execution_readiness
+                Write-JsonFile -PathValue $listenerStatePath -Payload $listenerState
+            }
+            elseif ([string]::Equals([string]$listenerState.blocked_resume_request_id, [string]$requestId, [System.StringComparison]::OrdinalIgnoreCase)) {
+                Clear-BlockedRecoveryState -ListenerState $listenerState
+                Write-JsonFile -PathValue $listenerStatePath -Payload $listenerState
+            }
+
+            $status = switch ([string]$requestDecision.decision_outcome) {
+                'acknowledge_and_wait_on_dependency' { 'waiting_dependency' }
+                'reject_with_specific_policy_reason' { 'policy_rejected' }
+                'escalate_hard_boundary' { 'hard_boundary_escalated' }
+                default { 'decision_recorded' }
+            }
+            Write-Host ("[TOD-LISTENER] Request {0} decision={1} reason={2}." -f $requestId, [string]$requestDecision.decision_outcome, [string]$requestDecision.reason_code)
+            Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status $status -Detail ([string]$requestDecision.summary) -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -ExecutionReadiness $requestDecision.execution_readiness -TriggerPacket $livenessTrigger -BridgeRuntime $bridgeRuntime -DecisionPayload $requestDecision
             Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
-            $cadencePlan = Update-CadencePlan -ListenerState $listenerState -ListenerStatePath $listenerStatePath -CycleClassification "waiting_go_order" -RetryReason "waiting_go_order" -BasePollSeconds $PollSeconds
-            Add-LoopJournalEntry -LocalJournalPath $localJournalPath -RequestId $requestId -ObjectiveId $requestObjectiveId -ExecutionStatus "waiting_go_order" -CycleClassification "waiting_go_order" -RetryReason "waiting_go_order" -CadencePlan $cadencePlan
+            $cycleClassification = [string]$requestDecision.decision_outcome
+            $retryReason = if ([string]::Equals($status, 'waiting_dependency', [System.StringComparison]::OrdinalIgnoreCase)) { 'waiting_dependency' } else { 'none' }
+            $cadencePlan = Update-CadencePlan -ListenerState $listenerState -ListenerStatePath $listenerStatePath -CycleClassification $cycleClassification -RetryReason $retryReason -BasePollSeconds $PollSeconds
+            Add-LoopJournalEntry -LocalJournalPath $localJournalPath -RequestId $requestId -ObjectiveId $requestObjectiveId -ExecutionStatus $cycleClassification -CycleClassification $cycleClassification -RetryReason $retryReason -CadencePlan $cadencePlan
             if ($RunOnce) { break }
             Start-Sleep -Seconds ([int]$cadencePlan.sleep_seconds)
             continue
@@ -3839,11 +5931,16 @@ try {
             status = "accepted"
             ack_status = "accepted"
             ack_reason_code = (Get-AckReasonCode -Status 'accepted')
+            action = Get-NonEmptyPacketValue -Primary $(if ($request.PSObject.Properties["tod_action"] -and $null -ne $request.tod_action) { [string]$request.tod_action } else { "" }) -Fallback $(if ($request.PSObject.Properties["action"] -and $null -ne $request.action) { [string]$request.action } else { "" })
             objective = Get-NonEmptyPacketValue -Primary $(if ($request.PSObject.Properties["objective_id"]) { [string]$request.objective_id } else { "" }) -Fallback $requestObjectiveId
             objective_id = Get-NonEmptyPacketValue -Primary $(if ($request.PSObject.Properties["objective_id"]) { [string]$request.objective_id } else { "" }) -Fallback $requestObjectiveId
             task = Get-NonEmptyPacketValue -Primary $(if ($request.PSObject.Properties["task_id"]) { [string]$request.task_id } else { "" }) -Fallback $requestId
             task_id = Get-NonEmptyPacketValue -Primary $(if ($request.PSObject.Properties["task_id"]) { [string]$request.task_id } else { "" }) -Fallback $requestId
             note = "Request acknowledged and queued for execution."
+            decision_outcome = [string]$requestDecision.decision_outcome
+            decision_reason_code = [string]$requestDecision.reason_code
+            boundary_class = [string]$requestDecision.boundary_class
+            next_step_recommendation = [string]$requestDecision.next_step_recommendation
             bridge_runtime = $bridgeRuntime
         }
         $taskAckTrigger = if ($null -ne $livenessTrigger) { $livenessTrigger } else { $goOrder }
@@ -3854,6 +5951,7 @@ try {
             $violation = Publish-RuntimeContractViolation -ViolationPath $localRuntimeViolationPath -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding -PacketKind 'ack' -Packet $ack -ValidationResult $ackValidation
             Register-RuntimeValidationResult -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding -PacketKind 'ack' -Packet $ack -ValidationResult $ackValidation -State 'violation' | Out-Null
             Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status 'contract_violation_rejected' -Detail ('Rejected ACK because runtime contract validation failed: {0}' -f (($violation.violations | ForEach-Object { [string]$_.code + ':' + [string]$_.detail }) -join '; ')) -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -TriggerPacket $taskAckTrigger -BridgeRuntime $bridgeRuntime
+            $null = Publish-ContractViolationCoordination -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalCoordinationRequestPath $localCoordinationRequestPath -RemoteCoordinationRequestPath $remoteCoordinationRequestPath -Connections $connections -RequestId $requestId -ObjectiveId $requestObjectiveId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -PacketKind 'ack' -Packet $ack -Violation $violation -Action ([string]$ack.action) -BridgeRuntime $bridgeRuntime -RuntimeViolationPath $localRuntimeViolationPath
             Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
             $cadencePlan = Update-CadencePlan -ListenerState $listenerState -ListenerStatePath $listenerStatePath -CycleClassification 'contract_violation_rejected' -RetryReason 'failure' -BasePollSeconds $PollSeconds
             Add-LoopJournalEntry -LocalJournalPath $localJournalPath -RequestId $requestId -ObjectiveId $requestObjectiveId -ExecutionStatus 'contract_violation_rejected' -CycleClassification 'contract_violation_rejected' -RetryReason 'failure' -CadencePlan $cadencePlan
@@ -3862,16 +5960,39 @@ try {
             continue
         }
         Register-RuntimeValidationResult -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding -PacketKind 'ack' -Packet $ack -ValidationResult $ackValidation -State 'active' | Out-Null
+        if ([string]::Equals([string]$coordinationEscalationState.pending_issue_code, 'runtime_contract_violation_ack', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $null = Publish-ResolvedCoordination -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalCoordinationRequestPath $localCoordinationRequestPath -RemoteCoordinationRequestPath $remoteCoordinationRequestPath -Connections $connections -RequestId $requestId -ObjectiveId $requestObjectiveId -IssueCode 'runtime_contract_violation_ack_resolved' -IssueSummary 'TOD auto-closed the prior ACK contract-violation notice after ACK validation succeeded again.' -Evidence ([pscustomobject]@{ packet_kind = 'ack'; task_id = [string]$ack.task_id; correlation_id = [string]$ack.correlation_id; status = [string]$ack.status; resolution_basis = 'ack_validation_passed' }) -ResolutionReason 'ACK validation now passes; prior contract delta is resolved.' -BridgeRuntime $bridgeRuntime -ResolutionDecision 'auto_resolved_contract_valid'
+        }
         Write-JsonFile -PathValue $localAckPath -Payload $ack
 
         $ackJson = Get-Content -Path $localAckPath -Raw
         Write-RemoteFileFromText -Connections $connections -RemotePath $remoteAckPath -Content $ackJson
-        Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status ([string]$ack.status) -Detail "Task ACK emitted to shared path." -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -AckPacket $ack -TriggerPacket $taskAckTrigger -BridgeRuntime $bridgeRuntime
+        Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status ([string]$ack.status) -Detail "Task ACK emitted to shared path." -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -AckPacket $ack -TriggerPacket $taskAckTrigger -BridgeRuntime $bridgeRuntime -DecisionPayload $requestDecision
+
+        $acceptedFeedback = Publish-ExecutionFeedbackFromRequest -Request $request -Status 'accepted' -TaskId ([string]$ack.task_id) -HostReceivedTimestamp ([string]$ack.emitted_at)
+        if ([bool]$acceptedFeedback.attempted -and -not [bool]$acceptedFeedback.published) {
+            Write-Warning ("[TOD-LISTENER] Unable to publish accepted execution feedback for request {0}: {1}" -f $requestId, [string]$acceptedFeedback.reason)
+        }
+
+        $executionFeedbackStartedAt = (Get-Date).ToUniversalTime().ToString('o')
+        $runningFeedback = Publish-ExecutionFeedbackFromRequest -Request $request -Status 'running' -TaskId ([string]$ack.task_id) -HostReceivedTimestamp $executionFeedbackStartedAt
+        if ([bool]$runningFeedback.attempted -and -not [bool]$runningFeedback.published) {
+            Write-Warning ("[TOD-LISTENER] Unable to publish running execution feedback for request {0}: {1}" -f $requestId, [string]$runningFeedback.reason)
+        }
 
         Write-Host ("[TOD-LISTENER] Executing request {0}..." -f $requestId)
         $execution = Invoke-RequestExecution -TodScriptAbs $todScriptAbs -Request $request
 
-        $syncError = Invoke-SharedStateSyncRefresh -SyncScriptAbs $syncScriptAbs -HostAlias $hostAlias -RemoteRoot $RemoteRoot -SyncStageRoot $SyncStageDir -Reason "request execution"
+        # Freeze the request consumed by shared-state sync so alignment cannot drift
+        # to an older or newer packet while this request is being executed.
+        $validatorSuffix = ([guid]::NewGuid().ToString("N"))
+        $validatorRequestPath = Join-Path $stageAbs ("MIM_TOD_TASK_REQUEST.validator.{0}.json" -f $validatorSuffix)
+        $validatorGoOrderPath = Join-Path $stageAbs ("MIM_TOD_GO_ORDER.validator.{0}.json" -f $validatorSuffix)
+        $validatorReviewPath = Join-Path $stageAbs ("MIM_TOD_REVIEW_DECISION.validator.{0}.json" -f $validatorSuffix)
+        $validatorResultPath = Join-Path $stageAbs ("TOD_MIM_TASK_RESULT.validator.{0}.json" -f $validatorSuffix)
+        Write-JsonFile -PathValue $validatorRequestPath -Payload $request
+
+        $syncError = Invoke-SharedStateSyncRefresh -SyncScriptAbs $syncScriptAbs -HostAlias $hostAlias -RemoteRoot $RemoteRoot -SyncStageRoot $SyncStageDir -ListenerRequestPath $validatorRequestPath -Reason "request execution"
 
         if ($publishStatus) {
             Publish-IntegrationStatusFiles -Connections $connections -SourcePath $integrationStatusPath -LocalPath $localRemoteStatusFile -RemotePath $remoteStatusPath -LocalAliasPath $localRemoteStatusAliasFile -RemoteAliasPath $remoteStatusAliasPath
@@ -3882,12 +6003,6 @@ try {
         $reviewGate = Get-ReviewGateResult -IntegrationStatus $integrationStatus -GoOrder $goOrder -Request $request -RequestId $requestId
 
         # Snapshot per-cycle inputs so validator cannot drift to a newer packet.
-        $validatorSuffix = ([guid]::NewGuid().ToString("N"))
-        $validatorRequestPath = Join-Path $stageAbs ("MIM_TOD_TASK_REQUEST.validator.{0}.json" -f $validatorSuffix)
-        $validatorGoOrderPath = Join-Path $stageAbs ("MIM_TOD_GO_ORDER.validator.{0}.json" -f $validatorSuffix)
-        $validatorReviewPath = Join-Path $stageAbs ("MIM_TOD_REVIEW_DECISION.validator.{0}.json" -f $validatorSuffix)
-        $validatorResultPath = Join-Path $stageAbs ("TOD_MIM_TASK_RESULT.validator.{0}.json" -f $validatorSuffix)
-        Write-JsonFile -PathValue $validatorRequestPath -Payload $request
         if ($null -ne $goOrder) {
             Write-JsonFile -PathValue $validatorGoOrderPath -Payload $goOrder
         }
@@ -3982,6 +6097,12 @@ try {
             validator = $validatorResult
             execution_readiness = if ($execution.PSObject.Properties["execution_readiness"]) { $execution.execution_readiness } else { $null }
             execution_trace = if ($execution.PSObject.Properties["execution_trace"]) { $execution.execution_trace } else { $null }
+            decision_outcome = [string]$requestDecision.decision_outcome
+            decision_reason_code = [string]$requestDecision.reason_code
+            boundary_class = [string]$requestDecision.boundary_class
+            next_step_recommendation = [string]$requestDecision.next_step_recommendation
+            blocker_classification = [string]$requestDecision.blocker_classification
+            validation_reasoning = @($requestDecision.validation_reasoning)
             result_status = if ($execution.PSObject.Properties["blocked"] -and [bool]$execution.blocked) { "blocked" } elseif ($execution.ok -and [bool]$reviewGate.passed -and [bool]$validatorResult.passed) { "succeeded" } else { "failed" }
             terminal = $true
             result_reason_code = ''
@@ -4006,6 +6127,16 @@ try {
         $resultPacket.result_reason_code = Get-ResultReasonCode -Status ([string]$resultPacket.status) -Execution $execution -ReviewGate $reviewGate -ValidatorResult $validatorResult
         $null = Add-ContractPacketEnvelope -Packet $resultPacket -BindingMetadata $contractBinding -PacketType 'tod-mim-task-result-v1' -MessageKind 'result' -ObjectiveId ([string]$resultPacket.objective_id) -TaskId ([string]$resultPacket.task_id) -RequestId $requestId -CorrelationId ([string]$resultPacket.correlation_id)
         $null = Add-SequenceRuntimeFields -Packet $resultPacket -TriggerPacket $resultTrigger -ListenerState $listenerState -ListenerStatePath $listenerStatePath
+        Set-ListenerReadinessSnapshot -ListenerState $listenerState -ReadinessTrace $resultPacket.execution_readiness
+
+        if ([string]::Equals([string]$resultPacket.status, 'blocked', [System.StringComparison]::OrdinalIgnoreCase)) {
+            Save-BlockedRecoveryState -ListenerState $listenerState -RequestId $requestId -RequestSignature $requestSignature -TaskId $requestTaskId -ObjectiveId $requestObjectiveId -CorrelationId $requestCorrelationId -Action ([string]$resultPacket.action) -ReasonCode ([string]$resultPacket.result_reason_code) -Summary ([string]$resultPacket.error) -ReadinessTrace $resultPacket.execution_readiness
+            Write-JsonFile -PathValue $listenerStatePath -Payload $listenerState
+        }
+        elseif ([string]::Equals([string]$listenerState.blocked_resume_request_id, [string]$requestId, [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals([string]$listenerState.blocked_resume_task_id, [string]$requestTaskId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Clear-BlockedRecoveryState -ListenerState $listenerState
+            Write-JsonFile -PathValue $listenerStatePath -Payload $listenerState
+        }
 
         if ($regressionSnapshot.available) {
             $resultPacket | Add-Member -NotePropertyName regression_snapshot -NotePropertyValue $regressionSnapshot -Force
@@ -4015,6 +6146,7 @@ try {
             $stallMsg = ("stalled_regression_no_delta: regression snapshot unchanged for {0} consecutive cycles while failures remain ({1}/{2} failed)." -f [int]$regressionStallState.unchanged_cycles, [int]$regressionSnapshot.failed, [int]$regressionSnapshot.total)
             $resultPacket.status = "failed"
             $resultPacket.error = $stallMsg
+            $resultPacket.result_reason_code = 'stalled_regression_no_delta'
             $resultPacket | Add-Member -NotePropertyName stall_guard -NotePropertyValue ([pscustomobject]@{
                 issue_code = "stalled_regression_no_delta"
                 unchanged_cycles = [int]$regressionStallState.unchanged_cycles
@@ -4179,6 +6311,30 @@ try {
             }
         }
 
+        $taskTroubleshooting = $null
+        $taskTroubleshootingDialog = $null
+        if (@('failed', 'blocked') -contains ([string]$resultPacket.status).ToLowerInvariant()) {
+            $taskTroubleshooting = Invoke-TaskTroubleshootingGuidance -ConversationProviderScriptAbs $conversationProviderScriptAbs -RequestId $requestId -ObjectiveId ([string]$resultPacket.objective_id) -TaskId ([string]$resultPacket.task_id) -CorrelationId ([string]$resultPacket.correlation_id) -Action ([string]$resultPacket.action) -Execution $execution -DecisionPayload $requestDecision -ReviewGate $reviewGate -ValidatorResult $validatorResult -IntegrationStatus $integrationStatus
+            if ($null -ne $taskTroubleshooting) {
+                try {
+                    Write-JsonFile -PathValue $localTroubleshootingPath -Payload $taskTroubleshooting -Depth 20
+                    $troubleshootingJson = Get-Content -Path $localTroubleshootingPath -Raw
+                    Write-RemoteFileFromText -Connections $connections -RemotePath $remoteTroubleshootingPath -Content $troubleshootingJson
+                }
+                catch {
+                    Write-Warning ("[TOD-LISTENER] Unable to publish troubleshooting artifact for request {0}: {1}" -f $requestId, $_.Exception.Message)
+                }
+
+                $taskTroubleshootingDialog = Publish-TaskTroubleshootingRequest -DialogScriptAbs $dialogScriptAbs -EnvPath $envAbs -RequestId $requestId -ObjectiveId ([string]$resultPacket.objective_id) -TaskId ([string]$resultPacket.task_id) -CorrelationId ([string]$resultPacket.correlation_id) -Troubleshooting $taskTroubleshooting -Execution $execution -DecisionPayload $requestDecision -PublishRemote:$publishDialogRemoteByDefault
+                if ($null -ne $taskTroubleshootingDialog) {
+                    $resultPacket | Add-Member -NotePropertyName troubleshooting_dialog -NotePropertyValue $taskTroubleshootingDialog -Force
+                }
+
+                $resultPacket | Add-Member -NotePropertyName troubleshooting_artifact -NotePropertyValue ([System.IO.Path]::GetFileName($localTroubleshootingPath)) -Force
+                $resultPacket | Add-Member -NotePropertyName troubleshooting -NotePropertyValue $taskTroubleshooting -Force
+            }
+        }
+
         if (-not [string]::IsNullOrWhiteSpace($syncError)) {
             $resultPacket | Add-Member -NotePropertyName sync_warning -NotePropertyValue $syncError -Force
         }
@@ -4187,6 +6343,7 @@ try {
             $violation = Publish-RuntimeContractViolation -ViolationPath $localRuntimeViolationPath -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding -PacketKind 'result' -Packet $resultPacket -ValidationResult $resultValidation
             Register-RuntimeValidationResult -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding -PacketKind 'result' -Packet $resultPacket -ValidationResult $resultValidation -State 'violation' | Out-Null
             Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status 'contract_violation_rejected' -Detail ('Rejected RESULT because runtime contract validation failed: {0}' -f (($violation.violations | ForEach-Object { [string]$_.code + ':' + [string]$_.detail }) -join '; ')) -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -Action ([string]$resultPacket.action) -ExecutionReadiness $resultPacket.execution_readiness -AckPacket $ack -TriggerPacket $resultTrigger -BridgeRuntime $bridgeRuntime
+            $null = Publish-ContractViolationCoordination -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalCoordinationRequestPath $localCoordinationRequestPath -RemoteCoordinationRequestPath $remoteCoordinationRequestPath -Connections $connections -RequestId $requestId -ObjectiveId $requestObjectiveId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -PacketKind 'result' -Packet $resultPacket -Violation $violation -Action ([string]$resultPacket.action) -BridgeRuntime $bridgeRuntime -RuntimeViolationPath $localRuntimeViolationPath
             Remove-Item -Path $validatorRequestPath -ErrorAction SilentlyContinue
             Remove-Item -Path $validatorGoOrderPath -ErrorAction SilentlyContinue
             Remove-Item -Path $validatorReviewPath -ErrorAction SilentlyContinue
@@ -4198,12 +6355,28 @@ try {
             continue
         }
         Register-RuntimeValidationResult -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding -PacketKind 'result' -Packet $resultPacket -ValidationResult $resultValidation -State 'active' | Out-Null
+        if ([string]::Equals([string]$coordinationEscalationState.pending_issue_code, 'runtime_contract_violation_result', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $null = Publish-ResolvedCoordination -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalCoordinationRequestPath $localCoordinationRequestPath -RemoteCoordinationRequestPath $remoteCoordinationRequestPath -Connections $connections -RequestId $requestId -ObjectiveId $requestObjectiveId -IssueCode 'runtime_contract_violation_result_resolved' -IssueSummary 'TOD auto-closed the prior RESULT contract-violation notice after RESULT validation succeeded again.' -Evidence ([pscustomobject]@{ packet_kind = 'result'; task_id = [string]$resultPacket.task_id; correlation_id = [string]$resultPacket.correlation_id; status = [string]$resultPacket.status; result_reason_code = [string]$resultPacket.result_reason_code; resolution_basis = 'result_validation_passed' }) -ResolutionReason 'RESULT validation now passes; prior contract delta is resolved.' -BridgeRuntime $bridgeRuntime -ResolutionDecision 'auto_resolved_contract_valid'
+        }
         $null = Sync-LocalExecutionOutcome -TaskId $requestTaskId -ObjectiveId $requestObjectiveId -ResultPacket $resultPacket
         Write-JsonFile -PathValue $localResultPath -Payload $resultPacket
 
         $resultJson = Get-Content -Path $localResultPath -Raw
         Write-RemoteFileFromText -Connections $connections -RemotePath $remoteResultPath -Content $resultJson
-        Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status ([string]$resultPacket.status) -Detail "Task RESULT emitted to shared path." -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -Action ([string]$resultPacket.action) -ExecutionReadiness $resultPacket.execution_readiness -AckPacket $ack -ResultPacket $resultPacket -TriggerPacket $resultTrigger -BridgeRuntime $bridgeRuntime
+        Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status ([string]$resultPacket.status) -Detail "Task RESULT emitted to shared path." -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -Action ([string]$resultPacket.action) -ExecutionReadiness $resultPacket.execution_readiness -AckPacket $ack -ResultPacket $resultPacket -TriggerPacket $resultTrigger -BridgeRuntime $bridgeRuntime -DecisionPayload $requestDecision
+
+        $failureCategory = ''
+        if ([string]::Equals([string]$resultPacket.status, 'failed', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $failureCategory = if (-not [string]::IsNullOrWhiteSpace([string]$resultPacket.result_reason_code)) { [string]$resultPacket.result_reason_code } else { 'execution_failed' }
+        }
+        elseif ([string]::Equals([string]$resultPacket.status, 'blocked', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $failureCategory = 'guardrail_blocked'
+        }
+
+        $terminalFeedback = Publish-ExecutionFeedbackFromRequest -Request $request -Status ([string]$resultPacket.status) -TaskId ([string]$resultPacket.task_id) -HostReceivedTimestamp ([string]$ack.emitted_at) -HostCompletedTimestamp ([string]$resultPacket.completed_at) -ResultReasonCode ([string]$resultPacket.result_reason_code) -ExecutionMode ([string]$resultPacket.execution_mode) -FailureCategory $failureCategory -ErrorDetail ([string]$resultPacket.error) -GuardrailBlocked:([string]::Equals([string]$resultPacket.status, 'blocked', [System.StringComparison]::OrdinalIgnoreCase)) -Recovered:$false -UnrecoveredFailure:([string]::Equals([string]$resultPacket.status, 'failed', [System.StringComparison]::OrdinalIgnoreCase)) -ReviewGatePassed:([bool]$reviewGate.passed) -ValidatorPassed:([bool]$validatorResult.passed)
+        if ([bool]$terminalFeedback.attempted -and -not [bool]$terminalFeedback.published) {
+            Write-Warning ("[TOD-LISTENER] Unable to publish terminal execution feedback for request {0}: {1}" -f $requestId, [string]$terminalFeedback.reason)
+        }
 
         Remove-Item -Path $validatorRequestPath -ErrorAction SilentlyContinue
         Remove-Item -Path $validatorGoOrderPath -ErrorAction SilentlyContinue
