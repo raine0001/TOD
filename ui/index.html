@@ -2205,6 +2205,132 @@
       margin-top: 8px;
     }
 
+    .activity-feed-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .activity-feed-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .activity-feed-summary {
+      margin-bottom: 12px;
+    }
+
+    .activity-feed-group {
+      border: 1px solid rgba(124, 179, 255, 0.18);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(6, 14, 28, 0.76);
+    }
+
+    .activity-feed-group summary {
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .activity-feed-group summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .activity-feed-group-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+      flex-wrap: wrap;
+      color: var(--text);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .activity-feed-group-meta {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+
+    .activity-feed-event-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .activity-feed-event {
+      border-top: 1px solid rgba(124, 179, 255, 0.12);
+      padding-top: 10px;
+    }
+
+    .activity-feed-event:first-child {
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .activity-feed-event-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+
+    .activity-feed-badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .activity-feed-badge {
+      border: 1px solid rgba(124, 179, 255, 0.28);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text);
+      background: rgba(18, 36, 68, 0.58);
+    }
+
+    .activity-feed-badge.important {
+      border-color: rgba(255, 118, 118, 0.38);
+      color: #ffd7d7;
+      background: rgba(86, 22, 32, 0.48);
+    }
+
+    .activity-feed-event-message {
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .activity-feed-event-meta {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+
+    .activity-feed-details {
+      margin-top: 8px;
+      padding: 10px;
+      border-radius: 10px;
+      background: rgba(11, 20, 34, 0.92);
+      border: 1px solid rgba(124, 179, 255, 0.14);
+      color: #d7e4ff;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
     .operator-chat-audit-entry {
       border: 1px solid rgba(97, 219, 191, 0.12);
       border-radius: 12px;
@@ -4004,6 +4130,7 @@
           <input id="todConversationOperatorName" class="tod-chat-operator" type="text" maxlength="80" placeholder="Who is TOD talking to?">
           <button id="todConversationMic" class="tod-chat-toolbtn" type="button">Mic</button>
           <button id="todConversationTtsToggle" class="tod-chat-toolbtn" type="button">TTS Off</button>
+          <button id="todConversationViewActivityBtn" class="tod-chat-toolbtn" type="button">View Activity</button>
           <button id="todConversationClear" class="tod-chat-toolbtn" type="button">Clear</button>
         </div>
         <form id="todConversationForm" class="operator-chat-form" onsubmit="handleTodConversationSubmit(event); return false;">
@@ -4032,6 +4159,28 @@
             <div class="operator-chat-bubble">
               <div class="operator-chat-summary">TOD direct conversation is now a first-class browser lane. Ask what TOD is executing, what is blocked, and what action comes next.</div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="activityFeedCard" class="card span-3">
+        <div class="operator-chat-head">
+          <div class="operator-chat-title-wrap">
+            <h2>Live Activity Feed</h2>
+            <div class="operator-chat-subtitle">Structured TOD execution events stay separate from chat and are grouped by task so you can inspect the work trail directly.</div>
+          </div>
+          <div class="operator-chat-badge">Execution Trace</div>
+        </div>
+        <div class="activity-feed-controls">
+          <div id="activityFeedMeta" class="operator-chat-meta">Loading TOD activity stream...</div>
+          <div class="activity-feed-actions">
+            <button id="activityFeedRefreshBtn" class="btn-secondary" type="button">Refresh Feed</button>
+          </div>
+        </div>
+        <div id="activityFeedSummary" class="project-meta activity-feed-summary">Waiting for TOD activity events.</div>
+        <div id="activityFeedList" class="operator-chat-audit-list">
+          <div class="operator-chat-audit-entry">
+            <div class="operator-chat-audit-summary">No TOD activity has been rendered yet.</div>
           </div>
         </div>
       </div>
@@ -4656,6 +4805,12 @@
     const systemTodChatSubmitEl = document.getElementById('systemTodChatSubmit');
     const systemTodChatOutputEl = document.getElementById('systemTodChatOutput');
     const systemTodChatMetaEl = document.getElementById('systemTodChatMeta');
+    const activityFeedCardEl = document.getElementById('activityFeedCard');
+    const activityFeedMetaEl = document.getElementById('activityFeedMeta');
+    const activityFeedSummaryEl = document.getElementById('activityFeedSummary');
+    const activityFeedListEl = document.getElementById('activityFeedList');
+    const activityFeedRefreshBtnEl = document.getElementById('activityFeedRefreshBtn');
+    const todConversationViewActivityBtnEl = document.getElementById('todConversationViewActivityBtn');
     const settingsRefreshBtnEl = document.getElementById('settingsRefreshBtn');
     const settingsHelpBtnEl = document.getElementById('settingsHelpBtn');
     const settingsLogsToggleEl = document.getElementById('settingsLogsToggle');
@@ -4864,6 +5019,7 @@
     let systemTodChatPending = false;
     let lastKnownTaskState = 'idle';
     let lastProjectStatusSnapshot = null;
+    let lastActivityStreamSnapshot = null;
     let operatorChatPending = false;
     let operatorChatActionPending = false;
     let operatorChatAuditPending = false;
@@ -5967,6 +6123,7 @@
 
       appendCardToTab('projectMarkerCard', todTabGridEl);
       appendCardToTab('todConversationCard', todTabGridEl);
+      appendCardToTab('activityFeedCard', todTabGridEl);
       appendCardToTab('engineeringLoopCard', todTabGridEl);
 
       appendCardToTab('bridgeStatusCard', bridgeTabGridEl);
@@ -7583,6 +7740,108 @@
       return { res, data };
     }
 
+    function isImportantActivityEvent(eventItem) {
+      const eventType = String(eventItem && eventItem.event_type || '').toLowerCase();
+      const status = String(eventItem && eventItem.status || '').toLowerCase();
+      return ['failure', 'retry', 'codex_handoff', 'codex_response', 'patch_applied', 'result_published'].includes(eventType)
+        || ['blocked', 'failed'].includes(status);
+    }
+
+    function formatActivityDetails(details) {
+      if (!details || typeof details !== 'object') {
+        return '';
+      }
+      try {
+        return JSON.stringify(details, null, 2);
+      } catch {
+        return '';
+      }
+    }
+
+    function renderActivityFeed(data) {
+      if (!activityFeedMetaEl || !activityFeedSummaryEl || !activityFeedListEl) {
+        return;
+      }
+
+      if (!data || data.ok !== true) {
+        activityFeedMetaEl.textContent = 'TOD activity stream unavailable.';
+        activityFeedSummaryEl.textContent = 'No activity stream payload is available.';
+        activityFeedListEl.innerHTML = '<div class="operator-chat-audit-entry"><div class="operator-chat-audit-summary">No TOD activity stream payload is available.</div></div>';
+        return;
+      }
+
+      const events = Array.isArray(data.events) ? data.events.slice() : [];
+      lastActivityStreamSnapshot = data;
+      activityFeedMetaEl.textContent = `${events.length} events | source ${data.source_path || 'n/a'} | stream ${formatTimestamp(data.stream_generated_at || data.generated_at || '')}`;
+
+      const latestEvent = data.latest_event || (events.length ? events[events.length - 1] : null);
+      activityFeedSummaryEl.textContent = latestEvent
+        ? `${String(latestEvent.message || data.summary || 'Latest TOD activity available.')} | ${String(latestEvent.event_type || data.event || 'activity')} | ${String(latestEvent.status || data.status || 'unknown')} | ${formatTimestamp(latestEvent.timestamp || data.generated_at || '')}`
+        : (data.summary || 'No TOD activity events are available yet.');
+
+      if (!events.length) {
+        activityFeedListEl.innerHTML = '<div class="operator-chat-audit-entry"><div class="operator-chat-audit-summary">No TOD activity events are available yet.</div></div>';
+        return;
+      }
+
+      const grouped = new Map();
+      const displayEvents = events.slice().reverse();
+      displayEvents.forEach((eventItem) => {
+        const groupKey = String(eventItem && eventItem.task_id || eventItem && eventItem.request_id || 'unscoped');
+        if (!grouped.has(groupKey)) {
+          grouped.set(groupKey, []);
+        }
+        grouped.get(groupKey).push(eventItem);
+      });
+
+      activityFeedListEl.innerHTML = Array.from(grouped.entries()).map(([groupKey, groupEvents]) => {
+        const headEvent = groupEvents[0] || {};
+        const taskLabel = escapeHtml(String(headEvent.title || groupKey || 'unscoped task'));
+        const objectiveLabel = escapeHtml(String(headEvent.objective_id || data.objective_id || '-'));
+        const countLabel = escapeHtml(String(groupEvents.length));
+        const eventRows = groupEvents.map((eventItem) => {
+          const eventType = escapeHtml(String(eventItem && eventItem.event_type || 'activity'));
+          const eventStatus = escapeHtml(String(eventItem && eventItem.status || 'unknown'));
+          const eventStep = escapeHtml(String(eventItem && eventItem.step || 'activity'));
+          const eventMessage = escapeHtml(String(eventItem && eventItem.message || 'No activity message.'));
+          const eventTime = escapeHtml(formatTimestamp(eventItem && eventItem.timestamp ? eventItem.timestamp : ''));
+          const detailsText = formatActivityDetails(eventItem && eventItem.details ? eventItem.details : null);
+          const importantClass = isImportantActivityEvent(eventItem) ? ' important' : '';
+          return `<div class="activity-feed-event"><div class="activity-feed-event-head"><div class="activity-feed-badges"><span class="activity-feed-badge${importantClass}">${eventType}</span><span class="activity-feed-badge">${eventStatus}</span><span class="activity-feed-badge">${eventStep}</span></div><div class="activity-feed-event-meta">${eventTime}</div></div><div class="activity-feed-event-message">${eventMessage}</div>${detailsText ? `<pre class="activity-feed-details">${escapeHtml(detailsText)}</pre>` : ''}</div>`;
+        }).join('');
+
+        return `<details class="activity-feed-group" open><summary><div class="activity-feed-group-head"><span>${taskLabel}</span><span class="activity-feed-group-meta">objective ${objectiveLabel} | ${countLabel} events</span></div></summary><div class="activity-feed-event-list">${eventRows}</div></details>`;
+      }).join('');
+    }
+
+    async function loadActivityStream({ objectiveId = selectedObjectiveId || '', taskId = '', limit = 60 } = {}) {
+      if (!activityFeedMetaEl) {
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams();
+        if (objectiveId) {
+          params.set('objective_id', objectiveId);
+        }
+        if (taskId) {
+          params.set('task_id', taskId);
+        }
+        params.set('limit', String(limit));
+
+        const query = params.toString();
+        const { res, data } = await fetchJsonSafe(`/api/activity-stream${query ? `?${query}` : ''}`);
+        if (!res.ok || !data.ok) {
+          throw new Error(data && data.error ? data.error : `Activity stream request failed (${res.status})`);
+        }
+
+        renderActivityFeed(data);
+      } catch (err) {
+        renderActivityFeed(null);
+        activityFeedMetaEl.textContent = err && err.message ? err.message : 'TOD activity stream unavailable.';
+      }
+    }
+
     function buildPayload(forceReliability = false) {
       const action = forceReliability ? 'get-reliability' : actionSelectEl.value;
       const payload = {
@@ -7758,6 +8017,7 @@
     async function loadProjectStatus() {
       initializeTabbedSurface();
       loadDialogSessions();
+      loadActivityStream({ objectiveId: selectedObjectiveId || '' });
       try {
         const params = appendOperatorChatValidationHarness(new URLSearchParams());
         if (selectedObjectiveId) {
@@ -10679,6 +10939,15 @@
       systemTodChatFormEl.addEventListener('submit', (evt) => {
         evt.preventDefault();
         runSystemTodChat(systemTodChatInputEl && systemTodChatInputEl.value || '');
+      });
+    }
+    if (activityFeedRefreshBtnEl) {
+      activityFeedRefreshBtnEl.addEventListener('click', () => loadActivityStream({ objectiveId: selectedObjectiveId || '' }));
+    }
+    if (todConversationViewActivityBtnEl) {
+      todConversationViewActivityBtnEl.addEventListener('click', () => {
+        activateConsoleTab('tod');
+        focusDashboardCardById('activityFeedCard');
       });
     }
     if (quickRestartMimBtnEl) {

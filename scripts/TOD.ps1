@@ -1930,6 +1930,30 @@ function Add-EnginePerformanceRecord {
     $attemptDetails = if ($InvokeResult.PSObject.Properties["attempts"] -and $null -ne $InvokeResult.attempts) { @($InvokeResult.attempts) } else { @() }
     $attemptCount = if (@($attemptDetails).Count -gt 0) { [int]@($attemptDetails).Count } else { [int]@($attemptedEngines).Count }
     $uniqueEngineCount = [int]@($attemptedEngines | Select-Object -Unique).Count
+    $wrapperOnlyEngines = @($attemptDetails | ForEach-Object {
+            $attempt = $_
+            if ($null -eq $attempt) { return $null }
+
+            $attemptReason = ''
+            if ($attempt.PSObject.Properties['result'] -and $attempt.result -and $attempt.result.PSObject.Properties['reason_code']) {
+                $attemptReason = [string]$attempt.result.reason_code
+            }
+            elseif ($attempt.PSObject.Properties['reason_code']) {
+                $attemptReason = [string]$attempt.reason_code
+            }
+
+            if ([string]::Equals($attemptReason, 'codex_wrapper_only_no_execution', [System.StringComparison]::OrdinalIgnoreCase)) {
+                if ($attempt.PSObject.Properties['engine']) {
+                    return ([string]$attempt.engine).ToLowerInvariant()
+                }
+                if ($attempt.PSObject.Properties['engine_name']) {
+                    return ([string]$attempt.engine_name).ToLowerInvariant()
+                }
+                return 'codex'
+            }
+
+            return $null
+        } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
     $hadRetry = ($attemptCount -gt $uniqueEngineCount)
     $isSuccess = ([string]$ReviewDecision -eq "pass")
     $recoveredOnFallback = ([bool]$InvokeResult.fallback_applied -and $isSuccess)
@@ -1962,6 +1986,8 @@ function Add-EnginePerformanceRecord {
         latency_ms = if ($InvokeResult.PSObject.Properties["elapsed_ms"] -and $null -ne $InvokeResult.elapsed_ms) { [double]$InvokeResult.elapsed_ms } else { $null }
         files_involved = @($FilesInvolved | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
         modules_involved = @(@($FilesInvolved | ForEach-Object { [string]$_ } | Where-Object { $_ } | ForEach-Object { (([string]$_ -replace '[\\/]+', '/').Split('/')[0]) } | Where-Object { $_ } | Select-Object -Unique))
+        wrapper_only_engines = @($wrapperOnlyEngines)
+        wrapper_only_codex_seen = (@($wrapperOnlyEngines | Where-Object { $_ -eq 'codex' }).Count -gt 0)
         created_at = Get-UtcNow
     }
 
@@ -5938,10 +5964,223 @@ function Resolve-TaskCategory {
     if ($blob -match 'repo index|index-repo|indexing') { return "repo_index" }
     if ($blob -match 'module summary|summar') { return "module_summary" }
     if ($blob -match 'refactor') { return "refactor" }
-    if ($blob -match 'test generation|generate test|tests?') { return "test_generation" }
+    if ($blob -match 'test generation|generate test') { return "test_generation" }
     if ($blob -match 'review only|review') { return "review_only" }
     if ($blob -match 'sync|manifest|drift') { return "sync_check" }
+    if ($blob -match 'docs?|readme|markdown|\.md\b') { return "docs_change" }
+    if ($blob -match 'config|settings|bootstrap|\.json\b|\.ya?ml\b|\.toml\b|\.ini\b') { return "config_change" }
+    if ($blob -match 'validate|validation|verify|verification|regression|smoke test|unit test|integration test|lint|compile|typecheck') { return "validation" }
+    if ($blob -match 'inspect|inspection|search|locate|find|scan|status|query|analy[sz]e|review evidence') { return "inspection" }
     return "code_change"
+}
+
+function Get-TaskRoutingText {
+    param($Task)
+
+    if ($null -eq $Task) {
+        return ""
+    }
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    foreach ($propertyName in @('title', 'scope', 'description', 'content')) {
+        if ($Task.PSObject.Properties[$propertyName] -and -not [string]::IsNullOrWhiteSpace([string]$Task.$propertyName)) {
+            $parts.Add([string]$Task.$propertyName) | Out-Null
+        }
+    }
+
+    foreach ($propertyName in @('acceptance_criteria', 'allowed_files', 'files_involved')) {
+        if ($Task.PSObject.Properties[$propertyName] -and $null -ne $Task.$propertyName) {
+            foreach ($item in @($Task.$propertyName)) {
+                if (-not [string]::IsNullOrWhiteSpace([string]$item)) {
+                    $parts.Add([string]$item) | Out-Null
+                }
+            }
+        }
+    }
+
+    return [string]::Join(" `n", @($parts))
+}
+
+function Get-TaskRoutingFileHints {
+    param($Task)
+
+    $text = Get-TaskRoutingText -Task $Task
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return @()
+    }
+
+    $matches = [regex]::Matches($text, '(?im)(?:^|[\s''""`(\[])([A-Za-z0-9_./\\-]+\.[A-Za-z0-9]{1,8})(?=$|[\s''""`,:;\)\]])')
+    $items = foreach ($match in $matches) {
+        if ($match.Groups.Count -gt 1) {
+            ([string]$match.Groups[1].Value) -replace '[\\/]+', '/'
+        }
+    }
+
+    return @($items | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+}
+
+function Get-LocalExecutionReuseSignal {
+    param(
+        $State,
+        [string]$TaskCategory,
+        [string[]]$FileHints = @()
+    )
+
+    $empty = [pscustomobject]@{
+        matched = $false
+        strength = 'none'
+        matched_files = @()
+        matched_record_id = ''
+    }
+
+    if ($null -eq $State -or -not $State.PSObject.Properties['engine_performance'] -or $null -eq $State.engine_performance -or -not $State.engine_performance.PSObject.Properties['records']) {
+        return $empty
+    }
+
+    $records = @($State.engine_performance.records | Where-Object {
+            $null -ne $_ -and
+            ([string]$_.engine).ToLowerInvariant() -eq 'local' -and
+            [bool]$_.success
+        } | Sort-Object -Property created_at -Descending | Select-Object -First 50)
+
+    if (-not [string]::IsNullOrWhiteSpace($TaskCategory)) {
+        $records = @($records | Where-Object {
+                $_.PSObject.Properties['task_category'] -and ([string]$_.task_category).ToLowerInvariant() -eq $TaskCategory.ToLowerInvariant()
+            })
+    }
+
+    foreach ($record in $records) {
+        $recordFiles = if ($record.PSObject.Properties['files_involved'] -and $null -ne $record.files_involved) {
+            @($record.files_involved | ForEach-Object { ([string]$_) -replace '[\\/]+', '/' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+        else {
+            @()
+        }
+
+        $matchedFiles = @($recordFiles | Where-Object { $FileHints -contains $_ } | Select-Object -Unique)
+        if (@($matchedFiles).Count -gt 0) {
+            return [pscustomobject]@{
+                matched = $true
+                strength = 'strong'
+                matched_files = @($matchedFiles)
+                matched_record_id = if ($record.PSObject.Properties['id']) { [string]$record.id } else { '' }
+            }
+        }
+    }
+
+    if (@($records).Count -gt 0) {
+        $top = $records[0]
+        return [pscustomobject]@{
+            matched = $true
+            strength = 'category'
+            matched_files = @()
+            matched_record_id = if ($top.PSObject.Properties['id']) { [string]$top.id } else { '' }
+        }
+    }
+
+    return $empty
+}
+
+function Resolve-LocalExecutionSuitability {
+    param(
+        $Task,
+        [string]$TaskCategoryHint,
+        $State
+    )
+
+    $taskCategory = if (-not [string]::IsNullOrWhiteSpace($TaskCategoryHint)) { ([string]$TaskCategoryHint).ToLowerInvariant() } else { Resolve-TaskCategory -Task $Task }
+    $text = (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
+    $fileHints = @(Get-TaskRoutingFileHints -Task $Task)
+    $reuse = Get-LocalExecutionReuseSignal -State $State -TaskCategory $taskCategory -FileHints $fileHints
+    $singleFileHint = (@($fileHints).Count -eq 1)
+    $boundedEditHint = ($text -match 'update|patch|edit|replace|append|write|modify|inspect|validate|verify|check|search|locate|find')
+    $highRiskHint = ($text -match 'deploy|push|remote host|ssh|service restart|systemctl|daemon|azure|kubernetes|database|migration|schema|provision|commit|branch|merge|publish')
+
+    $classification = 'codex_required'
+    $reason = 'default_codex_required'
+
+    if ($highRiskHint) {
+        $classification = 'codex_required'
+        $reason = 'high_risk_or_remote_scope'
+    }
+    else {
+        switch ($taskCategory) {
+            'docs_change' {
+                $classification = 'local_supported'
+                $reason = 'bounded_docs_change'
+            }
+            'config_change' {
+                $classification = 'local_supported'
+                $reason = 'bounded_config_change'
+            }
+            'inspection' {
+                $classification = 'local_supported'
+                $reason = 'inspection_is_local_first'
+            }
+            'validation' {
+                $classification = 'local_supported'
+                $reason = 'validation_is_local_first'
+            }
+            'review_only' {
+                $classification = 'local_supported'
+                $reason = 'review_is_local_first'
+            }
+            'sync_check' {
+                $classification = 'local_supported'
+                $reason = 'sync_checks_are_local_first'
+            }
+            'code_change' {
+                if ($singleFileHint -and $boundedEditHint) {
+                    $classification = 'local_supported'
+                    $reason = 'single_file_bounded_code_change'
+                }
+                else {
+                    $classification = 'local_possible'
+                    $reason = 'code_change_try_local_before_codex'
+                }
+            }
+            'bridge_runtime' {
+                $classification = 'local_possible'
+                $reason = 'bridge_runtime_try_local_first'
+            }
+            'mim_synced' {
+                $classification = 'local_possible'
+                $reason = 'mirrored_task_try_local_first'
+            }
+            'chat_execution' {
+                $classification = 'local_possible'
+                $reason = 'chat_execution_try_local_first'
+            }
+        }
+    }
+
+    if ([bool]$reuse.matched -and $classification -eq 'local_possible') {
+        $classification = 'local_supported'
+        $reason = 'local_execution_memory_reuse'
+    }
+
+    return [pscustomobject]@{
+        classification = $classification
+        task_category = $taskCategory
+        reason = $reason
+        file_hints = @($fileHints)
+        local_reuse = $reuse
+    }
+}
+
+function Resolve-PreferredAssignedExecutor {
+    param(
+        [string]$TaskCategory,
+        $State,
+        $Task
+    )
+
+    $suitability = Resolve-LocalExecutionSuitability -Task $Task -TaskCategoryHint $TaskCategory -State $State
+    if ([string]$suitability.classification -eq 'codex_required') {
+        return 'codex'
+    }
+
+    return 'local'
 }
 
 function Sync-EnginePerformanceToEngineeringMemory {
@@ -6278,8 +6517,8 @@ function Load-TodConfig {
                 }
             }
             execution_engine = [pscustomobject]@{
-                active = "codex"
-                fallback = "local"
+                active = "local"
+                fallback = "codex"
                 allow_fallback = $true
                 retry_policy = [pscustomobject]@{
                     enabled = $true
@@ -6413,14 +6652,14 @@ function Load-TodConfig {
 
     if (-not $cfg.PSObject.Properties["execution_engine"] -or $null -eq $cfg.execution_engine) {
         $cfg | Add-Member -NotePropertyName execution_engine -NotePropertyValue ([pscustomobject]@{
-                active = "codex"
-                fallback = "local"
+                active = "local"
+                fallback = "codex"
                 allow_fallback = $true
             }) -Force
     }
 
-    if ([string]::IsNullOrWhiteSpace([string]$cfg.execution_engine.active)) { $cfg.execution_engine.active = "codex" }
-    if ([string]::IsNullOrWhiteSpace([string]$cfg.execution_engine.fallback)) { $cfg.execution_engine.fallback = "local" }
+    if ([string]::IsNullOrWhiteSpace([string]$cfg.execution_engine.active)) { $cfg.execution_engine.active = "local" }
+    if ([string]::IsNullOrWhiteSpace([string]$cfg.execution_engine.fallback)) { $cfg.execution_engine.fallback = "codex" }
     if ($null -eq $cfg.execution_engine.allow_fallback) { $cfg.execution_engine.allow_fallback = $true }
     if (-not $cfg.execution_engine.PSObject.Properties["retry_policy"] -or $null -eq $cfg.execution_engine.retry_policy) {
         $cfg.execution_engine | Add-Member -NotePropertyName retry_policy -NotePropertyValue ([pscustomobject]@{
@@ -6621,13 +6860,16 @@ function Resolve-ExecutionEngineConfig {
         [Parameter(Mandatory = $true)]$Config,
         $State,
         [switch]$DisableAdaptiveRouting,
-        [string]$TaskCategoryHint
+        [string]$TaskCategoryHint,
+        $Task
     )
 
     $supported = @(Get-SupportedExecutionEngines)
     $active = ([string]$Config.execution_engine.active).ToLowerInvariant()
     $fallback = ([string]$Config.execution_engine.fallback).ToLowerInvariant()
     $allowFallback = [bool]$Config.execution_engine.allow_fallback
+    $taskRouting = Resolve-LocalExecutionSuitability -Task $Task -TaskCategoryHint $TaskCategoryHint -State $State
+    $resolvedTaskCategory = if ($taskRouting -and $taskRouting.PSObject.Properties['task_category']) { [string]$taskRouting.task_category } else { ([string]$TaskCategoryHint).ToLowerInvariant() }
     $policy = $Config.execution_engine.routing_policy
     $policyEnabled = $false
     $minRuns = 1
@@ -6657,10 +6899,10 @@ function Resolve-ExecutionEngineConfig {
     $effectiveWeights = Normalize-RoutingWeights -Weights $weights
 
     if ($null -ne $policy) {
-        $policyEnabled = [bool]$policy.enabled
-        $minRuns = [int]$policy.min_runs
-        $minSuccessRate = [double]$policy.min_success_rate
-        $improvementMargin = [double]$policy.improvement_margin
+        if ($policy.PSObject.Properties["enabled"] -and $null -ne $policy.enabled) { $policyEnabled = [bool]$policy.enabled }
+        if ($policy.PSObject.Properties["min_runs"] -and $null -ne $policy.min_runs) { $minRuns = [int]$policy.min_runs }
+        if ($policy.PSObject.Properties["min_success_rate"] -and $null -ne $policy.min_success_rate) { $minSuccessRate = [double]$policy.min_success_rate }
+        if ($policy.PSObject.Properties["improvement_margin"] -and $null -ne $policy.improvement_margin) { $improvementMargin = [double]$policy.improvement_margin }
         if ($policy.PSObject.Properties["source"] -and -not [string]::IsNullOrWhiteSpace([string]$policy.source)) { $policySource = [string]$policy.source }
         if ($policy.PSObject.Properties["allow_placeholder_for_code_change"] -and $null -ne $policy.allow_placeholder_for_code_change) { $allowPlaceholderForCodeChange = [bool]$policy.allow_placeholder_for_code_change }
         if ($policy.PSObject.Properties["prefer_stable_on_sync_warn"] -and $null -ne $policy.prefer_stable_on_sync_warn) { $preferStableOnSyncWarn = [bool]$policy.prefer_stable_on_sync_warn }
@@ -6736,6 +6978,74 @@ function Resolve-ExecutionEngineConfig {
     $candidateEngines = @($candidateEngines | Select-Object -Unique)
     $confidence = 0.5
     $sampleMode = "none"
+    $suitabilityLocked = $false
+
+    if (-not $DisableAdaptiveRouting) {
+        switch ([string]$taskRouting.classification) {
+            'local_supported' {
+                if ($supported -contains 'local') {
+                    $previousPrimary = $active
+                    $active = 'local'
+                    if ($allowFallback -and $previousPrimary -ne 'local') {
+                        $fallback = $previousPrimary
+                    }
+                    elseif ($supported -contains 'codex' -and $active -ne 'codex') {
+                        $fallback = 'codex'
+                    }
+                    $routingApplied = $true
+                    $routingReason = 'local_suitability_local_supported'
+                    $selectionReason = 'Task matched local_supported suitability, so local execution is selected before any Codex handoff.'
+                    if ($taskRouting.local_reuse -and [bool]$taskRouting.local_reuse.matched) {
+                        $selectionReason = "$selectionReason Recent local execution memory matched this category or file set."
+                    }
+                    $confidence = if ($taskRouting.local_reuse -and [bool]$taskRouting.local_reuse.matched) { 0.92 } else { 0.86 }
+                    $sampleMode = 'suitability_locked'
+                    $suitabilityLocked = $true
+                }
+            }
+            'local_possible' {
+                if ($supported -contains 'local') {
+                    $previousPrimary = $active
+                    $active = 'local'
+                    if ($allowFallback -and $previousPrimary -ne 'local') {
+                        $fallback = $previousPrimary
+                    }
+                    elseif ($supported -contains 'codex' -and $active -ne 'codex') {
+                        $fallback = 'codex'
+                    }
+                    $allowFallback = $true
+                    $routingApplied = $true
+                    $routingReason = 'local_suitability_local_possible'
+                    $selectionReason = 'Task matched local_possible suitability, so TOD will try local execution before Codex fallback.'
+                    if ($taskRouting.local_reuse -and [bool]$taskRouting.local_reuse.matched) {
+                        $selectionReason = "$selectionReason Recent local execution memory increased confidence in the local-first attempt."
+                    }
+                    $confidence = if ($taskRouting.local_reuse -and [bool]$taskRouting.local_reuse.matched) { 0.82 } else { 0.74 }
+                    $sampleMode = 'suitability_locked'
+                    $suitabilityLocked = $true
+                }
+            }
+            'codex_required' {
+                if ($active -eq 'local' -and $supported -contains 'codex') {
+                    $previousPrimary = $active
+                    $active = 'codex'
+                    if ($allowFallback -and $previousPrimary -ne 'codex') {
+                        $fallback = $previousPrimary
+                    }
+                    $routingApplied = $true
+                    $routingReason = 'local_suitability_codex_required'
+                    $selectionReason = 'Task matched codex_required suitability, so Codex remains the primary executor.'
+                    $confidence = 0.84
+                    $sampleMode = 'suitability_locked'
+                    $suitabilityLocked = $true
+                }
+            }
+        }
+    }
+
+    $candidateEngines = @($active)
+    if ($allowFallback -and -not [string]::IsNullOrWhiteSpace($fallback) -and $fallback -ne $active) { $candidateEngines += $fallback }
+    $candidateEngines = @($candidateEngines | Select-Object -Unique)
 
     $syncStatus = ""
     if ($State -and $State.PSObject.Properties["sync_state"] -and $State.sync_state -and $State.sync_state.PSObject.Properties["last_comparison"] -and $State.sync_state.last_comparison) {
@@ -6777,7 +7087,7 @@ function Resolve-ExecutionEngineConfig {
     $fallbackDrift = $null
     $selectedDrift = $null
     if ((-not $routingBlocked) -and (-not $DisableAdaptiveRouting) -and $policyEnabled -and $null -ne $State -and $State.PSObject.Properties["engine_performance"] -and $State.engine_performance -and $State.engine_performance.PSObject.Properties["records"]) {
-        $perfSummary = Get-EnginePerformanceSummary -State $State -TaskCategoryFilter $TaskCategoryHint
+        $perfSummary = Get-EnginePerformanceSummary -State $State -TaskCategoryFilter $resolvedTaskCategory
         $activeMetrics = @($perfSummary.by_engine | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $active } | Select-Object -First 1)
         $fallbackMetrics = @($perfSummary.by_engine | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $fallback } | Select-Object -First 1)
 
@@ -6803,9 +7113,33 @@ function Resolve-ExecutionEngineConfig {
         $fallbackRuns = if ($fallbackMetrics) { [int]$fallbackMetrics.total_runs } else { 0 }
         $fallbackSuccess = if ($fallbackMetrics) { [double]$fallbackMetrics.pass_rate } else { 0.0 }
 
-        $activeDrift = Get-RoutingDriftSignal -State $State -RoutingPolicy $policySnapshot -EngineFilter $active -TaskCategoryFilter $TaskCategoryHint
+        $activeDrift = Get-RoutingDriftSignal -State $State -RoutingPolicy $policySnapshot -EngineFilter $active -TaskCategoryFilter $resolvedTaskCategory
         if ($allowFallback -and $fallback -ne $active) {
-            $fallbackDrift = Get-RoutingDriftSignal -State $State -RoutingPolicy $policySnapshot -EngineFilter $fallback -TaskCategoryFilter $TaskCategoryHint
+            $fallbackDrift = Get-RoutingDriftSignal -State $State -RoutingPolicy $policySnapshot -EngineFilter $fallback -TaskCategoryFilter $resolvedTaskCategory
+        }
+
+        $recentCategoryRecordsForPenalty = @($State.engine_performance.records | Where-Object {
+                $candidate = $_
+                if ($null -eq $candidate) { return $false }
+                if (-not $candidate.PSObject.Properties['task_category']) { return $false }
+                ([string]$candidate.task_category).ToLowerInvariant() -eq $resolvedTaskCategory.ToLowerInvariant()
+            } | Sort-Object -Property created_at -Descending | Select-Object -First $recentFailureWindow)
+        $wrapperOnlyPenalties = @{}
+        foreach ($record in $recentCategoryRecordsForPenalty) {
+            $wrapperOnlyEngines = @()
+            if ($record.PSObject.Properties['wrapper_only_engines'] -and $null -ne $record.wrapper_only_engines) {
+                $wrapperOnlyEngines = @($record.wrapper_only_engines | ForEach-Object { ([string]$_).ToLowerInvariant() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            }
+            elseif ($record.PSObject.Properties['wrapper_only_codex_seen'] -and [bool]$record.wrapper_only_codex_seen) {
+                $wrapperOnlyEngines = @('codex')
+            }
+
+            foreach ($engineName in $wrapperOnlyEngines) {
+                if (-not $wrapperOnlyPenalties.ContainsKey($engineName)) {
+                    $wrapperOnlyPenalties[$engineName] = 0
+                }
+                $wrapperOnlyPenalties[$engineName] = [int]$wrapperOnlyPenalties[$engineName] + 1
+            }
         }
 
         function Get-DriftAlertRank {
@@ -6912,6 +7246,9 @@ function Resolve-ExecutionEngineConfig {
         if ($activeDrift -and $activeDrift.PSObject.Properties["score_penalty"] -and $null -ne $activeDrift.score_penalty) {
             $activeScore = [math]::Max(0.0, ([double]$activeScore - [double]$activeDrift.score_penalty))
         }
+        if ($wrapperOnlyPenalties.ContainsKey($active)) {
+            $activeScore = [math]::Max(0.0, ([double]$activeScore - (0.2 * ([math]::Min(1.0, ([double]$wrapperOnlyPenalties[$active] / [math]::Max(1.0, [double]$recentFailureWindow)))))))
+        }
         $activeScore = [math]::Round(([double]$activeScore * (Get-HealthBandMultiplier -HealthRecord $activeHealth)), 6)
         $scoresByEngine[$active] = $activeScore
         $fallbackScore = $null
@@ -6919,6 +7256,9 @@ function Resolve-ExecutionEngineConfig {
             $fallbackScore = Get-WeightedEngineScore -EngineName $fallback -Metrics $fallbackMetrics -MinRuns $minRuns -LatencyMin $latencyMin -LatencyMax $latencyMax -Weights $effectiveWeights
             if ($fallbackDrift -and $fallbackDrift.PSObject.Properties["score_penalty"] -and $null -ne $fallbackDrift.score_penalty) {
                 $fallbackScore = [math]::Max(0.0, ([double]$fallbackScore - [double]$fallbackDrift.score_penalty))
+            }
+            if ($wrapperOnlyPenalties.ContainsKey($fallback)) {
+                $fallbackScore = [math]::Max(0.0, ([double]$fallbackScore - (0.2 * ([math]::Min(1.0, ([double]$wrapperOnlyPenalties[$fallback] / [math]::Max(1.0, [double]$recentFailureWindow)))))))
             }
             $fallbackScore = [math]::Round(([double]$fallbackScore * (Get-HealthBandMultiplier -HealthRecord $fallbackHealth)), 6)
             $scoresByEngine[$fallback] = $fallbackScore
@@ -6936,7 +7276,7 @@ function Resolve-ExecutionEngineConfig {
             }
         }
 
-        if ($active -eq "local" -and $TaskCategoryHint -eq "code_change" -and (-not $allowPlaceholderForCodeChange)) {
+        if ((-not $suitabilityLocked) -and $active -eq "local" -and $resolvedTaskCategory -eq "code_change" -and (-not $allowPlaceholderForCodeChange)) {
             if ($allowFallback -and $fallback -ne $active) {
                 $active = $fallback
                 $routingApplied = $true
@@ -6954,8 +7294,8 @@ function Resolve-ExecutionEngineConfig {
 
         if ((-not $routingBlocked) -and $allowFallback -and $fallback -ne $active) {
             $blockedEngines = @()
-            if ($active -eq "local" -and $TaskCategoryHint -eq "code_change" -and (-not $allowPlaceholderForCodeChange)) { $blockedEngines += $active }
-            if ($fallback -eq "local" -and $TaskCategoryHint -eq "code_change" -and (-not $allowPlaceholderForCodeChange)) { $blockedEngines += $fallback }
+            if ((-not $suitabilityLocked) -and $active -eq "local" -and $resolvedTaskCategory -eq "code_change" -and (-not $allowPlaceholderForCodeChange)) { $blockedEngines += $active }
+            if ((-not $suitabilityLocked) -and $fallback -eq "local" -and $resolvedTaskCategory -eq "code_change" -and (-not $allowPlaceholderForCodeChange)) { $blockedEngines += $fallback }
 
             $recentCategoryRecords = @($State.engine_performance.records | Where-Object {
                     $candidate = $_
@@ -6964,7 +7304,7 @@ function Resolve-ExecutionEngineConfig {
                     $propertyNames = if ($candidate.PSObject) { @($candidate.PSObject.Properties.Name) } else { @() }
                     if (-not (@($propertyNames) -contains 'task_category')) { return $false }
 
-                    ([string]$candidate.task_category).ToLowerInvariant() -eq ([string]$TaskCategoryHint).ToLowerInvariant()
+                    ([string]$candidate.task_category).ToLowerInvariant() -eq $resolvedTaskCategory.ToLowerInvariant()
                 } | Sort-Object -Property created_at -Descending | Select-Object -First $recentFailureWindow)
             $recentFailuresByEngine = @{}
             foreach ($rr in $recentCategoryRecords) {
@@ -6991,14 +7331,14 @@ function Resolve-ExecutionEngineConfig {
                 $confidence = 1.0
             }
 
-            if ((-not $routingBlocked) -and $activeRuns -lt $minRuns -and $fallbackRuns -ge $minRuns) {
+            if ((-not $routingBlocked) -and (-not $suitabilityLocked) -and $activeRuns -lt $minRuns -and $fallbackRuns -ge $minRuns) {
                 $active = $fallback
                 $routingApplied = $true
                 $routingReason = "no_active_history_use_fallback"
                 $selectionReason = "Fallback chosen because active engine has insufficient history in this category."
                 $confidence = 0.68
             }
-            elseif ((-not $routingBlocked) -and $activeRuns -ge $minRuns -and $activeSuccess -lt $minSuccessRate -and $fallbackRuns -ge 1 -and $fallbackSuccess -ge ($activeSuccess + ($improvementMargin / [math]::Max($historyWeightMultiplier, 0.15)))) {
+            elseif ((-not $routingBlocked) -and (-not $suitabilityLocked) -and $activeRuns -ge $minRuns -and $activeSuccess -lt $minSuccessRate -and $fallbackRuns -ge 1 -and $fallbackSuccess -ge ($activeSuccess + ($improvementMargin / [math]::Max($historyWeightMultiplier, 0.15)))) {
                 $active = $fallback
                 $routingApplied = $true
                 $routingReason = "performance_policy_switch"
@@ -7006,7 +7346,7 @@ function Resolve-ExecutionEngineConfig {
                 $confidence = [math]::Round((0.62 + (0.18 * $historyWeightMultiplier)), 2)
             }
 
-            if ((-not $routingBlocked) -and (-not $routingApplied) -and $null -ne $fallbackScore) {
+            if ((-not $routingBlocked) -and (-not $routingApplied) -and (-not $suitabilityLocked) -and $null -ne $fallbackScore) {
                 $requiredAdvantage = ($improvementMargin / 100.0) / [math]::Max($historyWeightMultiplier, 0.2)
                 if (($fallbackScore - $activeScore) -ge $requiredAdvantage -and $fallbackRuns -ge 1) {
                     $active = $fallback
@@ -7017,7 +7357,7 @@ function Resolve-ExecutionEngineConfig {
                 }
             }
 
-            if ((-not $routingBlocked) -and $preferStableOnSyncWarn -and $syncStatus -eq "warn") {
+            if ((-not $routingBlocked) -and (-not $suitabilityLocked) -and $preferStableOnSyncWarn -and $syncStatus -eq "warn") {
                 $activeFallbackRate = if ($activeMetrics) { [double]$activeMetrics.fallback_frequency } else { 100.0 }
                 $fallbackFallbackRate = if ($fallbackMetrics) { [double]$fallbackMetrics.fallback_frequency } else { 100.0 }
                 if ($fallbackFallbackRate + 5 -lt $activeFallbackRate) {
@@ -7070,12 +7410,13 @@ function Resolve-ExecutionEngineConfig {
             reason = $(if ($DisableAdaptiveRouting) { "forced_configured_engine" } else { $routingReason })
             disabled = [bool]$DisableAdaptiveRouting
             blocked = [bool]$routingBlocked
-            task_category = $TaskCategoryHint
+            task_category = $resolvedTaskCategory
             source = $policySource
             confidence = [math]::Round($confidence, 4)
             selection_reason = $selectionReason
             candidate_engines = @($candidateEngines)
             sample_mode = $sampleMode
+            suitability = $taskRouting
             policy = $policySnapshot
             active_metrics = $activeMetrics
             fallback_metrics = $fallbackMetrics
@@ -7495,7 +7836,7 @@ function New-TodNextTaskSelectionPlan {
                 title = ('Replan with evidence: ' + $sourceTitle)
                 type = 'implementation'
                 task_category = 'code_change'
-                assigned_executor = 'codex'
+                assigned_executor = (Resolve-PreferredAssignedExecutor -TaskCategory 'code_change' -State $State -Task ([pscustomobject]@{ title = ('Replan with evidence: ' + $sourceTitle); scope = ('Previous execution for {0} produced no meaningful evidence. Replan the bounded step so TOD performs a state-changing or artifact-producing action. Original scope: {1}' -f $currentTaskId, $sourceScope) }))
                 scope = ('Previous execution for {0} produced no meaningful evidence. Replan the bounded step so TOD performs a state-changing or artifact-producing action. Original scope: {1}' -f $currentTaskId, $sourceScope)
                 acceptance_criteria = 'Produce meaningful evidence through changed files or accepted result artifacts and rerun focused validation before completion'
                 selection_source_task_id = $currentTaskId
@@ -7553,7 +7894,7 @@ function New-TodNextTaskSelectionPlan {
             title = if ($StaleDetected) { 'Capture evidence for stale self-driving task selection gap' } else { 'Run bounded maintenance to strengthen autonomous task continuation' }
             type = 'implementation'
             task_category = 'initiative_training'
-            assigned_executor = 'codex'
+            assigned_executor = (Resolve-PreferredAssignedExecutor -TaskCategory 'initiative_training' -State $State -Task ([pscustomobject]@{ title = if ($StaleDetected) { 'Capture evidence for stale self-driving task selection gap' } else { 'Run bounded maintenance to strengthen autonomous task continuation' }; scope = if ($StaleDetected) { ('Inspect the current stale condition and publish concrete evidence for why TOD stopped selecting valid work automatically. Reason: {0}' -f $(if ([string]::IsNullOrWhiteSpace($StaleReason)) { 'stale progress detected' } else { $StaleReason })) } else { 'Run a bounded maintenance/training slice that improves TOD autonomous continuation and publishes concrete evidence.' } }))
             scope = if ($StaleDetected) { ('Inspect the current stale condition and publish concrete evidence for why TOD stopped selecting valid work automatically. Reason: {0}' -f $(if ([string]::IsNullOrWhiteSpace($StaleReason)) { 'stale progress detected' } else { $StaleReason })) } else { 'Run a bounded maintenance/training slice that improves TOD autonomous continuation and publishes concrete evidence.' }
             acceptance_criteria = 'Publish a concrete artifact or changed file that explains the weakness and validates the maintenance response'
             selection_source_task_id = $currentTaskId
@@ -7766,10 +8107,14 @@ function Publish-TodNextTaskSelectionArtifacts {
         Publish-RemoteTodExecutionArtifacts -LocalArtifactPaths $remotePublishPaths | Out-Null
     }
 
+    $activityArtifactPath = @($writtenArtifactPaths | Where-Object { [System.IO.Path]::GetFileName([string]$_) -eq 'TOD_ACTIVITY_STREAM.latest.json' } | Select-Object -First 1)
+    $activityArtifact = if (@($activityArtifactPath).Count -gt 0) { Read-TodExecutionJsonIfExists -Path ([string]$activityArtifactPath[0]) } else { $activityPayload }
+
     return [pscustomobject]@{
         selection = $SelectionPayload
         active_task = $activeTaskPayload
-        activity = $activityPayload
+        activity = $activityArtifact
+        artifact_paths = @($writtenArtifactPaths)
     }
 }
 
@@ -9335,7 +9680,7 @@ function Sync-CodexHandoffTaskMirror {
             dependencies = @()
             acceptance_criteria = @($acceptanceCriteria)
             status = 'in_progress'
-            assigned_executor = 'codex'
+            assigned_executor = (Resolve-PreferredAssignedExecutor -TaskCategory 'bridge_runtime' -State $state -Task ([pscustomobject]@{ title = $resolvedTitle; scope = $resolvedScope }))
             source = 'bridge_runtime_sync'
             correlation_id = if ($Request.PSObject.Properties['correlation_id']) { [string]$Request.correlation_id } else { $resolvedTaskId }
             created_at = $updatedAt
@@ -10261,15 +10606,288 @@ function Write-TodBlockedLatestArtifactRecord {
     }
 }
 
+function Get-TodActivityStreamEventLimit {
+    return 80
+}
+
+function New-TodActivityEventRecord {
+    param(
+        [Parameter(Mandatory = $true)][string]$EventType,
+        [AllowEmptyString()][string]$Timestamp,
+        [AllowEmptyString()][string]$ObjectiveId,
+        [AllowEmptyString()][string]$TaskId,
+        [AllowEmptyString()][string]$Step,
+        [AllowEmptyString()][string]$Status,
+        [AllowEmptyString()][string]$Message,
+        [AllowNull()]$Details,
+        [AllowEmptyString()][string]$RequestId,
+        [AllowEmptyString()][string]$ExecutionId,
+        [AllowEmptyString()][string]$CorrelationId,
+        [AllowEmptyString()][string]$Title,
+        [AllowEmptyString()][string]$Source,
+        [AllowEmptyString()][string]$Surface
+    )
+
+    $resolvedTimestamp = if ([string]::IsNullOrWhiteSpace($Timestamp)) { Get-UtcNow } else { [string]$Timestamp }
+    $resolvedDetails = if ($null -eq $Details) { [pscustomobject]@{} } else { $Details }
+
+    return [ordered]@{
+        timestamp = $resolvedTimestamp
+        event_type = [string]$EventType
+        objective_id = [string]$ObjectiveId
+        normalized_objective_id = Get-NormalizedObjectiveToken -ObjectiveId $ObjectiveId
+        task_id = [string]$TaskId
+        request_id = [string]$RequestId
+        execution_id = [string]$ExecutionId
+        correlation_id = [string]$CorrelationId
+        title = [string]$Title
+        step = [string]$(if ([string]::IsNullOrWhiteSpace($Step)) { 'activity' } else { $Step })
+        status = [string]$(if ([string]::IsNullOrWhiteSpace($Status)) { 'active' } else { $Status })
+        message = [string]$Message
+        details = $resolvedDetails
+        source = [string]$Source
+        surface = [string]$Surface
+    }
+}
+
+function Convert-TodActivityPayloadToStream {
+    param([AllowNull()]$Payload)
+
+    if ($null -eq $Payload) {
+        return $null
+    }
+
+    $packetType = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'packet_type')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'packet_type') } else { '' }
+    $generatedAt = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'generated_at')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'generated_at') } else { Get-UtcNow }
+    $updatedAt = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'updated_at')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'updated_at') } else { $generatedAt }
+    $objectiveId = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'objective_id')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'objective_id') } else { '' }
+    $taskId = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'task_id')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'task_id') } else { '' }
+    $requestId = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'request_id')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'request_id') } else { '' }
+    $executionId = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'execution_id')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'execution_id') } else { '' }
+    $correlationId = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'correlation_id')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'correlation_id') } else { '' }
+    $title = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'title')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'title') } else { '' }
+    $source = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'source')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'source') } else { '' }
+    $surface = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'surface')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'surface') } else { '' }
+    $summary = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'summary')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'summary') } else { '' }
+    $events = @()
+
+    $payloadEvents = Get-TodObjectValue -InputObject $Payload -Name 'events'
+    if ($payloadEvents) {
+        foreach ($eventItem in @($payloadEvents)) {
+            if ($null -eq $eventItem) {
+                continue
+            }
+
+            $eventType = if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'event_type')) { [string](Get-TodObjectValue -InputObject $eventItem -Name 'event_type') } else { [string](Get-TodObjectValue -InputObject $eventItem -Name 'event') }
+            if ([string]::IsNullOrWhiteSpace($eventType)) {
+                $eventType = 'activity'
+            }
+
+            $eventRecord = [pscustomobject](New-TodActivityEventRecord -EventType $eventType -Timestamp ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'timestamp')) { Get-TodObjectValue -InputObject $eventItem -Name 'timestamp' } else { $generatedAt })) -ObjectiveId ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'objective_id')) { Get-TodObjectValue -InputObject $eventItem -Name 'objective_id' } else { $objectiveId })) -TaskId ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'task_id')) { Get-TodObjectValue -InputObject $eventItem -Name 'task_id' } else { $taskId })) -Step ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'step')) { Get-TodObjectValue -InputObject $eventItem -Name 'step' } else { Get-TodObjectValue -InputObject $Payload -Name 'phase' })) -Status ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'status')) { Get-TodObjectValue -InputObject $eventItem -Name 'status' } else { Get-TodObjectValue -InputObject $Payload -Name 'status' })) -Message ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'message')) { Get-TodObjectValue -InputObject $eventItem -Name 'message' } else { $summary })) -Details (Get-TodObjectValue -InputObject $eventItem -Name 'details') -RequestId ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'request_id')) { Get-TodObjectValue -InputObject $eventItem -Name 'request_id' } else { $requestId })) -ExecutionId ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'execution_id')) { Get-TodObjectValue -InputObject $eventItem -Name 'execution_id' } else { $executionId })) -CorrelationId ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'correlation_id')) { Get-TodObjectValue -InputObject $eventItem -Name 'correlation_id' } else { $correlationId })) -Title ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'title')) { Get-TodObjectValue -InputObject $eventItem -Name 'title' } else { $title })) -Source ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'source')) { Get-TodObjectValue -InputObject $eventItem -Name 'source' } else { $source })) -Surface ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $eventItem -Name 'surface')) { Get-TodObjectValue -InputObject $eventItem -Name 'surface' } else { $surface })))
+            $events += ,$eventRecord
+        }
+    }
+
+    if (@($events).Count -eq 0) {
+        $legacyEventType = if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'event')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'event') } elseif ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'event_type')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'event_type') } else { '' }
+        if (-not [string]::IsNullOrWhiteSpace($legacyEventType)) {
+            $legacyEvent = [pscustomobject](New-TodActivityEventRecord -EventType $legacyEventType -Timestamp $generatedAt -ObjectiveId $objectiveId -TaskId $taskId -Step ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'phase')) { Get-TodObjectValue -InputObject $Payload -Name 'phase' } else { 'activity' })) -Status ([string]$(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'status')) { Get-TodObjectValue -InputObject $Payload -Name 'status' } else { 'active' })) -Message ([string]$(if (-not [string]::IsNullOrWhiteSpace([string](Get-TodObjectValue -InputObject $Payload -Name 'current_action'))) { Get-TodObjectValue -InputObject $Payload -Name 'current_action' } elseif (-not [string]::IsNullOrWhiteSpace($summary)) { $summary } else { $legacyEventType })) -Details ([ordered]@{
+                summary = $summary
+                next_step = [string](Get-TodObjectValue -InputObject $Payload -Name 'next_step')
+                next_validation = [string](Get-TodObjectValue -InputObject $Payload -Name 'next_validation')
+                execution_state = [string](Get-TodObjectValue -InputObject $Payload -Name 'execution_state')
+                execution_evidence = Get-TodObjectValue -InputObject $Payload -Name 'execution_evidence'
+                recovery_state = [string](Get-TodObjectValue -InputObject $Payload -Name 'recovery_state')
+            }) -RequestId $requestId -ExecutionId $executionId -CorrelationId $correlationId -Title $title -Source $source -Surface $surface)
+            $events = @($legacyEvent)
+        }
+    }
+
+    $latestEvent = @($events | Select-Object -Last 1)
+    $latestEvent = if (@($latestEvent).Count -gt 0) { $latestEvent[0] } else { $null }
+    $resolvedPacketType = if ([string]::IsNullOrWhiteSpace($packetType)) { 'tod-activity-stream-v1' } else { $packetType }
+
+    return [ordered]@{
+        generated_at = $generatedAt
+        updated_at = $updatedAt
+        source = $source
+        surface = $surface
+        session_key = [string](Get-TodObjectValue -InputObject $Payload -Name 'session_key')
+        request_id = $requestId
+        task_id = $taskId
+        execution_id = $executionId
+        correlation_id = $correlationId
+        objective_id = $objectiveId
+        normalized_objective_id = Get-NormalizedObjectiveToken -ObjectiveId $objectiveId
+        title = $title
+        summary = $summary
+        packet_type = $resolvedPacketType
+        event = if ($latestEvent) { [string]$latestEvent.event_type } else { '' }
+        status = if ($latestEvent) { [string]$latestEvent.status } else { [string](Get-TodObjectValue -InputObject $Payload -Name 'status') }
+        phase = if ($latestEvent) { [string]$latestEvent.step } else { [string](Get-TodObjectValue -InputObject $Payload -Name 'phase') }
+        current_action = [string](Get-TodObjectValue -InputObject $Payload -Name 'current_action')
+        next_step = [string](Get-TodObjectValue -InputObject $Payload -Name 'next_step')
+        next_validation = [string](Get-TodObjectValue -InputObject $Payload -Name 'next_validation')
+        execution_state = [string](Get-TodObjectValue -InputObject $Payload -Name 'execution_state')
+        execution_evidence = Get-TodObjectValue -InputObject $Payload -Name 'execution_evidence'
+        recovery_state = [string](Get-TodObjectValue -InputObject $Payload -Name 'recovery_state')
+        latest_event = $latestEvent
+        events = @($events)
+    }
+}
+
+function Merge-TodActivityStreamPayload {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)]$Payload
+    )
+
+    $existingStream = Convert-TodActivityPayloadToStream -Payload (Read-TodExecutionJsonIfExists -Path $Path)
+    $incomingStream = Convert-TodActivityPayloadToStream -Payload $Payload
+    if ($null -eq $incomingStream) {
+        return $Payload
+    }
+
+    $mergedEvents = @()
+    if ($existingStream -and $existingStream.PSObject.Properties['events']) {
+        $mergedEvents += @($existingStream.events)
+    }
+    if ($incomingStream.PSObject.Properties['events']) {
+        $mergedEvents += @($incomingStream.events)
+    }
+
+    $eventLimit = Get-TodActivityStreamEventLimit
+    if (@($mergedEvents).Count -gt $eventLimit) {
+        $mergedEvents = @($mergedEvents | Select-Object -Last $eventLimit)
+    }
+
+    $latestEvent = @($mergedEvents | Select-Object -Last 1)
+    $latestEvent = if (@($latestEvent).Count -gt 0) { $latestEvent[0] } else { $null }
+    $summary = if (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.summary)) { [string]$incomingStream.summary } elseif ($existingStream) { [string]$existingStream.summary } elseif ($latestEvent) { [string]$latestEvent.message } else { '' }
+    $objectiveId = if ($latestEvent -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.objective_id)) { [string]$latestEvent.objective_id } elseif (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.objective_id)) { [string]$incomingStream.objective_id } elseif ($existingStream) { [string]$existingStream.objective_id } else { '' }
+    $taskId = if ($latestEvent -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.task_id)) { [string]$latestEvent.task_id } elseif (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.task_id)) { [string]$incomingStream.task_id } elseif ($existingStream) { [string]$existingStream.task_id } else { '' }
+    $requestId = if ($latestEvent -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.request_id)) { [string]$latestEvent.request_id } elseif (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.request_id)) { [string]$incomingStream.request_id } elseif ($existingStream) { [string]$existingStream.request_id } else { '' }
+    $executionId = if ($latestEvent -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.execution_id)) { [string]$latestEvent.execution_id } elseif (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.execution_id)) { [string]$incomingStream.execution_id } elseif ($existingStream) { [string]$existingStream.execution_id } else { '' }
+    $correlationId = if ($latestEvent -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.correlation_id)) { [string]$latestEvent.correlation_id } elseif (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.correlation_id)) { [string]$incomingStream.correlation_id } elseif ($existingStream) { [string]$existingStream.correlation_id } else { '' }
+
+    return [ordered]@{
+        generated_at = if ($existingStream -and -not [string]::IsNullOrWhiteSpace([string]$existingStream.generated_at)) { [string]$existingStream.generated_at } else { [string]$incomingStream.generated_at }
+        updated_at = if ($latestEvent) { [string]$latestEvent.timestamp } else { [string]$incomingStream.updated_at }
+        source = if (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.source)) { [string]$incomingStream.source } elseif ($existingStream) { [string]$existingStream.source } else { '' }
+        surface = if (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.surface)) { [string]$incomingStream.surface } elseif ($existingStream) { [string]$existingStream.surface } else { '' }
+        session_key = if (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.session_key)) { [string]$incomingStream.session_key } elseif ($existingStream) { [string]$existingStream.session_key } else { '' }
+        request_id = $requestId
+        task_id = $taskId
+        execution_id = $executionId
+        correlation_id = $correlationId
+        objective_id = $objectiveId
+        normalized_objective_id = Get-NormalizedObjectiveToken -ObjectiveId $objectiveId
+        title = if ($latestEvent -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.title)) { [string]$latestEvent.title } elseif (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.title)) { [string]$incomingStream.title } elseif ($existingStream) { [string]$existingStream.title } else { '' }
+        summary = $summary
+        packet_type = 'tod-activity-stream-v1'
+        event = if ($latestEvent) { [string]$latestEvent.event_type } else { [string]$incomingStream.event }
+        status = if ($latestEvent) { [string]$latestEvent.status } else { [string]$incomingStream.status }
+        phase = if ($latestEvent) { [string]$latestEvent.step } else { [string]$incomingStream.phase }
+        current_action = if (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.current_action)) { [string]$incomingStream.current_action } elseif ($latestEvent) { [string]$latestEvent.message } elseif ($existingStream) { [string]$existingStream.current_action } else { '' }
+        next_step = if (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.next_step)) { [string]$incomingStream.next_step } elseif ($existingStream) { [string]$existingStream.next_step } else { '' }
+        next_validation = if (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.next_validation)) { [string]$incomingStream.next_validation } elseif ($existingStream) { [string]$existingStream.next_validation } else { '' }
+        execution_state = if (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.execution_state)) { [string]$incomingStream.execution_state } elseif ($existingStream) { [string]$existingStream.execution_state } else { '' }
+        execution_evidence = if ($null -ne $incomingStream.execution_evidence) { $incomingStream.execution_evidence } elseif ($latestEvent) { $latestEvent.details } elseif ($existingStream) { $existingStream.execution_evidence } else { $null }
+        recovery_state = if (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.recovery_state)) { [string]$incomingStream.recovery_state } elseif ($existingStream) { [string]$existingStream.recovery_state } else { '' }
+        latest_event = $latestEvent
+        events = @($mergedEvents)
+    }
+}
+
+function Publish-TodActivityEvent {
+    param(
+        [Parameter(Mandatory = $true)][string]$EventType,
+        [AllowEmptyString()][string]$ObjectiveId,
+        [AllowEmptyString()][string]$TaskId,
+        [AllowEmptyString()][string]$RequestId,
+        [AllowEmptyString()][string]$ExecutionId,
+        [AllowEmptyString()][string]$CorrelationId,
+        [AllowEmptyString()][string]$Title,
+        [AllowEmptyString()][string]$Step,
+        [AllowEmptyString()][string]$Status,
+        [AllowEmptyString()][string]$Message,
+        [AllowNull()]$Details,
+        [AllowEmptyString()][string]$Source = 'tod.run-task',
+        [AllowEmptyString()][string]$Surface = 'tod-run-task',
+        [AllowEmptyString()][string]$Summary = '',
+        [AllowEmptyString()][string]$CurrentAction = '',
+        [AllowEmptyString()][string]$NextStep = '',
+        [AllowEmptyString()][string]$NextValidation = '',
+        [AllowEmptyString()][string]$ExecutionState = '',
+        [AllowEmptyString()][string]$RecoveryState = ''
+    )
+
+    $eventRecord = [pscustomobject](New-TodActivityEventRecord -EventType $EventType -Timestamp (Get-UtcNow) -ObjectiveId $ObjectiveId -TaskId $TaskId -Step $Step -Status $Status -Message $Message -Details $Details -RequestId $RequestId -ExecutionId $ExecutionId -CorrelationId $CorrelationId -Title $Title -Source $Source -Surface $Surface)
+    $payload = [ordered]@{
+        generated_at = [string]$eventRecord.timestamp
+        updated_at = [string]$eventRecord.timestamp
+        source = $Source
+        surface = $Surface
+        session_key = 'tod-live-activity'
+        request_id = [string]$RequestId
+        task_id = [string]$TaskId
+        execution_id = [string]$ExecutionId
+        correlation_id = [string]$CorrelationId
+        objective_id = [string]$ObjectiveId
+        normalized_objective_id = Get-NormalizedObjectiveToken -ObjectiveId $ObjectiveId
+        title = [string]$Title
+        summary = if ([string]::IsNullOrWhiteSpace($Summary)) { [string]$Message } else { [string]$Summary }
+        packet_type = 'tod-activity-stream-v1'
+        event = [string]$EventType
+        status = [string]$(if ([string]::IsNullOrWhiteSpace($Status)) { 'active' } else { $Status })
+        phase = [string]$(if ([string]::IsNullOrWhiteSpace($Step)) { 'activity' } else { $Step })
+        current_action = if ([string]::IsNullOrWhiteSpace($CurrentAction)) { [string]$Message } else { [string]$CurrentAction }
+        next_step = [string]$NextStep
+        next_validation = [string]$NextValidation
+        execution_state = [string]$ExecutionState
+        execution_evidence = $Details
+        recovery_state = [string]$RecoveryState
+        latest_event = $eventRecord
+        events = @($eventRecord)
+    }
+
+    $writtenArtifactPaths = @()
+    foreach ($sharedRoot in @(Get-TodExecutionSharedRoots)) {
+        $writeResult = Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVITY_STREAM.latest.json') -Payload $payload
+        if ($writeResult -and $writeResult.PSObject.Properties['written'] -and [bool]$writeResult.written) {
+            $writtenArtifactPaths += [string]$writeResult.path
+        }
+    }
+
+    $runtimeSharedRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'runtime/shared'))
+    $remotePublishPaths = @($writtenArtifactPaths | Where-Object {
+        $fullPath = [System.IO.Path]::GetFullPath([string]$_)
+        $fullPath.StartsWith($runtimeSharedRoot, [System.StringComparison]::OrdinalIgnoreCase)
+    } | Select-Object -Unique)
+    if ($remotePublishPaths.Length -gt 0) {
+        Publish-RemoteTodExecutionArtifacts -LocalArtifactPaths $remotePublishPaths | Out-Null
+    }
+
+    return [pscustomobject]@{
+        activity = $payload
+        written_paths = @($writtenArtifactPaths)
+    }
+}
+
 function Write-TodExecutionSharedJson {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)]$Payload
     )
 
-    $gateDecision = Test-TodLatestArtifactPublishGate -Path $Path -Payload $Payload
+    $payloadToWrite = $Payload
+    if ([System.IO.Path]::GetFileName($Path) -eq 'TOD_ACTIVITY_STREAM.latest.json') {
+        $payloadToWrite = Merge-TodActivityStreamPayload -Path $Path -Payload $Payload
+    }
+
+    $gateDecision = Test-TodLatestArtifactPublishGate -Path $Path -Payload $payloadToWrite
     if (-not [bool]$gateDecision.allow) {
-        $blockedRecord = Write-TodBlockedLatestArtifactRecord -Path $Path -Payload $Payload -GateDecision $gateDecision
+        $blockedRecord = Write-TodBlockedLatestArtifactRecord -Path $Path -Payload $payloadToWrite -GateDecision $gateDecision
         return [pscustomobject]@{
             written = $false
             blocked = $true
@@ -10280,7 +10898,7 @@ function Write-TodExecutionSharedJson {
         }
     }
 
-    Write-TodExecutionJsonAtomically -Path $Path -Payload $Payload
+    Write-TodExecutionJsonAtomically -Path $Path -Payload $payloadToWrite
     return [pscustomobject]@{
         written = $true
         blocked = $false
@@ -10846,14 +11464,18 @@ function Publish-LocalExecutionArtifacts {
         Publish-RemoteTodExecutionArtifacts -LocalArtifactPaths $remotePublishPaths | Out-Null
     }
 
+    $activityArtifactPath = @($writtenArtifactPaths | Where-Object { [System.IO.Path]::GetFileName([string]$_) -eq 'TOD_ACTIVITY_STREAM.latest.json' } | Select-Object -First 1)
+    $activityArtifact = if (@($activityArtifactPath).Count -gt 0) { Read-TodExecutionJsonIfExists -Path ([string]$activityArtifactPath[0]) } else { $activityPayload }
+
     return [pscustomobject]@{
         no_op_assessment = $noOpAssessment
         active_objective = $activeObjectivePayload
         active_task = $activeTaskPayload
-        activity = $activityPayload
+        activity = $activityArtifact
         validation = $validationPayload
         execution_result = $executionResultPayload
         execution_truth = $executionTruthPayload
+        artifact_paths = @($writtenArtifactPaths)
     }
 }
 
@@ -11631,7 +12253,7 @@ switch ($Action) {
         $task = Get-TaskFromState -State $state -TaskId $TaskId
         if (-not $task) { throw "Task not found in local state cache: $TaskId" }
         $taskCategoryResolved = Resolve-TaskCategory -Task $task
-        $actionEngineConfig = Resolve-ExecutionEngineConfig -Config $config -State $state -DisableAdaptiveRouting:$ForceConfiguredEngine -TaskCategoryHint $taskCategoryResolved
+        $actionEngineConfig = Resolve-ExecutionEngineConfig -Config $config -State $state -DisableAdaptiveRouting:$ForceConfiguredEngine -TaskCategoryHint $taskCategoryResolved -Task $task
         $routingPre = Add-RoutingDecisionRecord -State $state -TaskId $TaskId -ActionName "invoke_engine" -EngineConfig $actionEngineConfig -TaskCategory $taskCategoryResolved -FinalOutcome "pre_invocation"
         $routingPre = @($routingPre | Select-Object -First 1)
 
@@ -11698,6 +12320,9 @@ switch ($Action) {
         }
         $feedbackConfig = Resolve-ExecutionFeedbackConfig -Config $config
         $resolvedExecutionId = Resolve-ExecutionIdForTask -ExplicitExecutionId $ExecutionId -Task $task
+        $taskRequestId = [string]$TaskId
+        $taskCorrelationId = if ($task.PSObject.Properties['correlation_id']) { [string]$task.correlation_id } else { '' }
+        $taskTitle = if ($task.PSObject.Properties['title']) { [string]$task.title } else { '' }
         $feedbackEvents = @()
         $memoryProfile = [ordered]@{
             before_execution = Get-ProcessMemorySnapshot
@@ -11706,14 +12331,27 @@ switch ($Action) {
             peak_private_memory_mb = $null
         }
         $taskCategoryResolved = Resolve-TaskCategory -Task $task
-        $actionEngineConfig = Resolve-ExecutionEngineConfig -Config $config -State $state -DisableAdaptiveRouting:$ForceConfiguredEngine -TaskCategoryHint $taskCategoryResolved
+        $actionEngineConfig = Resolve-ExecutionEngineConfig -Config $config -State $state -DisableAdaptiveRouting:$ForceConfiguredEngine -TaskCategoryHint $taskCategoryResolved -Task $task
         $routingPre = Add-RoutingDecisionRecord -State $state -TaskId $TaskId -ActionName "run_task" -EngineConfig $actionEngineConfig -TaskCategory $taskCategoryResolved -FinalOutcome "pre_invocation"
         $routingPre = @($routingPre | Select-Object -First 1)
+        Publish-TodActivityEvent -EventType 'task_start' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'task_intake' -Status 'active' -Message 'Accepted bounded task for execution.' -Details ([ordered]@{
+                task_category = $taskCategoryResolved
+                assigned_executor = if ($task.PSObject.Properties['assigned_executor']) { [string]$task.assigned_executor } else { '' }
+                routing_active_engine = [string]$actionEngineConfig.active
+                fallback_engine = [string]$actionEngineConfig.fallback
+                routing = if ($actionEngineConfig.PSObject.Properties['routing']) { $actionEngineConfig.routing } else { $null }
+                execution_readiness = $executionReadinessGate.trace
+            }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$task.scope) -CurrentAction 'Accepted bounded task for execution.' | Out-Null
         if ([bool]$stateAccess.local_cache_enabled) {
             Save-State -State $state
         }
 
         if ($executionReadinessGate.blocked) {
+            Publish-TodActivityEvent -EventType 'failure' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'task_intake' -Status 'blocked' -Message 'Execution readiness policy blocked the task before engine invocation.' -Details ([ordered]@{
+                    reason = 'execution_readiness_blocked'
+                    task_category = $taskCategoryResolved
+                    execution_readiness = $executionReadinessGate.trace
+                }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary 'run-task blocked by execution-readiness policy.' -CurrentAction 'Blocked bounded task before engine invocation.' -RecoveryState 'required' | Out-Null
             $blockedFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status "blocked" -TaskId $TaskId -Details ([pscustomobject]@{
                     reason = "readiness_policy_blocked"
                     task_category = $taskCategoryResolved
@@ -11750,6 +12388,11 @@ switch ($Action) {
         }
 
         if ($actionEngineConfig.routing -and $actionEngineConfig.routing.PSObject.Properties["blocked"] -and [bool]$actionEngineConfig.routing.blocked) {
+            Publish-TodActivityEvent -EventType 'failure' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'task_intake' -Status 'blocked' -Message 'Routing guardrail blocked the task before engine invocation.' -Details ([ordered]@{
+                reason = 'guardrail_blocked'
+                task_category = $taskCategoryResolved
+                routing = $actionEngineConfig.routing
+            }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary 'run-task blocked by routing guardrail.' -CurrentAction 'Blocked bounded task before engine invocation.' -RecoveryState 'required' | Out-Null
             $routingFinalBlocked = Update-RoutingDecisionRecord -State $state -RoutingDecisionId ([string]$routingPre[0].id) -FinalOutcome "escalated_pre_run"
             Add-Journal -State $state -Actor "tod" -ActionName "run_task_blocked" -EntityType "task" -EntityId $TaskId -Payload ([pscustomobject]@{
                     task_category = $taskCategoryResolved
@@ -11788,6 +12431,19 @@ switch ($Action) {
         }
 
         $packagePath = Resolve-TaskPackagePath -TaskId $TaskId -ExplicitPath $PackagePath
+        Publish-TodActivityEvent -EventType 'step_start' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'active' -Message ('Starting execution with engine ' + [string]$actionEngineConfig.active + '.') -Details ([ordered]@{
+                package_path = $packagePath
+                task_category = $taskCategoryResolved
+                active_engine = [string]$actionEngineConfig.active
+                fallback_engine = [string]$actionEngineConfig.fallback
+            }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$task.scope) -CurrentAction 'Invoking the selected execution engine.' | Out-Null
+        if ([string]::Equals([string]$actionEngineConfig.active, 'codex', [System.StringComparison]::OrdinalIgnoreCase)) {
+            Publish-TodActivityEvent -EventType 'codex_handoff' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'active' -Message 'Handing the bounded task to Codex.' -Details ([ordered]@{
+                    package_path = $packagePath
+                    routing = if ($actionEngineConfig.PSObject.Properties['routing']) { $actionEngineConfig.routing } else { $null }
+                    fallback_engine = [string]$actionEngineConfig.fallback
+                }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary 'Codex selected as the active execution engine.' -CurrentAction 'Handing the bounded task to Codex.' | Out-Null
+        }
         $acceptedFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status "accepted" -TaskId $TaskId -Details ([pscustomobject]@{
                 task_category = $taskCategoryResolved
                 package_path = $packagePath
@@ -11808,6 +12464,12 @@ switch ($Action) {
         }
         catch {
             $memoryProfile.after_execution = Get-ProcessMemorySnapshot
+            Publish-TodActivityEvent -EventType 'failure' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'failed' -Message 'Execution engine invocation threw before result normalization.' -Details ([ordered]@{
+                    reason = 'executor_unavailable'
+                    task_category = $taskCategoryResolved
+                    error = [string]$_.Exception.Message
+                    active_engine = [string]$actionEngineConfig.active
+                }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary 'Executor unavailable during run-task.' -CurrentAction 'Execution engine invocation failed.' -RecoveryState 'required' | Out-Null
             $failedFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status "failed" -TaskId $TaskId -Details ([pscustomobject]@{
                     reason = "executor_unavailable"
                     task_category = $taskCategoryResolved
@@ -11818,9 +12480,62 @@ switch ($Action) {
         }
 
         $resultPayload = $invokeResult.result
+        foreach ($attempt in @($invokeResult.attempts)) {
+            if ($null -eq $attempt) {
+                continue
+            }
+
+            $attemptEngine = if ($attempt.PSObject.Properties['engine']) { [string]$attempt.engine } else { '' }
+            $attemptStatus = if ($attempt.PSObject.Properties['status']) { [string]$attempt.status } else { 'unknown' }
+            if ([string]::Equals($attemptEngine, 'codex', [System.StringComparison]::OrdinalIgnoreCase)) {
+                Publish-TodActivityEvent -EventType 'codex_response' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status $(if ([string]::Equals($attemptStatus, 'completed', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } else { 'active' }) -Message ('Codex attempt ' + [string]$attempt.attempt + ' returned status ' + $attemptStatus + '.') -Details ([ordered]@{
+                        engine = $attemptEngine
+                        attempt = if ($attempt.PSObject.Properties['attempt']) { [int]$attempt.attempt } else { 1 }
+                        retryable = if ($attempt.PSObject.Properties['retryable']) { [bool]$attempt.retryable } else { $false }
+                        failure_category = if ($attempt.PSObject.Properties['failure_category']) { [string]$attempt.failure_category } else { '' }
+                        message = if ($attempt.PSObject.Properties['message']) { [string]$attempt.message } else { '' }
+                    }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary 'Codex execution attempt completed.' -CurrentAction 'Processed the Codex response.' | Out-Null
+            }
+            if ($attempt.PSObject.Properties['attempt'] -and [int]$attempt.attempt -gt 1) {
+                Publish-TodActivityEvent -EventType 'retry' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'active' -Message ('Retry attempt ' + [string]$attempt.attempt + ' executed on engine ' + $attemptEngine + '.') -Details ([ordered]@{
+                        engine = $attemptEngine
+                        attempt = [int]$attempt.attempt
+                        status = $attemptStatus
+                        retryable = if ($attempt.PSObject.Properties['retryable']) { [bool]$attempt.retryable } else { $false }
+                        failure_category = if ($attempt.PSObject.Properties['failure_category']) { [string]$attempt.failure_category } else { '' }
+                    }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary 'Retry executed during engine invocation.' -CurrentAction 'Retrying the bounded execution path.' | Out-Null
+            }
+        }
         $hasExplicitEngineBlocker = $resultPayload.PSObject.Properties['reason_code'] -and -not [string]::IsNullOrWhiteSpace([string]$resultPayload.reason_code)
         $noOpAssessment = Get-LocalExecutionNoOpAssessment -Task $task -ResultPayload $resultPayload
         $resultPayload | Add-Member -NotePropertyName no_op_assessment -NotePropertyValue $noOpAssessment -Force
+        Publish-TodActivityEvent -EventType 'step_complete' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status $(if ($hasExplicitEngineBlocker -or [bool]$noOpAssessment.detected) { 'blocked' } else { 'completed' }) -Message 'Execution engine returned a normalized result envelope.' -Details ([ordered]@{
+                attempted_engines = @($invokeResult.attempted_engines)
+                fallback_applied = [bool]$invokeResult.fallback_applied
+                failure_category = if ($invokeResult.PSObject.Properties['failure_category']) { [string]$invokeResult.failure_category } else { 'none' }
+                reason_code = if ($resultPayload.PSObject.Properties['reason_code']) { [string]$resultPayload.reason_code } else { '' }
+                no_op_detected = [bool]$noOpAssessment.detected
+                summary = [string]$resultPayload.summary
+            }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Normalized the engine result.' -ExecutionState ([string]$resultPayload.status) | Out-Null
+        if (@($resultPayload.files_changed).Count -gt 0) {
+            Publish-TodActivityEvent -EventType 'patch_applied' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'patch_writer' -Status 'completed' -Message ('Applied bounded changes to ' + [string]@(@($resultPayload.files_changed).Count) + ' file(s).') -Details ([ordered]@{
+                    files_changed = @($resultPayload.files_changed)
+                    diff_summary = if ($resultPayload.PSObject.Properties['diff_summary']) { [string]$resultPayload.diff_summary } else { '' }
+                }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Applied a bounded patch set.' | Out-Null
+            foreach ($changedFile in @($resultPayload.files_changed | Select-Object -First 12)) {
+                Publish-TodActivityEvent -EventType 'file_write' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'patch_writer' -Status 'completed' -Message ('Updated file ' + [string]$changedFile + '.') -Details ([ordered]@{ path = [string]$changedFile }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Recorded a changed file.' | Out-Null
+            }
+        }
+        foreach ($commandName in @($resultPayload.commands_run | Select-Object -First 8)) {
+            if ([string]::IsNullOrWhiteSpace([string]$commandName)) { continue }
+            Publish-TodActivityEvent -EventType 'command_run' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'command_runner' -Status 'completed' -Message ('Ran command ' + [string]$commandName + '.') -Details ([ordered]@{ command = [string]$commandName }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Captured command execution evidence.' | Out-Null
+        }
+        for ($testIndex = 0; $testIndex -lt @($resultPayload.tests_run).Count; $testIndex++) {
+            $testName = [string]$resultPayload.tests_run[$testIndex]
+            if ([string]::IsNullOrWhiteSpace($testName)) { continue }
+            $testResult = if ($testIndex -lt @($resultPayload.test_results).Count) { [string]$resultPayload.test_results[$testIndex] } else { '' }
+            Publish-TodActivityEvent -EventType 'test_run' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'validator' -Status $(if ([string]::Equals($testResult, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } else { 'blocked' }) -Message ('Validation test ' + $testName + ' returned ' + $(if ([string]::IsNullOrWhiteSpace($testResult)) { 'unknown' } else { $testResult }) + '.') -Details ([ordered]@{ name = $testName; result = $testResult }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Captured focused test evidence.' | Out-Null
+        }
         if ([bool]$noOpAssessment.detected -and -not $hasExplicitEngineBlocker) {
             $resultPayload.needs_escalation = $false
             $resultPayload.failures = @(@($resultPayload.failures) + @([string]$noOpAssessment.detail) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
@@ -11875,6 +12590,12 @@ switch ($Action) {
 
         $unresolvedCsv = (@($resultPayload.failures) + @($precheckWarnings) | ForEach-Object { [string]$_ }) -join ","
         $reviewResponse = (& $PSCommandPath -Action review-task -ConfigPath $configPath -StatePath $statePath -TaskId $TaskId -Decision $reviewDecision -Rationale $rationale -UnresolvedIssues $unresolvedCsv) | ConvertFrom-Json
+        Publish-TodActivityEvent -EventType 'validation' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'validator' -Status $(if ([string]::Equals($reviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } else { 'blocked' }) -Message ('Review decision resolved to ' + $reviewDecision + '.') -Details ([ordered]@{
+                review_decision = $reviewDecision
+                rationale = $rationale
+                failures = @($resultPayload.failures)
+                warnings = @($precheckWarnings)
+            }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Validated the bounded execution outcome.' -ExecutionState $reviewDecision | Out-Null
     $memoryProfile.after_result_persist = Get-ProcessMemorySnapshot
     $memoryProfile.peak_private_memory_mb = [math]::Round((@(
             [double]$memoryProfile.before_execution.private_memory_mb,
@@ -11915,7 +12636,21 @@ switch ($Action) {
         else {
             [string]$TaskId
         }
-        Publish-LocalExecutionArtifacts -Task $task -Objective $objectiveForTask -ResultPayload $resultPayload -ReviewDecision $reviewDecision -ExecutionId $publishedExecutionId -PackagePath $packagePath -ExecutionReadiness $executionReadinessGate.trace
+        $publishedArtifacts = Publish-LocalExecutionArtifacts -Task $task -Objective $objectiveForTask -ResultPayload $resultPayload -ReviewDecision $reviewDecision -ExecutionId $publishedExecutionId -PackagePath $packagePath -ExecutionReadiness $executionReadinessGate.trace
+        Publish-TodActivityEvent -EventType 'result_published' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $publishedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'result_publisher' -Status $(if ([string]::Equals($reviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } else { 'blocked' }) -Message 'Published the latest TOD execution artifacts.' -Details ([ordered]@{
+                review_decision = $reviewDecision
+                artifact_paths = if ($publishedArtifacts.PSObject.Properties['artifact_paths']) { @($publishedArtifacts.artifact_paths) } else { @() }
+                no_op_detected = [bool]$noOpAssessment.detected
+                reason_code = if ($resultPayload.PSObject.Properties['reason_code']) { [string]$resultPayload.reason_code } else { '' }
+            }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Published bounded execution results.' -ExecutionState $reviewDecision -RecoveryState $(if ([string]::Equals($reviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'not_needed' } else { 'required' }) | Out-Null
+        if ($hasExplicitEngineBlocker -or [bool]$noOpAssessment.detected -or -not [string]::Equals($reviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+            Publish-TodActivityEvent -EventType 'failure' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $publishedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'result_publisher' -Status 'blocked' -Message 'The bounded execution ended with unresolved blockers or required revision.' -Details ([ordered]@{
+                    review_decision = $reviewDecision
+                    reason_code = if ($resultPayload.PSObject.Properties['reason_code']) { [string]$resultPayload.reason_code } else { '' }
+                    no_op_detected = [bool]$noOpAssessment.detected
+                    unresolved_issues = @(@($resultPayload.failures) + @($precheckWarnings))
+                }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Recorded the blocking outcome.' -ExecutionState $reviewDecision -RecoveryState 'required' | Out-Null
+        }
         $routingRecord = Update-RoutingDecisionRecord -State $stateAfter -RoutingDecisionId ([string]$routingPre[0].id) -FinalOutcome ([string]$reviewDecision) -InvokeResult $invokeResult
         $taskType = if ($task.PSObject.Properties["type"]) { [string]$task.type } else { "implementation" }
         $perfRecord = Add-EnginePerformanceRecord -State $stateAfter -TaskId $TaskId -InvokeResult $invokeResult -ReviewDecision $reviewDecision -TaskType $taskType -TaskCategory $taskCategoryResolved -FilesInvolved @($resultPayload.files_changed)

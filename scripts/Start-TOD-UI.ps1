@@ -38,6 +38,8 @@ $integrationStatusPath = Join-Path $repoRoot "shared_state/integration_status.js
 $nextActionsPath = Join-Path $repoRoot "shared_state/next_actions.json"
 $trainingStatusPath = Join-Path $repoRoot "shared_state/tod_training_status.latest.json"
 $recoveryWatchdogStatePath = Join-Path $repoRoot "shared_state/tod_recovery_watchdog.latest.json"
+$activityStreamPrimaryPath = Join-Path $repoRoot "runtime/shared/TOD_ACTIVITY_STREAM.latest.json"
+$activityStreamMirrorPath = Join-Path $repoRoot "tmp_remote_mim/runtime/shared/TOD_ACTIVITY_STREAM.latest.json"
 $voiceAdapterConfigPath = Join-Path $repoRoot "tod/config/voice-adapter.json"
 $voiceAdapterTelemetryPath = Join-Path $repoRoot "shared_state/voice_adapter_status.json"
 $voiceAdapterInboxPath = Join-Path $repoRoot "tod/inbox/voice/events"
@@ -1949,6 +1951,81 @@ function Get-TaskStatePayload {
     }
 }
 
+function Get-ActivityStreamPayload {
+    param(
+        [string]$ObjectiveId = '',
+        [string]$TaskId = '',
+        [int]$Limit = 60
+    )
+
+    $safeLimit = if ($Limit -lt 1) { 1 } elseif ($Limit -gt 200) { 200 } else { $Limit }
+    $stream = $null
+    $sourcePath = ''
+    foreach ($candidatePath in @($activityStreamPrimaryPath, $activityStreamMirrorPath)) {
+        $candidate = Read-JsonFileIfExists -Path $candidatePath
+        if ($null -ne $candidate) {
+            $stream = $candidate
+            $sourcePath = $candidatePath
+            break
+        }
+    }
+
+    if ($null -eq $stream) {
+        return [pscustomobject]@{
+            ok = $true
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            source_path = ''
+            stream_generated_at = ''
+            objective_id = ''
+            task_id = ''
+            title = ''
+            summary = 'No TOD activity stream has been published yet.'
+            status = 'idle'
+            event = ''
+            phase = ''
+            latest_event = $null
+            count = 0
+            events = @()
+        }
+    }
+
+    $events = if ($stream.PSObject.Properties['events'] -and $null -ne $stream.events) { @($stream.events) } elseif ($stream.PSObject.Properties['latest_event'] -and $null -ne $stream.latest_event) { @($stream.latest_event) } else { @() }
+    if (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) {
+        $events = @($events | Where-Object {
+                $candidateObjectiveId = if ($_.PSObject.Properties['objective_id']) { [string]$_.objective_id } else { '' }
+                [string]::Equals($candidateObjectiveId, $ObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)
+            })
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TaskId)) {
+        $events = @($events | Where-Object {
+                $candidateTaskId = if ($_.PSObject.Properties['task_id']) { [string]$_.task_id } else { '' }
+                [string]::Equals($candidateTaskId, $TaskId, [System.StringComparison]::OrdinalIgnoreCase)
+            })
+    }
+    if (@($events).Count -gt $safeLimit) {
+        $events = @($events | Select-Object -Last $safeLimit)
+    }
+
+    $latestEvent = @($events | Select-Object -Last 1)
+    $latestEvent = if (@($latestEvent).Count -gt 0) { $latestEvent[0] } else { $null }
+    return [pscustomobject]@{
+        ok = $true
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        source_path = $sourcePath
+        stream_generated_at = if ($stream.PSObject.Properties['generated_at']) { [string]$stream.generated_at } else { '' }
+        objective_id = if ($stream.PSObject.Properties['objective_id']) { [string]$stream.objective_id } else { '' }
+        task_id = if ($stream.PSObject.Properties['task_id']) { [string]$stream.task_id } else { '' }
+        title = if ($stream.PSObject.Properties['title']) { [string]$stream.title } else { '' }
+        summary = if ($stream.PSObject.Properties['summary']) { [string]$stream.summary } else { '' }
+        status = if ($stream.PSObject.Properties['status']) { [string]$stream.status } else { 'idle' }
+        event = if ($stream.PSObject.Properties['event']) { [string]$stream.event } else { '' }
+        phase = if ($stream.PSObject.Properties['phase']) { [string]$stream.phase } else { '' }
+        latest_event = $latestEvent
+        count = @($events).Count
+        events = @($events)
+    }
+}
+
 Write-UiCrashLog "UI server started on port $activePort"
 
 try {
@@ -2162,6 +2239,32 @@ try {
             try {
                 $payload = Get-TaskStatePayload
                 Write-JsonResponse -Response $response -StatusCode 200 -Json ($payload | ConvertTo-Json -Depth 8)
+            }
+            catch {
+                $errorPayload = [pscustomobject]@{
+                    ok = $false
+                    error = $_.Exception.Message
+                }
+                Write-JsonResponse -Response $response -StatusCode 400 -Json ($errorPayload | ConvertTo-Json -Depth 6)
+            }
+            continue
+        }
+
+        if ($request.HttpMethod -eq "GET" -and $path -eq "/api/activity-stream") {
+            try {
+                $objectiveId = [string]$request.QueryString["objective_id"]
+                $taskId = [string]$request.QueryString["task_id"]
+                $limitRaw = [string]$request.QueryString["limit"]
+                $limit = 60
+                if (-not [string]::IsNullOrWhiteSpace($limitRaw)) {
+                    $parsedLimit = 0
+                    if ([int]::TryParse($limitRaw, [ref]$parsedLimit)) {
+                        $limit = $parsedLimit
+                    }
+                }
+
+                $payload = Get-ActivityStreamPayload -ObjectiveId $objectiveId -TaskId $taskId -Limit $limit
+                Write-JsonResponse -Response $response -StatusCode 200 -Json ($payload | ConvertTo-Json -Depth 16)
             }
             catch {
                 $errorPayload = [pscustomobject]@{
