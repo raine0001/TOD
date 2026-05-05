@@ -330,11 +330,12 @@ class TodUiStateClassificationTests(unittest.TestCase):
 
         execution = self.tod_ui._normalize_execution_status({}, active_task, activity, validation, execution_result, {})
 
-        self.assertEqual(execution["phase_progress"]["percent_complete"], 60)
+        self.assertEqual(execution["phase_progress"]["percent_complete"], 30)
         self.assertEqual(execution["phase_progress"]["next_gate"], "Implementation")
-        self.assertTrue(execution["stall_signal"]["flagged"])
-        self.assertEqual(execution["activity_state"], "stalled")
-        self.assertIn("Probable stall:", execution["activity_summary"])
+        self.assertFalse(execution["stall_signal"]["flagged"])
+        self.assertEqual(execution["activity_state"], "blocked")
+        self.assertEqual(execution["executor_binding_status"], "missing")
+        self.assertIn("LocalExecutionEngine", execution["activity_summary"])
 
     def test_execution_feed_includes_stall_watch_when_flagged(self) -> None:
         state = {
@@ -344,16 +345,16 @@ class TodUiStateClassificationTests(unittest.TestCase):
                 "updated_at": "2026-04-26T10:00:00Z",
                 "title": "Make TOD a local execution agent",
                 "activity_label": "Stalled",
-                "activity_summary": "Probable stall: Phase 1 is holding at 60% for about 30m without a newer execution update.",
+                "activity_summary": "Probable stall: Phase 1 is holding at 30% for about 30m without a newer execution update.",
                 "phase_progress": {
                     "available": True,
-                    "percent_complete": 60,
+                    "percent_complete": 30,
                     "next_gate": "Implementation",
-                    "summary": "Phase 1 is about 60% complete. Inspection is done; implementation is the next gate.",
+                    "summary": "Phase 1 is about 30% complete. Inspection is done; implementation is the next gate.",
                 },
                 "stall_signal": {
                     "flagged": True,
-                    "summary": "Probable stall: Phase 1 is holding at 60% for about 30m without a newer execution update.",
+                    "summary": "Probable stall: Phase 1 is holding at 30% for about 30m without a newer execution update.",
                 },
             },
         }
@@ -365,7 +366,7 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertEqual(contents[0], "TOD is blocked: waiting on next bounded step.\nLast heartbeat: unknown.")
         self.assertIn("Status: blocked", blocked)
         self.assertIn(
-            "Result: Probable stall: Phase 1 is holding at 60% for about 30m without a newer execution update.",
+            "Result: Probable stall: Phase 1 is holding at 30% for about 30m without a newer execution update.",
             blocked,
         )
 
@@ -411,12 +412,15 @@ class TodUiStateClassificationTests(unittest.TestCase):
 
         execution = self.tod_ui._normalize_execution_status({}, active_task, activity, validation, execution_result, {})
 
-        self.assertEqual(execution["activity_state"], "waiting")
+        self.assertEqual(execution["activity_state"], "blocked")
+        self.assertEqual(execution["activity_label"], "Binding Required")
+        self.assertEqual(execution["executor_binding_status"], "missing")
+        self.assertEqual(execution["executor_binding_command"], "execute-chat-task")
+        self.assertIn("LocalExecutionEngine", execution["executor_binding_target"])
         self.assertFalse(execution["stall_signal"]["flagged"])
-        self.assertEqual(execution["stall_signal"]["level"], "implementation_pending")
-        self.assertIn("Held at implementation gate:", execution["stall_signal"]["summary"])
-        self.assertEqual(execution["phase_progress"]["percent_complete"], 60)
-        self.assertIn("rather than stale output", execution["activity_summary"])
+        self.assertEqual(execution["stall_signal"]["level"], "ok")
+        self.assertEqual(execution["phase_progress"]["percent_complete"], 30)
+        self.assertIn("Missing local executor binding", execution["activity_summary"])
 
     def test_normalize_execution_status_only_moves_above_gate_floor_with_real_implementation_evidence(self) -> None:
         fresh_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -461,7 +465,7 @@ class TodUiStateClassificationTests(unittest.TestCase):
 
         execution = self.tod_ui._normalize_execution_status({}, active_task, activity, validation, execution_result, {})
 
-        self.assertGreater(execution["phase_progress"]["percent_complete"], 60)
+        self.assertGreater(execution["phase_progress"]["percent_complete"], 30)
         self.assertEqual(execution["phase_progress"]["next_gate"], "Implementation")
 
     def test_truth_timestamp_does_not_mask_stale_execution_artifacts(self) -> None:
@@ -800,18 +804,22 @@ class TodUiStateClassificationTests(unittest.TestCase):
         messages = self.tod_ui._build_execution_feed_messages(state)
         contents = [item["content"] for item in messages]
 
-        blocked = next(item for item in contents if item.startswith("Action: blocked_with_reason"))
+        created = next(item for item in contents if item.startswith("Action: task_created_from_circular_block"))
+        binding_checked = next(item for item in contents if item.startswith("Action: executor_binding_checked"))
+        binding_blocked = next(item for item in contents if item.startswith("Action: blocked_missing_local_executor_binding"))
         inspect = next(item for item in contents if item.startswith("Action: inspecting_file"))
 
         self.assertEqual(
             contents[0],
-            "TOD is blocked: waiting on TOD local executor.\nLast heartbeat: unknown.",
+            "TOD is blocked: missing local executor binding scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine.\nLast heartbeat: unknown.",
         )
-        self.assertIn("Target: TOD local executor", blocked)
-        self.assertIn("Status: blocked", blocked)
-        self.assertIn("Waiting on: TOD local executor", blocked)
-        self.assertIn("Reason: TOD is waiting on its own next bounded local implementation step.", blocked)
-        self.assertIn("Next: Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path.", blocked)
+        self.assertIn("Status: created", created)
+        self.assertIn("Target: Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path.", created)
+        self.assertIn("Status: missing", binding_checked)
+        self.assertIn("Command: execute-chat-task", binding_checked)
+        self.assertIn("Target: scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine", binding_blocked)
+        self.assertIn("Status: blocked", binding_blocked)
+        self.assertIn("Next: Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path.", binding_blocked)
         self.assertIn("Target: /home/testpilot/mim/core/tod_execution_loop.py", inspect)
         self.assertIn("Status: blocked", inspect)
 
