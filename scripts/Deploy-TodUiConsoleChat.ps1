@@ -1,7 +1,7 @@
 param(
     [string]$LocalRouterPath = "e:\TOD\tmp_remote_mim\core\routers\tod_ui.py",
     [string]$RemoteRouterPath = "/home/testpilot/mim/core/routers/tod_ui.py",
-    [string]$LocalMimUiPath = "e:\TOD\tmp_remote_mim\core\mim_ui.py",
+    [string]$LocalMimUiPath = "e:\TOD\tmp_remote_mim\core\routers\mim_ui.py",
     [string]$RemoteMimUiPath = "/home/testpilot/mim/core/routers/mim_ui.py",
     [string]$LocalExecutionLoopPath = "e:\TOD\tmp_remote_mim\core\tod_execution_loop.py",
     [string]$RemoteExecutionLoopPath = "/home/testpilot/mim/core/tod_execution_loop.py",
