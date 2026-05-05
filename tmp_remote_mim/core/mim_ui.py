@@ -3,6 +3,7 @@ import base64
 from email.parser import BytesParser
 from email.policy import default as email_policy_default
 import json
+import logging
 import mimetypes
 import os
 from datetime import datetime, timezone
@@ -104,10 +105,24 @@ from core.ui_health_service import (
 )
 
 router = APIRouter(tags=["mim-ui"])
+logger = logging.getLogger(__name__)
 SHARED_RUNTIME_ROOT = Path("runtime/shared")
 runtime_recovery_service = RuntimeRecoveryService(SHARED_RUNTIME_ROOT)
 MIM_PRIMARY_THREAD_KEY = "primary_operator"
 MIM_UI_MEDIA_ROOT = SHARED_RUNTIME_ROOT / "mim_ui_media"
+MIM_OPERATOR_ACTION_ROOT = SHARED_RUNTIME_ROOT / "tod_operator_actions"
+MIM_OPERATOR_ACTION_LATEST_PATH = MIM_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTION.latest.json"
+MIM_OPERATOR_ACTION_LOG_PATH = MIM_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTION.log.jsonl"
+MIM_OPERATOR_EVIDENCE_PATH = MIM_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_EVIDENCE.latest.json"
+MIM_OPERATOR_ACTION_SPECS: dict[str, dict[str, object]] = {
+  "refresh_status": {"label": "Refresh Status", "description": "Run the shared-status refresh wrapper."},
+  "run_shared_truth_reconciliation": {"label": "Reconcile Truth", "description": "Rebuild the shared truth artifact from current evidence."},
+  "start_next_task": {"label": "Start Next Task", "description": "Publish a real TOD execution request for the active task."},
+  "force_replay_current_task": {"label": "Force Replay", "description": "Run the forced replay wrapper for the active task.", "requires_confirmation": True, "confirmation_text": "Force replay the current TOD task?"},
+  "validate_current_task": {"label": "Validate Task", "description": "Run the active task validation command when safe."},
+  "recover_stale_state": {"label": "Recover Stale State", "description": "Run TOD/MIM stale-state recovery.", "requires_confirmation": True, "confirmation_text": "Run stale-state recovery now?"},
+  "show_evidence": {"label": "Show Evidence", "description": "Refresh the operator evidence snapshot."},
+}
 MIM_UI_ALLOWED_IMAGE_TYPES = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
@@ -867,10 +882,204 @@ async def _load_mim_ui_chat_thread(*, db: AsyncSession) -> dict[str, object]:
       "metadata_json": {},
     }
     messages = []
+  except Exception as exc:  # noqa: BLE001
+    if not _is_mim_ui_db_unavailable(exc):
+      raise
+    session_out = {
+      "session_key": session_key,
+      "channel": "chat",
+      "status": "degraded",
+      "context_json": {"primary_thread": True, "degraded": True},
+      "metadata_json": {"db_unavailable": True},
+    }
+    messages = []
   return {
     "session": session_out,
     "messages": messages,
     "primary_thread": session_key,
+  }
+
+
+def _is_mim_ui_db_unavailable(exc: Exception) -> bool:
+  error_text = str(exc or "").strip().lower()
+  return isinstance(exc, (ConnectionRefusedError, TimeoutError, OSError)) or any(
+    phrase in error_text
+    for phrase in (
+      "refused the network connection",
+      "connection refused",
+      "failed to connect",
+      "could not connect",
+      "asyncpg",
+      "targetserverattributenotmatched",
+    )
+  )
+
+
+def _build_mim_ui_degraded_state(*, db_error_text: str = "") -> dict[str, object]:
+  now = datetime.now(timezone.utc)
+  frontend_media = _frontend_media_snapshot(now)
+  frontend_media_issue = _frontend_media_issue_summary(frontend_media)
+  authoritative_request = load_authoritative_request_status(shared_root=SHARED_RUNTIME_ROOT)
+  runtime_recovery_summary = runtime_recovery_service.get_summary() if hasattr(runtime_recovery_service, "get_summary") else {}
+  runtime_health_summary = "Database-backed MIM state is temporarily unavailable. Chat remains available while shared-runtime artifacts continue to load."
+  if db_error_text:
+    runtime_health_summary = f"{runtime_health_summary} Latest storage error: {_compact_sentence(db_error_text, max_len=180)}"
+  if frontend_media_issue:
+    runtime_health_summary = f"{runtime_health_summary} Frontend media: {frontend_media_issue}."
+  runtime_health = {
+    "status": "degraded",
+    "summary": runtime_health_summary,
+    "frontend_media": frontend_media,
+    "database": {
+      "available": False,
+      "error": _compact_sentence(db_error_text, max_len=220),
+      "captured_at": now.isoformat(),
+    },
+  }
+  initiative_driver = {
+    "status": "DEGRADED",
+    "summary": "MIM kept the primary operator thread online while database connectivity is unavailable.",
+    "active_objective": {
+      "id": str(authoritative_request.get("objective_id") or "").strip(),
+      "title": str(authoritative_request.get("objective_title") or "Keep the operator surface available").strip(),
+      "display_title": str(authoritative_request.get("objective_title") or "Keep the operator surface available").strip(),
+    },
+    "active_task": {
+      "id": str(authoritative_request.get("task_id") or "").strip(),
+      "title": "Hold the primary MIM thread open while runtime storage recovers.",
+      "display_title": "Hold the primary MIM thread open while runtime storage recovers.",
+    },
+    "next_task": {
+      "id": "",
+      "title": "Restore database connectivity or continue through TOD-backed coordination.",
+      "display_title": "Restore database connectivity or continue through TOD-backed coordination.",
+    },
+    "activity": {
+      "state": "warning",
+      "label": "Degraded",
+      "summary": runtime_health_summary,
+      "stale_seconds": 0,
+    },
+    "progress": {
+      "percent": 0,
+      "movement_percent": 0,
+      "completed_task_count": 0,
+      "task_count": 0,
+      "summary": "Database-backed bounded task telemetry is unavailable.",
+      "movement_summary": "Chat-first operator control remains available.",
+    },
+    "blockers": [
+      {
+        "code": "database_unavailable",
+        "summary": "Database connectivity failed while loading the MIM operator surface.",
+      }
+    ],
+    "program_status": {
+      "summary": "Program queue is unavailable while MIM runs in degraded mode.",
+      "projects": [],
+    },
+    "active_project": {},
+  }
+  tod_truth_reconciliation = _build_tod_truth_reconciliation_snapshot(
+    initiative_driver=initiative_driver,
+    authoritative_request=authoritative_request,
+    shared_root=SHARED_RUNTIME_ROOT,
+  )
+  operator_reasoning = {
+    "summary": runtime_health_summary,
+    "runtime_health": runtime_health,
+    "runtime_recovery": runtime_recovery_summary,
+    "active_work": {"summary": "Primary operator chat is online in degraded mode."},
+    "current_recommendation": {
+      "summary": "Use the primary thread for status and coordination while database connectivity recovers."
+    },
+    "execution_readiness": {
+      "execution_allowed": False,
+      "gate_state": "database_unavailable",
+      "summary": "Database-backed execution readiness could not be loaded.",
+    },
+    "tod_truth_reconciliation": tod_truth_reconciliation,
+  }
+  system_activity = _build_system_activity_snapshot(
+    initiative_driver=initiative_driver,
+    operator_reasoning=operator_reasoning,
+    runtime_health=runtime_health,
+    runtime_recovery=runtime_recovery_summary,
+    authoritative_request=authoritative_request,
+    collaboration_progress={},
+    dispatch_telemetry={},
+    tod_decision_process={},
+  )
+  operator_reasoning["system_activity"] = system_activity
+  chat_thread = _append_mim_live_worklog(
+    {
+      "session": {
+        "session_key": _mim_ui_primary_thread_key(),
+        "channel": "chat",
+        "status": "degraded",
+        "context_json": {"primary_thread": True, "degraded": True},
+        "metadata_json": {"db_unavailable": True},
+      },
+      "messages": [
+        {
+          "role": "mim",
+          "message_type": "system_summary",
+          "content": runtime_health_summary,
+          "created_at": now.isoformat(),
+        }
+      ],
+      "primary_thread": _mim_ui_primary_thread_key(),
+    },
+    system_activity=system_activity,
+    initiative_driver=initiative_driver,
+    operator_reasoning=operator_reasoning,
+    generated_at=now.isoformat(),
+  )
+  return {
+    "speaking": False,
+    "camera_last_label": "",
+    "camera_last_confidence": 0.0,
+    "camera_scene_summary": "",
+    "camera_source_count": 0,
+    "voice_listen_hint": "Voice can stay local while MIM runtime storage reconnects.",
+    "conversation_policy_profile": "tightened_v1",
+    "runtime_build": "mim-ui-degraded-no-db",
+    "runtime_features": [
+      "chat_first_operator_surface",
+      "runtime_artifact_fallback",
+      "database_connectivity_degraded_mode",
+    ],
+    "inquiry_prompt": "MIM storage is temporarily offline. Use this thread for status, coordination, and bounded next steps while runtime state recovers.",
+    "operator_reasoning": operator_reasoning,
+    "system_activity": system_activity,
+    "tod_truth_reconciliation": system_activity.get("tod_truth_reconciliation") if isinstance(system_activity.get("tod_truth_reconciliation"), dict) else tod_truth_reconciliation,
+    "initiative_driver": initiative_driver,
+    "collaboration_progress": {},
+    "dispatch_telemetry": {},
+    "mim_arm_dispatch_telemetry": {},
+    "primitive_request": authoritative_request,
+    "chat_thread": chat_thread,
+    "frontend_media": frontend_media,
+    "conversation_context": {
+      "environment_now": "Database connectivity unavailable.",
+      "program_status_summary": str(initiative_driver.get("program_status", {}).get("summary") or "").strip(),
+      "program_status": initiative_driver.get("program_status") if isinstance(initiative_driver.get("program_status"), dict) else {},
+      "active_goal": str(initiative_driver.get("active_objective", {}).get("display_title") or "").strip(),
+      "initiative_active_objective": str(initiative_driver.get("active_objective", {}).get("display_title") or "").strip(),
+      "initiative_active_task": str(initiative_driver.get("active_task", {}).get("display_title") or "").strip(),
+      "initiative_next_task": str(initiative_driver.get("next_task", {}).get("display_title") or "").strip(),
+      "initiative_activity_state": str(initiative_driver.get("activity", {}).get("state") or "").strip(),
+      "initiative_activity_label": str(initiative_driver.get("activity", {}).get("label") or "").strip(),
+      "initiative_activity_summary": str(initiative_driver.get("activity", {}).get("summary") or runtime_health_summary).strip(),
+      "operator_reasoning_summary": runtime_health_summary,
+      "runtime_health_summary": runtime_health_summary,
+      "open_question": "",
+      "memory_hint": "",
+      "recent_user_input": "No recent database-backed input available.",
+    },
+    "latest_output_action_id": 0,
+    "latest_output_text": runtime_health_summary,
+    "latest_output_allowed": False,
   }
 
 
@@ -1186,18 +1395,22 @@ def _derive_tod_execution_progress_snapshot(
   activity_payload: dict[str, object] | None,
   validation_payload: dict[str, object] | None,
   execution_result_payload: dict[str, object] | None,
+  next_task_selection_payload: dict[str, object] | None,
   truth_payload: dict[str, object] | None,
 ) -> dict[str, object]:
   active_task = active_task_payload if isinstance(active_task_payload, dict) else {}
   activity = activity_payload if isinstance(activity_payload, dict) else {}
   validation = validation_payload if isinstance(validation_payload, dict) else {}
   execution_result = execution_result_payload if isinstance(execution_result_payload, dict) else {}
+  next_task_selection = next_task_selection_payload if isinstance(next_task_selection_payload, dict) else {}
   truth = truth_payload if isinstance(truth_payload, dict) else {}
 
-  available = any(bool(payload) for payload in (active_task, activity, validation, execution_result, truth))
+  available = any(bool(payload) for payload in (active_task, activity, validation, execution_result, next_task_selection, truth))
   updated_at = _latest_timestamp_value(
     execution_result.get("updated_at"),
     execution_result.get("generated_at"),
+    next_task_selection.get("updated_at"),
+    next_task_selection.get("generated_at"),
     validation.get("updated_at"),
     validation.get("generated_at"),
     activity.get("updated_at"),
@@ -1208,6 +1421,8 @@ def _derive_tod_execution_progress_snapshot(
   )
   status = str(
     execution_result.get("status")
+    or next_task_selection.get("dispatch_status")
+    or next_task_selection.get("status")
     or activity.get("status")
     or active_task.get("status")
     or truth.get("status")
@@ -1215,6 +1430,8 @@ def _derive_tod_execution_progress_snapshot(
   ).strip().lower()
   execution_state = str(
     execution_result.get("execution_state")
+    or next_task_selection.get("dispatch_status")
+    or next_task_selection.get("completion_status")
     or activity.get("execution_state")
     or active_task.get("execution_state")
     or active_task.get("status")
@@ -1222,6 +1439,7 @@ def _derive_tod_execution_progress_snapshot(
   ).strip().lower()
   next_step = _compact_sentence(
     execution_result.get("next_step")
+    or next_task_selection.get("summary")
     or activity.get("next_step")
     or active_task.get("next_step")
     or "",
@@ -1229,6 +1447,7 @@ def _derive_tod_execution_progress_snapshot(
   )
   wait_reason = _compact_sentence(
     execution_result.get("wait_reason")
+    or next_task_selection.get("result_reason")
     or active_task.get("wait_reason")
     or activity.get("wait_reason")
     or "",
@@ -1269,6 +1488,7 @@ def _load_tod_execution_progress_snapshot(*, shared_root: Path = SHARED_RUNTIME_
     _load_json_artifact(shared_root / "TOD_ACTIVITY_STREAM.latest.json"),
     _load_json_artifact(shared_root / "TOD_VALIDATION_RESULT.latest.json"),
     _load_json_artifact(shared_root / "TOD_EXECUTION_RESULT.latest.json"),
+    _load_json_artifact(shared_root / "TOD_NEXT_TASK_SELECTION.latest.json"),
     _load_json_artifact(shared_root / "TOD_EXECUTION_TRUTH.latest.json"),
   )
 
@@ -3089,6 +3309,89 @@ def _load_json_artifact(path: Path) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
+def _load_operator_action_timeline(limit: int = 10) -> list[dict[str, object]]:
+  if limit <= 0 or not MIM_OPERATOR_ACTION_LOG_PATH.exists():
+    return []
+  try:
+    lines = MIM_OPERATOR_ACTION_LOG_PATH.read_text(encoding="utf-8").splitlines()
+  except Exception:
+    return []
+  records: list[dict[str, object]] = []
+  for line in lines[-limit:]:
+    try:
+      payload = json.loads(line)
+    except Exception:
+      continue
+    if isinstance(payload, dict):
+      records.append(payload)
+  return records
+
+
+def _load_operator_evidence_snapshot(*, shared_root: Path = SHARED_RUNTIME_ROOT) -> dict[str, object]:
+  payload = _load_json_artifact(MIM_OPERATOR_EVIDENCE_PATH)
+  if payload:
+    return payload
+  shared_truth = _load_shared_truth_artifact(shared_root=shared_root)
+  progress = _load_tod_execution_progress_snapshot(shared_root=shared_root)
+  active_task = _load_json_artifact(shared_root / "MIM_TASK_ACTIVE.latest.json")
+  objective_id = str(shared_truth.get("objective_id") or progress.get("objective_id") or active_task.get("objective_id") or "").strip()
+  task_id = str(shared_truth.get("task_id") or shared_truth.get("current_task_id") or progress.get("task_id") or active_task.get("task_id") or active_task.get("id") or "").strip()
+  return {
+    "active_objective": {
+      "id": objective_id,
+      "title": str(shared_truth.get("objective_title") or active_task.get("objective_title") or active_task.get("title") or "").strip(),
+    },
+    "active_task": {
+      "id": task_id,
+      "title": str(shared_truth.get("task_title") or active_task.get("display_title") or active_task.get("title") or "").strip(),
+    },
+    "changed_files": progress.get("files_changed") if isinstance(progress.get("files_changed"), list) else [],
+    "commands_run": progress.get("commands_run") if isinstance(progress.get("commands_run"), list) else [],
+    "validation_status": str(progress.get("validation_status") or "").strip(),
+    "validation_checks": progress.get("validation_checks") if isinstance(progress.get("validation_checks"), list) else [],
+    "blocker_code": str(shared_truth.get("blocker_code") or progress.get("blocker_code") or "").strip(),
+    "blocker_detail": str(shared_truth.get("blocker_detail") or progress.get("blocker_detail") or progress.get("summary") or "").strip(),
+    "artifact_timestamps": {
+      "shared_truth": str(shared_truth.get("generated_at") or "").strip(),
+      "execution": str(progress.get("updated_at") or progress.get("generated_at") or "").strip(),
+    },
+    "latest_action": _load_json_artifact(MIM_OPERATOR_ACTION_LATEST_PATH),
+    "shared_truth_state": str(shared_truth.get("state") or shared_truth.get("status") or "").strip(),
+    "next_validation": str(progress.get("next_validation") or "").strip(),
+  }
+
+
+def _build_operator_action_controls(operator_evidence: dict[str, object] | None) -> list[dict[str, object]]:
+  evidence = operator_evidence if isinstance(operator_evidence, dict) else {}
+  active_objective = evidence.get("active_objective") if isinstance(evidence.get("active_objective"), dict) else {}
+  active_task = evidence.get("active_task") if isinstance(evidence.get("active_task"), dict) else {}
+  next_validation = str(evidence.get("next_validation") or "").strip()
+  objective_id = str(active_objective.get("id") or "").strip()
+  task_id = str(active_task.get("id") or "").strip()
+  actions: list[dict[str, object]] = []
+  for action_id, spec in MIM_OPERATOR_ACTION_SPECS.items():
+    enabled = True
+    disabled_reason = ""
+    if action_id == "force_replay_current_task" and (not objective_id or not task_id):
+      enabled = False
+      disabled_reason = "Current objective/task identity is missing."
+    if action_id == "validate_current_task" and not next_validation:
+      enabled = False
+      disabled_reason = "No validation command is published for the active task."
+    actions.append(
+      {
+        "id": action_id,
+        "label": str(spec.get("label") or action_id).strip(),
+        "description": str(spec.get("description") or "").strip(),
+        "requires_confirmation": bool(spec.get("requires_confirmation")),
+        "confirmation_text": str(spec.get("confirmation_text") or "").strip(),
+        "enabled": enabled,
+        "disabled_reason": disabled_reason,
+      }
+    )
+  return actions
+
+
 def _resolve_execution_identity(payload: dict) -> dict:
   task_id = str(payload.get("task_id") or payload.get("registry_task_id") or "").strip()
   request_id = str(payload.get("request_id") or payload.get("bridge_request_id") or "").strip()
@@ -3407,6 +3710,246 @@ def _artifact_latest_timestamp(payload: dict) -> datetime | None:
   return latest
 
 
+def _payload_recent_within(payload: dict, *, max_age_seconds: float) -> bool:
+  timestamp = _artifact_latest_timestamp(payload)
+  if timestamp is None:
+    return False
+  age_seconds = max(0.0, (datetime.now(timezone.utc) - timestamp).total_seconds())
+  return age_seconds <= max_age_seconds
+
+
+def _payload_signal_tokens(payload: dict) -> set[str]:
+  if not isinstance(payload, dict):
+    return set()
+
+  tokens: set[str] = set()
+
+  def _consume(value: object) -> None:
+    if isinstance(value, str):
+      normalized = value.strip().lower()
+      if normalized:
+        tokens.add(normalized)
+
+  for key in (
+    "status",
+    "execution_state",
+    "dispatch_status",
+    "completion_status",
+    "result_status",
+    "decision",
+    "decision_outcome",
+    "state",
+    "state_reason",
+    "reason_code",
+    "result_reason",
+    "blocker_reason",
+    "next_step_recommendation",
+  ):
+    _consume(payload.get(key))
+
+  for nested_key in ("dispatch_result", "execution_evidence", "result"):
+    nested_payload = payload.get(nested_key)
+    if isinstance(nested_payload, dict):
+      tokens.update(_payload_signal_tokens(nested_payload))
+
+  current_payload = payload.get("current")
+  if isinstance(current_payload, dict):
+    for nested_key in ("task_ack", "task_result"):
+      nested_payload = current_payload.get(nested_key)
+      if isinstance(nested_payload, dict):
+        tokens.update(_payload_signal_tokens(nested_payload))
+
+  return tokens
+
+
+def _payload_meaningful_evidence(payload: dict) -> list[str]:
+  if not isinstance(payload, dict):
+    return []
+
+  evidence: list[str] = []
+
+  def _extend(value: object) -> None:
+    if isinstance(value, str):
+      text = value.strip()
+      if text:
+        evidence.append(text)
+      return
+    if isinstance(value, list):
+      for item in value:
+        if isinstance(item, str):
+          text = item.strip()
+          if text:
+            evidence.append(text)
+
+  _extend(payload.get("meaningful_evidence"))
+  _extend(payload.get("evidence_source_kinds"))
+
+  execution_evidence = payload.get("execution_evidence") if isinstance(payload.get("execution_evidence"), dict) else {}
+  _extend(execution_evidence.get("meaningful_evidence"))
+
+  dispatch_result = payload.get("dispatch_result") if isinstance(payload.get("dispatch_result"), dict) else {}
+  _extend(dispatch_result.get("meaningful_evidence"))
+
+  current_payload = payload.get("current") if isinstance(payload.get("current"), dict) else {}
+  task_result = current_payload.get("task_result") if isinstance(current_payload.get("task_result"), dict) else {}
+  _extend(task_result.get("meaningful_evidence"))
+  _extend(task_result.get("evidence_source_kinds"))
+
+  seen: set[str] = set()
+  ordered: list[str] = []
+  for item in evidence:
+    normalized = item.strip()
+    if not normalized or normalized in seen:
+      continue
+    seen.add(normalized)
+    ordered.append(normalized)
+  return ordered
+
+
+def _payload_status_summary(payload: dict) -> str:
+  if not isinstance(payload, dict):
+    return ""
+
+  for key in (
+    "summary",
+    "detail",
+    "message",
+    "wait_reason",
+    "next_step",
+    "blocker_reason",
+    "result_reason",
+    "reason_code",
+  ):
+    value = str(payload.get(key) or "").strip()
+    if value:
+      return _compact_sentence(value, max_len=220)
+
+  dispatch_result = payload.get("dispatch_result") if isinstance(payload.get("dispatch_result"), dict) else {}
+  if dispatch_result:
+    summary = _payload_status_summary(dispatch_result)
+    if summary:
+      return summary
+
+  current_payload = payload.get("current") if isinstance(payload.get("current"), dict) else {}
+  task_result = current_payload.get("task_result") if isinstance(current_payload.get("task_result"), dict) else {}
+  if task_result:
+    summary = _payload_status_summary(task_result)
+    if summary:
+      return summary
+
+  return ""
+
+
+def _classify_tod_published_state(
+  *,
+  payloads: list[tuple[str, dict, float]],
+  execution_count: int,
+  bridge_request_confirmed: bool,
+) -> dict[str, object]:
+  blocker_tokens = {
+    "blocked_with_reason",
+    "blocked",
+    "no_op_rejected",
+    "wrapper_only_no_execution",
+    "codex_wrapper_only_no_execution",
+    "local_fallback_needs_target_or_scope",
+    "reject_with_specific_policy_reason",
+    "rejected",
+    "revise",
+    "waiting_on_dependency",
+  }
+  active_tokens = {
+    "accepted",
+    "planned",
+    "running",
+    "active",
+    "in_progress",
+    "dispatching",
+    "dispatched",
+    "waiting",
+    "waiting_on_next_step",
+    "step_completed_waiting_next_selection",
+    "ready_to_execute",
+    "pending_review",
+  }
+  completion_tokens = {
+    "completed",
+    "complete",
+    "success",
+    "succeeded",
+    "passed",
+    "pass",
+    "resolved",
+    "closed",
+    "done",
+  }
+
+  active_candidate: dict[str, object] | None = None
+
+  for source, payload, freshness_seconds in payloads:
+    if not isinstance(payload, dict) or not payload:
+      continue
+    if not _payload_recent_within(payload, max_age_seconds=freshness_seconds):
+      continue
+
+    tokens = _payload_signal_tokens(payload)
+    summary = _payload_status_summary(payload)
+    evidence = _payload_meaningful_evidence(payload)
+    shared_truth_state = str(payload.get("state") or "").strip().lower()
+    shared_truth_evidence_present = bool(
+      payload.get("meaningful_evidence_present")
+      or (
+        isinstance(payload.get("tod_view"), dict)
+        and bool((payload.get("tod_view") or {}).get("meaningful_evidence_present"))
+      )
+    )
+
+    if source == "shared_truth" and shared_truth_state == "accepted_complete_pending_mim_refresh" and shared_truth_evidence_present:
+      detail = summary or str(payload.get("state_reason") or "").strip() or "TOD completed with meaningful evidence, but MIM still needs a refresh."
+      return {
+        "state": "accepted_complete_pending_mim_refresh",
+        "source": source,
+        "summary": detail,
+        "meaningful_evidence": evidence,
+      }
+
+    if tokens & blocker_tokens:
+      return {
+        "state": "blocked_with_reason",
+        "source": source,
+        "summary": summary or "TOD published an explicit blocker for the active work.",
+        "meaningful_evidence": evidence,
+      }
+
+    if tokens & completion_tokens and (evidence or execution_count > 0 or bridge_request_confirmed):
+      detail = summary or "TOD published completion evidence for the active work."
+      if evidence:
+        detail = _compact_sentence(f"{detail} Evidence: {', '.join(evidence[:4])}.", max_len=220)
+      return {
+        "state": "accepted_complete",
+        "source": source,
+        "summary": detail,
+        "meaningful_evidence": evidence,
+      }
+
+    if active_candidate is None and ((tokens & active_tokens) or source in {"active_task", "activity", "next_task_selection"}):
+      active_candidate = {
+        "state": "active",
+        "source": source,
+        "summary": summary or "TOD published recent active task progress for the current work.",
+        "meaningful_evidence": evidence,
+      }
+
+  if active_candidate is not None:
+    return active_candidate
+  return {
+    "state": "",
+    "source": "",
+    "summary": "",
+    "meaningful_evidence": [],
+  }
+
+
 def _coordination_ack_matches_request(request_status: str, ack_status: str) -> bool:
   normalized_request = str(request_status or "").strip().lower()
   normalized_ack = str(ack_status or "").strip().lower()
@@ -3445,6 +3988,11 @@ def _build_tod_truth_reconciliation_snapshot(
   ).strip()
 
   truth_payload = _load_json_artifact(shared_root / "TOD_EXECUTION_TRUTH.latest.json")
+  active_task_payload = _load_json_artifact(shared_root / "TOD_ACTIVE_TASK.latest.json")
+  activity_payload = _load_json_artifact(shared_root / "TOD_ACTIVITY_STREAM.latest.json")
+  execution_result_payload = _load_json_artifact(shared_root / "TOD_EXECUTION_RESULT.latest.json")
+  next_task_selection_payload = _load_json_artifact(shared_root / "TOD_NEXT_TASK_SELECTION.latest.json")
+  shared_truth_payload = _load_shared_truth_artifact(shared_root=shared_root)
   execution_decision = _load_json_artifact(shared_root / "TOD_MIM_EXECUTION_DECISION.latest.json")
   coordination_request = _load_json_artifact(shared_root / "TOD_MIM_COORDINATION_REQUEST.latest.json")
   coordination_ack = _load_json_artifact(shared_root / "MIM_TOD_COORDINATION_ACK.latest.json")
@@ -3452,6 +4000,7 @@ def _build_tod_truth_reconciliation_snapshot(
   bridge_task_ack = _load_json_artifact(shared_root / "TOD_MIM_TASK_ACK.latest.json")
   bridge_task_result = _load_json_artifact(shared_root / "TOD_MIM_TASK_RESULT.latest.json")
   bridge_consume_evidence = _load_json_artifact(shared_root / "MIM_TOD_CONSUME_EVIDENCE.latest.json")
+  task_status_review = _load_json_artifact(shared_root / "MIM_TASK_STATUS_REVIEW.latest.json")
   authoritative_request_status = load_authoritative_request_status(shared_root=shared_root) or {}
 
   summary_payload = truth_payload.get("summary") if isinstance(truth_payload.get("summary"), dict) else {}
@@ -3569,6 +4118,23 @@ def _build_tod_truth_reconciliation_snapshot(
     "failed",
     "hold",
   }
+  published_state = _classify_tod_published_state(
+    payloads=[
+      ("shared_truth", shared_truth_payload, 1800.0),
+      ("execution_result", execution_result_payload, 1800.0),
+      ("next_task_selection", next_task_selection_payload, 1800.0),
+      ("active_task", active_task_payload, 1200.0),
+      ("activity", activity_payload, 1200.0),
+      ("tod_mim_task_result", bridge_task_result, 1800.0),
+      ("mim_tod_consume_evidence", bridge_consume_evidence, 1800.0),
+      ("mim_task_status_review", task_status_review, 1800.0),
+      ("fallback_activation", fallback_activation, 1800.0),
+    ],
+    execution_count=execution_count,
+    bridge_request_confirmed=bridge_request_confirmed,
+  )
+  published_state_name = str(published_state.get("state") or "").strip().lower()
+
   execution_confirmed = bool(execution_count > 0)
   if decision_state in negative_decision_states or decision_outcome in negative_decision_outcomes:
     execution_confirmed = False
@@ -3576,10 +4142,24 @@ def _build_tod_truth_reconciliation_snapshot(
     execution_confirmed = True
   if bridge_request_confirmed and decision_state not in negative_decision_states and decision_outcome not in negative_decision_outcomes:
     execution_confirmed = True
+  if published_state_name in {"active", "blocked_with_reason", "accepted_complete", "accepted_complete_pending_mim_refresh"}:
+    execution_confirmed = True
 
   state = "execution_confirmed" if execution_confirmed else "execution_unconfirmed"
   summary = "TOD has not published recent execution confirmation for the current work yet."
-  if execution_confirmed:
+  if published_state_name == "blocked_with_reason":
+    state = "blocked_with_reason"
+    summary = str(published_state.get("summary") or "").strip() or "TOD published an explicit blocker for the active work."
+  elif published_state_name == "accepted_complete":
+    state = "accepted_complete"
+    summary = str(published_state.get("summary") or "").strip() or "TOD published completion evidence for the active work."
+  elif published_state_name == "accepted_complete_pending_mim_refresh":
+    state = "accepted_complete_pending_mim_refresh"
+    summary = str(published_state.get("summary") or "").strip() or "TOD completed with meaningful evidence, but MIM still needs a refresh."
+  elif published_state_name == "active":
+    state = "active"
+    summary = str(published_state.get("summary") or "").strip() or "TOD published recent task activity for the active work."
+  elif execution_confirmed:
     if execution_count > 0:
       summary = (
         f"TOD has published {execution_count} recent execution confirmation"
@@ -3618,6 +4198,9 @@ def _build_tod_truth_reconciliation_snapshot(
     "bridge_request_id": active_request_id,
     "bridge_request_confirmed": bridge_request_confirmed,
     "bridge_confirmation_source": bridge_confirmation_source,
+    "published_state": published_state_name,
+    "published_state_source": str(published_state.get("source") or "").strip(),
+    "published_meaningful_evidence": published_state.get("meaningful_evidence") if isinstance(published_state.get("meaningful_evidence"), list) else [],
     "coordination_request_id": coordination_request_id,
     "coordination_request_status": coordination_request_status,
     "coordination_ack_id": coordination_ack_id,
@@ -3997,6 +4580,17 @@ def _latest_timestamp_value(*values: object) -> str:
   return latest.isoformat().replace("+00:00", "Z") if latest is not None else ""
 
 
+def _load_shared_truth_artifact(*, shared_root: Path = SHARED_RUNTIME_ROOT) -> dict[str, object]:
+  path = shared_root / "TOD_MIM_SHARED_TRUTH.latest.json"
+  try:
+    if not path.exists() or not path.is_file():
+      return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return {}
+  return payload if isinstance(payload, dict) else {}
+
+
 def _runtime_recovery_activity_timestamps(runtime_recovery: dict) -> list[str]:
   recovery = runtime_recovery if isinstance(runtime_recovery, dict) else {}
   lanes = recovery.get("lanes") if isinstance(recovery.get("lanes"), dict) else {}
@@ -4104,6 +4698,7 @@ def _build_system_activity_snapshot(
     shared_root=SHARED_RUNTIME_ROOT,
   )
   tod_execution_progress = _load_tod_execution_progress_snapshot(shared_root=SHARED_RUNTIME_ROOT)
+  shared_truth = _load_shared_truth_artifact(shared_root=SHARED_RUNTIME_ROOT)
   canonical_objective_id = str(
     tod_truth_reconciliation.get("canonical_objective_id") or canonical_objective_id
   ).strip()
@@ -4121,12 +4716,55 @@ def _build_system_activity_snapshot(
     or progress_percent >= 100.0
   )
   tod_truth_reconciliation = dict(tod_truth_reconciliation)
+  shared_truth_state = str(shared_truth.get("state") or "").strip().lower()
+  shared_truth_reason = str(shared_truth.get("state_reason") or "").strip()
+  if shared_truth:
+    tod_truth_reconciliation["shared_truth"] = shared_truth
+    tod_truth_reconciliation["authoritative_source"] = str(shared_truth.get("source") or tod_truth_reconciliation.get("authoritative_source") or "TOD").strip() or "TOD"
+    if shared_truth_reason:
+      tod_truth_reconciliation["summary"] = shared_truth_reason
+    state_overrides = {
+      "active": "active",
+      "blocked_with_reason": "blocked_with_reason",
+      "accepted_complete": "accepted_complete",
+      "accepted_complete_pending_mim_refresh": "accepted_complete_pending_mim_refresh",
+      "replay_or_replan_required": "replay_or_replan_required",
+      "disagreement": "disagreement",
+      "stale": "stale",
+    }
+    if shared_truth_state in state_overrides:
+      tod_truth_reconciliation["state"] = state_overrides[shared_truth_state]
+      tod_truth_reconciliation["execution_confirmed"] = shared_truth_state in {
+        "active",
+        "blocked_with_reason",
+        "accepted_complete",
+        "accepted_complete_pending_mim_refresh",
+        "replay_or_replan_required",
+      }
   tod_truth_reconciliation["should_override_completion"] = bool(
     completion_signal_visible
     and not bool(tod_truth_reconciliation.get("execution_confirmed", False))
   )
   if bool(tod_truth_reconciliation.get("coordination_response_missing", False)):
     tod_truth_reconciliation["progress_label"] = "Waiting on MIM"
+    tod_truth_reconciliation["progress_detail"] = str(tod_truth_reconciliation.get("summary") or "").strip()
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "blocked_with_reason":
+    tod_truth_reconciliation["progress_label"] = "Blocked with reason"
+    tod_truth_reconciliation["progress_detail"] = str(tod_truth_reconciliation.get("summary") or "").strip()
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "accepted_complete":
+    tod_truth_reconciliation["progress_label"] = "Accepted complete"
+    tod_truth_reconciliation["progress_detail"] = str(tod_truth_reconciliation.get("summary") or "").strip()
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "accepted_complete_pending_mim_refresh":
+    tod_truth_reconciliation["progress_label"] = "Accepted complete pending MIM refresh"
+    tod_truth_reconciliation["progress_detail"] = str(tod_truth_reconciliation.get("summary") or "").strip()
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "active":
+    tod_truth_reconciliation["progress_label"] = "Active"
+    tod_truth_reconciliation["progress_detail"] = str(tod_truth_reconciliation.get("summary") or "").strip()
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "replay_or_replan_required":
+    tod_truth_reconciliation["progress_label"] = "Replay or replan required"
+    tod_truth_reconciliation["progress_detail"] = str(tod_truth_reconciliation.get("summary") or "").strip()
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "disagreement":
+    tod_truth_reconciliation["progress_label"] = "Disagreement"
     tod_truth_reconciliation["progress_detail"] = str(tod_truth_reconciliation.get("summary") or "").strip()
   elif bool(tod_truth_reconciliation.get("should_override_completion", False)):
     tod_truth_reconciliation["progress_label"] = "Execution unconfirmed"
@@ -4241,6 +4879,36 @@ def _build_system_activity_snapshot(
     status_label = "WAITING ON MIM"
     headline = "WAITING ON MIM - TOD requested coordination and needs a current response"
     tone = "error"
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "blocked_with_reason":
+    status_code = "blocked_with_reason"
+    status_label = "BLOCKED_WITH_REASON"
+    headline = "BLOCKED_WITH_REASON - TOD published an explicit blocker"
+    tone = "warn"
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "accepted_complete":
+    status_code = "accepted_complete"
+    status_label = "ACCEPTED_COMPLETE"
+    headline = "ACCEPTED_COMPLETE - TOD published meaningful completion evidence"
+    tone = "ready"
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "accepted_complete_pending_mim_refresh":
+    status_code = "accepted_complete_pending_mim_refresh"
+    status_label = "ACCEPTED_COMPLETE_PENDING_MIM_REFRESH"
+    headline = "ACCEPTED_COMPLETE_PENDING_MIM_REFRESH - TOD completed and MIM refresh is pending"
+    tone = "ready"
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "active":
+    status_code = "active"
+    status_label = "ACTIVE"
+    headline = "ACTIVE - TOD published recent task activity"
+    tone = "active"
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "replay_or_replan_required":
+    status_code = "replay_or_replan_required"
+    status_label = "REPLAY_OR_REPLAN_REQUIRED"
+    headline = "REPLAY_OR_REPLAN_REQUIRED - TOD requires a forced replay or replan"
+    tone = "warn"
+  elif str(tod_truth_reconciliation.get("state") or "").strip().lower() == "disagreement":
+    status_code = "disagreement"
+    status_label = "DISAGREEMENT"
+    headline = "DISAGREEMENT - TOD and MIM truth surfaces disagree"
+    tone = "warn"
   elif bool(tod_truth_reconciliation.get("should_override_completion", False)):
     status_code = "warning"
     status_label = "UNCONFIRMED"
@@ -4289,6 +4957,16 @@ def _build_system_activity_snapshot(
 
   if status_code == "active":
     summary = activity_summary or active_work_summary or "MIM is actively advancing the current objective."
+  elif status_code == "accepted_complete_pending_mim_refresh":
+    summary = str(tod_truth_reconciliation.get("summary") or "").strip() or "TOD completed with meaningful evidence and MIM needs a refresh."
+  elif status_code == "accepted_complete":
+    summary = str(tod_truth_reconciliation.get("summary") or "").strip() or "TOD published meaningful completion evidence for the active work."
+  elif status_code == "blocked_with_reason":
+    summary = str(tod_truth_reconciliation.get("summary") or "").strip() or "TOD published an explicit blocker for the active work."
+  elif status_code == "replay_or_replan_required":
+    summary = str(tod_truth_reconciliation.get("summary") or "").strip() or "TOD requires a forced replay or replan."
+  elif status_code == "disagreement":
+    summary = str(tod_truth_reconciliation.get("summary") or "").strip() or "TOD and MIM disagree on the current authoritative state."
   elif status_code == "idle":
     summary = activity_summary or "MIM is healthy, but no live task is currently executing."
   elif status_code == "warning":
@@ -4301,6 +4979,16 @@ def _build_system_activity_snapshot(
   relation_flow = "Flowing"
   if bool(tod_truth_reconciliation.get("coordination_response_missing", False)):
     relation_flow = "Waiting on MIM"
+  elif status_code == "blocked_with_reason":
+    relation_flow = "Blocked with reason"
+  elif status_code == "accepted_complete_pending_mim_refresh":
+    relation_flow = "Refresh pending"
+  elif status_code == "accepted_complete":
+    relation_flow = "Complete"
+  elif status_code == "replay_or_replan_required":
+    relation_flow = "Replay required"
+  elif status_code == "disagreement":
+    relation_flow = "Disagreement"
   elif bool(tod_truth_reconciliation.get("should_override_completion", False)):
     relation_flow = "Awaiting TOD confirmation"
   elif not execution_allowed:
@@ -4328,7 +5016,7 @@ def _build_system_activity_snapshot(
     bridge_health = str(tod_liveness.get("status") or "Attention").strip().replace("_", " ")
 
   staleness_state = "fresh"
-  if status_code == "warning":
+  if status_code in {"warning", "blocked_with_reason", "replay_or_replan_required", "disagreement"}:
     staleness_state = "warning"
   elif status_code == "stale":
     staleness_state = "stale"
@@ -4354,6 +5042,8 @@ def _build_system_activity_snapshot(
   )
   meter_percent = {
     "active": 88,
+    "accepted_complete": 100,
+    "blocked_with_reason": 46,
     "idle": 24,
     "warning": 52,
     "stale": 18,
@@ -4368,9 +5058,10 @@ def _build_system_activity_snapshot(
     "status_label": status_label,
     "tone": tone,
     "summary": summary,
-    "authoritative_source": "TOD",
+    "authoritative_source": str(tod_truth_reconciliation.get("authoritative_source") or "TOD").strip() or "TOD",
     "authoritative_reason": str(tod_truth_reconciliation.get("summary") or "").strip(),
     "tod_truth_reconciliation": tod_truth_reconciliation,
+    "shared_truth": shared_truth,
     "tod_phase_progress": tod_execution_progress.get("phase_progress") if isinstance(tod_execution_progress.get("phase_progress"), dict) else {},
     "tod_stall_signal": tod_execution_progress.get("stall_signal") if isinstance(tod_execution_progress.get("stall_signal"), dict) else {},
     "should_be_working": should_be_working,
@@ -6486,6 +7177,54 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       </div>
     </div>
 
+    <div class="panel secondary-shell">
+      <div class="secondary-tab-row">
+        <div class="sidebar-keyline">
+          <h2>Shared Operator Actions</h2>
+          <div class="sidebar-copy">Run the same bounded TOD/MIM control wrappers from MIM, then inspect the refreshed evidence and action timeline.</div>
+        </div>
+        <div id="operatorActionButtonsMim" class="secondary-tab-actions"></div>
+      </div>
+      <div id="operatorActionStatusMim" class="sidebar-copy">Waiting for shared operator action state.</div>
+      <div class="status-grid">
+        <div class="status-tile">
+          <span>Objective</span>
+          <strong id="operatorEvidenceObjectiveText">Loading…</strong>
+          <div id="operatorEvidenceObjectiveDetailText" class="status-subtext">Checking current objective evidence…</div>
+        </div>
+        <div class="status-tile">
+          <span>Task</span>
+          <strong id="operatorEvidenceTaskText">Loading…</strong>
+          <div id="operatorEvidenceTaskDetailText" class="status-subtext">Checking current task evidence…</div>
+        </div>
+        <div class="status-tile">
+          <span>Validation</span>
+          <strong id="operatorEvidenceValidationText">Loading…</strong>
+          <div id="operatorEvidenceValidationDetailText" class="status-subtext">Checking validation status…</div>
+        </div>
+        <div class="status-tile">
+          <span>Blocker</span>
+          <strong id="operatorEvidenceBlockerText">Loading…</strong>
+          <div id="operatorEvidenceBlockerDetailText" class="status-subtext">Checking blocker details…</div>
+        </div>
+        <div class="status-tile">
+          <span>Changed Files</span>
+          <strong id="operatorEvidenceFilesText">Loading…</strong>
+          <div id="operatorEvidenceFilesDetailText" class="status-subtext">Checking changed files…</div>
+        </div>
+        <div class="status-tile">
+          <span>Commands Run</span>
+          <strong id="operatorEvidenceCommandsText">Loading…</strong>
+          <div id="operatorEvidenceCommandsDetailText" class="status-subtext">Checking command history…</div>
+        </div>
+      </div>
+      <div class="sidebar-card">
+        <h2>Action Timeline</h2>
+        <div id="operatorTimelineListMim" class="sidebar-list"></div>
+        <div id="operatorEvidenceTimestampsText" class="status-subtext">Checking artifact timestamps…</div>
+      </div>
+    </div>
+
     <div class="layout-grid">
       <div class="chat-surface">
         <div class="panel chat-hero">
@@ -6793,6 +7532,22 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     const relationFeedbackText = document.getElementById('relationFeedbackText');
     const relationFeedbackDetailText = document.getElementById('relationFeedbackDetailText');
     const systemStallReasonText = document.getElementById('systemStallReasonText');
+    const operatorActionButtonsMim = document.getElementById('operatorActionButtonsMim');
+    const operatorActionStatusMim = document.getElementById('operatorActionStatusMim');
+    const operatorTimelineListMim = document.getElementById('operatorTimelineListMim');
+    const operatorEvidenceObjectiveText = document.getElementById('operatorEvidenceObjectiveText');
+    const operatorEvidenceObjectiveDetailText = document.getElementById('operatorEvidenceObjectiveDetailText');
+    const operatorEvidenceTaskText = document.getElementById('operatorEvidenceTaskText');
+    const operatorEvidenceTaskDetailText = document.getElementById('operatorEvidenceTaskDetailText');
+    const operatorEvidenceValidationText = document.getElementById('operatorEvidenceValidationText');
+    const operatorEvidenceValidationDetailText = document.getElementById('operatorEvidenceValidationDetailText');
+    const operatorEvidenceBlockerText = document.getElementById('operatorEvidenceBlockerText');
+    const operatorEvidenceBlockerDetailText = document.getElementById('operatorEvidenceBlockerDetailText');
+    const operatorEvidenceFilesText = document.getElementById('operatorEvidenceFilesText');
+    const operatorEvidenceFilesDetailText = document.getElementById('operatorEvidenceFilesDetailText');
+    const operatorEvidenceCommandsText = document.getElementById('operatorEvidenceCommandsText');
+    const operatorEvidenceCommandsDetailText = document.getElementById('operatorEvidenceCommandsDetailText');
+    const operatorEvidenceTimestampsText = document.getElementById('operatorEvidenceTimestampsText');
     const mimWorkStateCard = document.getElementById('mimWorkStateCard');
     const mimWorkStateText = document.getElementById('mimWorkStateText');
     const mimWorkStateDetailText = document.getElementById('mimWorkStateDetailText');
@@ -6906,6 +7661,100 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       const resolved = safeText(text, fallback);
       element.textContent = resolved;
       element.title = resolved;
+    }
+
+    function renderOperatorTimelineMim(items) {
+      if (!operatorTimelineListMim) return;
+      operatorTimelineListMim.innerHTML = '';
+      const payload = Array.isArray(items) ? items : [];
+      if (!payload.length) {
+        const empty = document.createElement('div');
+        empty.className = 'status-subtext';
+        empty.textContent = 'No operator actions have been run yet.';
+        operatorTimelineListMim.appendChild(empty);
+        return;
+      }
+      payload.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'status-subtext';
+        row.textContent = `${safeText(item.label || item.action, 'Action')} · ${safeText(item.status, 'unknown')} · ${safeText(item.message || item.generated_at, 'No detail published.')}`;
+        row.title = row.textContent;
+        operatorTimelineListMim.appendChild(row);
+      });
+    }
+
+    function renderOperatorEvidenceMim(evidence) {
+      const payload = evidence && typeof evidence === 'object' ? evidence : {};
+      const activeObjective = payload.active_objective && typeof payload.active_objective === 'object' ? payload.active_objective : {};
+      const activeTask = payload.active_task && typeof payload.active_task === 'object' ? payload.active_task : {};
+      const changedFiles = Array.isArray(payload.changed_files) ? payload.changed_files : [];
+      const commandsRun = Array.isArray(payload.commands_run) ? payload.commands_run : [];
+      const timestamps = payload.artifact_timestamps && typeof payload.artifact_timestamps === 'object' ? payload.artifact_timestamps : {};
+      setTextWithTitle(operatorEvidenceObjectiveText, activeObjective.id, 'Unknown');
+      setTextWithTitle(operatorEvidenceObjectiveDetailText, activeObjective.title, 'No active objective title published.');
+      setTextWithTitle(operatorEvidenceTaskText, activeTask.id, 'Unknown');
+      setTextWithTitle(operatorEvidenceTaskDetailText, activeTask.title, 'No active task title published.');
+      setTextWithTitle(operatorEvidenceValidationText, payload.validation_status, 'Unknown');
+      setTextWithTitle(operatorEvidenceValidationDetailText, payload.next_validation, 'No validation command published.');
+      setTextWithTitle(operatorEvidenceBlockerText, payload.blocker_code, 'None');
+      setTextWithTitle(operatorEvidenceBlockerDetailText, payload.blocker_detail, 'No blocker detail published.');
+      setTextWithTitle(operatorEvidenceFilesText, changedFiles.length ? `${changedFiles.length}` : '0', '0');
+      setTextWithTitle(operatorEvidenceFilesDetailText, changedFiles.length ? changedFiles.join(', ') : 'No file changes were published.', 'No file changes were published.');
+      setTextWithTitle(operatorEvidenceCommandsText, commandsRun.length ? `${commandsRun.length}` : '0', '0');
+      setTextWithTitle(operatorEvidenceCommandsDetailText, commandsRun.length ? commandsRun.join(' | ') : 'No command history was published.', 'No command history was published.');
+      setTextWithTitle(operatorEvidenceTimestampsText, Object.keys(timestamps).length ? Object.entries(timestamps).map(([key, value]) => `${key}=${safeText(value, 'unknown')}`).join(' | ') : 'No artifact timestamps published.', 'No artifact timestamps published.');
+    }
+
+    async function runSharedOperatorAction(action) {
+      if (!action || operatorActionInFlight) return;
+      if (action.requires_confirmation && !window.confirm(safeText(action.confirmation_text, `Run ${safeText(action.label, 'this action')}?`))) {
+        return;
+      }
+      operatorActionInFlight = true;
+      setTextWithTitle(operatorActionStatusMim, `Running ${safeText(action.label, 'operator action')}...`, 'Running operator action...');
+      renderOperatorActionsMim(latestOperatorActions);
+      try {
+        const response = await fetch('/operator/actions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: action.id, confirm: Boolean(action.requires_confirmation) }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const detail = payload && payload.detail && typeof payload.detail === 'object' ? payload.detail : {};
+          throw new Error(safeText(detail.message || payload.message, `Action failed with status ${response.status}`));
+        }
+        setTextWithTitle(operatorActionStatusMim, payload && payload.result && payload.result.message, 'Operator action completed.');
+      } catch (error) {
+        setTextWithTitle(operatorActionStatusMim, error && error.message, 'Operator action failed.');
+      } finally {
+        operatorActionInFlight = false;
+        await refreshState();
+      }
+    }
+
+    function renderOperatorActionsMim(actions) {
+      if (!operatorActionButtonsMim) return;
+      operatorActionButtonsMim.innerHTML = '';
+      const payload = Array.isArray(actions) ? actions : [];
+      latestOperatorActions = payload;
+      if (!payload.length) {
+        const empty = document.createElement('div');
+        empty.className = 'status-subtext';
+        empty.textContent = 'No operator actions are currently available.';
+        operatorActionButtonsMim.appendChild(empty);
+        return;
+      }
+      payload.forEach((action) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'secondary-action';
+        button.textContent = safeText(action.label, 'Action');
+        button.disabled = operatorActionInFlight || !action.enabled;
+        button.title = action.enabled ? safeText(action.description, '') : safeText(action.disabled_reason || action.description, '');
+        button.addEventListener('click', () => runSharedOperatorAction(action));
+        operatorActionButtonsMim.appendChild(button);
+      });
     }
 
     function resolveInitiativeLabel(entry, fallback = '') {
@@ -8160,6 +9009,8 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     const WEAK_IDENTITY_WORDS = new Set(['there', 'here', 'their', 'theyre', 'unknown', 'person', 'human', 'visitor']);
     let startupInquiryIssued = false;
     let latestUiState = null;
+    let latestOperatorActions = [];
+    let operatorActionInFlight = false;
     let lastInquiryPromptSpoken = '';
     let weakIdentityClarifyCooldownUntil = 0;
     let weakIdentityLastPromptKey = '';
@@ -12036,6 +12887,9 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         }
         renderChatThread(threadMessages);
         renderPrimaryStatus(data);
+        renderOperatorActionsMim(data && Array.isArray(data.operator_actions) ? data.operator_actions : []);
+        renderOperatorTimelineMim(data && Array.isArray(data.operator_activity_timeline) ? data.operator_activity_timeline : []);
+        renderOperatorEvidenceMim(data && typeof data.operator_evidence === 'object' ? data.operator_evidence : {});
         renderObjectMemoryPanel(conversationContext);
         renderSystemReasoningPanel(operatorReasoning);
         await maybeRecoverRuntimeHealth(data);
@@ -13208,8 +14062,7 @@ async def mim_ui_upload_image(
     }
 
 
-@router.get("/mim/ui/state")
-async def mim_ui_state(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
+async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
     ensure_authenticated_mimtod_api_request(request)
     now = datetime.now(timezone.utc)
 
@@ -14409,6 +15262,9 @@ async def mim_ui_state(request: Request, db: AsyncSession = Depends(get_db)) -> 
         "operator_reasoning": operator_reasoning,
         "system_activity": system_activity,
         "tod_truth_reconciliation": system_activity.get("tod_truth_reconciliation") if isinstance(system_activity.get("tod_truth_reconciliation"), dict) else tod_truth_reconciliation,
+        "operator_actions": _build_operator_action_controls(_load_operator_evidence_snapshot(shared_root=SHARED_RUNTIME_ROOT)),
+        "operator_activity_timeline": _load_operator_action_timeline(limit=10),
+        "operator_evidence": _load_operator_evidence_snapshot(shared_root=SHARED_RUNTIME_ROOT),
           "initiative_driver": initiative_driver,
         "collaboration_progress": collaboration_progress,
         "dispatch_telemetry": dispatch_telemetry,
@@ -14643,6 +15499,18 @@ async def mim_ui_state(request: Request, db: AsyncSession = Depends(get_db)) -> 
         if speech_row
         else False,
     }
+
+
+@router.get("/mim/ui/state")
+async def mim_ui_state(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
+  try:
+    return await _build_live_mim_ui_state(request, db)
+  except Exception as exc:  # noqa: BLE001
+    if not _is_mim_ui_db_unavailable(exc):
+      raise
+    logger.warning("MIM UI state degraded because database connectivity is unavailable: %s", exc)
+    ensure_authenticated_mimtod_api_request(request)
+    return _build_mim_ui_degraded_state(db_error_text=str(exc))
 
 
 @router.get("/mim/ui/runtime-recovery")

@@ -5,7 +5,10 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
+import subprocess
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -22,7 +25,9 @@ from core.tod_execution_loop import build_execution_loop_contract_artifacts, exe
 
 router = APIRouter(tags=["tod-ui"])
 
-SHARED_RUNTIME_ROOT = PROJECT_ROOT / "runtime" / "shared"
+WORKSPACE_ROOT = PROJECT_ROOT.parent if (PROJECT_ROOT.parent / "scripts").exists() else PROJECT_ROOT
+SHARED_RUNTIME_ROOT = WORKSPACE_ROOT / "runtime" / "shared"
+SHARED_STATE_ROOT = WORKSPACE_ROOT / "shared_state"
 TOD_CONSOLE_CHAT_ROOT = SHARED_RUNTIME_ROOT / "tod_console_chat"
 TOD_CONSOLE_CHAT_MEDIA_ROOT = SHARED_RUNTIME_ROOT / "tod_console_chat_media"
 DIALOG_ROOT = SHARED_RUNTIME_ROOT / "dialog"
@@ -37,6 +42,61 @@ TOD_UI_ALLOWED_IMAGE_TYPES = {
 }
 TOD_UI_MAX_IMAGE_BYTES = 2 * 1024 * 1024
 TOD_EXECUTION_FEEDBACK_DEFAULT_BASE_URL = "http://127.0.0.1:18001"
+TOD_OPERATOR_ACTION_LATEST_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTION.latest.json"
+TOD_OPERATOR_ACTION_LOG_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTION.log.jsonl"
+TOD_OPERATOR_EVIDENCE_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_EVIDENCE.latest.json"
+TOD_OPERATOR_ACTION_TIMEOUT_SECONDS = 180
+
+OPERATOR_ACTION_SPECS: dict[str, dict[str, Any]] = {
+    "refresh_status": {
+        "label": "Refresh Status",
+        "description": "Run the shared-state sync to refresh current TOD and MIM status artifacts.",
+    },
+    "run_shared_truth_reconciliation": {
+        "label": "Reconcile Truth",
+        "description": "Rebuild the authoritative TOD/MIM shared-truth artifact from current evidence.",
+    },
+    "start_next_task": {
+        "label": "Start Next Task",
+        "description": "Publish a real TOD execution request for the current authoritative objective/task.",
+    },
+    "force_replay_current_task": {
+        "label": "Force Replay",
+        "description": "Run the forced execution replay wrapper for the current objective/task.",
+        "requires_confirmation": True,
+        "confirmation_text": "Force replay the current TOD task? This republishes the active task replay request.",
+    },
+    "validate_current_task": {
+        "label": "Validate Task",
+        "description": "Run the current task's next validation command when it matches the safe allowlist.",
+    },
+    "recover_stale_state": {
+        "label": "Recover Stale State",
+        "description": "Run the bounded TOD/MIM remote recovery wrapper.",
+        "requires_confirmation": True,
+        "confirmation_text": "Run stale-state recovery now? This can republish bridge and recovery artifacts.",
+    },
+    "show_evidence": {
+        "label": "Show Evidence",
+        "description": "Refresh the operator evidence snapshot artifact used by both consoles.",
+    },
+    "pause_current_objective": {
+        "label": "Pause",
+        "description": "Pause the active TOD objective on this control surface and publish the paused runtime state.",
+        "requires_confirmation": True,
+        "confirmation_text": "Pause the active TOD objective on this console?",
+    },
+    "resume_current_objective": {
+        "label": "Resume",
+        "description": "Resume the active TOD objective by publishing a fresh execution request and runtime transition.",
+    },
+    "rollback_current_task": {
+        "label": "Rollback",
+        "description": "Apply the latest published rollback hint for the active task and publish rollback evidence.",
+        "requires_confirmation": True,
+        "confirmation_text": "Apply the latest published rollback point for the active TOD task?",
+    },
+}
 
 
 def _utc_now_iso() -> str:
@@ -83,6 +143,596 @@ def _parse_timestamp(value: Any) -> datetime | None:
         return None
 
 
+def _repo_workspace_root() -> Path:
+    return PROJECT_ROOT.parent if (PROJECT_ROOT.parent / "scripts").exists() else PROJECT_ROOT
+
+
+def _script_path(script_name: str) -> Path:
+    return _repo_workspace_root() / "scripts" / script_name
+
+
+def _python_runner() -> str:
+    return str(sys.executable or shutil.which("python") or "python")
+
+
+def _resolve_operator_action_ids(state: dict[str, Any]) -> tuple[str, str]:
+    execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
+    shared_truth = state.get("shared_truth") if isinstance(state.get("shared_truth"), dict) else {}
+    source_paths = state.get("source_paths") if isinstance(state.get("source_paths"), dict) else {}
+    active_task_path = str(source_paths.get("active_task") or "").strip()
+    active_task_payload = _load_json(Path(active_task_path)) if active_task_path else {}
+    objective_alignment = state.get("objective_alignment") if isinstance(state.get("objective_alignment"), dict) else {}
+    live_task = state.get("live_task_request") if isinstance(state.get("live_task_request"), dict) else {}
+    shared_truth_superseded = bool(execution.get("shared_truth_superseded"))
+    if shared_truth_superseded:
+        objective_id = _pick_first_text(
+            execution.get("objective_id"),
+            active_task_payload.get("objective_id"),
+            objective_alignment.get("tod_current_objective"),
+            live_task.get("objective_id"),
+            live_task.get("normalized_objective_id"),
+            shared_truth.get("objective_id"),
+        )
+        task_id = _pick_first_text(
+            execution.get("task_id"),
+            active_task_payload.get("task_id"),
+            active_task_payload.get("id"),
+            live_task.get("task_id"),
+            shared_truth.get("task_id"),
+            shared_truth.get("current_task_id"),
+        )
+    else:
+        objective_id = _pick_first_text(
+            shared_truth.get("objective_id"),
+            execution.get("objective_id"),
+            active_task_payload.get("objective_id"),
+            objective_alignment.get("tod_current_objective"),
+            live_task.get("objective_id"),
+            live_task.get("normalized_objective_id"),
+        )
+        task_id = _pick_first_text(
+            shared_truth.get("task_id"),
+            shared_truth.get("current_task_id"),
+            execution.get("task_id"),
+            active_task_payload.get("task_id"),
+            active_task_payload.get("id"),
+            live_task.get("task_id"),
+        )
+    return str(objective_id or "").strip(), str(task_id or "").strip()
+
+
+def _resolve_safe_validation_command(state: dict[str, Any]) -> list[str]:
+    next_validation = str(_next_validation_check(state) or "").strip()
+    if not next_validation:
+        return []
+    python_match = re.match(r"^(?:[^\s]+python(?:\.exe)?|python(?:\.exe)?)\s+-m\s+unittest\s+(.+)$", next_validation, re.IGNORECASE)
+    if python_match:
+        remainder = str(python_match.group(1) or "").strip()
+        try:
+            parsed = shlex.split(remainder, posix=False)
+        except Exception:
+            parsed = remainder.split()
+        return [_python_runner(), "-m", "unittest", *parsed]
+    powershell_match = re.match(
+        r"^(?:powershell(?:\.exe)?)\s+-NoProfile\s+-ExecutionPolicy\s+Bypass\s+-File\s+([\w./\\:-]+(?:\.ps1))(?P<rest>.*)$",
+        next_validation,
+        re.IGNORECASE,
+    )
+    if not powershell_match:
+        return []
+    script_value = str(powershell_match.group(1) or "").strip().strip('"')
+    rest = str(powershell_match.group("rest") or "").strip()
+    script_path = _repo_workspace_root() / script_value.replace("/", os.sep)
+    if not script_path.exists():
+        return []
+    rest_args = shlex.split(rest, posix=False) if rest else []
+    return [_powershell_runner(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script_path), *rest_args]
+
+
+def _operator_action_specs(state: dict[str, Any]) -> list[dict[str, Any]]:
+    objective_id, task_id = _resolve_operator_action_ids(state)
+    execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
+    latest_action = _latest_operator_action_payload()
+    rollback_metadata = _resolve_rollback_metadata(state)
+    paused = str(execution.get("activity_state") or "").strip().lower() == "paused" or (
+        _operator_action_applies_to_task(latest_action, objective_id, task_id)
+        and str(latest_action.get("action") or "").strip() == "pause_current_objective"
+        and str(latest_action.get("status") or "").strip().lower() not in {"failed", "started"}
+    )
+    actions: list[dict[str, Any]] = []
+    for action_id, spec in OPERATOR_ACTION_SPECS.items():
+        action_entry = {
+            "id": action_id,
+            "label": str(spec.get("label") or action_id).strip(),
+            "description": str(spec.get("description") or "").strip(),
+            "requires_confirmation": bool(spec.get("requires_confirmation")),
+            "confirmation_text": str(spec.get("confirmation_text") or "").strip(),
+            "enabled": True,
+            "disabled_reason": "",
+        }
+        if action_id == "force_replay_current_task" and (not objective_id or not task_id):
+            action_entry["enabled"] = False
+            action_entry["disabled_reason"] = "Current objective/task identity is missing."
+        if action_id == "validate_current_task" and not _resolve_safe_validation_command(state):
+            action_entry["enabled"] = False
+            action_entry["disabled_reason"] = "No safe validation command is available for the active task."
+        if action_id == "pause_current_objective":
+            if not objective_id or not task_id:
+                action_entry["enabled"] = False
+                action_entry["disabled_reason"] = "Current objective/task identity is missing."
+            elif paused:
+                action_entry["enabled"] = False
+                action_entry["disabled_reason"] = "The active objective is already paused on this console."
+        if action_id == "resume_current_objective":
+            if not objective_id or not task_id:
+                action_entry["enabled"] = False
+                action_entry["disabled_reason"] = "Current objective/task identity is missing."
+            elif not paused:
+                action_entry["enabled"] = False
+                action_entry["disabled_reason"] = "Resume becomes available after the current objective is paused."
+        if action_id == "rollback_current_task":
+            rollback_paths = _parse_copy_item_restore_paths(rollback_metadata.get("hint") or "")
+            if not objective_id or not task_id:
+                action_entry["enabled"] = False
+                action_entry["disabled_reason"] = "Current objective/task identity is missing."
+            elif rollback_metadata.get("state") not in {"available", "ready", "recommended"}:
+                action_entry["enabled"] = False
+                action_entry["disabled_reason"] = "No published rollback point is currently available for the active task."
+            elif not all(rollback_paths):
+                action_entry["enabled"] = False
+                action_entry["disabled_reason"] = "The published rollback hint is missing or points outside the workspace."
+        actions.append(action_entry)
+    return actions
+
+
+def _build_objective_cards(state: dict[str, Any]) -> list[dict[str, Any]]:
+    execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
+    shared_truth = state.get("shared_truth") if isinstance(state.get("shared_truth"), dict) else {}
+    status = state.get("status") if isinstance(state.get("status"), dict) else {}
+    alignment = state.get("objective_alignment") if isinstance(state.get("objective_alignment"), dict) else {}
+    live_task = state.get("live_task_request") if isinstance(state.get("live_task_request"), dict) else {}
+    conversation = state.get("conversation") if isinstance(state.get("conversation"), dict) else {}
+    operator_actions = state.get("operator_actions") if isinstance(state.get("operator_actions"), list) else []
+    planner_state = state.get("planner_state") if isinstance(state.get("planner_state"), dict) else {}
+
+    operator_action_map = {
+        str(item.get("id") or "").strip(): item
+        for item in operator_actions
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    quick_actions = {
+        str(item.get("id") or "").strip(): item
+        for item in (conversation.get("quick_actions") if isinstance(conversation.get("quick_actions"), list) else [])
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+
+    planner_is_primary = bool(planner_state.get("available") and planner_state.get("is_newer_than_executor"))
+    objective_id = _pick_first_text(
+        live_task.get("objective_id") if planner_is_primary else "",
+        live_task.get("normalized_objective_id") if planner_is_primary else "",
+        execution.get("objective_id"),
+        shared_truth.get("objective_id"),
+        live_task.get("objective_id"),
+        live_task.get("normalized_objective_id"),
+        alignment.get("tod_current_objective"),
+        alignment.get("mim_objective_active"),
+    )
+    task_id = _pick_first_text(
+        live_task.get("task_id") if planner_is_primary else "",
+        live_task.get("request_id") if planner_is_primary else "",
+        execution.get("task_id"),
+        shared_truth.get("task_id"),
+        shared_truth.get("current_task_id"),
+        live_task.get("task_id"),
+    )
+    title = _pick_first_text(
+        live_task.get("title") if planner_is_primary else "",
+        execution.get("title"),
+        shared_truth.get("objective_title"),
+        live_task.get("title"),
+        objective_id,
+        "No active objective",
+    )
+    summary = _pick_first_text(
+        planner_state.get("summary") if planner_is_primary else "",
+        execution.get("activity_summary"),
+        execution.get("summary"),
+        status.get("summary"),
+        shared_truth.get("reason"),
+        "No active objective is currently published on the TOD control surface.",
+    )
+    phase_progress = execution.get("phase_progress") if isinstance(execution.get("phase_progress"), dict) else {}
+    milestones = phase_progress.get("milestones") if isinstance(phase_progress.get("milestones"), list) else []
+    milestone_summary = [
+        {
+            "id": str(item.get("id") or "").strip(),
+            "label": str(item.get("label") or "").strip(),
+            "status": str(item.get("status") or "unknown").strip(),
+            "complete": bool(item.get("complete")),
+        }
+        for item in milestones
+        if isinstance(item, dict)
+    ]
+
+    card_actions: list[dict[str, Any]] = []
+    for action_id in ("start_next_task", "show_evidence", "validate_current_task", "pause_current_objective", "resume_current_objective", "rollback_current_task"):
+        spec = operator_action_map.get(action_id, {})
+        card_actions.append(
+            {
+                "id": action_id,
+                "label": str(spec.get("label") or action_id).strip(),
+                "mode": "operator_action",
+                "enabled": bool(spec.get("enabled")),
+                "disabled_reason": str(spec.get("disabled_reason") or "").strip(),
+                "requires_confirmation": bool(spec.get("requires_confirmation")),
+                "confirmation_text": str(spec.get("confirmation_text") or "").strip(),
+            }
+        )
+
+    card_actions.extend(
+        [
+            {
+                "id": "show_plan",
+                "label": "Show Plan",
+                "mode": "local_view",
+                "enabled": bool(phase_progress.get("available") or milestone_summary),
+                "disabled_reason": "No phase progress plan is currently published." if not bool(phase_progress.get("available") or milestone_summary) else "",
+                "plan_summary": str(phase_progress.get("summary") or "").strip(),
+                "milestones": milestone_summary,
+            },
+        ]
+    )
+
+    handoff = quick_actions.get("send-to-copilot", {})
+    card_actions.append(
+        {
+            "id": "send_to_codex",
+            "label": str(handoff.get("label") or "Send To Codex").strip(),
+            "mode": "chat_handoff",
+            "enabled": bool(handoff),
+            "disabled_reason": "Codex handoff is not published on this surface." if not handoff else "",
+            "prompt": str(handoff.get("prompt") or "").strip(),
+        }
+    )
+
+    return [
+        {
+            "id": str(objective_id or "no-active-objective").strip() or "no-active-objective",
+            "objective_id": str(objective_id or "").strip(),
+            "task_id": str(task_id or "").strip(),
+            "title": _compact_text(title, 180),
+            "summary": _compact_text(summary, 220),
+            "status": _pick_first_text(planner_state.get("status_label") if planner_is_primary else "", execution.get("activity_label"), status.get("label"), "Idle"),
+            "activity_state": str(planner_state.get("status") if planner_is_primary else execution.get("activity_state") or "idle").strip(),
+            "phase_progress": {
+                "available": bool(phase_progress.get("available")),
+                "label": str(phase_progress.get("label") or "").strip(),
+                "percent_complete": int(phase_progress.get("percent_complete") or 0),
+                "next_gate": str(phase_progress.get("next_gate") or "").strip(),
+                "summary": str(phase_progress.get("summary") or "").strip(),
+                "milestones": milestone_summary,
+            },
+            "planner_state": {
+                "available": bool(planner_state.get("available")),
+                "status": str(planner_state.get("status") or "").strip(),
+                "status_label": str(planner_state.get("status_label") or "").strip(),
+                "summary": str(planner_state.get("summary") or "").strip(),
+                "current_step": str(planner_state.get("current_step") or "").strip(),
+                "next_step": str(planner_state.get("next_step") or "").strip(),
+                "updated_at": str(planner_state.get("updated_at") or "").strip(),
+                "updated_age": str(planner_state.get("updated_age") or "").strip(),
+                "assigned_executor": str(planner_state.get("assigned_executor") or "").strip(),
+                "requested_outcome": str(planner_state.get("requested_outcome") or "").strip(),
+                "is_newer_than_executor": bool(planner_state.get("is_newer_than_executor")),
+            },
+            "executor_state": {
+                "status": str(execution.get("activity_state") or "").strip(),
+                "status_label": str(execution.get("activity_label") or "").strip(),
+                "summary": _compact_text(execution.get("activity_summary") or execution.get("summary"), 220),
+                "current_action": str(execution.get("current_action") or "").strip(),
+                "next_validation": str(execution.get("next_validation") or "").strip(),
+                "updated_at": str(execution.get("updated_at") or "").strip(),
+                "updated_age": str(execution.get("updated_age") or "").strip(),
+            },
+            "artifacts": {
+                "updated_at": str(execution.get("updated_at") or "").strip(),
+                "updated_age": str(execution.get("updated_age") or "").strip(),
+                "files_changed": execution.get("files_changed") if isinstance(execution.get("files_changed"), list) else [],
+                "validation_checks": execution.get("validation_checks") if isinstance(execution.get("validation_checks"), list) else [],
+                "rollback_state": str(execution.get("rollback_state") or "not_needed").strip(),
+                "recovery_state": str(execution.get("recovery_state") or "not_needed").strip(),
+            },
+            "actions": card_actions,
+        }
+    ]
+
+
+def _read_jsonl_records(path: Path, limit: int = 8) -> list[dict[str, Any]]:
+    if limit <= 0 or not path.exists():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return []
+    records: list[dict[str, Any]] = []
+    for line in lines[-limit:]:
+        try:
+            payload = json.loads(line)
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            records.append(payload)
+    return records
+
+
+def _artifact_timestamp_for_path(path_text: str) -> str:
+    path_value = str(path_text or "").strip()
+    if not path_value:
+        return ""
+    path = Path(path_value)
+    if not path.exists():
+        return ""
+    payload = _load_json(path)
+    if payload:
+        timestamp_value = _pick_first_text(payload.get("generated_at"), payload.get("updated_at"), payload.get("emitted_at"))
+        if timestamp_value:
+            return timestamp_value
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    except Exception:
+        return ""
+
+
+def _load_recent_operator_actions(limit: int = 8) -> list[dict[str, Any]]:
+    return _read_jsonl_records(TOD_OPERATOR_ACTION_LOG_PATH, limit=limit)
+
+
+def _build_operator_evidence(state: dict[str, Any]) -> dict[str, Any]:
+    state = state if isinstance(state, dict) else {}
+    source_paths = state.get("source_paths") if isinstance(state.get("source_paths"), dict) else {}
+    execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
+    shared_truth = state.get("shared_truth") if isinstance(state.get("shared_truth"), dict) else {}
+    status = state.get("status") if isinstance(state.get("status"), dict) else {}
+    live_task = state.get("live_task_request") if isinstance(state.get("live_task_request"), dict) else {}
+    objective_id, task_id = _resolve_operator_action_ids(state)
+    execution_result_path = str(source_paths.get("execution_result") or "").strip()
+    validation_path = str(source_paths.get("validation_result") or "").strip()
+    active_task_path = str(source_paths.get("active_task") or "").strip()
+    execution_result_payload = _load_json(Path(execution_result_path)) if execution_result_path else {}
+    validation_payload = _load_json(Path(validation_path)) if validation_path else {}
+    active_task_payload = _load_json(Path(active_task_path)) if active_task_path else {}
+    latest_action = _load_json(TOD_OPERATOR_ACTION_LATEST_PATH)
+    files_changed = execution_result_payload.get("files_changed") if isinstance(execution_result_payload.get("files_changed"), list) else []
+    commands_run = execution_result_payload.get("commands_run") if isinstance(execution_result_payload.get("commands_run"), list) else []
+    validation_checks = execution.get("validation_checks") if isinstance(execution.get("validation_checks"), list) else []
+    shared_truth_superseded = bool(execution.get("shared_truth_superseded"))
+    stall_signal = execution.get("stall_signal") if isinstance(execution.get("stall_signal"), dict) else {}
+    objective_title = _pick_first_text(
+        execution.get("title"),
+        active_task_payload.get("objective_title"),
+        active_task_payload.get("title"),
+        live_task.get("title"),
+        shared_truth.get("objective_title"),
+    ) if shared_truth_superseded else _pick_first_text(
+        shared_truth.get("objective_title"),
+        active_task_payload.get("objective_title"),
+        active_task_payload.get("title"),
+        execution.get("title"),
+        live_task.get("title"),
+    )
+    task_title = _pick_first_text(
+        active_task_payload.get("display_title"),
+        active_task_payload.get("title"),
+        execution.get("title"),
+        execution.get("task_focus"),
+        live_task.get("title"),
+        shared_truth.get("task_title"),
+    ) if shared_truth_superseded else _pick_first_text(
+        shared_truth.get("task_title"),
+        active_task_payload.get("display_title"),
+        active_task_payload.get("title"),
+        execution.get("title"),
+        execution.get("task_focus"),
+        live_task.get("title"),
+    )
+    blocker_code = _pick_first_text(
+        stall_signal.get("level"),
+        execution.get("blocker_code"),
+        shared_truth.get("blocker_code"),
+    ) if shared_truth_superseded else _pick_first_text(
+        shared_truth.get("blocker_code"),
+        execution.get("blocker_code"),
+    )
+    blocker_detail = _pick_first_text(
+        execution.get("blocker_detail"),
+        status.get("summary"),
+        shared_truth.get("blocker_detail"),
+        execution.get("blocker_detail"),
+    ) if shared_truth_superseded else _pick_first_text(
+        shared_truth.get("blocker_detail"),
+        execution.get("blocker_detail"),
+        status.get("summary"),
+    )
+    artifact_timestamps = {
+        key: _artifact_timestamp_for_path(str(path_text or ""))
+        for key, path_text in source_paths.items()
+        if key in {"active_objective", "active_task", "validation_result", "execution_result", "execution_truth", "shared_truth", "remote_recovery"}
+    }
+    return {
+        "active_objective": {
+            "id": objective_id,
+            "title": objective_title,
+        },
+        "active_task": {
+            "id": task_id,
+            "title": task_title,
+        },
+        "changed_files": files_changed[:12],
+        "commands_run": commands_run[:12],
+        "validation_status": _pick_first_text(execution.get("validation_status"), validation_payload.get("status"), validation_payload.get("validation_status")),
+        "validation_checks": validation_checks[:8],
+        "blocker_code": blocker_code,
+        "blocker_detail": blocker_detail,
+        "artifact_timestamps": artifact_timestamps,
+        "latest_action": latest_action if isinstance(latest_action, dict) else {},
+        "shared_truth_state": _pick_first_text(shared_truth.get("state"), shared_truth.get("status")),
+        "next_validation": _next_validation_check(state),
+    }
+
+
+def _write_operator_evidence_snapshot(state: dict[str, Any]) -> dict[str, Any]:
+    payload = _build_operator_evidence(state)
+    TOD_OPERATOR_ACTION_ROOT.mkdir(parents=True, exist_ok=True)
+    TOD_OPERATOR_EVIDENCE_PATH.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+    return payload
+
+
+def _run_operator_command(command: list[str], timeout_seconds: int = TOD_OPERATOR_ACTION_TIMEOUT_SECONDS) -> dict[str, Any]:
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(_repo_workspace_root()),
+            capture_output=True,
+            text=True,
+            timeout=max(1, int(timeout_seconds)),
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout_text = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else str(exc.stdout or "")
+        stderr_text = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr or "")
+        return {
+            "ok": False,
+            "status": "timeout",
+            "message": "The operator action timed out before completion.",
+            "command": command,
+            "stdout_excerpt": _trim_message_text(stdout_text, 1600),
+            "stderr_excerpt": _trim_message_text(stderr_text, 1600),
+            "exit_code": None,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "failed",
+            "message": _compact_text(exc, 220),
+            "command": command,
+            "stdout_excerpt": "",
+            "stderr_excerpt": "",
+            "exit_code": None,
+        }
+    stdout_excerpt = _trim_message_text(completed.stdout, 1600)
+    stderr_excerpt = _trim_message_text(completed.stderr, 1600)
+    message = stdout_excerpt or stderr_excerpt or ("Command completed." if completed.returncode == 0 else "Command failed.")
+    return {
+        "ok": completed.returncode == 0,
+        "status": "completed" if completed.returncode == 0 else "failed",
+        "message": _compact_text(message, 220),
+        "command": command,
+        "stdout_excerpt": stdout_excerpt,
+        "stderr_excerpt": stderr_excerpt,
+        "exit_code": int(completed.returncode),
+    }
+
+
+def _run_operator_command_sequence(commands: list[list[str]], timeout_seconds: int = TOD_OPERATOR_ACTION_TIMEOUT_SECONDS) -> dict[str, Any]:
+    executed: list[list[str]] = []
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+    for command in commands:
+        result = _run_operator_command(command, timeout_seconds=timeout_seconds)
+        executed.append(command)
+        stdout_excerpt = str(result.get("stdout_excerpt") or "").strip()
+        stderr_excerpt = str(result.get("stderr_excerpt") or "").strip()
+        if stdout_excerpt:
+            stdout_parts.append(stdout_excerpt)
+        if stderr_excerpt:
+            stderr_parts.append(stderr_excerpt)
+        if not bool(result.get("ok")):
+            return {
+                "ok": False,
+                "status": str(result.get("status") or "failed").strip() or "failed",
+                "message": str(result.get("message") or "Command failed.").strip() or "Command failed.",
+                "command": executed,
+                "stdout_excerpt": _trim_message_text("\n\n".join(stdout_parts), 1600),
+                "stderr_excerpt": _trim_message_text("\n\n".join(stderr_parts), 1600),
+                "exit_code": result.get("exit_code"),
+            }
+    message = stdout_parts[-1] if stdout_parts else (stderr_parts[-1] if stderr_parts else "Commands completed.")
+    return {
+        "ok": True,
+        "status": "completed",
+        "message": _compact_text(message, 220),
+        "command": executed,
+        "stdout_excerpt": _trim_message_text("\n\n".join(stdout_parts), 1600),
+        "stderr_excerpt": _trim_message_text("\n\n".join(stderr_parts), 1600),
+        "exit_code": 0,
+    }
+
+
+def _run_reconcile_shared_truth_action() -> dict[str, Any]:
+    script_path = _script_path("reconcile_tod_mim_shared_truth.py")
+    if not script_path.exists():
+        return {
+            "ok": False,
+            "status": "failed",
+            "message": "Shared-truth reconciliation script is missing.",
+            "artifact_paths": [],
+            "command": [],
+        }
+    command = [_python_runner(), str(script_path)]
+    result = _run_operator_command(command)
+    result["artifact_paths"] = [str(SHARED_RUNTIME_ROOT / "TOD_MIM_SHARED_TRUTH.latest.json")]
+    return result
+
+
+def _can_run_full_shared_state_sync() -> bool:
+    required_paths = (
+        _script_path("Invoke-TODSharedStateSync.ps1"),
+        _script_path("TOD.ps1"),
+        WORKSPACE_ROOT / "tod" / "config" / "tod-config.json",
+        WORKSPACE_ROOT / "tod" / "data" / "state.json",
+    )
+    return all(path.exists() for path in required_paths)
+
+
+def _run_refresh_status_action() -> dict[str, Any]:
+    sync_script_path = _script_path("Invoke-TODSharedStateSync.ps1")
+    if _can_run_full_shared_state_sync():
+        command = [_powershell_runner(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(sync_script_path), "-RefreshAgentMimReadiness"]
+        result = _run_operator_command(command)
+        result["artifact_paths"] = [str(SHARED_RUNTIME_ROOT / "TOD_SHARED_STATE.latest.json")]
+        return result
+
+    export_script_path = _script_path("export_mim_context.py")
+    rebuild_script_path = _script_path("rebuild_tod_integration_status.py")
+    if not export_script_path.exists() or not rebuild_script_path.exists():
+        missing = []
+        if not sync_script_path.exists():
+            missing.append("Invoke-TODSharedStateSync.ps1")
+        if not export_script_path.exists():
+            missing.append("export_mim_context.py")
+        if not rebuild_script_path.exists():
+            missing.append("rebuild_tod_integration_status.py")
+        missing_text = ", ".join(missing) if missing else "required refresh helpers"
+        return {
+            "ok": False,
+            "status": "failed",
+            "message": f"Refresh helpers are missing: {missing_text}.",
+            "artifact_paths": [],
+            "command": [],
+        }
+
+    commands = [
+        [_python_runner(), str(export_script_path), "--output-dir", str(SHARED_RUNTIME_ROOT)],
+        [_python_runner(), str(rebuild_script_path)],
+    ]
+    result = _run_operator_command_sequence(commands)
+    result["artifact_paths"] = [
+        str(SHARED_RUNTIME_ROOT / "MIM_CONTEXT_EXPORT.latest.json"),
+        str(SHARED_RUNTIME_ROOT / "TOD_INTEGRATION_STATUS.latest.json"),
+    ]
+    return result
+
+
 def _age_seconds(value: Any) -> float | None:
     parsed = _parse_timestamp(value)
     if parsed is None:
@@ -118,18 +768,35 @@ def _normalize_objective_token(value: Any) -> str:
     return text
 
 
+def _objective_request_slug(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    return re.sub(r"[^a-z0-9._-]+", "-", text).strip("-._")
+
+
 def _same_objective(left: Any, right: Any) -> bool:
     left_token = _normalize_objective_token(left)
     right_token = _normalize_objective_token(right)
     return bool(left_token and right_token and left_token == right_token)
 
 
-def _should_reuse_live_task_identity(live_task: dict[str, Any], prompt_objective_id: str) -> bool:
+def _same_task_identity(left: Any, right: Any) -> bool:
+    left_text = str(left or "").strip().lower()
+    right_text = str(right or "").strip().lower()
+    return bool(left_text and right_text and left_text == right_text)
+
+
+def _should_reuse_live_task_identity(live_task: dict[str, Any], prompt_objective_id: str, authoritative_task_id: str = "") -> bool:
     if not isinstance(live_task, dict) or not live_task:
         return False
     request_id = str(live_task.get("request_id") or "").strip()
     task_id = str(live_task.get("task_id") or "").strip()
     if not request_id and not task_id:
+        return False
+    desired_task_id = str(authoritative_task_id or "").strip()
+    live_identity = task_id or request_id
+    if desired_task_id and live_identity and not _same_task_identity(live_identity, desired_task_id):
         return False
     if not prompt_objective_id:
         return True
@@ -163,12 +830,21 @@ def _select_runtime_live_task_request(integration_live_task: dict[str, Any], act
         or runtime_task.get("normalized_objective_id")
         or ""
     ).strip()
+    runtime_identity = runtime_task_id or runtime_request_id
     live_objective = str(
         live_task.get("objective_id")
         or live_task.get("normalized_objective_id")
         or ""
     ).strip()
-    if live_task and _same_objective(runtime_objective, live_objective):
+    live_identity = str(live_task.get("task_id") or live_task.get("request_id") or "").strip()
+    if live_identity:
+        # The live request packet is authoritative for request identity. Only let
+        # executor runtime details fill gaps when they refer to the same request.
+        if not runtime_identity or _same_task_identity(runtime_identity, live_identity):
+            return live_task
+        if live_objective and runtime_objective and not _same_objective(live_objective, runtime_objective):
+            return live_task
+    if live_task and _same_objective(runtime_objective, live_objective) and (not runtime_identity or not live_identity or _same_task_identity(runtime_identity, live_identity)):
         return live_task
 
     runtime_generated_at = str(runtime_task.get("updated_at") or runtime_task.get("generated_at") or "").strip()
@@ -190,14 +866,38 @@ def _select_runtime_live_task_request(integration_live_task: dict[str, Any], act
 
 
 def _detect_phase_label(active_task: dict[str, Any], execution_result: dict[str, Any]) -> str:
+    active_contract = active_task.get("execution_contract") if isinstance(active_task.get("execution_contract"), dict) else {}
+    result_contract = execution_result.get("execution_contract") if isinstance(execution_result.get("execution_contract"), dict) else {}
+    active_intake = active_contract.get("task_intake") if isinstance(active_contract.get("task_intake"), dict) else {}
+    result_intake = result_contract.get("task_intake") if isinstance(result_contract.get("task_intake"), dict) else {}
+    active_planner = active_contract.get("bounded_step_planner") if isinstance(active_contract.get("bounded_step_planner"), dict) else {}
+    result_planner = result_contract.get("bounded_step_planner") if isinstance(result_contract.get("bounded_step_planner"), dict) else {}
+    active_step = active_planner.get("active_step") if isinstance(active_planner.get("active_step"), dict) else {}
+    result_step = result_planner.get("active_step") if isinstance(result_planner.get("active_step"), dict) else {}
     for candidate in (
         active_task.get("objective_id"),
+        active_task.get("normalized_objective_id"),
         active_task.get("title"),
         active_task.get("task_focus"),
         active_task.get("summary"),
+        active_intake.get("task_focus"),
+        active_intake.get("title"),
+        active_intake.get("mission"),
+        active_intake.get("primary_outcome"),
+        active_planner.get("summary"),
+        active_step.get("title"),
+        active_step.get("summary"),
         execution_result.get("objective_id"),
+        execution_result.get("normalized_objective_id"),
         execution_result.get("title"),
         execution_result.get("summary"),
+        result_intake.get("task_focus"),
+        result_intake.get("title"),
+        result_intake.get("mission"),
+        result_intake.get("primary_outcome"),
+        result_planner.get("summary"),
+        result_step.get("title"),
+        result_step.get("summary"),
     ):
         text = str(candidate or "").strip()
         if not text:
@@ -205,7 +905,7 @@ def _detect_phase_label(active_task: dict[str, Any], execution_result: dict[str,
         match = re.search(r"\bphase[\s_-]*(\d+)\b", text, re.IGNORECASE)
         if match:
             return f"Phase {match.group(1)}"
-    return "Phase 1"
+    return "Current objective"
 
 
 def _load_remote_recovery_payload() -> tuple[dict[str, Any], str]:
@@ -225,6 +925,361 @@ def _load_existing_execution_runtime_payloads() -> dict[str, dict[str, Any]]:
         "execution_truth": _load_json(SHARED_RUNTIME_ROOT / "TOD_EXECUTION_TRUTH.latest.json"),
     }
     return payloads
+
+
+def _latest_operator_action_payload() -> dict[str, Any]:
+    return _load_json(TOD_OPERATOR_ACTION_LATEST_PATH)
+
+
+def _operator_action_applies_to_task(record: dict[str, Any], objective_id: str, task_id: str) -> bool:
+    if not isinstance(record, dict) or not record:
+        return False
+    record_objective_id = str(record.get("objective_id") or "").strip()
+    record_task_id = str(record.get("task_id") or record.get("request_id") or "").strip()
+    if objective_id and record_objective_id and not _same_objective(record_objective_id, objective_id):
+        return False
+    if task_id and record_task_id and not _same_task_identity(record_task_id, task_id):
+        return False
+    return True
+
+
+def _resolve_rollback_metadata(state: dict[str, Any]) -> dict[str, str]:
+    state = state if isinstance(state, dict) else {}
+    source_paths = state.get("source_paths") if isinstance(state.get("source_paths"), dict) else {}
+    execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
+    execution_result_payload = _load_json(Path(str(source_paths.get("execution_result") or "").strip())) if str(source_paths.get("execution_result") or "").strip() else {}
+    active_task_payload = _load_json(Path(str(source_paths.get("active_task") or "").strip())) if str(source_paths.get("active_task") or "").strip() else {}
+    execution_result_evidence = execution_result_payload.get("execution_evidence") if isinstance(execution_result_payload.get("execution_evidence"), dict) else {}
+    active_task_evidence = active_task_payload.get("execution_evidence") if isinstance(active_task_payload.get("execution_evidence"), dict) else {}
+    rollback_state = _pick_first_text(
+        execution_result_payload.get("rollback_state"),
+        active_task_payload.get("rollback_state"),
+        execution_result_evidence.get("rollback_state"),
+        active_task_evidence.get("rollback_state"),
+        execution.get("rollback_state"),
+    )
+    rollback_hint = _pick_first_text(
+        execution_result_payload.get("rollback_hint"),
+        active_task_payload.get("rollback_hint"),
+        execution_result_evidence.get("rollback_hint"),
+        active_task_evidence.get("rollback_hint"),
+    )
+    return {
+        "state": str(rollback_state or "").strip(),
+        "hint": str(rollback_hint or "").strip(),
+    }
+
+
+def _derive_planner_state(
+    live_task: dict[str, Any],
+    listener_decision: dict[str, Any],
+    execution: dict[str, Any],
+    latest_action: dict[str, Any],
+) -> dict[str, Any]:
+    live_task = live_task if isinstance(live_task, dict) else {}
+    listener_decision = listener_decision if isinstance(listener_decision, dict) else {}
+    execution = execution if isinstance(execution, dict) else {}
+    latest_action = latest_action if isinstance(latest_action, dict) else {}
+
+    objective_id = str(live_task.get("objective_id") or live_task.get("normalized_objective_id") or execution.get("objective_id") or "").strip()
+    task_id = str(live_task.get("task_id") or live_task.get("request_id") or execution.get("task_id") or "").strip()
+    title = _pick_first_text(live_task.get("title"), execution.get("title"), task_id, objective_id)
+    if not (objective_id or task_id or title):
+        return {
+            "available": False,
+            "updated_at": "",
+            "updated_age": "Unknown",
+            "is_newer_than_executor": False,
+        }
+
+    relevant_action = latest_action if _operator_action_applies_to_task(latest_action, objective_id, task_id) else {}
+    updated_at = _pick_latest_timestamp(live_task.get("generated_at"), relevant_action.get("generated_at"))
+    request_dt = _parse_timestamp(updated_at)
+    executor_dt = _parse_timestamp(execution.get("updated_at"))
+    same_task_as_executor = _same_task_identity(task_id, execution.get("task_id")) if task_id and execution.get("task_id") else False
+    is_newer_than_executor = bool(
+        request_dt
+        and (
+            executor_dt is None
+            or request_dt > executor_dt
+            or (task_id and execution.get("task_id") and not same_task_as_executor)
+        )
+    )
+
+    action_name = str(relevant_action.get("action") or "").strip()
+    decision_state = str(listener_decision.get("execution_state") or "").strip().lower()
+    decision_outcome = str(listener_decision.get("decision_outcome") or "").strip().lower()
+    if action_name == "pause_current_objective":
+        status = "paused"
+        status_label = "Paused"
+        summary = _pick_first_text(relevant_action.get("message"), "Paused the active TOD objective on this console.")
+        current_step = "Operator pause requested"
+    elif action_name == "resume_current_objective":
+        status = "resume_requested"
+        status_label = "Resume Requested"
+        summary = _pick_first_text(relevant_action.get("message"), "Published a resume request and waiting for fresh execution evidence.")
+        current_step = "Resume request published"
+    elif action_name == "rollback_current_task":
+        status = "rollback_applied" if str(relevant_action.get("status") or "").strip().lower() in {"completed", "applied"} else "rollback_requested"
+        status_label = "Rollback Applied" if status == "rollback_applied" else "Rollback Requested"
+        summary = _pick_first_text(relevant_action.get("message"), "Applied the latest rollback point for the active task.")
+        current_step = "Rollback control executed"
+    elif action_name in {"start_next_task", "publish_task_execution_request"}:
+        status = "queued"
+        status_label = "Queued"
+        summary = _pick_first_text(
+            live_task.get("task_request"),
+            live_task.get("requested_outcome"),
+            relevant_action.get("message"),
+            "Published a fresh execution request and waiting for executor evidence.",
+        )
+        current_step = "Execution request published"
+    elif decision_state in {"ready_to_execute", "ready", "execute_now"} or decision_outcome == "execute":
+        status = "ready"
+        status_label = "Ready"
+        summary = _pick_first_text(listener_decision.get("summary"), "The current task request is aligned and ready to execute.")
+        current_step = "Planner accepted the current request"
+    elif decision_state in {"waiting_on_dependency", "waiting"}:
+        status = "waiting"
+        status_label = "Waiting"
+        summary = _pick_first_text(listener_decision.get("summary"), "The planner is waiting on a prerequisite before execution can continue.")
+        current_step = "Planner is waiting on a prerequisite"
+    elif decision_state == "rejected" or decision_outcome.startswith("reject"):
+        status = "blocked"
+        status_label = "Blocked"
+        summary = _pick_first_text(listener_decision.get("summary"), "The planner rejected the current task request.")
+        current_step = "Planner blocked the current request"
+    else:
+        status = "queued"
+        status_label = "Queued"
+        summary = _pick_first_text(listener_decision.get("summary"), "The current task request is queued and waiting for fresh execution evidence.")
+        current_step = "Planner request is queued"
+
+    return {
+        "available": True,
+        "request_id": str(live_task.get("request_id") or "").strip(),
+        "task_id": task_id,
+        "objective_id": objective_id,
+        "title": _compact_text(title, 180),
+        "assigned_executor": str(live_task.get("assigned_executor") or "").strip(),
+        "requested_outcome": str(live_task.get("requested_outcome") or live_task.get("acceptance_criteria") or "").strip(),
+        "status": status,
+        "status_label": status_label,
+        "summary": _compact_text(summary, 220),
+        "current_step": _compact_text(current_step, 180),
+        "next_step": _compact_text(listener_decision.get("next_step_recommendation") or execution.get("next_step") or "Wait for fresh execution evidence from the active task.", 220),
+        "updated_at": updated_at,
+        "updated_age": _format_age(updated_at),
+        "is_newer_than_executor": is_newer_than_executor,
+        "same_task_as_executor": same_task_as_executor,
+    }
+
+
+def _path_is_within(candidate: Path, root: Path) -> bool:
+    try:
+        candidate.resolve().relative_to(root.resolve())
+        return True
+    except Exception:
+        return False
+
+
+def _parse_copy_item_restore_paths(command_text: str) -> tuple[Path | None, Path | None]:
+    text = str(command_text or "").strip()
+    if not text:
+        return None, None
+    match = re.search(r"-Path\s+['\"](?P<src>[^'\"]+)['\"].*?-Destination\s+['\"](?P<dst>[^'\"]+)['\"]", text, re.IGNORECASE)
+    if not match:
+        return None, None
+    source = Path(str(match.group("src") or "").strip())
+    destination = Path(str(match.group("dst") or "").strip())
+    if not source.exists():
+        return None, None
+    if not (_path_is_within(source, WORKSPACE_ROOT) and _path_is_within(destination, WORKSPACE_ROOT)):
+        return None, None
+    return source, destination
+
+
+def _write_execution_runtime_transition(
+    state: dict[str, Any],
+    *,
+    action_id: str,
+    status: str,
+    execution_state: str,
+    summary: str,
+    current_action: str,
+    next_step: str,
+    wait_reason: str,
+    wait_target: str = "tod_operator_console",
+    wait_target_label: str = "TOD operator console",
+    rollback_state: str = "",
+    recovery_state: str = "",
+    command_output: str = "",
+    extra_evidence: dict[str, Any] | None = None,
+) -> list[str]:
+    runtime_payloads = _load_existing_execution_runtime_payloads()
+    active_objective_payload = dict(runtime_payloads.get("active_objective") or {})
+    active_task_payload = dict(runtime_payloads.get("active_task") or {})
+    activity_payload = dict(runtime_payloads.get("activity") or {})
+    validation_payload = dict(runtime_payloads.get("validation") or {})
+    execution_result_payload = dict(runtime_payloads.get("execution_result") or {})
+    execution_truth_payload = dict(runtime_payloads.get("execution_truth") or {})
+
+    execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
+    live_task = state.get("live_task_request") if isinstance(state.get("live_task_request"), dict) else {}
+    shared_truth = state.get("shared_truth") if isinstance(state.get("shared_truth"), dict) else {}
+    objective_id, task_id = _resolve_operator_action_ids(state)
+    updated_at = _utc_now_iso()
+    title = _pick_first_text(
+        active_task_payload.get("title"),
+        execution.get("title"),
+        live_task.get("title"),
+        shared_truth.get("objective_title"),
+        objective_id,
+        "TOD operator objective",
+    )
+    request_id = _pick_first_text(active_task_payload.get("request_id"), live_task.get("request_id"), task_id)
+    execution_id = _pick_first_text(active_task_payload.get("execution_id"), execution_result_payload.get("execution_id"), task_id, request_id)
+    rollback_metadata = _resolve_rollback_metadata(state)
+    effective_rollback_state = str(rollback_state or rollback_metadata.get("state") or execution.get("rollback_state") or "not_needed").strip()
+    effective_recovery_state = str(recovery_state or execution.get("recovery_state") or "not_needed").strip()
+    execution_evidence = execution_result_payload.get("execution_evidence") if isinstance(execution_result_payload.get("execution_evidence"), dict) else active_task_payload.get("execution_evidence") if isinstance(active_task_payload.get("execution_evidence"), dict) else {}
+    updated_evidence = {
+        **execution_evidence,
+        "status": status,
+        "summary": _compact_text(summary, 220),
+        "current_action": _compact_text(current_action, 220),
+        "next_step": _compact_text(next_step, 220),
+        "wait_target": str(wait_target or "").strip(),
+        "wait_target_label": str(wait_target_label or "").strip(),
+        "wait_reason": _compact_text(wait_reason, 220),
+        "updated_at": updated_at,
+        "rollback_state": effective_rollback_state,
+        "recovery_state": effective_recovery_state,
+        "transition_action": action_id,
+    }
+    if rollback_metadata.get("hint"):
+        updated_evidence["rollback_hint"] = rollback_metadata.get("hint")
+    if isinstance(extra_evidence, dict) and extra_evidence:
+        updated_evidence.update(extra_evidence)
+
+    active_objective_payload.update(
+        {
+            "objective_id": objective_id,
+            "title": title,
+            "summary": _compact_text(summary, 220),
+            "updated_at": updated_at,
+            "execution_evidence": updated_evidence,
+            "rollback_state": effective_rollback_state,
+        }
+    )
+    active_task_payload.update(
+        {
+            "request_id": request_id,
+            "task_id": task_id,
+            "execution_id": execution_id,
+            "objective_id": objective_id,
+            "title": title,
+            "summary": _compact_text(summary, 220),
+            "status": status,
+            "execution_state": execution_state,
+            "current_action": _compact_text(current_action, 220),
+            "next_step": _compact_text(next_step, 220),
+            "next_validation": str(execution.get("next_validation") or active_task_payload.get("next_validation") or "").strip(),
+            "wait_target": str(wait_target or "").strip(),
+            "wait_target_label": str(wait_target_label or "").strip(),
+            "wait_reason": _compact_text(wait_reason, 220),
+            "updated_at": updated_at,
+            "execution_evidence": updated_evidence,
+            "rollback_state": effective_rollback_state,
+            "recovery_state": effective_recovery_state,
+        }
+    )
+    activity_payload.update(
+        {
+            "event": action_id,
+            "status": status,
+            "phase": str(activity_payload.get("phase") or execution_result_payload.get("phase") or "operator_control").strip(),
+            "summary": _compact_text(summary, 220),
+            "current_action": _compact_text(current_action, 220),
+            "next_step": _compact_text(next_step, 220),
+            "next_validation": str(active_task_payload.get("next_validation") or "").strip(),
+            "wait_target": str(wait_target or "").strip(),
+            "wait_target_label": str(wait_target_label or "").strip(),
+            "wait_reason": _compact_text(wait_reason, 220),
+            "updated_at": updated_at,
+            "execution_state": execution_state,
+            "execution_evidence": updated_evidence,
+        }
+    )
+    validation_payload.update(
+        {
+            "updated_at": updated_at,
+            "summary": _compact_text(summary, 220),
+            "validation_target": str(active_task_payload.get("next_validation") or validation_payload.get("validation_target") or "").strip(),
+        }
+    )
+    execution_result_payload.update(
+        {
+            "request_id": request_id,
+            "task_id": task_id,
+            "execution_id": execution_id,
+            "objective_id": objective_id,
+            "title": title,
+            "status": status,
+            "execution_state": execution_state,
+            "summary": _compact_text(summary, 220),
+            "current_action": _compact_text(current_action, 220),
+            "next_step": _compact_text(next_step, 220),
+            "wait_target": str(wait_target or "").strip(),
+            "wait_target_label": str(wait_target_label or "").strip(),
+            "wait_reason": _compact_text(wait_reason, 220),
+            "updated_at": updated_at,
+            "validation_summary": _compact_text(summary, 220),
+            "command_output": _compact_text(command_output or execution_result_payload.get("command_output") or "", 220),
+            "rollback_state": effective_rollback_state,
+            "recovery_state": effective_recovery_state,
+            "execution_evidence": updated_evidence,
+        }
+    )
+    truth_summary = execution_truth_payload.get("summary") if isinstance(execution_truth_payload.get("summary"), dict) else {}
+    truth_summary.update(
+        {
+            "latest_execution_at": updated_at,
+            "summary": _compact_text(summary, 220),
+            "current_action": _compact_text(current_action, 220),
+            "next_step": _compact_text(next_step, 220),
+            "validation_passed": False,
+        }
+    )
+    execution_truth_payload["generated_at"] = updated_at
+    execution_truth_payload["summary"] = truth_summary
+    recent_truth = execution_truth_payload.get("recent_execution_truth") if isinstance(execution_truth_payload.get("recent_execution_truth"), list) else []
+    if recent_truth and isinstance(recent_truth[0], dict):
+        recent_truth[0].update(
+            {
+                "generated_at": updated_at,
+                "execution_state": execution_state,
+                "status": status,
+                "summary": _compact_text(summary, 220),
+                "current_action": _compact_text(current_action, 220),
+                "next_step": _compact_text(next_step, 220),
+                "next_validation": str(active_task_payload.get("next_validation") or "").strip(),
+                "validation_passed": False,
+                "execution_evidence": updated_evidence,
+            }
+        )
+
+    artifact_map = {
+        SHARED_RUNTIME_ROOT / "TOD_ACTIVE_OBJECTIVE.latest.json": active_objective_payload,
+        SHARED_RUNTIME_ROOT / "TOD_ACTIVE_TASK.latest.json": active_task_payload,
+        SHARED_RUNTIME_ROOT / "TOD_ACTIVITY_STREAM.latest.json": activity_payload,
+        SHARED_RUNTIME_ROOT / "TOD_VALIDATION_RESULT.latest.json": validation_payload,
+        SHARED_RUNTIME_ROOT / "TOD_EXECUTION_RESULT.latest.json": execution_result_payload,
+        SHARED_RUNTIME_ROOT / "TOD_EXECUTION_TRUTH.latest.json": execution_truth_payload,
+    }
+    for path, payload in artifact_map.items():
+        _write_shared_json(path, payload)
+    return [str(path) for path in artifact_map.keys()]
 
 
 def _payload_matches_active_execution(payload: dict[str, Any], objective_id: str, task_id: str, execution_id: str) -> bool:
@@ -456,7 +1511,7 @@ def _derive_phase_progress(
 
 def _derive_stall_signal(activity_state: str, age_seconds: float | None, phase_progress: dict[str, Any], next_step: str, wait_reason: str) -> dict[str, Any]:
     normalized_state = str(activity_state or "idle").strip().lower() or "idle"
-    if age_seconds is None or normalized_state in {"complete", "blocked", "idle"}:
+    if age_seconds is None or normalized_state in {"complete", "blocked", "idle", "paused"}:
         return {
             "flagged": False,
             "level": "ok",
@@ -682,7 +1737,11 @@ def _normalize_execution_status(
         activity_label = "Waiting"
         active = True
         activity_summary = wait_reason or validation_summary or f"TOD is waiting on validation: {next_validation}."
-    elif status in {"waiting", "pending"} or execution_state in {"waiting", "waiting_on_next_step", "step_completed_waiting_next_selection"}:
+    elif status in {"paused"} or execution_state in {"paused", "paused_by_operator", "paused_pending_resume"}:
+        activity_state = "paused"
+        activity_label = "Paused"
+        activity_summary = wait_reason or summary or "TOD execution is paused on this console."
+    elif status in {"waiting", "pending"} or execution_state in {"waiting", "waiting_on_next_step", "step_completed_waiting_next_selection", "resume_requested", "rollback_applied"}:
         activity_state = "waiting"
         activity_label = "Waiting"
         active = True
@@ -773,6 +1832,17 @@ def _normalize_guidance_items(values: Any) -> list[dict[str, str]]:
             }
         )
     return items
+
+
+def _load_shared_truth_payload() -> tuple[dict[str, Any], str]:
+    path = SHARED_RUNTIME_ROOT / "TOD_MIM_SHARED_TRUTH.latest.json"
+    try:
+        if not path.exists() or not path.is_file():
+            return {}, ""
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}, ""
+    return payload if isinstance(payload, dict) else {}, str(path)
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -1140,6 +2210,14 @@ def _should_reset_public_chat_session(payload: dict[str, Any], state: dict[str, 
     return False
 
 
+def _has_only_generated_progress_messages(payload: dict[str, Any]) -> bool:
+    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    pending_progress = payload.get("pending_progress") if isinstance(payload.get("pending_progress"), list) else []
+    if pending_progress or not messages:
+        return False
+    return all(isinstance(item, dict) and _is_generated_progress_message(item) for item in messages)
+
+
 def _normalize_chat_entries(values: Any, limit: int = 40) -> list[dict[str, Any]]:
     values = values if isinstance(values, list) else []
     messages: list[dict[str, Any]] = []
@@ -1168,10 +2246,15 @@ def _normalize_chat_entries(values: Any, limit: int = 40) -> list[dict[str, Any]
 
 def _load_chat_session_payload(session_key: str, state: dict[str, Any] | None = None) -> dict[str, Any]:
     payload = _load_json(_chat_session_path(session_key))
-    if state and _sanitize_session_key(session_key) == "tod-console-public" and _should_reset_public_chat_session(payload, state):
+    safe_session_key = _sanitize_session_key(session_key)
+    is_public_tod_session = safe_session_key.startswith("tod-console-public")
+    if state and is_public_tod_session and (
+        _should_reset_public_chat_session(payload, state)
+        or _has_only_generated_progress_messages(payload)
+    ):
         payload = {}
     return {
-        "session_key": _sanitize_session_key(session_key),
+        "session_key": safe_session_key,
         "updated_at": str(payload.get("updated_at") or "").strip(),
         "messages": _normalize_chat_entries(payload.get("messages"), limit=40),
         "pending_progress": _normalize_chat_entries(payload.get("pending_progress"), limit=12),
@@ -1308,30 +2391,38 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
     trigger_path = SHARED_RUNTIME_ROOT / "MIM_TO_TOD_TRIGGER.latest.json"
     live_task = state.get("live_task_request") if isinstance(state.get("live_task_request"), dict) else {}
     quick_facts = state.get("quick_facts") if isinstance(state.get("quick_facts"), dict) else {}
+    authoritative_objective_id, authoritative_task_id = _resolve_operator_action_ids(state)
     prompt_objective_id = _extract_labeled_prompt_value(message, "OBJECTIVE_ID")
     prompt_title = _extract_labeled_prompt_value(message, "TITLE")
     prompt_mission = _extract_labeled_prompt_value(message, "MISSION")
     prompt_primary_outcome = _extract_labeled_prompt_value(message, "PRIMARY OUTCOME")
     objective_id = _pick_first_text(
         prompt_objective_id,
+        authoritative_objective_id,
         str(live_task.get("objective_id") or "").strip(),
         str(live_task.get("normalized_objective_id") or "").strip(),
         str(quick_facts.get("canonical_objective") or "").strip(),
     ) or "objective-unknown"
     normalized_objective = _normalize_objective_token(objective_id) or objective_id.lower().replace(" ", "-")
+    prompt_starts_new_objective = bool(
+        prompt_objective_id
+        and authoritative_objective_id
+        and not _same_objective(prompt_objective_id, authoritative_objective_id)
+    )
+    request_objective_slug = _objective_request_slug(prompt_objective_id if prompt_starts_new_objective else objective_id) or normalized_objective
     request_sequence = int(datetime.now(timezone.utc).timestamp() * 1000)
-    reuse_live_identity = _should_reuse_live_task_identity(live_task, prompt_objective_id)
+    reuse_live_identity = False if prompt_starts_new_objective else _should_reuse_live_task_identity(live_task, prompt_objective_id, authoritative_task_id)
     request_id = (
         str(live_task.get("request_id") or "").strip()
         if reuse_live_identity
         else ""
-    ) or f"{normalized_objective}-task-{request_sequence}"
+    ) or ("" if prompt_starts_new_objective else str(authoritative_task_id or "").strip()) or f"{request_objective_slug}-task-{request_sequence}"
     task_id = (
         str(live_task.get("task_id") or "").strip()
         if reuse_live_identity
         else ""
-    ) or request_id
-    correlation_id = f"tod-chat-task-{request_sequence}"
+    ) or ("" if prompt_starts_new_objective else str(authoritative_task_id or "").strip()) or request_id
+    correlation_id = str(("" if prompt_starts_new_objective else authoritative_task_id) or task_id or f"tod-chat-task-{request_sequence}").strip()
     title = _pick_first_text(prompt_title, _summarize_requested_task(message, 180), "TOD chat execution task")
     task_focus = _pick_first_text(prompt_title, title, _summarize_requested_task(message, 180), "the requested local execution task")
     next_validation = _next_validation_check(state)
@@ -1348,6 +2439,8 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
         "correlation_id": correlation_id,
         "sequence": request_sequence,
         "tod_action": "execute-chat-task",
+        "canonical_lane_source": "shared_truth" if authoritative_task_id and not prompt_starts_new_objective else ("live_task_request" if reuse_live_identity else "ui_request"),
+        "canonical_task_id": str(authoritative_task_id or task_id or "").strip() if not prompt_starts_new_objective else "",
         "title": title,
         "description": description,
         "priority": "high",
@@ -1410,21 +2503,243 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
 
 def _record_operator_action(record: dict[str, Any]) -> None:
     TOD_OPERATOR_ACTION_ROOT.mkdir(parents=True, exist_ok=True)
-    latest_path = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTION.latest.json"
-    log_path = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTION.log.jsonl"
-    latest_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
-    _append_jsonl_record(log_path, record)
+    TOD_OPERATOR_ACTION_LATEST_PATH.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    _append_jsonl_record(TOD_OPERATOR_ACTION_LOG_PATH, record)
+
+
+def _operator_action_refresh_status(payload: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    return _run_refresh_status_action()
+
+
+def _operator_action_start_next_task(payload: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    objective_id, task_id = _resolve_operator_action_ids(state)
+    outcome = _pick_first_text(
+        payload.get("requested_outcome"),
+        _next_validation_check(state),
+        "Publish fresh execution evidence for the next authoritative task and report any blocker immediately.",
+    )
+    message = "\n".join(
+        [
+            f"OBJECTIVE_ID: {objective_id or 'objective-unknown'}",
+            f"TITLE: Start next task for {task_id or 'the active task'}",
+            "MISSION: Resume the next bounded task from the authoritative TOD/MIM execution context and publish current execution evidence.",
+            f"PRIMARY OUTCOME: {outcome}",
+        ]
+    )
+    result = _publish_task_execution_request(message, state, surface="operator-actions", session_key="operator-actions")
+    artifact_paths = [str(result.get("request_path") or "").strip(), str(result.get("trigger_path") or "").strip()]
+    return {
+        "ok": bool(result.get("ok")),
+        "status": "queued" if bool(result.get("ok")) else "failed",
+        "message": "Published a start-next-task execution request." if bool(result.get("ok")) else _pick_first_text(result.get("error"), "Unable to publish the next-task execution request."),
+        "artifact_paths": [item for item in artifact_paths if item],
+        "command": ["publish_task_execution_request"],
+        "request": result,
+    }
+
+
+def _operator_action_force_replay(payload: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    objective_id = str(payload.get("objective_id") or "").strip()
+    task_id = str(payload.get("task_id") or "").strip()
+    if not objective_id or not task_id:
+        derived_objective_id, derived_task_id = _resolve_operator_action_ids(state)
+        objective_id = objective_id or derived_objective_id
+        task_id = task_id or derived_task_id
+    if not objective_id or not task_id:
+        raise HTTPException(status_code=400, detail={"error": "missing_replay_context", "message": "Objective and task identifiers are required for forced replay."})
+    script_path = _script_path("Invoke-TODForcedExecutionReplay.ps1")
+    if not script_path.exists():
+        return {"ok": False, "status": "failed", "message": "Forced replay script is missing.", "artifact_paths": [], "command": []}
+    reason = _pick_first_text(payload.get("reason"), "Operator requested replay from the TOD/MIM operator console.")
+    command = [
+        _powershell_runner(),
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(script_path),
+        "-ObjectiveId",
+        objective_id,
+        "-TaskId",
+        task_id,
+        "-Reason",
+        reason,
+    ]
+    result = _run_operator_command(command)
+    result["artifact_paths"] = [str(SHARED_RUNTIME_ROOT / "MIM_TOD_TASK_REQUEST.latest.json"), str(SHARED_RUNTIME_ROOT / "MIM_TO_TOD_TRIGGER.latest.json")]
+    return result
+
+
+def _operator_action_validate_current_task(payload: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    command = _resolve_safe_validation_command(state)
+    if not command:
+        return {
+            "ok": False,
+            "status": "blocked",
+            "message": "No safe validation command is available for the current task.",
+            "artifact_paths": [],
+            "command": [],
+        }
+    result = _run_operator_command(command)
+    result["artifact_paths"] = [str(SHARED_RUNTIME_ROOT / "TOD_AGENT_MIM_LOCAL_VERIFICATION_RESULTS.latest.json")]
+    return result
+
+
+def _operator_action_recover_stale_state(payload: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    script_path = _script_path("Invoke-TODMimRemoteRecovery.ps1")
+    if not script_path.exists():
+        return {"ok": False, "status": "failed", "message": "Remote recovery script is missing.", "artifact_paths": [], "command": []}
+    command = [_powershell_runner(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script_path), "-EmitJson"]
+    result = _run_operator_command(command)
+    result["artifact_paths"] = [str(SHARED_RUNTIME_ROOT / "remote_recovery" / "TOD_MIM_REMOTE_RECOVERY.latest.json")]
+    return result
+
+
+def _operator_action_show_evidence(payload: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    _write_operator_evidence_snapshot(state)
+    return {
+        "ok": True,
+        "status": "completed",
+        "message": "Operator evidence snapshot refreshed.",
+        "artifact_paths": [str(TOD_OPERATOR_EVIDENCE_PATH)],
+        "command": ["write_operator_evidence_snapshot"],
+    }
+
+
+def _operator_action_pause_current_objective(payload: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    artifact_paths = _write_execution_runtime_transition(
+        state,
+        action_id="pause_current_objective",
+        status="paused",
+        execution_state="paused_by_operator",
+        summary="Paused the active TOD objective from the objective card control surface.",
+        current_action="Paused the current objective on the TOD operator console.",
+        next_step="Resume the current objective from the control surface when ready to continue execution.",
+        wait_reason="Operator pause is active on this objective.",
+        extra_evidence={"paused_by_operator": True},
+    )
+    return {
+        "ok": True,
+        "status": "completed",
+        "message": "Paused the active objective and published paused runtime evidence.",
+        "artifact_paths": artifact_paths,
+        "command": ["write_execution_runtime_transition", "pause_current_objective"],
+    }
+
+
+def _operator_action_resume_current_objective(payload: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    publish_result = _operator_action_start_next_task(payload, state)
+    artifact_paths = _write_execution_runtime_transition(
+        state,
+        action_id="resume_current_objective",
+        status="waiting",
+        execution_state="resume_requested",
+        summary="Published a resume request for the active TOD objective and waiting for fresh execution evidence.",
+        current_action="Published the next execution request from the objective card resume control.",
+        next_step="Wait for new execution evidence or force replay if the executor remains stale.",
+        wait_reason="Resume was requested from the TOD operator console.",
+        extra_evidence={"resume_requested": True},
+    )
+    publish_paths = publish_result.get("artifact_paths") if isinstance(publish_result.get("artifact_paths"), list) else []
+    return {
+        "ok": bool(publish_result.get("ok")),
+        "status": "queued" if bool(publish_result.get("ok")) else "failed",
+        "message": "Published a resume request and updated runtime state for the active objective." if bool(publish_result.get("ok")) else _pick_first_text(publish_result.get("message"), "Unable to publish a resume request for the active objective."),
+        "artifact_paths": [*artifact_paths, *publish_paths],
+        "command": ["publish_task_execution_request", "resume_current_objective"],
+        "request": publish_result.get("request") if isinstance(publish_result.get("request"), dict) else {},
+    }
+
+
+def _operator_action_rollback_current_task(payload: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    rollback_metadata = _resolve_rollback_metadata(state)
+    source_path, destination_path = _parse_copy_item_restore_paths(rollback_metadata.get("hint") or "")
+    if source_path is None or destination_path is None:
+        return {
+            "ok": False,
+            "status": "blocked",
+            "message": "No safe rollback hint is available for the current task.",
+            "artifact_paths": [],
+            "command": [],
+        }
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_path, destination_path)
+    artifact_paths = _write_execution_runtime_transition(
+        state,
+        action_id="rollback_current_task",
+        status="waiting",
+        execution_state="rollback_applied",
+        summary=f"Applied rollback metadata for the active task and restored {destination_path.name}.",
+        current_action=f"Restored {destination_path.name} from the latest published rollback point.",
+        next_step="Re-run the focused validation path and republish fresh execution evidence for the restored task.",
+        wait_reason="Rollback was applied from the TOD operator console.",
+        rollback_state="applied",
+        recovery_state="rollback_applied",
+        command_output=f"Restored {destination_path} from {source_path}.",
+        extra_evidence={
+            "rollback_applied": True,
+            "rollback_source_path": str(source_path),
+            "rollback_destination_path": str(destination_path),
+            "rollback_hint": rollback_metadata.get("hint") or "",
+        },
+    )
+    return {
+        "ok": True,
+        "status": "completed",
+        "message": f"Applied rollback metadata and restored {destination_path.name}.",
+        "artifact_paths": [str(source_path), str(destination_path), *artifact_paths],
+        "command": ["copy2", str(source_path), str(destination_path)],
+    }
+
+
+def _execute_operator_action(action: str, payload: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    if action == "refresh_status":
+        return _operator_action_refresh_status(payload, state)
+    if action == "run_shared_truth_reconciliation":
+        return _run_reconcile_shared_truth_action()
+    if action == "start_next_task":
+        return _operator_action_start_next_task(payload, state)
+    if action == "force_replay_current_task":
+        return _operator_action_force_replay(payload, state)
+    if action == "validate_current_task":
+        return _operator_action_validate_current_task(payload, state)
+    if action == "recover_stale_state":
+        return _operator_action_recover_stale_state(payload, state)
+    if action == "show_evidence":
+        return _operator_action_show_evidence(payload, state)
+    if action == "pause_current_objective":
+        return _operator_action_pause_current_objective(payload, state)
+    if action == "resume_current_objective":
+        return _operator_action_resume_current_objective(payload, state)
+    if action == "rollback_current_task":
+        return _operator_action_rollback_current_task(payload, state)
+    raise HTTPException(status_code=400, detail={"error": "unknown_action", "message": f"Unknown operator action: {action}"})
+
+
+def _extract_identifier_token(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    match = re.search(r"[A-Za-z0-9][A-Za-z0-9._:-]*", text)
+    if not match:
+        return _compact_text(text, 220)
+    return match.group(0).rstrip(".,;:)]}>")
 
 
 def _extract_labeled_prompt_value(message: str, label: str) -> str:
     text = str(message or "")
     lines = text.splitlines()
-    label_pattern = re.compile(rf"^\s*{re.escape(label)}\s*:\s*(.*)$", re.IGNORECASE)
-    next_label_pattern = re.compile(r"^\s*[A-Z][A-Z0-9_ -]{2,}\s*:\s*(.*)$")
+    normalized_label = re.sub(r"[_\s-]+", r"[_\\s-]+", str(label or "").strip())
+    label_pattern = re.compile(rf"^\s*(?:(?:[-*]|#{{1,6}})\s*)?{normalized_label}\s*:\s*(.*)$", re.IGNORECASE)
+    next_label_pattern = re.compile(r"^\s*(?:(?:[-*]|#{1,6})\s*)?[A-Z][A-Za-z0-9_]*(?:[ _-][A-Z][A-Za-z0-9_]*)*\s*:\s*(.*)$")
+    identifier_labels = {"initiative_id", "objective_id", "task_id", "request_id"}
+    normalized_label_key = re.sub(r"[^a-z0-9]+", "_", str(label or "").strip().lower()).strip("_")
     for index, line in enumerate(lines):
         match = label_pattern.match(line)
         if not match:
             continue
+        if normalized_label_key in identifier_labels:
+            return _extract_identifier_token(match.group(1))
         collected = [str(match.group(1) or "").strip()]
         for next_line in lines[index + 1 :]:
             if next_label_pattern.match(next_line):
@@ -1433,11 +2748,17 @@ def _extract_labeled_prompt_value(message: str, label: str) -> str:
             if stripped:
                 collected.append(stripped)
         return _compact_text(" ".join(item for item in collected if item), 220)
-    pattern = re.compile(rf"{re.escape(label)}\s*:\s*(.+?)(?=\s+[A-Z][A-Z0-9_ -]{{2,}}\s*:|$)", re.IGNORECASE | re.DOTALL)
+    pattern = re.compile(
+        rf"(?:^|\b){normalized_label}\s*:\s*(.+?)(?=\s+(?:(?:[-*]|#{{1,6}})\s*)?[A-Z][A-Za-z0-9_]*(?:[ _-][A-Z][A-Za-z0-9_]*)*\s*:|$)",
+        re.IGNORECASE | re.DOTALL,
+    )
     match = pattern.search(text)
     if not match:
         return ""
-    return _compact_text(match.group(1), 220)
+    value = match.group(1)
+    if normalized_label_key in identifier_labels:
+        return _extract_identifier_token(value)
+    return _compact_text(value, 220)
 
 
 def _write_shared_json(path: Path, payload: dict[str, Any]) -> None:
@@ -1579,34 +2900,42 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
     started_at = _utc_now_iso()
     live_task = state.get("live_task_request") if isinstance(state.get("live_task_request"), dict) else {}
     quick_facts = state.get("quick_facts") if isinstance(state.get("quick_facts"), dict) else {}
+    authoritative_objective_id, authoritative_task_id = _resolve_operator_action_ids(state)
     prompt_objective_id = _extract_labeled_prompt_value(message, "OBJECTIVE_ID")
     prompt_title = _extract_labeled_prompt_value(message, "TITLE")
     prompt_mission = _extract_labeled_prompt_value(message, "MISSION")
     prompt_primary_outcome = _extract_labeled_prompt_value(message, "PRIMARY OUTCOME")
     objective_id = _pick_first_text(
         prompt_objective_id,
+        authoritative_objective_id,
         str(live_task.get("objective_id") or "").strip(),
         str(live_task.get("normalized_objective_id") or "").strip(),
         str(quick_facts.get("canonical_objective") or "").strip(),
     ) or "objective-unknown"
     normalized_objective = _normalize_objective_token(objective_id) or objective_id.lower().replace(" ", "-")
+    prompt_starts_new_objective = bool(
+        prompt_objective_id
+        and authoritative_objective_id
+        and not _same_objective(prompt_objective_id, authoritative_objective_id)
+    )
+    request_objective_slug = _objective_request_slug(prompt_objective_id if prompt_starts_new_objective else objective_id) or normalized_objective
     request_sequence = int(datetime.now(timezone.utc).timestamp() * 1000)
-    reuse_live_identity = _should_reuse_live_task_identity(live_task, prompt_objective_id)
+    reuse_live_identity = False if prompt_starts_new_objective else _should_reuse_live_task_identity(live_task, prompt_objective_id, authoritative_task_id)
     request_id = (
         str(live_task.get("request_id") or "").strip()
         if reuse_live_identity
         else ""
-    ) or f"{normalized_objective}-task-{request_sequence}"
+    ) or ("" if prompt_starts_new_objective else str(authoritative_task_id or "").strip()) or f"{request_objective_slug}-task-{request_sequence}"
     task_id = (
         str(live_task.get("task_id") or "").strip()
         if reuse_live_identity
         else ""
-    ) or request_id
+    ) or ("" if prompt_starts_new_objective else str(authoritative_task_id or "").strip()) or request_id
     execution_id = (
         str(live_task.get("execution_id") or "").strip()
         if reuse_live_identity
         else ""
-    ) or request_id
+    ) or ("" if prompt_starts_new_objective else str(authoritative_task_id or "").strip()) or request_id
     existing_runtime = _load_existing_execution_runtime_payloads()
     if _existing_runtime_matches_active_execution(existing_runtime, objective_id, task_id, execution_id):
         existing_execution = existing_runtime.get("execution_result") if isinstance(existing_runtime.get("execution_result"), dict) else {}
@@ -2402,7 +3731,7 @@ def _next_validation_check(state: dict[str, Any]) -> str:
 def _classify_prompt(message: str) -> str:
     text = message.lower()
     normalized = re.sub(r"\s+", " ", text)
-    if "copilot-style" in text or "handoff" in text or "package the current issue" in text:
+    if "copilot-style" in text or "package the current issue" in text:
         return "handoff"
     if any(
         re.search(pattern, normalized)
@@ -2416,6 +3745,8 @@ def _classify_prompt(message: str) -> str:
         return "training"
     if any(token in text for token in ("objective_id", "objective", "active task", "implement", "build", "execution loop contract")):
         return "task"
+    if re.search(r"\bhandoff\b", normalized):
+        return "handoff"
     if "resolve" in text and ("drift" in text or "mismatch" in text or "out of sync" in text or "out-of-sync" in text):
         return "drift"
     if "out of sync" in text or "out-of-sync" in text or "mismatch" in text:
@@ -2452,6 +3783,9 @@ def _compose_task_worklog(
 _GENERATED_PROGRESS_PREFIXES = (
     "Accepted. TOD opened a live troubleshooting lane for",
     "Thinking:",
+    "Objective now:",
+    "Task now:",
+    "Current slice:",
     "Working now:",
     "Applying next:",
     "Testing next:",
@@ -2461,6 +3795,7 @@ _GENERATED_PROGRESS_PREFIXES = (
     "Execution confirmation was published",
     "Executable task request published",
     "Live execution feed:",
+    "Progress detail:",
     "Status now:",
     "Execution evidence:",
     "Validation checks:",
@@ -2477,7 +3812,9 @@ def _is_generated_progress_message(message: Any) -> bool:
     content = str(message.get("content") or "").strip()
     if not content:
         return False
-    return any(content.startswith(prefix) for prefix in _GENERATED_PROGRESS_PREFIXES)
+    if any(content.startswith(prefix) for prefix in _GENERATED_PROGRESS_PREFIXES):
+        return True
+    return re.match(r"^Phase(?:\s+\d+)?\s+progress:", content, re.IGNORECASE) is not None
 
 
 def _trim_trailing_generated_progress(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -3041,16 +4378,30 @@ def _build_tod_console_state() -> dict[str, Any]:
     integration_payload, integration_path = _first_existing_payload(
         SHARED_RUNTIME_ROOT / "TOD_INTEGRATION_STATUS.latest.json",
         SHARED_RUNTIME_ROOT / "TOD_integration_status.latest.json",
+        SHARED_STATE_ROOT / "integration_status.json",
     )
     training_payload, training_path = _first_existing_payload(
         SHARED_RUNTIME_ROOT / "TOD_TRAINING_STATUS.latest.json",
         SHARED_RUNTIME_ROOT / "TOD_training_status.latest.json",
+        SHARED_STATE_ROOT / "tod_training_status.latest.json",
+        SHARED_STATE_ROOT / "TOD_TRAINING_STATUS.latest.json",
     )
     autonomy_payload, autonomy_path = _first_existing_payload(
         SHARED_RUNTIME_ROOT / "TOD_AUTONOMY_STATUS.latest.json",
         SHARED_RUNTIME_ROOT / "TOD_autonomy_status.latest.json",
         SHARED_RUNTIME_ROOT / "tod_autonomy_status.latest.json",
+        SHARED_STATE_ROOT / "tod_autonomy_status.latest.json",
+        SHARED_STATE_ROOT / "TOD_AUTONOMY_STATUS.latest.json",
     )
+    runtime_task_request_payload, runtime_task_request_path = _first_existing_payload(
+        SHARED_RUNTIME_ROOT / "MIM_TOD_TASK_REQUEST.latest.json",
+    )
+    if not training_payload and isinstance(integration_payload.get("training_status"), dict):
+        training_payload = integration_payload.get("training_status") or {}
+        training_path = integration_path
+    if not autonomy_payload and isinstance(integration_payload.get("autonomy_status"), dict):
+        autonomy_payload = integration_payload.get("autonomy_status") or {}
+        autonomy_path = integration_path
     decision_payload = _load_json(SHARED_RUNTIME_ROOT / "TOD_MIM_EXECUTION_DECISION.latest.json")
     active_objective_payload, active_objective_path = _first_existing_payload(
         SHARED_RUNTIME_ROOT / "TOD_ACTIVE_OBJECTIVE.latest.json",
@@ -3073,6 +4424,7 @@ def _build_tod_console_state() -> dict[str, Any]:
     )
     probe_payload = _load_json(SHARED_RUNTIME_ROOT / "TOD_CONSOLE_PROBE.latest.json")
     recovery_payload, recovery_path = _load_remote_recovery_payload()
+    shared_truth_payload, shared_truth_path = _load_shared_truth_payload()
 
     alignment = (
         integration_payload.get("objective_alignment")
@@ -3089,17 +4441,29 @@ def _build_tod_console_state() -> dict[str, Any]:
         if isinstance(integration_payload.get("tod_status_publish"), dict)
         else {}
     )
-    live_task_request = (
+    integration_live_task_request = (
         integration_payload.get("live_task_request")
         if isinstance(integration_payload.get("live_task_request"), dict)
         else {}
     )
-    live_task_request = _select_runtime_live_task_request(live_task_request, active_task_payload)
-    listener_decision = (
+    live_task_request_source = integration_live_task_request
+    if runtime_task_request_payload:
+        integration_live_dt = _parse_timestamp(integration_live_task_request.get("generated_at"))
+        runtime_live_dt = _parse_timestamp(runtime_task_request_payload.get("generated_at"))
+        if not integration_live_task_request or runtime_live_dt is None or integration_live_dt is None or runtime_live_dt >= integration_live_dt:
+            live_task_request_source = {**integration_live_task_request, **runtime_task_request_payload}
+    live_task_request = _select_runtime_live_task_request(live_task_request_source, active_task_payload)
+    integration_listener_decision = (
         integration_payload.get("listener_decision")
         if isinstance(integration_payload.get("listener_decision"), dict)
         else {}
     )
+    listener_decision = integration_listener_decision
+    if decision_payload:
+        integration_decision_dt = _parse_timestamp(integration_listener_decision.get("generated_at"))
+        runtime_decision_dt = _parse_timestamp(decision_payload.get("generated_at"))
+        if not integration_listener_decision or runtime_decision_dt is None or integration_decision_dt is None or runtime_decision_dt >= integration_decision_dt:
+            listener_decision = {**integration_listener_decision, **decision_payload}
     mim_status = (
         integration_payload.get("mim_status")
         if isinstance(integration_payload.get("mim_status"), dict)
@@ -3128,6 +4492,143 @@ def _build_tod_console_state() -> dict[str, Any]:
         execution_result_payload,
         truth_payload,
     )
+    execution_objective_id = str(execution_status.get("objective_id") or "").strip()
+    execution_updated_at = str(execution_status.get("updated_at") or "").strip()
+    shared_truth_state = str(shared_truth_payload.get("state") or "").strip().upper()
+    shared_truth_reason = _compact_text(shared_truth_payload.get("state_reason") or "", 220)
+    shared_truth_next_action = _compact_text(shared_truth_payload.get("authoritative_next_action") or "", 180)
+    shared_truth_objective_id = str(shared_truth_payload.get("objective_id") or "").strip()
+    shared_truth_superseded_by_execution = bool(
+        shared_truth_payload
+        and execution_status.get("available")
+        and execution_objective_id
+        and shared_truth_objective_id
+        and not _same_objective(execution_objective_id, shared_truth_objective_id)
+        and execution_updated_at
+        and (
+            _parse_timestamp(execution_updated_at) is not None
+            and _parse_timestamp(_pick_first_text(shared_truth_payload.get("generated_at"))) is not None
+            and _parse_timestamp(execution_updated_at) >= _parse_timestamp(_pick_first_text(shared_truth_payload.get("generated_at")))
+            or _parse_timestamp(execution_updated_at) is not None
+            and _parse_timestamp(_pick_first_text(shared_truth_payload.get("generated_at"))) is None
+        )
+    )
+    if shared_truth_payload:
+        shared_truth_generated_at = _pick_first_text(shared_truth_payload.get("generated_at"))
+        shared_truth_is_newer = bool(
+            shared_truth_generated_at
+            and (
+                not execution_status.get("updated_at")
+                or _parse_timestamp(shared_truth_generated_at) is not None
+                and _parse_timestamp(execution_status.get("updated_at")) is not None
+                and _parse_timestamp(shared_truth_generated_at) >= _parse_timestamp(execution_status.get("updated_at"))
+                or _parse_timestamp(shared_truth_generated_at) is not None
+                and _parse_timestamp(execution_status.get("updated_at")) is None
+            )
+        )
+        execution_status["shared_truth"] = shared_truth_payload
+        execution_status["authoritative_next_action"] = shared_truth_next_action
+        if shared_truth_reason and not shared_truth_superseded_by_execution:
+            execution_status["summary"] = shared_truth_reason
+            execution_status["activity_summary"] = shared_truth_reason
+        if shared_truth_is_newer and not shared_truth_superseded_by_execution:
+            execution_status["updated_at"] = shared_truth_generated_at
+            execution_status["updated_age"] = _format_age(shared_truth_generated_at)
+            execution_status["last_update_age_seconds"] = _age_seconds(shared_truth_generated_at)
+        if shared_truth_superseded_by_execution:
+            execution_status["shared_truth_superseded"] = True
+        elif shared_truth_state == "ACTIVE":
+            execution_status["activity_state"] = "working"
+            execution_status["activity_label"] = "Active"
+            execution_status["active"] = True
+        elif shared_truth_state == "BLOCKED_WITH_REASON":
+            execution_status["activity_state"] = "stalled"
+            execution_status["activity_label"] = "Blocked"
+            execution_status["active"] = False
+            if shared_truth_is_newer:
+                execution_status["phase_progress"] = {
+                    "available": False,
+                    "label": "Phase progress",
+                    "percent_complete": 0,
+                    "completed_milestones": 0,
+                    "total_milestones": 0,
+                    "next_gate": "",
+                    "summary": "",
+                    "milestones": [],
+                }
+                execution_status["stall_signal"] = {
+                    "flagged": False,
+                    "level": "shared_truth_blocked",
+                    "threshold_seconds": None,
+                    "age_seconds": execution_status.get("last_update_age_seconds"),
+                    "summary": shared_truth_reason,
+                }
+        elif shared_truth_state in {"ACCEPTED_COMPLETE", "ACCEPTED_COMPLETE_PENDING_MIM_REFRESH"}:
+            execution_status["activity_state"] = "complete"
+            execution_status["activity_label"] = "Complete"
+            execution_status["active"] = False
+            execution_status["phase_progress"] = {
+                "available": False,
+                "label": "Phase progress",
+                "percent_complete": 0,
+                "completed_milestones": 0,
+                "total_milestones": 0,
+                "next_gate": "",
+                "summary": "",
+                "milestones": [],
+            }
+            if shared_truth_is_newer:
+                execution_status["stall_signal"] = {
+                    "flagged": False,
+                    "level": "ok",
+                    "threshold_seconds": None,
+                    "age_seconds": execution_status.get("last_update_age_seconds"),
+                    "summary": "",
+                }
+        elif shared_truth_state == "REPLAY_OR_REPLAN_REQUIRED":
+            execution_status["activity_state"] = "waiting"
+            execution_status["activity_label"] = "Replay required"
+            execution_status["active"] = False
+            if shared_truth_is_newer:
+                execution_status["phase_progress"] = {
+                    "available": False,
+                    "label": "Phase progress",
+                    "percent_complete": 0,
+                    "completed_milestones": 0,
+                    "total_milestones": 0,
+                    "next_gate": "",
+                    "summary": "",
+                    "milestones": [],
+                }
+                execution_status["stall_signal"] = {
+                    "flagged": False,
+                    "level": "shared_truth_replay_required",
+                    "threshold_seconds": None,
+                    "age_seconds": execution_status.get("last_update_age_seconds"),
+                    "summary": shared_truth_reason,
+                }
+        elif shared_truth_state in {"DISAGREEMENT", "STALE"}:
+            execution_status["activity_state"] = "stalled"
+            execution_status["activity_label"] = "Stale" if shared_truth_state == "STALE" else "Disagreement"
+            execution_status["active"] = False
+            if shared_truth_is_newer:
+                execution_status["phase_progress"] = {
+                    "available": False,
+                    "label": "Phase progress",
+                    "percent_complete": 0,
+                    "completed_milestones": 0,
+                    "total_milestones": 0,
+                    "next_gate": "",
+                    "summary": "",
+                    "milestones": [],
+                }
+                execution_status["stall_signal"] = {
+                    "flagged": False,
+                    "level": "shared_truth_override",
+                    "threshold_seconds": None,
+                    "age_seconds": execution_status.get("last_update_age_seconds"),
+                    "summary": shared_truth_reason,
+                }
     guidance = _normalize_guidance_items(integration_payload.get("bridge_operator_guidance"))
 
     canonical_objective = str(
@@ -3137,8 +4638,9 @@ def _build_tod_console_state() -> dict[str, Any]:
         or ""
     ).strip()
     live_objective = str(
-        live_task_request.get("normalized_objective_id")
-        or live_task_request.get("objective_id")
+        live_task_request.get("objective_id")
+        or live_task_request.get("normalized_objective_id")
+        or execution_objective_id
         or alignment.get("tod_current_objective")
         or ""
     ).strip()
@@ -3393,6 +4895,51 @@ def _build_tod_console_state() -> dict[str, Any]:
         headline = "AUTHORITY RESET - TOD is holding a stricter canonical baseline"
         summary = _compact_text(authority_reset.get("reason") or "Objective authority reset is active.", 220)
 
+    if shared_truth_superseded_by_execution:
+        execution_summary = _compact_text(
+            execution_status.get("activity_summary") or execution_status.get("summary"),
+            220,
+        )
+        status_code = "drifted"
+        status_label = "DRIFTED"
+        headline = "DRIFTED - active TOD execution differs from older shared truth"
+        summary = execution_summary or "TOD is actively working a newer execution slice than the currently published shared truth lane."
+    elif shared_truth_state == "ACTIVE":
+        status_code = "active"
+        status_label = "ACTIVE"
+        headline = "ACTIVE - TOD and MIM shared truth shows live work"
+        summary = shared_truth_reason or summary
+    elif shared_truth_state == "BLOCKED_WITH_REASON":
+        status_code = "blocked_with_reason"
+        status_label = "BLOCKED_WITH_REASON"
+        headline = "BLOCKED_WITH_REASON - shared truth reports an explicit blocker"
+        summary = shared_truth_reason or summary
+    elif shared_truth_state == "ACCEPTED_COMPLETE_PENDING_MIM_REFRESH":
+        status_code = "accepted_complete_pending_mim_refresh"
+        status_label = "ACCEPTED_COMPLETE_PENDING_MIM_REFRESH"
+        headline = "ACCEPTED_COMPLETE_PENDING_MIM_REFRESH - TOD completed and MIM refresh is pending"
+        summary = shared_truth_reason or summary
+    elif shared_truth_state == "ACCEPTED_COMPLETE":
+        status_code = "accepted_complete"
+        status_label = "ACCEPTED_COMPLETE"
+        headline = "ACCEPTED_COMPLETE - shared truth confirms completion"
+        summary = shared_truth_reason or summary
+    elif shared_truth_state == "REPLAY_OR_REPLAN_REQUIRED":
+        status_code = "replay_or_replan_required"
+        status_label = "REPLAY_OR_REPLAN_REQUIRED"
+        headline = "REPLAY_OR_REPLAN_REQUIRED - shared truth requires a forced replay or replan"
+        summary = shared_truth_reason or summary
+    elif shared_truth_state == "DISAGREEMENT":
+        status_code = "disagreement"
+        status_label = "DISAGREEMENT"
+        headline = "DISAGREEMENT - TOD and MIM truth surfaces disagree"
+        summary = shared_truth_reason or summary
+    elif shared_truth_state == "STALE":
+        status_code = "stale"
+        status_label = "STALE"
+        headline = "STALE - shared truth has no recent specific execution evidence"
+        summary = shared_truth_reason or summary
+
     if authority_reset_active and status_code == "aligned":
         status_code = "authority_reset"
         status_label = "AUTHORITY RESET"
@@ -3414,7 +4961,57 @@ def _build_tod_console_state() -> dict[str, Any]:
         "authority_reset": "Active" if authority_reset_active else "Inactive",
         "training_state": training_status.get("state_label") or "Unknown",
         "training_progress": f"{training_status.get('percent_complete', 0)}%" if training_status.get("available") else "Unknown",
+        "shared_truth_state": shared_truth_state or "Unknown",
     }
+
+    latest_operator_action = _latest_operator_action_payload()
+    planner_state = _derive_planner_state(
+        live_task_request,
+        effective_listener_decision,
+        execution_status,
+        latest_operator_action,
+    )
+    execution_status["planner_state"] = planner_state
+
+    operator_state = {
+        "execution": execution_status,
+        "shared_truth": shared_truth_payload,
+        "source_paths": {
+            "active_objective": active_objective_path,
+            "active_task": active_task_path,
+            "execution_truth": truth_path,
+            "shared_truth": shared_truth_path,
+            "execution_result": execution_result_path,
+            "validation_result": validation_path,
+            "remote_recovery": recovery_path,
+        },
+        "objective_alignment": alignment,
+        "live_task_request": live_task_request,
+    }
+    operator_actions = _operator_action_specs(operator_state)
+    objective_cards = _build_objective_cards(
+        {
+            "execution": execution_status,
+            "shared_truth": shared_truth_payload,
+            "status": {"summary": summary, "label": status_label},
+            "objective_alignment": {
+                "tod_current_objective": str(live_task_request.get("normalized_objective_id") or live_task_request.get("objective_id") or alignment.get("tod_current_objective") or "").strip(),
+                "mim_objective_active": str(alignment.get("mim_objective_active") or "").strip(),
+            },
+            "live_task_request": live_task_request,
+            "planner_state": planner_state,
+            "conversation": {
+                "quick_actions": [
+                    {
+                        "id": "send-to-copilot",
+                        "label": "Send To Codex",
+                        "prompt": "TOD, package the current issue, evidence, and next bounded repair request for Copilot-style troubleshooting and report the handoff summary in this thread.",
+                    }
+                ]
+            },
+            "operator_actions": operator_actions,
+        }
+    )
 
     return {
         "generated_at": _utc_now_iso(),
@@ -3428,6 +5025,10 @@ def _build_tod_console_state() -> dict[str, Any]:
             "validation_result": validation_path,
             "execution_result": execution_result_path,
             "execution_truth": truth_path,
+            "shared_truth": shared_truth_path,
+            "task_request": runtime_task_request_path,
+            "operator_action": str(TOD_OPERATOR_ACTION_LATEST_PATH),
+            "operator_evidence": str(TOD_OPERATOR_EVIDENCE_PATH),
             "execution_decision": str(SHARED_RUNTIME_ROOT / "TOD_MIM_EXECUTION_DECISION.latest.json"),
             "console_probe": str(SHARED_RUNTIME_ROOT / "TOD_CONSOLE_PROBE.latest.json"),
             "remote_recovery": recovery_path,
@@ -3479,6 +5080,28 @@ def _build_tod_console_state() -> dict[str, Any]:
         "quick_facts": quick_facts,
         "training_status": training_status,
         "execution": execution_status,
+        "shared_truth": shared_truth_payload,
+        "objective_cards": objective_cards,
+        "operator_actions": operator_actions,
+        "operator_activity_timeline": _load_recent_operator_actions(limit=10),
+        "operator_evidence": _build_operator_evidence(
+            {
+                "status": {"summary": summary},
+                "execution": execution_status,
+                "shared_truth": shared_truth_payload,
+                "source_paths": {
+                    "active_objective": active_objective_path,
+                    "active_task": active_task_path,
+                    "validation_result": validation_path,
+                    "execution_result": execution_result_path,
+                    "execution_truth": truth_path,
+                    "shared_truth": shared_truth_path,
+                    "remote_recovery": recovery_path,
+                },
+                "objective_alignment": alignment,
+                "live_task_request": live_task_request,
+            }
+        ),
         "mim_status": {
             "available": bool(mim_status.get("available")),
             "objective_active": str(mim_status.get("objective_active") or "").strip(),
@@ -3651,7 +5274,7 @@ async def tod_ui_chat_upload_image(payload: dict[str, Any] = Body(default_factor
             "content": "\n".join(
                 [
                     f"Accepted. TOD attached the screenshot for {issue_focus}.",
-                    f"Image: {attachment['filename']} · {max(1, round(attachment['size_bytes'] / 1024))} KB · {attachment['mime_type']}",
+                    f"Image: {attachment['filename']} Ã‚Â· {max(1, round(attachment['size_bytes'] / 1024))} KB Ã‚Â· {attachment['mime_type']}",
                     "Send To Codex packages the current request, strongest evidence, next bounded repair, next validation, and the latest screenshot from this thread into a real handoff artifact.",
                     "Add a short note about what you want reviewed, or press Send To Codex now for deeper troubleshooting." if not prompt else "Ask a bounded follow-up or press Send To Codex to publish this screenshot into the TOD/MIM dialog lane.",
                 ]
@@ -3785,6 +5408,62 @@ async def chat_ui_start_training(payload: dict[str, Any] = Body(default_factory=
     chat_payload = _build_chat_payload(session_key, messages, state, surface="chat")
     chat_payload["training_action"] = result
     return chat_payload
+
+
+@router.post("/operator/actions")
+async def operator_actions(payload: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
+    action = str(payload.get("action") or "").strip()
+    if not action:
+        raise HTTPException(status_code=400, detail={"error": "missing_action", "message": "Operator action is required."})
+    spec = OPERATOR_ACTION_SPECS.get(action)
+    if not spec:
+        raise HTTPException(status_code=400, detail={"error": "unknown_action", "message": f"Unknown operator action: {action}"})
+    if bool(spec.get("requires_confirmation")) and not bool(payload.get("confirm")):
+        raise HTTPException(status_code=400, detail={"error": "confirmation_required", "message": str(spec.get("confirmation_text") or "Confirmation is required for this action.")})
+    pre_state = _build_tod_console_state()
+    objective_id, task_id = _resolve_operator_action_ids(pre_state)
+    _record_operator_action(
+        {
+            "generated_at": _utc_now_iso(),
+            "action": action,
+            "label": str(spec.get("label") or action),
+            "status": "started",
+            "ok": True,
+            "objective_id": objective_id,
+            "task_id": task_id,
+        }
+    )
+    result = _execute_operator_action(action, payload, pre_state)
+    post_refresh = {}
+    if action != "run_shared_truth_reconciliation":
+        post_refresh = _run_reconcile_shared_truth_action()
+    post_state = _build_tod_console_state()
+    evidence = _write_operator_evidence_snapshot(post_state)
+    action_record = {
+        "generated_at": _utc_now_iso(),
+        "action": action,
+        "label": str(spec.get("label") or action),
+        "status": str(result.get("status") or ("completed" if result.get("ok") else "failed")),
+        "ok": bool(result.get("ok")),
+        "message": _compact_text(result.get("message"), 220),
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "command": result.get("command") if isinstance(result.get("command"), list) else [],
+        "artifact_paths": result.get("artifact_paths") if isinstance(result.get("artifact_paths"), list) else [],
+        "stdout_excerpt": _trim_message_text(result.get("stdout_excerpt"), 1600),
+        "stderr_excerpt": _trim_message_text(result.get("stderr_excerpt"), 1600),
+        "post_refresh": post_refresh,
+    }
+    _record_operator_action(action_record)
+    return {
+        "accepted": True,
+        "ok": bool(result.get("ok")),
+        "action": action,
+        "result": action_record,
+        "shared_truth": post_state.get("shared_truth") if isinstance(post_state.get("shared_truth"), dict) else {},
+        "operator_evidence": evidence,
+        "operator_activity_timeline": _load_recent_operator_actions(limit=10),
+    }
 
 
 @router.get("/tod/ui/state")
@@ -3939,7 +5618,7 @@ async def tod_console() -> HTMLResponse:
                 .chat-role {{ font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent); font-weight: 700; }}
                 .chat-time {{ font-size: 12px; color: var(--muted); margin-top: 4px; }}
                 .chat-message {{ margin-top: 8px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }}
-                .chat-form {{ display: grid; gap: 10px; }}
+                .chat-form {{ display: grid; gap: 10px; position: sticky; bottom: 0; z-index: 3; padding-top: 12px; background: linear-gradient(180deg, rgba(3,15,13,0) 0%, rgba(3,15,13,0.94) 24%, rgba(3,15,13,0.98) 100%); }}
                 .chat-dropzone {{ border: 1px dashed rgba(97,219,191,0.24); border-radius: 10px; padding: 10px 12px; color: var(--muted); font-size: 12px; background: rgba(3,15,13,0.72); }}
                 .chat-dropzone.active {{ border-color: var(--line-strong); color: var(--ink); box-shadow: 0 0 0 1px rgba(45,255,157,0.18); }}
                 .chat-preview {{ display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; align-items: start; border: 1px solid rgba(97,219,191,0.18); border-radius: 10px; padding: 10px; background: rgba(3,15,13,0.76); }}
@@ -3974,6 +5653,13 @@ async def tod_console() -> HTMLResponse:
                 .chat-quick-copy {{ font-size: 12px; color: var(--muted); line-height: 1.45; margin-top: 2px; }}
                 .status-inline {{ font-size: 12px; color: var(--muted); }}
                 .muted {{ color: var(--muted); }}
+                .system-details {{ margin: 0 24px 24px; border: 1px solid rgba(97,219,191,0.18); border-radius: 14px; background: rgba(3,15,13,0.72); overflow: hidden; }}
+                .system-details > summary {{ list-style: none; cursor: pointer; padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-strong); background: rgba(4,20,17,0.82); }}
+                .system-details > summary::-webkit-details-marker {{ display: none; }}
+                .system-details > summary::after {{ content: '+'; color: var(--accent); font-size: 18px; line-height: 1; }}
+                .system-details[open] > summary::after {{ content: '-'; }}
+                .system-details-copy {{ color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; margin-left: auto; }}
+                .system-details-body {{ border-top: 1px solid rgba(97,219,191,0.14); }}
                 .footer {{ padding: 0 24px 24px; color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }}
                 @media (max-width: 1100px) {{
                     .facts {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
@@ -4027,7 +5713,10 @@ async def tod_console() -> HTMLResponse:
                     </div>
                 </section>
             </section>
-      <section class=\"facts\">
+        <details class=\"system-details\">
+          <summary><span>System Details</span><span class=\"system-details-copy\">Alignment, execution, training, authority, and evidence stay collapsed until needed.</span></summary>
+          <div class=\"system-details-body\">
+        <section class=\"facts\">
         <article class=\"fact\"><div class=\"fact-label\">Canonical Objective</div><div id=\"factCanonicalObjective\" class=\"fact-value\">-</div><div id=\"factCanonicalMeta\" class=\"fact-meta\">Waiting for MIM handshake truth.</div></article>
         <article class=\"fact\"><div class=\"fact-label\">Live Request</div><div id=\"factLiveObjective\" class=\"fact-value\">-</div><div id=\"factLiveMeta\" class=\"fact-meta\">Waiting for listener request state.</div></article>
         <article class=\"fact\"><div class=\"fact-label\">Alignment</div><div id=\"factAlignment\" class=\"fact-value\">-</div><div id=\"factAlignmentMeta\" class=\"fact-meta\">Waiting for objective comparison.</div></article>
@@ -4038,8 +5727,18 @@ async def tod_console() -> HTMLResponse:
         <article class=\"fact\"><div class=\"fact-label\">Authority Reset</div><div id=\"factAuthorityReset\" class=\"fact-value\">-</div><div id=\"factAuthorityMeta\" class=\"fact-meta\">Waiting for reset policy state.</div></article>
         <article class=\"fact\"><div class=\"fact-label\">Training State</div><div id=\"factTrainingState\" class=\"fact-value\">-</div><div id=\"factTrainingMeta\" class=\"fact-meta\">Waiting for training telemetry.</div></article>
         <article class=\"fact\"><div class=\"fact-label\">Training Progress</div><div id=\"factTrainingProgress\" class=\"fact-value\">-</div><div id=\"factTrainingProgressMeta\" class=\"fact-meta\">Waiting for runtime and ETA.</div></article>
-      </section>
-      <section class=\"grid\">
+            </section>
+            <section class=\"grid\">
+                <div class=\"stack\">
+                    <section class=\"panel\"><h2>Objective Cards</h2><div class=\"panel-copy\">Track the active objective as a control surface with explicit plan, evidence, validation, handoff, and recovery controls.</div><div id=\"objectiveCardsList\" class=\"collection-list\"></div></section>
+                    <section class=\"panel\"><h2>Operator Actions</h2><div class=\"panel-copy\">Run bounded TOD/MIM action wrappers from the browser, then inspect the refreshed evidence below.</div><div id=\"operatorActionButtons\" class=\"chat-quick-actions\"></div><div id=\"operatorActionStatus\" class=\"panel-copy\">Waiting for operator action state.</div></section>
+                    <section class=\"panel\"><h2>Operator Evidence</h2><div id=\"operatorEvidenceList\" class=\"collection-list\"></div></section>
+                </div>
+                <div class=\"stack\">
+                    <section class=\"panel\"><h2>Action Timeline</h2><div id=\"operatorTimelineList\" class=\"collection-list\"></div></section>
+                </div>
+            </section>
+            <section class=\"grid\">
         <div class=\"stack\">
           <section class=\"panel\">
             <h2>Training Status</h2>
@@ -4082,7 +5781,9 @@ async def tod_console() -> HTMLResponse:
                     <section class=\"panel\"><h2>Authority Reset</h2><div id=\"authoritySummary\" class=\"panel-copy\">Waiting for authority reset state.</div><div class=\"kv\"><div class=\"kv-label\">Current Objective</div><div id=\"authorityCurrent\" class=\"kv-value\">-</div><div class=\"kv-label\">Max Valid</div><div id=\"authorityMaxValid\" class=\"kv-value\">-</div><div class=\"kv-label\">Effective</div><div id=\"authorityEffective\" class=\"kv-value\">-</div><div class=\"kv-label\">Invalidated</div><div id=\"authorityInvalidated\" class=\"kv-value\">-</div></div></section>
                     <section class=\"panel\"><h2>Codex Handoffs</h2><div class=\"panel-copy\">Recent real handoffs created from this TOD console and published into the shared TOD/MIM dialog lane.</div><div class=\"panel-actions\"><button id=\"handoffQuickActionButton\" class=\"chat-button secondary\" type=\"button\">Send To Codex</button></div><div id=\"handoffList\" class=\"collection-list\"></div></section>
         </div>
-      </section>
+            </section>
+                </div>
+            </details>
       <div class=\"footer\"><div id=\"footerGenerated\">Loading state timestamp...</div><div>/tod/ui/state</div></div>
     </section>
   </main>
@@ -4197,6 +5898,11 @@ async def tod_console() -> HTMLResponse:
     const authorityInvalidated = document.getElementById('authorityInvalidated');
     const handoffList = document.getElementById('handoffList');
     const handoffQuickActionButton = document.getElementById('handoffQuickActionButton');
+    const objectiveCardsList = document.getElementById('objectiveCardsList');
+    const operatorActionButtons = document.getElementById('operatorActionButtons');
+    const operatorActionStatus = document.getElementById('operatorActionStatus');
+    const operatorEvidenceList = document.getElementById('operatorEvidenceList');
+    const operatorTimelineList = document.getElementById('operatorTimelineList');
     const CHAT_STORAGE_KEY = 'todPublicChatSessionKeyV1';
     let latestConversation = null;
     let latestChatMessages = [];
@@ -4204,12 +5910,15 @@ async def tod_console() -> HTMLResponse:
     let latestExecution = {{}};
     let latestTraining = {{}};
     let latestSessionActivity = {{}};
+    let latestOperatorActions = [];
     let chatQuickActionMap = new Map();
     let currentStatusCode = 'unknown';
     let selectedComposerImage = null;
+    let operatorActionInFlight = false;
     const autoTriggeredSessions = new Set();
     function safeText(value, fallback = '-') {{ const text = String(value || '').trim(); return text || fallback; }}
     function safeJoin(values, fallback = 'None') {{ return Array.isArray(values) && values.length ? values.map((item) => safeText(item, '')).filter(Boolean).join(', ') : fallback; }}
+    function plannerIsPrimary(planner) {{ return Boolean(planner && typeof planner === 'object' && planner.available && planner.is_newer_than_executor); }}
     function formatSeconds(value) {{ const numeric = Number(value); if (!Number.isFinite(numeric) || numeric < 0) return 'Unknown'; const total = Math.round(numeric); const days = Math.floor(total / 86400); const hours = Math.floor((total % 86400) / 3600); const minutes = Math.floor((total % 3600) / 60); const seconds = total % 60; const parts = []; if (days) parts.push(`${{days}}d`); if (hours || parts.length) parts.push(`${{hours}}h`); if (minutes || parts.length) parts.push(`${{minutes}}m`); if (!parts.length) parts.push(`${{seconds}}s`); return parts.join(' '); }}
     function trainingTone(training) {{ const state = safeText(training && (training.state || training.state_label), 'unknown').toLowerCase(); if (state.includes('complete')) return 'completed'; if (state.includes('run') || state.includes('active') || training && training.active) return 'running'; if (state.includes('fail') || state.includes('error')) return 'failed'; if (state.includes('pause')) return 'paused'; return 'pending'; }}
     function createChatSessionKey(defaultKey) {{ const seed = Math.random().toString(36).slice(2, 10); return `${{safeText(defaultKey, 'tod-console-public')}}-${{seed}}`; }}
@@ -4224,15 +5933,21 @@ async def tod_console() -> HTMLResponse:
     function clearNode(node) {{ while (node && node.firstChild) node.removeChild(node.firstChild); }}
     function setConsoleLight(node, ok) {{ if (!node) return; node.classList.remove('ok', 'err'); node.classList.add(ok ? 'ok' : 'err'); }}
     function appendCollectionItem(node, label, meta, text) {{ const item = document.createElement('article'); item.className = 'collection-item'; const top = document.createElement('div'); top.className = 'collection-top'; const labelNode = document.createElement('div'); labelNode.className = 'collection-label'; labelNode.textContent = safeText(label, 'Item'); const metaNode = document.createElement('div'); metaNode.className = 'collection-meta'; metaNode.textContent = safeText(meta, ''); const textNode = document.createElement('div'); textNode.className = 'collection-text'; textNode.textContent = safeText(text, 'No detail published.'); top.appendChild(labelNode); top.appendChild(metaNode); item.appendChild(top); item.appendChild(textNode); node.appendChild(item); }}
+    function renderOperatorTimeline(items) {{ clearNode(operatorTimelineList); if (!Array.isArray(items) || !items.length) {{ appendCollectionItem(operatorTimelineList, 'No operator actions yet', '', 'Action results will be appended here after you run a control.'); return; }} items.forEach((item) => {{ appendCollectionItem(operatorTimelineList, `${{safeText(item.label || item.action, 'Action')}} Ã‚Â· ${{safeText(item.status, 'unknown')}}`, safeText(item.generated_at, ''), safeText(item.message || item.stdout_excerpt, 'No action detail published.')); }}); }}
+    function handleObjectiveCardAction(action) {{ if (!action || !action.id) return; const mode = safeText(action.mode, 'operator_action'); if (mode === 'operator_action') {{ runOperatorAction(action); return; }} if (mode === 'chat_handoff') {{ handleQuickAction('send-to-copilot'); return; }} if (mode === 'local_view') {{ const summary = safeText(action.plan_summary, 'No plan summary is published.'); const milestones = Array.isArray(action.milestones) && action.milestones.length ? action.milestones.map((item) => `${{safeText(item.label, 'Step')}}=${{safeText(item.status, 'unknown')}}`).join(' | ') : 'No milestones are published.'; if (operatorActionStatus) operatorActionStatus.textContent = `${{summary}} ${{milestones}}`; }} }}
+    function renderObjectiveCards(cards) {{ clearNode(objectiveCardsList); const payload = Array.isArray(cards) ? cards : []; if (!payload.length) {{ appendCollectionItem(objectiveCardsList, 'No objective card', '', 'The TOD console has not published an active objective card yet.'); return; }} payload.forEach((card) => {{ const wrapper = document.createElement('article'); wrapper.className = 'collection-item'; const top = document.createElement('div'); top.className = 'collection-top'; const labelNode = document.createElement('div'); labelNode.className = 'collection-label'; labelNode.textContent = `${{safeText(card.title, 'Objective')}} Ã‚Â· ${{safeText(card.status, 'unknown')}}`; const metaNode = document.createElement('div'); metaNode.className = 'collection-meta'; metaNode.textContent = `${{safeText(card.objective_id, 'no-objective')}} Ã‚Â· task=${{safeText(card.task_id, 'n/a')}}`; top.appendChild(labelNode); top.appendChild(metaNode); wrapper.appendChild(top); const summaryNode = document.createElement('div'); summaryNode.className = 'collection-text'; summaryNode.textContent = safeText(card.summary, 'No objective summary published.'); wrapper.appendChild(summaryNode); const planner = card.planner_state && typeof card.planner_state === 'object' ? card.planner_state : {{}}; const plannerNode = document.createElement('div'); plannerNode.className = 'collection-text muted'; plannerNode.textContent = planner.available ? `Planner Ã‚Â· ${{safeText(planner.status_label, 'unknown')}} Ã‚Â· ${{safeText(planner.current_step, 'No planner step')}} Ã‚Â· next=${{safeText(planner.next_step, 'unknown')}}` : 'Planner state is not currently published.'; wrapper.appendChild(plannerNode); const executor = card.executor_state && typeof card.executor_state === 'object' ? card.executor_state : {{}}; const executorNode = document.createElement('div'); executorNode.className = 'collection-text muted'; executorNode.textContent = `Executor Ã‚Â· ${{safeText(executor.status_label || executor.status, 'unknown')}} Ã‚Â· ${{safeText(executor.current_action, safeText(executor.summary, 'No executor state published.'))}}`; wrapper.appendChild(executorNode); const progress = card.phase_progress && typeof card.phase_progress === 'object' ? card.phase_progress : {{}}; const progressNode = document.createElement('div'); progressNode.className = 'collection-text muted'; progressNode.textContent = progress.available ? `${{safeText(progress.label, 'Phase progress')}} Ã‚Â· ${{safeText(progress.percent_complete, '0')}}% Ã‚Â· next=${{safeText(progress.next_gate, 'unknown')}}` : 'No phase progress plan published.'; wrapper.appendChild(progressNode); const actionsNode = document.createElement('div'); actionsNode.className = 'chat-quick-actions'; const actions = Array.isArray(card.actions) ? card.actions : []; actions.forEach((action) => {{ const button = document.createElement('button'); button.type = 'button'; button.className = 'chat-quick-btn'; button.textContent = safeText(action.label, 'Action'); button.title = action.enabled ? safeText(action.disabled_reason || action.plan_summary, '') : safeText(action.disabled_reason, 'Unavailable'); button.disabled = operatorActionInFlight || !action.enabled; button.addEventListener('click', () => handleObjectiveCardAction(action)); actionsNode.appendChild(button); }}); wrapper.appendChild(actionsNode); const artifacts = card.artifacts && typeof card.artifacts === 'object' ? card.artifacts : {{}}; const artifactNode = document.createElement('div'); artifactNode.className = 'collection-text muted'; artifactNode.textContent = `Updated: ${{safeText(artifacts.updated_at, 'unknown')}} Ã‚Â· Files: ${{Array.isArray(artifacts.files_changed) ? artifacts.files_changed.length : 0}} Ã‚Â· Checks: ${{Array.isArray(artifacts.validation_checks) ? artifacts.validation_checks.length : 0}} Ã‚Â· Rollback: ${{safeText(artifacts.rollback_state, 'not_needed')}}`; wrapper.appendChild(artifactNode); objectiveCardsList.appendChild(wrapper); }}); }}
+    function renderOperatorEvidence(evidence) {{ clearNode(operatorEvidenceList); const payload = evidence && typeof evidence === 'object' ? evidence : {{}}; const activeObjective = payload.active_objective && typeof payload.active_objective === 'object' ? payload.active_objective : {{}}; const activeTask = payload.active_task && typeof payload.active_task === 'object' ? payload.active_task : {{}}; appendCollectionItem(operatorEvidenceList, `Objective Ã‚Â· ${{safeText(activeObjective.id, 'unknown')}}`, '', safeText(activeObjective.title, 'No active objective title published.')); appendCollectionItem(operatorEvidenceList, `Task Ã‚Â· ${{safeText(activeTask.id, 'unknown')}}`, '', safeText(activeTask.title, 'No active task title published.')); appendCollectionItem(operatorEvidenceList, 'Validation', safeText(payload.validation_status, 'unknown'), safeText(payload.next_validation, 'No validation command published.')); appendCollectionItem(operatorEvidenceList, `Changed Files Ã‚Â· ${{Array.isArray(payload.changed_files) ? payload.changed_files.length : 0}}`, '', Array.isArray(payload.changed_files) && payload.changed_files.length ? payload.changed_files.join(', ') : 'No file changes were published.'); appendCollectionItem(operatorEvidenceList, `Commands Run Ã‚Â· ${{Array.isArray(payload.commands_run) ? payload.commands_run.length : 0}}`, '', Array.isArray(payload.commands_run) && payload.commands_run.length ? payload.commands_run.join(' | ') : 'No command history was published.'); appendCollectionItem(operatorEvidenceList, `Blocker Ã‚Â· ${{safeText(payload.blocker_code, 'none')}}`, '', safeText(payload.blocker_detail, 'No blocker detail published.')); const timestamps = payload.artifact_timestamps && typeof payload.artifact_timestamps === 'object' ? payload.artifact_timestamps : {{}}; appendCollectionItem(operatorEvidenceList, 'Artifact Timestamps', '', Object.keys(timestamps).length ? Object.entries(timestamps).map(([key, value]) => `${{key}}=${{safeText(value, 'unknown')}}`).join(' | ') : 'No artifact timestamps published.'); }}
+    async function runOperatorAction(action) {{ if (!action || operatorActionInFlight) return; if (action.requires_confirmation && !window.confirm(safeText(action.confirmation_text, `Run ${{safeText(action.label, 'this action')}}?`))) return; operatorActionInFlight = true; if (operatorActionStatus) operatorActionStatus.textContent = `Running ${{safeText(action.label, 'operator action')}}...`; renderOperatorActions(latestOperatorActions); try {{ const response = await fetch('/operator/actions', {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ action: action.id, confirm: Boolean(action.requires_confirmation) }}) }}); const payload = await response.json().catch(() => ({{}})); if (!response.ok) {{ const detail = payload && payload.detail && typeof payload.detail === 'object' ? payload.detail : {{}}; throw new Error(safeText(detail.message || payload.message, `Action failed with status ${{response.status}}`)); }} if (operatorActionStatus) operatorActionStatus.textContent = safeText(payload && payload.result && payload.result.message, `${{safeText(action.label, 'Action')}} completed.`); }} catch (error) {{ if (operatorActionStatus) operatorActionStatus.textContent = safeText(error && error.message, 'Operator action failed.'); }} finally {{ operatorActionInFlight = false; await refresh(); }} }}
+    function renderOperatorActions(actions) {{ clearNode(operatorActionButtons); const payload = Array.isArray(actions) ? actions : []; latestOperatorActions = payload; if (!payload.length) {{ appendCollectionItem(operatorActionButtons, 'Operator actions unavailable', '', 'No bounded operator actions were published on this surface.'); return; }} payload.forEach((action) => {{ const button = document.createElement('button'); button.type = 'button'; button.className = 'chat-quick-btn'; button.textContent = safeText(action.label, 'Action'); button.title = action.enabled ? safeText(action.description, '') : safeText(action.disabled_reason || action.description, ''); button.disabled = operatorActionInFlight || !action.enabled; button.addEventListener('click', () => runOperatorAction(action)); operatorActionButtons.appendChild(button); }}); }}
     function setChatButtonsDisabled(disabled) {{ chatSendButton.disabled = disabled; if (chatImageUploadButton) chatImageUploadButton.disabled = disabled; if (chatImageRemoveButton) chatImageRemoveButton.disabled = disabled; if (copyLastTodResponseButton) copyLastTodResponseButton.disabled = disabled; if (trainingQuickActionButton) trainingQuickActionButton.disabled = disabled; if (alignmentQuickActionButton) alignmentQuickActionButton.disabled = disabled; if (handoffQuickActionButton) handoffQuickActionButton.disabled = disabled; }}
     function updateCopyButtonState() {{ if (!copyLastTodResponseButton) return; const hasTodReply = latestChatMessages.some((message) => messageRole(message) === 'assistant' && messageBody(message)); copyLastTodResponseButton.disabled = !hasTodReply; }}
     function messageAttachment(message) {{ return message && typeof message.attachment === 'object' ? message.attachment : null; }}
     function resetComposerImage() {{ selectedComposerImage = null; if (chatImageUploadInput) chatImageUploadInput.value = ''; if (chatImagePreviewImg) chatImagePreviewImg.removeAttribute('src'); if (chatImagePreviewName) chatImagePreviewName.textContent = 'Selected image'; if (chatImagePreviewMeta) chatImagePreviewMeta.textContent = 'Send adds the screenshot to this TOD thread. Send To Codex then packages the latest screenshot into the handoff.'; if (chatImagePreview) chatImagePreview.hidden = true; if (chatDropzone) chatDropzone.classList.remove('active'); }}
-    function setComposerImage(file) {{ if (!(file instanceof File)) return false; const allowed = ['image/png', 'image/jpeg', 'image/webp']; if (!allowed.includes(String(file.type || '').toLowerCase())) {{ chatStatus.textContent = 'Only png, jpg, jpeg, and webp screenshots are supported here.'; return false; }} if (Number(file.size || 0) > 2 * 1024 * 1024) {{ chatStatus.textContent = 'Screenshots on /tod must be 2 MB or smaller.'; return false; }} selectedComposerImage = file; if (chatImagePreviewName) chatImagePreviewName.textContent = file.name || 'Selected image'; if (chatImagePreviewMeta) chatImagePreviewMeta.textContent = `${{Math.max(1, Math.round((Number(file.size || 0)) / 1024))}} KB · ${{safeText(file.type, 'image file')}}`; if (chatImagePreviewImg) {{ const previewUrl = URL.createObjectURL(file); chatImagePreviewImg.src = previewUrl; }} if (chatImagePreview) chatImagePreview.hidden = false; chatStatus.textContent = 'Screenshot attached. Add an optional note and send, or use Send To Codex after it lands in the thread.'; return true; }}
+    function setComposerImage(file) {{ if (!(file instanceof File)) return false; const allowed = ['image/png', 'image/jpeg', 'image/webp']; if (!allowed.includes(String(file.type || '').toLowerCase())) {{ chatStatus.textContent = 'Only png, jpg, jpeg, and webp screenshots are supported here.'; return false; }} if (Number(file.size || 0) > 2 * 1024 * 1024) {{ chatStatus.textContent = 'Screenshots on /tod must be 2 MB or smaller.'; return false; }} selectedComposerImage = file; if (chatImagePreviewName) chatImagePreviewName.textContent = file.name || 'Selected image'; if (chatImagePreviewMeta) chatImagePreviewMeta.textContent = `${{Math.max(1, Math.round((Number(file.size || 0)) / 1024))}} KB Ã‚Â· ${{safeText(file.type, 'image file')}}`; if (chatImagePreviewImg) {{ const previewUrl = URL.createObjectURL(file); chatImagePreviewImg.src = previewUrl; }} if (chatImagePreview) chatImagePreview.hidden = false; chatStatus.textContent = 'Screenshot attached. Add an optional note and send, or use Send To Codex after it lands in the thread.'; return true; }}
     function fileToDataUrl(file) {{ return new Promise((resolve, reject) => {{ const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || '')); reader.onerror = () => reject(reader.error || new Error('file_read_failed')); reader.readAsDataURL(file); }}); }}
-    function renderGuidance(items) {{ clearNode(guidanceList); if (!Array.isArray(items) || !items.length) {{ appendCollectionItem(guidanceList, 'Guidance', '', 'No operator guidance is currently published.'); return; }} items.forEach((item) => {{ const card = document.createElement('article'); card.className = 'guidance-item'; const code = document.createElement('div'); code.className = 'guidance-code'; code.textContent = `${{safeText(item.severity, 'info')}} · ${{safeText(item.code, 'guidance')}}`; const summary = document.createElement('div'); summary.className = 'guidance-summary'; summary.textContent = safeText(item.summary, 'No summary'); const action = document.createElement('div'); action.className = 'guidance-action'; action.textContent = safeText(item.recommended_action, 'No action published'); card.appendChild(code); card.appendChild(summary); card.appendChild(action); guidanceList.appendChild(card); }}); }}
-    function renderHandoffs(items) {{ clearNode(handoffList); if (!Array.isArray(items) || !items.length) {{ appendCollectionItem(handoffList, 'No recent handoffs', '', 'Send To Codex will create a dialog session and it will appear here after publication.'); return; }} items.forEach((item) => {{ const card = document.createElement('article'); card.className = 'collection-item'; const top = document.createElement('div'); top.className = 'collection-top'; const labelNode = document.createElement('div'); labelNode.className = 'collection-label'; labelNode.textContent = `${{safeText(item.status_label, 'Unknown')}} · ${{safeText(item.session_id, 'unknown session')}}`; const metaNode = document.createElement('div'); metaNode.className = 'collection-meta'; metaNode.textContent = `${{safeText(item.updated_age, 'Unknown')}} · messages=${{safeText(item.message_count, '0')}}`; const summaryNode = document.createElement('div'); summaryNode.className = 'collection-text'; summaryNode.textContent = safeText(item.issue_summary, 'No issue summary published.'); const idsNode = document.createElement('div'); idsNode.className = 'collection-text muted'; idsNode.textContent = `request=${{safeText(item.request_id, 'n/a')}} · task=${{safeText(item.task_id, 'n/a')}} · objective=${{safeText(item.objective_id, 'n/a')}}`; const detailNode = document.createElement('div'); detailNode.className = 'collection-text muted'; detailNode.textContent = `Last: ${{safeText(item.last_message_from, 'unknown')}}/${{safeText(item.last_message_type, 'unknown')}} · Artifact: ${{safeText(item.copilot_artifact_path, 'not published')}}`; top.appendChild(labelNode); top.appendChild(metaNode); card.appendChild(top); card.appendChild(summaryNode); card.appendChild(idsNode); card.appendChild(detailNode); if (item.bounded_repair_request) {{ const repairNode = document.createElement('div'); repairNode.className = 'collection-text'; repairNode.textContent = `Repair: ${{safeText(item.bounded_repair_request)}}`; card.appendChild(repairNode); }} if (item.next_validation) {{ const validationNode = document.createElement('div'); validationNode.className = 'collection-text'; validationNode.textContent = `Validation: ${{safeText(item.next_validation)}}`; card.appendChild(validationNode); }} handoffList.appendChild(card); }}); }}
-    function renderTraining(training) {{ const payload = training && typeof training === 'object' ? training : {{}}; latestTraining = payload; const available = Boolean(payload.available); const percent = Math.max(0, Math.min(100, Number(payload.percent_complete || 0))); const runtimeText = formatSeconds(payload.runtime_seconds); const etaText = payload.eta_seconds == null ? 'Unknown' : formatSeconds(payload.eta_seconds); const idlePolicy = payload.idle_policy && typeof payload.idle_policy === 'object' ? payload.idle_policy : {{}}; factTrainingState.textContent = safeText(payload.state_label || payload.state, 'Unknown'); factTrainingMeta.textContent = available ? `${{safeText(payload.summary, 'No training summary')}} · ${{safeText(idlePolicy.policy_summary, 'Idle training policy not published.')}}` : 'No training telemetry is published.'; factTrainingProgress.textContent = available ? `${{Math.round(percent)}}%` : 'Unknown'; factTrainingProgressMeta.textContent = available ? `Runtime: ${{runtimeText}} · ETA: ${{etaText}}` : 'No runtime estimate is available.'; trainingStateBadge.textContent = safeText(payload.state_label || payload.state, 'Unknown'); trainingStateBadge.dataset.tone = trainingTone(payload); trainingSummary.textContent = safeText(payload.summary, 'No training summary is available.'); trainingPhaseDetail.textContent = safeText(payload.phase_detail, 'No phase detail is available yet.'); trainingPolicySummary.textContent = safeText(idlePolicy.policy_summary, 'Idle training policy not published.'); trainingStats.innerHTML = `Runtime: ${{runtimeText}}<br />ETA: ${{etaText}}`; trainingProgressBar.style.width = `${{percent}}%`; trainingPhase.textContent = safeText(payload.phase_label || payload.phase, 'Unknown'); trainingCurrentStep.textContent = safeText(payload.current_step, 'Not published'); trainingStarted.textContent = payload.started_at ? `${{safeText(payload.started_at)}} · ${{safeText(payload.started_age, 'Unknown')}}` : 'Unknown'; trainingUpdated.textContent = payload.updated_at ? `${{safeText(payload.updated_at)}} · ${{safeText(payload.updated_age, 'Unknown')}}` : 'Unknown'; trainingExpectedCompletion.textContent = payload.expected_completion_utc ? safeText(payload.expected_completion_utc) : 'Unknown'; trainingIdlePolicy.textContent = idlePolicy.continuous_idle_enabled ? `Always train when idle · threshold ${{safeText(idlePolicy.idle_threshold_minutes, '0')}}m` : 'Disabled'; trainingIdleProfiles.textContent = `Short < ${{safeText(idlePolicy.long_idle_profile_threshold_minutes, '30')}}m: ${{safeText(idlePolicy.short_idle_profile_label, 'Runtime-safe validation subset')}} · Long >= ${{safeText(idlePolicy.long_idle_profile_threshold_minutes, '30')}}m: ${{safeText(idlePolicy.long_idle_profile_label, 'Repo edit / test / recover pack')}}`; trainingAutonomyState.textContent = `${{safeText(idlePolicy.current_tod_state, 'unknown')}} · ${{safeText(idlePolicy.activity_summary, 'No autonomy activity is published.')}}`; trainingWarnings.textContent = safeJoin(payload.warnings, 'None'); trainingLatestError.textContent = payload.latest_error ? `${{safeText(payload.latest_error)}}${{payload.latest_error_at ? ` · ${{safeText(payload.latest_error_at)}}` : ''}}` : 'None'; trainingLatestResolution.textContent = payload.latest_resolution ? `${{safeText(payload.latest_resolution)}}${{payload.latest_resolution_at ? ` · ${{safeText(payload.latest_resolution_at)}}` : ''}}` : 'None'; trainingOutputDir.textContent = safeText(payload.artifacts && payload.artifacts.output_dir, 'Not published'); trainingTracePath.textContent = safeText(payload.artifacts && payload.artifacts.trace_path, 'Not published'); clearNode(trainingStagePills); if (Array.isArray(payload.stages) && payload.stages.length) {{ payload.stages.forEach((stage) => {{ const pill = document.createElement('div'); pill.className = 'mini-pill'; pill.textContent = `${{safeText(stage.label, 'Stage')}}: ${{safeText(stage.status, 'unknown')}}`; trainingStagePills.appendChild(pill); }}); }} else {{ const pill = document.createElement('div'); pill.className = 'mini-pill'; pill.textContent = 'No stage telemetry'; trainingStagePills.appendChild(pill); }} clearNode(trainingEvents); if (Array.isArray(payload.recent_events) && payload.recent_events.length) {{ payload.recent_events.forEach((item) => appendCollectionItem(trainingEvents, safeText(item.type, 'event'), safeText(item.generated_age || item.generated_at, ''), safeText(item.summary, 'No event summary'))); }} else if (Array.isArray(payload.resolutions) && payload.resolutions.length) {{ payload.resolutions.forEach((item) => appendCollectionItem(trainingEvents, 'Resolution', '', item)); }} else {{ appendCollectionItem(trainingEvents, 'Training Feed', '', 'No training events are currently published.'); }} }}
+    function renderGuidance(items) {{ clearNode(guidanceList); if (!Array.isArray(items) || !items.length) {{ appendCollectionItem(guidanceList, 'Guidance', '', 'No operator guidance is currently published.'); return; }} items.forEach((item) => {{ const card = document.createElement('article'); card.className = 'guidance-item'; const code = document.createElement('div'); code.className = 'guidance-code'; code.textContent = `${{safeText(item.severity, 'info')}} Ã‚Â· ${{safeText(item.code, 'guidance')}}`; const summary = document.createElement('div'); summary.className = 'guidance-summary'; summary.textContent = safeText(item.summary, 'No summary'); const action = document.createElement('div'); action.className = 'guidance-action'; action.textContent = safeText(item.recommended_action, 'No action published'); card.appendChild(code); card.appendChild(summary); card.appendChild(action); guidanceList.appendChild(card); }}); }}
+    function renderHandoffs(items) {{ clearNode(handoffList); if (!Array.isArray(items) || !items.length) {{ appendCollectionItem(handoffList, 'No recent handoffs', '', 'Send To Codex will create a dialog session and it will appear here after publication.'); return; }} items.forEach((item) => {{ const card = document.createElement('article'); card.className = 'collection-item'; const top = document.createElement('div'); top.className = 'collection-top'; const labelNode = document.createElement('div'); labelNode.className = 'collection-label'; labelNode.textContent = `${{safeText(item.status_label, 'Unknown')}} Ã‚Â· ${{safeText(item.session_id, 'unknown session')}}`; const metaNode = document.createElement('div'); metaNode.className = 'collection-meta'; metaNode.textContent = `${{safeText(item.updated_age, 'Unknown')}} Ã‚Â· messages=${{safeText(item.message_count, '0')}}`; const summaryNode = document.createElement('div'); summaryNode.className = 'collection-text'; summaryNode.textContent = safeText(item.issue_summary, 'No issue summary published.'); const idsNode = document.createElement('div'); idsNode.className = 'collection-text muted'; idsNode.textContent = `request=${{safeText(item.request_id, 'n/a')}} Ã‚Â· task=${{safeText(item.task_id, 'n/a')}} Ã‚Â· objective=${{safeText(item.objective_id, 'n/a')}}`; const detailNode = document.createElement('div'); detailNode.className = 'collection-text muted'; detailNode.textContent = `Last: ${{safeText(item.last_message_from, 'unknown')}}/${{safeText(item.last_message_type, 'unknown')}} Ã‚Â· Artifact: ${{safeText(item.copilot_artifact_path, 'not published')}}`; top.appendChild(labelNode); top.appendChild(metaNode); card.appendChild(top); card.appendChild(summaryNode); card.appendChild(idsNode); card.appendChild(detailNode); if (item.bounded_repair_request) {{ const repairNode = document.createElement('div'); repairNode.className = 'collection-text'; repairNode.textContent = `Repair: ${{safeText(item.bounded_repair_request)}}`; card.appendChild(repairNode); }} if (item.next_validation) {{ const validationNode = document.createElement('div'); validationNode.className = 'collection-text'; validationNode.textContent = `Validation: ${{safeText(item.next_validation)}}`; card.appendChild(validationNode); }} handoffList.appendChild(card); }}); }}
+    function renderTraining(training) {{ const payload = training && typeof training === 'object' ? training : {{}}; latestTraining = payload; const available = Boolean(payload.available); const percent = Math.max(0, Math.min(100, Number(payload.percent_complete || 0))); const runtimeText = formatSeconds(payload.runtime_seconds); const etaText = payload.eta_seconds == null ? 'Unknown' : formatSeconds(payload.eta_seconds); const idlePolicy = payload.idle_policy && typeof payload.idle_policy === 'object' ? payload.idle_policy : {{}}; factTrainingState.textContent = safeText(payload.state_label || payload.state, 'Unknown'); factTrainingMeta.textContent = available ? `${{safeText(payload.summary, 'No training summary')}} Ã‚Â· ${{safeText(idlePolicy.policy_summary, 'Idle training policy not published.')}}` : 'No training telemetry is published.'; factTrainingProgress.textContent = available ? `${{Math.round(percent)}}%` : 'Unknown'; factTrainingProgressMeta.textContent = available ? `Runtime: ${{runtimeText}} Ã‚Â· ETA: ${{etaText}}` : 'No runtime estimate is available.'; trainingStateBadge.textContent = safeText(payload.state_label || payload.state, 'Unknown'); trainingStateBadge.dataset.tone = trainingTone(payload); trainingSummary.textContent = safeText(payload.summary, 'No training summary is available.'); trainingPhaseDetail.textContent = safeText(payload.phase_detail, 'No phase detail is available yet.'); trainingPolicySummary.textContent = safeText(idlePolicy.policy_summary, 'Idle training policy not published.'); trainingStats.innerHTML = `Runtime: ${{runtimeText}}<br />ETA: ${{etaText}}`; trainingProgressBar.style.width = `${{percent}}%`; trainingPhase.textContent = safeText(payload.phase_label || payload.phase, 'Unknown'); trainingCurrentStep.textContent = safeText(payload.current_step, 'Not published'); trainingStarted.textContent = payload.started_at ? `${{safeText(payload.started_at)}} Ã‚Â· ${{safeText(payload.started_age, 'Unknown')}}` : 'Unknown'; trainingUpdated.textContent = payload.updated_at ? `${{safeText(payload.updated_at)}} Ã‚Â· ${{safeText(payload.updated_age, 'Unknown')}}` : 'Unknown'; trainingExpectedCompletion.textContent = payload.expected_completion_utc ? safeText(payload.expected_completion_utc) : 'Unknown'; trainingIdlePolicy.textContent = idlePolicy.continuous_idle_enabled ? `Always train when idle Ã‚Â· threshold ${{safeText(idlePolicy.idle_threshold_minutes, '0')}}m` : 'Disabled'; trainingIdleProfiles.textContent = `Short < ${{safeText(idlePolicy.long_idle_profile_threshold_minutes, '30')}}m: ${{safeText(idlePolicy.short_idle_profile_label, 'Runtime-safe validation subset')}} Ã‚Â· Long >= ${{safeText(idlePolicy.long_idle_profile_threshold_minutes, '30')}}m: ${{safeText(idlePolicy.long_idle_profile_label, 'Repo edit / test / recover pack')}}`; trainingAutonomyState.textContent = `${{safeText(idlePolicy.current_tod_state, 'unknown')}} Ã‚Â· ${{safeText(idlePolicy.activity_summary, 'No autonomy activity is published.')}}`; trainingWarnings.textContent = safeJoin(payload.warnings, 'None'); trainingLatestError.textContent = payload.latest_error ? `${{safeText(payload.latest_error)}}${{payload.latest_error_at ? ` Ã‚Â· ${{safeText(payload.latest_error_at)}}` : ''}}` : 'None'; trainingLatestResolution.textContent = payload.latest_resolution ? `${{safeText(payload.latest_resolution)}}${{payload.latest_resolution_at ? ` Ã‚Â· ${{safeText(payload.latest_resolution_at)}}` : ''}}` : 'None'; trainingOutputDir.textContent = safeText(payload.artifacts && payload.artifacts.output_dir, 'Not published'); trainingTracePath.textContent = safeText(payload.artifacts && payload.artifacts.trace_path, 'Not published'); clearNode(trainingStagePills); if (Array.isArray(payload.stages) && payload.stages.length) {{ payload.stages.forEach((stage) => {{ const pill = document.createElement('div'); pill.className = 'mini-pill'; pill.textContent = `${{safeText(stage.label, 'Stage')}}: ${{safeText(stage.status, 'unknown')}}`; trainingStagePills.appendChild(pill); }}); }} else {{ const pill = document.createElement('div'); pill.className = 'mini-pill'; pill.textContent = 'No stage telemetry'; trainingStagePills.appendChild(pill); }} clearNode(trainingEvents); if (Array.isArray(payload.recent_events) && payload.recent_events.length) {{ payload.recent_events.forEach((item) => appendCollectionItem(trainingEvents, safeText(item.type, 'event'), safeText(item.generated_age || item.generated_at, ''), safeText(item.summary, 'No event summary'))); }} else if (Array.isArray(payload.resolutions) && payload.resolutions.length) {{ payload.resolutions.forEach((item) => appendCollectionItem(trainingEvents, 'Resolution', '', item)); }} else {{ appendCollectionItem(trainingEvents, 'Training Feed', '', 'No training events are currently published.'); }} }}
     function messageRole(message) {{ const role = safeText(message && (message.role || message.actor || message.source || message.type), 'message').toLowerCase(); if (role.includes('visitor') || role.includes('user')) return 'user'; if (role.includes('tod') || role.includes('assistant') || role.includes('reply')) return 'assistant'; return 'system'; }}
     function messageLabel(message, role) {{ if (role === 'user') return safeText(message && message.author_name, safeText(latestVisitor && latestVisitor.name, 'Dave')); if (role === 'assistant') return 'TOD'; return 'TOD Activity'; }}
     function messageBody(message) {{ return safeText(message && (message.content || message.message || message.text || message.body || message.summary), ''); }}
@@ -4241,21 +5956,21 @@ async def tod_console() -> HTMLResponse:
     async function copyTextToClipboard(value) {{ const text = String(value || ''); if (!text.trim()) return false; if (navigator.clipboard && navigator.clipboard.writeText) {{ await navigator.clipboard.writeText(text); return true; }} const textArea = document.createElement('textarea'); textArea.value = text; textArea.setAttribute('readonly', 'readonly'); textArea.style.position = 'fixed'; textArea.style.opacity = '0'; textArea.style.pointerEvents = 'none'; document.body.appendChild(textArea); textArea.focus(); textArea.select(); const copied = document.execCommand('copy'); document.body.removeChild(textArea); return copied; }}
     async function handleCopyLastTodResponse() {{ const transcript = buildLastTodExchangeCopy(latestChatMessages); if (!transcript) {{ chatStatus.textContent = 'No TOD reply is available to copy yet.'; return; }} try {{ copyLastTodResponseButton.disabled = true; await copyTextToClipboard(transcript); chatStatus.textContent = 'Copied the last user action and TOD reply.'; }} catch (error) {{ chatStatus.textContent = `Copy failed: ${{safeText(error && error.message, 'clipboard unavailable')}}`; }} finally {{ updateCopyButtonState(); }} }}
     function renderQuickActions(conversation) {{ chatQuickActionMap = new Map(); const actions = conversation && Array.isArray(conversation.quick_actions) ? conversation.quick_actions : []; actions.forEach((action) => {{ const prompt = safeText(action && action.prompt, ''); const id = safeText(action && action.id, 'quick-action'); const label = safeText(action && action.label, 'Quick Action'); const description = safeText(action && action.description, ''); const actionType = safeText(action && action.action_type, 'prompt'); chatQuickActionMap.set(id, {{ prompt, label, description, actionType }}); }}); const trainingAction = chatQuickActionMap.get('start-training'); if (trainingQuickActionButton) {{ trainingQuickActionButton.textContent = safeText(trainingAction && trainingAction.label, 'Start Training'); trainingQuickActionButton.title = safeText(trainingAction && trainingAction.description, 'Start the bounded training request.'); trainingQuickActionButton.hidden = !trainingAction; }} const driftAction = chatQuickActionMap.get('resolve-drift'); if (alignmentQuickActionButton) {{ alignmentQuickActionButton.textContent = safeText(driftAction && driftAction.label, 'Resolve Drift'); alignmentQuickActionButton.title = safeText(driftAction && driftAction.description, 'Send a bounded drift resolution request.'); alignmentQuickActionButton.hidden = !driftAction; }} const handoffAction = chatQuickActionMap.get('send-to-copilot'); if (handoffQuickActionButton) {{ handoffQuickActionButton.textContent = safeText(handoffAction && handoffAction.label, 'Send To Codex'); handoffQuickActionButton.title = safeText(handoffAction && handoffAction.description, 'Create a Codex handoff from the current TOD thread.'); handoffQuickActionButton.hidden = !handoffAction; }} }}
-    function renderExecution(execution) {{ const payload = execution && typeof execution === 'object' ? execution : {{}}; latestExecution = payload; executionSummary.textContent = safeText(payload.summary, 'No TOD execution activity is currently published.'); executionObjective.textContent = safeText(payload.objective_id, 'Unknown'); executionTask.textContent = safeText(payload.title || payload.task_focus || payload.task_id, 'No active task'); executionState.textContent = safeText(payload.activity_label || payload.execution_state || payload.status, 'Idle'); executionWaitTarget.textContent = safeText(payload.wait_target_label, 'Not waiting on an external dependency.'); executionWaitReason.textContent = safeText(payload.wait_reason, 'No specific wait reason published.'); executionAction.textContent = safeText(payload.current_action, 'No current action published.'); executionNextStep.textContent = safeText(payload.next_step, 'No next step published.'); executionValidation.textContent = safeText(payload.next_validation || payload.validation_summary, 'No validation target published.'); executionCommandOutput.textContent = safeText(payload.command_output, 'No command output published.'); executionFilesChanged.textContent = safeJoin(payload.files_changed, 'None'); executionMatchedFiles.textContent = safeJoin(payload.matched_files, 'None'); executionRollback.textContent = safeText(payload.rollback_state, 'not_needed'); executionRecovery.textContent = safeText(payload.recovery_state, 'not_needed'); const checks = Array.isArray(payload.validation_checks) ? payload.validation_checks.map((item) => item && typeof item === 'object' ? `${{safeText(item.name, 'check')}}=${{item.passed ? 'passed' : 'failed'}}` : '').filter(Boolean) : []; executionChecks.textContent = checks.length ? checks.join(', ') : 'None'; executionUpdated.textContent = payload.updated_at ? `${{safeText(payload.updated_at)}} · ${{safeText(payload.updated_age, 'Unknown')}}` : 'Unknown'; }}
-    function renderPrimaryStatus(status, execution) {{ const statusPayload = status && typeof status === 'object' ? status : {{}}; const executionPayload = execution && typeof execution === 'object' ? execution : {{}}; const trainingPayload = latestTraining && typeof latestTraining === 'object' ? latestTraining : {{}}; const trainingActive = Boolean(trainingPayload.available) && Boolean(trainingPayload.active); if (trainingActive) {{ const trainingState = safeText(trainingPayload.state_label || trainingPayload.state, 'Training Active'); const trainingSummary = safeText(trainingPayload.summary, 'TOD training is active.'); const trainingStep = safeText(trainingPayload.current_step, 'Current step not published.'); const executionSlice = Boolean(executionPayload.available) ? safeText(executionPayload.summary, '') : ''; statusChip.textContent = trainingState.toUpperCase(); statusChip.dataset.tone = safeText(trainingTone(trainingPayload), 'pending').toLowerCase(); statusHeadline.textContent = 'TOD training is active'; statusSummary.textContent = safeText([trainingSummary, `Current step: ${{trainingStep}}.`, executionSlice ? `Latest execution slice: ${{executionSlice}}` : ''].filter(Boolean).join(' '), 'TOD training is active.'); return; }} const useExecution = Boolean(executionPayload.available) && ['working', 'waiting', 'complete', 'stalled'].includes(safeText(executionPayload.activity_state, 'idle').toLowerCase()); if (useExecution) {{ const phaseProgress = executionPayload.phase_progress && typeof executionPayload.phase_progress === 'object' ? executionPayload.phase_progress : {{}}; const stallSignal = executionPayload.stall_signal && typeof executionPayload.stall_signal === 'object' ? executionPayload.stall_signal : {{}}; const stallLevel = safeText(stallSignal.level, 'ok').toLowerCase(); const phaseLabel = safeText(phaseProgress.label, 'Phase progress'); const phaseSummary = Boolean(phaseProgress.available) ? `${{phaseLabel}} ${{Math.max(0, Math.min(100, Number(phaseProgress.percent_complete || 0)))}}% complete; next gate ${{safeText(phaseProgress.next_gate, 'Unknown')}}.` : ''; const stallSummary = stallLevel !== 'ok' ? safeText(stallSignal.summary, '') : executionPayload.available ? 'Stall watch clear.' : ''; const activityState = safeText(executionPayload.activity_state, 'unknown').toLowerCase(); const activityLabel = safeText(executionPayload.activity_label, 'UNKNOWN'); statusChip.textContent = activityLabel.toUpperCase(); statusChip.dataset.tone = activityState; statusHeadline.textContent = activityState === 'complete' ? 'Latest TOD execution slice is complete' : `TOD execution is ${{activityLabel.toLowerCase()}}`; statusSummary.textContent = safeText([safeText(executionPayload.activity_summary || executionPayload.summary, ''), phaseSummary, stallSummary].filter(Boolean).join(' '), 'No shared TOD execution summary is available.'); return; }} statusChip.textContent = safeText(statusPayload.label, 'UNKNOWN'); statusChip.dataset.tone = safeText(statusPayload.code, 'unknown').toLowerCase(); statusHeadline.textContent = safeText(statusPayload.headline, 'TOD state unavailable'); statusSummary.textContent = safeText(statusPayload.summary, 'No shared TOD summary is available.'); }}
-    function renderTopActivity() {{ const execution = latestExecution && typeof latestExecution === 'object' ? latestExecution : {{}}; const trainingPayload = latestTraining && typeof latestTraining === 'object' ? latestTraining : {{}}; const sessionActivity = latestSessionActivity && typeof latestSessionActivity === 'object' ? latestSessionActivity : {{}}; const trainingActive = Boolean(trainingPayload.available) && Boolean(trainingPayload.active); const useExecution = !trainingActive && Boolean(execution.available) && safeText(execution.activity_state, 'idle').toLowerCase() !== 'idle'; const state = trainingActive ? 'working' : useExecution ? safeText(execution.activity_state, 'idle').toLowerCase() : safeText(sessionActivity.state, 'idle').toLowerCase(); const label = trainingActive ? 'Training' : useExecution ? safeText(execution.activity_label, 'Idle') : safeText(sessionActivity.label, 'Idle'); const summary = trainingActive ? safeText([safeText(trainingPayload.summary, ''), safeText(trainingPayload.current_step, '')].filter(Boolean).join(' · '), 'TOD training is active.') : useExecution ? safeText(execution.activity_summary, 'Waiting for TOD activity.') : safeText(sessionActivity.summary, 'Waiting for TOD activity.'); const ageText = trainingActive ? (trainingPayload.updated_at ? ` · updated ${{safeText(trainingPayload.updated_age, 'Unknown')}}` : '') : (() => {{ const ageSeconds = useExecution ? Number(execution.last_update_age_seconds) : Number(sessionActivity.last_activity_age_seconds); return Number.isFinite(ageSeconds) && ageSeconds >= 0 ? ` · last update ${{formatSeconds(ageSeconds)}} ago` : ''; }})(); if (chatActivityIndicator) chatActivityIndicator.dataset.state = state; if (chatActivityText) chatActivityText.textContent = label; if (chatActivitySummary) chatActivitySummary.textContent = `${{summary}}${{ageText}}`; }}
+    function renderExecution(execution) {{ const payload = execution && typeof execution === 'object' ? execution : {{}}; latestExecution = payload; const planner = payload.planner_state && typeof payload.planner_state === 'object' ? payload.planner_state : {{}}; const usePlanner = plannerIsPrimary(planner); executionSummary.textContent = usePlanner ? safeText(planner.summary, 'No planner summary published.') : safeText(payload.summary, 'No TOD execution activity is currently published.'); executionObjective.textContent = usePlanner ? safeText(planner.objective_id || payload.objective_id, 'Unknown') : safeText(payload.objective_id, 'Unknown'); executionTask.textContent = usePlanner ? safeText(planner.title || payload.title || payload.task_focus || planner.task_id, 'No active task') : safeText(payload.title || payload.task_focus || payload.task_id, 'No active task'); executionState.textContent = usePlanner ? safeText(planner.status_label || planner.status, 'Idle') : safeText(payload.activity_label || payload.execution_state || payload.status, 'Idle'); executionWaitTarget.textContent = usePlanner ? safeText(planner.assigned_executor || payload.wait_target_label, 'Not waiting on an external dependency.') : safeText(payload.wait_target_label, 'Not waiting on an external dependency.'); executionWaitReason.textContent = usePlanner ? safeText(planner.summary, 'No specific wait reason published.') : safeText(payload.wait_reason, 'No specific wait reason published.'); executionAction.textContent = usePlanner ? safeText(planner.current_step, 'No current action published.') : safeText(payload.current_action, 'No current action published.'); executionNextStep.textContent = usePlanner ? safeText(planner.next_step, 'No next step published.') : safeText(payload.next_step, 'No next step published.'); executionValidation.textContent = safeText(payload.next_validation || planner.requested_outcome || payload.validation_summary, 'No validation target published.'); executionCommandOutput.textContent = safeText(payload.command_output, 'No command output published.'); executionFilesChanged.textContent = safeJoin(payload.files_changed, 'None'); executionMatchedFiles.textContent = safeJoin(payload.matched_files, 'None'); executionRollback.textContent = safeText(payload.rollback_state, 'not_needed'); executionRecovery.textContent = safeText(payload.recovery_state, 'not_needed'); const checks = Array.isArray(payload.validation_checks) ? payload.validation_checks.map((item) => item && typeof item === 'object' ? `${{safeText(item.name, 'check')}}=${{item.passed ? 'passed' : 'failed'}}` : '').filter(Boolean) : []; executionChecks.textContent = checks.length ? checks.join(', ') : 'None'; executionUpdated.textContent = usePlanner ? `${{safeText(planner.updated_at, 'Unknown')}} Ã‚Â· ${{safeText(planner.updated_age, 'Unknown')}}` : payload.updated_at ? `${{safeText(payload.updated_at)}} Ã‚Â· ${{safeText(payload.updated_age, 'Unknown')}}` : 'Unknown'; }}
+    function renderPrimaryStatus(status, execution) {{ const statusPayload = status && typeof status === 'object' ? status : {{}}; const executionPayload = execution && typeof execution === 'object' ? execution : {{}}; const trainingPayload = latestTraining && typeof latestTraining === 'object' ? latestTraining : {{}}; const planner = executionPayload.planner_state && typeof executionPayload.planner_state === 'object' ? executionPayload.planner_state : {{}}; const usePlanner = plannerIsPrimary(planner); const trainingActive = Boolean(trainingPayload.available) && Boolean(trainingPayload.active); if (trainingActive) {{ const trainingState = safeText(trainingPayload.state_label || trainingPayload.state, 'Training Active'); const trainingSummary = safeText(trainingPayload.summary, 'TOD training is active.'); const trainingStep = safeText(trainingPayload.current_step, 'Current step not published.'); const executionSlice = Boolean(executionPayload.available) ? safeText(executionPayload.summary, '') : ''; statusChip.textContent = trainingState.toUpperCase(); statusChip.dataset.tone = safeText(trainingTone(trainingPayload), 'pending').toLowerCase(); statusHeadline.textContent = 'TOD training is active'; statusSummary.textContent = safeText([trainingSummary, `Current step: ${{trainingStep}}.`, executionSlice ? `Latest execution slice: ${{executionSlice}}` : ''].filter(Boolean).join(' '), 'TOD training is active.'); return; }} if (usePlanner) {{ statusChip.textContent = safeText(planner.status_label, 'QUEUED').toUpperCase(); statusChip.dataset.tone = safeText(planner.status, 'waiting').toLowerCase(); statusHeadline.textContent = `TOD planner is ${{safeText(planner.status_label, 'queued').toLowerCase()}}`; statusSummary.textContent = safeText([safeText(planner.summary, ''), `Current step: ${{safeText(planner.current_step, 'Not published')}}.`, `Next: ${{safeText(planner.next_step, 'Wait for fresh execution evidence.')}}`].filter(Boolean).join(' '), 'A fresher TOD request is waiting for execution evidence.'); return; }} const statusCode = safeText(statusPayload.code, 'unknown').toLowerCase(); const sharedTruthPrimary = ['blocked_with_reason', 'accepted_complete', 'accepted_complete_pending_mim_refresh', 'replay_or_replan_required', 'disagreement', 'stale'].includes(statusCode); const useExecution = !sharedTruthPrimary && Boolean(executionPayload.available) && ['working', 'waiting', 'complete', 'stalled', 'paused'].includes(safeText(executionPayload.activity_state, 'idle').toLowerCase()); if (useExecution) {{ const phaseProgress = executionPayload.phase_progress && typeof executionPayload.phase_progress === 'object' ? executionPayload.phase_progress : {{}}; const stallSignal = executionPayload.stall_signal && typeof executionPayload.stall_signal === 'object' ? executionPayload.stall_signal : {{}}; const stallLevel = safeText(stallSignal.level, 'ok').toLowerCase(); const phaseLabel = safeText(phaseProgress.label, 'Phase progress'); const phaseSummary = Boolean(phaseProgress.available) ? `${{phaseLabel}} ${{Math.max(0, Math.min(100, Number(phaseProgress.percent_complete || 0)))}}% complete; next gate ${{safeText(phaseProgress.next_gate, 'Unknown')}}.` : ''; const stallSummary = ['probable_stall', 'implementation_pending'].includes(stallLevel) ? safeText(stallSignal.summary, '') : executionPayload.available ? 'Stall watch clear.' : ''; const activityState = safeText(executionPayload.activity_state, 'unknown').toLowerCase(); const activityLabel = safeText(executionPayload.activity_label, 'UNKNOWN'); statusChip.textContent = activityLabel.toUpperCase(); statusChip.dataset.tone = activityState; statusHeadline.textContent = activityState === 'complete' ? 'Latest TOD execution slice is complete' : `TOD execution is ${{activityLabel.toLowerCase()}}`; statusSummary.textContent = safeText([safeText(executionPayload.activity_summary || executionPayload.summary, ''), phaseSummary, stallSummary].filter(Boolean).join(' '), 'No shared TOD execution summary is available.'); return; }} statusChip.textContent = safeText(statusPayload.label, 'UNKNOWN'); statusChip.dataset.tone = safeText(statusPayload.code, 'unknown').toLowerCase(); statusHeadline.textContent = safeText(statusPayload.headline, 'TOD state unavailable'); statusSummary.textContent = safeText(statusPayload.summary, 'No shared TOD summary is available.'); }}
+    function renderTopActivity() {{ const execution = latestExecution && typeof latestExecution === 'object' ? latestExecution : {{}}; const planner = execution.planner_state && typeof execution.planner_state === 'object' ? execution.planner_state : {{}}; const trainingPayload = latestTraining && typeof latestTraining === 'object' ? latestTraining : {{}}; const sessionActivity = latestSessionActivity && typeof latestSessionActivity === 'object' ? latestSessionActivity : {{}}; const trainingActive = Boolean(trainingPayload.available) && Boolean(trainingPayload.active); const usePlanner = !trainingActive && plannerIsPrimary(planner); const useExecution = !trainingActive && !usePlanner && Boolean(execution.available) && safeText(execution.activity_state, 'idle').toLowerCase() !== 'idle'; const state = trainingActive ? 'working' : usePlanner ? safeText(planner.status, 'waiting').toLowerCase() : useExecution ? safeText(execution.activity_state, 'idle').toLowerCase() : safeText(sessionActivity.state, 'idle').toLowerCase(); const label = trainingActive ? 'Training' : usePlanner ? safeText(planner.status_label, 'Queued') : useExecution ? safeText(execution.activity_label, 'Idle') : safeText(sessionActivity.label, 'Idle'); const summary = trainingActive ? safeText([safeText(trainingPayload.summary, ''), safeText(trainingPayload.current_step, '')].filter(Boolean).join(' Ã‚Â· '), 'TOD training is active.') : usePlanner ? safeText([safeText(planner.summary, ''), safeText(planner.current_step, '')].filter(Boolean).join(' Ã‚Â· '), 'Waiting for TOD activity.') : useExecution ? safeText(execution.activity_summary, 'Waiting for TOD activity.') : safeText(sessionActivity.summary, 'Waiting for TOD activity.'); const ageText = trainingActive ? (trainingPayload.updated_at ? ` Ã‚Â· updated ${{safeText(trainingPayload.updated_age, 'Unknown')}}` : '') : usePlanner ? (planner.updated_at ? ` Ã‚Â· updated ${{safeText(planner.updated_age, 'Unknown')}}` : '') : (() => {{ const ageSeconds = useExecution ? Number(execution.last_update_age_seconds) : Number(sessionActivity.last_activity_age_seconds); return Number.isFinite(ageSeconds) && ageSeconds >= 0 ? ` Ã‚Â· last update ${{formatSeconds(ageSeconds)}} ago` : ''; }})(); if (chatActivityIndicator) chatActivityIndicator.dataset.state = state; if (chatActivityText) chatActivityText.textContent = label; if (chatActivitySummary) chatActivitySummary.textContent = `${{summary}}${{ageText}}`; }}
     function snapshotChatScroll() {{ if (!chatThread) return {{ hadMessages: false, atBottom: true, top: 0 }}; const maxTop = Math.max(0, chatThread.scrollHeight - chatThread.clientHeight); const top = Number(chatThread.scrollTop || 0); return {{ hadMessages: chatThread.childElementCount > 0, atBottom: maxTop - top <= 48, top }}; }}
     function isSyntheticExecutionOnlyThread(messages) {{ if (!Array.isArray(messages) || !messages.length) return false; const hasUserMessages = messages.some((message) => messageRole(message) === 'user'); const firstBody = messageBody(messages[0]); return !hasUserMessages && firstBody.startsWith('Live execution feed:'); }}
     function restoreChatScroll(snapshot, messages) {{ if (!chatThread) return; if (!snapshot || !snapshot.hadMessages) {{ chatThread.scrollTop = isSyntheticExecutionOnlyThread(messages) ? 0 : chatThread.scrollHeight; return; }} if (snapshot.atBottom) {{ chatThread.scrollTop = chatThread.scrollHeight; return; }} chatThread.scrollTop = snapshot.top; }}
-    function renderChatState(data) {{ const session = data && typeof data.session === 'object' ? data.session : {{}}; const messages = Array.isArray(data && data.messages) ? data.messages : []; latestChatMessages = messages; const visitor = data && typeof data.visitor === 'object' ? data.visitor : {{}}; latestVisitor = visitor; const sessionKey = safeText(session.session_key || getChatSessionKey(latestConversation && latestConversation.default_session_key), 'unknown'); if (shouldRotateStaleChatSession(session, messages)) {{ rotateChatSession(latestConversation && latestConversation.default_session_key); chatStatus.textContent = 'Started a fresh TOD chat session because the previous thread was stale.'; clearNode(chatThread); appendCollectionItem(chatThread, 'TOD Chat', '', 'Started a fresh TOD session because the previous thread was stale. Ask for current status, next steps, or send a new request.'); renderChatActivity({{ activity: {{ state: 'idle', label: 'Fresh Session', summary: 'Started a fresh TOD session after the previous thread went stale.' }} }}); updateCopyButtonState(); setTimeout(() => {{ refreshChatState().catch((error) => {{ chatStatus.textContent = safeText(error && error.message, 'Unable to refresh fresh TOD session.'); }}); }}, 0); return; }} chatSessionMeta.textContent = `Session: ${{sessionKey}} · User: ${{safeText(visitor.name, 'Dave')}}`; clearNode(chatThread); if (!messages.length) {{ appendCollectionItem(chatThread, 'TOD Chat', '', 'No TOD messages are in this session yet. Ask for status, blockers, training progress, execution work, or attach a screenshot.'); }} else {{ messages.forEach((message) => {{ const bubble = document.createElement('article'); const role = messageRole(message); bubble.className = `chat-bubble ${{role}}`; const roleNode = document.createElement('div'); roleNode.className = 'chat-role'; roleNode.textContent = messageLabel(message, role); const timeNode = document.createElement('div'); timeNode.className = 'chat-time'; timeNode.textContent = safeText(message.created_at || message.generated_at || message.timestamp, ''); const contentNode = document.createElement('div'); contentNode.className = 'chat-message'; contentNode.textContent = messageBody(message) || 'No message content'; bubble.appendChild(roleNode); if (timeNode.textContent) bubble.appendChild(timeNode); bubble.appendChild(contentNode); const attachment = messageAttachment(message); if (attachment && attachment.url) {{ const previewImg = document.createElement('img'); previewImg.src = safeText(attachment.thumbnail_url || attachment.url, ''); previewImg.alt = safeText(attachment.filename || 'Attached screenshot', 'Attached screenshot'); previewImg.style.marginTop = '10px'; previewImg.style.maxWidth = '320px'; previewImg.style.width = '100%'; previewImg.style.borderRadius = '10px'; previewImg.style.border = '1px solid rgba(97,219,191,0.18)'; previewImg.style.background = 'rgba(3,15,13,0.82)'; const attachmentMeta = document.createElement('div'); attachmentMeta.className = 'chat-time'; attachmentMeta.textContent = `${{safeText(attachment.filename, 'image')}} · ${{Math.max(1, Math.round(Number(attachment.size_bytes || 0) / 1024))}} KB`; bubble.appendChild(previewImg); bubble.appendChild(attachmentMeta); }} chatThread.appendChild(bubble); }}); }} chatThread.scrollTop = chatThread.scrollHeight; updateCopyButtonState(); chatStatus.textContent = visitor.memory_summary ? safeText(visitor.memory_summary) : 'TOD operator chat is ready.'; renderChatActivity(session); const autoTrigger = latestConversation && typeof latestConversation.auto_trigger === 'object' ? latestConversation.auto_trigger : null; const enabled = Boolean(autoTrigger && autoTrigger.enabled); const statusCodes = autoTrigger && Array.isArray(autoTrigger.status_codes) ? autoTrigger.status_codes.map((value) => safeText(value, '').toLowerCase()).filter(Boolean) : []; const autoPrompt = autoTrigger ? safeText(autoTrigger.prompt, '') : ''; const shouldAutoTrigger = enabled && autoPrompt && statusCodes.includes(safeText(currentStatusCode, 'unknown').toLowerCase()) && messages.length === 0; if (shouldAutoTrigger) {{ const storageKey = getAutoTriggerStorageKey(sessionKey, currentStatusCode, autoPrompt); if (!hasAutoTriggered(storageKey)) {{ markAutoTriggered(storageKey); sendChatPrompt(autoPrompt, safeText(autoTrigger && autoTrigger.success_text, 'TOD auto-resolution request sent.')).then((ok) => {{ if (!ok) clearAutoTriggered(storageKey); }}); }} }} }}
-    function renderChatState(data) {{ const session = data && typeof data.session === 'object' ? data.session : {{}}; const messages = Array.isArray(data && data.messages) ? data.messages : []; latestChatMessages = messages; const visitor = data && typeof data.visitor === 'object' ? data.visitor : {{}}; latestVisitor = visitor; latestSessionActivity = session && typeof session.activity === 'object' ? session.activity : {{}}; const sessionKey = safeText(session.session_key || getChatSessionKey(latestConversation && latestConversation.default_session_key), 'unknown'); if (shouldRotateStaleChatSession(session, messages)) {{ rotateChatSession(latestConversation && latestConversation.default_session_key); chatStatus.textContent = 'Started a fresh TOD chat session because the previous thread was stale.'; clearNode(chatThread); appendCollectionItem(chatThread, 'TOD Chat', '', 'Started a fresh TOD session because the previous thread was stale. Ask for current status, next steps, or send a new request.'); latestSessionActivity = {{ state: 'idle', label: 'Fresh Session', summary: 'Started a fresh TOD session after the previous thread went stale.' }}; renderTopActivity(); updateCopyButtonState(); setTimeout(() => {{ refreshChatState().catch((error) => {{ chatStatus.textContent = safeText(error && error.message, 'Unable to refresh fresh TOD session.'); }}); }}, 0); return; }} chatSessionMeta.textContent = `Session: ${{sessionKey}} · User: ${{safeText(visitor.name, 'Dave')}}`; const scrollSnapshot = snapshotChatScroll(); clearNode(chatThread); if (!messages.length) {{ appendCollectionItem(chatThread, 'TOD Chat', '', 'No TOD messages are in this session yet. Ask for status, blockers, training progress, execution work, or attach a screenshot.'); }} else {{ messages.forEach((message) => {{ const bubble = document.createElement('article'); const role = messageRole(message); bubble.className = `chat-bubble ${{role}}`; const roleNode = document.createElement('div'); roleNode.className = 'chat-role'; roleNode.textContent = messageLabel(message, role); const timeNode = document.createElement('div'); timeNode.className = 'chat-time'; timeNode.textContent = safeText(message.created_at || message.generated_at || message.timestamp, ''); const contentNode = document.createElement('div'); contentNode.className = 'chat-message'; contentNode.textContent = messageBody(message) || 'No message content'; bubble.appendChild(roleNode); if (timeNode.textContent) bubble.appendChild(timeNode); bubble.appendChild(contentNode); const attachment = messageAttachment(message); if (attachment && attachment.url) {{ const previewImg = document.createElement('img'); previewImg.src = safeText(attachment.thumbnail_url || attachment.url, ''); previewImg.alt = safeText(attachment.filename || 'Attached screenshot', 'Attached screenshot'); previewImg.style.marginTop = '10px'; previewImg.style.maxWidth = '320px'; previewImg.style.width = '100%'; previewImg.style.borderRadius = '10px'; previewImg.style.border = '1px solid rgba(97,219,191,0.18)'; previewImg.style.background = 'rgba(3,15,13,0.82)'; const attachmentMeta = document.createElement('div'); attachmentMeta.className = 'chat-time'; attachmentMeta.textContent = `${{safeText(attachment.filename, 'image')}} · ${{Math.max(1, Math.round(Number(attachment.size_bytes || 0) / 1024))}} KB`; bubble.appendChild(previewImg); bubble.appendChild(attachmentMeta); }} chatThread.appendChild(bubble); }}); }} restoreChatScroll(scrollSnapshot, messages); updateCopyButtonState(); chatStatus.textContent = visitor.memory_summary ? safeText(visitor.memory_summary) : 'TOD operator chat is ready.'; renderTopActivity(); const autoTrigger = latestConversation && typeof latestConversation.auto_trigger === 'object' ? latestConversation.auto_trigger : null; const enabled = Boolean(autoTrigger && autoTrigger.enabled); const statusCodes = autoTrigger && Array.isArray(autoTrigger.status_codes) ? autoTrigger.status_codes.map((value) => safeText(value, '').toLowerCase()).filter(Boolean) : []; const autoPrompt = autoTrigger ? safeText(autoTrigger.prompt, '') : ''; const shouldAutoTrigger = enabled && autoPrompt && statusCodes.includes(safeText(currentStatusCode, 'unknown').toLowerCase()) && messages.length === 0; if (shouldAutoTrigger) {{ const storageKey = getAutoTriggerStorageKey(sessionKey, currentStatusCode, autoPrompt); if (!hasAutoTriggered(storageKey)) {{ markAutoTriggered(storageKey); sendChatPrompt(autoPrompt, safeText(autoTrigger && autoTrigger.success_text, 'TOD auto-resolution request sent.')).then((ok) => {{ if (!ok) clearAutoTriggered(storageKey); }}); }} }} }}
+    function renderChatState(data) {{ const session = data && typeof data.session === 'object' ? data.session : {{}}; const messages = Array.isArray(data && data.messages) ? data.messages : []; latestChatMessages = messages; const visitor = data && typeof data.visitor === 'object' ? data.visitor : {{}}; latestVisitor = visitor; const sessionKey = safeText(session.session_key || getChatSessionKey(latestConversation && latestConversation.default_session_key), 'unknown'); if (shouldRotateStaleChatSession(session, messages)) {{ rotateChatSession(latestConversation && latestConversation.default_session_key); chatStatus.textContent = 'Started a fresh TOD chat session because the previous thread was stale.'; clearNode(chatThread); appendCollectionItem(chatThread, 'TOD Chat', '', 'Started a fresh TOD session because the previous thread was stale. Ask for current status, next steps, or send a new request.'); renderChatActivity({{ activity: {{ state: 'idle', label: 'Fresh Session', summary: 'Started a fresh TOD session after the previous thread went stale.' }} }}); updateCopyButtonState(); setTimeout(() => {{ refreshChatState().catch((error) => {{ chatStatus.textContent = safeText(error && error.message, 'Unable to refresh fresh TOD session.'); }}); }}, 0); return; }} chatSessionMeta.textContent = `Session: ${{sessionKey}} Ã‚Â· User: ${{safeText(visitor.name, 'Dave')}}`; clearNode(chatThread); if (!messages.length) {{ appendCollectionItem(chatThread, 'TOD Chat', '', 'No TOD messages are in this session yet. Ask for status, blockers, training progress, execution work, or attach a screenshot.'); }} else {{ messages.forEach((message) => {{ const bubble = document.createElement('article'); const role = messageRole(message); bubble.className = `chat-bubble ${{role}}`; const roleNode = document.createElement('div'); roleNode.className = 'chat-role'; roleNode.textContent = messageLabel(message, role); const timeNode = document.createElement('div'); timeNode.className = 'chat-time'; timeNode.textContent = safeText(message.created_at || message.generated_at || message.timestamp, ''); const contentNode = document.createElement('div'); contentNode.className = 'chat-message'; contentNode.textContent = messageBody(message) || 'No message content'; bubble.appendChild(roleNode); if (timeNode.textContent) bubble.appendChild(timeNode); bubble.appendChild(contentNode); const attachment = messageAttachment(message); if (attachment && attachment.url) {{ const previewImg = document.createElement('img'); previewImg.src = safeText(attachment.thumbnail_url || attachment.url, ''); previewImg.alt = safeText(attachment.filename || 'Attached screenshot', 'Attached screenshot'); previewImg.style.marginTop = '10px'; previewImg.style.maxWidth = '320px'; previewImg.style.width = '100%'; previewImg.style.borderRadius = '10px'; previewImg.style.border = '1px solid rgba(97,219,191,0.18)'; previewImg.style.background = 'rgba(3,15,13,0.82)'; const attachmentMeta = document.createElement('div'); attachmentMeta.className = 'chat-time'; attachmentMeta.textContent = `${{safeText(attachment.filename, 'image')}} Ã‚Â· ${{Math.max(1, Math.round(Number(attachment.size_bytes || 0) / 1024))}} KB`; bubble.appendChild(previewImg); bubble.appendChild(attachmentMeta); }} chatThread.appendChild(bubble); }}); }} chatThread.scrollTop = chatThread.scrollHeight; updateCopyButtonState(); chatStatus.textContent = visitor.memory_summary ? safeText(visitor.memory_summary) : 'TOD operator chat is ready.'; renderChatActivity(session); const autoTrigger = latestConversation && typeof latestConversation.auto_trigger === 'object' ? latestConversation.auto_trigger : null; const enabled = Boolean(autoTrigger && autoTrigger.enabled); const statusCodes = autoTrigger && Array.isArray(autoTrigger.status_codes) ? autoTrigger.status_codes.map((value) => safeText(value, '').toLowerCase()).filter(Boolean) : []; const autoPrompt = autoTrigger ? safeText(autoTrigger.prompt, '') : ''; const shouldAutoTrigger = enabled && autoPrompt && statusCodes.includes(safeText(currentStatusCode, 'unknown').toLowerCase()) && messages.length === 0; if (shouldAutoTrigger) {{ const storageKey = getAutoTriggerStorageKey(sessionKey, currentStatusCode, autoPrompt); if (!hasAutoTriggered(storageKey)) {{ markAutoTriggered(storageKey); sendChatPrompt(autoPrompt, safeText(autoTrigger && autoTrigger.success_text, 'TOD auto-resolution request sent.')).then((ok) => {{ if (!ok) clearAutoTriggered(storageKey); }}); }} }} }}
+    function renderChatState(data) {{ const session = data && typeof data.session === 'object' ? data.session : {{}}; const messages = Array.isArray(data && data.messages) ? data.messages : []; latestChatMessages = messages; const visitor = data && typeof data.visitor === 'object' ? data.visitor : {{}}; latestVisitor = visitor; latestSessionActivity = session && typeof session.activity === 'object' ? session.activity : {{}}; const sessionKey = safeText(session.session_key || getChatSessionKey(latestConversation && latestConversation.default_session_key), 'unknown'); if (shouldRotateStaleChatSession(session, messages)) {{ rotateChatSession(latestConversation && latestConversation.default_session_key); chatStatus.textContent = 'Started a fresh TOD chat session because the previous thread was stale.'; clearNode(chatThread); appendCollectionItem(chatThread, 'TOD Chat', '', 'Started a fresh TOD session because the previous thread was stale. Ask for current status, next steps, or send a new request.'); latestSessionActivity = {{ state: 'idle', label: 'Fresh Session', summary: 'Started a fresh TOD session after the previous thread went stale.' }}; renderTopActivity(); updateCopyButtonState(); setTimeout(() => {{ refreshChatState().catch((error) => {{ chatStatus.textContent = safeText(error && error.message, 'Unable to refresh fresh TOD session.'); }}); }}, 0); return; }} chatSessionMeta.textContent = `Session: ${{sessionKey}} Ã‚Â· User: ${{safeText(visitor.name, 'Dave')}}`; const scrollSnapshot = snapshotChatScroll(); clearNode(chatThread); if (!messages.length) {{ appendCollectionItem(chatThread, 'TOD Chat', '', 'No TOD messages are in this session yet. Ask for status, blockers, training progress, execution work, or attach a screenshot.'); }} else {{ messages.forEach((message) => {{ const bubble = document.createElement('article'); const role = messageRole(message); bubble.className = `chat-bubble ${{role}}`; const roleNode = document.createElement('div'); roleNode.className = 'chat-role'; roleNode.textContent = messageLabel(message, role); const timeNode = document.createElement('div'); timeNode.className = 'chat-time'; timeNode.textContent = safeText(message.created_at || message.generated_at || message.timestamp, ''); const contentNode = document.createElement('div'); contentNode.className = 'chat-message'; contentNode.textContent = messageBody(message) || 'No message content'; bubble.appendChild(roleNode); if (timeNode.textContent) bubble.appendChild(timeNode); bubble.appendChild(contentNode); const attachment = messageAttachment(message); if (attachment && attachment.url) {{ const previewImg = document.createElement('img'); previewImg.src = safeText(attachment.thumbnail_url || attachment.url, ''); previewImg.alt = safeText(attachment.filename || 'Attached screenshot', 'Attached screenshot'); previewImg.style.marginTop = '10px'; previewImg.style.maxWidth = '320px'; previewImg.style.width = '100%'; previewImg.style.borderRadius = '10px'; previewImg.style.border = '1px solid rgba(97,219,191,0.18)'; previewImg.style.background = 'rgba(3,15,13,0.82)'; const attachmentMeta = document.createElement('div'); attachmentMeta.className = 'chat-time'; attachmentMeta.textContent = `${{safeText(attachment.filename, 'image')}} Ã‚Â· ${{Math.max(1, Math.round(Number(attachment.size_bytes || 0) / 1024))}} KB`; bubble.appendChild(previewImg); bubble.appendChild(attachmentMeta); }} chatThread.appendChild(bubble); }}); }} restoreChatScroll(scrollSnapshot, messages); updateCopyButtonState(); chatStatus.textContent = visitor.memory_summary ? safeText(visitor.memory_summary) : 'TOD operator chat is ready.'; renderTopActivity(); const autoTrigger = latestConversation && typeof latestConversation.auto_trigger === 'object' ? latestConversation.auto_trigger : null; const enabled = Boolean(autoTrigger && autoTrigger.enabled); const statusCodes = autoTrigger && Array.isArray(autoTrigger.status_codes) ? autoTrigger.status_codes.map((value) => safeText(value, '').toLowerCase()).filter(Boolean) : []; const autoPrompt = autoTrigger ? safeText(autoTrigger.prompt, '') : ''; const shouldAutoTrigger = enabled && autoPrompt && statusCodes.includes(safeText(currentStatusCode, 'unknown').toLowerCase()) && messages.length === 0; if (shouldAutoTrigger) {{ const storageKey = getAutoTriggerStorageKey(sessionKey, currentStatusCode, autoPrompt); if (!hasAutoTriggered(storageKey)) {{ markAutoTriggered(storageKey); sendChatPrompt(autoPrompt, safeText(autoTrigger && autoTrigger.success_text, 'TOD auto-resolution request sent.')).then((ok) => {{ if (!ok) clearAutoTriggered(storageKey); }}); }} }} }}
     async function refreshChatState() {{ if (!latestConversation || !latestConversation.enabled) {{ chatStatus.textContent = 'TOD operator chat is disabled on this surface.'; return; }} const sessionKey = getChatSessionKey(latestConversation.default_session_key); const url = `${{safeText(latestConversation.state_url, '/tod/ui/chat/state')}}?session_key=${{encodeURIComponent(sessionKey)}}&mode=${{encodeURIComponent(safeText(latestConversation.mode, 'tod'))}}`; const response = await fetch(url, {{ cache: 'no-store' }}); if (!response.ok) throw new Error(`chat-state-${{response.status}}`); const data = await response.json(); renderChatState(data); }}
     async function sendChatPrompt(message, successText) {{ if (!latestConversation || !latestConversation.enabled) {{ chatStatus.textContent = 'TOD chat is unavailable.'; return false; }} const trimmedMessage = String(message || '').trim(); if (!trimmedMessage) {{ chatStatus.textContent = 'Enter a message for TOD first.'; return false; }} setChatButtonsDisabled(true); chatStatus.textContent = 'Sending to TOD...'; try {{ const response = await fetch(safeText(latestConversation.message_url, '/tod/ui/chat/message'), {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ message: trimmedMessage, mode: safeText(latestConversation.mode, 'tod'), session_key: getChatSessionKey(latestConversation.default_session_key) }}) }}); if (!response.ok) throw new Error(`chat-send-${{response.status}}`); chatInput.value = ''; await refreshChatState(); chatStatus.textContent = safeText(successText, 'TOD replied on this operator channel.'); return true; }} catch (error) {{ chatStatus.textContent = `TOD chat failed: ${{safeText(error && error.message, 'unknown error')}}`; return false; }} finally {{ setChatButtonsDisabled(false); }} }}
     async function uploadComposerImage() {{ if (!(selectedComposerImage instanceof File)) return false; if (!latestConversation || !latestConversation.enabled) {{ chatStatus.textContent = 'TOD image upload is unavailable.'; return false; }} const uploadUrl = safeText((latestConversation.actions && latestConversation.actions.upload_url) || latestConversation.upload_url, '/tod/ui/chat/upload-image'); setChatButtonsDisabled(true); chatStatus.textContent = 'Uploading screenshot to TOD...'; try {{ const dataUrl = await fileToDataUrl(selectedComposerImage); const response = await fetch(uploadUrl, {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ session_key: getChatSessionKey(latestConversation.default_session_key), mode: safeText(latestConversation.mode, 'tod'), prompt: String(chatInput && chatInput.value || '').trim(), attachment: {{ filename: selectedComposerImage.name || 'shared-image', mime_type: selectedComposerImage.type || 'image/png', size_bytes: Number(selectedComposerImage.size || 0), data_url: dataUrl }} }}) }}); if (!response.ok) throw new Error(`chat-upload-${{response.status}}`); const data = await response.json(); renderChatState(data); if (chatInput) chatInput.value = ''; resetComposerImage(); chatStatus.textContent = 'Screenshot attached to the TOD thread. Use Send To Codex to package it for deeper review.'; return true; }} catch (error) {{ chatStatus.textContent = `TOD image upload failed: ${{safeText(error && error.message, 'unknown error')}}`; return false; }} finally {{ setChatButtonsDisabled(false); }} }}
-    async function createCopilotHandoff(message, successText) {{ if (!latestConversation || !latestConversation.enabled) {{ chatStatus.textContent = 'TOD handoff is unavailable.'; return false; }} const trimmedMessage = String(message || '').trim(); if (!trimmedMessage) {{ chatStatus.textContent = 'Enter a handoff request first.'; return false; }} setChatButtonsDisabled(true); chatStatus.textContent = 'Creating Codex handoff...'; try {{ const response = await fetch(safeText(latestConversation.handoff_url, '/tod/ui/chat/handoff'), {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ message: trimmedMessage, mode: safeText(latestConversation.mode, 'tod'), session_key: getChatSessionKey(latestConversation.default_session_key) }}) }}); if (!response.ok) throw new Error(`handoff-send-${{response.status}}`); const data = await response.json(); renderChatState(data); chatInput.value = ''; const handoff = data && typeof data.handoff === 'object' ? data.handoff : null; chatStatus.textContent = handoff && handoff.session_id ? `${{safeText(successText, 'Codex handoff created.')}} Session: ${{safeText(handoff.session_id)}} · Codex receives the current request, strongest evidence, next validation target, and the latest screenshot from this thread when present.` : safeText(successText, 'Codex handoff created.'); return true; }} catch (error) {{ chatStatus.textContent = `TOD handoff failed: ${{safeText(error && error.message, 'unknown error')}}`; return false; }} finally {{ setChatButtonsDisabled(false); }} }}
+    async function createCopilotHandoff(message, successText) {{ if (!latestConversation || !latestConversation.enabled) {{ chatStatus.textContent = 'TOD handoff is unavailable.'; return false; }} const trimmedMessage = String(message || '').trim(); if (!trimmedMessage) {{ chatStatus.textContent = 'Enter a handoff request first.'; return false; }} setChatButtonsDisabled(true); chatStatus.textContent = 'Creating Codex handoff...'; try {{ const response = await fetch(safeText(latestConversation.handoff_url, '/tod/ui/chat/handoff'), {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ message: trimmedMessage, mode: safeText(latestConversation.mode, 'tod'), session_key: getChatSessionKey(latestConversation.default_session_key) }}) }}); if (!response.ok) throw new Error(`handoff-send-${{response.status}}`); const data = await response.json(); renderChatState(data); chatInput.value = ''; const handoff = data && typeof data.handoff === 'object' ? data.handoff : null; chatStatus.textContent = handoff && handoff.session_id ? `${{safeText(successText, 'Codex handoff created.')}} Session: ${{safeText(handoff.session_id)}} Ã‚Â· Codex receives the current request, strongest evidence, next validation target, and the latest screenshot from this thread when present.` : safeText(successText, 'Codex handoff created.'); return true; }} catch (error) {{ chatStatus.textContent = `TOD handoff failed: ${{safeText(error && error.message, 'unknown error')}}`; return false; }} finally {{ setChatButtonsDisabled(false); }} }}
     async function sendChatMessage(event) {{ event.preventDefault(); if (selectedComposerImage instanceof File) {{ await uploadComposerImage(); return; }} await sendChatPrompt(chatInput.value, 'TOD replied on this operator channel.'); }}
     async function handleQuickAction(actionId) {{ const action = chatQuickActionMap.get(String(actionId || '')); if (!action || !action.prompt) {{ chatStatus.textContent = 'That TOD quick action is not available right now.'; return; }} if (chatInput) chatInput.value = action.prompt; if (safeText(action.actionType, 'prompt') === 'handoff') {{ await createCopilotHandoff(action.prompt, `${{safeText(action.label, 'Quick action')}} created a Codex handoff.`); return; }} await sendChatPrompt(action.prompt, `${{safeText(action.label, 'Quick action')}} sent to TOD.`); }}
-    function renderState(data) {{ const status = data && typeof data.status === 'object' ? data.status : {{}}; const quickFacts = data && typeof data.quick_facts === 'object' ? data.quick_facts : {{}}; const execution = data && typeof data.execution === 'object' ? data.execution : {{}}; const training = data && typeof data.training_status === 'object' ? data.training_status : {{}}; const phaseProgress = execution.phase_progress && typeof execution.phase_progress === 'object' ? execution.phase_progress : {{}}; const stallSignal = execution.stall_signal && typeof execution.stall_signal === 'object' ? execution.stall_signal : {{}}; const stallLevel = safeText(stallSignal.level, 'ok').toLowerCase(); const alignment = data && typeof data.objective_alignment === 'object' ? data.objective_alignment : {{}}; const evidence = data && typeof data.bridge_canonical_evidence === 'object' ? data.bridge_canonical_evidence : {{}}; const liveTask = data && typeof data.live_task_request === 'object' ? data.live_task_request : {{}}; const decision = data && typeof data.listener_decision === 'object' ? data.listener_decision : {{}}; const publish = data && typeof data.publish === 'object' ? data.publish : {{}}; const authority = data && typeof data.authority_reset === 'object' ? data.authority_reset : {{}}; latestConversation = data && typeof data.conversation === 'object' ? data.conversation : null; currentStatusCode = safeText(status.code, 'unknown').toLowerCase(); renderQuickActions(latestConversation); renderExecution(execution); renderTraining(training); renderTopActivity(); renderPrimaryStatus(status, execution); if (alignmentQuickActionPanel) alignmentQuickActionPanel.hidden = ['aligned'].includes(safeText(status.code, 'unknown').toLowerCase()); setConsoleLight(todConsoleLight, ['aligned'].includes(safeText(status.code, 'unknown').toLowerCase())); setConsoleLight(mimConsoleLight, Boolean(data.mim_status && data.mim_status.available)); factCanonicalObjective.textContent = safeText(quickFacts.canonical_objective, 'Unknown'); factCanonicalMeta.textContent = safeText(data.mim_status && data.mim_status.generated_age, 'Unknown'); factLiveObjective.textContent = safeText(quickFacts.live_request_objective, 'Unknown'); factLiveMeta.textContent = `Request age: ${{safeText(liveTask.generated_age, 'Unknown')}}`; factAlignment.textContent = safeText(alignment.status, 'unknown').replaceAll('_', ' '); factAlignmentMeta.textContent = safeText(alignment.summary, 'No alignment summary'); factListenerState.textContent = safeText(quickFacts.listener_state, 'unknown'); factListenerMeta.textContent = safeText(decision.summary, 'No listener decision summary'); if (factPhaseProgressLabel) factPhaseProgressLabel.textContent = Boolean(phaseProgress.available) ? safeText(phaseProgress.label, 'Phase Progress') : 'Phase Progress'; factPhaseProgress.textContent = Boolean(phaseProgress.available) ? `${{Math.max(0, Math.min(100, Number(phaseProgress.percent_complete || 0)))}}%` : 'Unknown'; factPhaseProgressMeta.textContent = Boolean(phaseProgress.available) ? safeText(phaseProgress.summary, 'No phase progress summary.') : 'Waiting for bounded execution progress.'; factStallWatch.textContent = stallSignal.flagged ? 'Probable stall' : stallLevel === 'implementation_pending' ? 'Held at gate' : execution.available ? 'Clear' : 'Unknown'; factStallWatchMeta.textContent = stallLevel !== 'ok' ? safeText(stallSignal.summary, stallSignal.flagged ? 'Probable stall detected.' : 'Implementation is pending.') : execution.available ? `Last update: ${{formatSeconds(execution.last_update_age_seconds)}} ago.` : 'Waiting for execution freshness evidence.'; factPublishStatus.textContent = safeText(quickFacts.publish_status, 'unknown'); factPublishMeta.textContent = safeText(publish.summary, 'No publish summary'); factAuthorityReset.textContent = safeText(quickFacts.authority_reset, 'Inactive'); factAuthorityMeta.textContent = authority.active ? safeText(authority.reason, 'Authority reset active') : 'No authority reset is active.'; renderGuidance(data.operator_guidance || []); renderHandoffs(data.recent_handoffs || []); publishSummary.textContent = safeText(publish.summary, 'No publish summary'); publishMirror.textContent = safeText(publish.mim_mirror_status, 'Unknown'); publishAccess.textContent = safeText(publish.remote_access_status, 'Unknown'); publishConsumer.textContent = safeText(publish.consumer_status, 'Unknown'); publishTime.textContent = `${{safeText(publish.uploaded_at, 'Unknown')}} · ${{safeText(publish.uploaded_age, 'Unknown')}}`; publishError.textContent = safeText(publish.error, 'None'); alignmentSummary.textContent = safeText(alignment.summary, 'No alignment summary'); alignmentTodObjective.textContent = safeText(alignment.tod_current_objective, 'Unknown'); alignmentMimObjective.textContent = safeText(alignment.mim_objective_active, 'Unknown'); alignmentEvidence.textContent = safeText(evidence.status, 'Unknown'); alignmentSignals.textContent = Array.isArray(evidence.failure_signals) && evidence.failure_signals.length ? evidence.failure_signals.join(', ') : 'None'; decisionSummary.textContent = safeText(decision.summary, 'No listener decision summary'); decisionOutcome.textContent = safeText(decision.decision_outcome, 'Unknown'); decisionReason.textContent = safeText(decision.reason_code, 'Unknown'); decisionState.textContent = safeText(decision.execution_state, 'Unknown'); decisionNextStep.textContent = safeText(decision.next_step_recommendation, 'Unknown'); decisionAge.textContent = safeText(decision.generated_age, 'Unknown'); authoritySummary.textContent = authority.active ? safeText(authority.reason, 'Authority reset is active.') : 'Authority reset is inactive.'; authorityCurrent.textContent = safeText(authority.authoritative_current_objective, 'Unknown'); authorityMaxValid.textContent = safeText(authority.max_valid_objective, 'Unknown'); authorityEffective.textContent = authority.active ? `${{safeText(authority.effective_at, 'Unknown')}} · ${{safeText(authority.effective_age, 'Unknown')}}` : 'Inactive'; authorityInvalidated.textContent = Array.isArray(authority.invalidated_objectives) && authority.invalidated_objectives.length ? authority.invalidated_objectives.join(', ') : 'None'; footerGenerated.textContent = `Generated: ${{safeText(data.generated_at, 'Unknown')}}`; }}
+    function renderState(data) {{ const status = data && typeof data.status === 'object' ? data.status : {{}}; const quickFacts = data && typeof data.quick_facts === 'object' ? data.quick_facts : {{}}; const execution = data && typeof data.execution === 'object' ? data.execution : {{}}; const training = data && typeof data.training_status === 'object' ? data.training_status : {{}}; const objectiveCards = Array.isArray(data && data.objective_cards) ? data.objective_cards : []; const phaseProgress = execution.phase_progress && typeof execution.phase_progress === 'object' ? execution.phase_progress : {{}}; const stallSignal = execution.stall_signal && typeof execution.stall_signal === 'object' ? execution.stall_signal : {{}}; const stallLevel = safeText(stallSignal.level, 'ok').toLowerCase(); const alignment = data && typeof data.objective_alignment === 'object' ? data.objective_alignment : {{}}; const evidence = data && typeof data.bridge_canonical_evidence === 'object' ? data.bridge_canonical_evidence : {{}}; const liveTask = data && typeof data.live_task_request === 'object' ? data.live_task_request : {{}}; const decision = data && typeof data.listener_decision === 'object' ? data.listener_decision : {{}}; const publish = data && typeof data.publish === 'object' ? data.publish : {{}}; const authority = data && typeof data.authority_reset === 'object' ? data.authority_reset : {{}}; latestConversation = data && typeof data.conversation === 'object' ? data.conversation : null; currentStatusCode = safeText(status.code, 'unknown').toLowerCase(); const sharedTruthPrimary = ['blocked_with_reason', 'accepted_complete', 'accepted_complete_pending_mim_refresh', 'replay_or_replan_required', 'disagreement', 'stale'].includes(currentStatusCode); renderQuickActions(latestConversation); renderExecution(execution); renderTraining(training); renderTopActivity(); renderPrimaryStatus(status, execution); renderObjectiveCards(objectiveCards); renderOperatorActions(data.operator_actions || []); renderOperatorTimeline(data.operator_activity_timeline || []); renderOperatorEvidence(data.operator_evidence || {{}}); if (alignmentQuickActionPanel) alignmentQuickActionPanel.hidden = ['aligned'].includes(safeText(status.code, 'unknown').toLowerCase()); setConsoleLight(todConsoleLight, ['aligned'].includes(safeText(status.code, 'unknown').toLowerCase())); setConsoleLight(mimConsoleLight, Boolean(data.mim_status && data.mim_status.available)); factCanonicalObjective.textContent = safeText(quickFacts.canonical_objective, 'Unknown'); factCanonicalMeta.textContent = safeText(data.mim_status && data.mim_status.generated_age, 'Unknown'); factLiveObjective.textContent = safeText(quickFacts.live_request_objective, 'Unknown'); factLiveMeta.textContent = `Request age: ${{safeText(liveTask.generated_age, 'Unknown')}}`; factAlignment.textContent = safeText(alignment.status, 'unknown').replaceAll('_', ' '); factAlignmentMeta.textContent = safeText(alignment.summary, 'No alignment summary'); factListenerState.textContent = safeText(quickFacts.listener_state, 'unknown'); factListenerMeta.textContent = safeText(decision.summary, 'No listener decision summary'); if (factPhaseProgressLabel) factPhaseProgressLabel.textContent = Boolean(phaseProgress.available) && !sharedTruthPrimary ? safeText(phaseProgress.label, 'Phase Progress') : 'Phase Progress'; factPhaseProgress.textContent = Boolean(phaseProgress.available) && !sharedTruthPrimary ? `${{Math.max(0, Math.min(100, Number(phaseProgress.percent_complete || 0)))}}%` : 'Unknown'; factPhaseProgressMeta.textContent = Boolean(phaseProgress.available) && !sharedTruthPrimary ? safeText(phaseProgress.summary, 'No phase progress summary.') : safeText(status.summary, 'Waiting for bounded execution progress.'); factStallWatch.textContent = stallSignal.flagged ? 'Probable stall' : stallLevel === 'implementation_pending' ? 'Held at gate' : sharedTruthPrimary ? 'Not a stall' : execution.available ? 'Clear' : 'Unknown'; factStallWatchMeta.textContent = sharedTruthPrimary ? safeText(status.summary, 'Shared truth superseded the older stall view.') : stallLevel !== 'ok' ? safeText(stallSignal.summary, stallSignal.flagged ? 'Probable stall detected.' : 'Implementation is pending.') : execution.available ? `Last update: ${{formatSeconds(execution.last_update_age_seconds)}} ago.` : 'Waiting for execution freshness evidence.'; factPublishStatus.textContent = safeText(quickFacts.publish_status, 'unknown'); factPublishMeta.textContent = safeText(publish.summary, 'No publish summary'); factAuthorityReset.textContent = safeText(quickFacts.authority_reset, 'Inactive'); factAuthorityMeta.textContent = authority.active ? safeText(authority.reason, 'Authority reset active') : 'No authority reset is active.'; renderGuidance(data.operator_guidance || []); renderHandoffs(data.recent_handoffs || []); publishSummary.textContent = safeText(publish.summary, 'No publish summary'); publishMirror.textContent = safeText(publish.mim_mirror_status, 'Unknown'); publishAccess.textContent = safeText(publish.remote_access_status, 'Unknown'); publishConsumer.textContent = safeText(publish.consumer_status, 'Unknown'); publishTime.textContent = `${{safeText(publish.uploaded_at, 'Unknown')}} Ã‚Â· ${{safeText(publish.uploaded_age, 'Unknown')}}`; publishError.textContent = safeText(publish.error, 'None'); alignmentSummary.textContent = safeText(alignment.summary, 'No alignment summary'); alignmentTodObjective.textContent = safeText(alignment.tod_current_objective, 'Unknown'); alignmentMimObjective.textContent = safeText(alignment.mim_objective_active, 'Unknown'); alignmentEvidence.textContent = safeText(evidence.status, 'Unknown'); alignmentSignals.textContent = Array.isArray(evidence.failure_signals) && evidence.failure_signals.length ? evidence.failure_signals.join(', ') : 'None'; decisionSummary.textContent = safeText(decision.summary, 'No listener decision summary'); decisionOutcome.textContent = safeText(decision.decision_outcome, 'Unknown'); decisionReason.textContent = safeText(decision.reason_code, 'Unknown'); decisionState.textContent = safeText(decision.execution_state, 'Unknown'); decisionNextStep.textContent = safeText(decision.next_step_recommendation, 'Unknown'); decisionAge.textContent = safeText(decision.generated_age, 'Unknown'); authoritySummary.textContent = authority.active ? safeText(authority.reason, 'Authority reset is active.') : 'Authority reset is inactive.'; authorityCurrent.textContent = safeText(authority.authoritative_current_objective, 'Unknown'); authorityMaxValid.textContent = safeText(authority.max_valid_objective, 'Unknown'); authorityEffective.textContent = authority.active ? `${{safeText(authority.effective_at, 'Unknown')}} Ã‚Â· ${{safeText(authority.effective_age, 'Unknown')}}` : 'Inactive'; authorityInvalidated.textContent = Array.isArray(authority.invalidated_objectives) && authority.invalidated_objectives.length ? authority.invalidated_objectives.join(', ') : 'None'; footerGenerated.textContent = `Generated: ${{safeText(data.generated_at, 'Unknown')}}`; }}
     async function refresh() {{ const res = await fetch('/tod/ui/state', {{ cache: 'no-store' }}); if (!res.ok) throw new Error(`tod-ui-state-${{res.status}}`); const data = await res.json(); renderState(data); await refreshChatState(); }}
     chatForm.addEventListener('submit', sendChatMessage);
     if (chatImageUploadButton && chatImageUploadInput) {{ chatImageUploadButton.addEventListener('click', () => chatImageUploadInput.click()); chatImageUploadInput.addEventListener('change', () => {{ const file = chatImageUploadInput.files && chatImageUploadInput.files[0] ? chatImageUploadInput.files[0] : null; if (file) setComposerImage(file); }}); }}
@@ -4409,7 +6124,7 @@ async def chat_console() -> HTMLResponse:
         function renderThread(messages) {{ clearNode(chatThread); if (!Array.isArray(messages) || !messages.length) {{ const empty = document.createElement('article'); empty.className = 'chat-bubble assistant'; empty.innerHTML = '<div class="chat-role">Copilot</div><div class="chat-message">No direct messages yet. Send a message, launch training, or create a Codex handoff.</div>'; chatThread.appendChild(empty); return; }} messages.forEach((message) => {{ const bubble = document.createElement('article'); const role = messageRole(message); bubble.className = `chat-bubble ${{role}}`; const roleNode = document.createElement('div'); roleNode.className = 'chat-role'; roleNode.textContent = role === 'user' ? 'Operator' : 'Copilot'; const timeNode = document.createElement('div'); timeNode.className = 'chat-time'; timeNode.textContent = safeText(message.created_at, ''); const contentNode = document.createElement('div'); contentNode.className = 'chat-message'; contentNode.textContent = messageBody(message); bubble.appendChild(roleNode); if (timeNode.textContent) bubble.appendChild(timeNode); bubble.appendChild(contentNode); chatThread.appendChild(bubble); }}); chatThread.scrollTop = chatThread.scrollHeight; }}
         function getLastExchangeText() {{ const messages = latestPayload && Array.isArray(latestPayload.messages) ? latestPayload.messages : []; if (!messages.length) return ''; let lastAssistant = null; for (let index = messages.length - 1; index >= 0; index -= 1) {{ const candidate = messages[index]; if (messageRole(candidate) !== 'assistant' || !messageBody(candidate)) continue; lastAssistant = candidate; let lastUser = null; for (let userIndex = index - 1; userIndex >= 0; userIndex -= 1) {{ const prior = messages[userIndex]; if (messageRole(prior) === 'user' && messageBody(prior)) {{ lastUser = prior; break; }} }} const lines = []; if (lastUser) {{ lines.push('User action:'); lines.push(messageBody(lastUser)); lines.push(''); }} lines.push('Assistant response:'); lines.push(messageBody(lastAssistant)); return lines.join('\\n'); }} return ''; }}
         async function copyLastExchange() {{ const transcript = getLastExchangeText(); if (!transcript) {{ chatStatus.textContent = 'No assistant reply is available to copy yet.'; return; }} if (navigator.clipboard && navigator.clipboard.writeText) {{ await navigator.clipboard.writeText(transcript); chatStatus.textContent = 'Copied the last user action and assistant reply.'; return; }} const area = document.createElement('textarea'); area.value = transcript; area.style.position = 'fixed'; area.style.opacity = '0'; document.body.appendChild(area); area.focus(); area.select(); document.execCommand('copy'); document.body.removeChild(area); chatStatus.textContent = 'Copied the last user action and assistant reply.'; }}
-        function renderPayload(payload) {{ latestPayload = payload || {{}}; const status = payload && typeof payload.status === 'object' ? payload.status : {{}}; const quickFacts = payload && typeof payload.quick_facts === 'object' ? payload.quick_facts : {{}}; const guardrails = payload && typeof payload.guardrails === 'object' ? payload.guardrails : {{}}; const session = payload && typeof payload.session === 'object' ? payload.session : {{}}; const capabilities = payload && typeof payload.capabilities === 'object' ? payload.capabilities : {{}}; factStatus.textContent = safeText(status.label, 'UNKNOWN'); factStatusMeta.textContent = safeText(status.summary, 'No status summary is available.'); factObjective.textContent = safeText(quickFacts.canonical_objective, 'Unknown'); factObjectiveMeta.textContent = `Live request: ${{safeText(quickFacts.live_request_objective, 'Unknown')}}`; factListener.textContent = safeText(quickFacts.listener_state, 'Unknown'); factListenerMeta.textContent = `Decision: ${{safeText(quickFacts.decision_outcome, 'Unknown')}}`; factTraining.textContent = safeText(quickFacts.training_state, 'Unknown'); factTrainingMeta.textContent = `Progress: ${{safeText(quickFacts.training_progress, 'Unknown')}} · Training start ${{capabilities.training_start && capabilities.training_start.available ? 'ready' : 'unavailable'}}`; chatSummary.textContent = safeText(payload && payload.visitor && payload.visitor.memory_summary, 'Direct operator chat is ready.'); chatSessionMeta.textContent = `Session: ${{safeText(session.session_key, getSessionKey())}} · Messages: ${{safeText(session.message_count, '0')}}`; chatGuardrails.textContent = `Guardrails: commands blocked = ${{guardrails.commands_blocked ? 'yes' : 'no'}}, live execution blocked = ${{guardrails.live_execution_blocked ? 'yes' : 'no'}}`; renderThread(payload && payload.messages); copyLastReplyButton.disabled = !(payload && Array.isArray(payload.messages) && payload.messages.length); }}
+        function renderPayload(payload) {{ latestPayload = payload || {{}}; const status = payload && typeof payload.status === 'object' ? payload.status : {{}}; const quickFacts = payload && typeof payload.quick_facts === 'object' ? payload.quick_facts : {{}}; const guardrails = payload && typeof payload.guardrails === 'object' ? payload.guardrails : {{}}; const session = payload && typeof payload.session === 'object' ? payload.session : {{}}; const capabilities = payload && typeof payload.capabilities === 'object' ? payload.capabilities : {{}}; factStatus.textContent = safeText(status.label, 'UNKNOWN'); factStatusMeta.textContent = safeText(status.summary, 'No status summary is available.'); factObjective.textContent = safeText(quickFacts.canonical_objective, 'Unknown'); factObjectiveMeta.textContent = `Live request: ${{safeText(quickFacts.live_request_objective, 'Unknown')}}`; factListener.textContent = safeText(quickFacts.listener_state, 'Unknown'); factListenerMeta.textContent = `Decision: ${{safeText(quickFacts.decision_outcome, 'Unknown')}}`; factTraining.textContent = safeText(quickFacts.training_state, 'Unknown'); factTrainingMeta.textContent = `Progress: ${{safeText(quickFacts.training_progress, 'Unknown')}} Ã‚Â· Training start ${{capabilities.training_start && capabilities.training_start.available ? 'ready' : 'unavailable'}}`; chatSummary.textContent = safeText(payload && payload.visitor && payload.visitor.memory_summary, 'Direct operator chat is ready.'); chatSessionMeta.textContent = `Session: ${{safeText(session.session_key, getSessionKey())}} Ã‚Â· Messages: ${{safeText(session.message_count, '0')}}`; chatGuardrails.textContent = `Guardrails: commands blocked = ${{guardrails.commands_blocked ? 'yes' : 'no'}}, live execution blocked = ${{guardrails.live_execution_blocked ? 'yes' : 'no'}}`; renderThread(payload && payload.messages); copyLastReplyButton.disabled = !(payload && Array.isArray(payload.messages) && payload.messages.length); }}
         async function fetchState() {{ const response = await fetch(`/chat/ui/state?session_key=${{encodeURIComponent(getSessionKey())}}&mode=chat`, {{ cache: 'no-store' }}); if (!response.ok) throw new Error(`chat-state-${{response.status}}`); renderPayload(await response.json()); }}
         async function postJson(path, body, successText) {{ setButtonsDisabled(true); chatStatus.textContent = 'Sending request...'; try {{ const response = await fetch(path, {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(body) }}); if (!response.ok) throw new Error(`${{path}}-${{response.status}}`); const payload = await response.json(); renderPayload(payload); chatStatus.textContent = successText; return true; }} catch (error) {{ chatStatus.textContent = `Request failed: ${{safeText(error && error.message, 'unknown error')}}`; return false; }} finally {{ setButtonsDisabled(false); }} }}
         async function sendMessage(event) {{ event.preventDefault(); const message = String(chatInput.value || '').trim(); if (!message) {{ chatStatus.textContent = 'Enter a message first.'; return; }} const sent = await postJson('/chat/ui/message', {{ session_key: getSessionKey(), mode: 'chat', message }}, 'Direct operator message delivered.'); if (sent) chatInput.value = ''; }}
