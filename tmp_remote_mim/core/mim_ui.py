@@ -5475,6 +5475,19 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       font-size: 16px;
       line-height: 1;
     }
+    .settings-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 19;
+      background: rgba(2, 11, 18, 0.58);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 140ms ease;
+    }
+    .settings-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
     .settings-panel {
       position: fixed;
       top: 52px;
@@ -5488,11 +5501,29 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       display: none;
     }
     .settings-panel.open { display: block; }
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
     .settings-title {
       font-size: 13px;
       font-weight: 600;
       color: #d7efff;
-      margin-bottom: 8px;
+      margin-bottom: 0;
+    }
+    .settings-close {
+      width: 30px;
+      height: 30px;
+      border-radius: 999px;
+      border: 1px solid #1b6a8d;
+      background: #0a2c3f;
+      color: #d7efff;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
     }
     .settings-tabs {
       display: grid;
@@ -6000,6 +6031,147 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     .primary-chat-panel {
       margin-top: 14px;
     }
+    .hero {
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+      border: 1px solid #17435a;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(13, 41, 59, 0.98), rgba(9, 25, 36, 0.98));
+      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
+    }
+    .console-nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .console-link {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(49, 123, 151, 0.4);
+      background: rgba(8, 33, 46, 0.5);
+      color: #cce8f5;
+      text-decoration: none;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+    .console-link.utility {
+      border-color: rgba(156, 204, 224, 0.34);
+      background: rgba(8, 33, 46, 0.34);
+    }
+    .console-link:hover {
+      border-color: rgba(62, 198, 255, 0.55);
+      color: #f3fbff;
+      transform: translateY(-1px);
+    }
+    .console-link.active {
+      border-color: rgba(62, 198, 255, 0.72);
+      background: rgba(19, 78, 101, 0.44);
+      color: #f3fbff;
+    }
+    .console-link-light {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: #4f6470;
+      box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+    }
+    .console-link-light.ok {
+      background: var(--ok);
+      box-shadow: 0 0 14px rgba(45, 207, 107, 0.55);
+    }
+    .console-link-light.err {
+      background: var(--err);
+      box-shadow: 0 0 14px rgba(197, 106, 45, 0.45);
+    }
+    .hero-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .hero-main {
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+      flex: 1 1 100%;
+    }
+    .hero-title-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      flex: 0 1 380px;
+    }
+    .hero-status-chip {
+      flex: 0 0 auto;
+    }
+    .headline {
+      font-size: 22px;
+      font-weight: 800;
+      color: #f3fbff;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .summary {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .mim-chat-shell {
+      display: grid;
+      gap: 12px;
+    }
+    .mim-chat-meta {
+      display: flex;
+      justify-content: flex-start;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .mim-chat-meta .status-chip + .status-chip {
+      display: none;
+    }
+    .chat-actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .chat-action-buttons {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .status-inline {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      min-height: 18px;
+    }
     .layout-grid {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
@@ -6173,6 +6345,20 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       background: rgba(111, 89, 30, 0.18);
       border-color: rgba(230, 183, 47, 0.4);
       color: #fde9a9;
+    }
+    .chat-bubble.system.compact-system {
+      width: min(760px, 100%);
+      padding: 10px 12px;
+      gap: 8px;
+    }
+    .compact-system-list {
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .compact-system-item {
+      opacity: 0.94;
     }
     .chat-bubble.execution {
       justify-self: stretch;
@@ -6906,8 +7092,13 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     <div hidden></div>
   </div>
 
-  <div id="settingsPanel" class="settings-panel" role="dialog" aria-label="MIM settings">
-    <div class="settings-title">MIM Settings</div>
+  <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
+
+  <div id="settingsPanel" class="settings-panel" role="dialog" aria-modal="true" aria-label="MIM settings" hidden>
+    <div class="settings-header">
+      <div class="settings-title">MIM Settings</div>
+      <button id="settingsCloseBtn" class="settings-close" type="button" aria-label="Close MIM settings">×</button>
+    </div>
     <div class="settings-tabs">
       <button id="settingsTabVoice" class="settings-tab active" type="button">Voice</button>
       <button id="settingsTabCamera" class="settings-tab" type="button">Camera</button>
@@ -6994,57 +7185,63 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
   </div>
 
   <div class="app-shell">
-    <div class="topbar">
-      <div class="topbar-left">
-        <div class="brand-stack">
-          <div class="surface-kicker surface-kicker-nav">
-            <a class="console-nav-link utility" href="/">
-              <span>Public Home</span>
-            </a>
-            <a class="console-nav-link active" href="/mim">
-              <span id="mimConsoleLight" class="console-nav-light"></span>
-              <span>MIM Primary Operator Surface</span>
-            </a>
-            <a class="console-nav-link" href="/tod">
-              <span id="todConsoleLight" class="console-nav-light"></span>
-              <span>TOD Console</span>
-            </a>
-            <a class="console-nav-link utility" href="/chat">
-              <span>Direct Chat</span>
-            </a>
-            <a class="console-nav-link utility" href="/mim/logout">
-              <span>Logout</span>
-            </a>
+    <header class="hero mim-hero">
+      <div class="console-nav">
+        <a class="console-link utility" href="/">
+          <span>Public Home</span>
+        </a>
+        <a class="console-link active" href="/mim">
+          <span id="mimConsoleLight" class="console-link-light"></span>
+          <span>MIM Primary Operator Surface</span>
+        </a>
+        <a class="console-link" href="/tod">
+          <span id="todConsoleLight" class="console-link-light"></span>
+          <span>TOD Console</span>
+        </a>
+        <a class="console-link utility" href="/chat">
+          <span>Direct Chat</span>
+        </a>
+        <a class="console-link utility" href="/mim/logout">
+          <span>Logout</span>
+        </a>
+        <button id="settingsBtn" class="console-link utility" type="button" aria-label="MIM settings">
+          <span>Settings</span>
+        </button>
+      </div>
+      <div class="surface-kicker">MIM Primary Operator Surface</div>
+      <div class="hero-row">
+        <div class="hero-main">
+          <div class="hero-title-row">
+            <h1 id="mimIcon" class="mim-icon">MIM</h1>
+            <div id="buildTag" class="status-chip subtle">Build: loading...</div>
           </div>
-          <h1 id="mimIcon" class="mim-icon">MIM</h1>
+          <div class="hero-row">
+            <div></div>
+            <div id="mimStatusChip" class="status-chip hero-status-chip" data-tone="warn">Loading</div>
+          </div>
+          <div id="mimStatusHeadline" class="headline">Loading MIM runtime...</div>
+          <div id="mimStatusSummary" class="summary">Checking operator thread, runtime sync, and media readiness.</div>
+          <div id="mimHeaderActivityIndicator" class="chat-activity" data-state="idle"><span class="chat-activity-dot" aria-hidden="true"></span><span id="mimHeaderActivityText" class="chat-activity-text">Idle</span><span id="mimHeaderActivitySummary">Waiting for MIM activity.</span></div>
         </div>
-        <div id="buildTag" class="status-chip subtle">Build: loading...</div>
-      </div>
-      <div class="topbar-right">
-        <div class="mode-toggle" aria-label="Interface mode selector">
-          <button id="operatorModeBtn" class="mode-chip active" type="button">Operator</button>
-          <button id="debugModeBtn" class="mode-chip" type="button">Debug</button>
+        <div class="hero-actions" hidden>
+          <div class="mode-toggle" aria-label="Interface mode selector">
+            <button id="operatorModeBtn" class="mode-chip active" type="button">Operator</button>
+            <button id="debugModeBtn" class="mode-chip" type="button">Debug</button>
+          </div>
+          <div id="voiceAvailabilityChip" class="status-chip strong">Voice checking…</div>
+          <div id="connectionChip" class="status-chip subtle">Runtime syncing…</div>
+          <div id="initiativeChip" class="status-chip subtle">Initiative idle</div>
         </div>
-        <div id="voiceAvailabilityChip" class="status-chip strong">Voice checking…</div>
-        <div id="connectionChip" class="status-chip subtle">Runtime syncing…</div>
-        <div id="initiativeChip" class="status-chip subtle">Initiative idle</div>
-        <button id="settingsBtn" class="icon-btn" title="MIM settings" aria-label="MIM settings">⚙</button>
       </div>
-    </div>
+    </header>
 
-    <div id="textChatPanel" class="panel thread-shell primary-chat-panel">
-      <div class="thread-card">
-        <div class="thread-header">
-          <div class="thread-title">
-            <strong>Conversation</strong>
-            <span>One persistent primary thread across refreshes and clients.</span>
-          </div>
-          <div class="thread-tools">
+    <div id="textChatPanel" class="primary-chat-panel">
+      <div class="panel">
+        <div class="thread-card mim-chat-shell">
+          <div class="mim-chat-meta">
             <div id="threadStatusChip" class="status-chip subtle">Thread loading…</div>
-            <button id="chatClearBtn" class="thread-clear" type="button">Clear View</button>
+            <div id="voiceHintChip" class="status-chip subtle">Voice replies stay in this thread.</div>
           </div>
-        </div>
-
         <div id="chatLog" class="chat-log" aria-live="polite" aria-label="Primary MIM conversation thread"></div>
 
         <div id="imagePreviewWrap" class="image-preview-wrap" hidden>
@@ -7062,19 +7259,15 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
           <div id="chatDropzone" class="dropzone">Drop a screenshot here, or use Image to attach png, jpg, jpeg, or webp.</div>
           <label class="visually-hidden" for="chatInput">Message MIM</label>
           <textarea id="chatInput" class="composer-input" placeholder="Message MIM" rows="3"></textarea>
-          <div class="composer-actions">
-            <div class="composer-action-group">
-              <input id="imageUploadInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+          <input id="imageUploadInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+          <div class="chat-actions">
+            <div id="inquiry" class="status-inline"></div>
+            <div class="chat-action-buttons">
+              <button id="chatClearBtn" class="thread-clear" type="button">Clear View</button>
               <button id="imageUploadBtn" class="composer-attach" type="button">Image</button>
               <button id="chatMicBtn" class="composer-mic" type="button">Turn Listener On</button>
-            </div>
-            <div class="composer-action-group">
               <button id="chatSendBtn" class="composer-send" type="button">Send</button>
             </div>
-          </div>
-          <div class="composer-meta">
-            <div id="inquiry" class="status-chip subtle"></div>
-            <div id="voiceHintChip" class="status-chip subtle">Voice replies stay in this thread.</div>
           </div>
         </div>
       </div>
@@ -7509,6 +7702,12 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     const nextTaskText = document.getElementById('nextTaskText');
     const blockerCountText = document.getElementById('blockerCountText');
     const initiativeSummaryText = document.getElementById('initiativeSummaryText');
+    const mimStatusChip = document.getElementById('mimStatusChip');
+    const mimStatusHeadline = document.getElementById('mimStatusHeadline');
+    const mimStatusSummary = document.getElementById('mimStatusSummary');
+    const mimHeaderActivityIndicator = document.getElementById('mimHeaderActivityIndicator');
+    const mimHeaderActivityText = document.getElementById('mimHeaderActivityText');
+    const mimHeaderActivitySummary = document.getElementById('mimHeaderActivitySummary');
     const systemActivityHeadlineText = document.getElementById('systemActivityHeadlineText');
     const systemActivityBadge = document.getElementById('systemActivityBadge');
     const systemActivitySummaryText = document.getElementById('systemActivitySummaryText');
@@ -7590,7 +7789,9 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     const debugModeBtn = document.getElementById('debugModeBtn');
     const openDebugModeBtn = document.getElementById('openDebugModeBtn');
     const settingsBtn = document.getElementById('settingsBtn');
+    const settingsBackdrop = document.getElementById('settingsBackdrop');
     const settingsPanel = document.getElementById('settingsPanel');
+    const settingsCloseBtn = document.getElementById('settingsCloseBtn');
     const voiceSelect = document.getElementById('voiceSelect');
     const serverTtsToggle = document.getElementById('serverTtsToggle');
     const serverTtsVoiceSelect = document.getElementById('serverTtsVoiceSelect');
@@ -7820,6 +8021,40 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       const stallReason = safeText(systemActivity.stall_reason, 'No current stall evidence.');
       const meterPercent = Math.max(0, Math.min(100, Number(systemActivity.meter_percent || 0)));
       const tone = safeText(systemActivity.tone, activityToneFromState(state, shouldBeWorking));
+      const headerState = ['blocked', 'blocked_with_reason', 'stale', 'warning', 'frozen'].includes(state)
+        ? 'stalled'
+        : shouldBeWorking
+          ? 'working'
+          : executionAllowed
+            ? 'complete'
+            : 'waiting';
+      const headerLabel = safeText(systemActivity.status_label, safeText(systemActivity.label, shouldBeWorking ? 'Active' : 'Idle'));
+      const headerAge = safeText(systemActivity.last_task_progress_age_seconds)
+        ? ` · last progress ${formatAgeSummary(systemActivity.last_task_progress_age_seconds)} ago`
+        : safeText(systemActivity.last_activity_age_seconds)
+          ? ` · last activity ${formatAgeSummary(systemActivity.last_activity_age_seconds)} ago`
+          : '';
+
+      setTextWithTitle(mimStatusHeadline, headline, 'Loading MIM runtime...');
+      if (mimStatusChip) {
+        const badgeText = safeText(systemActivity.status_label, safeText(systemActivity.label, 'IDLE'));
+        mimStatusChip.textContent = badgeText;
+        mimStatusChip.title = summary;
+        mimStatusChip.setAttribute('data-tone', tone);
+      }
+      if (mimStatusSummary) {
+        mimStatusSummary.textContent = summary;
+        mimStatusSummary.title = summary;
+      }
+      if (mimHeaderActivityIndicator) {
+        mimHeaderActivityIndicator.dataset.state = headerState;
+      }
+      if (mimHeaderActivityText) {
+        mimHeaderActivityText.textContent = headerLabel;
+      }
+      if (mimHeaderActivitySummary) {
+        mimHeaderActivitySummary.textContent = `${summary}${headerAge}`;
+      }
 
       setTextWithTitle(systemActivityHeadlineText, headline, 'IDLE - healthy, no live task right now');
       if (systemActivityBadge) {
@@ -8018,8 +8253,37 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       if (operatorModeBtn) operatorModeBtn.classList.toggle('active', uiMode === 'operator');
       if (debugModeBtn) debugModeBtn.classList.toggle('active', uiMode === 'debug');
       if (settingsPanel && uiMode === 'operator') {
-        settingsPanel.classList.remove('open');
+        closeSettingsPanel();
       }
+    }
+
+    function openSettingsPanel() {
+      if (!settingsPanel) return;
+      settingsPanel.hidden = false;
+      settingsPanel.classList.add('open');
+      if (settingsBackdrop) {
+        settingsBackdrop.hidden = false;
+        settingsBackdrop.classList.add('open');
+      }
+    }
+
+    function closeSettingsPanel() {
+      if (!settingsPanel) return;
+      settingsPanel.classList.remove('open');
+      settingsPanel.hidden = true;
+      if (settingsBackdrop) {
+        settingsBackdrop.classList.remove('open');
+        settingsBackdrop.hidden = true;
+      }
+    }
+
+    function toggleSettingsPanel() {
+      if (!settingsPanel) return;
+      if (settingsPanel.classList.contains('open')) {
+        closeSettingsPanel();
+        return;
+      }
+      openSettingsPanel();
     }
 
     function updateVoiceStateUi() {
@@ -8154,7 +8418,8 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 
     function visibleChatThreadMessages(messages = []) {
       if (!chatLocallyCleared) {
-        return Array.isArray(messages) ? messages : [];
+        const sourceMessages = Array.isArray(messages) ? messages : [];
+        return condenseSystemSummaryMessages(sourceMessages);
       }
       const cutoffMs = Date.parse(String(chatLocalClearCutoffIso || ''));
       const filteredMessages = (Array.isArray(messages) ? messages : []).filter((message) => {
@@ -8163,9 +8428,44 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         return Number.isFinite(createdAtMs) && createdAtMs >= cutoffMs;
       });
       if (chatLocalClearNotice) {
-        return [chatLocalClearNotice, ...filteredMessages];
+        return [chatLocalClearNotice, ...condenseSystemSummaryMessages(filteredMessages)];
       }
-      return filteredMessages;
+      return condenseSystemSummaryMessages(filteredMessages);
+    }
+
+    function condenseSystemSummaryMessages(messages = []) {
+      const condensedMessages = [];
+      let pendingSystemSummaries = [];
+      const flushPending = () => {
+        if (!pendingSystemSummaries.length) return;
+        if (pendingSystemSummaries.length === 1) {
+          condensedMessages.push(pendingSystemSummaries[0]);
+          pendingSystemSummaries = [];
+          return;
+        }
+        const newest = pendingSystemSummaries[pendingSystemSummaries.length - 1];
+        condensedMessages.push({
+          role: 'system',
+          message_type: 'system_summary',
+          created_at: newest.created_at || new Date().toISOString(),
+          summary_text: `System summary updates (${pendingSystemSummaries.length})`,
+          compact_system_messages: pendingSystemSummaries.map((item) => ({
+            created_at: item && item.created_at,
+            text: extractMessageText(item),
+          })).filter((item) => safeText(item.text)),
+        });
+        pendingSystemSummaries = [];
+      };
+      (Array.isArray(messages) ? messages : []).forEach((message) => {
+        if (normalizeMessageType(message) === 'system_summary') {
+          pendingSystemSummaries.push(message);
+          return;
+        }
+        flushPending();
+        condensedMessages.push(message);
+      });
+      flushPending();
+      return condensedMessages;
     }
 
     function compactMultilineText(value, limit = 180) {
@@ -8608,6 +8908,28 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       const meta = buildMetaRow(metaParts);
       if (meta) {
         bubble.appendChild(meta);
+      }
+
+      const compactSystemMessages = Array.isArray(message.compact_system_messages)
+        ? message.compact_system_messages.filter((item) => safeText(item && item.text))
+        : [];
+      if (compactSystemMessages.length) {
+        bubble.classList.add('compact-system');
+        const title = buildTextBlock(message.summary_text || `System summary updates (${compactSystemMessages.length})`, 'bubble-summary');
+        if (title) {
+          bubble.appendChild(title);
+        }
+        const list = document.createElement('div');
+        list.className = 'compact-system-list';
+        compactSystemMessages.slice(-6).forEach((item) => {
+          const row = document.createElement('div');
+          row.className = 'compact-system-item';
+          const when = formatMessageTime(item.created_at);
+          row.textContent = when ? `${when} · ${safeText(item.text)}` : safeText(item.text);
+          list.appendChild(row);
+        });
+        bubble.appendChild(list);
+        return bubble;
       }
 
       const attachment = message && typeof message.attachment === 'object' ? message.attachment : null;
@@ -13655,8 +13977,17 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         setSecondaryTab('diagnostics');
       });
     }
-    settingsBtn.addEventListener('click', () => {
-      settingsPanel.classList.toggle('open');
+    settingsBtn.addEventListener('click', toggleSettingsPanel);
+    if (settingsCloseBtn) {
+      settingsCloseBtn.addEventListener('click', closeSettingsPanel);
+    }
+    if (settingsBackdrop) {
+      settingsBackdrop.addEventListener('click', closeSettingsPanel);
+    }
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && settingsPanel && settingsPanel.classList.contains('open')) {
+        closeSettingsPanel();
+      }
     });
     settingsTabVoice.addEventListener('click', () => setSettingsTab('voice'));
     settingsTabCamera.addEventListener('click', () => setSettingsTab('camera'));
