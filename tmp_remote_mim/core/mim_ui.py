@@ -6143,15 +6143,27 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       display: grid;
       gap: 12px;
     }
+      .chat-shell {
+        display: grid;
+        gap: 12px;
+      }
+      .primary-chat-panel .panel {
+        padding: 20px;
+      }
     .mim-chat-meta {
       display: flex;
-      justify-content: flex-start;
+        justify-content: space-between;
       gap: 10px;
       align-items: center;
       flex-wrap: wrap;
     }
-    .mim-chat-meta .status-chip + .status-chip {
-      display: none;
+      .chat-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: var(--muted);
     }
     .chat-actions {
       display: flex;
@@ -6185,6 +6197,10 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     .primary-chat-panel .chat-log {
       min-height: 420px;
       max-height: 68vh;
+    }
+    .primary-chat-panel .chat-thread {
+      min-height: 320px;
+      max-height: 560px;
     }
     .chat-hero {
       display: grid;
@@ -6299,7 +6315,8 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       font-size: 13px;
       color: var(--muted);
     }
-    .chat-log {
+    .chat-log,
+    .chat-thread {
       margin-top: 0;
       min-height: 420px;
       max-height: none;
@@ -6314,6 +6331,11 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       background:
         radial-gradient(circle at top right, rgba(27, 103, 136, 0.16), transparent 28%),
         linear-gradient(180deg, rgba(10, 25, 36, 0.98), rgba(7, 17, 26, 0.99));
+    }
+    .chat-meta-note {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
     }
     .chat-bubble {
       position: relative;
@@ -6558,7 +6580,8 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       font-size: 18px;
       color: #f2fbff;
     }
-    .composer-shell {
+    .composer-shell,
+    .chat-form {
       display: grid;
       gap: 12px;
       padding: 14px;
@@ -6566,7 +6589,8 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       border-radius: 18px;
       background: linear-gradient(180deg, rgba(8, 28, 42, 0.98), rgba(9, 24, 35, 0.98));
     }
-    .dropzone {
+    .dropzone,
+    .chat-dropzone {
       border: 1px dashed #297394;
       border-radius: 14px;
       padding: 12px 14px;
@@ -6574,11 +6598,13 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       font-size: 13px;
       background: rgba(10, 32, 45, 0.56);
     }
-    .dropzone.active {
+    .dropzone.active,
+    .chat-dropzone.active {
       border-color: #36d2fb;
       background: rgba(15, 72, 95, 0.38);
     }
-    .composer-input {
+    .composer-input,
+    .chat-input {
       min-height: 72px;
       resize: vertical;
       background: #0a1f2d;
@@ -6588,6 +6614,17 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       padding: 14px;
       font-size: 15px;
       font-family: inherit;
+    }
+    .chat-preview {
+      display: grid;
+      gap: 12px;
+      border: 1px solid #1b4f69;
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(8, 28, 42, 0.84);
+    }
+    .chat-preview[hidden] {
+      display: none;
     }
     .composer-actions {
       display: flex;
@@ -7237,14 +7274,13 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 
     <div id="textChatPanel" class="primary-chat-panel">
       <div class="panel">
-        <div class="thread-card mim-chat-shell">
-          <div class="mim-chat-meta">
-            <div id="threadStatusChip" class="status-chip subtle">Thread loading…</div>
-            <div id="voiceHintChip" class="status-chip subtle">Voice replies stay in this thread.</div>
+        <div class="chat-shell mim-chat-shell">
+          <div class="chat-meta mim-chat-meta">
+            <div id="threadStatusChip" class="status-inline">Thread loading…</div>
           </div>
-        <div id="chatLog" class="chat-log" aria-live="polite" aria-label="Primary MIM conversation thread"></div>
+        <div id="chatLog" class="chat-thread chat-log" aria-live="polite" aria-label="Primary MIM conversation thread"></div>
 
-        <div id="imagePreviewWrap" class="image-preview-wrap" hidden>
+        <div id="imagePreviewWrap" class="chat-preview image-preview-wrap" hidden>
           <div class="image-preview-card">
             <img id="imagePreviewImg" alt="Selected image preview" />
             <div class="sidebar-keyline">
@@ -7255,13 +7291,16 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
           </div>
         </div>
 
-        <div class="composer-shell">
-          <div id="chatDropzone" class="dropzone">Drop a screenshot here, or use Image to attach png, jpg, jpeg, or webp.</div>
+        <form id="chatForm" class="chat-form composer-shell" onsubmit="return false;">
+          <div id="chatDropzone" class="chat-dropzone dropzone">Drop a screenshot here, or use Image to attach png, jpg, jpeg, or webp.</div>
           <label class="visually-hidden" for="chatInput">Message MIM</label>
-          <textarea id="chatInput" class="composer-input" placeholder="Message MIM" rows="3"></textarea>
+          <textarea id="chatInput" class="chat-input composer-input" placeholder="Message MIM" rows="3"></textarea>
           <input id="imageUploadInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
           <div class="chat-actions">
-            <div id="inquiry" class="status-inline"></div>
+            <div class="chat-meta-note">
+              <div id="voiceHintChip" class="status-inline">Voice replies stay in this thread.</div>
+              <div id="inquiry" class="status-inline"></div>
+            </div>
             <div class="chat-action-buttons">
               <button id="chatClearBtn" class="thread-clear" type="button">Clear View</button>
               <button id="imageUploadBtn" class="composer-attach" type="button">Image</button>
@@ -7269,7 +7308,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
               <button id="chatSendBtn" class="composer-send" type="button">Send</button>
             </div>
           </div>
-        </div>
+        </form>
       </div>
     </div>
 
