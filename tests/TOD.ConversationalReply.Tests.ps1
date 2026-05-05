@@ -367,6 +367,99 @@ STOP CONDITION: TOD direct chat creates a second fresh executable task lane.
         }
     }
 
+    It 'routes bounded direct-chat code changes through LocalExecutionEngine and reports local activity events' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        $artifactBackup = Backup-ChatDispatchArtifacts
+        $relativePath = ('scripts/chat-local-dispatch-{0}.ps1' -f [guid]::NewGuid().ToString('N'))
+        $absolutePath = Join-Path $repoRoot ($relativePath -replace '/', '\')
+        try {
+            Write-JsonNoBom -PathValue $fixture.BuildStatePath -Payload ([pscustomobject]@{
+                status = 'active'
+                task = 'Direct chat local execution dispatch'
+            })
+            Write-JsonNoBom -PathValue $fixture.ObjectivesPath -Payload ([pscustomobject]@{
+                objectives = @()
+            })
+            Write-JsonNoBom -PathValue $fixture.MaintenancePath -Payload ([pscustomobject]@{
+                overall_status = 'healthy'
+                overall_severity = 'info'
+            })
+            Write-JsonNoBom -PathValue $fixture.WatchdogPath -Payload ([pscustomobject]@{
+                state = 'healthy'
+            })
+            Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{
+                enabled = $true
+            })
+            Write-JsonNoBom -PathValue $fixture.TodConfigPath -Payload ([pscustomobject]@{
+                mode = 'local'
+                fallback_to_local = $true
+                timeout_seconds = 30
+                engineering_loop = [pscustomobject]@{
+                    max_run_history = 150
+                    max_scorecard_history = 150
+                    max_cycle_records = 300
+                }
+                execution_engine = [pscustomobject]@{
+                    active = 'codex'
+                    fallback = 'local'
+                    allow_fallback = $true
+                }
+            })
+            Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
+                objectives = @()
+                tasks = @()
+                execution_results = @()
+                review_decisions = @()
+                journal = @()
+                engine_performance = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_decisions = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_feedback = [pscustomobject]@{ learned_weights = [pscustomobject]@{}; sample_size = 0; version = 'feedback_v1'; updated_at = '' }
+                sync_state = [pscustomobject]@{ expected_contract_version = ''; expected_schema_version = ''; local_repo_signature = ''; cached_manifest = $null; last_comparison = $null; last_sync_decision = ''; last_sync_code = ''; compared_at = '' }
+            })
+
+            [System.IO.File]::WriteAllText($absolutePath, "Write-Output 'OLD_SENTINEL'`n", (New-Object System.Text.UTF8Encoding($false)))
+
+            $query = @"
+OBJECTIVE: TOD-CHAT-LOCAL-EXECUTOR-DISPATCH
+TASK: Patch bounded chat dispatch file
+Update $relativePath.
+Edit Mode: replace_text
+Old Text: OLD_SENTINEL
+New Text: NEW_SENTINEL
+Validation Pattern: NEW_SENTINEL
+STOP CONDITION: TOD direct chat routes the bounded task through LocalExecutionEngine and returns execution evidence.
+"@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+
+            $eventTypes = @($result.command_dispatch.payload.activity_event_types | ForEach-Object { [string]$_ })
+            $runTask = $result.command_dispatch.payload.run_task
+
+            [bool]$result.ok | Should Be $true
+            [string]$result.command_dispatch.task_category | Should Be 'code_change'
+            [bool]$result.command_dispatch.codex_needed | Should Be $false
+            [string]$runTask.engine_invocation.active_engine | Should Be 'local'
+            [string]$runTask.decision | Should Be 'pass'
+            ($eventTypes -contains 'local_executor_invoked') | Should Be $true
+            ($eventTypes -contains 'local_executor_completed') | Should Be $true
+            ($eventTypes -contains 'result_published') | Should Be $true
+            [string]@($runTask.engine_invocation.result.files_changed)[0] | Should Be $relativePath
+            [string]$runTask.engine_invocation.result.diff_summary | Should Match 'Replaced bounded text'
+            ([string](Get-Content -Path $absolutePath -Raw)) | Should Match 'NEW_SENTINEL'
+        }
+        finally {
+            Restore-ChatDispatchArtifacts -Records $artifactBackup
+            if (Test-Path -Path $absolutePath) {
+                Remove-Item -Path $absolutePath -Force
+            }
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
     It 'prefers canonical objective truth over stale durable memory during fallback' {
         (Test-Path -Path $scriptUnderTest) | Should Be $true
 

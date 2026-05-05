@@ -6011,7 +6011,7 @@ function Get-TaskRoutingFileHints {
         return @()
     }
 
-    $matches = [regex]::Matches($text, '(?im)(?:^|[\s''""`(\[])([A-Za-z0-9_./\\-]+\.[A-Za-z0-9]{1,8})(?=$|[\s''""`,:;\)\]])')
+    $matches = [regex]::Matches($text, '(?im)(?:^|[\s''""`(\[])([A-Za-z0-9_./\\-]+\.[A-Za-z0-9]{1,8})(?=$|[\s''""`,:;\.\!\?\)\]])')
     $items = foreach ($match in $matches) {
         if ($match.Groups.Count -gt 1) {
             ([string]$match.Groups[1].Value) -replace '[\\/]+', '/'
@@ -8443,15 +8443,25 @@ function Invoke-ExecutionEngine {
     $engineDir = Join-Path $PSScriptRoot "engines"
     . (Join-Path $engineDir "ExecutionEngine.ps1")
 
+    $resolvedTaskCategory = Resolve-TaskCategory -Task $Task
+    $taskFileHints = @(Get-TaskRoutingFileHints -Task $Task)
     $context = New-EngineTaskContext `
         -TaskId $TaskId `
         -ObjectiveId ([string]$Task.objective_id) `
         -Title ([string]$Task.title) `
         -Scope ([string]$Task.scope) `
         -PromptPath $PackagePath `
-        -AllowedFiles @() `
+        -AllowedFiles @($taskFileHints) `
         -ValidationCommands @() `
-        -Metadata @{ source = "tod.invoke-engine"; generated_at = (Get-UtcNow) }
+        -Metadata @{
+            source = "tod.invoke-engine"
+            generated_at = (Get-UtcNow)
+            task_category = $resolvedTaskCategory
+            task_type = if ($Task.PSObject.Properties['type']) { [string]$Task.type } else { '' }
+            assigned_executor = if ($Task.PSObject.Properties['assigned_executor']) { [string]$Task.assigned_executor } else { '' }
+            local_fallback_target_files = @($taskFileHints)
+            local_fallback_target_file = if (@($taskFileHints).Count -eq 1) { [string]$taskFileHints[0] } else { '' }
+        }
 
     $attempted = @()
     $fallbackReason = ""
@@ -8460,7 +8470,6 @@ function Invoke-ExecutionEngine {
     $retryEnabled = if ($retryPolicy -and $retryPolicy.PSObject.Properties["enabled"]) { [bool]$retryPolicy.enabled } else { $true }
     $maxAttemptsPerEngine = if ($retryPolicy -and $retryPolicy.PSObject.Properties["max_attempts_per_engine"] -and $null -ne $retryPolicy.max_attempts_per_engine) { [int]$retryPolicy.max_attempts_per_engine } else { 2 }
     $maxAttemptsByCategory = if ($retryPolicy -and $retryPolicy.PSObject.Properties["max_attempts_by_category"] -and $null -ne $retryPolicy.max_attempts_by_category) { $retryPolicy.max_attempts_by_category } else { $null }
-    $resolvedTaskCategory = Resolve-TaskCategory -Task $Task
     if ($maxAttemptsByCategory -and $maxAttemptsByCategory.PSObject.Properties[$resolvedTaskCategory] -and $null -ne $maxAttemptsByCategory.$resolvedTaskCategory) {
         $maxAttemptsPerEngine = [int]$maxAttemptsByCategory.$resolvedTaskCategory
     }
@@ -9776,7 +9785,8 @@ function Write-CodexHandoffTaskPackage {
     $rendered = $rendered.Replace('{{TASK_SCOPE}}', $taskScope)
     $rendered = $rendered.Replace('{{TASK_DEPENDENCIES}}', '')
     $rendered = $rendered.Replace('{{TASK_ACCEPTANCE_CRITERIA}}', $acceptanceCriteria)
-    $rendered = $rendered.Replace('{{TASK_ASSIGNED_EXECUTOR}}', 'codex')
+    $taskAssignedExecutor = if ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json -and $Request.metadata_json.PSObject.Properties['assigned_executor'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.metadata_json.assigned_executor)) { [string]$Request.metadata_json.assigned_executor } else { 'codex' }
+    $rendered = $rendered.Replace('{{TASK_ASSIGNED_EXECUTOR}}', $taskAssignedExecutor)
 
     if (-not (Test-Path -Path $promptOutDir)) {
         New-Item -ItemType Directory -Path $promptOutDir -Force | Out-Null
@@ -10135,6 +10145,8 @@ function Invoke-ExecuteChatTaskRequest {
             objective_title = [string]$objective.title
             task_title = if (-not [string]::IsNullOrWhiteSpace($Title)) { [string]$Title } else { "Chat task $TaskId" }
             task_acceptance_criteria = $resolvedAcceptance
+            task_category = if (-not [string]::IsNullOrWhiteSpace($TaskCategory)) { [string]$TaskCategory } else { 'chat_execution' }
+            assigned_executor = if (-not [string]::IsNullOrWhiteSpace($AssignedExecutor)) { [string]$AssignedExecutor } else { 'local' }
             source = 'direct_chat'
         }
     }
@@ -10174,7 +10186,7 @@ function Invoke-ExecuteChatTaskRequest {
         throw "Unable to locate chat task '$TaskId' after mirroring it into local state."
     }
 
-    $resolvedAssignedExecutor = if (-not [string]::IsNullOrWhiteSpace($AssignedExecutor)) { [string]$AssignedExecutor } else { 'codex' }
+    $resolvedAssignedExecutor = if (-not [string]::IsNullOrWhiteSpace($AssignedExecutor)) { [string]$AssignedExecutor } else { 'local' }
     $resolvedTaskCategory = if (-not [string]::IsNullOrWhiteSpace($TaskCategory)) { [string]$TaskCategory } else { 'chat_execution' }
     $task[0].assigned_executor = $resolvedAssignedExecutor
     $task[0].task_category = $resolvedTaskCategory
@@ -10240,6 +10252,39 @@ function Invoke-ExecuteChatTaskRequest {
     [void]$activityEventTypeList.Add('task_created_from_chat')
     [void]$activityEventTypeList.Add('task_claimed')
     [void]$activityEventTypeList.Add('execution_started')
+    $runTaskPayload = if ($runTask -and $runTask.PSObject.Properties['payload']) { $runTask.payload } else { $null }
+    $engineInvocationPayload = if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['engine_invocation']) { $runTaskPayload.engine_invocation } else { $null }
+    $activeEngineName = if ($engineInvocationPayload -and $engineInvocationPayload.PSObject.Properties['active_engine']) { [string]$engineInvocationPayload.active_engine } else { '' }
+    $engineResultPayload = if ($engineInvocationPayload -and $engineInvocationPayload.PSObject.Properties['result']) { $engineInvocationPayload.result } else { $null }
+    $localAttempted = $false
+    if ($engineInvocationPayload -and $engineInvocationPayload.PSObject.Properties['attempted_engines']) {
+        $localAttempted = (@($engineInvocationPayload.attempted_engines | ForEach-Object { ([string]$_).ToLowerInvariant() }) -contains 'local')
+    }
+    if ([string]::Equals($activeEngineName, 'local', [System.StringComparison]::OrdinalIgnoreCase) -or $localAttempted) {
+        [void]$activityEventTypeList.Add('local_executor_invoked')
+        $localResultBlocked = $false
+        if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['decision'] -and -not [string]::Equals([string]$runTaskPayload.decision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $localResultBlocked = $true
+        }
+        if ($engineResultPayload -and $engineResultPayload.PSObject.Properties['reason_code'] -and -not [string]::IsNullOrWhiteSpace([string]$engineResultPayload.reason_code)) {
+            $localResultBlocked = $true
+        }
+        if ($localResultBlocked) {
+            [void]$activityEventTypeList.Add('blocked_missing_local_executor_result')
+        }
+        else {
+            [void]$activityEventTypeList.Add('local_executor_completed')
+        }
+    }
+    if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['decision'] -and -not [string]::IsNullOrWhiteSpace([string]$runTaskPayload.decision)) {
+        if ([string]::Equals([string]$runTaskPayload.decision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+            [void]$activityEventTypeList.Add('validation_passed')
+        }
+        else {
+            [void]$activityEventTypeList.Add('validation_failed')
+        }
+        [void]$activityEventTypeList.Add('result_published')
+    }
     if ($runTask -and $runTask.PSObject.Properties['payload'] -and $runTask.payload -and $runTask.payload.PSObject.Properties['decision'] -and [string]::Equals([string]$runTask.payload.decision, 'blocked', [System.StringComparison]::OrdinalIgnoreCase)) {
         [void]$activityEventTypeList.Add('blocked')
     }
@@ -12737,6 +12782,14 @@ switch ($Action) {
                 active_engine = [string]$actionEngineConfig.active
                 fallback_engine = [string]$actionEngineConfig.fallback
             }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$task.scope) -CurrentAction 'Invoking the selected execution engine.' | Out-Null
+        if ([string]::Equals([string]$actionEngineConfig.active, 'local', [System.StringComparison]::OrdinalIgnoreCase)) {
+            Publish-TodActivityEvent -EventType 'local_executor_invoked' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'active' -Message 'Dispatching the bounded task through LocalExecutionEngine.' -Details ([ordered]@{
+                    package_path = $packagePath
+                    task_category = $taskCategoryResolved
+                    active_engine = [string]$actionEngineConfig.active
+                    fallback_engine = [string]$actionEngineConfig.fallback
+                }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$task.scope) -CurrentAction 'Invoking LocalExecutionEngine.' | Out-Null
+        }
         if ([string]::Equals([string]$actionEngineConfig.active, 'codex', [System.StringComparison]::OrdinalIgnoreCase)) {
             Publish-TodActivityEvent -EventType 'codex_handoff' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'active' -Message 'Handing the bounded task to Codex.' -Details ([ordered]@{
                     package_path = $packagePath
@@ -12809,6 +12862,8 @@ switch ($Action) {
         $hasExplicitEngineBlocker = $resultPayload.PSObject.Properties['reason_code'] -and -not [string]::IsNullOrWhiteSpace([string]$resultPayload.reason_code)
         $noOpAssessment = Get-LocalExecutionNoOpAssessment -Task $task -ResultPayload $resultPayload
         $resultPayload | Add-Member -NotePropertyName no_op_assessment -NotePropertyValue $noOpAssessment -Force
+        $localEngineAttempted = (@($invokeResult.attempted_engines | ForEach-Object { ([string]$_).ToLowerInvariant() }) -contains 'local')
+        $localEngineActive = [string]::Equals([string]$invokeResult.active_engine, 'local', [System.StringComparison]::OrdinalIgnoreCase)
         Publish-TodActivityEvent -EventType 'step_complete' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status $(if ($hasExplicitEngineBlocker -or [bool]$noOpAssessment.detected) { 'blocked' } else { 'completed' }) -Message 'Execution engine returned a normalized result envelope.' -Details ([ordered]@{
                 attempted_engines = @($invokeResult.attempted_engines)
                 fallback_applied = [bool]$invokeResult.fallback_applied
@@ -12817,6 +12872,26 @@ switch ($Action) {
                 no_op_detected = [bool]$noOpAssessment.detected
                 summary = [string]$resultPayload.summary
             }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Normalized the engine result.' -ExecutionState ([string]$resultPayload.status) | Out-Null
+        if ($localEngineAttempted -or $localEngineActive) {
+            if ($hasExplicitEngineBlocker -or [bool]$noOpAssessment.detected) {
+                Publish-TodActivityEvent -EventType 'blocked_missing_local_executor_result' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'blocked' -Message 'LocalExecutionEngine returned a blocked or non-meaningful result for the bounded task.' -Details ([ordered]@{
+                        active_engine = [string]$invokeResult.active_engine
+                        attempted_engines = @($invokeResult.attempted_engines)
+                        reason_code = if ($resultPayload.PSObject.Properties['reason_code']) { [string]$resultPayload.reason_code } else { '' }
+                        no_op_detected = [bool]$noOpAssessment.detected
+                        summary = [string]$resultPayload.summary
+                    }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Captured the LocalExecutionEngine blocker.' -ExecutionState ([string]$resultPayload.status) -RecoveryState 'required' | Out-Null
+            }
+            else {
+                Publish-TodActivityEvent -EventType 'local_executor_completed' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'completed' -Message 'LocalExecutionEngine completed and returned bounded execution evidence.' -Details ([ordered]@{
+                        active_engine = [string]$invokeResult.active_engine
+                        attempted_engines = @($invokeResult.attempted_engines)
+                        files_changed = @($resultPayload.files_changed)
+                        commands_run = @($resultPayload.commands_run)
+                        test_results = @($resultPayload.test_results)
+                    }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Captured LocalExecutionEngine completion evidence.' -ExecutionState ([string]$resultPayload.status) | Out-Null
+            }
+        }
         if (@($resultPayload.files_changed).Count -gt 0) {
             Publish-TodActivityEvent -EventType 'patch_applied' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'patch_writer' -Status 'completed' -Message ('Applied bounded changes to ' + [string]@(@($resultPayload.files_changed).Count) + ' file(s).') -Details ([ordered]@{
                     files_changed = @($resultPayload.files_changed)

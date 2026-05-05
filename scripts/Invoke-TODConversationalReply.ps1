@@ -260,12 +260,98 @@ function New-ConversationDispatchId {
     return ('{0}-{1}' -f $Prefix.ToUpperInvariant(), ([guid]::NewGuid().ToString('N').Substring(0, 12).ToUpperInvariant()))
 }
 
+function Resolve-DirectChatTaskCategory {
+    param(
+        [Parameter(Mandatory = $true)]$IntentRoute,
+        [Parameter(Mandatory = $true)][string]$QueryText
+    )
+
+    $explicitCategory = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'TASK CATEGORY'
+    if (-not [string]::IsNullOrWhiteSpace($explicitCategory)) {
+        return (([string]$explicitCategory).Trim().ToLowerInvariant() -replace '[^a-z0-9]+', '_').Trim('_')
+    }
+
+    $normalized = ([string]$QueryText).ToLowerInvariant()
+    $hasDocsHint = $normalized -match '(readme\.md|docs/[a-z0-9_./-]+\.md|\bmarkdown\b|section title:)'
+    $hasConfigHint = $normalized -match '(tod/config/[a-z0-9_./-]+\.json|execution_engine\.|readiness_policy\.|\btod-config\.json\b|\bconfig\b)'
+    $hasTestHint = $normalized -match '(tests/[a-z0-9_./-]+\.(?:ps1|py|md)|\bpester\b|\bpytest\b|\bunittest\b|\btest\b)'
+    $hasCodePathHint = $normalized -match '(scripts/[a-z0-9_./-]+\.(?:ps1|psm1|py|json|md)|tmp_remote_mim/(?:core|tests)/[a-z0-9_./-]+\.(?:py|json|md)|\.ps1\b|\.py\b)'
+    $hasChangeHint = $normalized -match '\b(update|patch|edit|replace|modify|write|append|insert|refactor|implement|fix)\b'
+    $hasDiagnosticHint = $normalized -match '\b(diagnos|debug|inspect|investigat|validate|verify|check|search|locate|find|trace)\b'
+
+    if ($hasDocsHint) {
+        return 'docs_change'
+    }
+    if ($hasConfigHint -and -not $hasTestHint) {
+        return 'config_change'
+    }
+    if ($hasTestHint -and ($hasChangeHint -or $hasCodePathHint)) {
+        return 'test_change'
+    }
+    if ($hasCodePathHint -and $hasChangeHint) {
+        return 'code_change'
+    }
+    if ($hasDiagnosticHint -and -not $hasChangeHint) {
+        return 'validation'
+    }
+
+    $routeAction = if ($IntentRoute -and $IntentRoute.PSObject.Properties['action']) { ([string]$IntentRoute.action).ToLowerInvariant() } else { '' }
+    if ($routeAction -match 'implement|patch|fix|update|write') {
+        return 'chat_execution'
+    }
+
+    return 'chat_execution'
+}
+
+function Resolve-DirectChatAssignedExecutor {
+    param([Parameter(Mandatory = $true)][string]$TaskCategory)
+
+    switch ($TaskCategory) {
+        'docs_change' { return 'local' }
+        'config_change' { return 'local' }
+        'test_change' { return 'local' }
+        'code_change' { return 'local' }
+        'validation' { return 'local' }
+        'inspection' { return 'local' }
+        'review_only' { return 'local' }
+        'sync_check' { return 'local' }
+        'chat_execution' { return 'local' }
+        default { return 'codex' }
+    }
+}
+
+function Test-CommandDispatchCodexNeeded {
+    param($ExecutionPayload)
+
+    if ($ExecutionPayload -and $ExecutionPayload.PSObject.Properties['engine_invocation'] -and $ExecutionPayload.engine_invocation) {
+        $activeEngine = if ($ExecutionPayload.engine_invocation.PSObject.Properties['active_engine']) { [string]$ExecutionPayload.engine_invocation.active_engine } else { '' }
+        if ([string]::Equals($activeEngine, 'codex', [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+
+        $attemptedEngines = if ($ExecutionPayload.engine_invocation.PSObject.Properties['attempted_engines']) {
+            @($ExecutionPayload.engine_invocation.attempted_engines | ForEach-Object { ([string]$_).ToLowerInvariant() })
+        }
+        else {
+            @()
+        }
+        if ($attemptedEngines -contains 'codex') {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 function Get-CommandDispatchClassification {
     param(
         $ExecutionPayload,
         [string]$DefaultTaskCategory
     )
 
+    if ($ExecutionPayload -and $ExecutionPayload.PSObject.Properties['engine_invocation'] -and $ExecutionPayload.engine_invocation -and $ExecutionPayload.engine_invocation.PSObject.Properties['active_engine'] -and -not [string]::IsNullOrWhiteSpace([string]$ExecutionPayload.engine_invocation.active_engine)) {
+        return ('engine:{0}' -f [string]$ExecutionPayload.engine_invocation.active_engine)
+    }
     if ($ExecutionPayload -and $ExecutionPayload.PSObject.Properties['routing_decision_preinvoke'] -and $ExecutionPayload.routing_decision_preinvoke -and $ExecutionPayload.routing_decision_preinvoke.PSObject.Properties['selected_engine'] -and -not [string]::IsNullOrWhiteSpace([string]$ExecutionPayload.routing_decision_preinvoke.selected_engine)) {
         return ('engine:{0}' -f [string]$ExecutionPayload.routing_decision_preinvoke.selected_engine)
     }
@@ -373,10 +459,8 @@ function Invoke-IntentCommandDispatch {
 
     $result = New-IntentDispatchResult
     $result.objective_id = $ResolvedObjectiveId
-    $taskCategory = (($IntentRoute.target -replace '[^A-Za-z0-9]+', '_').Trim('_')).ToLowerInvariant()
-    if ([string]::IsNullOrWhiteSpace($taskCategory)) {
-        $taskCategory = 'general'
-    }
+    $taskCategory = Resolve-DirectChatTaskCategory -IntentRoute $IntentRoute -QueryText $QueryText
+    $assignedExecutor = Resolve-DirectChatAssignedExecutor -TaskCategory $taskCategory
     $objectiveDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'OBJECTIVE'
     $dispatchObjectiveId = Resolve-StructuredObjectiveDispatchId -ExistingObjectiveId $ResolvedObjectiveId -QueryText $QueryText
     if (-not [string]::IsNullOrWhiteSpace($dispatchObjectiveId)) {
@@ -394,7 +478,11 @@ function Invoke-IntentCommandDispatch {
     else {
         'UI command: ' + $QueryText.Trim()
     }
-    $scope = 'Operator command routed from TOD direct conversation. Target: {0}. Requested action: {1}. Original query: {2}' -f $IntentRoute.target, $IntentRoute.action, $QueryText.Trim()
+    $scope = @(
+        ('Operator command routed from TOD direct conversation. Target: {0}. Requested action: {1}.' -f $IntentRoute.target, $IntentRoute.action),
+        'Original query:',
+        $QueryText.Trim()
+    ) -join "`n"
     $acceptanceCriteria = if (-not [string]::IsNullOrWhiteSpace($acceptanceDirective)) {
         [string]$acceptanceDirective
     }
@@ -430,7 +518,7 @@ function Invoke-IntentCommandDispatch {
             Scope = $scope
             AcceptanceCriteria = $acceptanceCriteria
             SuccessCriteria = $acceptanceCriteria
-            AssignedExecutor = 'codex'
+            AssignedExecutor = $assignedExecutor
             TaskCategory = $taskCategory
             Type = 'implementation'
         }
@@ -444,14 +532,14 @@ function Invoke-IntentCommandDispatch {
         $result.task_category = $taskCategory
         $result.classification = Get-CommandDispatchClassification -ExecutionPayload $(Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null) -DefaultTaskCategory $taskCategory
         $result.next_step = Get-CommandDispatchNextStep -ExecutionPayload $(Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null)
-        $result.codex_needed = $true
+        $result.codex_needed = Test-CommandDispatchCodexNeeded -ExecutionPayload $(Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null)
         $result.request_artifact_path = [string](Get-PropertyValue -InputObject $parsed -PropertyName 'request_artifact_path' -Default '')
         $runTaskPayload = Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null
         if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['decision']) {
             $result.blocked = (-not [string]::Equals([string]$runTaskPayload.decision, 'pass', [System.StringComparison]::OrdinalIgnoreCase))
         }
         $result.payload = $parsed
-        $result.detail = if ($result.created) { 'Task created, request artifact written, and TOD execution started immediately.' } else { 'TOD ran execute-chat-task but did not receive a task id back.' }
+        $result.detail = if ($result.created) { ('Task created, request artifact written, and TOD execution started immediately via executor ' + $assignedExecutor + '.') } else { 'TOD ran execute-chat-task but did not receive a task id back.' }
         return [pscustomobject]$result
     }
     catch {

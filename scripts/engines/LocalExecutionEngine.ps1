@@ -103,8 +103,35 @@ function Test-LocalExecutionSafePath {
 function Get-LocalExecutionTargetFiles {
     param([Parameter(Mandatory = $true)]$Context)
 
+    $paths = New-Object System.Collections.Generic.List[string]
+    if ($Context.PSObject.Properties['metadata'] -and $Context.metadata) {
+        if ($Context.metadata.ContainsKey('local_fallback_target_file')) {
+            $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$Context.metadata.local_fallback_target_file)
+            if (-not [string]::IsNullOrWhiteSpace($value) -and -not $paths.Contains($value)) {
+                $paths.Add($value)
+            }
+        }
+        if ($Context.metadata.ContainsKey('local_fallback_target_files') -and $null -ne $Context.metadata.local_fallback_target_files) {
+            foreach ($candidate in @($Context.metadata.local_fallback_target_files)) {
+                $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$candidate)
+                if (-not [string]::IsNullOrWhiteSpace($value) -and -not $paths.Contains($value)) {
+                    $paths.Add($value)
+                }
+            }
+        }
+    }
+    foreach ($candidate in @($Context.allowed_files)) {
+        $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$candidate)
+        if (-not [string]::IsNullOrWhiteSpace($value) -and -not $paths.Contains($value)) {
+            $paths.Add($value)
+        }
+    }
+    if ($paths.Count -gt 0) {
+        return @($paths.ToArray())
+    }
+
     $combined = Get-LocalExecutionCombinedText -Context $Context
-    $matches = [regex]::Matches($combined, '(?im)(?<![A-Za-z0-9_./-])(README\.md|docs/[A-Za-z0-9_./-]+\.md|scripts/[A-Za-z0-9_./-]+\.(?:ps1|psm1|py|json|md)|tests/[A-Za-z0-9_./-]+\.(?:ps1|py|md)|tmp_remote_mim/(?:core|tests)/[A-Za-z0-9_./-]+\.(?:py|json|md)|tod/config/[A-Za-z0-9_./-]+\.json)(?![A-Za-z0-9_./-])')
+    $matches = [regex]::Matches($combined, '(?im)(?<![A-Za-z0-9_./-])(README\.md|docs/[A-Za-z0-9_./-]+\.md|scripts/[A-Za-z0-9_./-]+\.(?:ps1|psm1|py|json|md)|tests/[A-Za-z0-9_./-]+\.(?:ps1|py|md)|tmp_remote_mim/(?:core|tests)/[A-Za-z0-9_./-]+\.(?:py|json|md)|tod/config/[A-Za-z0-9_./-]+\.json)(?=$|[\s''""`,:;\.\!\?\)\]])')
     $paths = New-Object System.Collections.Generic.List[string]
     foreach ($match in $matches) {
         $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$match.Groups[1].Value)
@@ -464,6 +491,7 @@ function Invoke-LocalExecutionGenericBoundedTask {
     $Result | Add-Member -NotePropertyName confidence -NotePropertyValue 'medium-high' -Force
     $Result | Add-Member -NotePropertyName rollback_hint -NotePropertyValue ([string]$rollbackState.restore_command) -Force
     $Result | Add-Member -NotePropertyName command_output -NotePropertyValue ([string]$commandCapture.stdout) -Force
+    $Result | Add-Member -NotePropertyName no_change_required -NotePropertyValue (-not $changeApplied) -Force
     $Result | Add-Member -NotePropertyName reason_code -NotePropertyValue '' -Force
     $Result | Add-Member -NotePropertyName recovery_state -NotePropertyValue 'not_needed' -Force
     return (Complete-EngineExecutionResult -Result $Result -Status 'completed')

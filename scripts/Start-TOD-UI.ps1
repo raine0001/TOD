@@ -42,6 +42,8 @@ $trainingStatusPath = Join-Path $repoRoot "shared_state/tod_training_status.late
 $recoveryWatchdogStatePath = Join-Path $repoRoot "shared_state/tod_recovery_watchdog.latest.json"
 $activityStreamPrimaryPath = Join-Path $repoRoot "runtime/shared/TOD_ACTIVITY_STREAM.latest.json"
 $activityStreamMirrorPath = Join-Path $repoRoot "tmp_remote_mim/runtime/shared/TOD_ACTIVITY_STREAM.latest.json"
+$directChatActivityStreamPath = Join-Path $repoRoot "shared_state/tod_direct_chat_activity_stream.latest.json"
+$todActivityStreamBuildId = 'fresh-direct-chat-activity-v1'
 $voiceAdapterConfigPath = Join-Path $repoRoot "tod/config/voice-adapter.json"
 $voiceAdapterTelemetryPath = Join-Path $repoRoot "shared_state/voice_adapter_status.json"
 $voiceAdapterInboxPath = Join-Path $repoRoot "tod/inbox/voice/events"
@@ -255,6 +257,363 @@ function Invoke-TodConversationReplyRequest {
     catch {
         throw ("TOD conversation reply was not valid JSON. {0}" -f $rawOutput.Trim())
     }
+}
+
+function Write-JsonArtifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)]$Payload,
+        [int]$Depth = 20
+    )
+
+    $parent = Split-Path -Parent $Path
+    if (-not [string]::IsNullOrWhiteSpace($parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+
+    $json = $Payload | ConvertTo-Json -Depth $Depth
+    Set-Content -Path $Path -Value $json -Encoding UTF8
+}
+
+function Get-ActivityTimestampText {
+    param($Value)
+
+    $candidates = @()
+    if ($null -ne $Value) {
+        if ($Value.PSObject.Properties['stream_generated_at']) {
+            $candidates += [string]$Value.stream_generated_at
+        }
+        if ($Value.PSObject.Properties['generated_at']) {
+            $candidates += [string]$Value.generated_at
+        }
+        if ($Value.PSObject.Properties['latest_event'] -and $null -ne $Value.latest_event -and $Value.latest_event.PSObject.Properties['timestamp']) {
+            $candidates += [string]$Value.latest_event.timestamp
+        }
+        if ($Value.PSObject.Properties['events'] -and $null -ne $Value.events) {
+            $lastEvent = @($Value.events | Select-Object -Last 1)
+            if (@($lastEvent).Count -gt 0 -and $lastEvent[0].PSObject.Properties['timestamp']) {
+                $candidates += [string]$lastEvent[0].timestamp
+            }
+        }
+    }
+
+    foreach ($candidate in @($candidates)) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            return [string]$candidate
+        }
+    }
+
+    return ''
+}
+
+function Get-ActivityTimestampTicks {
+    param($Value)
+
+    $timestampText = Get-ActivityTimestampText -Value $Value
+    if ([string]::IsNullOrWhiteSpace($timestampText)) {
+        return [int64]0
+    }
+
+    try {
+        return ([datetime]::Parse($timestampText).ToUniversalTime().Ticks)
+    }
+    catch {
+        return [int64]0
+    }
+}
+
+function Get-FilteredActivityEvents {
+    param(
+        $Payload,
+        [string]$ObjectiveId = '',
+        [string]$TaskId = ''
+    )
+
+    if ($null -eq $Payload) {
+        return @()
+    }
+
+    $events = if ($Payload.PSObject.Properties['events'] -and $null -ne $Payload.events) {
+        @($Payload.events | Where-Object { $null -ne $_ })
+    }
+    elseif ($Payload.PSObject.Properties['latest_event'] -and $null -ne $Payload.latest_event) {
+        @($Payload.latest_event)
+    }
+    else {
+        @()
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) {
+        $events = @($events | Where-Object {
+                $candidateObjectiveId = if ($_.PSObject.Properties['objective_id']) { [string]$_.objective_id } else { '' }
+                [string]::Equals($candidateObjectiveId, $ObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)
+            })
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TaskId)) {
+        $events = @($events | Where-Object {
+                $candidateTaskId = if ($_.PSObject.Properties['task_id']) { [string]$_.task_id } else { '' }
+                [string]::Equals($candidateTaskId, $TaskId, [System.StringComparison]::OrdinalIgnoreCase)
+            })
+    }
+
+    return @($events)
+}
+
+function New-ActivityStreamCandidatePayload {
+    param(
+        $Payload,
+        [string]$SourcePath = '',
+        [string]$ObjectiveId = '',
+        [string]$TaskId = '',
+        [int]$Limit = 60
+    )
+
+    if ($null -eq $Payload) {
+        return $null
+    }
+
+    $events = Get-FilteredActivityEvents -Payload $Payload -ObjectiveId $ObjectiveId -TaskId $TaskId
+    if (@($events).Count -eq 0 -and (-not [string]::IsNullOrWhiteSpace($ObjectiveId) -or -not [string]::IsNullOrWhiteSpace($TaskId))) {
+        return $null
+    }
+    if (@($events).Count -eq 0) {
+        $events = Get-FilteredActivityEvents -Payload $Payload
+    }
+    if (@($events).Count -eq 0) {
+        return $null
+    }
+
+    $safeLimit = if ($Limit -lt 1) { 1 } elseif ($Limit -gt 200) { 200 } else { $Limit }
+    if (@($events).Count -gt $safeLimit) {
+        $events = @($events | Select-Object -Last $safeLimit)
+    }
+
+    $latestEvent = @($events | Select-Object -Last 1)
+    $latestEvent = if (@($latestEvent).Count -gt 0) { $latestEvent[0] } else { $null }
+    $streamGeneratedAt = Get-ActivityTimestampText -Value $Payload
+
+    return [pscustomobject]@{
+        ok = $true
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        source_path = $SourcePath
+        stream_generated_at = $streamGeneratedAt
+        tod_activity_stream_build_id = $todActivityStreamBuildId
+        objective_id = if ($latestEvent -and $latestEvent.PSObject.Properties['objective_id']) { [string]$latestEvent.objective_id } elseif ($Payload.PSObject.Properties['objective_id']) { [string]$Payload.objective_id } else { '' }
+        task_id = if ($latestEvent -and $latestEvent.PSObject.Properties['task_id']) { [string]$latestEvent.task_id } elseif ($Payload.PSObject.Properties['task_id']) { [string]$Payload.task_id } else { '' }
+        title = if ($latestEvent -and $latestEvent.PSObject.Properties['title']) { [string]$latestEvent.title } elseif ($Payload.PSObject.Properties['title']) { [string]$Payload.title } else { '' }
+        summary = if ($Payload.PSObject.Properties['summary']) { [string]$Payload.summary } elseif ($latestEvent -and $latestEvent.PSObject.Properties['message']) { [string]$latestEvent.message } else { '' }
+        status = if ($latestEvent -and $latestEvent.PSObject.Properties['status']) { [string]$latestEvent.status } elseif ($Payload.PSObject.Properties['status']) { [string]$Payload.status } else { 'idle' }
+        event = if ($latestEvent -and $latestEvent.PSObject.Properties['event_type']) { [string]$latestEvent.event_type } elseif ($Payload.PSObject.Properties['event']) { [string]$Payload.event } else { '' }
+        phase = if ($latestEvent -and $latestEvent.PSObject.Properties['step']) { [string]$latestEvent.step } elseif ($Payload.PSObject.Properties['phase']) { [string]$Payload.phase } else { '' }
+        latest_event = $latestEvent
+        count = @($events).Count
+        events = @($events)
+    }
+}
+
+function Update-DirectChatActivityStream {
+    param($ReplyPayload)
+
+    if ($null -eq $ReplyPayload -or -not $ReplyPayload.PSObject.Properties['command_dispatch']) {
+        return $null
+    }
+
+    $commandDispatch = $ReplyPayload.command_dispatch
+    if ($null -eq $commandDispatch -or -not [bool]$commandDispatch.created -or [string]::IsNullOrWhiteSpace([string]$commandDispatch.task_id)) {
+        return $null
+    }
+
+    $dispatchPayload = if ($commandDispatch.PSObject.Properties['payload']) { $commandDispatch.payload } else { $null }
+    $generatedAt = if ($ReplyPayload.PSObject.Properties['generated_at'] -and -not [string]::IsNullOrWhiteSpace([string]$ReplyPayload.generated_at)) {
+        [string]$ReplyPayload.generated_at
+    }
+    else {
+        (Get-Date).ToUniversalTime().ToString('o')
+    }
+
+    $taskId = [string]$commandDispatch.task_id
+    $objectiveId = [string]$commandDispatch.objective_id
+    $requestId = if ($commandDispatch.PSObject.Properties['request_id']) { [string]$commandDispatch.request_id } else { '' }
+    $correlationId = if ($commandDispatch.PSObject.Properties['correlation_id']) { [string]$commandDispatch.correlation_id } else { '' }
+    $title = if ($commandDispatch.PSObject.Properties['title']) { [string]$commandDispatch.title } else { '' }
+    $taskCategory = if ($commandDispatch.PSObject.Properties['task_category']) { [string]$commandDispatch.task_category } else { '' }
+    $runTask = if ($dispatchPayload -and $dispatchPayload.PSObject.Properties['run_task']) { $dispatchPayload.run_task } else { $null }
+    $runTaskDecision = if ($runTask -and $runTask.PSObject.Properties['decision']) { [string]$runTask.decision } else { '' }
+    $runTaskSummary = if ($runTask -and $runTask.PSObject.Properties['summary']) { [string]$runTask.summary } else { '' }
+    $reportedEventTypes = if ($dispatchPayload -and $dispatchPayload.PSObject.Properties['activity_event_types']) { @($dispatchPayload.activity_event_types | ForEach-Object { [string]$_ }) } else { @() }
+    $isLocalExecution = ($reportedEventTypes -contains 'local_executor_invoked') -or ($reportedEventTypes -contains 'local_executor_completed') -or ([string]$commandDispatch.detail -match '(?i)executor\s+local')
+
+    $eventList = New-Object System.Collections.Generic.List[object]
+    $eventList.Add([pscustomobject]@{
+            timestamp = $generatedAt
+            event_type = 'chat_task_created'
+            objective_id = $objectiveId
+            task_id = $taskId
+            request_id = $requestId
+            correlation_id = $correlationId
+            title = $title
+            step = 'task_dispatch'
+            status = 'completed'
+            message = 'Direct TOD conversation created and dispatched a bounded chat task.'
+            details = [pscustomobject]@{
+                task_category = $taskCategory
+                request_artifact_path = if ($commandDispatch.PSObject.Properties['request_artifact_path']) { [string]$commandDispatch.request_artifact_path } else { '' }
+            }
+            source = 'tod.ui.direct_chat'
+            surface = 'tod-conversation'
+        })
+
+    if ($isLocalExecution) {
+        $eventList.Add([pscustomobject]@{
+                timestamp = $generatedAt
+                event_type = 'local_executor_invoked'
+                objective_id = $objectiveId
+                task_id = $taskId
+                request_id = $requestId
+                correlation_id = $correlationId
+                title = $title
+                step = 'engine_invocation'
+                status = 'started'
+                message = 'Direct TOD conversation invoked the local execution engine for the bounded task.'
+                details = [pscustomobject]@{
+                    task_category = $taskCategory
+                    run_task_summary = $runTaskSummary
+                }
+                source = 'tod.ui.direct_chat'
+                surface = 'tod-conversation'
+            })
+    }
+
+    $localExecutionCompleted = ($reportedEventTypes -contains 'local_executor_completed') -or [string]::Equals($runTaskDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)
+    $terminalReviewDecision = ([string]$runTaskDecision).Trim()
+    $validationFailed = (-not [string]::IsNullOrWhiteSpace($terminalReviewDecision)) -and (-not [string]::Equals($terminalReviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase))
+
+    if ($localExecutionCompleted) {
+        $eventList.Add([pscustomobject]@{
+                timestamp = $generatedAt
+                event_type = 'local_executor_completed'
+                objective_id = $objectiveId
+                task_id = $taskId
+                request_id = $requestId
+                correlation_id = $correlationId
+                title = $title
+                step = 'engine_invocation'
+                status = 'completed'
+                message = 'Local execution completed for the direct chat task.'
+                details = [pscustomobject]@{ run_task_summary = $runTaskSummary }
+                source = 'tod.ui.direct_chat'
+                surface = 'tod-conversation'
+            })
+    }
+
+    if ([string]::Equals($terminalReviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $eventList.Add([pscustomobject]@{
+                timestamp = $generatedAt
+                event_type = 'validation_passed'
+                objective_id = $objectiveId
+                task_id = $taskId
+                request_id = $requestId
+                correlation_id = $correlationId
+                title = $title
+                step = 'validator'
+                status = 'completed'
+                message = 'Direct chat execution passed validation.'
+                details = [pscustomobject]@{ review_decision = 'pass' }
+                source = 'tod.ui.direct_chat'
+                surface = 'tod-conversation'
+            })
+    }
+    elseif ($validationFailed) {
+        $eventList.Add([pscustomobject]@{
+                timestamp = $generatedAt
+                event_type = 'validation_failed'
+                objective_id = $objectiveId
+                task_id = $taskId
+                request_id = $requestId
+                correlation_id = $correlationId
+                title = $title
+                step = 'validator'
+                status = 'blocked'
+                message = if ([string]::IsNullOrWhiteSpace($runTaskSummary)) { 'Direct chat execution finished with a non-passing review decision.' } else { $runTaskSummary }
+                details = [pscustomobject]@{ review_decision = $terminalReviewDecision }
+                source = 'tod.ui.direct_chat'
+                surface = 'tod-conversation'
+            })
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($terminalReviewDecision)) {
+        $eventList.Add([pscustomobject]@{
+                timestamp = $generatedAt
+                event_type = 'result_published'
+                objective_id = $objectiveId
+                task_id = $taskId
+                request_id = $requestId
+                correlation_id = $correlationId
+                title = $title
+                step = 'result_publisher'
+                status = if ([string]::Equals($terminalReviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } else { 'blocked' }
+                message = 'Direct chat execution published bounded result artifacts.'
+                details = [pscustomobject]@{ review_decision = $terminalReviewDecision }
+                source = 'tod.ui.direct_chat'
+                surface = 'tod-conversation'
+            })
+    }
+
+    if (($reportedEventTypes -contains 'blocked') -or ($reportedEventTypes -contains 'blocked_missing_local_executor_result') -or [string]::Equals($runTaskDecision, 'blocked', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $eventList.Add([pscustomobject]@{
+                timestamp = $generatedAt
+                event_type = 'blocked'
+                objective_id = $objectiveId
+                task_id = $taskId
+                request_id = $requestId
+                correlation_id = $correlationId
+                title = $title
+                step = 'engine_invocation'
+                status = 'blocked'
+                message = if ([string]::IsNullOrWhiteSpace($runTaskSummary)) { 'Direct chat execution is blocked and needs replay or repair.' } else { $runTaskSummary }
+                details = [pscustomobject]@{ decision = $runTaskDecision }
+                source = 'tod.ui.direct_chat'
+                surface = 'tod-conversation'
+            })
+    }
+
+    $existingPayload = Read-JsonFileIfExists -Path $directChatActivityStreamPath
+    $existingEvents = if ($existingPayload -and $existingPayload.PSObject.Properties['events'] -and $null -ne $existingPayload.events) {
+        @($existingPayload.events | Where-Object { $null -ne $_ })
+    }
+    else {
+        @()
+    }
+
+    $combinedEvents = @($existingEvents + @($eventList.ToArray()))
+    $combinedEvents = @($combinedEvents | Sort-Object -Property @{ Expression = {
+                if ($_.PSObject.Properties['timestamp']) { [string]$_.timestamp } else { '' }
+            } }, @{ Expression = {
+                if ($_.PSObject.Properties['event_type']) { [string]$_.event_type } else { '' }
+            } } -Unique)
+
+    $latestEvent = @($combinedEvents | Select-Object -Last 1)
+    $latestEvent = if (@($latestEvent).Count -gt 0) { $latestEvent[0] } else { $null }
+    $directPayload = [pscustomobject]@{
+        ok = $true
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        stream_generated_at = if ($latestEvent -and $latestEvent.PSObject.Properties['timestamp']) { [string]$latestEvent.timestamp } else { $generatedAt }
+        tod_activity_stream_build_id = $todActivityStreamBuildId
+        source_path = $directChatActivityStreamPath
+        objective_id = $objectiveId
+        task_id = $taskId
+        title = $title
+        summary = 'Fresh direct-chat execution events captured from /api/tod-conversation.'
+        status = if ($latestEvent -and $latestEvent.PSObject.Properties['status']) { [string]$latestEvent.status } else { 'active' }
+        event = if ($latestEvent -and $latestEvent.PSObject.Properties['event_type']) { [string]$latestEvent.event_type } else { '' }
+        phase = if ($latestEvent -and $latestEvent.PSObject.Properties['step']) { [string]$latestEvent.step } else { 'task_dispatch' }
+        latest_event = $latestEvent
+        count = @($combinedEvents).Count
+        events = @($combinedEvents | Select-Object -Last 200)
+    }
+
+    Write-JsonArtifact -Path $directChatActivityStreamPath -Payload $directPayload -Depth 20
+    return $directPayload
 }
 
 function Test-ShouldUseLightweightStateBus {
@@ -2114,63 +2473,34 @@ function Get-ActivityStreamPayload {
     )
 
     $safeLimit = if ($Limit -lt 1) { 1 } elseif ($Limit -gt 200) { 200 } else { $Limit }
-    $stream = $null
-    $sourcePath = ''
+    $candidates = New-Object System.Collections.Generic.List[object]
+    $directChatPayload = Read-JsonFileIfExists -Path $directChatActivityStreamPath
+    $directCandidate = New-ActivityStreamCandidatePayload -Payload $directChatPayload -SourcePath $directChatActivityStreamPath -ObjectiveId $ObjectiveId -TaskId $TaskId -Limit $safeLimit
+    if ($null -ne $directCandidate) {
+        [void]$candidates.Add($directCandidate)
+    }
+
     foreach ($candidatePath in @($activityStreamPrimaryPath, $activityStreamMirrorPath)) {
-        $candidate = Read-JsonFileIfExists -Path $candidatePath
+        $candidatePayload = Read-JsonFileIfExists -Path $candidatePath
+        $candidate = New-ActivityStreamCandidatePayload -Payload $candidatePayload -SourcePath $candidatePath -ObjectiveId $ObjectiveId -TaskId $TaskId -Limit $safeLimit
         if ($null -ne $candidate) {
-            $stream = $candidate
-            $sourcePath = $candidatePath
-            break
+            [void]$candidates.Add($candidate)
         }
     }
 
     $stateFallbackPayload = Get-StateActivityFallbackPayload -ObjectiveId $ObjectiveId -TaskId $TaskId
-    $preferStateFallback = $false
-    if ($null -ne $stateFallbackPayload) {
-        if ($null -eq $stream) {
-            $preferStateFallback = $true
-        }
-        else {
-            $streamGeneratedAt = if ($stream.PSObject.Properties['generated_at']) { [string]$stream.generated_at } else { '' }
-            $fallbackGeneratedAt = if ($stateFallbackPayload.PSObject.Properties['stream_generated_at']) { [string]$stateFallbackPayload.stream_generated_at } else { '' }
-            if (-not [string]::IsNullOrWhiteSpace($fallbackGeneratedAt) -and ([string]::IsNullOrWhiteSpace($streamGeneratedAt) -or ([string]::CompareOrdinal($fallbackGeneratedAt, $streamGeneratedAt) -gt 0))) {
-                $preferStateFallback = $true
-            }
-            elseif (-not [string]::IsNullOrWhiteSpace($TaskId)) {
-                $filteredStreamEvents = if ($stream.PSObject.Properties['events'] -and $null -ne $stream.events) { @($stream.events | Where-Object {
-                            $candidateTaskId = if ($_.PSObject.Properties['task_id']) { [string]$_.task_id } else { '' }
-                            [string]::Equals($candidateTaskId, $TaskId, [System.StringComparison]::OrdinalIgnoreCase)
-                        }) } else { @() }
-                if (@($filteredStreamEvents).Count -eq 0) {
-                    $preferStateFallback = $true
-                }
-            }
-            elseif (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) {
-                $filteredStreamEvents = if ($stream.PSObject.Properties['events'] -and $null -ne $stream.events) { @($stream.events | Where-Object {
-                            $candidateObjectiveId = if ($_.PSObject.Properties['objective_id']) { [string]$_.objective_id } else { '' }
-                            [string]::Equals($candidateObjectiveId, $ObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)
-                        }) } else { @() }
-                if (@($filteredStreamEvents).Count -eq 0) {
-                    $preferStateFallback = $true
-                }
-            }
-            elseif (-not [string]::IsNullOrWhiteSpace($fallbackGeneratedAt) -and [string]::IsNullOrWhiteSpace($streamGeneratedAt)) {
-                $preferStateFallback = $true
-            }
-        }
+    $stateCandidate = New-ActivityStreamCandidatePayload -Payload $stateFallbackPayload -SourcePath $statePath -ObjectiveId $ObjectiveId -TaskId $TaskId -Limit $safeLimit
+    if ($null -ne $stateCandidate) {
+        [void]$candidates.Add($stateCandidate)
     }
 
-    if ($preferStateFallback) {
-        return $stateFallbackPayload
-    }
-
-    if ($null -eq $stream) {
+    if ($candidates.Count -eq 0) {
         return [pscustomobject]@{
             ok = $true
             generated_at = (Get-Date).ToUniversalTime().ToString('o')
             source_path = ''
             stream_generated_at = ''
+            tod_activity_stream_build_id = $todActivityStreamBuildId
             objective_id = ''
             task_id = ''
             title = ''
@@ -2184,41 +2514,15 @@ function Get-ActivityStreamPayload {
         }
     }
 
-    $events = if ($stream.PSObject.Properties['events'] -and $null -ne $stream.events) { @($stream.events) } elseif ($stream.PSObject.Properties['latest_event'] -and $null -ne $stream.latest_event) { @($stream.latest_event) } else { @() }
-    if (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) {
-        $events = @($events | Where-Object {
-                $candidateObjectiveId = if ($_.PSObject.Properties['objective_id']) { [string]$_.objective_id } else { '' }
-                [string]::Equals($candidateObjectiveId, $ObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)
-            })
-    }
-    if (-not [string]::IsNullOrWhiteSpace($TaskId)) {
-        $events = @($events | Where-Object {
-                $candidateTaskId = if ($_.PSObject.Properties['task_id']) { [string]$_.task_id } else { '' }
-                [string]::Equals($candidateTaskId, $TaskId, [System.StringComparison]::OrdinalIgnoreCase)
-            })
-    }
-    if (@($events).Count -gt $safeLimit) {
-        $events = @($events | Select-Object -Last $safeLimit)
-    }
-
-    $latestEvent = @($events | Select-Object -Last 1)
-    $latestEvent = if (@($latestEvent).Count -gt 0) { $latestEvent[0] } else { $null }
-    return [pscustomobject]@{
-        ok = $true
-        generated_at = (Get-Date).ToUniversalTime().ToString('o')
-        source_path = $sourcePath
-        stream_generated_at = if ($stream.PSObject.Properties['generated_at']) { [string]$stream.generated_at } else { '' }
-        objective_id = if ($stream.PSObject.Properties['objective_id']) { [string]$stream.objective_id } else { '' }
-        task_id = if ($stream.PSObject.Properties['task_id']) { [string]$stream.task_id } else { '' }
-        title = if ($stream.PSObject.Properties['title']) { [string]$stream.title } else { '' }
-        summary = if ($stream.PSObject.Properties['summary']) { [string]$stream.summary } else { '' }
-        status = if ($stream.PSObject.Properties['status']) { [string]$stream.status } else { 'idle' }
-        event = if ($stream.PSObject.Properties['event']) { [string]$stream.event } else { '' }
-        phase = if ($stream.PSObject.Properties['phase']) { [string]$stream.phase } else { '' }
-        latest_event = $latestEvent
-        count = @($events).Count
-        events = @($events)
-    }
+    $preferDirectChatForScopedTask = -not [string]::IsNullOrWhiteSpace($TaskId)
+    $selectedCandidate = @($candidates | Sort-Object -Property @(
+            @{ Expression = {
+                    if ($preferDirectChatForScopedTask -and [string]::Equals([string]$_.source_path, $directChatActivityStreamPath, [System.StringComparison]::OrdinalIgnoreCase) -and [string]::Equals([string]$_.task_id, $TaskId, [System.StringComparison]::OrdinalIgnoreCase)) { 1 } else { 0 }
+                }; Descending = $true },
+            @{ Expression = { Get-ActivityTimestampTicks -Value $_ }; Descending = $true },
+            @{ Expression = { if ([string]::Equals([string]$_.source_path, $directChatActivityStreamPath, [System.StringComparison]::OrdinalIgnoreCase)) { 1 } else { 0 } }; Descending = $true }
+        ) | Select-Object -First 1)
+    return $selectedCandidate[0]
 }
 
 Write-UiCrashLog "UI server started on port $activePort"
@@ -2488,6 +2792,29 @@ try {
                 }
 
                 $replyPayload = Invoke-TodConversationReplyRequest -Query $query -ObjectiveId $objectiveId -OperatorName $operatorName -ConversationHistoryJson $conversationHistoryJson -WindowMinutes $windowMinutes
+                $freshActivityPayload = Update-DirectChatActivityStream -ReplyPayload $replyPayload
+                $scopedActivityPayload = $null
+                $replyTaskId = if ($replyPayload -and $replyPayload.PSObject.Properties['command_dispatch'] -and $replyPayload.command_dispatch -and $replyPayload.command_dispatch.PSObject.Properties['task_id']) {
+                    [string]$replyPayload.command_dispatch.task_id
+                }
+                else {
+                    ''
+                }
+                if (-not [string]::IsNullOrWhiteSpace($replyTaskId)) {
+                    $scopedActivityPayload = Get-ActivityStreamPayload -TaskId $replyTaskId -Limit 20
+                }
+                if ($replyPayload -and $replyPayload.PSObject.Properties['tod_activity_stream_build_id']) {
+                    $replyPayload.tod_activity_stream_build_id = $todActivityStreamBuildId
+                }
+                else {
+                    Add-Member -InputObject $replyPayload -NotePropertyName 'tod_activity_stream_build_id' -NotePropertyValue $todActivityStreamBuildId -Force
+                }
+                if ($null -ne $scopedActivityPayload) {
+                    Add-Member -InputObject $replyPayload -NotePropertyName 'activity_stream' -NotePropertyValue $scopedActivityPayload -Force
+                }
+                elseif ($null -ne $freshActivityPayload) {
+                    Add-Member -InputObject $replyPayload -NotePropertyName 'activity_stream' -NotePropertyValue $freshActivityPayload -Force
+                }
                 Write-JsonResponse -Response $response -StatusCode 200 -Json ($replyPayload | ConvertTo-Json -Depth 20)
             }
             catch {
