@@ -1360,7 +1360,8 @@ def _derive_implementation_gate_percent(
         return 60
 
     progress_points = 60
-    if _stage_is_active(patch_status) or _stage_is_active(command_status):
+    active_implementation = _normalize_stage_status(patch_status) in {"active", "in_progress", "running"} or _normalize_stage_status(command_status) in {"active", "in_progress", "running"}
+    if active_implementation:
         progress_points += 1
 
     detail_text = " ".join(
@@ -1376,27 +1377,16 @@ def _derive_implementation_gate_percent(
             active_task.get("wait_reason"),
         )
     ).lower()
-    if any(term in detail_text for term in ("implementation", "implement", "patch", "slice", "execution-loop")):
-        progress_points += 1
-
-    matched_files = execution_evidence.get("matched_files") if isinstance(execution_evidence.get("matched_files"), list) else []
-    if matched_files:
-        progress_points += min(2, len(matched_files))
-
-    validation_checks = validation.get("checks") if isinstance(validation.get("checks"), list) else execution_evidence.get("validation_checks") if isinstance(execution_evidence.get("validation_checks"), list) else []
-    passed_checks = sum(1 for item in validation_checks if isinstance(item, dict) and item.get("passed") is True)
-    if passed_checks > 0:
-        progress_points += min(3, max(1, (passed_checks + 1) // 2))
-
     files_changed = execution_result.get("files_changed") if isinstance(execution_result.get("files_changed"), list) else execution_evidence.get("files_changed") if isinstance(execution_evidence.get("files_changed"), list) else []
     if files_changed:
         progress_points += min(2, len(files_changed))
 
-    command_output = str(execution_result.get("command_output") or execution_evidence.get("command_output") or "").strip()
-    if command_output:
+    implementation_evidence_seen = active_implementation or bool(files_changed)
+    if implementation_evidence_seen and any(term in detail_text for term in ("implementation", "implement", "patch", "slice", "execution-loop")):
         progress_points += 1
 
-    if _stage_is_complete(result_publisher_status):
+    command_output = str(execution_result.get("command_output") or execution_evidence.get("command_output") or "").strip()
+    if implementation_evidence_seen and command_output:
         progress_points += 1
 
     return max(60, min(69, int(progress_points)))
@@ -3944,6 +3934,15 @@ def _build_execution_feed_messages(state: dict[str, Any]) -> list[dict[str, str]
     summary = _summarize_execution_slice(execution.get("summary"))
     phase_progress = execution.get("phase_progress") if isinstance(execution.get("phase_progress"), dict) else {}
     stall_signal = execution.get("stall_signal") if isinstance(execution.get("stall_signal"), dict) else {}
+    activity_state = _compact_text(execution.get("activity_state"), 80) or activity_label.lower()
+    execution_state = _compact_text(execution.get("execution_state"), 120) or _compact_text(execution.get("status"), 120) or "unknown"
+    updated_age = _pick_first_text(execution.get("updated_age")) or "unknown"
+    files_changed = execution.get("files_changed") if isinstance(execution.get("files_changed"), list) else []
+    matched_files = execution.get("matched_files") if isinstance(execution.get("matched_files"), list) else []
+    file_focus = _pick_first_text(
+        next((_compact_text(item, 120) for item in files_changed if _compact_text(item, 120)), ""),
+        next((_compact_text(item, 120) for item in matched_files if _compact_text(item, 120)), ""),
+    )
     messages: list[dict[str, str]] = [
         {
             "role": "tod",
@@ -3951,6 +3950,13 @@ def _build_execution_feed_messages(state: dict[str, Any]) -> list[dict[str, str]
             "created_at": created_at,
         }
     ]
+    messages.append(
+        {
+            "role": "system",
+            "content": f"Live state: {activity_state}. execution_state={execution_state}. Freshness: {updated_age}.",
+            "created_at": created_at,
+        }
+    )
     execution_lane = ""
     if objective_id and title:
         execution_lane = f"Objective now: {objective_id} -> {title}"
@@ -3973,6 +3979,14 @@ def _build_execution_feed_messages(state: dict[str, Any]) -> list[dict[str, str]
             {
                 "role": "system",
                 "content": f"Current slice: {summary}",
+                "created_at": created_at,
+            }
+        )
+    if file_focus:
+        messages.append(
+            {
+                "role": "system",
+                "content": f"File focus: {file_focus}",
                 "created_at": created_at,
             }
         )
@@ -4022,12 +4036,38 @@ def _build_execution_feed_messages(state: dict[str, Any]) -> list[dict[str, str]
             }
         )
     wait_reason = _compact_text(execution.get("wait_reason"), 220)
-    wait_target = _pick_first_text(execution.get("wait_target_label"), execution.get("wait_target")) or "No explicit wait target published"
-    if wait_reason or wait_target:
+    wait_target = _pick_first_text(execution.get("wait_target_label"), execution.get("wait_target"))
+    wait_owner = ""
+    wait_context = " ".join(str(item or "") for item in (wait_target, wait_reason, execution_state, current_action, execution.get("next_step"))).lower()
+    if any(term in wait_context for term in ("codex", "copilot")):
+        wait_owner = "Codex"
+    elif any(term in wait_context for term in ("operator", "console", "user", "dave")):
+        wait_owner = "operator"
+    elif "mim" in wait_context:
+        wait_owner = "MIM"
+    elif any(term in wait_context for term in ("validator", "validation", "test")):
+        wait_owner = "validation runner"
+    elif any(term in wait_context for term in ("listener", "executor", "run-task", "local execution", "local listener")):
+        wait_owner = "TOD local executor"
+    elif any(term in wait_context for term in ("lock", "lease")):
+        wait_owner = "execution lock"
+    elif activity_state == "waiting":
+        wait_owner = "TOD"
+
+    if wait_reason or wait_target or activity_state == "waiting":
+        wait_target_text = wait_target or wait_owner or "next bounded step"
         messages.append(
             {
                 "role": "system",
-                "content": f"Waiting on: {wait_target}. {wait_reason or 'No explicit wait reason published.'}",
+                "content": f"Waiting on: {wait_target_text}. {wait_reason or 'No explicit wait reason published.'}",
+                "created_at": created_at,
+            }
+        )
+    if wait_owner:
+        messages.append(
+            {
+                "role": "system",
+                "content": f"Wait owner: {wait_owner}",
                 "created_at": created_at,
             }
         )
@@ -4082,7 +4122,6 @@ def _build_execution_feed_messages(state: dict[str, Any]) -> list[dict[str, str]
                     "created_at": created_at,
                 }
             )
-    files_changed = execution.get("files_changed") if isinstance(execution.get("files_changed"), list) else []
     if files_changed:
         messages.append(
             {
@@ -4091,7 +4130,6 @@ def _build_execution_feed_messages(state: dict[str, Any]) -> list[dict[str, str]
                 "created_at": created_at,
             }
         )
-    matched_files = execution.get("matched_files") if isinstance(execution.get("matched_files"), list) else []
     if matched_files:
         messages.append(
             {
@@ -4100,7 +4138,6 @@ def _build_execution_feed_messages(state: dict[str, Any]) -> list[dict[str, str]
                 "created_at": created_at,
             }
         )
-    updated_age = _pick_first_text(execution.get("updated_age"))
     if updated_age:
         messages.append(
             {
