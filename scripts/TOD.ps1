@@ -16,6 +16,7 @@ param(
         "invoke-engine",
         "codex_handoff",
         "execute-chat-task",
+        "publish-activity-event",
         "run-task",
         "select-next-task-loop",
         "run-bridge-request",
@@ -55,6 +56,7 @@ param(
     [string]$ObjectiveId,
     [string]$TaskId,
     [string]$RequestId,
+    [string]$CorrelationId,
     [string]$Title,
     [string]$Description,
     [ValidateSet("low", "medium", "high", "critical")]
@@ -5960,7 +5962,7 @@ function Resolve-TaskCategory {
         return ([string]$Task.task_category).ToLowerInvariant()
     }
 
-    $blob = (([string]$Task.title + " " + [string]$Task.scope)).ToLowerInvariant()
+    $blob = (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
     if ($blob -match 'repo index|index-repo|indexing') { return "repo_index" }
     if ($blob -match 'module summary|summar') { return "module_summary" }
     if ($blob -match 'refactor') { return "refactor" }
@@ -9904,6 +9906,7 @@ function Invoke-ExecuteChatTaskRequest {
     param(
         [string]$ObjectiveId,
         [string]$TaskId,
+        [string]$RequestId,
         [string]$Title,
         [string]$Description,
         [string]$Priority,
@@ -9923,12 +9926,17 @@ function Invoke-ExecuteChatTaskRequest {
     $resolvedAcceptance = if (-not [string]::IsNullOrWhiteSpace($AcceptanceCriteria)) { [string]$AcceptanceCriteria } elseif (-not [string]::IsNullOrWhiteSpace($SuccessCriteria)) { [string]$SuccessCriteria } else { 'Publish bounded execution evidence and validation output.' }
     $resolvedDescription = if (-not [string]::IsNullOrWhiteSpace($Description)) { [string]$Description } else { [string]$Scope }
     $objective = Ensure-ChatTaskObjectiveRecord -ObjectiveId $ObjectiveId -Title $Title -Description $resolvedDescription -Priority $Priority -SuccessCriteria $SuccessCriteria
+    $resolvedRequestId = if (-not [string]::IsNullOrWhiteSpace($RequestId)) { [string]$RequestId } else { [string]$TaskId }
+    $resolvedCorrelationId = if (-not [string]::IsNullOrWhiteSpace($CorrelationId)) { [string]$CorrelationId } elseif (-not [string]::IsNullOrWhiteSpace($resolvedRequestId)) { [string]$resolvedRequestId } else { [string]$TaskId }
 
     $request = [pscustomobject]@{
-        request_id = [string]$TaskId
+        request_id = $resolvedRequestId
         task_id = [string]$TaskId
         objective_id = [string]$objective.id
-        correlation_id = if (-not [string]::IsNullOrWhiteSpace($CorrelationId)) { [string]$CorrelationId } else { [string]$TaskId }
+        correlation_id = $resolvedCorrelationId
+        target = 'TOD'
+        tod_action = 'execute-chat-task'
+        generated_at = Get-UtcNow
         title = if (-not [string]::IsNullOrWhiteSpace($Title)) { [string]$Title } else { "Chat task $TaskId" }
         scope = [string]$Scope
         summary = $resolvedDescription
@@ -9939,6 +9947,23 @@ function Invoke-ExecuteChatTaskRequest {
             task_acceptance_criteria = $resolvedAcceptance
         }
     }
+
+    $requestArtifactPaths = New-Object System.Collections.Generic.List[string]
+    $activityEvents = New-Object System.Collections.Generic.List[object]
+    foreach ($sharedRoot in @(Get-TodExecutionSharedRoots)) {
+        $requestPath = Join-Path $sharedRoot 'MIM_TOD_TASK_REQUEST.latest.json'
+        Write-TodExecutionJsonAtomically -Path $requestPath -Payload $request
+        [void]$requestArtifactPaths.Add($requestPath)
+    }
+    Write-TodExecutionJsonAtomically -Path $bridgeRequestPacketPath -Payload $request
+    [void]$requestArtifactPaths.Add($bridgeRequestPacketPath)
+
+    $taskCreatedEvent = Publish-TodActivityEvent -EventType 'task_created' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$request.title) -Status 'created' -Message 'Created a bounded task from TOD direct chat input.' -Details ([ordered]@{
+            request_paths = @($requestArtifactPaths)
+            task_category = $TaskCategory
+            source = 'direct_chat'
+        }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Recorded the operator request as a TOD task.'
+    [void]$activityEvents.Add($taskCreatedEvent)
 
     $mirror = Sync-CodexHandoffTaskMirror -Request $request
     $state = Load-State
@@ -9958,18 +9983,70 @@ function Invoke-ExecuteChatTaskRequest {
     $task[0].updated_at = Get-UtcNow
     Save-State -State $state
 
+    $taskClaimedEvent = Publish-TodActivityEvent -EventType 'task_claimed' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$task[0].title) -Status 'in_progress' -Message ('Claimed the chat task for executor {0}.' -f $resolvedAssignedExecutor) -Details ([ordered]@{
+            assigned_executor = $resolvedAssignedExecutor
+            task_category = $resolvedTaskCategory
+            task_mirror_reason = if ($mirror.PSObject.Properties['reason']) { [string]$mirror.reason } else { '' }
+        }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Prepared the bounded task for execution routing.'
+    [void]$activityEvents.Add($taskClaimedEvent)
+
     $packagePath = Write-CodexHandoffTaskPackage -Request $request
-    $runTask = Invoke-TodSelfJsonAction -ActionName 'run-task' -Arguments @{
-        TaskId = [string]$TaskId
-        PackagePath = $packagePath
-        ConfigPath = $ResolvedConfigPath
-        StatePath = $ResolvedStatePath
+
+    $executionStartedEvent = Publish-TodActivityEvent -EventType 'execution_started' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$task[0].title) -Status 'started' -Message 'Started immediate TOD execution routing for the chat task.' -Details ([ordered]@{
+            assigned_executor = $resolvedAssignedExecutor
+            package_path = $packagePath
+        }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Invoked run-task immediately after chat task creation.'
+    [void]$activityEvents.Add($executionStartedEvent)
+
+    try {
+        $runTask = Invoke-TodSelfJsonAction -ActionName 'run-task' -Arguments @{
+            TaskId = [string]$TaskId
+            PackagePath = $packagePath
+            ConfigPath = $ResolvedConfigPath
+            StatePath = $ResolvedStatePath
+        }
+    }
+    catch {
+        $blockedEvent = Publish-TodActivityEvent -EventType 'blocked' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$task[0].title) -Status 'blocked' -Message 'Immediate chat task execution was blocked before TOD could complete run-task.' -Details ([ordered]@{
+                error = [string]$_.Exception.Message
+                package_path = $packagePath
+            }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Recorded the blocking condition for the chat task.' -RecoveryState 'required'
+        [void]$activityEvents.Add($blockedEvent)
+        $runTask = [pscustomobject]@{
+            payload = [pscustomobject]@{
+                task_id = [string]$TaskId
+                decision = 'blocked'
+                blocked = $true
+                summary = [string]$_.Exception.Message
+            }
+            output = [string]$_.Exception.Message
+        }
+    }
+
+    $primaryRequestArtifactPath = ''
+    foreach ($candidatePath in @($requestArtifactPaths)) {
+        if ([System.IO.Path]::GetFileName([string]$candidatePath) -eq 'MIM_TOD_TASK_REQUEST.latest.json') {
+            $primaryRequestArtifactPath = [string]$candidatePath
+            break
+        }
+    }
+    $requestArtifactPathList = [string[]]@($requestArtifactPaths | ForEach-Object { [string]$_ })
+    $activityEventTypeList = New-Object System.Collections.Generic.List[string]
+    [void]$activityEventTypeList.Add('task_created')
+    [void]$activityEventTypeList.Add('task_claimed')
+    [void]$activityEventTypeList.Add('execution_started')
+    if ($runTask -and $runTask.PSObject.Properties['payload'] -and $runTask.payload -and $runTask.payload.PSObject.Properties['decision'] -and [string]::Equals([string]$runTask.payload.decision, 'blocked', [System.StringComparison]::OrdinalIgnoreCase)) {
+        [void]$activityEventTypeList.Add('blocked')
     }
 
     return [pscustomobject]@{
-        request_id = [string]$TaskId
+        request_id = $resolvedRequestId
         task_id = [string]$TaskId
         objective_id = [string]$objective.id
+        correlation_id = $resolvedCorrelationId
+        request_artifact_path = $primaryRequestArtifactPath
+        request_artifact_paths = $requestArtifactPathList
+        activity_event_types = @($activityEventTypeList)
         task_mirror = $mirror
         package_path = $packagePath
         run_task = $runTask.payload
@@ -10994,7 +11071,7 @@ function Resolve-LocalExecutionTaskClass {
         }
     }
 
-    $blob = (([string]$Task.title + ' ' + [string]$Task.scope + ' ' + [string]$Task.type + ' ' + [string]$Task.task_category)).ToLowerInvariant()
+    $blob = (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
     if ($blob -match '\binspection[ _-]?only\b') { return 'inspection_only' }
     if ($blob -match '\breport[ _-]?only\b') { return 'report_only' }
     if ($blob -match '\bdiagnostic[ _-]?only\b') { return 'diagnostic_only' }
@@ -11023,7 +11100,7 @@ function Test-LocalExecutionPatchRequired {
         return $true
     }
 
-    $blob = (([string]$Task.title + ' ' + [string]$Task.scope)).ToLowerInvariant()
+    $blob = (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
     return ($blob -match '\bpatch\b|\bimplement\b|\brefactor\b|\bmodify\b|\bupdate\b|\bchange\b|\bfix\b|\brewrite\b|\badd\b|\bremove\b')
 }
 
@@ -11819,8 +11896,25 @@ switch ($Action) {
     "execute-chat-task" {
         if ([string]::IsNullOrWhiteSpace($TaskId)) { throw '-TaskId is required' }
 
-        $result = Invoke-ExecuteChatTaskRequest -ObjectiveId $ObjectiveId -TaskId $TaskId -Title $Title -Description $Description -Priority $Priority -Scope $Scope -AcceptanceCriteria $AcceptanceCriteria -SuccessCriteria $SuccessCriteria -AssignedExecutor $AssignedExecutor -TaskCategory $TaskCategory -CorrelationId $RequestId -ResolvedConfigPath $configPath -ResolvedStatePath $statePath
+        $result = Invoke-ExecuteChatTaskRequest -ObjectiveId $ObjectiveId -TaskId $TaskId -RequestId $RequestId -Title $Title -Description $Description -Priority $Priority -Scope $Scope -AcceptanceCriteria $AcceptanceCriteria -SuccessCriteria $SuccessCriteria -AssignedExecutor $AssignedExecutor -TaskCategory $TaskCategory -CorrelationId $CorrelationId -ResolvedConfigPath $configPath -ResolvedStatePath $statePath
         $result | ConvertTo-Json -Depth 16
+    }
+
+    "publish-activity-event" {
+        if ([string]::IsNullOrWhiteSpace($Type)) { throw '-Type is required for publish-activity-event and is used as the event type.' }
+
+        $detailPayload = $null
+        if (-not [string]::IsNullOrWhiteSpace($Description)) {
+            try {
+                $detailPayload = ($Description | ConvertFrom-Json)
+            }
+            catch {
+                $detailPayload = [ordered]@{ description = [string]$Description }
+            }
+        }
+
+        $eventRecord = Publish-TodActivityEvent -EventType ([string]$Type) -ObjectiveId $ObjectiveId -TaskId $TaskId -RequestId $RequestId -CorrelationId $CorrelationId -Title $Title -Status $(if ([string]::IsNullOrWhiteSpace($Priority)) { 'info' } else { [string]$Priority }) -Message $Summary -Details $detailPayload -Source 'tod.manual-activity' -Surface 'tod-chat' -Summary $Scope -CurrentAction $AcceptanceCriteria -ExecutionState $SuccessCriteria -RecoveryState $AssignedExecutor
+        $eventRecord | ConvertTo-Json -Depth 16
     }
 
     "ping-mim" {

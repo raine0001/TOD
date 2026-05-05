@@ -40,6 +40,47 @@ function New-ConversationalReplyFixture {
         ListenerResultPath = Join-Path $base 'TOD_MIM_TASK_RESULT.latest.json'
         ListenerCommandStatusPath = Join-Path $base 'TOD_MIM_COMMAND_STATUS.latest.json'
         ListenerDecisionPath = Join-Path $base 'TOD_MIM_EXECUTION_DECISION.latest.json'
+        TodConfigPath = Join-Path $base 'tod-config.json'
+        TodStatePath = Join-Path $base 'tod-state.json'
+    }
+}
+
+function Backup-ChatDispatchArtifacts {
+    $paths = @(
+        (Join-Path $repoRoot 'runtime/shared/MIM_TOD_TASK_REQUEST.latest.json'),
+        (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVITY_STREAM.latest.json'),
+        (Join-Path $repoRoot 'tmp_remote_mim/runtime/shared/MIM_TOD_TASK_REQUEST.latest.json'),
+        (Join-Path $repoRoot 'tmp_remote_mim/runtime/shared/TOD_ACTIVITY_STREAM.latest.json'),
+        (Join-Path $repoRoot 'tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json')
+    )
+
+    $records = @()
+    foreach ($path in $paths) {
+        $records += [pscustomobject]@{
+            path = $path
+            exists = (Test-Path -Path $path)
+            content = if (Test-Path -Path $path) { [System.IO.File]::ReadAllText($path) } else { '' }
+        }
+    }
+
+    return @($records)
+}
+
+function Restore-ChatDispatchArtifacts {
+    param([object[]]$Records)
+
+    foreach ($record in @($Records)) {
+        if ([bool]$record.exists) {
+            $directory = Split-Path -Parent ([string]$record.path)
+            if (-not (Test-Path -Path $directory)) {
+                New-Item -ItemType Directory -Path $directory -Force | Out-Null
+            }
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText([string]$record.path, [string]$record.content, $utf8NoBom)
+        }
+        elseif (Test-Path -Path ([string]$record.path)) {
+            Remove-Item -Path ([string]$record.path) -Force
+        }
     }
 }
 
@@ -112,6 +153,74 @@ Describe 'TOD conversational reply' {
             [string]$result.reply_text | Should Match 'implementation request'
         }
         finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'creates a task, writes the live request artifact, and emits activity for OBJECTIVE chat input' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        $artifactBackup = Backup-ChatDispatchArtifacts
+        try {
+            Write-JsonNoBom -PathValue $fixture.BuildStatePath -Payload ([pscustomobject]@{
+                status = 'active'
+                task = 'Direct chat dispatch'
+            })
+            Write-JsonNoBom -PathValue $fixture.ObjectivesPath -Payload ([pscustomobject]@{
+                objectives = @()
+            })
+            Write-JsonNoBom -PathValue $fixture.MaintenancePath -Payload ([pscustomobject]@{
+                overall_status = 'healthy'
+                overall_severity = 'info'
+            })
+            Write-JsonNoBom -PathValue $fixture.WatchdogPath -Payload ([pscustomobject]@{
+                state = 'healthy'
+            })
+            Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{
+                enabled = $true
+            })
+            Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
+                objectives = @()
+                tasks = @()
+                execution_results = @()
+                review_decisions = @()
+                journal = @()
+                engine_performance = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_decisions = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_feedback = [pscustomobject]@{ learned_weights = [pscustomobject]@{}; sample_size = 0; version = 'feedback_v1'; updated_at = '' }
+                sync_state = [pscustomobject]@{ expected_contract_version = ''; expected_schema_version = ''; local_repo_signature = ''; cached_manifest = $null; last_comparison = $null; last_sync_decision = ''; last_sync_code = ''; compared_at = '' }
+            })
+
+            $query = @'
+OBJECTIVE: TOD-DIRECT-ACTION-BINDING
+Create a direct chat task that binds actionable operator requests to immediate TOD execution.
+STOP CONDITION: TOD chat creates a task, writes the live request artifact, and emits activity.
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+
+            $requestArtifactPath = Join-Path $repoRoot 'runtime/shared/MIM_TOD_TASK_REQUEST.latest.json'
+            $requestArtifact = Get-Content -Path $requestArtifactPath -Raw | ConvertFrom-Json
+            $eventTypes = @($result.command_dispatch.payload.activity_event_types | ForEach-Object { [string]$_ })
+
+            [bool]$result.ok | Should Be $true
+            [string]$result.intent.intent | Should Be 'COMMAND'
+            [bool]$result.command_dispatch.created | Should Be $true
+            [string]$result.command_dispatch.task_id | Should Not BeNullOrEmpty
+            [string]$result.command_dispatch.request_id | Should Not BeNullOrEmpty
+            [string]$result.command_dispatch.objective_id | Should Not BeNullOrEmpty
+            [string]$requestArtifact.task_id | Should Be ([string]$result.command_dispatch.task_id)
+            [string]$requestArtifact.request_id | Should Be ([string]$result.command_dispatch.request_id)
+            [string]$requestArtifact.objective_id | Should Be ([string]$result.command_dispatch.objective_id)
+            ($eventTypes -contains 'task_created') | Should Be $true
+            ($eventTypes -contains 'task_claimed') | Should Be $true
+            (($eventTypes -contains 'execution_started') -or ($eventTypes -contains 'blocked')) | Should Be $true
+        }
+        finally {
+            Restore-ChatDispatchArtifacts -Records $artifactBackup
             if ($fixture -and (Test-Path -Path $fixture.Base)) {
                 Remove-Item -Path $fixture.Base -Recurse -Force
             }
@@ -274,7 +383,7 @@ Describe 'TOD conversational reply' {
             [string]$result.listener_runtime.last_completed_action | Should Be 'bridge_runtime_sync'
             [string]$result.reply_text | Should Match 'objective-205-task-safe-001'
             [string]$result.reply_text | Should Match 'bridge status is succeeded'
-            [string]$result.reply_text | Should Match 'Last completed action: bridge_runtime_sync'
+            [string]$result.reply_text | Should Match 'last completed action is bridge_runtime_sync'
         }
         finally {
             if ($fixture -and (Test-Path -Path $fixture.Base)) {

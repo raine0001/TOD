@@ -20,6 +20,8 @@ param(
     [string]$ListenerResultPath = 'shared_state/TOD_MIM_TASK_RESULT.latest.json',
     [string]$ListenerCommandStatusPath = 'shared_state/TOD_MIM_COMMAND_STATUS.latest.json',
     [string]$ListenerDecisionPath = 'shared_state/TOD_MIM_EXECUTION_DECISION.latest.json',
+    [string]$TodConfigPath = '',
+    [string]$TodStatePath = '',
     [switch]$SkipModel,
     [switch]$AsJson
 )
@@ -110,6 +112,9 @@ function Get-RequestKind {
     param([Parameter(Mandatory = $true)][string]$QueryText)
 
     $normalized = $QueryText.ToLowerInvariant()
+    if ($normalized -match '(?m)^\s*(objective|task|stop condition|acceptance criteria)\s*:') {
+        return 'implementation_request'
+    }
     if ($normalized -match 'implement|implementation|build|wire|setup|set up|create|add|change|make|begin|start|ship|develop|conversation|communicat') {
         return 'implementation_request'
     }
@@ -144,7 +149,8 @@ function Get-IntentRoute {
     $normalized = $QueryText.Trim().ToLowerInvariant()
     $intent = 'CONVERSATION'
     $action = 'direct reply'
-    $requestKind = 'general_request'
+    $requestKind = Get-RequestKind -QueryText $QueryText
+    $hasStructuredTaskRequest = ($normalized -match '(?m)^\s*(objective|task|stop condition|acceptance criteria)\s*:')
 
     if ($normalized -match '^(override|control|force|policy|priority|admin|elevat|restart tod|freeze|unfreeze|disable restriction)\b') {
         $intent = 'SYSTEM'
@@ -156,7 +162,12 @@ function Get-IntentRoute {
         $action = 'explain system'
         $requestKind = 'status_request'
     }
-    elseif ($normalized -match '^(fix|create|add|remove|update|run|start|stop|restart|enable|disable|make|repair|sync|deploy|train|turn|open|close|package|dispatch)\b') {
+    elseif ($normalized -match '^(fix|create|add|remove|update|run|start|setup|stop|restart|enable|disable|make|repair|sync|deploy|train|turn|open|close|package|dispatch)\b') {
+        $intent = 'COMMAND'
+        $action = 'create + dispatch task'
+        $requestKind = 'implementation_request'
+    }
+    elseif ($hasStructuredTaskRequest) {
         $intent = 'COMMAND'
         $action = 'create + dispatch task'
         $requestKind = 'implementation_request'
@@ -194,6 +205,62 @@ function New-IntentAcceptanceCriteria {
     )
 }
 
+function Get-StructuredDirectiveValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$QueryText,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    $match = [regex]::Match($QueryText, ('(?im)^\s*{0}\s*:\s*(.+)$' -f [regex]::Escape($Label)))
+    if ($match.Success) {
+        return [string]$match.Groups[1].Value.Trim()
+    }
+
+    return ''
+}
+
+function New-ConversationDispatchId {
+    param([Parameter(Mandatory = $true)][string]$Prefix)
+
+    return ('{0}-{1}' -f $Prefix.ToUpperInvariant(), ([guid]::NewGuid().ToString('N').Substring(0, 12).ToUpperInvariant()))
+}
+
+function Get-CommandDispatchClassification {
+    param(
+        $ExecutionPayload,
+        [string]$DefaultTaskCategory
+    )
+
+    if ($ExecutionPayload -and $ExecutionPayload.PSObject.Properties['routing_decision_preinvoke'] -and $ExecutionPayload.routing_decision_preinvoke -and $ExecutionPayload.routing_decision_preinvoke.PSObject.Properties['selected_engine'] -and -not [string]::IsNullOrWhiteSpace([string]$ExecutionPayload.routing_decision_preinvoke.selected_engine)) {
+        return ('engine:{0}' -f [string]$ExecutionPayload.routing_decision_preinvoke.selected_engine)
+    }
+    if ($ExecutionPayload -and $ExecutionPayload.PSObject.Properties['routing_decision'] -and $ExecutionPayload.routing_decision -and $ExecutionPayload.routing_decision.PSObject.Properties['selected_engine'] -and -not [string]::IsNullOrWhiteSpace([string]$ExecutionPayload.routing_decision.selected_engine)) {
+        return ('engine:{0}' -f [string]$ExecutionPayload.routing_decision.selected_engine)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($DefaultTaskCategory)) {
+        return ('task_category:{0}' -f $DefaultTaskCategory)
+    }
+
+    return 'task_category:general'
+}
+
+function Get-CommandDispatchNextStep {
+    param($ExecutionPayload)
+
+    if ($ExecutionPayload -and $ExecutionPayload.PSObject.Properties['next_task_selection'] -and $ExecutionPayload.next_task_selection -and $ExecutionPayload.next_task_selection.PSObject.Properties['selected_task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$ExecutionPayload.next_task_selection.selected_task_id)) {
+        return ('next task selected: {0}' -f [string]$ExecutionPayload.next_task_selection.selected_task_id)
+    }
+    if ($ExecutionPayload -and $ExecutionPayload.PSObject.Properties['decision']) {
+        if ([string]::Equals([string]$ExecutionPayload.decision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+            return 'review the bounded execution output and continue the selected lane'
+        }
+
+        return 'inspect the blocking execution output and replay the bounded task with fixes'
+    }
+
+    return 'await TOD execution results'
+}
+
 function Invoke-TodActionJson {
     param(
         [Parameter(Mandatory = $true)][string]$Action,
@@ -219,6 +286,15 @@ function Invoke-TodActionJson {
         $invokeArgs += [string]$ExtraArguments[$key]
     }
 
+    if (-not [string]::IsNullOrWhiteSpace($script:resolvedTodConfigPath)) {
+        $invokeArgs += '-ConfigPath'
+        $invokeArgs += [string]$script:resolvedTodConfigPath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($script:resolvedTodStatePath)) {
+        $invokeArgs += '-StatePath'
+        $invokeArgs += [string]$script:resolvedTodStatePath
+    }
+
     $output = powershell @invokeArgs 2>&1
     $exitCode = $LASTEXITCODE
     $outputText = [string]($output | Out-String)
@@ -235,12 +311,19 @@ function New-IntentDispatchResult {
         created = $false
         dispatched = $false
         executed = $false
+        blocked = $false
         action_name = ''
         action_kind = ''
         objective_id = ''
         task_id = ''
+        request_id = ''
+        correlation_id = ''
         title = ''
         task_category = ''
+        classification = ''
+        next_step = ''
+        codex_needed = $false
+        request_artifact_path = ''
         detail = ''
         payload = $null
     }
@@ -255,46 +338,86 @@ function Invoke-IntentCommandDispatch {
 
     $result = New-IntentDispatchResult
     $result.objective_id = $ResolvedObjectiveId
-
-    if ([string]::IsNullOrWhiteSpace($ResolvedObjectiveId)) {
-        $result.detail = 'No objective id was available for command dispatch, so TOD stayed on routing without creating a task.'
-        return [pscustomobject]$result
-    }
     $taskCategory = (($IntentRoute.target -replace '[^A-Za-z0-9]+', '_').Trim('_')).ToLowerInvariant()
     if ([string]::IsNullOrWhiteSpace($taskCategory)) {
         $taskCategory = 'general'
     }
-    $title = 'UI command: ' + $QueryText.Trim()
+    $objectiveDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'OBJECTIVE'
+    $taskDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'TASK'
+    $stopConditionDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'STOP CONDITION'
+    $acceptanceDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'ACCEPTANCE CRITERIA'
+    $title = if (-not [string]::IsNullOrWhiteSpace($taskDirective)) {
+        [string]$taskDirective
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) {
+        [string]$objectiveDirective
+    }
+    else {
+        'UI command: ' + $QueryText.Trim()
+    }
     $scope = 'Operator command routed from TOD direct conversation. Target: {0}. Requested action: {1}. Original query: {2}' -f $IntentRoute.target, $IntentRoute.action, $QueryText.Trim()
-    $acceptanceCriteria = (New-IntentAcceptanceCriteria -IntentTarget ([string]$IntentRoute.target) -QueryText $QueryText) -join "`n"
+    $acceptanceCriteria = if (-not [string]::IsNullOrWhiteSpace($acceptanceDirective)) {
+        [string]$acceptanceDirective
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($stopConditionDirective)) {
+        [string]$stopConditionDirective
+    }
+    else {
+        (New-IntentAcceptanceCriteria -IntentTarget ([string]$IntentRoute.target) -QueryText $QueryText) -join "`n"
+    }
+    $objectiveDescription = if (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) {
+        ('Objective created from TOD direct chat input: {0}' -f $objectiveDirective)
+    }
+    else {
+        'Objective created from TOD direct chat task dispatch.'
+    }
+    $requestId = New-ConversationDispatchId -Prefix 'REQ'
+    $correlationId = New-ConversationDispatchId -Prefix 'CORR'
+    $taskId = New-ConversationDispatchId -Prefix 'TSKCHAT'
 
     try {
         $result.attempted = $true
-        $result.action_name = 'add-task'
+        $result.action_name = 'execute-chat-task'
         $result.action_kind = 'task_dispatch'
-        $parsed = Invoke-TodActionJson -Action 'add-task' -ExtraArguments @{
+        $result.request_id = $requestId
+        $result.correlation_id = $correlationId
+        $parsed = Invoke-TodActionJson -Action 'execute-chat-task' -ExtraArguments @{
             ObjectiveId = $ResolvedObjectiveId
+            TaskId = $taskId
+            RequestId = $requestId
+            CorrelationId = $correlationId
             Title = $title
+            Description = $objectiveDescription
             Scope = $scope
             AcceptanceCriteria = $acceptanceCriteria
+            SuccessCriteria = $acceptanceCriteria
             AssignedExecutor = 'codex'
             TaskCategory = $taskCategory
             Type = 'implementation'
         }
-        $createdTask = if ($parsed.PSObject.Properties['local']) { $parsed.local } else { $parsed }
-        $taskId = [string](Get-PropertyValue -InputObject $createdTask -PropertyName 'id' -Default '')
+        $taskId = [string](Get-PropertyValue -InputObject $parsed -PropertyName 'task_id' -Default '')
+        $result.objective_id = [string](Get-PropertyValue -InputObject $parsed -PropertyName 'objective_id' -Default $ResolvedObjectiveId)
         $result.created = (-not [string]::IsNullOrWhiteSpace($taskId))
         $result.dispatched = $result.created
         $result.executed = $result.created
         $result.task_id = $taskId
         $result.title = $title
         $result.task_category = $taskCategory
+        $result.classification = Get-CommandDispatchClassification -ExecutionPayload $(Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null) -DefaultTaskCategory $taskCategory
+        $result.next_step = Get-CommandDispatchNextStep -ExecutionPayload $(Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null)
+        $result.codex_needed = $true
+        $result.request_artifact_path = [string](Get-PropertyValue -InputObject $parsed -PropertyName 'request_artifact_path' -Default '')
+        $runTaskPayload = Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null
+        if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['decision']) {
+            $result.blocked = (-not [string]::Equals([string]$runTaskPayload.decision, 'pass', [System.StringComparison]::OrdinalIgnoreCase))
+        }
         $result.payload = $parsed
-        $result.detail = if ($result.created) { 'Task created and assigned to codex for execution routing.' } else { 'TOD ran add-task but did not receive a task id back.' }
+        $result.detail = if ($result.created) { 'Task created, request artifact written, and TOD execution started immediately.' } else { 'TOD ran execute-chat-task but did not receive a task id back.' }
         return [pscustomobject]$result
     }
     catch {
         $result.detail = [string]$_.Exception.Message
+        $result.blocked = $true
         return [pscustomobject]$result
     }
 }
@@ -962,6 +1085,8 @@ $resolvedListenerRequestPath = Resolve-RepoPath -PathValue $ListenerRequestPath
 $resolvedListenerResultPath = Resolve-RepoPath -PathValue $ListenerResultPath
 $resolvedListenerCommandStatusPath = Resolve-RepoPath -PathValue $ListenerCommandStatusPath
 $resolvedListenerDecisionPath = Resolve-RepoPath -PathValue $ListenerDecisionPath
+$script:resolvedTodConfigPath = if ([string]::IsNullOrWhiteSpace($TodConfigPath)) { '' } else { Resolve-RepoPath -PathValue $TodConfigPath }
+$script:resolvedTodStatePath = if ([string]::IsNullOrWhiteSpace($TodStatePath)) { '' } else { Resolve-RepoPath -PathValue $TodStatePath }
 
 $voiceConfig = Read-JsonFileSafe -PathValue $resolvedProviderConfigPath
 $currentBuildState = Read-JsonFileSafe -PathValue $resolvedCurrentBuildStatePath
@@ -1179,12 +1304,12 @@ if ([string]::IsNullOrWhiteSpace($replyText)) {
     $blockerText = if ([string]::IsNullOrWhiteSpace($initiative.blocker)) { 'no hard blocker is active.' } else { "$($initiative.blocker)." }
     if ([string]::Equals([string]$intentRoute.intent, 'COMMAND', [System.StringComparison]::OrdinalIgnoreCase)) {
         $dispatchDetail = if ($commandDispatch.created) {
-            'task ' + $commandDispatch.task_id + ' is now assigned to codex.'
+            ('task {0} created under {1}; classification {2}; next step {3}; codex_needed={4}' -f $commandDispatch.task_id, $commandDispatch.objective_id, $commandDispatch.classification, $commandDispatch.next_step, $commandDispatch.codex_needed.ToString().ToLowerInvariant())
         }
         else {
             [string]$commandDispatch.detail
         }
-        $replyText = "intent: COMMAND`ntarget: $($intentRoute.target)`naction: $($intentRoute.action)`nobjective: $($initiative.objective_id)`nactive_task: $($initiative.active_task)`nnext: $($initiative.next_action)`ndispatch: $dispatchDetail"
+        $replyText = "intent: COMMAND`ntarget: $($intentRoute.target)`naction: $($intentRoute.action)`nobjective: $($commandDispatch.objective_id)`ntask_id: $($commandDispatch.task_id)`nrequest_id: $($commandDispatch.request_id)`nclassification: $($commandDispatch.classification)`nnext: $($commandDispatch.next_step)`ncodex_needed: $($commandDispatch.codex_needed.ToString().ToLowerInvariant())`ndispatch: $dispatchDetail"
     }
     elseif ([string]::Equals([string]$intentRoute.intent, 'DIAGNOSTIC', [System.StringComparison]::OrdinalIgnoreCase)) {
         $replyText = "intent: DIAGNOSTIC`ntarget: $($intentRoute.target)`naction: $($intentRoute.action)`nsummary: $($currentWork.initiative_summary)`nruntime: $($listenerRuntime.summary)"
