@@ -1,0 +1,343 @@
+{
+  "metadata": {
+    "contract_name": "shared_lineage_contract",
+    "version": "proposal-v1",
+    "status": "draft",
+    "workspace": "e:/TOD",
+    "scope": [
+      "listener runtime packets",
+      "runtime/shared canonical artifacts",
+      "shared truth reconciliation",
+      "replay and reset operations",
+      "database migration compatibility",
+      "json export compatibility"
+    ]
+  },
+  "object_model": {
+    "ids": {
+      "objective_id": {
+        "format": "normalized canonical form should be objective-<number> for exported packets; internal normalization may strip prefix for comparison only",
+        "comparison_rule": "normalize before comparison; preserve original exported text when writing packet payloads"
+      },
+      "task_id": {
+        "format": "objective-<objective-number>-task-<task-number>",
+        "comparison_rule": "exact string match for runtime packets; no task-level fuzzy matching"
+      },
+      "request_id": {
+        "format": "defaults to task_id for bridge runtime packets unless an explicitly distinct request id exists",
+        "comparison_rule": "exact string match for runtime packets and dedup memory"
+      },
+      "correlation_id": {
+        "format": "opaque string; defaults to request_id when no explicit correlation exists",
+        "comparison_rule": "exact string match for runtime packets"
+      },
+      "sequence": {
+        "format": "monotonic integer when available",
+        "comparison_rule": "preferred freshness key over ordinal suffix"
+      },
+      "ordinal": {
+        "format": "numeric suffix derived from request_id or task_id only when sequence is unavailable",
+        "comparison_rule": "fallback freshness key"
+      }
+    },
+    "packet_families": {
+      "strict_runtime_packets": [
+        "TOD_MIM_TASK_ACK.latest.json",
+        "TOD_MIM_TASK_RESULT.latest.json"
+      ],
+      "runtime_status_packets": [
+        "TOD_MIM_COMMAND_STATUS.latest.json",
+        "TOD_MIM_EXECUTION_DECISION.latest.json"
+      ],
+      "runtime_memory": [
+        "listener_state.json",
+        "TOD_LOOP_JOURNAL.latest.json"
+      ],
+      "canonical_shared_runtime": [
+        "TOD_ACTIVE_OBJECTIVE.latest.json",
+        "TOD_ACTIVE_TASK.latest.json",
+        "TOD_EXECUTION_RESULT.latest.json",
+        "TOD_EXECUTION_TRUTH.latest.json",
+        "TOD_ACTIVITY_STREAM.latest.json",
+        "TOD_VALIDATION_RESULT.latest.json"
+      ],
+      "reconciled_truth": [
+        "TOD_MIM_SHARED_TRUTH.latest.json"
+      ],
+      "mirrors_and_diagnostics": [
+        "TOD_MIM_* diagnostic and mirror artifacts",
+        "MIM_TOD_* mirrored artifacts outside the live writer"
+      ]
+    }
+  },
+  "writer_ownership": {
+    "live_runtime_authority": {
+      "writer": "scripts/Start-TODMimPacketListener.ps1",
+      "owns": [
+        "TOD_MIM_TASK_ACK.latest.json",
+        "TOD_MIM_TASK_RESULT.latest.json",
+        "TOD_MIM_COMMAND_STATUS.latest.json",
+        "TOD_MIM_EXECUTION_DECISION.latest.json",
+        "listener_state.json",
+        "TOD_LOOP_JOURNAL.latest.json"
+      ],
+      "rules": [
+        "Only the live listener may publish strict runtime ACK and RESULT packets to the shared surface during normal operation.",
+        "listener_state and loop journal are authoritative state inputs, not mere telemetry."
+      ]
+    },
+    "canonical_shared_runtime_authority": {
+      "writer": "scripts/Invoke-TODCanonicalLatestArtifactRecoupling.ps1",
+      "owns": [
+        "TOD_ACTIVE_OBJECTIVE.latest.json",
+        "TOD_ACTIVE_TASK.latest.json",
+        "TOD_EXECUTION_RESULT.latest.json",
+        "TOD_EXECUTION_TRUTH.latest.json",
+        "TOD_ACTIVITY_STREAM.latest.json",
+        "TOD_VALIDATION_RESULT.latest.json"
+      ],
+      "rules": [
+        "This writer may replace drifted shared runtime latest artifacts when a canonical objective/task lane is explicitly provided.",
+        "Superseded shared-runtime payloads must be archived before replacement."
+      ]
+    },
+    "reconciled_truth_authority": {
+      "writer": "scripts/reconcile_tod_mim_shared_truth.py",
+      "owns": [
+        "TOD_MIM_SHARED_TRUTH.latest.json"
+      ],
+      "rules": [
+        "Shared truth is a reconciled view and must not be treated as the originating writer of ACK, RESULT, COMMAND_STATUS, or DECISION packets.",
+        "The writer may use limited objective-level precedence rules from authoritative MIM sources."
+      ]
+    },
+    "explicit_override_writer": {
+      "writer": "scripts/Invoke-TODForcedExecutionReplay.ps1",
+      "owns": [
+        "forced replay mutation of live request/trigger/command-status/listener-state"
+      ],
+      "rules": [
+        "Replay mutation is opt-in and must require an explicit operator action.",
+        "Replay writes are exceptional and must archive prior live artifacts."
+      ]
+    },
+    "mirror_writers": {
+      "writers": [
+        "scripts/Copy-TODCurrentStateToContextSync.ps1"
+      ],
+      "rules": [
+        "Mirror writers may copy artifacts into alternate roots but must not claim authorship or authority over the payload lineage they mirror."
+      ]
+    }
+  },
+  "acceptance_rules": {
+    "strict_runtime_packets": {
+      "applies_to": [
+        "ACK",
+        "RESULT"
+      ],
+      "required_matches": [
+        "objective_id",
+        "task_id",
+        "request_id",
+        "correlation_id",
+        "bridge_runtime.current_processing.task_id",
+        "bridge_runtime.current_processing.correlation_id"
+      ],
+      "rules": [
+        "Packet acceptance must be exact-match, not objective-only.",
+        "Packets must carry contract envelope fields, transport/source identity, and checksum-bound contract metadata.",
+        "If validation fails, the packet must not be published as accepted runtime truth."
+      ]
+    },
+    "command_status": {
+      "rules": [
+        "Command status may mirror live runtime state, stale-guard state, and decision state, but it must not override ACK or RESULT contract validation outcomes.",
+        "If a validation failure occurs, status should reflect contract_violation_rejected and reference the violation payload."
+      ]
+    },
+    "shared_truth": {
+      "rules": [
+        "Shared truth may reconcile across multiple surfaces and may apply timestamp-based precedence.",
+        "Objective-only precedence is allowed only under explicit authority-source rules.",
+        "Shared truth must expose the authority source and whether the selected view is authoritative."
+      ]
+    }
+  },
+  "rejection_reasons": {
+    "runtime_packet_rejections": [
+      "contract_violation_rejected",
+      "objective_id_mismatch",
+      "embedded_identity_mismatch",
+      "invalid_packet_shape",
+      "review_gate_failed",
+      "execution_readiness_blocked"
+    ],
+    "listener_decision_rejections": [
+      "policy_rejected",
+      "hard_boundary_escalated",
+      "waiting_dependency",
+      "stale_request_ignored",
+      "already_processed"
+    ],
+    "stale_guard_reason_codes": [
+      "higher_authoritative_task_ordinal_active"
+    ]
+  },
+  "stale_guard_and_dedup_rules": {
+    "memory_sources": [
+      "listener_state.high_watermark_*",
+      "listener_state.last_processed_request_*",
+      "listener_state.last_stale_guard",
+      "TOD_LOOP_JOURNAL.latest.json entries"
+    ],
+    "freshness_order": [
+      "sequence",
+      "ordinal suffix"
+    ],
+    "rules": [
+      "Sequence must outrank ordinal suffix when present.",
+      "High-watermark comparison must be scoped to objective.",
+      "Loop-journal entries and listener-state watermark may both contribute to the effective watermark.",
+      "A stale-guard winner must record source, source_field, request_id, ordinal, and sequence.",
+      "Success publication must clear stale-guard carry-forward when the active lane has been corrected."
+    ]
+  },
+  "replay_rules": {
+    "normal_replay": [
+      "Replay should use bounded scoped replay state rather than invent a new authority source.",
+      "Replay should preserve canonical request identity when the operational goal is to re-run the same canonical lane."
+    ],
+    "forced_replay": [
+      "Forced replay must require explicit operator intent.",
+      "Forced replay must verify that the current live request lane matches the requested target before mutation.",
+      "Forced replay must archive the prior live artifacts before overwriting latest files."
+    ]
+  },
+  "reset_rules": {
+    "scoped_reset": [
+      "A lineage reset must clear objective-scoped dedup and stale-guard memory in listener_state.",
+      "A lineage reset must remove or supersede conflicting loop-journal entries that outrank the canonical lane.",
+      "A lineage reset must not globally erase unrelated objective history."
+    ],
+    "post_reset_validation": [
+      "ACK outer identity must match canonical task lane.",
+      "RESULT outer identity must match canonical task lane.",
+      "Embedded validator identity must match canonical task lane.",
+      "bridge_runtime.current_processing.task_id must match canonical task lane.",
+      "Command status must not remain in contract_violation_rejected for the repaired lane."
+    ]
+  },
+  "supersession_rules": {
+    "canonical_shared_runtime": [
+      "Replacing canonical shared-runtime latest artifacts must archive the previous payload into a superseded store."
+    ],
+    "live_runtime_packets": [
+      "Normal listener writes may overwrite latest ACK/RESULT/STATUS in place because these represent the live lane.",
+      "If persistent audit is required, the database layer should store every publish event as immutable rows while the file layer remains latest-only."
+    ],
+    "replay_mutations": [
+      "Replay mutation of live latest files must archive the old live artifacts before replacement."
+    ]
+  },
+  "objective_only_matching_policy": {
+    "allowed": [
+      {
+        "surface": "TOD_MIM_SHARED_TRUTH.latest.json",
+        "conditions": [
+          "authority_source is formal_program_truth, task_status_review, or decision_task",
+          "MIM view is fresher or same-objective precedence conditions are met",
+          "objective_authority_eligible gates use of live task request task_id"
+        ]
+      },
+      {
+        "surface": "canonical shared-runtime recoupling",
+        "conditions": [
+          "canonical objective remains fixed but canonical task changes"
+        ]
+      }
+    ],
+    "forbidden": [
+      {
+        "surface": "ACK and RESULT runtime packets",
+        "reason": "Bridge runtime packets require exact identity match."
+      },
+      {
+        "surface": "bridge_runtime.current_processing identity validation",
+        "reason": "Current-processing task and correlation are part of strict runtime identity."
+      }
+    ]
+  },
+  "state_transitions": {
+    "listener_decision_flow": [
+      "command_observed",
+      "accepted",
+      "running feedback",
+      "succeeded | failed | blocked"
+    ],
+    "listener_non_execute_flow": [
+      "policy_rejected",
+      "waiting_dependency",
+      "hard_boundary_escalated"
+    ],
+    "stale_dedup_flow": [
+      "stale_request_ignored",
+      "already_processed"
+    ],
+    "contract_failure_flow": [
+      "contract_violation_rejected",
+      "coordination escalation optional",
+      "resolved after a later valid packet for the same channel"
+    ]
+  },
+  "readers_and_consumers": {
+    "runtime_readers": [
+      "scripts/Get-TODLightweightStateBus.ps1",
+      "scripts/Compare-TODMimExecutionDispatchBaseline.ps1",
+      "scripts/Invoke-TODMimBridgeSmoke.ps1"
+    ],
+    "shared_truth_consumers": [
+      "TOD UI state readers",
+      "canonical recoupling validation flows",
+      "runtime diagnostics"
+    ],
+    "consumer_rule": "Readers may summarize or compare payloads, but only the designated owners may publish authoritative replacements for a given artifact family."
+  },
+  "database_migration": {
+    "principles": [
+      "Store immutable publish events for runtime packets even if the file system stays latest-only.",
+      "Separate mutable listener memory from immutable runtime packets.",
+      "Represent shared truth as a derived materialized view or derived table, not as the origin of runtime packet rows.",
+      "Preserve supersession links for recoupled and replay-mutated artifacts."
+    ],
+    "recommended_tables": [
+      "tod_listener_command_status",
+      "tod_listener_execution_decisions",
+      "tod_listener_task_acks",
+      "tod_listener_task_results",
+      "tod_listener_loop_journal",
+      "tod_listener_state_snapshots",
+      "tod_execution_active_tasks",
+      "tod_execution_results",
+      "tod_execution_truth",
+      "tod_execution_validation_results",
+      "tod_mim_shared_truth",
+      "tod_context_sync_index",
+      "tod_artifact_supersedes"
+    ]
+  },
+  "json_compatibility": {
+    "rules": [
+      "Exported packet field names must remain backward-compatible where current readers already expect them.",
+      "Normalization may be used for comparison, but the exported payload should preserve the established field names and packet shapes.",
+      "New fields should be additive and optional unless every active reader is upgraded in lockstep.",
+      "Legacy readers that inspect only objective_id or task_id should continue to receive those fields even when richer identity metadata is added."
+    ]
+  },
+  "implementation_guidance": [
+    "Do not treat mirror copies under context-sync as original authority sources.",
+    "Do not reuse shared-truth objective-level precedence rules for ACK or RESULT packet acceptance.",
+    "When repairing lineage, clear stale carry-forward state and revalidate both outer and embedded identities.",
+    "If database-backed authority is introduced, file latest outputs should be projections of immutable rows plus explicit mutable listener-memory state."
+  ]
+}

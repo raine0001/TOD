@@ -1,0 +1,593 @@
+{
+  "metadata": {
+    "generated_by": "GitHub Copilot",
+    "generated_at": "2026-05-05T00:00:00Z",
+    "workspace": "e:/TOD",
+    "scope": [
+      "TOD_MIM_*.json",
+      "MIM_TOD_*.json",
+      "TOD_ACTIVE_*.json",
+      "TOD_EXECUTION_*.json",
+      "TOD_MIM_COMMAND_STATUS.latest.json",
+      "TOD_MIM_SHARED_TRUTH.latest.json"
+    ],
+    "method": "source-backed static mapping"
+  },
+  "primary_authoritative_writers": [
+    {
+      "writer": "scripts/Start-TODMimPacketListener.ps1",
+      "classification": "live_runtime_authority",
+      "functions": [
+        "Publish-CommandStatus",
+        "Publish-ExecutionDecision",
+        "Add-LoopJournalEntry",
+        "Update-TaskHighWatermark",
+        "Get-ObjectiveHighWatermark",
+        "New-StaleGuardMetadata",
+        "Get-BridgeRuntimeStatus"
+      ],
+      "artifacts_written": [
+        "TOD_MIM_COMMAND_STATUS.latest.json",
+        "TOD_MIM_EXECUTION_DECISION.latest.json",
+        "TOD_MIM_TASK_ACK.latest.json",
+        "TOD_MIM_TASK_RESULT.latest.json",
+        "TOD_LOOP_JOURNAL.latest.json",
+        "listener_state.json",
+        "TOD_MIM_RUNTIME_BINDING_STATE.latest.json",
+        "TOD_MIM_RUNTIME_CONTRACT_VIOLATION.latest.json"
+      ],
+      "artifact_categories": [
+        "status",
+        "decision",
+        "ack",
+        "result",
+        "guard",
+        "runtime_memory",
+        "journal"
+      ],
+      "authoritative": true,
+      "authority_basis": "Writes the live TOD-side ACK/result/decision/status lane and persists the stale-memory state used to accept, reject, or deduplicate requests.",
+      "overwrites_latest": true,
+      "archives_superseded": false,
+      "validation": {
+        "request_identity_checks": true,
+        "runtime_contract_validation": true,
+        "validated_packet_kinds": [
+          "ack",
+          "result"
+        ],
+        "notes": [
+          "ACK and RESULT packets are enveloped, sequenced, and validated before publish.",
+          "Command status mirrors runtime state but is not itself independently contract-validated.",
+          "Validation failures publish a runtime contract violation artifact and set command status to contract_violation_rejected."
+        ]
+      }
+    },
+    {
+      "writer": "scripts/Invoke-TODCanonicalLatestArtifactRecoupling.ps1",
+      "classification": "canonical_shared_runtime_authority",
+      "functions": [
+        "Test-ArtifactNeedsRecoupling",
+        "New-CanonicalRecouplingPayload",
+        "Write-JsonFile"
+      ],
+      "artifacts_written": [
+        "TOD_ACTIVE_OBJECTIVE.latest.json",
+        "TOD_ACTIVE_TASK.latest.json",
+        "TOD_EXECUTION_RESULT.latest.json",
+        "TOD_EXECUTION_TRUTH.latest.json",
+        "TOD_ACTIVITY_STREAM.latest.json",
+        "TOD_VALIDATION_RESULT.latest.json"
+      ],
+      "artifact_categories": [
+        "shared_runtime",
+        "truth",
+        "validation",
+        "activity"
+      ],
+      "authoritative": true,
+      "authority_basis": "Replaces drifted runtime/shared latest artifacts with a caller-supplied canonical objective/task lane.",
+      "overwrites_latest": true,
+      "archives_superseded": true,
+      "archive_pattern": "superseded/<artifact-name>/latest.*.json",
+      "validation": {
+        "canonical_objective_task_required": true,
+        "objective_and_task_lane_comparison": true,
+        "notes": [
+          "Recoupling triggers when the normalized objective differs or when the task differs.",
+          "Replacement payloads are stamped with the canonical objective and task values."
+        ]
+      }
+    },
+    {
+      "writer": "scripts/reconcile_tod_mim_shared_truth.py",
+      "classification": "reconciled_truth_authority",
+      "functions": [
+        "reconcile_shared_truth_payload",
+        "write_shared_truth"
+      ],
+      "artifacts_written": [
+        "TOD_MIM_SHARED_TRUTH.latest.json"
+      ],
+      "artifact_categories": [
+        "shared_truth",
+        "reconciliation"
+      ],
+      "authoritative": true,
+      "authority_basis": "Produces the reconciled truth view used to summarize TOD and MIM state with explicit precedence rules.",
+      "overwrites_latest": true,
+      "archives_superseded": false,
+      "validation": {
+        "normalizes_objective_ids": true,
+        "composes_task_identity": true,
+        "timestamp_precedence": true,
+        "authority_source_gating": true,
+        "notes": [
+          "MIM is considered authoritative only when authority_source is formal_program_truth, task_status_review, or decision_task.",
+          "Objective-only precedence is allowed here in narrow cases and is not equivalent to packet-level validation."
+        ]
+      }
+    }
+  ],
+  "secondary_mutation_writers": [
+    {
+      "writer": "scripts/Invoke-TODForcedExecutionReplay.ps1",
+      "classification": "explicit_replay_mutator",
+      "functions": [
+        "Invoke-ForcedExecutionReplayInternal",
+        "New-ForcedReplayRequest",
+        "New-ForcedReplayTrigger",
+        "New-ForcedReplayCommandStatus",
+        "Update-ListenerStateForForcedReplay"
+      ],
+      "artifacts_written": [
+        "MIM_TOD_TASK_REQUEST.latest.json",
+        "MIM_TO_TOD_TRIGGER.latest.json",
+        "TOD_MIM_COMMAND_STATUS.latest.json",
+        "listener_state.json"
+      ],
+      "authoritative": false,
+      "authority_basis": "Operator-driven override path for bounded replay, not the default live authority lane.",
+      "overwrites_latest": true,
+      "archives_superseded": true,
+      "archive_pattern": "archive/forced-execution-replay/<task>-<stamp>/...",
+      "validation": {
+        "requires_force": true,
+        "verifies_live_request_objective_task_match": true,
+        "notes": [
+          "Replay is refused unless the current live request objective and task match the target replay lane.",
+          "The replay path rewrites request and correlation lineage and updates listener replay state."
+        ]
+      }
+    },
+    {
+      "writer": "scripts/Copy-TODCurrentStateToContextSync.ps1",
+      "classification": "mirror_syndication",
+      "functions": [
+        "main_copy_loop"
+      ],
+      "artifacts_written": [
+        "TOD_MIM_INTEGRATION_STATUS.latest.json",
+        "TOD_MIM_NEXT_ACTIONS.latest.json",
+        "TOD_MIM_CURRENT_BUILD_STATE.latest.json",
+        "TOD_MIM_OBJECTIVES.latest.json",
+        "TOD_MIM_CONTRACT_ACCEPTANCE.latest.json",
+        "TOD_MIM_CONTRACT_FORMAL_AGREEMENT.latest.json",
+        "TOD_MIM_BRIDGE_SMOKE.latest.json",
+        "TOD_MIM_REMOTE_BOUNDARY_DIAGNOSTIC.latest.json",
+        "TOD_MIM_ARM_AUTHORITY_SMOKE.latest.json",
+        "TOD_MIM_ARM_STATUS_UPLOAD_RECEIPT.latest.json",
+        "TOD_MIM_SUPERVISED_EXECUTION.latest.json",
+        "TOD_MIM_RECOVERY_WATCHDOG.latest.json",
+        "TOD_MIM_WATCHDOG_DRIFT_GUARD.latest.json",
+        "TOD_MIM_NEXT_STEP_CONSENSUS.latest.json",
+        "TOD_MIM_NEXT_STEP_POLICY.latest.json",
+        "TOD_MIM_CODEX_NEXT_STEPS.latest.json",
+        "TOD_MIM_MANAGED_WORK.latest.json",
+        "TOD_MIM_MANAGED_WORK_CLEANUP.latest.json",
+        "MIM_TOD_HANDSHAKE_PACKET.latest.json",
+        "MIM_TOD_TASK_REQUEST.latest.json",
+        "MIM_CONTEXT_EXPORT.latest.json",
+        "MIM_MANIFEST.latest.json",
+        "CURRENT_TOD_MIM_STATE_INDEX.latest.json",
+        "CURRENT_TOD_MIM_STATE_INDEX.latest.md"
+      ],
+      "authoritative": false,
+      "authority_basis": "Copies existing files into the context-sync root; does not own lane selection or runtime lineage.",
+      "overwrites_latest": true,
+      "archives_superseded": false,
+      "validation": {
+        "source_existence_only": true,
+        "captures_hash_and_timestamp": true,
+        "notes": [
+          "This surface is a mirror and should not be treated as the origin of any runtime truth."
+        ]
+      }
+    }
+  ],
+  "diagnostic_and_contract_writers": [
+    {
+      "writer": "scripts/Compare-TODMimBoundaryBaseline.ps1",
+      "artifacts_written": [
+        "TOD_MIM_BOUNDARY_DELTA.latest.json"
+      ],
+      "classification": "diagnostic"
+    },
+    {
+      "writer": "scripts/Compare-TODMimExecutionDispatchBaseline.ps1",
+      "artifacts_written": [
+        "TOD_MIM_EXECUTION_DISPATCH_DELTA.latest.json"
+      ],
+      "classification": "diagnostic"
+    },
+    {
+      "writer": "scripts/Invoke-TODMimBridgeSmoke.ps1",
+      "artifacts_written": [
+        "TOD_MIM_BRIDGE_SMOKE.latest.json"
+      ],
+      "classification": "diagnostic"
+    },
+    {
+      "writer": "scripts/Invoke-TODMimRemoteBoundaryDiagnostics.ps1",
+      "artifacts_written": [
+        "TOD_MIM_REMOTE_BOUNDARY_DIAGNOSTIC.latest.json",
+        "TOD_MIM_REMOTE_REQUEST_PROBE.latest.json"
+      ],
+      "classification": "diagnostic"
+    },
+    {
+      "writer": "scripts/Invoke-TODMimArmAuthoritySmoke.ps1",
+      "artifacts_written": [
+        "TOD_MIM_ARM_AUTHORITY_SMOKE.latest.json",
+        "TOD_MIM_ARM_STATUS_UPLOAD_RECEIPT.latest.json"
+      ],
+      "classification": "diagnostic"
+    },
+    {
+      "writer": "scripts/Invoke-TODMimContractAcceptance.ps1",
+      "artifacts_written": [
+        "tod/out/context-sync/contracts/TOD_MIM_COMMUNICATION_CONTRACT_RECEIPT.v1.json",
+        "tod/out/context-sync/contracts/TOD_MIM_CONTRACT_RECEIPT.latest.json",
+        "tod/out/context-sync/contracts/TOD_MIM_COMMUNICATION_CONTRACT_REJECTION.v1.json",
+        "shared_state/TOD_MIM_CONTRACT_ACCEPTANCE.latest.json"
+      ],
+      "classification": "contract_state"
+    },
+    {
+      "writer": "scripts/Invoke-TODMimFormalContractAgreement.ps1",
+      "artifacts_written": [
+        "shared_state/TOD_MIM_CONTRACT_FORMAL_AGREEMENT.latest.json"
+      ],
+      "classification": "contract_state"
+    }
+  ],
+  "simulation_and_test_writers": [
+    {
+      "writer": "scripts/Invoke-TODMimExecutionSimulation.ps1",
+      "artifacts_written": [
+        "MIM_TOD_TASK_REQUEST.latest.json",
+        "TOD_MIM_TASK_ACK.latest.json",
+        "TOD_MIM_TASK_RESULT.latest.json",
+        "TOD_MIM_EXECUTION_DECISION.latest.json",
+        "TOD_MIM_COMMAND_STATUS.latest.json"
+      ],
+      "classification": "simulation"
+    },
+    {
+      "writer": "scripts/Invoke-TODMimListenerSmoke.ps1",
+      "artifacts_written": [
+        "MIM_TOD_TASK_REQUEST.latest.json",
+        "MIM_TOD_GO_ORDER.latest.json",
+        "MIM_TOD_REVIEW_DECISION.latest.json"
+      ],
+      "classification": "smoke_test"
+    }
+  ],
+  "stale_memory_sources": [
+    {
+      "source": "listener_state.json",
+      "writer": "scripts/Start-TODMimPacketListener.ps1",
+      "functions": [
+        "Publish-CommandStatus",
+        "Update-TaskHighWatermark",
+        "Get-ObjectiveHighWatermark"
+      ],
+      "fields": [
+        "last_processed_request_id",
+        "last_processed_request_signature",
+        "last_observed_request_id",
+        "last_observed_task_id",
+        "last_observed_correlation_id",
+        "high_watermark_request_id",
+        "high_watermark_objective_id",
+        "high_watermark_ordinal",
+        "high_watermark_sequence",
+        "last_stale_guard",
+        "scoped_forced_replays",
+        "blocked_resume_request_id",
+        "blocked_resume_task_id",
+        "blocked_resume_objective_id",
+        "blocked_resume_correlation_id"
+      ],
+      "behavior": "Live listener memory used for dedup, stale guard carry-forward, blocked recovery, and bounded replay."
+    },
+    {
+      "source": "TOD_LOOP_JOURNAL.latest.json",
+      "writer": "scripts/Start-TODMimPacketListener.ps1",
+      "functions": [
+        "Add-LoopJournalEntry",
+        "Get-ObjectiveHighWatermark"
+      ],
+      "fields": [
+        "request_id",
+        "objective_id",
+        "ack_status",
+        "execution_status",
+        "retry_reason",
+        "regression_signature",
+        "execution_readiness_status",
+        "retry_weight"
+      ],
+      "behavior": "Journal history is used to recover the highest observed task ordinal for an objective and can outrank the current request."
+    },
+    {
+      "source": "stale_guard payload in TOD_MIM_COMMAND_STATUS.latest.json",
+      "writer": "scripts/Start-TODMimPacketListener.ps1",
+      "functions": [
+        "New-StaleGuardMetadata",
+        "Publish-CommandStatus"
+      ],
+      "fields": [
+        "decision",
+        "reason",
+        "objective_id",
+        "comparison_basis",
+        "current_request",
+        "high_watermark",
+        "trigger"
+      ],
+      "behavior": "Status packet mirror of the winning stale-guard comparison that can also be inherited from listener_state.last_stale_guard."
+    }
+  ],
+  "bridge_runtime_current_processing": {
+    "set_by": [
+      {
+        "writer": "scripts/Start-TODMimPacketListener.ps1",
+        "function": "Get-BridgeRuntimeStatus",
+        "behavior": "Builds the runtime payload used by ACK, RESULT, DECISION, and COMMAND_STATUS. In stale-backfill rejection, the effective task can be the high-watermark task instead of the incoming request task."
+      },
+      {
+        "writer": "scripts/Invoke-TODForcedExecutionReplay.ps1",
+        "function": "New-ForcedReplayCommandStatus / replay payload builders",
+        "behavior": "Stamps replay task lineage into forced replay artifacts."
+      }
+    ],
+    "preserved_by": [
+      {
+        "writer": "scripts/Start-TODMimPacketListener.ps1",
+        "function": "Publish-CommandStatus",
+        "behavior": "Mirrors whichever BridgeRuntime payload is provided into command-status."
+      },
+      {
+        "writer": "scripts/Start-TODMimPacketListener.ps1",
+        "function": "ACK and RESULT builders",
+        "behavior": "Embed the same runtime object into ACK and RESULT packets for the cycle."
+      }
+    ],
+    "validated_by": [
+      {
+        "writer": "scripts/validate_tod_mim_runtime_packet.py",
+        "function": "validate_bridge_runtime",
+        "behavior": "Requires exact match for bridge_runtime.current_processing.task_id and correlation_id."
+      }
+    ],
+    "read_by": [
+      {
+        "writer": "scripts/Get-TODLightweightStateBus.ps1",
+        "behavior": "Reads current_processing.task_id from command status to determine bridge alignment."
+      },
+      {
+        "writer": "scripts/Compare-TODMimExecutionDispatchBaseline.ps1",
+        "behavior": "Copies current_processing.task_id into dispatch delta diagnostics."
+      },
+      {
+        "writer": "scripts/Invoke-TODMimBridgeSmoke.ps1",
+        "behavior": "Uses task ACK bridge_runtime.current_processing.task_id as a high-watermark hint."
+      }
+    ],
+    "clearing_notes": [
+      "The field is replaced, not normally nulled.",
+      "Stale metadata can outlive a corrected current_processing value if listener_state.last_stale_guard is not cleared before success publication."
+    ]
+  },
+  "objective_only_matching": [
+    {
+      "writer": "scripts/reconcile_tod_mim_shared_truth.py",
+      "classification": "allowed_reconciliation",
+      "conditions": [
+        "MIM authority_source is formal_program_truth, task_status_review, or decision_task",
+        "MIM is fresher than TOD and objectives differ",
+        "same objective and MIM is active/blocked while TOD is not fresher and not completed_with_evidence"
+      ],
+      "notes": "This is a truth-reconciliation rule, not a packet-acceptance rule."
+    },
+    {
+      "writer": "scripts/reconcile_tod_mim_shared_truth.py",
+      "classification": "task_composition_gate",
+      "conditions": [
+        "live_task_request_signal.objective_authority_eligible is true"
+      ],
+      "notes": "Task identity from live request contributes to shared truth only when the objective authority gate is explicitly open."
+    },
+    {
+      "writer": "scripts/Invoke-TODCanonicalLatestArtifactRecoupling.ps1",
+      "classification": "allowed_recoupling",
+      "conditions": [
+        "Objective remains canonical but task lane changes"
+      ],
+      "notes": "The script recouples shared runtime latest artifacts onto the canonical task even when the prior latest payload referenced another task in the same objective."
+    },
+    {
+      "writer": "scripts/validate_tod_mim_runtime_packet.py",
+      "classification": "forbidden_in_runtime_packets",
+      "conditions": [
+        "ACK and RESULT runtime packet validation"
+      ],
+      "notes": "Objective-only matching is not accepted for bridge runtime packets; exact identity must match."
+    }
+  ],
+  "recommended_tables": [
+    {
+      "table": "tod_listener_command_status",
+      "backing_writers": [
+        "scripts/Start-TODMimPacketListener.ps1"
+      ],
+      "keys": [
+        "generated_at",
+        "request_id",
+        "task_id",
+        "correlation_id"
+      ],
+      "rationale": "Stores status events with embedded bridge runtime and stale-guard state."
+    },
+    {
+      "table": "tod_listener_execution_decisions",
+      "backing_writers": [
+        "scripts/Start-TODMimPacketListener.ps1"
+      ],
+      "keys": [
+        "generated_at",
+        "request_id",
+        "task_id"
+      ],
+      "rationale": "Decision outcomes prior to execution."
+    },
+    {
+      "table": "tod_listener_task_acks",
+      "backing_writers": [
+        "scripts/Start-TODMimPacketListener.ps1"
+      ],
+      "keys": [
+        "generated_at",
+        "request_id",
+        "task_id",
+        "correlation_id"
+      ],
+      "rationale": "Validated ACK packets."
+    },
+    {
+      "table": "tod_listener_task_results",
+      "backing_writers": [
+        "scripts/Start-TODMimPacketListener.ps1"
+      ],
+      "keys": [
+        "generated_at",
+        "request_id",
+        "task_id",
+        "correlation_id"
+      ],
+      "rationale": "Validated RESULT packets with execution evidence."
+    },
+    {
+      "table": "tod_listener_loop_journal",
+      "backing_writers": [
+        "scripts/Start-TODMimPacketListener.ps1"
+      ],
+      "keys": [
+        "timestamp",
+        "request_id",
+        "objective_id"
+      ],
+      "rationale": "Retry, regression, readiness, and high-watermark recovery log."
+    },
+    {
+      "table": "tod_listener_state_snapshots",
+      "backing_writers": [
+        "scripts/Start-TODMimPacketListener.ps1"
+      ],
+      "keys": [
+        "written_at"
+      ],
+      "rationale": "Preserve mutable listener memory as snapshots rather than a single mutable row."
+    },
+    {
+      "table": "tod_execution_active_tasks",
+      "backing_writers": [
+        "scripts/Invoke-TODCanonicalLatestArtifactRecoupling.ps1"
+      ],
+      "keys": [
+        "generated_at",
+        "objective_id",
+        "task_id"
+      ],
+      "rationale": "Canonical active task lane in runtime/shared."
+    },
+    {
+      "table": "tod_execution_results",
+      "backing_writers": [
+        "scripts/Invoke-TODCanonicalLatestArtifactRecoupling.ps1"
+      ],
+      "keys": [
+        "generated_at",
+        "objective_id",
+        "task_id"
+      ],
+      "rationale": "Canonical execution result lane."
+    },
+    {
+      "table": "tod_execution_truth",
+      "backing_writers": [
+        "scripts/Invoke-TODCanonicalLatestArtifactRecoupling.ps1"
+      ],
+      "keys": [
+        "generated_at",
+        "objective_id",
+        "task_id"
+      ],
+      "rationale": "Canonical truth rows for runtime/shared execution state."
+    },
+    {
+      "table": "tod_mim_shared_truth",
+      "backing_writers": [
+        "scripts/reconcile_tod_mim_shared_truth.py"
+      ],
+      "keys": [
+        "generated_at",
+        "objective_id",
+        "task_id",
+        "authority_source"
+      ],
+      "rationale": "Reconciled truth surface with explicit precedence metadata."
+    },
+    {
+      "table": "tod_context_sync_index",
+      "backing_writers": [
+        "scripts/Copy-TODCurrentStateToContextSync.ps1"
+      ],
+      "keys": [
+        "generated_at",
+        "file_name"
+      ],
+      "rationale": "Tracks mirrored files and hashes without claiming authority over their contents."
+    },
+    {
+      "table": "tod_artifact_supersedes",
+      "backing_writers": [
+        "scripts/Invoke-TODCanonicalLatestArtifactRecoupling.ps1",
+        "scripts/Invoke-TODForcedExecutionReplay.ps1"
+      ],
+      "keys": [
+        "artifact_name",
+        "superseded_at",
+        "replacement_generated_at"
+      ],
+      "rationale": "Captures archive lineage for replaced latest payloads."
+    }
+  ],
+  "conclusions": [
+    "The live authority for runtime task lineage is Start-TODMimPacketListener.ps1.",
+    "TOD_MIM_SHARED_TRUTH.latest.json is a reconciled view, not the packet writer for ACK, RESULT, or COMMAND_STATUS.",
+    "listener_state.json and TOD_LOOP_JOURNAL.latest.json are part of the authority system because they directly influence stale-guard and effective current-processing lineage.",
+    "Objective-only matching is intentionally limited to reconciliation and recoupling and must not be reused for strict runtime packet acceptance."
+  ]
+}

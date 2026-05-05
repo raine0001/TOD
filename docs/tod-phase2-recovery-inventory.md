@@ -170,3 +170,27 @@ Lowest-risk recovery posture:
 - Do not trust the public console as authoritative until `/tod/ui/state` is healthy.
 - Do not roll back broadly from `main`.
 - If isolation is needed, isolate to the four Phase 2 source/config files only.
+
+## Local Fallback Executor
+
+TOD can use the local fallback executor for bounded tasks in docs/tod-phase2-recovery-inventory.md when Codex only returns wrapper output or no meaningful execution evidence.
+
+- Eligibility stays inside bounded docs, code, config, or test changes under allowed paths.
+- Published evidence includes changed files, diff summary, command output, validation results, blockers, and rollback hints.
+- The executor fails closed when it cannot infer a safe target or bounded patch.
+
+## Local Fallback Executor Live Evidence
+
+TOD can use the local fallback executor for bounded tasks in docs/tod-phase2-recovery-inventory.md when Codex only returns wrapper output or no meaningful execution evidence.
+
+- Eligibility stays inside bounded docs, code, config, or test changes under allowed paths.
+- Published evidence includes changed files, diff summary, command output, validation results, blockers, and rollback hints.
+- The executor fails closed when it cannot infer a safe target or bounded patch.
+
+## Local Fallback Executor Final Contract Evidence
+
+TOD can use the local fallback executor for bounded tasks in docs/tod-phase2-recovery-inventory.md when Codex only returns wrapper output or no meaningful execution evidence.
+
+- Eligibility stays inside bounded docs, code, config, or test changes under allowed paths.
+- Published evidence includes changed files, diff summary, command output, validation results, blockers, and rollback hints.
+- The executor fails closed when it cannot infer a safe target or bounded patch.

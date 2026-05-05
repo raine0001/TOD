@@ -36,6 +36,17 @@ class ProbeCanonicalTaskRequestTests(unittest.TestCase):
         self.assertEqual(result["objective_id"], "objective-97")
         self.assertEqual(result["sample_count"], 2)
 
+    def test_watchdog_self_heal_anchors_republish_to_shared_truth_task(self) -> None:
+        script_path = Path(__file__).resolve().parent / "scripts" / "Start-TODRecoveryWatchdog.ps1"
+        script_text = script_path.read_text(encoding="utf-8")
+
+        self.assertIn("function Get-CanonicalTaskIdForSelfHeal", script_text)
+        self.assertIn("runtime/shared/TOD_MIM_SHARED_TRUTH.latest.json", script_text)
+        self.assertIn("request_id = $resolvedTaskId", script_text)
+        self.assertIn("task_id = $resolvedTaskId", script_text)
+        self.assertIn("correlation_id = $resolvedCorrelationId", script_text)
+        self.assertIn("canonical_lane_source = 'shared_truth'", script_text)
+
 
 if __name__ == "__main__":
     unittest.main()

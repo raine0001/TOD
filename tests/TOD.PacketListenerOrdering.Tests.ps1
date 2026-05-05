@@ -177,6 +177,11 @@ Describe 'TOD packet listener ordering hardening' {
         Import-ListenerFunction -Name 'Resolve-ExecutionFeedbackEndpoint'
         Import-ListenerFunction -Name 'Publish-ExecutionFeedbackFromRequest'
         Import-ListenerFunction -Name 'Invoke-RequestExecution'
+        Import-ListenerFunction -Name 'Get-ObjectFieldText'
+        Import-ListenerFunction -Name 'Get-NonEmptyPacketValue'
+        Import-ListenerFunction -Name 'Get-TriggerContext'
+        Import-ListenerFunction -Name 'Publish-CommandStatus'
+        Import-ListenerFunction -Name 'Publish-ExecutionLock'
     }
 
     It 'ignores inactive authority reset ceilings' {
@@ -453,6 +458,94 @@ Describe 'TOD packet listener ordering hardening' {
         }
         finally {
             Remove-Item Function:\Invoke-RestMethod -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'does not republish stale guard from listener state when no stale signal is provided' {
+        $fixture = Join-Path $repoRoot ('tod/out/tests/packet-listener-stale-guard-' + [guid]::NewGuid().ToString('N'))
+        $listenerStatePath = Join-Path $fixture 'listener_state.json'
+        $commandStatusPath = Join-Path $fixture 'TOD_MIM_COMMAND_STATUS.latest.json'
+        $listenerState = [pscustomobject]@{
+            last_stale_guard = [pscustomobject]@{
+                objective_id = 'objective-2913'
+                task_id = 'objective-2913-task-1777951503'
+            }
+        }
+        $bridgeRuntime = [pscustomobject]@{
+            current_processing = [pscustomobject]@{
+                task_id = 'objective-2913-task-7144'
+                correlation_id = 'objective-2913-task-7144'
+            }
+        }
+
+        try {
+            1..3 | ForEach-Object {
+                Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $commandStatusPath -Status 'accepted' -Detail 'Task ACK emitted to shared path.' -RequestId 'objective-2913-task-7144' -TaskId 'objective-2913-task-7144' -CorrelationId 'objective-2913-task-7144' -BridgeRuntime $bridgeRuntime
+            }
+
+            $status = Get-Content -Raw -Path $commandStatusPath | ConvertFrom-Json
+            $state = Get-Content -Raw -Path $listenerStatePath | ConvertFrom-Json
+
+            $status.stale_guard | Should Be $null
+            $state.last_stale_guard | Should Be $null
+        }
+        finally {
+            if (Test-Path -Path $fixture) {
+                Remove-Item -Path $fixture -Recurse -Force
+            }
+        }
+    }
+
+    It 'publishes a listener-owned execution lock for the active task' {
+        $fixture = Join-Path $repoRoot ('tod/out/tests/packet-listener-execution-lock-' + [guid]::NewGuid().ToString('N'))
+        $executionLockPath = Join-Path $fixture 'TOD_EXECUTION_LOCK.latest.json'
+        $bridgeRuntime = [pscustomobject]@{
+            current_processing = [pscustomobject]@{
+                objective_id = 'objective-2913'
+                task_id = 'objective-2913-task-7144'
+                request_id = 'objective-2913-task-7144'
+                correlation_id = 'objective-2913-task-7144'
+            }
+        }
+
+        try {
+            Publish-ExecutionLock -LocalPath $executionLockPath -ObjectiveId 'objective-2913' -TaskId 'objective-2913-task-7144' -RequestId 'objective-2913-task-7144' -CorrelationId 'objective-2913-task-7144' -Status 'succeeded' -BridgeRuntime $bridgeRuntime
+
+            $lock = Get-Content -Raw -Path $executionLockPath | ConvertFrom-Json
+
+            [string]$lock.writer | Should Be 'Start-TODMimPacketListener'
+            [string]$lock.task_id | Should Be 'objective-2913-task-7144'
+            [string]$lock.request_id | Should Be 'objective-2913-task-7144'
+            [string]$lock.current_processing.task_id | Should Be 'objective-2913-task-7144'
+        }
+        finally {
+            if (Test-Path -Path $fixture) {
+                Remove-Item -Path $fixture -Recurse -Force
+            }
+        }
+    }
+
+    It 'rejects command-status writes that introduce a mismatched task_id' {
+        $fixture = Join-Path $repoRoot ('tod/out/tests/packet-listener-lineage-mismatch-' + [guid]::NewGuid().ToString('N'))
+        $listenerStatePath = Join-Path $fixture 'listener_state.json'
+        $commandStatusPath = Join-Path $fixture 'TOD_MIM_COMMAND_STATUS.latest.json'
+        $listenerState = [pscustomobject]@{}
+        $bridgeRuntime = [pscustomobject]@{
+            current_processing = [pscustomobject]@{
+                task_id = 'objective-2913-task-1777951503'
+                correlation_id = 'objective-2913-task-7144'
+            }
+        }
+
+        try {
+            Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $commandStatusPath -Status 'accepted' -Detail 'Task ACK emitted to shared path.' -RequestId 'objective-2913-task-7144' -TaskId 'objective-2913-task-7144' -CorrelationId 'objective-2913-task-7144' -BridgeRuntime $bridgeRuntime
+
+            (Test-Path -Path $commandStatusPath) | Should Be $false
+        }
+        finally {
+            if (Test-Path -Path $fixture) {
+                Remove-Item -Path $fixture -Recurse -Force
+            }
         }
     }
 }

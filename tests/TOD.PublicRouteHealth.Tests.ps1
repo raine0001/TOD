@@ -29,10 +29,28 @@ function Import-PublicRouteHealthFunction {
 
 Describe 'TOD public route health classification' {
     BeforeAll {
+        Import-PublicRouteHealthFunction -Name 'Read-DotEnvValue'
+        Import-PublicRouteHealthFunction -Name 'Join-HttpUrl'
+        Import-PublicRouteHealthFunction -Name 'Resolve-PublicTodTargets'
         Import-PublicRouteHealthFunction -Name 'Get-DateOrMinValue'
         Import-PublicRouteHealthFunction -Name 'Get-TodPublicSurfaceClassification'
         Import-PublicRouteHealthFunction -Name 'Get-PreferredCanonicalObjective'
         Import-PublicRouteHealthFunction -Name 'Get-PublicRouteStateAssessment'
+    }
+
+    It 'resolves public TOD targets from the configured public app URL' {
+        $targets = Resolve-PublicTodTargets -ExplicitPublicTodUrl '' -ExplicitPublicTodStateUrl '' -ExplicitPublicAppUrl 'https://www.agentmim.com' -RepoRoot $repoRoot
+
+        [string]$targets.public_app_url | Should Be 'https://www.agentmim.com'
+        [string]$targets.public_tod_url | Should Be 'https://www.agentmim.com/tod'
+        [string]$targets.public_tod_state_url | Should Be 'https://www.agentmim.com/tod/ui/state'
+    }
+
+    It 'lets explicit public TOD targets override the configured app URL' {
+        $targets = Resolve-PublicTodTargets -ExplicitPublicTodUrl 'https://status.example.com/tod' -ExplicitPublicTodStateUrl 'https://status.example.com/tod/ui/state' -ExplicitPublicAppUrl 'https://www.agentmim.com' -RepoRoot $repoRoot
+
+        [string]$targets.public_tod_url | Should Be 'https://status.example.com/tod'
+        [string]$targets.public_tod_state_url | Should Be 'https://status.example.com/tod/ui/state'
     }
 
     It 'classifies the full TOD UI surface from chat markers' {
@@ -68,6 +86,14 @@ Describe 'TOD public route health classification' {
         [string]$assessment.public_effective_canonical_objective | Should Be '152'
         ((@($assessment.blockers) -contains 'public_tod_quick_facts_mismatch:153->152')) | Should Be $true
         [string]$assessment.control_scope | Should Be 'external_route_html_not_in_workspace_but_state_publication_reachable'
+    }
+
+    It 'accepts canonical objective from shared truth style payloads' {
+        $sharedTruth = [pscustomobject]@{
+            objective_id = '2913'
+        }
+
+        [string](Get-PreferredCanonicalObjective -Document $sharedTruth) | Should Be '2913'
     }
 
     It 'accepts consistent public route state when quick facts match canonical truth' {

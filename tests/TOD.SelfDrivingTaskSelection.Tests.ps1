@@ -106,6 +106,7 @@ Describe 'TOD self-driving next task selection' {
         Import-TodFunction -Name 'Get-TodTerminalTaskOutcome'
         Import-TodFunction -Name 'New-TodNextTaskSelectionPlan'
         Import-TodFunction -Name 'Get-NormalizedObjectiveToken'
+        Import-TodFunction -Name 'Get-TodObjectValue'
         Import-TodFunction -Name 'Write-TodExecutionSharedJson'
         Import-TodFunction -Name 'Publish-TodNextTaskSelectionArtifacts'
     }

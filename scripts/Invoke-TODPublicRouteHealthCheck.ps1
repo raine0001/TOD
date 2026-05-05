@@ -1,8 +1,10 @@
 param(
-    [string]$PublicTodUrl = 'http://mim.mimtod.com/tod',
-    [string]$PublicTodStateUrl = 'http://mim.mimtod.com/tod/ui/state',
+    [string]$PublicTodUrl = '',
+    [string]$PublicTodStateUrl = '',
+    [string]$PublicAppUrl = '',
     [string]$LocalTodUrl = 'http://localhost:8844/tod',
     [string]$IntegrationStatusPath = 'shared_state/integration_status.json',
+    [string]$SharedTruthPath = 'runtime/shared/TOD_MIM_SHARED_TRUTH.latest.json',
     [string]$OutputPath = 'shared_state/tod_public_route_health.latest.json',
     [int]$TimeoutSec = 20,
     [switch]$EmitJson
@@ -60,6 +62,104 @@ function Read-JsonFileIfExists {
     }
     catch {
         return $null
+    }
+}
+
+function Read-DotEnvValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$PathValue,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    if (-not (Test-Path -Path $PathValue)) {
+        return ''
+    }
+
+    foreach ($line in @(Get-Content -Path $PathValue -ErrorAction SilentlyContinue)) {
+        if ($null -eq $line) {
+            continue
+        }
+
+        $trimmed = ([string]$line).Trim()
+        if ([string]::IsNullOrWhiteSpace($trimmed) -or $trimmed.StartsWith('#')) {
+            continue
+        }
+
+        $match = [regex]::Match($trimmed, ('^(?i:{0})=(.*)$' -f [regex]::Escape($Name)))
+        if (-not $match.Success) {
+            continue
+        }
+
+        $value = [string]$match.Groups[1].Value
+        if ($value.Length -ge 2) {
+            $first = $value.Substring(0, 1)
+            $last = $value.Substring($value.Length - 1, 1)
+            if (($first -eq '"' -and $last -eq '"') -or ($first -eq "'" -and $last -eq "'")) {
+                $value = $value.Substring(1, $value.Length - 2)
+            }
+        }
+
+        return $value.Trim()
+    }
+
+    return ''
+}
+
+function Join-HttpUrl {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [Parameter(Mandatory = $true)][string]$RelativePath
+    )
+
+    $base = ([string]$BaseUrl).Trim()
+    $relative = ([string]$RelativePath).Trim()
+    if ([string]::IsNullOrWhiteSpace($base)) {
+        return ''
+    }
+
+    if ([string]::IsNullOrWhiteSpace($relative)) {
+        return $base.TrimEnd('/')
+    }
+
+    return ('{0}/{1}' -f $base.TrimEnd('/'), $relative.TrimStart('/'))
+}
+
+function Resolve-PublicTodTargets {
+    param(
+        [AllowEmptyString()][string]$ExplicitPublicTodUrl,
+        [AllowEmptyString()][string]$ExplicitPublicTodStateUrl,
+        [AllowEmptyString()][string]$ExplicitPublicAppUrl,
+        [Parameter(Mandatory = $true)][string]$RepoRoot
+    )
+
+    $resolvedAppUrl = ([string]$ExplicitPublicAppUrl).Trim()
+    if ([string]::IsNullOrWhiteSpace($resolvedAppUrl)) {
+        $resolvedAppUrl = [string]$env:PUBLIC_APP_URL
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedAppUrl)) {
+        $resolvedAppUrl = Read-DotEnvValue -PathValue (Join-Path $RepoRoot '.env') -Name 'PUBLIC_APP_URL'
+    }
+
+    $resolvedTodUrl = ([string]$ExplicitPublicTodUrl).Trim()
+    if ([string]::IsNullOrWhiteSpace($resolvedTodUrl) -and -not [string]::IsNullOrWhiteSpace($resolvedAppUrl)) {
+        $resolvedTodUrl = Join-HttpUrl -BaseUrl $resolvedAppUrl -RelativePath '/tod'
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedTodUrl)) {
+        $resolvedTodUrl = 'http://mim.mimtod.com/tod'
+    }
+
+    $resolvedTodStateUrl = ([string]$ExplicitPublicTodStateUrl).Trim()
+    if ([string]::IsNullOrWhiteSpace($resolvedTodStateUrl) -and -not [string]::IsNullOrWhiteSpace($resolvedAppUrl)) {
+        $resolvedTodStateUrl = Join-HttpUrl -BaseUrl $resolvedAppUrl -RelativePath '/tod/ui/state'
+    }
+    if ([string]::IsNullOrWhiteSpace($resolvedTodStateUrl)) {
+        $resolvedTodStateUrl = 'http://mim.mimtod.com/tod/ui/state'
+    }
+
+    return [pscustomobject]@{
+        public_app_url = $resolvedAppUrl
+        public_tod_url = $resolvedTodUrl
+        public_tod_state_url = $resolvedTodStateUrl
     }
 }
 
@@ -185,6 +285,14 @@ function Get-PreferredCanonicalObjective {
 
     if ($null -eq $Document) {
         return ''
+    }
+
+    if ($Document.PSObject.Properties['objective_id'] -and -not [string]::IsNullOrWhiteSpace([string]$Document.objective_id)) {
+        return [string]$Document.objective_id
+    }
+
+    if ($Document.PSObject.Properties['canonical_objective'] -and -not [string]::IsNullOrWhiteSpace([string]$Document.canonical_objective)) {
+        return [string]$Document.canonical_objective
     }
 
     if ($Document.PSObject.Properties['objective_authority_reset'] -and $Document.objective_authority_reset) {
@@ -334,12 +442,16 @@ function Get-PublicRouteStateAssessment {
 }
 
 $resolvedIntegrationStatusPath = Resolve-RepoPath -PathValue $IntegrationStatusPath
+$resolvedSharedTruthPath = Resolve-RepoPath -PathValue $SharedTruthPath
 $resolvedOutputPath = Resolve-RepoPath -PathValue $OutputPath
+$resolvedPublicTargets = Resolve-PublicTodTargets -ExplicitPublicTodUrl $PublicTodUrl -ExplicitPublicTodStateUrl $PublicTodStateUrl -ExplicitPublicAppUrl $PublicAppUrl -RepoRoot $repoRoot
 
 $localIntegrationStatus = Read-JsonFileIfExists -PathValue $resolvedIntegrationStatusPath
+$sharedTruth = Read-JsonFileIfExists -PathValue $resolvedSharedTruthPath
+$canonicalAuthority = if ($null -ne $sharedTruth) { $sharedTruth } else { $localIntegrationStatus }
 
-$publicHtmlProbe = Invoke-HttpProbe -Url $PublicTodUrl -TimeoutSeconds $TimeoutSec
-$publicStateProbe = Invoke-HttpProbe -Url $PublicTodStateUrl -TimeoutSeconds $TimeoutSec
+$publicHtmlProbe = Invoke-HttpProbe -Url $resolvedPublicTargets.public_tod_url -TimeoutSeconds $TimeoutSec
+$publicStateProbe = Invoke-HttpProbe -Url $resolvedPublicTargets.public_tod_state_url -TimeoutSeconds $TimeoutSec
 $localHtmlProbe = Invoke-HttpProbe -Url $LocalTodUrl -TimeoutSeconds $TimeoutSec
 
 $publicSurface = if (-not [string]::IsNullOrWhiteSpace([string]$publicHtmlProbe.content)) {
@@ -377,7 +489,7 @@ if (-not [string]::IsNullOrWhiteSpace([string]$publicStateProbe.content)) {
     }
 }
 
-$stateAssessment = Get-PublicRouteStateAssessment -StateDocument $publicStateDocument -LocalIntegrationStatus $localIntegrationStatus
+$stateAssessment = Get-PublicRouteStateAssessment -StateDocument $publicStateDocument -LocalIntegrationStatus $canonicalAuthority
 
 $blockers = New-Object System.Collections.Generic.List[string]
 if (-not [bool]$publicHtmlProbe.ok) {
@@ -401,8 +513,9 @@ if ($stateAssessment.route_owner_hint) {
 $payload = [pscustomobject]@{
     generated_at = (Get-Date).ToUniversalTime().ToString('o')
     source = 'tod-public-route-health-v1'
-    public_tod_url = $PublicTodUrl
-    public_tod_state_url = $PublicTodStateUrl
+    public_app_url = [string]$resolvedPublicTargets.public_app_url
+    public_tod_url = [string]$resolvedPublicTargets.public_tod_url
+    public_tod_state_url = [string]$resolvedPublicTargets.public_tod_state_url
     local_tod_url = $LocalTodUrl
     status = if (@($blockers).Count -eq 0) { 'healthy' } else { 'attention' }
     summary = (@($summaryParts.ToArray()) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }) -join ' '

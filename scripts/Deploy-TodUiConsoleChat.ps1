@@ -7,6 +7,12 @@ param(
     [string]$RemoteExecutionLoopPath = "/home/testpilot/mim/core/tod_execution_loop.py",
     [string]$LocalAppPath = "e:\TOD\tmp_remote_mim\core\app.py",
     [string]$RemoteAppPath = "/home/testpilot/mim/core/app.py",
+    [string]$LocalSharedStateSyncScriptPath = "e:\TOD\scripts\Invoke-TODSharedStateSync.ps1",
+    [string]$RemoteSharedStateSyncScriptPath = "/home/testpilot/mim/scripts/Invoke-TODSharedStateSync.ps1",
+    [string]$LocalSharedTruthRecouplingScriptPath = "e:\TOD\scripts\Invoke-TODCanonicalLatestArtifactRecoupling.ps1",
+    [string]$RemoteSharedTruthRecouplingScriptPath = "/home/testpilot/mim/scripts/Invoke-TODCanonicalLatestArtifactRecoupling.ps1",
+    [string]$LocalSharedTruthReconcilePythonPath = "e:\TOD\scripts\reconcile_tod_mim_shared_truth.py",
+    [string]$RemoteSharedTruthReconcilePythonPath = "/home/testpilot/mim/scripts/reconcile_tod_mim_shared_truth.py",
     [string]$EnvFile = ".env"
 )
 
@@ -70,6 +76,12 @@ try {
     Set-SFTPItem -SessionId $sftp.SessionId -Path $LocalExecutionLoopPath -Destination $remoteExecutionLoopDirectory -Force
     $remoteAppDirectory = ($RemoteAppPath -replace '/[^/]+$', '').TrimEnd('/')
     Set-SFTPItem -SessionId $sftp.SessionId -Path $LocalAppPath -Destination $remoteAppDirectory -Force
+    $remoteSharedStateSyncDirectory = ($RemoteSharedStateSyncScriptPath -replace '/[^/]+$', '').TrimEnd('/')
+    Set-SFTPItem -SessionId $sftp.SessionId -Path $LocalSharedStateSyncScriptPath -Destination $remoteSharedStateSyncDirectory -Force
+    $remoteSharedTruthRecouplingDirectory = ($RemoteSharedTruthRecouplingScriptPath -replace '/[^/]+$', '').TrimEnd('/')
+    Set-SFTPItem -SessionId $sftp.SessionId -Path $LocalSharedTruthRecouplingScriptPath -Destination $remoteSharedTruthRecouplingDirectory -Force
+    $remoteSharedTruthReconcilePythonDirectory = ($RemoteSharedTruthReconcilePythonPath -replace '/[^/]+$', '').TrimEnd('/')
+    Set-SFTPItem -SessionId $sftp.SessionId -Path $LocalSharedTruthReconcilePythonPath -Destination $remoteSharedTruthReconcilePythonDirectory -Force
 }
 finally {
     if ($sftp) {
@@ -80,6 +92,7 @@ finally {
 $verifyCommand = @(
     'systemctl --user restart mim-mobile-web.service',
     'systemctl --user is-active mim-mobile-web.service',
+    'ls -1 /home/testpilot/mim/scripts/Invoke-TODSharedStateSync.ps1 /home/testpilot/mim/scripts/Invoke-TODCanonicalLatestArtifactRecoupling.ps1 /home/testpilot/mim/scripts/reconcile_tod_mim_shared_truth.py',
     'grep -n -- "Permissions-Policy\|camera=(self)\|microphone=(self)" /home/testpilot/mim/core/app.py | head -n 20',
     'grep -n -- "build_execution_loop_contract_artifacts\|contract_version\|tod-execution-loop-v1" /home/testpilot/mim/core/tod_execution_loop.py | head -n 20',
     'grep -n -- "/tod/ui/chat/state\|/tod/ui/chat/message\|Copilot handoff summary\|Drift summary:" /home/testpilot/mim/core/routers/tod_ui.py | head -n 40',

@@ -1320,11 +1320,13 @@ function Invoke-MimSshRefresh {
     $yamlRemote = ("{0}/MIM_CONTEXT_EXPORT.latest.yaml" -f $RemoteRoot.TrimEnd('/'))
     $manifestRemote = ("{0}/MIM_MANIFEST.latest.json" -f $RemoteRoot.TrimEnd('/'))
     $packetRemote = ("{0}/MIM_TOD_HANDSHAKE_PACKET.latest.json" -f $RemoteRoot.TrimEnd('/'))
+    $requestRemote = ("{0}/MIM_TOD_TASK_REQUEST.latest.json" -f $RemoteRoot.TrimEnd('/'))
 
     $jsonLocal = Join-Path $stageAbs "MIM_CONTEXT_EXPORT.latest.json"
     $yamlLocal = Join-Path $stageAbs "MIM_CONTEXT_EXPORT.latest.yaml"
     $manifestLocal = Join-Path $stageAbs "MIM_MANIFEST.latest.json"
     $packetLocal = Join-Path $stageAbs "MIM_TOD_HANDSHAKE_PACKET.latest.json"
+    $requestLocal = Join-Path $stageAbs "MIM_TOD_TASK_REQUEST.latest.json"
 
     $dotEnvAbs = ""
     if (-not [string]::IsNullOrWhiteSpace($DotEnvPath)) {
@@ -1356,6 +1358,7 @@ function Invoke-MimSshRefresh {
     $yamlPull = $null
     $manifestPull = $null
     $packetPull = $null
+    $requestPull = $null
     $authMode = "scp"
 
     if ($canUsePassword -and (Get-Module -ListAvailable -Name Posh-SSH)) {
@@ -1372,6 +1375,7 @@ function Invoke-MimSshRefresh {
             $yamlPull = Copy-FromSftpIfAvailable -SessionId ([int]$session.SessionId) -RemotePath $yamlRemote -LocalPath $yamlLocal -Required
             $manifestPull = Copy-FromSftpIfAvailable -SessionId ([int]$session.SessionId) -RemotePath $manifestRemote -LocalPath $manifestLocal
             $packetPull = Copy-FromSftpIfAvailable -SessionId ([int]$session.SessionId) -RemotePath $packetRemote -LocalPath $packetLocal
+            $requestPull = Copy-FromSftpIfAvailable -SessionId ([int]$session.SessionId) -RemotePath $requestRemote -LocalPath $requestLocal
         }
         catch {
             $authMode = "scp"
@@ -1383,7 +1387,7 @@ function Invoke-MimSshRefresh {
         }
     }
 
-    if ($null -eq $jsonPull -or $null -eq $yamlPull -or $null -eq $manifestPull -or $null -eq $packetPull) {
+    if ($null -eq $jsonPull -or $null -eq $yamlPull -or $null -eq $manifestPull -or $null -eq $packetPull -or $null -eq $requestPull) {
         $scpTarget = $RemoteHost
         if ($scpTarget -notmatch "@") {
             $scpTarget = ("{0}@{1}" -f $sshUser, $scpTarget)
@@ -1393,6 +1397,7 @@ function Invoke-MimSshRefresh {
         $yamlPull = Copy-FromSshIfAvailable -Scp $Scp -RemoteHost $scpTarget -RemotePort $sshPort -RemotePath $yamlRemote -LocalPath $yamlLocal -NonInteractive:$nonInteractiveScp -Required
         $manifestPull = Copy-FromSshIfAvailable -Scp $Scp -RemoteHost $scpTarget -RemotePort $sshPort -RemotePath $manifestRemote -LocalPath $manifestLocal -NonInteractive:$nonInteractiveScp
         $packetPull = Copy-FromSshIfAvailable -Scp $Scp -RemoteHost $scpTarget -RemotePort $sshPort -RemotePath $packetRemote -LocalPath $packetLocal -NonInteractive:$nonInteractiveScp
+        $requestPull = Copy-FromSshIfAvailable -Scp $Scp -RemoteHost $scpTarget -RemotePort $sshPort -RemotePath $requestRemote -LocalPath $requestLocal -NonInteractive:$nonInteractiveScp
     }
 
     return [pscustomobject]@{
@@ -1404,6 +1409,7 @@ function Invoke-MimSshRefresh {
         source_yaml = $yamlLocal
         source_manifest = $manifestLocal
         source_handshake_packet = $packetLocal
+        source_task_request = $requestLocal
         auth_mode = $authMode
         non_interactive_scp = [bool]$nonInteractiveScp
         pulls = [pscustomobject]@{
@@ -1411,6 +1417,7 @@ function Invoke-MimSshRefresh {
             yaml = $yamlPull
             manifest = $manifestPull
             handshake_packet = $packetPull
+            task_request = $requestPull
         }
     }
 }
@@ -1959,9 +1966,21 @@ function Get-BridgeCanonicalEvidence {
 
     $liveTaskAvailable = [bool]($LiveTaskRequest -and $LiveTaskRequest.PSObject.Properties["available"] -and $LiveTaskRequest.available)
     $liveTaskRequestId = if ($LiveTaskRequest -and $LiveTaskRequest.PSObject.Properties["request_id"]) { [string]$LiveTaskRequest.request_id } else { "" }
+    $liveTaskId = if ($LiveTaskRequest -and $LiveTaskRequest.PSObject.Properties["task_id"] -and -not [string]::IsNullOrWhiteSpace([string]$LiveTaskRequest.task_id)) { [string]$LiveTaskRequest.task_id } else { $liveTaskRequestId }
     $liveTaskObjective = if ($LiveTaskRequest -and $LiveTaskRequest.PSObject.Properties["normalized_objective_id"]) { [string]$LiveTaskRequest.normalized_objective_id } else { "" }
     $liveTaskPromotionApplied = [bool]($LiveTaskRequest -and $LiveTaskRequest.PSObject.Properties["promotion_applied"] -and $LiveTaskRequest.promotion_applied)
     $objectiveInSync = [bool]($ObjectiveAlignment -and $ObjectiveAlignment.PSObject.Properties["status"] -and [string]$ObjectiveAlignment.status -eq "in_sync")
+    $sharedTruthPath = Join-Path $repoRoot 'runtime/shared/TOD_MIM_SHARED_TRUTH.latest.json'
+    $sharedTruth = Get-JsonFileIfExists -PathValue $sharedTruthPath
+    $canonicalTaskId = if ($sharedTruth -and $sharedTruth.PSObject.Properties['task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$sharedTruth.task_id)) {
+        [string]$sharedTruth.task_id
+    }
+    elseif ($sharedTruth -and $sharedTruth.PSObject.Properties['request_id'] -and -not [string]::IsNullOrWhiteSpace([string]$sharedTruth.request_id)) {
+        [string]$sharedTruth.request_id
+    }
+    else {
+        ""
+    }
     $canonicalObjective = if ($ObjectiveAlignment -and $ObjectiveAlignment.PSObject.Properties["mim_objective_active"] -and -not [string]::IsNullOrWhiteSpace([string]$ObjectiveAlignment.mim_objective_active)) {
         Normalize-ObjectiveIdText -Value ([string]$ObjectiveAlignment.mim_objective_active)
     }
@@ -1980,6 +1999,13 @@ function Get-BridgeCanonicalEvidence {
         [string]::IsNullOrWhiteSpace($liveTaskObjective) -or
         [string]::Equals($liveTaskObjective, $canonicalObjective, [System.StringComparison]::OrdinalIgnoreCase)
     )
+    $liveTaskMatchesCanonicalTask = [bool](
+        -not $liveTaskAvailable -or
+        [string]::IsNullOrWhiteSpace($canonicalTaskId) -or
+        [string]::IsNullOrWhiteSpace($liveTaskId) -or
+        [string]::Equals($liveTaskId, $canonicalTaskId, [System.StringComparison]::OrdinalIgnoreCase)
+    )
+    $liveTaskMatchesCanonical = [bool]($liveTaskMatchesCanonical -and $liveTaskMatchesCanonicalTask)
 
     $statusUploaded = [bool]($TodStatusPublish -and $TodStatusPublish.PSObject.Properties["status"] -and [string]$TodStatusPublish.status -eq "uploaded")
     $mirrorSatisfied = [bool]($TodStatusPublish -and $TodStatusPublish.PSObject.Properties["mim_mirror_status"] -and [string]$TodStatusPublish.mim_mirror_status -eq "mirrored")
@@ -2005,6 +2031,9 @@ function Get-BridgeCanonicalEvidence {
     }
     if (-not $liveTaskMatchesCanonical) {
         $failureSignals += "live_task_request_objective_mismatch"
+    }
+    if (-not $liveTaskMatchesCanonicalTask) {
+        $failureSignals += "live_task_request_task_mismatch"
     }
     if ($liveTaskAvailable -and -not $liveTaskPromotionApplied -and -not $liveTaskMatchesCanonical) {
         $failureSignals += "live_task_request_not_promoted"
@@ -2049,7 +2078,9 @@ function Get-BridgeCanonicalEvidence {
         remote_publish_verified = [bool]$remotePublishVerified
         live_task_request_available = [bool]$liveTaskAvailable
         live_task_request_id = $liveTaskRequestId
+        live_task_task_id = $liveTaskId
         live_task_objective = $liveTaskObjective
+        canonical_task_id = $canonicalTaskId
         objective_in_sync = [bool]$objectiveInSync
         status_uploaded = [bool]$statusUploaded
         mim_mirror_status = if ($TodStatusPublish -and $TodStatusPublish.PSObject.Properties["mim_mirror_status"]) { [string]$TodStatusPublish.mim_mirror_status } else { "" }
@@ -2751,6 +2782,28 @@ if ($allowAmbientObjectivePromotion -and -not [string]::IsNullOrWhiteSpace($norm
         # Canonical live MIM objective should win over stale local pins/open-objective fallbacks.
         $currentObjective = $normalizedMimObjectiveForAlignment
         $normalizedCurrentObjective = $normalizedMimObjectiveForAlignment
+    }
+}
+
+$listenerDecisionReasonCode = if ($listenerDecision -and $listenerDecision.PSObject.Properties['reason_code']) { ([string]$listenerDecision.reason_code).Trim().ToLowerInvariant() } else { '' }
+$listenerCanonicalObjective = @(
+    $normalizedMimObjectiveForAlignment,
+    $normalizedLiveRequestObjective,
+    $normalizedHandshakeNextObjective
+) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -First 1
+if (
+    [string]::Equals($listenerDecisionReasonCode, 'objective_mismatch', [System.StringComparison]::OrdinalIgnoreCase) -and
+    -not [string]::IsNullOrWhiteSpace($listenerCanonicalObjective) -and
+    [string]::Equals($normalizedListenerDecisionObjective, $listenerCanonicalObjective, [System.StringComparison]::OrdinalIgnoreCase) -and
+    -not [string]::Equals($normalizedCurrentObjective, $listenerCanonicalObjective, [System.StringComparison]::OrdinalIgnoreCase) -and
+    -not (Test-ObjectiveInvalidatedByAuthority -ObjectiveId $listenerCanonicalObjective -AuthorityReset $objectiveAuthorityReset)
+) {
+    $currentObjective = $listenerCanonicalObjective
+    $normalizedCurrentObjective = $listenerCanonicalObjective
+    if ([string]::IsNullOrWhiteSpace($normalizedMimObjectiveForAlignment)) {
+        $mimObjectiveForAlignment = $listenerCanonicalObjective
+        $normalizedMimObjectiveForAlignment = $listenerCanonicalObjective
+        $mimObjectiveSource = 'listener_objective_mismatch_recovery'
     }
 }
 

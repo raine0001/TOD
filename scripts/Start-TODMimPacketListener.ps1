@@ -2549,6 +2549,15 @@ function Publish-CommandStatus {
     try {
         $effectiveTaskId = Get-NonEmptyPacketValue -Primary ([string]$TaskId) -Fallback ([string]$RequestId)
         $effectiveCorrelationId = Get-NonEmptyPacketValue -Primary ([string]$CorrelationId) -Fallback ([string]$RequestId)
+        $bridgeCurrentProcessing = if ($null -ne $BridgeRuntime -and $BridgeRuntime.PSObject.Properties['current_processing']) { $BridgeRuntime.current_processing } else { $null }
+        $bridgeTaskId = Get-ObjectFieldText -InputObject $bridgeCurrentProcessing -FieldName 'task_id'
+        $bridgeCorrelationId = Get-ObjectFieldText -InputObject $bridgeCurrentProcessing -FieldName 'correlation_id'
+        if (-not [string]::IsNullOrWhiteSpace($bridgeTaskId) -and -not [string]::Equals($bridgeTaskId, $effectiveTaskId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw ("execution_lineage_task_id_mismatch: bridge_runtime.current_processing.task_id={0} expected={1}" -f $bridgeTaskId, $effectiveTaskId)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($bridgeCorrelationId) -and -not [string]::Equals($bridgeCorrelationId, $effectiveCorrelationId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw ("execution_lineage_correlation_id_mismatch: bridge_runtime.current_processing.correlation_id={0} expected={1}" -f $bridgeCorrelationId, $effectiveCorrelationId)
+        }
         $statusAt = Get-UtcNowString
         $triggerContext = Get-TriggerContext -TriggerPacket $TriggerPacket
         $ackGeneratedAt = Get-ObjectFieldText -InputObject $AckPacket -FieldName "generated_at"
@@ -2563,9 +2572,6 @@ function Publish-CommandStatus {
         $listenerLastCycleAt = Get-ObjectFieldText -InputObject $ListenerState -FieldName "last_cycle_at"
         $listenerLastExecutionAt = Get-ObjectFieldText -InputObject $ListenerState -FieldName "last_execution_at"
         $effectiveStaleGuard = $StaleGuard
-        if ($null -eq $effectiveStaleGuard -and $ListenerState.PSObject.Properties['last_stale_guard']) {
-            $effectiveStaleGuard = $ListenerState.last_stale_guard
-        }
         $ackPayload = $null
         $resultPayload = $null
 
@@ -2577,7 +2583,7 @@ function Publish-CommandStatus {
         $ListenerState | Add-Member -NotePropertyName last_observed_go_order_signature -NotePropertyValue ([string]$GoOrderSignature) -Force
         $ListenerState | Add-Member -NotePropertyName last_observed_task_id -NotePropertyValue ([string]$effectiveTaskId) -Force
         $ListenerState | Add-Member -NotePropertyName last_observed_correlation_id -NotePropertyValue ([string]$effectiveCorrelationId) -Force
-        $ListenerState | Add-Member -NotePropertyName last_stale_guard -NotePropertyValue $effectiveStaleGuard -Force
+        $ListenerState | Add-Member -NotePropertyName last_stale_guard -NotePropertyValue $null -Force
         if ($null -ne $DecisionPayload -and $DecisionPayload.PSObject.Properties['decision_outcome']) {
             $decisionReasonCode = if ($DecisionPayload.PSObject.Properties['reason_code']) { [string]$DecisionPayload.reason_code } else { '' }
             $ListenerState | Add-Member -NotePropertyName last_decision_outcome -NotePropertyValue ([string]$DecisionPayload.decision_outcome) -Force
@@ -2668,6 +2674,62 @@ function Publish-CommandStatus {
     }
 }
 
+function Publish-ExecutionLock {
+    param(
+        [Parameter(Mandatory = $true)][string]$LocalPath,
+        [string]$RemotePath = '',
+        [AllowNull()]$Connections = $null,
+        [string]$ObjectiveId = '',
+        [string]$TaskId = '',
+        [string]$RequestId = '',
+        [string]$CorrelationId = '',
+        [string]$Status = '',
+        [AllowNull()]$BridgeRuntime = $null
+    )
+
+    $effectiveTaskId = Get-NonEmptyPacketValue -Primary ([string]$TaskId) -Fallback ([string]$RequestId)
+    if ([string]::IsNullOrWhiteSpace($effectiveTaskId)) {
+        return
+    }
+
+    $effectiveRequestId = Get-NonEmptyPacketValue -Primary ([string]$RequestId) -Fallback $effectiveTaskId
+    $effectiveCorrelationId = Get-NonEmptyPacketValue -Primary ([string]$CorrelationId) -Fallback $effectiveRequestId
+    $bridgeCurrentProcessing = if ($null -ne $BridgeRuntime -and $BridgeRuntime.PSObject.Properties['current_processing']) { $BridgeRuntime.current_processing } else { $null }
+    $bridgeTaskId = Get-ObjectFieldText -InputObject $bridgeCurrentProcessing -FieldName 'task_id'
+    $bridgeCorrelationId = Get-ObjectFieldText -InputObject $bridgeCurrentProcessing -FieldName 'correlation_id'
+    $bridgeObjectiveId = Get-ObjectFieldText -InputObject $bridgeCurrentProcessing -FieldName 'objective_id'
+    if (-not [string]::IsNullOrWhiteSpace($bridgeTaskId) -and -not [string]::Equals($bridgeTaskId, $effectiveTaskId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw ("execution_lock_task_id_mismatch: bridge_runtime.current_processing.task_id={0} expected={1}" -f $bridgeTaskId, $effectiveTaskId)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($bridgeCorrelationId) -and -not [string]::Equals($bridgeCorrelationId, $effectiveCorrelationId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw ("execution_lock_correlation_id_mismatch: bridge_runtime.current_processing.correlation_id={0} expected={1}" -f $bridgeCorrelationId, $effectiveCorrelationId)
+    }
+
+    $payload = [pscustomobject]@{
+        generated_at = Get-UtcNowString
+        source = 'tod-execution-lock-v1'
+        writer = 'Start-TODMimPacketListener'
+        authoritative = $true
+        objective_id = Get-NonEmptyPacketValue -Primary ([string]$ObjectiveId) -Fallback $bridgeObjectiveId
+        task_id = $effectiveTaskId
+        request_id = $effectiveRequestId
+        correlation_id = $effectiveCorrelationId
+        status = [string]$Status
+        current_processing = if ($null -ne $bridgeCurrentProcessing) { $bridgeCurrentProcessing } else { [pscustomobject]@{
+            objective_id = Get-NonEmptyPacketValue -Primary ([string]$ObjectiveId) -Fallback $bridgeObjectiveId
+            task_id = $effectiveTaskId
+            request_id = $effectiveRequestId
+            correlation_id = $effectiveCorrelationId
+        } }
+    }
+
+    Write-JsonFile -PathValue $LocalPath -Payload $payload -Depth 20
+    if ($Connections -and -not [string]::IsNullOrWhiteSpace($RemotePath)) {
+        $payloadJson = Get-Content -Path $LocalPath -Raw
+        Write-RemoteFileFromText -Connections $Connections -RemotePath $RemotePath -Content $payloadJson
+    }
+}
+
 function Publish-ExecutionDecision {
     param(
         [Parameter(Mandatory = $true)][string]$LocalPath,
@@ -2682,13 +2744,24 @@ function Publish-ExecutionDecision {
     )
 
     try {
+        $effectiveTaskId = [string](Get-NonEmptyPacketValue -Primary ([string]$TaskId) -Fallback ([string]$RequestId))
+        $effectiveCorrelationId = [string](Get-NonEmptyPacketValue -Primary ([string]$CorrelationId) -Fallback ([string]$RequestId))
+        $bridgeCurrentProcessing = if ($null -ne $BridgeRuntime -and $BridgeRuntime.PSObject.Properties['current_processing']) { $BridgeRuntime.current_processing } else { $null }
+        $bridgeTaskId = Get-ObjectFieldText -InputObject $bridgeCurrentProcessing -FieldName 'task_id'
+        $bridgeCorrelationId = Get-ObjectFieldText -InputObject $bridgeCurrentProcessing -FieldName 'correlation_id'
+        if (-not [string]::IsNullOrWhiteSpace($bridgeTaskId) -and -not [string]::Equals($bridgeTaskId, $effectiveTaskId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw ("execution_decision_task_id_mismatch: bridge_runtime.current_processing.task_id={0} expected={1}" -f $bridgeTaskId, $effectiveTaskId)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($bridgeCorrelationId) -and -not [string]::Equals($bridgeCorrelationId, $effectiveCorrelationId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw ("execution_decision_correlation_id_mismatch: bridge_runtime.current_processing.correlation_id={0} expected={1}" -f $bridgeCorrelationId, $effectiveCorrelationId)
+        }
         $triggerContext = Get-TriggerContext -TriggerPacket $TriggerPacket
         $payload = [pscustomobject]@{
             generated_at = Get-UtcNowString
             source = 'tod-mim-execution-decision-v1'
             request_id = [string]$RequestId
-            task_id = [string](Get-NonEmptyPacketValue -Primary ([string]$TaskId) -Fallback ([string]$RequestId))
-            correlation_id = [string](Get-NonEmptyPacketValue -Primary ([string]$CorrelationId) -Fallback ([string]$RequestId))
+            task_id = $effectiveTaskId
+            correlation_id = $effectiveCorrelationId
             decision_outcome = if ($DecisionPayload.PSObject.Properties['decision_outcome']) { [string]$DecisionPayload.decision_outcome } else { '' }
             reason_code = if ($DecisionPayload.PSObject.Properties['reason_code']) { [string]$DecisionPayload.reason_code } else { '' }
             summary = if ($DecisionPayload.PSObject.Properties['summary']) { [string]$DecisionPayload.summary } else { '' }
@@ -5139,6 +5212,7 @@ $localTroubleshootingPath = Join-Path $stageAbs "TOD_MIM_TASK_TROUBLESHOOTING.la
 $localCommandStatusPath = Join-Path $stageAbs "TOD_MIM_COMMAND_STATUS.latest.json"
 $localDecisionPath = Join-Path $stageAbs "TOD_MIM_EXECUTION_DECISION.latest.json"
 $localJournalPath = Join-Path $stageAbs "TOD_LOOP_JOURNAL.latest.json"
+$localExecutionLockPath = Get-LocalPath -PathValue "runtime/shared/TOD_EXECUTION_LOCK.latest.json"
 $localRemoteStatusFile = Join-Path $stageAbs "TOD_INTEGRATION_STATUS.latest.json"
 $localRemoteStatusAliasFile = Join-Path $stageAbs "TOD_integration_status.latest.json"
 $localTriggerAckPath = Join-Path $stageAbs "TOD_TO_MIM_TRIGGER_ACK.latest.json"
@@ -5169,6 +5243,7 @@ $remoteDecisionPath = ("{0}/TOD_MIM_EXECUTION_DECISION.latest.json" -f $RemoteRo
 $remoteStatusPath = ("{0}/TOD_INTEGRATION_STATUS.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteStatusAliasPath = ("{0}/TOD_integration_status.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteJournalPath = ("{0}/TOD_LOOP_JOURNAL.latest.json" -f $RemoteRoot.TrimEnd('/'))
+$remoteExecutionLockPath = ("{0}/TOD_EXECUTION_LOCK.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteTriggerAckPath = ("{0}/TOD_TO_MIM_TRIGGER_ACK.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteLivenessTriggerPath = ("{0}/MIM_TO_TOD_TRIGGER.latest.json" -f $RemoteRoot.TrimEnd('/'))
 $remoteLivenessTriggerAltPath = ("{0}/MIM-TO_TOD_TRIGGER.latest.json" -f $RemoteRoot.TrimEnd('/'))
@@ -5883,6 +5958,7 @@ try {
             if ([string]::Equals([string]$coordinationEscalationState.pending_issue_code, 'runtime_contract_violation_ack', [System.StringComparison]::OrdinalIgnoreCase)) {
                 $null = Publish-ResolvedCoordination -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalCoordinationRequestPath $localCoordinationRequestPath -RemoteCoordinationRequestPath $remoteCoordinationRequestPath -Connections $connections -RequestId $requestId -ObjectiveId $requestObjectiveId -IssueCode 'runtime_contract_violation_ack_resolved' -IssueSummary 'TOD auto-closed the prior ACK contract-violation notice after ACK validation succeeded again.' -Evidence ([pscustomobject]@{ packet_kind = 'ack'; task_id = [string]$staleAck.task_id; correlation_id = [string]$staleAck.correlation_id; status = [string]$staleAck.status; resolution_basis = 'stale_ack_validation_passed' }) -ResolutionReason 'ACK validation now passes; prior contract delta is resolved.' -BridgeRuntime $effectiveBridgeRuntime -ResolutionDecision 'auto_resolved_contract_valid'
             }
+            Publish-ExecutionLock -LocalPath $localExecutionLockPath -RemotePath $remoteExecutionLockPath -Connections $connections -ObjectiveId $requestObjectiveId -TaskId ([string]$staleAck.task_id) -RequestId $requestId -CorrelationId ([string]$staleAck.correlation_id) -Status ([string]$staleAck.status) -BridgeRuntime $effectiveBridgeRuntime
             Write-JsonFile -PathValue $localAckPath -Payload $staleAck
             $staleAckJson = Get-Content -Path $localAckPath -Raw
             Write-RemoteFileFromText -Connections $connections -RemotePath $remoteAckPath -Content $staleAckJson
@@ -6071,6 +6147,7 @@ try {
         if ([string]::Equals([string]$coordinationEscalationState.pending_issue_code, 'runtime_contract_violation_ack', [System.StringComparison]::OrdinalIgnoreCase)) {
             $null = Publish-ResolvedCoordination -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalCoordinationRequestPath $localCoordinationRequestPath -RemoteCoordinationRequestPath $remoteCoordinationRequestPath -Connections $connections -RequestId $requestId -ObjectiveId $requestObjectiveId -IssueCode 'runtime_contract_violation_ack_resolved' -IssueSummary 'TOD auto-closed the prior ACK contract-violation notice after ACK validation succeeded again.' -Evidence ([pscustomobject]@{ packet_kind = 'ack'; task_id = [string]$ack.task_id; correlation_id = [string]$ack.correlation_id; status = [string]$ack.status; resolution_basis = 'ack_validation_passed' }) -ResolutionReason 'ACK validation now passes; prior contract delta is resolved.' -BridgeRuntime $bridgeRuntime -ResolutionDecision 'auto_resolved_contract_valid'
         }
+        Publish-ExecutionLock -LocalPath $localExecutionLockPath -RemotePath $remoteExecutionLockPath -Connections $connections -ObjectiveId $requestObjectiveId -TaskId $requestTaskId -RequestId $requestId -CorrelationId $requestCorrelationId -Status ([string]$ack.status) -BridgeRuntime $bridgeRuntime
         Write-JsonFile -PathValue $localAckPath -Payload $ack
 
         $ackJson = Get-Content -Path $localAckPath -Raw
@@ -6467,6 +6544,7 @@ try {
             $null = Publish-ResolvedCoordination -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalCoordinationRequestPath $localCoordinationRequestPath -RemoteCoordinationRequestPath $remoteCoordinationRequestPath -Connections $connections -RequestId $requestId -ObjectiveId $requestObjectiveId -IssueCode 'runtime_contract_violation_result_resolved' -IssueSummary 'TOD auto-closed the prior RESULT contract-violation notice after RESULT validation succeeded again.' -Evidence ([pscustomobject]@{ packet_kind = 'result'; task_id = [string]$resultPacket.task_id; correlation_id = [string]$resultPacket.correlation_id; status = [string]$resultPacket.status; result_reason_code = [string]$resultPacket.result_reason_code; resolution_basis = 'result_validation_passed' }) -ResolutionReason 'RESULT validation now passes; prior contract delta is resolved.' -BridgeRuntime $bridgeRuntime -ResolutionDecision 'auto_resolved_contract_valid'
         }
         $null = Sync-LocalExecutionOutcome -TaskId $requestTaskId -ObjectiveId $requestObjectiveId -ResultPacket $resultPacket
+        Publish-ExecutionLock -LocalPath $localExecutionLockPath -RemotePath $remoteExecutionLockPath -Connections $connections -ObjectiveId $requestObjectiveId -TaskId $requestTaskId -RequestId $requestId -CorrelationId $requestCorrelationId -Status ([string]$resultPacket.status) -BridgeRuntime $bridgeRuntime
         Write-JsonFile -PathValue $localResultPath -Payload $resultPacket
 
         $resultJson = Get-Content -Path $localResultPath -Raw

@@ -69,6 +69,15 @@ Describe 'TOD recovery watchdog coordination fallback' {
         [int64]$request.sequence | Should BeGreaterThan 0
     }
 
+    It 'preserves explicit canonical task identity for self-heal republish' {
+        $request = New-CanonicalRepublishTaskRequest -ObjectiveId '2913' -TaskId 'objective-2913-task-7144' -CorrelationId 'objective-2913-task-7144'
+
+        [string]$request.objective_id | Should Be 'objective-2913'
+        [string]$request.request_id | Should Be 'objective-2913-task-7144'
+        [string]$request.task_id | Should Be 'objective-2913-task-7144'
+        [string]$request.correlation_id | Should Be 'objective-2913-task-7144'
+    }
+
     It 'keeps publication divergence recovery active after local terminal completion when canonical MIM is ahead' {
         $bridgeSmoke = [pscustomobject]@{
             passed = $false

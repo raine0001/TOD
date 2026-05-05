@@ -780,6 +780,62 @@ function Convert-ToObjectiveLabel {
     return ('objective-{0}' -f $normalized)
 }
 
+function Get-CanonicalTaskIdForSelfHeal {
+    param(
+        [Parameter(Mandatory = $true)][string]$ObjectiveId,
+        [AllowNull()]$BridgeSmoke = $null
+    )
+
+    $objectiveLabel = Convert-ToObjectiveLabel -ObjectiveId $ObjectiveId
+    if ([string]::IsNullOrWhiteSpace($objectiveLabel)) {
+        return ''
+    }
+
+    $sharedTruthPath = Join-Path $repoRoot 'runtime/shared/TOD_MIM_SHARED_TRUTH.latest.json'
+    $sharedTruth = Read-JsonFileIfExists -PathValue $sharedTruthPath
+    if ($sharedTruth) {
+        $sharedTruthObjective = if ($sharedTruth.PSObject.Properties['objective_id']) {
+            Convert-ToObjectiveLabel -ObjectiveId ([string]$sharedTruth.objective_id)
+        }
+        else {
+            ''
+        }
+        $sharedTruthTaskId = if ($sharedTruth.PSObject.Properties['task_id']) {
+            [string]$sharedTruth.task_id
+        }
+        elseif ($sharedTruth.PSObject.Properties['request_id']) {
+            [string]$sharedTruth.request_id
+        }
+        else {
+            ''
+        }
+        if (-not [string]::IsNullOrWhiteSpace($sharedTruthTaskId) -and [string]::Equals($sharedTruthObjective, $objectiveLabel, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $sharedTruthTaskId
+        }
+    }
+
+    if ($BridgeSmoke -and $BridgeSmoke.PSObject.Properties['canonical_request'] -and $BridgeSmoke.canonical_request) {
+        $canonicalRequest = $BridgeSmoke.canonical_request
+        $candidateTaskId = if ($canonicalRequest.PSObject.Properties['expected_task_id']) {
+            [string]$canonicalRequest.expected_task_id
+        }
+        elseif ($canonicalRequest.PSObject.Properties['task_id']) {
+            [string]$canonicalRequest.task_id
+        }
+        elseif ($canonicalRequest.PSObject.Properties['request_id']) {
+            [string]$canonicalRequest.request_id
+        }
+        else {
+            ''
+        }
+        if (-not [string]::IsNullOrWhiteSpace($candidateTaskId)) {
+            return $candidateTaskId
+        }
+    }
+
+    return ''
+}
+
 function Get-CanonicalObjectiveForSelfHeal {
     param(
         [AllowNull()]$IntegrationStatus = $null,
@@ -792,6 +848,29 @@ function Get-CanonicalObjectiveForSelfHeal {
             $authorityObjective = Convert-ToObjectiveLabel -ObjectiveId ([string]$authorityReset.authoritative_current_objective)
             if (-not [string]::IsNullOrWhiteSpace($authorityObjective)) {
                 return $authorityObjective
+            }
+        }
+    }
+
+    if ($IntegrationStatus -and $IntegrationStatus.PSObject.Properties['mim_status'] -and $IntegrationStatus.mim_status -and $IntegrationStatus.mim_status.PSObject.Properties['objective_active']) {
+        $mimObjective = Convert-ToObjectiveLabel -ObjectiveId ([string]$IntegrationStatus.mim_status.objective_active)
+        if (-not [string]::IsNullOrWhiteSpace($mimObjective)) {
+            return $mimObjective
+        }
+    }
+
+    if ($IntegrationStatus -and $IntegrationStatus.PSObject.Properties['mim_handshake'] -and $IntegrationStatus.mim_handshake) {
+        $handshake = $IntegrationStatus.mim_handshake
+        if ($handshake.PSObject.Properties['current_next_objective']) {
+            $nextObjective = Convert-ToObjectiveLabel -ObjectiveId ([string]$handshake.current_next_objective)
+            if (-not [string]::IsNullOrWhiteSpace($nextObjective)) {
+                return $nextObjective
+            }
+        }
+        if ($handshake.PSObject.Properties['objective_active']) {
+            $activeObjective = Convert-ToObjectiveLabel -ObjectiveId ([string]$handshake.objective_active)
+            if (-not [string]::IsNullOrWhiteSpace($activeObjective)) {
+                return $activeObjective
             }
         }
     }
@@ -816,7 +895,8 @@ function Get-CanonicalObjectiveForSelfHeal {
 function New-CanonicalRepublishTaskRequest {
     param(
         [Parameter(Mandatory = $true)][string]$ObjectiveId,
-        [string]$CorrelationId = 'watchdog-publication-surface-self-heal'
+        [string]$TaskId = '',
+        [string]$CorrelationId = ''
     )
 
     $objectiveLabel = Convert-ToObjectiveLabel -ObjectiveId $ObjectiveId
@@ -826,18 +906,26 @@ function New-CanonicalRepublishTaskRequest {
 
     $normalizedObjective = Normalize-ObjectiveIdentity -Value $objectiveLabel
     $sequence = [int64][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    $taskId = ('objective-{0}-task-{1}' -f $normalizedObjective, $sequence)
+    $resolvedTaskId = ([string]$TaskId).Trim()
+    if ([string]::IsNullOrWhiteSpace($resolvedTaskId)) {
+        $resolvedTaskId = ('objective-{0}-task-{1}' -f $normalizedObjective, $sequence)
+    }
+    $resolvedCorrelationId = ([string]$CorrelationId).Trim()
+    if ([string]::IsNullOrWhiteSpace($resolvedCorrelationId)) {
+        $resolvedCorrelationId = $resolvedTaskId
+    }
     $generatedAt = (Get-Date).ToUniversalTime().ToString('o')
 
     return [pscustomobject]@{
         generated_at = $generatedAt
         emitted_at = $generatedAt
-        request_id = $taskId
-        task_id = $taskId
+        request_id = $resolvedTaskId
+        task_id = $resolvedTaskId
         objective_id = $objectiveLabel
-        correlation_id = $CorrelationId
+        correlation_id = $resolvedCorrelationId
         sequence = $sequence
         source_service = 'tod_watchdog_autorepair'
+        canonical_lane_source = 'shared_truth'
         source_instance_id = $env:COMPUTERNAME
     }
 }
@@ -902,8 +990,10 @@ function Invoke-PublicationSurfaceSelfHeal {
     }
 
     $normalizedObjective = Normalize-ObjectiveIdentity -Value $canonicalObjective
-    $requestPayload = New-CanonicalRepublishTaskRequest -ObjectiveId $canonicalObjective
+    $canonicalTaskId = Get-CanonicalTaskIdForSelfHeal -ObjectiveId $canonicalObjective -BridgeSmoke $BridgeSmoke
+    $requestPayload = New-CanonicalRepublishTaskRequest -ObjectiveId $canonicalObjective -TaskId $canonicalTaskId -CorrelationId $(if (-not [string]::IsNullOrWhiteSpace($canonicalTaskId)) { $canonicalTaskId } else { 'watchdog-publication-surface-self-heal' })
     $requestId = [string]$requestPayload.request_id
+    $remoteRequestPath = ((Join-Path $RemoteRoot 'MIM_TOD_TASK_REQUEST.latest.json') -replace '[\\/]+', '/')
 
     try {
         Import-Module Posh-SSH -ErrorAction Stop | Out-Null
@@ -911,6 +1001,7 @@ function Invoke-PublicationSurfaceSelfHeal {
         $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
         $credential = New-Object System.Management.Automation.PSCredential ($userName, $securePassword)
         $session = New-SSHSession -ComputerName $resolvedHost -Port $port -Credential $credential -AcceptKey -ConnectionTimeout 15000
+        $sftpSession = New-SFTPSession -ComputerName $resolvedHost -Port $port -Credential $credential -AcceptKey -ConnectionTimeout 15000
 
         try {
             $remoteCommand = @"
@@ -919,14 +1010,47 @@ bash -lc 'if [ -x /home/testpilot/mim/scripts/continuous_task_dispatch.sh ]; the
             $commandResult = Invoke-SSHCommand -SessionId ([int]$session.SessionId) -Command $remoteCommand -TimeOut 120
             $commandOutput = [string]($commandResult.Output | Out-String)
             if ($commandOutput -match '__TOD_EXIT__0') {
-                return [pscustomobject]@{
-                    attempted = $true
-                    repaired = $true
-                    method = 'remote_dispatch_script'
-                    canonical_objective = $canonicalObjective
-                    request_id = ''
-                    reason = 'ok'
-                    remote_host = $resolvedHost
+                $verifyCommand = @"
+bash -lc 'cat "$remoteRequestPath" 2>/dev/null || true'
+"@
+                $verifyResult = Invoke-SSHCommand -SessionId ([int]$session.SessionId) -Command $verifyCommand -TimeOut 30
+                $verifyOutput = [string]($verifyResult.Output | Out-String)
+                $remoteRequest = $null
+                if (-not [string]::IsNullOrWhiteSpace($verifyOutput)) {
+                    try {
+                        $remoteRequest = ($verifyOutput | ConvertFrom-Json)
+                    }
+                    catch {
+                        $remoteRequest = $null
+                    }
+                }
+
+                $remoteObjective = if ($null -ne $remoteRequest -and $remoteRequest.PSObject.Properties['objective_id']) {
+                    Convert-ToObjectiveLabel -ObjectiveId ([string]$remoteRequest.objective_id)
+                }
+                else {
+                    ''
+                }
+                $remoteTaskId = if ($null -ne $remoteRequest -and $remoteRequest.PSObject.Properties['task_id']) {
+                    [string]$remoteRequest.task_id
+                }
+                elseif ($null -ne $remoteRequest -and $remoteRequest.PSObject.Properties['request_id']) {
+                    [string]$remoteRequest.request_id
+                }
+                else {
+                    ''
+                }
+
+                if ([string]::Equals($remoteObjective, $canonicalObjective, [System.StringComparison]::OrdinalIgnoreCase) -and [string]::Equals($remoteTaskId, $requestId, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    return [pscustomobject]@{
+                        attempted = $true
+                        repaired = $true
+                        method = 'remote_dispatch_script'
+                        canonical_objective = $canonicalObjective
+                        request_id = $remoteTaskId
+                        reason = 'ok'
+                        remote_host = $resolvedHost
+                    }
                 }
             }
 
@@ -935,7 +1059,7 @@ bash -lc 'if [ -x /home/testpilot/mim/scripts/continuous_task_dispatch.sh ]; the
                 New-Item -ItemType Directory -Path $packetDir -Force | Out-Null
             }
             Write-JsonFile -PathValue $LocalRepairPacketPath -Payload $requestPayload
-            Set-SFTPItem -SessionId ([int]$session.SessionId) -Path $LocalRepairPacketPath -Destination $RemoteRoot -Force -ErrorAction Stop | Out-Null
+            Set-SFTPItem -SessionId ([int]$sftpSession.SessionId) -Path $LocalRepairPacketPath -Destination $RemoteRoot -Force -ErrorAction Stop | Out-Null
 
             return [pscustomobject]@{
                 attempted = $true
@@ -948,6 +1072,9 @@ bash -lc 'if [ -x /home/testpilot/mim/scripts/continuous_task_dispatch.sh ]; the
             }
         }
         finally {
+            if ($null -ne $sftpSession) {
+                Remove-SFTPSession -SessionId ([int]$sftpSession.SessionId) | Out-Null
+            }
             Remove-SSHSession -SessionId ([int]$session.SessionId) | Out-Null
         }
     }

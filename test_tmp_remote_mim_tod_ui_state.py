@@ -463,6 +463,254 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertEqual(execution["activity_state"], "stalled")
         self.assertIn("Probable stall:", execution["activity_summary"])
 
+    def test_build_tod_console_state_clears_phase_gate_when_shared_truth_accepts_complete(self) -> None:
+        stale_timestamp = "2026-04-26T10:00:00Z"
+        fresh_truth_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        integration_payload = {
+            "objective_alignment": {
+                "status": "in_sync",
+                "aligned": True,
+                "tod_current_objective": "2913",
+                "mim_objective_active": "2913",
+            },
+            "bridge_canonical_evidence": {
+                "status": "pass",
+                "failure_signals": [],
+            },
+            "tod_status_publish": {
+                "status": "uploaded",
+                "consumer_status": "remote_verified",
+                "mim_mirror_status": "mirrored",
+                "uploaded_at": fresh_truth_timestamp,
+            },
+            "live_task_request": {
+                "request_id": "objective-2913-task-7144",
+                "task_id": "objective-2913-task-7144",
+                "objective_id": "2913",
+                "normalized_objective_id": "2913",
+                "generated_at": stale_timestamp,
+            },
+            "listener_decision": {
+                "decision_outcome": "execute",
+                "reason_code": "authorized_routine_request",
+                "execution_state": "ready_to_execute",
+                "generated_at": stale_timestamp,
+                "summary": "Execution artifacts are aligned.",
+            },
+            "mim_status": {
+                "available": True,
+                "objective_active": "2913",
+            },
+            "objective_authority_reset": {
+                "active": False,
+            },
+        }
+        active_task_payload = {
+            "objective_id": "2913",
+            "task_id": "objective-2913-task-7144",
+            "title": "Close the Phase 2 recovery lane",
+            "summary": "Phase 1 progress 100% complete; next gate Phase 2 handoff.",
+            "updated_at": stale_timestamp,
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "next_step": "Hand off Phase 2 follow-up.",
+            "wait_reason": "Waiting for the Phase 2 handoff.",
+            "execution_contract": {
+                "task_intake": {"status": "accepted"},
+                "bounded_step_planner": {
+                    "status": "completed",
+                    "active_step": {"status": "completed"},
+                },
+                "command_runner": {"status": "completed"},
+                "patch_writer": {"status": "completed"},
+                "validator": {"status": "passed"},
+                "result_publisher": {"status": "completed"},
+            },
+        }
+        activity_payload = {
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "updated_at": stale_timestamp,
+            "wait_reason": "Waiting for the Phase 2 handoff.",
+        }
+        validation_payload = {
+            "status": "passed",
+            "updated_at": stale_timestamp,
+        }
+        execution_result_payload = {
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "updated_at": stale_timestamp,
+            "next_step": "Hand off Phase 2 follow-up.",
+            "wait_reason": "Waiting for the Phase 2 handoff.",
+        }
+        shared_truth_payload = {
+            "generated_at": fresh_truth_timestamp,
+            "objective_id": "2913",
+            "task_id": "objective-2913-task-7144",
+            "state": "ACCEPTED_COMPLETE",
+            "state_reason": "Phase 2 closure is complete and accepted.",
+            "meaningful_evidence_present": True,
+        }
+
+        def first_existing_payload(*paths):
+            first_name = getattr(paths[0], "name", "") if paths else ""
+            if first_name == "TOD_INTEGRATION_STATUS.latest.json":
+                return integration_payload, "integration.json"
+            if first_name == "TOD_ACTIVE_TASK.latest.json":
+                return active_task_payload, "active_task.json"
+            if first_name == "TOD_ACTIVITY_STREAM.latest.json":
+                return activity_payload, "activity.json"
+            if first_name == "TOD_VALIDATION_RESULT.latest.json":
+                return validation_payload, "validation.json"
+            if first_name == "TOD_EXECUTION_RESULT.latest.json":
+                return execution_result_payload, "execution_result.json"
+            return {}, ""
+
+        self.tod_ui._first_existing_payload = first_existing_payload
+        self.tod_ui._load_json = lambda path: {}
+        self.tod_ui._load_remote_recovery_payload = lambda: ({}, "")
+        self.tod_ui._load_shared_truth_payload = lambda: (shared_truth_payload, "shared_truth.json")
+        self.tod_ui._load_recent_copilot_handoffs = lambda **kwargs: []
+
+        state = self.tod_ui._build_tod_console_state()
+        execution = state["execution"]
+
+        self.assertEqual(state["status"]["code"], "accepted_complete")
+        self.assertEqual(execution["activity_state"], "complete")
+        self.assertEqual(execution["activity_label"], "Complete")
+        self.assertFalse(execution["phase_progress"]["available"])
+        self.assertEqual(execution["phase_progress"]["next_gate"], "")
+        self.assertEqual(execution["activity_summary"], "Phase 2 closure is complete and accepted.")
+        self.assertEqual(execution["shared_truth"]["task_id"], "objective-2913-task-7144")
+
+    def test_build_tod_console_state_prefers_newer_execution_over_older_shared_truth_from_other_objective(self) -> None:
+        shared_truth_timestamp = "2026-05-05T05:32:38.674201Z"
+        execution_timestamp = "2026-05-05T05:51:21Z"
+        integration_payload = {
+            "objective_alignment": {
+                "status": "in_sync",
+                "aligned": True,
+                "tod_current_objective": "2913",
+                "mim_objective_active": "2913",
+            },
+            "bridge_canonical_evidence": {
+                "status": "pass",
+                "failure_signals": [],
+            },
+            "tod_status_publish": {
+                "status": "uploaded",
+                "consumer_status": "executed",
+                "mim_mirror_status": "mirrored",
+                "uploaded_at": shared_truth_timestamp,
+            },
+            "live_task_request": {
+                "request_id": "tod-operational-control-surface-phase-3-task-1777960281766",
+                "task_id": "tod-operational-control-surface-phase-3-task-1777960281766",
+                "objective_id": "TOD-OPERATIONAL-CONTROL-SURFACE-PHASE-3",
+                "normalized_objective_id": "3",
+                "generated_at": execution_timestamp,
+            },
+            "listener_decision": {
+                "decision_outcome": "execute",
+                "reason_code": "authorized_routine_request",
+                "execution_state": "ready_to_execute",
+                "generated_at": execution_timestamp,
+                "summary": "Request is aligned with authority and ready for immediate TOD execution.",
+            },
+            "mim_status": {
+                "available": True,
+                "objective_active": "2913",
+            },
+            "objective_authority_reset": {
+                "active": False,
+            },
+        }
+        active_task_payload = {
+            "objective_id": "TOD-OPERATIONAL-CONTROL-SURFACE-PHASE-3",
+            "task_id": "tod-operational-control-surface-phase-3-task-1777960281766",
+            "title": "Make the TOD UI an execution control surface.",
+            "summary": "Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path.",
+            "updated_at": execution_timestamp,
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "next_step": "Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path.",
+            "wait_reason": "TOD is waiting on its own next bounded local implementation step. It is not waiting on MIM, the operator, or Codex.",
+            "execution_contract": {
+                "task_intake": {"status": "accepted"},
+                "bounded_step_planner": {
+                    "status": "completed",
+                    "active_step": {"status": "completed"},
+                },
+                "command_runner": {"status": "completed"},
+                "patch_writer": {"status": "pending"},
+                "validator": {"status": "passed"},
+                "result_publisher": {"status": "completed"},
+            },
+        }
+        activity_payload = {
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "updated_at": execution_timestamp,
+            "wait_reason": "TOD is waiting on its own next bounded local implementation step. It is not waiting on MIM, the operator, or Codex.",
+        }
+        validation_payload = {
+            "status": "passed",
+            "updated_at": execution_timestamp,
+        }
+        execution_result_payload = {
+            "status": "waiting",
+            "execution_state": "waiting_on_next_step",
+            "phase": "workspace_inspection",
+            "updated_at": execution_timestamp,
+            "next_step": "Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path.",
+            "wait_reason": "TOD is waiting on its own next bounded local implementation step. It is not waiting on MIM, the operator, or Codex.",
+            "command_output": "Inspected 4 local execution-loop surfaces under E:/TOD.",
+            "validation_summary": "Completed the bounded local workspace inspection.",
+            "validation_checks": [{"name": "exists:tod_ui.py", "passed": True}],
+            "matched_files": ["E:/TOD/tmp_remote_mim/core/routers/tod_ui.py"],
+        }
+        shared_truth_payload = {
+            "generated_at": shared_truth_timestamp,
+            "objective_id": "2913",
+            "task_id": "objective-2913-task-7144",
+            "state": "ACCEPTED_COMPLETE",
+            "state_reason": "LocalExecutionEngine patched prompt token extraction in tmp_remote_mim/core/routers/tod_ui.py and published real execution evidence.",
+            "meaningful_evidence_present": True,
+        }
+
+        def first_existing_payload(*paths):
+            first_name = getattr(paths[0], "name", "") if paths else ""
+            if first_name == "TOD_INTEGRATION_STATUS.latest.json":
+                return integration_payload, "integration.json"
+            if first_name == "TOD_ACTIVE_TASK.latest.json":
+                return active_task_payload, "active_task.json"
+            if first_name == "TOD_ACTIVITY_STREAM.latest.json":
+                return activity_payload, "activity.json"
+            if first_name == "TOD_VALIDATION_RESULT.latest.json":
+                return validation_payload, "validation.json"
+            if first_name == "TOD_EXECUTION_RESULT.latest.json":
+                return execution_result_payload, "execution_result.json"
+            return {}, ""
+
+        self.tod_ui._first_existing_payload = first_existing_payload
+        self.tod_ui._load_json = lambda path: {}
+        self.tod_ui._load_remote_recovery_payload = lambda: ({}, "")
+        self.tod_ui._load_shared_truth_payload = lambda: (shared_truth_payload, "shared_truth.json")
+        self.tod_ui._load_recent_copilot_handoffs = lambda **kwargs: []
+
+        state = self.tod_ui._build_tod_console_state()
+
+        self.assertEqual(state["status"]["code"], "drifted")
+        self.assertEqual(state["execution"]["objective_id"], "TOD-OPERATIONAL-CONTROL-SURFACE-PHASE-3")
+        self.assertTrue(state["execution"]["phase_progress"]["available"])
+        self.assertTrue(state["execution"].get("shared_truth_superseded"))
+        self.assertEqual(state["quick_facts"]["live_request_objective"], "TOD-OPERATIONAL-CONTROL-SURFACE-PHASE-3")
+        self.assertEqual(state["operator_evidence"]["active_objective"]["id"], "TOD-OPERATIONAL-CONTROL-SURFACE-PHASE-3")
+        self.assertEqual(state["operator_evidence"]["active_task"]["id"], "tod-operational-control-surface-phase-3-task-1777960281766")
+        self.assertEqual(state["operator_evidence"]["blocker_code"], "implementation_pending")
+        self.assertIn("Phase 3", state["operator_evidence"]["blocker_detail"])
+
     def test_execution_feed_includes_implementation_gate_hold_watch(self) -> None:
         state = {
             "generated_at": "2026-04-26T10:00:00Z",
@@ -550,6 +798,58 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertIn("Training request queued.", payload["messages"][-1]["content"])
         self.assertFalse(payload["guardrails"]["live_execution_blocked"])
 
+    def test_classify_prompt_treats_phase3_objective_request_as_task(self) -> None:
+        message = (
+            "OBJECTIVE_ID: TOD-OPERATIONAL-CONTROL-SURFACE-PHASE-3 TITLE: Make the TOD UI an execution control surface. "
+            "MISSION: TOD UI must become useful for managing work, not just observing failure beautifully like a museum exhibit for bad software weather. "
+            "REQUIRED UI FEATURES: 1. Objective cards - Start Objective - Pause - Resume - Show Plan - Show Evidence - Validate - Send To Codex - Rollback "
+            "2. Live activity timeline Events: - inspect - patch - command - test - restart - verify - done - blocked "
+            "3. Artifact panels - changed files - command log - validation result - rollback points - handoffs - current blocker "
+            "4. Objective state persistence TOD must resume active objective after UI reload or TOD restart. "
+            "5. Planner/executor split UI must show: - plan accepted - current step - step progress - validation state - result "
+            "SUCCESS CRITERIA: Operator can see what TOD is doing, what evidence exists, and what action is next without guessing whether TOD understood or merely performed theater."
+        )
+
+        self.assertEqual(self.tod_ui._classify_prompt(message), "task")
+
+    def test_load_chat_session_payload_discards_generated_only_public_progress_thread(self) -> None:
+        state = {
+            "status": {"code": "accepted_complete"},
+            "quick_facts": {"canonical_objective": "2913"},
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_chat_root = self.tod_ui.TOD_CONSOLE_CHAT_ROOT
+            try:
+                self.tod_ui.TOD_CONSOLE_CHAT_ROOT = Path(temp_dir)
+                session_key = "tod-console-public-stale"
+                session_path = self.tod_ui._chat_session_path(session_key)
+                session_path.parent.mkdir(parents=True, exist_ok=True)
+                session_path.write_text(
+                    json.dumps(
+                        {
+                            "session_key": session_key,
+                            "updated_at": "2026-05-05T05:32:38.674201Z",
+                            "state_marker": {"canonical_objective": "2913", "status_code": "accepted_complete"},
+                            "messages": [
+                                {"role": "tod", "content": "Live execution feed: TOD is complete on the current task.", "created_at": "2026-05-05T05:32:38.674201Z"},
+                                {"role": "system", "content": "Phase 1 progress: 100% complete. Next gate: Phase 2 handoff.", "created_at": "2026-05-05T05:32:38.674201Z"},
+                                {"role": "system", "content": "Updated: 12m ago", "created_at": "2026-05-05T05:32:38.674201Z"},
+                            ],
+                            "pending_progress": [],
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+
+                payload = self.tod_ui._load_chat_session_payload(session_key, state)
+
+                self.assertEqual(payload["messages"], [])
+                self.assertEqual(payload["pending_progress"], [])
+            finally:
+                self.tod_ui.TOD_CONSOLE_CHAT_ROOT = original_chat_root
+
     def test_start_training_runbook_queues_bridge_request_and_trigger(self) -> None:
         state = {
             "quick_facts": {
@@ -594,6 +894,160 @@ class TodUiStateClassificationTests(unittest.TestCase):
             finally:
                 self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
                 self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+
+    def test_publish_task_execution_request_uses_canonical_task_for_correlation(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "2913",
+                "task_id": "objective-2913-task-7144",
+            },
+            "live_task_request": {
+                "request_id": "objective-2913-task-1777951503",
+                "task_id": "objective-2913-task-1777951503",
+                "objective_id": "objective-3",
+                "normalized_objective_id": "3",
+            },
+            "quick_facts": {"canonical_objective": "2913"},
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                record = self.tod_ui._publish_task_execution_request(
+                    "OBJECTIVE_ID: objective-2913\nTITLE: Start next task for objective-2913-task-7144\nPRIMARY OUTCOME: Publish bounded execution evidence.",
+                    state,
+                    "operator-actions",
+                    "operator-actions",
+                )
+
+                request_payload = json.loads((shared_root / "MIM_TOD_TASK_REQUEST.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(request_payload["request_id"], "objective-2913-task-7144")
+        self.assertEqual(request_payload["task_id"], "objective-2913-task-7144")
+        self.assertEqual(request_payload["correlation_id"], "objective-2913-task-7144")
+        self.assertEqual(request_payload["canonical_lane_source"], "shared_truth")
+        self.assertEqual(request_payload["canonical_task_id"], "objective-2913-task-7144")
+
+    def test_publish_task_execution_request_does_not_reuse_canonical_task_for_new_prompt_objective(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "2913",
+                "task_id": "objective-2913-task-7144",
+            },
+            "live_task_request": {
+                "request_id": "objective-2913-task-1777951503",
+                "task_id": "objective-2913-task-1777951503",
+                "objective_id": "objective-2913",
+                "normalized_objective_id": "2913",
+            },
+            "quick_facts": {"canonical_objective": "2913"},
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                record = self.tod_ui._publish_task_execution_request(
+                    "OBJECTIVE_ID: TOD-OPERATIONAL-CONTROL-SURFACE-PHASE-3\nTITLE: Start phase 3 execution control surface work\nPRIMARY OUTCOME: Publish a new bounded execution request.",
+                    state,
+                    "operator-actions",
+                    "operator-actions",
+                )
+
+                request_payload = json.loads((shared_root / "MIM_TOD_TASK_REQUEST.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(request_payload["objective_id"], "TOD-OPERATIONAL-CONTROL-SURFACE-PHASE-3")
+        self.assertNotEqual(request_payload["request_id"], "objective-2913-task-7144")
+        self.assertNotEqual(request_payload["task_id"], "objective-2913-task-7144")
+        self.assertNotEqual(request_payload["correlation_id"], "objective-2913-task-7144")
+        self.assertEqual(request_payload["canonical_lane_source"], "ui_request")
+        self.assertEqual(request_payload["canonical_task_id"], "")
+        self.assertTrue(request_payload["request_id"].startswith("tod-operational-control-surface-phase-3-task-"))
+
+    def test_extract_labeled_prompt_value_captures_only_identifier_token(self) -> None:
+        message = (
+            "## Objective Id: objective-2913 and ignore the prompt tail\n"
+            "- Task ID: objective-2913-task-7144 should stop at the identifier\n"
+            "- Request ID: request-7144 trailing details should not persist\n"
+            "TITLE: Keep collecting full non-identifier fields"
+        )
+
+        self.assertEqual(self.tod_ui._extract_labeled_prompt_value(message, "OBJECTIVE_ID"), "objective-2913")
+        self.assertEqual(self.tod_ui._extract_labeled_prompt_value(message, "TASK_ID"), "objective-2913-task-7144")
+        self.assertEqual(self.tod_ui._extract_labeled_prompt_value(message, "REQUEST_ID"), "request-7144")
+
+    def test_extract_labeled_prompt_value_reads_markdown_heading_and_bullet_labels(self) -> None:
+        message = (
+            "### Initiative Id: `initiative-77` should ignore this trailing explanation\n"
+            "- Objective Id: objective-2913 extra trailing copy\n"
+            "PRIMARY OUTCOME: Preserve the rest of this field as normal."
+        )
+
+        self.assertEqual(self.tod_ui._extract_labeled_prompt_value(message, "INITIATIVE_ID"), "initiative-77")
+        self.assertEqual(self.tod_ui._extract_labeled_prompt_value(message, "Objective Id"), "objective-2913")
+        self.assertEqual(
+            self.tod_ui._extract_labeled_prompt_value(message, "PRIMARY OUTCOME"),
+            "Preserve the rest of this field as normal.",
+        )
+
+    def test_select_runtime_live_task_request_does_not_preserve_same_objective_wrong_task(self) -> None:
+        integration_live_task = {
+            "request_id": "objective-2913-task-1777951503",
+            "task_id": "objective-2913-task-1777951503",
+            "objective_id": "objective-2913",
+            "normalized_objective_id": "2913",
+            "generated_at": "2026-05-05T03:25:03Z",
+        }
+        active_task = {
+            "request_id": "objective-2913-task-7144",
+            "task_id": "objective-2913-task-7144",
+            "objective_id": "2913",
+            "normalized_objective_id": "2913",
+            "updated_at": "2026-05-05T03:28:02Z",
+        }
+
+        selected = self.tod_ui._select_runtime_live_task_request(integration_live_task, active_task)
+
+        self.assertEqual(selected["request_id"], "objective-2913-task-7144")
+        self.assertEqual(selected["task_id"], "objective-2913-task-7144")
+        self.assertEqual(selected["objective_id"], "2913")
 
 
 if __name__ == "__main__":

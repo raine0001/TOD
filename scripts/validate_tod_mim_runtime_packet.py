@@ -84,6 +84,9 @@ def validate_packet_identity_consistency(result: dict, packet: dict) -> dict:
     objective_id = normalize_objective_id(packet.get("objective_id"))
     correlation_id = normalize_text(packet.get("correlation_id"))
 
+    if request_id and task_id and request_id.lower().startswith("objective-") and task_id.lower().startswith("objective-") and request_id != task_id:
+        append_error(result, "task_id_mismatch", f"request_id={request_id} task_id={task_id}")
+
     request_objective = extract_objective_from_task_ref(request_id)
     task_objective = extract_objective_from_task_ref(task_id)
     if request_objective and objective_id and request_objective != objective_id:
@@ -123,6 +126,10 @@ def validate_embedded_request_scope(result: dict, node, path: str, expected: dic
             "request_id": expected["request_id"],
             "task_id": expected["task_id"],
             "correlation_id": expected["correlation_id"],
+            "active_task_id": expected["task_id"],
+            "selected_task_id": expected["task_id"],
+            "current_task_id": expected["task_id"],
+            "target_dispatch_task_id": expected["task_id"],
         }
         objective_fields = {
             "objective_id": expected["objective_id"],

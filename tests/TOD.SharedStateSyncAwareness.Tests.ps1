@@ -4,6 +4,29 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $syncScript = Join-Path $repoRoot "scripts/Invoke-TODSharedStateSync.ps1"
 
+function Import-SyncFunction {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    $tokens = $null
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($syncScript, [ref]$tokens, [ref]$errors)
+    if (@($errors).Count -gt 0) {
+        throw "Failed to parse $syncScript"
+    }
+
+    $fnAst = $ast.Find({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $Name
+    }, $true)
+
+    if ($null -eq $fnAst) {
+        throw "Function '$Name' not found in $syncScript"
+    }
+
+    $definition = $fnAst.Extent.Text -replace ("function\s+{0}\b" -f [regex]::Escape($Name)), ("function global:{0}" -f $Name)
+    . ([scriptblock]::Create($definition))
+}
+
 function New-TestRunPaths {
     $id = [guid]::NewGuid().ToString("N")
     $base = Join-Path $repoRoot ("tod/out/tests/shared-state-sync-" + $id)
@@ -20,6 +43,13 @@ function New-TestRunPaths {
 }
 
 Describe "TOD Shared State Sync Awareness" {
+    BeforeAll {
+        Import-SyncFunction -Name 'Get-LocalPath'
+        Import-SyncFunction -Name 'Get-JsonFileIfExists'
+        Import-SyncFunction -Name 'Normalize-ObjectiveIdText'
+        Import-SyncFunction -Name 'Get-BridgeCanonicalEvidence'
+    }
+
     It "integration status includes MIM freshness and objective alignment" {
         $paths = New-TestRunPaths
 
@@ -241,6 +271,48 @@ Describe "TOD Shared State Sync Awareness" {
         [string]$integration.mim_status.objective_active | Should Be "74"
         [string]$integration.mim_status.phase | Should Be "active"
         [string]$integration.mim_status.generated_at | Should Be ([string]$contextDoc.exported_at)
+    }
+
+    It "bridge evidence rejects same-objective live task when canonical task id differs" {
+        $paths = New-TestRunPaths
+        $runtimeShared = Join-Path $paths.Base 'runtime/shared'
+        New-Item -ItemType Directory -Path $runtimeShared -Force | Out-Null
+
+        $sharedTruthPath = Join-Path $runtimeShared 'TOD_MIM_SHARED_TRUTH.latest.json'
+        [pscustomobject]@{
+            objective_id = '2913'
+            task_id = 'objective-2913-task-7144'
+            request_id = 'objective-2913-task-7144'
+        } | ConvertTo-Json -Depth 8 | Set-Content -Path $sharedTruthPath
+
+        $previousRepoRoot = $script:repoRoot
+        try {
+            $script:repoRoot = $paths.Base
+            $evidence = Get-BridgeCanonicalEvidence -MimRefresh $null -MimHandshake $null -LiveTaskRequest ([pscustomobject]@{
+                    available = $true
+                    request_id = 'objective-2913-task-1777951503'
+                    task_id = 'objective-2913-task-1777951503'
+                    normalized_objective_id = '2913'
+                    promotion_applied = $true
+                }) -ObjectiveAlignment ([pscustomobject]@{
+                    status = 'in_sync'
+                    mim_objective_active = '2913'
+                }) -TodStatusPublish ([pscustomobject]@{
+                    status = 'uploaded'
+                    mim_mirror_status = 'mirrored'
+                    remote_access_status = 'full_access_granted'
+                    consumer_status = 'executed'
+                })
+        }
+        finally {
+            $script:repoRoot = $previousRepoRoot
+        }
+
+        [bool]$evidence.canonical_refresh_satisfied | Should Be $false
+        [bool]$evidence.live_bridge_publish_satisfied | Should Be $false
+        [string]$evidence.canonical_task_id | Should Be 'objective-2913-task-7144'
+        [string]$evidence.live_task_task_id | Should Be 'objective-2913-task-1777951503'
+        @($evidence.failure_signals) | Should Contain 'live_task_request_task_mismatch'
     }
 
     It "handshake packet truth is persisted and preferred for objective alignment" {
@@ -614,5 +686,90 @@ Describe "TOD Shared State Sync Awareness" {
 
         @(@($nextActions.blockers) | Where-Object { [string]$_ -match "listener waiting on dependency \(await_external_dependency\)" }).Count | Should Be 1
         @(@($nextActions.recommended_recovery_actions) | Where-Object { [string]$_ -eq "Listener recommendation: Wait for dependency confirmation from MIM before retrying execution." }).Count | Should Be 1
+    }
+
+    It "promotes the canonical MIM objective when listener objective_mismatch only reflects a stale local pin" {
+        $paths = New-TestRunPaths
+        New-Item -ItemType Directory -Path $paths.MimShared -Force | Out-Null
+
+        $contextDoc = [pscustomobject]@{
+            source = 'mim-test'
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            status = [pscustomobject]@{
+                objective_active = 2913
+                phase = 'execution'
+                blockers = 'none'
+            }
+            schema_version = '2026-03-12-57'
+        }
+        $manifestDoc = [pscustomobject]@{
+            source = 'mim-test'
+            schema_version = '2026-03-12-57'
+            contract_version = 'tod-mim-shared-contract-v1'
+        }
+        $handshakeDoc = [pscustomobject]@{
+            handshake_version = 'mim-tod-shared-export-v1'
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            truth = [pscustomobject]@{
+                objective_active = '2913'
+                latest_completed_objective = '2912'
+                current_next_objective = '2913'
+                schema_version = '2026-03-24-70'
+                release_tag = 'objective-2913'
+                regression_status = 'PASS'
+                regression_tests = '66/66'
+                prod_promotion_status = 'EXECUTED'
+                prod_smoke_status = 'PASSED'
+                blockers = @()
+            }
+        }
+        $listenerRequest = [pscustomobject]@{
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            request_id = 'objective-2913-task-7144'
+            task_id = 'objective-2913-task-7144'
+            objective_id = 'objective-2913'
+            correlation_id = 'objective-2913-task-7144'
+        }
+        $decisionPath = Join-Path $paths.Base 'TOD_MIM_EXECUTION_DECISION.latest.json'
+        $listenerRequestPath = Join-Path $paths.Base 'MIM_TOD_TASK_REQUEST.latest.json'
+        $sharedHandshake = Join-Path $paths.MimShared 'MIM_TOD_HANDSHAKE_PACKET.latest.json'
+        $decisionDoc = [pscustomobject]@{
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            request_id = 'objective-2913-task-7144'
+            task_id = 'objective-2913-task-7144'
+            correlation_id = 'objective-2913-task-7144'
+            requested_objective_id = 'objective-2913'
+            objective_id = '2913'
+            normalized_objective_id = '2913'
+            decision_outcome = 'reject_with_specific_policy_reason'
+            reason_code = 'objective_mismatch'
+            summary = 'Request objective does not match the current authoritative objective.'
+            boundary_class = 'soft_boundary'
+            ack_state = 'not_acked'
+            execution_state = 'rejected'
+            next_step_recommendation = 'publish_request_for_authoritative_objective'
+        }
+
+        $contextDoc | ConvertTo-Json -Depth 12 | Set-Content -Path $paths.MimContext
+        $manifestDoc | ConvertTo-Json -Depth 12 | Set-Content -Path $paths.MimManifest
+        $handshakeDoc | ConvertTo-Json -Depth 20 | Set-Content -Path $sharedHandshake
+        $listenerRequest | ConvertTo-Json -Depth 12 | Set-Content -Path $listenerRequestPath
+        $decisionDoc | ConvertTo-Json -Depth 12 | Set-Content -Path $decisionPath
+
+        $previousEnvRoot = [string]$env:MIM_SHARED_EXPORT_ROOT
+        try {
+            $env:MIM_SHARED_EXPORT_ROOT = [string]$paths.MimShared
+            $null = & $syncScript -SharedStateDir $paths.SharedStateDir -MimContextExportPath $paths.MimContext -MimManifestPath $paths.MimManifest -RefreshMimContextFromShared -ListenerRequestPath $listenerRequestPath -ListenerDecisionPath $decisionPath -ContextSyncInboxPath 'tod/inbox/context-sync/updates'
+        }
+        finally {
+            $env:MIM_SHARED_EXPORT_ROOT = $previousEnvRoot
+        }
+
+        $integration = Get-Content -Path (Join-Path $paths.SharedStateDir 'integration_status.json') -Raw | ConvertFrom-Json
+        $nextActions = Get-Content -Path (Join-Path $paths.SharedStateDir 'next_actions.json') -Raw | ConvertFrom-Json
+
+        [string]$integration.objective_alignment.tod_current_objective | Should Be '2913'
+        [string]$integration.objective_alignment.mim_objective_active | Should Be '2913'
+        [string]$nextActions.current_objective_in_progress | Should Be '2913'
     }
 }

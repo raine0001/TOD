@@ -7745,17 +7745,26 @@ function Publish-TodNextTaskSelectionArtifacts {
         recovery_state = 'not_needed'
     }
 
+    $writtenArtifactPaths = @()
     foreach ($sharedRoot in @(Get-TodExecutionSharedRoots)) {
-        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_NEXT_TASK_SELECTION.latest.json') -Payload $SelectionPayload
-        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVE_TASK.latest.json') -Payload $activeTaskPayload
-        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVITY_STREAM.latest.json') -Payload $activityPayload
+        $selectionWrite = Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_NEXT_TASK_SELECTION.latest.json') -Payload $SelectionPayload
+        $activeTaskWrite = Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVE_TASK.latest.json') -Payload $activeTaskPayload
+        $activityWrite = Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVITY_STREAM.latest.json') -Payload $activityPayload
+        foreach ($writeResult in @($selectionWrite, $activeTaskWrite, $activityWrite)) {
+            if ($writeResult -and $writeResult.PSObject.Properties['written'] -and [bool]$writeResult.written) {
+                $writtenArtifactPaths += [string]$writeResult.path
+            }
+        }
     }
 
-    Publish-RemoteTodExecutionArtifacts -LocalArtifactPaths @(
-        (Join-Path $repoRoot 'runtime/shared/TOD_NEXT_TASK_SELECTION.latest.json'),
-        (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVE_TASK.latest.json'),
-        (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVITY_STREAM.latest.json')
-    ) | Out-Null
+    $runtimeSharedRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'runtime/shared'))
+    $remotePublishPaths = @($writtenArtifactPaths | Where-Object {
+        $fullPath = [System.IO.Path]::GetFullPath([string]$_)
+        $fullPath.StartsWith($runtimeSharedRoot, [System.StringComparison]::OrdinalIgnoreCase)
+    } | Select-Object -Unique)
+    if ($remotePublishPaths.Length -gt 0) {
+        Publish-RemoteTodExecutionArtifacts -LocalArtifactPaths $remotePublishPaths | Out-Null
+    }
 
     return [pscustomobject]@{
         selection = $SelectionPayload
@@ -7893,6 +7902,12 @@ function Convert-EngineResultToNormalizedEnvelope {
         reason_code = if ($EngineResult.PSObject.Properties['reason_code']) { [string]$EngineResult.reason_code } else { '' }
         recovery_state = if ($EngineResult.PSObject.Properties['recovery_state']) { [string]$EngineResult.recovery_state } else { '' }
         command_output = if ($EngineResult.PSObject.Properties['command_output']) { [string]$EngineResult.command_output } else { '' }
+        diff_summary = if ($EngineResult.PSObject.Properties['diff_summary']) { [string]$EngineResult.diff_summary } else { '' }
+        commands_run = if ($EngineResult.PSObject.Properties['commands_run'] -and $null -ne $EngineResult.commands_run) { @($EngineResult.commands_run) } else { @() }
+        validation_results = if ($EngineResult.PSObject.Properties['validation_results'] -and $null -ne $EngineResult.validation_results) { @($EngineResult.validation_results) } else { @() }
+        blockers = if ($EngineResult.PSObject.Properties['blockers'] -and $null -ne $EngineResult.blockers) { @($EngineResult.blockers) } else { @() }
+        confidence = if ($EngineResult.PSObject.Properties['confidence']) { [string]$EngineResult.confidence } else { '' }
+        rollback_hint = if ($EngineResult.PSObject.Properties['rollback_hint']) { [string]$EngineResult.rollback_hint } else { '' }
         execution_engine = [pscustomobject]@{
             name = [string]$engineName
             version = [string]$EngineResult.engine_version
@@ -7935,6 +7950,12 @@ function Normalize-EngineResultPayload {
         reason_code = if ($EngineResult.PSObject.Properties['reason_code']) { [string]$EngineResult.reason_code } else { '' }
         recovery_state = if ($EngineResult.PSObject.Properties['recovery_state']) { [string]$EngineResult.recovery_state } else { '' }
         command_output = if ($EngineResult.PSObject.Properties['command_output']) { [string]$EngineResult.command_output } else { '' }
+        diff_summary = if ($EngineResult.PSObject.Properties['diff_summary']) { [string]$EngineResult.diff_summary } else { '' }
+        commands_run = if ($EngineResult.PSObject.Properties['commands_run'] -and $null -ne $EngineResult.commands_run) { @($EngineResult.commands_run) } else { @() }
+        validation_results = if ($EngineResult.PSObject.Properties['validation_results'] -and $null -ne $EngineResult.validation_results) { @($EngineResult.validation_results) } else { @() }
+        blockers = if ($EngineResult.PSObject.Properties['blockers'] -and $null -ne $EngineResult.blockers) { @($EngineResult.blockers) } else { @() }
+        confidence = if ($EngineResult.PSObject.Properties['confidence']) { [string]$EngineResult.confidence } else { '' }
+        rollback_hint = if ($EngineResult.PSObject.Properties['rollback_hint']) { [string]$EngineResult.rollback_hint } else { '' }
     }
 }
 
@@ -9858,7 +9879,7 @@ function Get-TodExecutionSharedRoots {
     return @($resolved)
 }
 
-function Write-TodExecutionSharedJson {
+function Write-TodExecutionJsonAtomically {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)]$Payload
@@ -9870,16 +9891,403 @@ function Write-TodExecutionSharedJson {
     }
 
     $tempPath = [System.IO.Path]::Combine($directory, ([System.IO.Path]::GetRandomFileName() + ".tmp"))
+    $backupPath = [System.IO.Path]::Combine($directory, ([System.IO.Path]::GetRandomFileName() + ".bak"))
     try {
         $json = $Payload | ConvertTo-Json -Depth 20
         $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
         [System.IO.File]::WriteAllText($tempPath, $json, $utf8NoBom)
-        Move-Item -Path $tempPath -Destination $Path -Force
+        if (Test-Path -Path $Path) {
+            [System.IO.File]::Replace($tempPath, $Path, $backupPath, $true)
+            if (Test-Path -Path $backupPath) {
+                Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+        else {
+            Move-Item -Path $tempPath -Destination $Path -Force
+        }
     }
     finally {
         if (Test-Path -Path $tempPath) {
             Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
         }
+        if (Test-Path -Path $backupPath) {
+            Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Read-TodExecutionJsonIfExists {
+    param([AllowEmptyString()][string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -Path $Path)) {
+        return $null
+    }
+
+    try {
+        return (Get-Content -Raw -Path $Path | ConvertFrom-Json)
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-TodParsedUtcDateTime {
+    param([AllowEmptyString()][string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $null
+    }
+
+    [datetime]$parsed = [datetime]::MinValue
+    if ([datetime]::TryParse($Value, [ref]$parsed)) {
+        return $parsed.ToUniversalTime()
+    }
+
+    return $null
+}
+
+function Get-TodObjectValue {
+    param(
+        [AllowNull()]$InputObject,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    if ($null -eq $InputObject) {
+        return $null
+    }
+
+    if ($InputObject -is [System.Collections.IDictionary]) {
+        if ($InputObject.Contains($Name)) {
+            return $InputObject[$Name]
+        }
+        return $null
+    }
+
+    if ($InputObject.PSObject.Properties[$Name]) {
+        return $InputObject.$Name
+    }
+
+    return $null
+}
+
+function Get-TodExecutionArtifactLane {
+    param([AllowNull()]$Payload)
+
+    if ($null -eq $Payload) {
+        return [pscustomobject]@{
+            objective_id = ''
+            normalized_objective_id = ''
+            task_id = ''
+            request_id = ''
+            correlation_id = ''
+            generated_at = ''
+            override_marker = ''
+        }
+    }
+
+    $summaryPayload = Get-TodObjectValue -InputObject $Payload -Name 'summary'
+    $liveTaskPayload = Get-TodObjectValue -InputObject $Payload -Name 'live_task_request'
+    $activeObjectivePayload = Get-TodObjectValue -InputObject $Payload -Name 'active_objective'
+    $objectivePayload = Get-TodObjectValue -InputObject $Payload -Name 'objective'
+    $activeTaskPayload = Get-TodObjectValue -InputObject $Payload -Name 'active_task'
+    $taskPayload = Get-TodObjectValue -InputObject $Payload -Name 'task'
+    $metadataPayload = Get-TodObjectValue -InputObject $Payload -Name 'metadata'
+
+    $objectiveId = ''
+    foreach ($candidate in @(
+        $(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'objective_id')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'objective_id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'source_objective')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'source_objective') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $activeObjectivePayload -Name 'id')) { [string](Get-TodObjectValue -InputObject $activeObjectivePayload -Name 'id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $objectivePayload -Name 'id')) { [string](Get-TodObjectValue -InputObject $objectivePayload -Name 'id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $summaryPayload -Name 'objective_id')) { [string](Get-TodObjectValue -InputObject $summaryPayload -Name 'objective_id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $liveTaskPayload -Name 'objective_id')) { [string](Get-TodObjectValue -InputObject $liveTaskPayload -Name 'objective_id') } else { '' })
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            $objectiveId = $candidate
+            break
+        }
+    }
+
+    $taskId = ''
+    foreach ($candidate in @(
+        $(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'task_id')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'task_id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'selected_task_id')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'selected_task_id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $activeTaskPayload -Name 'id')) { [string](Get-TodObjectValue -InputObject $activeTaskPayload -Name 'id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $taskPayload -Name 'id')) { [string](Get-TodObjectValue -InputObject $taskPayload -Name 'id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $summaryPayload -Name 'task_id')) { [string](Get-TodObjectValue -InputObject $summaryPayload -Name 'task_id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $liveTaskPayload -Name 'task_id')) { [string](Get-TodObjectValue -InputObject $liveTaskPayload -Name 'task_id') } else { '' })
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            $taskId = $candidate
+            break
+        }
+    }
+
+    $requestId = ''
+    foreach ($candidate in @(
+        $(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'request_id')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'request_id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $summaryPayload -Name 'request_id')) { [string](Get-TodObjectValue -InputObject $summaryPayload -Name 'request_id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $liveTaskPayload -Name 'request_id')) { [string](Get-TodObjectValue -InputObject $liveTaskPayload -Name 'request_id') } else { '' })
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            $requestId = $candidate
+            break
+        }
+    }
+
+    $correlationId = ''
+    foreach ($candidate in @(
+        $(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'correlation_id')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'correlation_id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $summaryPayload -Name 'correlation_id')) { [string](Get-TodObjectValue -InputObject $summaryPayload -Name 'correlation_id') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $liveTaskPayload -Name 'correlation_id')) { [string](Get-TodObjectValue -InputObject $liveTaskPayload -Name 'correlation_id') } else { '' })
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            $correlationId = $candidate
+            break
+        }
+    }
+
+    $generatedAt = ''
+    foreach ($candidate in @(
+        $(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'generated_at')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'generated_at') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'timestamp')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'timestamp') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $summaryPayload -Name 'latest_execution_at')) { [string](Get-TodObjectValue -InputObject $summaryPayload -Name 'latest_execution_at') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $summaryPayload -Name 'generated_at')) { [string](Get-TodObjectValue -InputObject $summaryPayload -Name 'generated_at') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $liveTaskPayload -Name 'generated_at')) { [string](Get-TodObjectValue -InputObject $liveTaskPayload -Name 'generated_at') } else { '' })
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            $generatedAt = $candidate
+            break
+        }
+    }
+
+    $overrideMarker = ''
+    foreach ($candidate in @(
+        $(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'publish_override_marker')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'publish_override_marker') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $Payload -Name 'override_marker')) { [string](Get-TodObjectValue -InputObject $Payload -Name 'override_marker') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $metadataPayload -Name 'publish_override_marker')) { [string](Get-TodObjectValue -InputObject $metadataPayload -Name 'publish_override_marker') } else { '' }),
+        $(if ($null -ne (Get-TodObjectValue -InputObject $metadataPayload -Name 'override_marker')) { [string](Get-TodObjectValue -InputObject $metadataPayload -Name 'override_marker') } else { '' })
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            $overrideMarker = $candidate
+            break
+        }
+    }
+
+    return [pscustomobject]@{
+        objective_id = $objectiveId
+        normalized_objective_id = Get-NormalizedObjectiveToken -ObjectiveId $objectiveId
+        task_id = $taskId
+        request_id = $requestId
+        correlation_id = $correlationId
+        generated_at = $generatedAt
+        override_marker = $overrideMarker
+    }
+}
+
+function Get-TodCanonicalPublishContext {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $targetDir = Split-Path -Parent $Path
+    $sharedTruthCandidatePaths = @(
+        (Join-Path $targetDir 'TOD_MIM_SHARED_TRUTH.latest.json')
+    )
+    if (-not [string]::IsNullOrWhiteSpace($repoRoot)) {
+        $targetFullPath = [System.IO.Path]::GetFullPath($Path)
+        $repoRuntimeSharedRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'runtime/shared'))
+        $tmpRemoteRuntimeSharedRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'tmp_remote_mim/runtime/shared'))
+        $shouldUseRepoFallback = $targetFullPath.StartsWith($repoRuntimeSharedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or $targetFullPath.StartsWith($tmpRemoteRuntimeSharedRoot, [System.StringComparison]::OrdinalIgnoreCase)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($repoRoot) -and $shouldUseRepoFallback) {
+        $sharedTruthCandidatePaths += (Join-Path $repoRoot 'runtime/shared/TOD_MIM_SHARED_TRUTH.latest.json')
+    }
+
+    $sharedTruthPayload = $null
+    $sharedTruthPath = ''
+    foreach ($candidatePath in @($sharedTruthCandidatePaths | Select-Object -Unique)) {
+        $candidatePayload = Read-TodExecutionJsonIfExists -Path $candidatePath
+        if ($null -ne $candidatePayload) {
+            $sharedTruthPayload = $candidatePayload
+            $sharedTruthPath = $candidatePath
+            break
+        }
+    }
+
+    $canonicalLane = Get-TodExecutionArtifactLane -Payload $sharedTruthPayload
+    $canonicalAvailable = (-not [string]::IsNullOrWhiteSpace([string]$canonicalLane.normalized_objective_id)) -or (-not [string]::IsNullOrWhiteSpace([string]$canonicalLane.task_id)) -or (-not [string]::IsNullOrWhiteSpace([string]$canonicalLane.request_id))
+
+    $integrationStatusPayload = $null
+    if (-not [string]::IsNullOrWhiteSpace($repoRoot)) {
+        $integrationStatusPayload = Read-TodExecutionJsonIfExists -Path (Join-Path $repoRoot 'shared_state/integration_status.json')
+    }
+
+    $liveTaskRequestPayload = if ($integrationStatusPayload -and $integrationStatusPayload.PSObject.Properties['live_task_request']) { $integrationStatusPayload.live_task_request } else { $null }
+    $formalProgramTruthPayload = if ($integrationStatusPayload -and $integrationStatusPayload.PSObject.Properties['mim_handshake'] -and $integrationStatusPayload.mim_handshake -and $integrationStatusPayload.mim_handshake.PSObject.Properties['source_of_truth'] -and $integrationStatusPayload.mim_handshake.source_of_truth -and $integrationStatusPayload.mim_handshake.source_of_truth.PSObject.Properties['formal_program_truth']) { $integrationStatusPayload.mim_handshake.source_of_truth.formal_program_truth } else { $null }
+
+    return [pscustomobject]@{
+        available = $canonicalAvailable
+        shared_truth_path = $sharedTruthPath
+        canonical_lane_source = if ($sharedTruthPayload -and $sharedTruthPayload.PSObject.Properties['canonical_lane_source']) { [string]$sharedTruthPayload.canonical_lane_source } else { '' }
+        canonical = $canonicalLane
+        live_task_request = Get-TodExecutionArtifactLane -Payload $liveTaskRequestPayload
+        formal_program_truth = Get-TodExecutionArtifactLane -Payload $formalProgramTruthPayload
+    }
+}
+
+function Test-TodArtifactMatchesCanonicalLane {
+    param(
+        [Parameter(Mandatory = $true)]$Outgoing,
+        [Parameter(Mandatory = $true)]$Canonical
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$Canonical.request_id) -and -not [string]::IsNullOrWhiteSpace([string]$Outgoing.request_id) -and [string]$Canonical.request_id -eq [string]$Outgoing.request_id) {
+        return $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Canonical.correlation_id) -and -not [string]::IsNullOrWhiteSpace([string]$Outgoing.correlation_id) -and [string]$Canonical.correlation_id -eq [string]$Outgoing.correlation_id) {
+        return $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Canonical.task_id) -and -not [string]::IsNullOrWhiteSpace([string]$Outgoing.task_id) -and [string]$Canonical.task_id -eq [string]$Outgoing.task_id) {
+        return $true
+    }
+    if (-not [string]::IsNullOrWhiteSpace([string]$Canonical.normalized_objective_id) -and -not [string]::IsNullOrWhiteSpace([string]$Outgoing.normalized_objective_id) -and [string]$Canonical.normalized_objective_id -eq [string]$Outgoing.normalized_objective_id) {
+        if ([string]::IsNullOrWhiteSpace([string]$Canonical.task_id) -or [string]::IsNullOrWhiteSpace([string]$Outgoing.task_id) -or [string]$Canonical.task_id -eq [string]$Outgoing.task_id) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Test-TodLatestArtifactPublishGate {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)]$Payload
+    )
+
+    $artifactName = [System.IO.Path]::GetFileName($Path)
+    $gatedArtifactNames = @(
+        'TOD_ACTIVE_OBJECTIVE.latest.json',
+        'TOD_ACTIVE_TASK.latest.json',
+        'TOD_ACTIVITY_STREAM.latest.json',
+        'TOD_NEXT_TASK_SELECTION.latest.json',
+        'TOD_VALIDATION_RESULT.latest.json',
+        'TOD_EXECUTION_RESULT.latest.json',
+        'TOD_EXECUTION_TRUTH.latest.json'
+    )
+
+    $outgoingLane = Get-TodExecutionArtifactLane -Payload $Payload
+    if ($gatedArtifactNames -notcontains $artifactName) {
+        return [pscustomobject]@{ allow = $true; path = $Path; artifact_name = $artifactName; outgoing = $outgoingLane; reason = 'artifact_not_gated' }
+    }
+
+    $hasOutgoingLane = (-not [string]::IsNullOrWhiteSpace([string]$outgoingLane.normalized_objective_id)) -or (-not [string]::IsNullOrWhiteSpace([string]$outgoingLane.task_id)) -or (-not [string]::IsNullOrWhiteSpace([string]$outgoingLane.request_id)) -or (-not [string]::IsNullOrWhiteSpace([string]$outgoingLane.correlation_id))
+    if (-not $hasOutgoingLane) {
+        return [pscustomobject]@{ allow = $true; path = $Path; artifact_name = $artifactName; outgoing = $outgoingLane; reason = 'missing_outgoing_lane' }
+    }
+
+    $canonicalContext = Get-TodCanonicalPublishContext -Path $Path
+    if (-not [bool]$canonicalContext.available) {
+        return [pscustomobject]@{ allow = $true; path = $Path; artifact_name = $artifactName; outgoing = $outgoingLane; reason = 'missing_canonical_lane' }
+    }
+
+    if (Test-TodArtifactMatchesCanonicalLane -Outgoing $outgoingLane -Canonical $canonicalContext.canonical) {
+        return [pscustomobject]@{ allow = $true; path = $Path; artifact_name = $artifactName; outgoing = $outgoingLane; canonical = $canonicalContext.canonical; reason = 'canonical_match' }
+    }
+
+    $outgoingGeneratedAt = Get-TodParsedUtcDateTime -Value ([string]$outgoingLane.generated_at)
+    $canonicalGeneratedAt = Get-TodParsedUtcDateTime -Value ([string]$canonicalContext.canonical.generated_at)
+    $overrideMarker = [string]$outgoingLane.override_marker
+    if (-not [string]::IsNullOrWhiteSpace($overrideMarker)) {
+        $overrideAllowed = $true
+        if ($null -ne $canonicalGeneratedAt -and $null -ne $outgoingGeneratedAt) {
+            $overrideAllowed = ($outgoingGeneratedAt -ge $canonicalGeneratedAt)
+        }
+        if ($overrideAllowed) {
+            return [pscustomobject]@{ allow = $true; path = $Path; artifact_name = $artifactName; outgoing = $outgoingLane; canonical = $canonicalContext.canonical; reason = 'override_marker' }
+        }
+    }
+
+    return [pscustomobject]@{
+        allow = $false
+        path = $Path
+        artifact_name = $artifactName
+        reason = 'noncanonical_lane'
+        reason_code = 'stale_publisher_noncanonical_lane'
+        outgoing = $outgoingLane
+        canonical = $canonicalContext.canonical
+        canonical_lane_source = [string]$canonicalContext.canonical_lane_source
+        live_task_request = $canonicalContext.live_task_request
+        formal_program_truth = $canonicalContext.formal_program_truth
+    }
+}
+
+function Write-TodBlockedLatestArtifactRecord {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)]$Payload,
+        [Parameter(Mandatory = $true)]$GateDecision
+    )
+
+    $directory = Split-Path -Parent $Path
+    $artifactName = [System.IO.Path]::GetFileName($Path)
+    $supersededRoot = Join-Path $directory 'superseded'
+    $artifactRoot = Join-Path $supersededRoot $artifactName
+    if (-not (Test-Path -Path $artifactRoot)) {
+        New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+    }
+
+    $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')
+    $record = [ordered]@{
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        reason_code = if ($GateDecision.PSObject.Properties['reason_code']) { [string]$GateDecision.reason_code } else { 'stale_publisher_noncanonical_lane' }
+        artifact_name = $artifactName
+        target_path = $Path
+        canonical_lane_source = if ($GateDecision.PSObject.Properties['canonical_lane_source']) { [string]$GateDecision.canonical_lane_source } else { '' }
+        canonical_lane = if ($GateDecision.PSObject.Properties['canonical']) { $GateDecision.canonical } else { $null }
+        live_task_request = if ($GateDecision.PSObject.Properties['live_task_request']) { $GateDecision.live_task_request } else { $null }
+        formal_program_truth = if ($GateDecision.PSObject.Properties['formal_program_truth']) { $GateDecision.formal_program_truth } else { $null }
+        outgoing_lane = if ($GateDecision.PSObject.Properties['outgoing']) { $GateDecision.outgoing } else { $null }
+        attempted_payload = $Payload
+    }
+
+    $recordPath = Join-Path $artifactRoot ("{0}.blocked.json" -f $stamp)
+    Write-TodExecutionJsonAtomically -Path $recordPath -Payload $record
+    $latestBlockedPath = Join-Path $artifactRoot 'latest.blocked.json'
+    Write-TodExecutionJsonAtomically -Path $latestBlockedPath -Payload $record
+
+    return [pscustomobject]@{
+        record_path = $recordPath
+        latest_blocked_path = $latestBlockedPath
+    }
+}
+
+function Write-TodExecutionSharedJson {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)]$Payload
+    )
+
+    $gateDecision = Test-TodLatestArtifactPublishGate -Path $Path -Payload $Payload
+    if (-not [bool]$gateDecision.allow) {
+        $blockedRecord = Write-TodBlockedLatestArtifactRecord -Path $Path -Payload $Payload -GateDecision $gateDecision
+        return [pscustomobject]@{
+            written = $false
+            blocked = $true
+            path = $Path
+            reason_code = [string]$gateDecision.reason_code
+            blocked_record_path = [string]$blockedRecord.record_path
+            latest_blocked_path = [string]$blockedRecord.latest_blocked_path
+        }
+    }
+
+    Write-TodExecutionJsonAtomically -Path $Path -Payload $Payload
+    return [pscustomobject]@{
+        written = $true
+        blocked = $false
+        path = $Path
+        reason_code = ''
+        blocked_record_path = ''
+        latest_blocked_path = ''
     }
 }
 
@@ -10186,6 +10594,19 @@ function Publish-LocalExecutionArtifacts {
     $explicitRecoveryState = if ($ResultPayload.PSObject.Properties['recovery_state']) { [string]$ResultPayload.recovery_state } else { '' }
     $explicitBlockers = @($ResultPayload.structured_findings | Where-Object { $null -ne $_ -and $_.PSObject.Properties['type'] -and [string]$_.type -eq 'blocker' })
     $hasExplicitBlocker = -not [string]::IsNullOrWhiteSpace($explicitReasonCode)
+    $diffSummary = if ($ResultPayload.PSObject.Properties['diff_summary']) { [string]$ResultPayload.diff_summary } else { '' }
+    $commandsRun = if ($ResultPayload.PSObject.Properties['commands_run'] -and $null -ne $ResultPayload.commands_run) {
+        @($ResultPayload.commands_run | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['command'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.command)) {
+        @([string]$commandCapture.command)
+    }
+    else {
+        @()
+    }
+    $validationResults = if ($ResultPayload.PSObject.Properties['validation_results'] -and $null -ne $ResultPayload.validation_results) { @($ResultPayload.validation_results) } else { @($validationChecks) }
+    $artifactBlockers = if ($ResultPayload.PSObject.Properties['blockers'] -and $null -ne $ResultPayload.blockers) { @($ResultPayload.blockers) } else { @($explicitBlockers) }
+    $confidence = if ($ResultPayload.PSObject.Properties['confidence']) { [string]$ResultPayload.confidence } elseif (@($filesChanged).Count -gt 0) { 'medium-high' } else { 'medium' }
     $strongestEvidence = if (@($filesChanged).Count -gt 0) { "Changed files: $($filesChanged -join ', ')" } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stdout'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stdout)) { [string]$commandCapture.stdout } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stderr'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stderr)) { [string]$commandCapture.stderr } else { $summary }
     $commandOutput = if ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stdout'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stdout)) { [string]$commandCapture.stdout } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stderr'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stderr)) { [string]$commandCapture.stderr } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['command']) { [string]$commandCapture.command } else { '' }
     $commandRunnerStatus = if ($null -eq $commandCapture) { 'pending' } elseif ($commandCapture.PSObject.Properties['exit_code'] -and [int]$commandCapture.exit_code -eq 0) { 'completed' } else { 'blocked' }
@@ -10199,6 +10620,7 @@ function Publish-LocalExecutionArtifacts {
     $nextValidation = if ($hasExplicitBlocker) { if (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'explicit_blocker_review' } } elseif ([bool]$noOpAssessment.detected) { 'meaningful_execution_evidence_required' } elseif (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'review_local_execution_artifacts' }
     $validationStatus = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($passed) { 'passed' } else { 'blocked' }
     $rollbackState = if ($null -ne $rollback -and $rollback.PSObject.Properties['available'] -and [bool]$rollback.available) { 'available' } else { 'not_needed' }
+    $rollbackHint = if ($ResultPayload.PSObject.Properties['rollback_hint']) { [string]$ResultPayload.rollback_hint } elseif ($null -ne $rollback -and $rollback.PSObject.Properties['restore_command']) { [string]$rollback.restore_command } else { '' }
     $reasonCode = if ($hasExplicitBlocker) { $explicitReasonCode } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.reason_code } else { '' }
     $recoveryState = if ($hasExplicitBlocker) { $(if (-not [string]::IsNullOrWhiteSpace($explicitRecoveryState)) { $explicitRecoveryState } else { 'required' }) } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.recovery_state } elseif ($passed) { 'not_needed' } else { 'required' }
     $requestId = [string]$Task.id
@@ -10270,6 +10692,12 @@ function Publish-LocalExecutionArtifacts {
         execution_contract = $executionContract
         execution_readiness = $ExecutionReadiness
         reason_code = $reasonCode
+        diff_summary = $diffSummary
+        commands_run = @($commandsRun)
+        validation_results = @($validationResults)
+        blockers = @($artifactBlockers)
+        confidence = $confidence
+        rollback_hint = $rollbackHint
     }
 
     $executionEvidence = [ordered]@{
@@ -10288,7 +10716,12 @@ function Publish-LocalExecutionArtifacts {
         no_op_detected = [bool]$noOpAssessment.detected
         task_class = [string]$noOpAssessment.task_class
         meaningful_evidence = @($noOpAssessment.meaningful_evidence)
-        blockers = @($explicitBlockers)
+        blockers = @($artifactBlockers)
+        diff_summary = $diffSummary
+        commands_run = @($commandsRun)
+        validation_results = @($validationResults)
+        confidence = $confidence
+        rollback_hint = $rollbackHint
     }
 
     $activeObjectivePayload = [ordered]@{} + $basePayload + @{
@@ -10389,23 +10822,29 @@ function Publish-LocalExecutionArtifacts {
         )
     }
 
+    $writtenArtifactPaths = @()
     foreach ($sharedRoot in @(Get-TodExecutionSharedRoots)) {
-        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVE_OBJECTIVE.latest.json') -Payload $activeObjectivePayload
-        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVE_TASK.latest.json') -Payload $activeTaskPayload
-        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVITY_STREAM.latest.json') -Payload $activityPayload
-        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_VALIDATION_RESULT.latest.json') -Payload $validationPayload
-        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_EXECUTION_RESULT.latest.json') -Payload $executionResultPayload
-        Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_EXECUTION_TRUTH.latest.json') -Payload $executionTruthPayload
+        $activeObjectiveWrite = Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVE_OBJECTIVE.latest.json') -Payload $activeObjectivePayload
+        $activeTaskWrite = Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVE_TASK.latest.json') -Payload $activeTaskPayload
+        $activityWrite = Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_ACTIVITY_STREAM.latest.json') -Payload $activityPayload
+        $validationWrite = Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_VALIDATION_RESULT.latest.json') -Payload $validationPayload
+        $executionResultWrite = Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_EXECUTION_RESULT.latest.json') -Payload $executionResultPayload
+        $executionTruthWrite = Write-TodExecutionSharedJson -Path (Join-Path $sharedRoot 'TOD_EXECUTION_TRUTH.latest.json') -Payload $executionTruthPayload
+        foreach ($writeResult in @($activeObjectiveWrite, $activeTaskWrite, $activityWrite, $validationWrite, $executionResultWrite, $executionTruthWrite)) {
+            if ($writeResult -and $writeResult.PSObject.Properties['written'] -and [bool]$writeResult.written) {
+                $writtenArtifactPaths += [string]$writeResult.path
+            }
+        }
     }
 
-    Publish-RemoteTodExecutionArtifacts -LocalArtifactPaths @(
-        (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVE_OBJECTIVE.latest.json'),
-        (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVE_TASK.latest.json'),
-        (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVITY_STREAM.latest.json'),
-        (Join-Path $repoRoot 'runtime/shared/TOD_VALIDATION_RESULT.latest.json'),
-        (Join-Path $repoRoot 'runtime/shared/TOD_EXECUTION_RESULT.latest.json'),
-        (Join-Path $repoRoot 'runtime/shared/TOD_EXECUTION_TRUTH.latest.json')
-    ) | Out-Null
+    $runtimeSharedRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'runtime/shared'))
+    $remotePublishPaths = @($writtenArtifactPaths | Where-Object {
+        $fullPath = [System.IO.Path]::GetFullPath([string]$_)
+        $fullPath.StartsWith($runtimeSharedRoot, [System.StringComparison]::OrdinalIgnoreCase)
+    } | Select-Object -Unique)
+    if ($remotePublishPaths.Length -gt 0) {
+        Publish-RemoteTodExecutionArtifacts -LocalArtifactPaths $remotePublishPaths | Out-Null
+    }
 
     return [pscustomobject]@{
         no_op_assessment = $noOpAssessment

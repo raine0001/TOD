@@ -578,6 +578,255 @@ function Set-StrictTextReplacement {
     return $Content.Replace($matchedOldText, $replacementText)
 }
 
+function Test-LocalExecutionPromptTokenExtractionTask {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $normalized = (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant()
+    return ($normalized -match 'patch token extraction') -and ($normalized -match 'identifier value is captured')
+}
+
+function Get-LocalExecutionPromptTokenExtractionTargetFile {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    if ($Context.PSObject.Properties['metadata'] -and $Context.metadata -and $Context.metadata.ContainsKey('local_fallback_target_file')) {
+        $overridePath = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$Context.metadata.local_fallback_target_file)
+        if (-not [string]::IsNullOrWhiteSpace($overridePath)) {
+            return $overridePath
+        }
+    }
+
+    return 'tmp_remote_mim/core/routers/tod_ui.py'
+}
+
+function Get-LocalExecutionPromptTokenExtractionValidationCommand {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    if ($Context.PSObject.Properties['metadata'] -and $Context.metadata -and $Context.metadata.ContainsKey('local_fallback_validation_command')) {
+        return [string]$Context.metadata.local_fallback_validation_command
+    }
+
+    $venvPython = Join-Path $script:LocalEngineRepoRoot '.venv\Scripts\python.exe'
+    $pythonCommand = if (Test-Path -Path $venvPython) {
+        "& '$venvPython'"
+    }
+    else {
+        'python'
+    }
+
+    return ($pythonCommand + ' -m unittest ' +
+        'test_tmp_remote_mim_tod_ui_state.TodUiStateClassificationTests.test_extract_labeled_prompt_value_captures_only_identifier_token ' +
+        'test_tmp_remote_mim_tod_ui_state.TodUiStateClassificationTests.test_extract_labeled_prompt_value_reads_markdown_heading_and_bullet_labels')
+}
+
+function Invoke-LocalExecutionPromptTokenExtractionTask {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)]$Spec
+    )
+
+    $targetFile = Get-LocalExecutionPromptTokenExtractionTargetFile -Context $Context
+    if (-not (Test-LocalExecutionSafePath -RelativePath $targetFile)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_path_not_allowed' -Reason ('LocalExecutionEngine rejected target path {0} because it is outside the bounded safe roots.' -f $targetFile) -MissingVariable 'allowed_path')
+    }
+
+    $absoluteTargetPath = Join-Path $script:LocalEngineRepoRoot ($targetFile -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -Path $absoluteTargetPath)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason ('LocalExecutionEngine requires an existing target file, but {0} was not found.' -f $targetFile) -MissingVariable 'existing_target_file')
+    }
+
+    $originalContent = [string](Get-Content -Path $absoluteTargetPath -Raw)
+    $oldSnippet = @'
+def _extract_labeled_prompt_value(message: str, label: str) -> str:
+    text = str(message or "")
+    lines = text.splitlines()
+    normalized_label = re.sub(r"[_\s-]+", r"[_\\s-]+", str(label or "").strip())
+    label_pattern = re.compile(rf"^\s*(?:[-*]\s*)?{normalized_label}\s*:\s*(.*)$", re.IGNORECASE)
+    next_label_pattern = re.compile(r"^\s*(?:[-*]\s*)?[A-Z][A-Za-z0-9_]*(?:[ _-][A-Z][A-Za-z0-9_]*)*\s*:\s*(.*)$")
+    for index, line in enumerate(lines):
+        match = label_pattern.match(line)
+        if not match:
+            continue
+        collected = [str(match.group(1) or "").strip()]
+        for next_line in lines[index + 1 :]:
+            if next_label_pattern.match(next_line):
+                break
+            stripped = str(next_line or "").strip()
+            if stripped:
+                collected.append(stripped)
+        return _compact_text(" ".join(item for item in collected if item), 220)
+    pattern = re.compile(
+        rf"(?:^|\b){normalized_label}\s*:\s*(.+?)(?=\s+(?:[-*]\s*)?[A-Z][A-Za-z0-9_]*(?:[ _-][A-Z][A-Za-z0-9_]*)*\s*:|$)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    match = pattern.search(text)
+    if not match:
+        return ""
+    return _compact_text(match.group(1), 220)
+'@
+    $newSnippet = @'
+def _extract_identifier_token(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    match = re.search(r"[A-Za-z0-9][A-Za-z0-9._:-]*", text)
+    if not match:
+        return _compact_text(text, 220)
+    return match.group(0).rstrip(".,;:)]}>")
+
+
+def _extract_labeled_prompt_value(message: str, label: str) -> str:
+    text = str(message or "")
+    lines = text.splitlines()
+    normalized_label = re.sub(r"[_\s-]+", r"[_\\s-]+", str(label or "").strip())
+    label_pattern = re.compile(rf"^\s*(?:(?:[-*]|#{{1,6}})\s*)?{normalized_label}\s*:\s*(.*)$", re.IGNORECASE)
+    next_label_pattern = re.compile(r"^\s*(?:(?:[-*]|#{1,6})\s*)?[A-Z][A-Za-z0-9_]*(?:[ _-][A-Z][A-Za-z0-9_]*)*\s*:\s*(.*)$")
+    identifier_labels = {"initiative_id", "objective_id", "task_id", "request_id"}
+    normalized_label_key = re.sub(r"[^a-z0-9]+", "_", str(label or "").strip().lower()).strip("_")
+    for index, line in enumerate(lines):
+        match = label_pattern.match(line)
+        if not match:
+            continue
+        if normalized_label_key in identifier_labels:
+            return _extract_identifier_token(match.group(1))
+        collected = [str(match.group(1) or "").strip()]
+        for next_line in lines[index + 1 :]:
+            if next_label_pattern.match(next_line):
+                break
+            stripped = str(next_line or "").strip()
+            if stripped:
+                collected.append(stripped)
+        return _compact_text(" ".join(item for item in collected if item), 220)
+    pattern = re.compile(
+        rf"(?:^|\b){normalized_label}\s*:\s*(.+?)(?=\s+(?:(?:[-*]|#{{1,6}})\s*)?[A-Z][A-Za-z0-9_]*(?:[ _-][A-Z][A-Za-z0-9_]*)*\s*:|$)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    match = pattern.search(text)
+    if not match:
+        return ""
+    value = match.group(1)
+    if normalized_label_key in identifier_labels:
+        return _extract_identifier_token(value)
+    return _compact_text(value, 220)
+'@
+
+    $updatedContent = Set-StrictTextReplacement -Content $originalContent -OldText $oldSnippet -NewText $newSnippet -Label 'prompt token extraction helper'
+    $backupRoot = Join-Path $script:LocalEngineRepoRoot 'tod/out/local-engine-backups'
+    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+    $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+    $fileLeaf = Split-Path -Path $absoluteTargetPath -Leaf
+    $backupPath = Join-Path $backupRoot ('{0}.{1}.bak' -f $fileLeaf, $timestamp)
+    Copy-Item -Path $absoluteTargetPath -Destination $backupPath -Force
+    $prePatchHash = [string](Get-FileHash -Path $absoluteTargetPath -Algorithm SHA256).Hash
+    $changeApplied = ($updatedContent -ne $originalContent)
+    Write-Utf8NoBomFile -Path $absoluteTargetPath -Content $updatedContent
+
+    $validationCommand = Get-LocalExecutionPromptTokenExtractionValidationCommand -Context $Context
+    $commandCapture = Invoke-LocalShellCapture -Command $validationCommand -WorkingDirectory $script:LocalEngineRepoRoot
+    $validatedContent = [string](Get-Content -Path $absoluteTargetPath -Raw)
+    $postPatchHash = [string](Get-FileHash -Path $absoluteTargetPath -Algorithm SHA256).Hash
+    $validationChecks = @(
+        [pscustomobject]@{ name = 'target_file_exists'; passed = (Test-Path -Path $absoluteTargetPath) },
+        [pscustomobject]@{ name = 'identifier_helper_present'; passed = ($validatedContent.Contains('def _extract_identifier_token(value: str) -> str:')) },
+        [pscustomobject]@{ name = 'focused_validation_exit_zero'; passed = ([int]$commandCapture.exit_code -eq 0) }
+    )
+    $passed = -not (@($validationChecks | Where-Object { -not [bool]$_.passed }).Count)
+    $diffSummary = Get-LocalExecutionDiffSummary -RelativePath $targetFile -BeforeContent $originalContent -AfterContent $updatedContent -ActionSummary 'Patched prompt label token extraction to capture only identifier values'
+    $rollbackState = [pscustomobject]@{
+        available = $true
+        backup_path = $backupPath
+        target_path = $absoluteTargetPath
+        pre_patch_hash = $prePatchHash
+        post_patch_hash = $postPatchHash
+        restore_command = "Copy-Item -Path '$backupPath' -Destination '$absoluteTargetPath' -Force"
+    }
+
+    if (-not $passed) {
+        Copy-Item -Path $backupPath -Destination $absoluteTargetPath -Force
+        $Result.summary = ('LocalExecutionEngine rolled back the prompt token extraction patch for {0} because focused validation failed.' -f $targetFile)
+        $Result.files_changed = @()
+        $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+        $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+        $Result.failures = @('Focused validation failed after the prompt token extraction patch, so the target file was restored from backup.')
+        $Result.recommendations = @('Keep the task blocked until the bounded token-extraction patch or validation target is more explicit.')
+        $Result.needs_escalation = $false
+        $Result.structured_findings = @(
+            [pscustomobject]@{ type = 'rollback'; rollback = $rollbackState },
+            [pscustomobject]@{ type = 'validation'; checks = $validationChecks },
+            [pscustomobject]@{ type = 'command'; capture = $commandCapture },
+            [pscustomobject]@{ type = 'blocker'; reason_code = 'local_fallback_validation_failed'; file = 'scripts/engines/LocalExecutionEngine.ps1'; function = 'Invoke-LocalExecutionPromptTokenExtractionTask'; reason = 'Focused validation failed and the bounded patch was rolled back.' }
+        )
+        $Result.raw_output = [pscustomobject]@{
+            engine = $Spec
+            task_context = $Context
+            action = 'prompt_token_extraction_rolled_back'
+            target_file = $targetFile
+            diff_summary = $diffSummary
+            validation_checks = $validationChecks
+            command_capture = $commandCapture
+            rollback = $rollbackState
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        $Result | Add-Member -NotePropertyName reason_code -NotePropertyValue 'local_fallback_validation_failed' -Force
+        $Result | Add-Member -NotePropertyName recovery_state -NotePropertyValue 'blocked_with_reason' -Force
+        $Result | Add-Member -NotePropertyName diff_summary -NotePropertyValue $diffSummary -Force
+        $Result | Add-Member -NotePropertyName commands_run -NotePropertyValue @([string]$commandCapture.command) -Force
+        $Result | Add-Member -NotePropertyName validation_results -NotePropertyValue @($validationChecks) -Force
+        $Result | Add-Member -NotePropertyName blockers -NotePropertyValue @($Result.structured_findings | Where-Object { $_.type -eq 'blocker' }) -Force
+        $Result | Add-Member -NotePropertyName confidence -NotePropertyValue 'medium' -Force
+        $Result | Add-Member -NotePropertyName rollback_hint -NotePropertyValue ([string]$rollbackState.restore_command) -Force
+        return (Complete-EngineExecutionResult -Result $Result -Status 'failed')
+    }
+
+    $Result.summary = ('LocalExecutionEngine patched prompt token extraction in {0} and published real execution evidence.' -f $targetFile)
+    $Result.files_changed = if ($changeApplied) { @($targetFile) } else { @() }
+    $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+    $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+    $Result.failures = @()
+    $Result.recommendations = @('Publish the bounded prompt token extraction evidence and continue only with the next focused validation slice.')
+    $Result.needs_escalation = $false
+    $Result.structured_findings = @(
+        [pscustomobject]@{
+            type = 'result_contract'
+            understood_task = 'Patch prompt label token extraction so identifier fields capture only the declared token.'
+            action_taken = 'Patched _extract_labeled_prompt_value in tmp_remote_mim/core/routers/tod_ui.py.'
+            changed_files = @($Result.files_changed)
+            evidence = @($diffSummary)
+            validation_result = 'passed'
+            remaining_blocker = ''
+            next_action = 'Publish the bounded local fallback evidence.'
+            confidence = 'medium-high'
+            accepted = $true
+            artifact_changed = $changeApplied
+        },
+        [pscustomobject]@{ type = 'command'; capture = $commandCapture },
+        [pscustomobject]@{ type = 'rollback'; rollback = $rollbackState },
+        [pscustomobject]@{ type = 'validation'; checks = $validationChecks }
+    )
+    $Result.raw_output = [pscustomobject]@{
+        engine = $Spec
+        task_context = $Context
+        action = 'prompt_token_extraction_completed'
+        target_file = $targetFile
+        changed = $changeApplied
+        diff_summary = $diffSummary
+        validation_checks = $validationChecks
+        command_capture = $commandCapture
+        rollback = $rollbackState
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    $Result | Add-Member -NotePropertyName diff_summary -NotePropertyValue $diffSummary -Force
+    $Result | Add-Member -NotePropertyName commands_run -NotePropertyValue @([string]$commandCapture.command) -Force
+    $Result | Add-Member -NotePropertyName validation_results -NotePropertyValue @($validationChecks) -Force
+    $Result | Add-Member -NotePropertyName blockers -NotePropertyValue @() -Force
+    $Result | Add-Member -NotePropertyName confidence -NotePropertyValue 'medium-high' -Force
+    $Result | Add-Member -NotePropertyName rollback_hint -NotePropertyValue ([string]$rollbackState.restore_command) -Force
+    $Result | Add-Member -NotePropertyName command_output -NotePropertyValue ([string]$commandCapture.stdout) -Force
+    $Result | Add-Member -NotePropertyName reason_code -NotePropertyValue '' -Force
+    $Result | Add-Member -NotePropertyName recovery_state -NotePropertyValue 'not_needed' -Force
+    return (Complete-EngineExecutionResult -Result $Result -Status 'completed')
+}
+
 function Test-LocalExecutionExecutionLoopContractTask {
     param([Parameter(Mandatory = $true)]$Context)
 
@@ -1150,6 +1399,9 @@ function Invoke-LocalExecutionEngine {
     if (Test-LocalExecutionExecutionLoopContractTask -Context $Context) {
         $result = Invoke-LocalExecutionExecutionLoopContract -Context $Context -Result $result -Spec $spec
     }
+    elseif (Test-LocalExecutionPromptTokenExtractionTask -Context $Context) {
+        $result = Invoke-LocalExecutionPromptTokenExtractionTask -Context $Context -Result $result -Spec $spec
+    }
     elseif (Test-LocalExecutionConfigBootstrapTask -Context $Context) {
         $result = Invoke-LocalExecutionConfigBootstrap -Context $Context -Result $result -Spec $spec
     }
@@ -1160,12 +1412,12 @@ function Invoke-LocalExecutionEngine {
         $result = Invoke-LocalExecutionGenericBoundedTask -Context $Context -Result $result -Spec $spec
     }
     else {
-        $result.summary = "LocalExecutionEngine is implemented for bounded execution-loop, README, and TOD config bootstrap objectives, but this task did not match a supported scope."
+        $result.summary = "LocalExecutionEngine is implemented for bounded execution-loop, prompt token extraction, README, and TOD config bootstrap objectives, but this task did not match a supported scope."
         $result.tests_run = @("local-engine task scope match")
         $result.test_results = @("not-supported")
         $result.failures = @("Task did not match the current bounded local engine capability.")
         $result.recommendations = @(
-            "Package a task that explicitly targets the execution loop contract, README.md with the 'TOD Local Execution Mode' section, or tod-config.json local-engine activation.",
+            "Package a task that explicitly targets the execution loop contract, prompt token extraction in tmp_remote_mim/core/routers/tod_ui.py, README.md with the 'TOD Local Execution Mode' section, or tod-config.json local-engine activation.",
             "Extend LocalExecutionEngine with the next bounded action capability before retrying broader tasks."
         )
         $result.needs_escalation = $true
