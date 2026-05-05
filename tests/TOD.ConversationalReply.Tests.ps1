@@ -215,9 +215,149 @@ STOP CONDITION: TOD chat creates a task, writes the live request artifact, and e
             [string]$requestArtifact.task_id | Should Be ([string]$result.command_dispatch.task_id)
             [string]$requestArtifact.request_id | Should Be ([string]$result.command_dispatch.request_id)
             [string]$requestArtifact.objective_id | Should Be ([string]$result.command_dispatch.objective_id)
-            ($eventTypes -contains 'task_created') | Should Be $true
+            ($eventTypes -contains 'task_created_from_chat') | Should Be $true
             ($eventTypes -contains 'task_claimed') | Should Be $true
             (($eventTypes -contains 'execution_started') -or ($eventTypes -contains 'blocked')) | Should Be $true
+            [string]$result.reply_text | Should Match ([regex]::Escape("task_id: " + [string]$result.command_dispatch.task_id))
+        }
+        finally {
+            Restore-ChatDispatchArtifacts -Records $artifactBackup
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'creates a fresh task lane for each distinct OBJECTIVE prompt and supersedes the stale chat claim' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        $artifactBackup = Backup-ChatDispatchArtifacts
+        try {
+            Write-JsonNoBom -PathValue $fixture.BuildStatePath -Payload ([pscustomobject]@{
+                objective_id = 'objective-14'
+                status = 'active'
+                task = 'Stale direct chat dispatch'
+            })
+            Write-JsonNoBom -PathValue $fixture.ObjectivesPath -Payload ([pscustomobject]@{
+                objectives = @()
+            })
+            Write-JsonNoBom -PathValue $fixture.MaintenancePath -Payload ([pscustomobject]@{
+                overall_status = 'healthy'
+                overall_severity = 'info'
+            })
+            Write-JsonNoBom -PathValue $fixture.WatchdogPath -Payload ([pscustomobject]@{
+                state = 'healthy'
+            })
+            Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{
+                enabled = $true
+            })
+            Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
+                objectives = @(
+                    [pscustomobject]@{
+                        id = 'objective-14'
+                        title = 'Legacy stale objective'
+                        description = 'Legacy stale objective'
+                        priority = 'high'
+                        constraints = @()
+                        success_criteria = @()
+                        status = 'in_progress'
+                        created_at = '2026-05-05T00:00:00Z'
+                        updated_at = '2026-05-05T00:00:00Z'
+                    }
+                )
+                tasks = @(
+                    [pscustomobject]@{
+                        id = 'objective-14-task-79'
+                        objective_id = 'objective-14'
+                        title = 'Legacy stale task'
+                        type = 'implementation'
+                        task_category = 'chat_execution'
+                        scope = 'Legacy stale scope'
+                        dependencies = @()
+                        acceptance_criteria = @('Legacy acceptance')
+                        status = 'in_progress'
+                        assigned_executor = 'codex'
+                        source = 'bridge_runtime_sync'
+                        correlation_id = 'CORR-LEGACY'
+                        created_at = '2026-05-05T00:00:00Z'
+                        updated_at = '2026-05-05T00:00:00Z'
+                    }
+                )
+                execution_results = @()
+                review_decisions = @()
+                journal = @()
+                engine_performance = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_decisions = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_feedback = [pscustomobject]@{ learned_weights = [pscustomobject]@{}; sample_size = 0; version = 'feedback_v1'; updated_at = '' }
+                sync_state = [pscustomobject]@{ expected_contract_version = ''; expected_schema_version = ''; local_repo_signature = ''; cached_manifest = $null; last_comparison = $null; last_sync_decision = ''; last_sync_code = ''; compared_at = '' }
+            })
+
+            $staleRequest = [pscustomobject]@{
+                request_id = 'objective-14-task-79'
+                task_id = 'objective-14-task-79'
+                objective_id = 'objective-14'
+                correlation_id = 'objective-14-task-79'
+                target = 'TOD'
+                tod_action = 'execute-chat-task'
+                generated_at = '2026-05-05T00:00:00Z'
+                title = 'Legacy stale task'
+                scope = 'Legacy stale scope'
+                summary = 'Legacy stale summary'
+                requested_outcome = 'Legacy stale outcome'
+                metadata_json = [pscustomobject]@{
+                    objective_title = 'TOD-INITIATIVE-CORE'
+                    task_title = 'Legacy stale task'
+                    task_acceptance_criteria = 'Legacy acceptance'
+                    source = 'direct_chat'
+                }
+            }
+
+            Write-JsonNoBom -PathValue (Join-Path $repoRoot 'runtime/shared/MIM_TOD_TASK_REQUEST.latest.json') -Payload $staleRequest
+            Write-JsonNoBom -PathValue (Join-Path $repoRoot 'tmp_remote_mim/runtime/shared/MIM_TOD_TASK_REQUEST.latest.json') -Payload $staleRequest
+            Write-JsonNoBom -PathValue (Join-Path $repoRoot 'tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json') -Payload $staleRequest
+
+            $queryA = @'
+OBJECTIVE: TOD-LOCAL-EXECUTOR-BINDING
+Fix the missing local executor binding for direct chat dispatch.
+STOP CONDITION: TOD direct chat creates a fresh executable task lane.
+'@
+            $queryB = @'
+OBJECTIVE: TOD-CODE-CHANGE-EXECUTOR-BINDING
+Patch the code-change executor binding for direct chat task materialization.
+STOP CONDITION: TOD direct chat creates a second fresh executable task lane.
+'@
+
+            $resultA = (& $scriptUnderTest -Query $queryA -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $resultB = (& $scriptUnderTest -Query $queryB -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+
+            $latestRequestArtifact = Get-Content -Path (Join-Path $repoRoot 'runtime/shared/MIM_TOD_TASK_REQUEST.latest.json') -Raw | ConvertFrom-Json
+            $stateAfter = Get-Content -Path $fixture.TodStatePath -Raw | ConvertFrom-Json
+            $legacyTask = @($stateAfter.tasks | Where-Object { [string]$_.id -eq 'objective-14-task-79' } | Select-Object -First 1)
+            $taskA = @($stateAfter.tasks | Where-Object { [string]$_.id -eq [string]$resultA.command_dispatch.task_id } | Select-Object -First 1)
+            $taskB = @($stateAfter.tasks | Where-Object { [string]$_.id -eq [string]$resultB.command_dispatch.task_id } | Select-Object -First 1)
+
+            [string]$resultA.command_dispatch.task_id | Should Not Be 'objective-14-task-79'
+            [string]$resultB.command_dispatch.task_id | Should Not Be 'objective-14-task-79'
+            [string]$resultA.command_dispatch.task_id | Should Not Be ([string]$resultB.command_dispatch.task_id)
+            [string]$resultA.command_dispatch.objective_id | Should Be 'objective-tod-local-executor-binding'
+            [string]$resultB.command_dispatch.objective_id | Should Be 'objective-tod-code-change-executor-binding'
+            (@($resultA.command_dispatch.payload.activity_event_types) -contains 'task_created_from_chat') | Should Be $true
+            (@($resultB.command_dispatch.payload.activity_event_types) -contains 'task_created_from_chat') | Should Be $true
+            [string]$resultA.reply_text | Should Match ([regex]::Escape("task_id: " + [string]$resultA.command_dispatch.task_id))
+            [string]$resultB.reply_text | Should Match ([regex]::Escape("task_id: " + [string]$resultB.command_dispatch.task_id))
+            [string]$latestRequestArtifact.task_id | Should Be ([string]$resultB.command_dispatch.task_id)
+            [string]$latestRequestArtifact.request_id | Should Be ([string]$resultB.command_dispatch.request_id)
+            [string]$latestRequestArtifact.objective_id | Should Be ([string]$resultB.command_dispatch.objective_id)
+            [string]$resultA.command_dispatch.payload.superseded_claim.superseded_task_id | Should Be 'objective-14-task-79'
+            [string]$resultB.command_dispatch.payload.superseded_claim.superseded_task_id | Should Be ([string]$resultA.command_dispatch.task_id)
+            @($legacyTask).Count | Should Be 1
+            [string]$legacyTask[0].status | Should Be 'superseded'
+            @($taskA).Count | Should Be 1
+            [string]$taskA[0].status | Should Be 'superseded'
+            [string]$taskA[0].superseded_by_task_id | Should Be ([string]$resultB.command_dispatch.task_id)
+            @($taskB).Count | Should Be 1
+            [string]$taskB[0].status | Should Not Be 'superseded'
         }
         finally {
             Restore-ChatDispatchArtifacts -Records $artifactBackup

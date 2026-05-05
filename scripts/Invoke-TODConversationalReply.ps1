@@ -219,6 +219,41 @@ function Get-StructuredDirectiveValue {
     return ''
 }
 
+function Convert-ToObjectiveLabelSlug {
+    param([string]$Text)
+
+    $raw = [string]$Text
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        return ''
+    }
+
+    $collapsed = (($raw.Trim().ToLowerInvariant() -replace '[^a-z0-9]+', '-') -replace '-{2,}', '-').Trim('-')
+    if ([string]::IsNullOrWhiteSpace($collapsed)) {
+        return ''
+    }
+
+    return $collapsed
+}
+
+function Resolve-StructuredObjectiveDispatchId {
+    param(
+        [string]$ExistingObjectiveId,
+        [Parameter(Mandatory = $true)][string]$QueryText
+    )
+
+    $objectiveDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'OBJECTIVE'
+    if ([string]::IsNullOrWhiteSpace($objectiveDirective)) {
+        return [string]$ExistingObjectiveId
+    }
+
+    $slug = Convert-ToObjectiveLabelSlug -Text $objectiveDirective
+    if ([string]::IsNullOrWhiteSpace($slug)) {
+        return [string]$ExistingObjectiveId
+    }
+
+    return ('objective-{0}' -f $slug)
+}
+
 function New-ConversationDispatchId {
     param([Parameter(Mandatory = $true)][string]$Prefix)
 
@@ -343,6 +378,10 @@ function Invoke-IntentCommandDispatch {
         $taskCategory = 'general'
     }
     $objectiveDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'OBJECTIVE'
+    $dispatchObjectiveId = Resolve-StructuredObjectiveDispatchId -ExistingObjectiveId $ResolvedObjectiveId -QueryText $QueryText
+    if (-not [string]::IsNullOrWhiteSpace($dispatchObjectiveId)) {
+        $result.objective_id = $dispatchObjectiveId
+    }
     $taskDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'TASK'
     $stopConditionDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'STOP CONDITION'
     $acceptanceDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'ACCEPTANCE CRITERIA'
@@ -382,7 +421,7 @@ function Invoke-IntentCommandDispatch {
         $result.request_id = $requestId
         $result.correlation_id = $correlationId
         $parsed = Invoke-TodActionJson -Action 'execute-chat-task' -ExtraArguments @{
-            ObjectiveId = $ResolvedObjectiveId
+            ObjectiveId = $dispatchObjectiveId
             TaskId = $taskId
             RequestId = $requestId
             CorrelationId = $correlationId
@@ -396,7 +435,7 @@ function Invoke-IntentCommandDispatch {
             Type = 'implementation'
         }
         $taskId = [string](Get-PropertyValue -InputObject $parsed -PropertyName 'task_id' -Default '')
-        $result.objective_id = [string](Get-PropertyValue -InputObject $parsed -PropertyName 'objective_id' -Default $ResolvedObjectiveId)
+        $result.objective_id = [string](Get-PropertyValue -InputObject $parsed -PropertyName 'objective_id' -Default $dispatchObjectiveId)
         $result.created = (-not [string]::IsNullOrWhiteSpace($taskId))
         $result.dispatched = $result.created
         $result.executed = $result.created

@@ -9902,6 +9902,195 @@ function Invoke-TodSelfJsonAction {
     }
 }
 
+function Get-DirectChatLiveRequestPaths {
+    $paths = New-Object System.Collections.Generic.List[string]
+    foreach ($sharedRoot in @(Get-TodExecutionSharedRoots)) {
+        $candidatePath = Join-Path $sharedRoot 'MIM_TOD_TASK_REQUEST.latest.json'
+        if (-not $paths.Contains($candidatePath)) {
+            [void]$paths.Add($candidatePath)
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($bridgeRequestPacketPath) -and -not $paths.Contains($bridgeRequestPacketPath)) {
+        [void]$paths.Add($bridgeRequestPacketPath)
+    }
+
+    return [string[]]@($paths)
+}
+
+function Read-JsonFileSafeLocal {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -Path $Path)) {
+        return $null
+    }
+
+    try {
+        return (Get-Content -Path $Path -Raw -Encoding UTF8 | ConvertFrom-Json)
+    }
+    catch {
+        return $null
+    }
+}
+
+function Archive-SupersededDirectChatRequest {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)]$Payload,
+        [Parameter(Mandatory = $true)][string]$Reason,
+        [string]$SupersededByTaskId,
+        [string]$SupersededByRequestId,
+        [string]$SupersededByObjectiveId
+    )
+
+    $directory = Split-Path -Parent $Path
+    if ([string]::IsNullOrWhiteSpace($directory)) {
+        return ''
+    }
+
+    $artifactName = [System.IO.Path]::GetFileName($Path)
+    $supersededRoot = Join-Path $directory 'superseded'
+    $artifactRoot = Join-Path $supersededRoot $artifactName
+    if (-not (Test-Path -Path $artifactRoot)) {
+        New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+    }
+
+    $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')
+    $requestId = if ($Payload.PSObject.Properties['request_id']) { [string]$Payload.request_id } else { '' }
+    $safeRequestId = if ([string]::IsNullOrWhiteSpace($requestId)) { 'unknown-request' } else { ($requestId -replace '[^A-Za-z0-9_.-]+', '-') }
+    $record = [ordered]@{
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        reason_code = $Reason
+        target_path = $Path
+        superseded_by_task_id = $SupersededByTaskId
+        superseded_by_request_id = $SupersededByRequestId
+        superseded_by_objective_id = $SupersededByObjectiveId
+        payload = $Payload
+    }
+
+    $recordPath = Join-Path $artifactRoot ('{0}-{1}.superseded.json' -f $stamp, $safeRequestId)
+    Write-TodExecutionJsonAtomically -Path $recordPath -Payload $record
+    return $recordPath
+}
+
+function Get-ActiveDirectChatLaneSnapshot {
+    $requestPaths = @(Get-DirectChatLiveRequestPaths)
+    $selectedPayload = $null
+    $selectedRequestId = ''
+    $matchedPaths = New-Object System.Collections.Generic.List[string]
+
+    foreach ($candidatePath in $requestPaths) {
+        $payload = Read-JsonFileSafeLocal -Path $candidatePath
+        if ($null -eq $payload) {
+            continue
+        }
+        $todAction = if ($payload.PSObject.Properties['tod_action']) { [string]$payload.tod_action } else { '' }
+        if (-not [string]::Equals($todAction, 'execute-chat-task', [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        $requestId = if ($payload.PSObject.Properties['request_id']) { [string]$payload.request_id } else { '' }
+        if ($null -eq $selectedPayload) {
+            $selectedPayload = $payload
+            $selectedRequestId = $requestId
+            [void]$matchedPaths.Add([string]$candidatePath)
+            continue
+        }
+
+        if ([string]::Equals($selectedRequestId, $requestId, [System.StringComparison]::Ordinal)) {
+            [void]$matchedPaths.Add([string]$candidatePath)
+        }
+    }
+
+    if ($null -eq $selectedPayload) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        payload = $selectedPayload
+        request_id = $selectedRequestId
+        task_id = if ($selectedPayload.PSObject.Properties['task_id']) { [string]$selectedPayload.task_id } else { '' }
+        objective_id = if ($selectedPayload.PSObject.Properties['objective_id']) { [string]$selectedPayload.objective_id } else { '' }
+        request_paths = [string[]]@($matchedPaths)
+    }
+}
+
+function Supersede-ActiveDirectChatLane {
+    param(
+        $ExistingLane,
+        [Parameter(Mandatory = $true)][string]$NewObjectiveId,
+        [Parameter(Mandatory = $true)][string]$NewTaskId,
+        [Parameter(Mandatory = $true)][string]$NewRequestId,
+        [Parameter(Mandatory = $true)][string]$NewCorrelationId
+    )
+
+    if ($null -eq $ExistingLane) {
+        return $null
+    }
+
+    $existingRequestId = if ($ExistingLane.PSObject.Properties['request_id']) { [string]$ExistingLane.request_id } else { '' }
+    $existingTaskId = if ($ExistingLane.PSObject.Properties['task_id']) { [string]$ExistingLane.task_id } else { '' }
+    if ([string]::IsNullOrWhiteSpace($existingRequestId) -and [string]::IsNullOrWhiteSpace($existingTaskId)) {
+        return $null
+    }
+    if ([string]::Equals($existingRequestId, $NewRequestId, [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($existingTaskId, $NewTaskId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $null
+    }
+
+    $reason = 'superseded_by_operator_objective'
+    $archivedPaths = New-Object System.Collections.Generic.List[string]
+    foreach ($requestPath in @($ExistingLane.request_paths)) {
+        if ([string]::IsNullOrWhiteSpace([string]$requestPath) -or -not (Test-Path -Path ([string]$requestPath))) {
+            continue
+        }
+
+        $payload = Read-JsonFileSafeLocal -Path ([string]$requestPath)
+        if ($null -eq $payload) {
+            continue
+        }
+        $requestId = if ($payload.PSObject.Properties['request_id']) { [string]$payload.request_id } else { '' }
+        if (-not [string]::Equals($requestId, $existingRequestId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        $archivedPath = Archive-SupersededDirectChatRequest -Path ([string]$requestPath) -Payload $payload -Reason $reason -SupersededByTaskId $NewTaskId -SupersededByRequestId $NewRequestId -SupersededByObjectiveId $NewObjectiveId
+        if (-not [string]::IsNullOrWhiteSpace($archivedPath)) {
+            [void]$archivedPaths.Add($archivedPath)
+        }
+    }
+
+    $state = Load-State
+    $journalAdded = $false
+    $supersededTask = @($state.tasks | Where-Object { [string]$_.id -eq $existingTaskId } | Select-Object -First 1)
+    if (@($supersededTask).Count -gt 0) {
+        $supersededTask[0].status = 'superseded'
+        $supersededTask[0] | Add-Member -NotePropertyName supersession_reason -NotePropertyValue $reason -Force
+        $supersededTask[0] | Add-Member -NotePropertyName superseded_by_task_id -NotePropertyValue $NewTaskId -Force
+        $supersededTask[0] | Add-Member -NotePropertyName superseded_by_request_id -NotePropertyValue $NewRequestId -Force
+        $supersededTask[0] | Add-Member -NotePropertyName superseded_by_objective_id -NotePropertyValue $NewObjectiveId -Force
+        $supersededTask[0] | Add-Member -NotePropertyName superseded_at -NotePropertyValue (Get-UtcNow) -Force
+        $supersededTask[0].updated_at = Get-UtcNow
+        Add-Journal -State $state -Actor 'tod' -ActionName 'supersede_direct_chat_task' -EntityType 'task' -EntityId $existingTaskId -Payload ([pscustomobject]@{
+                reason = $reason
+                superseded_by_task_id = $NewTaskId
+                superseded_by_request_id = $NewRequestId
+                superseded_by_objective_id = $NewObjectiveId
+            })
+        $journalAdded = $true
+    }
+
+    if ($journalAdded) {
+        Save-State -State $state
+    }
+
+    return [pscustomobject]@{
+        reason = $reason
+        superseded_request_id = $existingRequestId
+        superseded_task_id = $existingTaskId
+        superseded_objective_id = if ($ExistingLane.PSObject.Properties['objective_id']) { [string]$ExistingLane.objective_id } else { '' }
+        archived_paths = [string[]]@($archivedPaths)
+    }
+}
+
 function Invoke-ExecuteChatTaskRequest {
     param(
         [string]$ObjectiveId,
@@ -9928,6 +10117,7 @@ function Invoke-ExecuteChatTaskRequest {
     $objective = Ensure-ChatTaskObjectiveRecord -ObjectiveId $ObjectiveId -Title $Title -Description $resolvedDescription -Priority $Priority -SuccessCriteria $SuccessCriteria
     $resolvedRequestId = if (-not [string]::IsNullOrWhiteSpace($RequestId)) { [string]$RequestId } else { [string]$TaskId }
     $resolvedCorrelationId = if (-not [string]::IsNullOrWhiteSpace($CorrelationId)) { [string]$CorrelationId } elseif (-not [string]::IsNullOrWhiteSpace($resolvedRequestId)) { [string]$resolvedRequestId } else { [string]$TaskId }
+    $supersededLane = Supersede-ActiveDirectChatLane -ExistingLane (Get-ActiveDirectChatLaneSnapshot) -NewObjectiveId ([string]$objective.id) -NewTaskId ([string]$TaskId) -NewRequestId $resolvedRequestId -NewCorrelationId $resolvedCorrelationId
 
     $request = [pscustomobject]@{
         request_id = $resolvedRequestId
@@ -9945,6 +10135,7 @@ function Invoke-ExecuteChatTaskRequest {
             objective_title = [string]$objective.title
             task_title = if (-not [string]::IsNullOrWhiteSpace($Title)) { [string]$Title } else { "Chat task $TaskId" }
             task_acceptance_criteria = $resolvedAcceptance
+            source = 'direct_chat'
         }
     }
 
@@ -9958,7 +10149,18 @@ function Invoke-ExecuteChatTaskRequest {
     Write-TodExecutionJsonAtomically -Path $bridgeRequestPacketPath -Payload $request
     [void]$requestArtifactPaths.Add($bridgeRequestPacketPath)
 
-    $taskCreatedEvent = Publish-TodActivityEvent -EventType 'task_created' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$request.title) -Status 'created' -Message 'Created a bounded task from TOD direct chat input.' -Details ([ordered]@{
+    if ($null -ne $supersededLane) {
+        $supersededEvent = Publish-TodActivityEvent -EventType 'task_superseded_by_operator_objective' -ObjectiveId ([string]$supersededLane.superseded_objective_id) -TaskId ([string]$supersededLane.superseded_task_id) -RequestId ([string]$supersededLane.superseded_request_id) -CorrelationId $resolvedCorrelationId -Title ([string]$(if (-not [string]::IsNullOrWhiteSpace([string]$Title)) { $Title } else { "Chat task $TaskId" })) -Status 'superseded' -Message 'Superseded the previous direct-chat claim because a newer operator objective was submitted.' -Details ([ordered]@{
+                reason = [string]$supersededLane.reason
+                superseded_by_task_id = [string]$TaskId
+                superseded_by_request_id = $resolvedRequestId
+                superseded_by_objective_id = [string]$objective.id
+                archived_paths = @($supersededLane.archived_paths)
+            }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Archived the stale direct-chat claim before dispatching the new task.'
+        [void]$activityEvents.Add($supersededEvent)
+    }
+
+    $taskCreatedEvent = Publish-TodActivityEvent -EventType 'task_created_from_chat' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$request.title) -Status 'created' -Message 'Created a fresh bounded task from TOD direct chat input.' -Details ([ordered]@{
             request_paths = @($requestArtifactPaths)
             task_category = $TaskCategory
             source = 'direct_chat'
@@ -10032,7 +10234,10 @@ function Invoke-ExecuteChatTaskRequest {
     }
     $requestArtifactPathList = [string[]]@($requestArtifactPaths | ForEach-Object { [string]$_ })
     $activityEventTypeList = New-Object System.Collections.Generic.List[string]
-    [void]$activityEventTypeList.Add('task_created')
+    if ($null -ne $supersededLane) {
+        [void]$activityEventTypeList.Add('task_superseded_by_operator_objective')
+    }
+    [void]$activityEventTypeList.Add('task_created_from_chat')
     [void]$activityEventTypeList.Add('task_claimed')
     [void]$activityEventTypeList.Add('execution_started')
     if ($runTask -and $runTask.PSObject.Properties['payload'] -and $runTask.payload -and $runTask.payload.PSObject.Properties['decision'] -and [string]::Equals([string]$runTask.payload.decision, 'blocked', [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -10047,6 +10252,7 @@ function Invoke-ExecuteChatTaskRequest {
         request_artifact_path = $primaryRequestArtifactPath
         request_artifact_paths = $requestArtifactPathList
         activity_event_types = @($activityEventTypeList)
+        superseded_claim = $supersededLane
         task_mirror = $mirror
         package_path = $packagePath
         run_task = $runTask.payload
