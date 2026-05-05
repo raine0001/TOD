@@ -16,6 +16,8 @@ $defaultLogPath = Join-Path $repoRoot "tod/out/mim-http.log"
 $uiCrashLogPath = Join-Path $repoRoot "tod/out/tod-ui-crash.log"
 $statePath = Join-Path $repoRoot "tod/data/state.json"
 $conversationReplyScript = Join-Path $PSScriptRoot "Invoke-TODConversationalReply.ps1"
+$localExecutionEngineScript = Join-Path $PSScriptRoot "engines/LocalExecutionEngine.ps1"
+$todChatDispatchBuildId = 'direct-chat-local-executor-v1'
 $maxStateReadBytes = 256MB
 $lightweightStateBusScript = Join-Path $PSScriptRoot "Get-TODLightweightStateBus.ps1"
 $listenerStagePath = Join-Path $repoRoot "tod/out/context-sync/listener"
@@ -518,6 +520,151 @@ function Read-JsonFileIfExists {
 
     try {
         return (Get-Content -Path $Path -Raw | ConvertFrom-Json)
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-StateActivityFallbackPayload {
+    param(
+        [string]$ObjectiveId = '',
+        [string]$TaskId = ''
+    )
+
+    if (-not (Test-Path -Path $statePath)) {
+        return $null
+    }
+
+    try {
+        $stateFile = Get-Item -Path $statePath -ErrorAction Stop
+        if ($stateFile.Length -gt $maxStateReadBytes) {
+            return $null
+        }
+
+        $state = Read-JsonFileIfExists -Path $statePath
+        if ($null -eq $state -or -not $state.PSObject.Properties['tasks']) {
+            return $null
+        }
+
+        $tasks = @($state.tasks | Where-Object { $null -ne $_ })
+        if (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) {
+            $tasks = @($tasks | Where-Object {
+                    $candidateObjectiveId = if ($_.PSObject.Properties['objective_id']) { [string]$_.objective_id } else { '' }
+                    [string]::Equals($candidateObjectiveId, $ObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)
+                })
+        }
+        if (-not [string]::IsNullOrWhiteSpace($TaskId)) {
+            $tasks = @($tasks | Where-Object {
+                    $candidateTaskId = if ($_.PSObject.Properties['id']) { [string]$_.id } else { '' }
+                    $candidateRemoteTaskId = if ($_.PSObject.Properties['remote_task_id']) { [string]$_.remote_task_id } else { '' }
+                    [string]::Equals($candidateTaskId, $TaskId, [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($candidateRemoteTaskId, $TaskId, [System.StringComparison]::OrdinalIgnoreCase)
+                })
+        }
+
+        if (@($tasks).Count -eq 0) {
+            return $null
+        }
+
+        $latestTask = @($tasks | Sort-Object -Property @{ Expression = {
+                        if ($_.PSObject.Properties['updated_at'] -and -not [string]::IsNullOrWhiteSpace([string]$_.updated_at)) { [string]$_.updated_at }
+                        elseif ($_.PSObject.Properties['created_at'] -and -not [string]::IsNullOrWhiteSpace([string]$_.created_at)) { [string]$_.created_at }
+                        else { '' }
+                    } } -Descending | Select-Object -First 1)
+        if (@($latestTask).Count -eq 0) {
+            return $null
+        }
+
+        $task = $latestTask[0]
+        $taskIdValue = if ($task.PSObject.Properties['id']) { [string]$task.id } else { '' }
+        $objectiveIdValue = if ($task.PSObject.Properties['objective_id']) { [string]$task.objective_id } else { '' }
+        $createdAt = if ($task.PSObject.Properties['created_at'] -and -not [string]::IsNullOrWhiteSpace([string]$task.created_at)) { [string]$task.created_at } else { $stateFile.LastWriteTimeUtc.ToString('o') }
+        $updatedAt = if ($task.PSObject.Properties['updated_at'] -and -not [string]::IsNullOrWhiteSpace([string]$task.updated_at)) { [string]$task.updated_at } else { $createdAt }
+        $taskTitle = if ($task.PSObject.Properties['title']) { [string]$task.title } else { '' }
+        $taskStatus = if ($task.PSObject.Properties['status']) { [string]$task.status } else { 'active' }
+        $assignedExecutor = if ($task.PSObject.Properties['assigned_executor']) { [string]$task.assigned_executor } else { '' }
+        $scope = if ($task.PSObject.Properties['scope']) { [string]$task.scope } else { '' }
+        $taskCategory = if ($task.PSObject.Properties['task_category']) { [string]$task.task_category } else { '' }
+        $taskSource = if ($task.PSObject.Properties['source']) { [string]$task.source } else { 'state_task_fallback' }
+        $events = New-Object System.Collections.Generic.List[object]
+        $events.Add([pscustomobject]@{
+                timestamp = $createdAt
+                event_type = 'chat_task_dispatch_started'
+                objective_id = $objectiveIdValue
+                task_id = $taskIdValue
+                title = $taskTitle
+                step = 'task_dispatch'
+                status = 'completed'
+                message = 'Recovered direct-chat task dispatch from tod/data/state.json.'
+                details = [pscustomobject]@{
+                    assigned_executor = $assignedExecutor
+                    task_category = $taskCategory
+                    source = $taskSource
+                }
+                source = 'tod.ui.state_fallback'
+                surface = 'tod-state'
+            })
+
+        if ([string]::Equals($assignedExecutor, 'local', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $events.Add([pscustomobject]@{
+                    timestamp = $createdAt
+                    event_type = 'local_executor_invoked'
+                    objective_id = $objectiveIdValue
+                    task_id = $taskIdValue
+                    title = $taskTitle
+                    step = 'engine_invocation'
+                    status = 'completed'
+                    message = 'Recovered LocalExecutionEngine invocation from persisted task state.'
+                    details = [pscustomobject]@{
+                        assigned_executor = $assignedExecutor
+                        task_category = $taskCategory
+                    }
+                    source = 'tod.ui.state_fallback'
+                    surface = 'tod-state'
+                })
+
+            $completionEventType = if ($taskStatus -in @('pass', 'reviewed_pass', 'done', 'completed', 'implemented')) { 'local_executor_completed' } else { 'blocked_missing_local_executor_result' }
+            $completionStatus = if ($completionEventType -eq 'local_executor_completed') { 'completed' } else { 'blocked' }
+            $completionMessage = if ($completionEventType -eq 'local_executor_completed') { 'Recovered LocalExecutionEngine completion from persisted task state.' } else { 'Recovered a blocked local execution outcome from persisted task state.' }
+            $events.Add([pscustomobject]@{
+                    timestamp = $updatedAt
+                    event_type = $completionEventType
+                    objective_id = $objectiveIdValue
+                    task_id = $taskIdValue
+                    title = $taskTitle
+                    step = 'engine_invocation'
+                    status = $completionStatus
+                    message = $completionMessage
+                    details = [pscustomobject]@{
+                        assigned_executor = $assignedExecutor
+                        task_status = $taskStatus
+                        task_category = $taskCategory
+                        scope = $scope
+                    }
+                    source = 'tod.ui.state_fallback'
+                    surface = 'tod-state'
+                })
+        }
+
+        $eventArray = @($events.ToArray())
+        $latestEvent = @($eventArray | Select-Object -Last 1)
+        $latestEvent = if (@($latestEvent).Count -gt 0) { $latestEvent[0] } else { $null }
+        return [pscustomobject]@{
+            ok = $true
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            source_path = $statePath
+            stream_generated_at = $updatedAt
+            objective_id = $objectiveIdValue
+            task_id = $taskIdValue
+            title = $taskTitle
+            summary = ('Recovered fresh activity from tod/data/state.json for task ' + $taskIdValue + '.')
+            status = if ($latestEvent) { [string]$latestEvent.status } else { 'active' }
+            event = if ($latestEvent) { [string]$latestEvent.event_type } else { '' }
+            phase = if ($latestEvent) { [string]$latestEvent.step } else { 'task_dispatch' }
+            latest_event = $latestEvent
+            count = @($eventArray).Count
+            events = @($eventArray)
+        }
     }
     catch {
         return $null
@@ -1934,6 +2081,14 @@ function Get-TaskStatePayload {
     return [pscustomobject]@{
         ok = $true
         generated_at = (Get-Date).ToUniversalTime().ToString("o")
+        tod_chat_dispatch_build_id = $todChatDispatchBuildId
+        live_source_paths = [pscustomobject]@{
+            repo_root = $repoRoot
+            ui_host_script = $PSCommandPath
+            conversational_reply_script = $conversationReplyScript
+            tod_script = $todScript
+            local_execution_engine_script = $localExecutionEngineScript
+        }
         current_state = $currentState
         watchdog_state = if ($recoveryWatchdog -and $recoveryWatchdog.PSObject.Properties["state"]) { [string]$recoveryWatchdog.state } else { "unknown" }
         progress_classification = if ($recoveryWatchdog -and $recoveryWatchdog.PSObject.Properties["progress_classification"]) { [string]$recoveryWatchdog.progress_classification } else { "no_progress_but_heartbeats_present" }
@@ -1968,6 +2123,46 @@ function Get-ActivityStreamPayload {
             $sourcePath = $candidatePath
             break
         }
+    }
+
+    $stateFallbackPayload = Get-StateActivityFallbackPayload -ObjectiveId $ObjectiveId -TaskId $TaskId
+    $preferStateFallback = $false
+    if ($null -ne $stateFallbackPayload) {
+        if ($null -eq $stream) {
+            $preferStateFallback = $true
+        }
+        else {
+            $streamGeneratedAt = if ($stream.PSObject.Properties['generated_at']) { [string]$stream.generated_at } else { '' }
+            $fallbackGeneratedAt = if ($stateFallbackPayload.PSObject.Properties['stream_generated_at']) { [string]$stateFallbackPayload.stream_generated_at } else { '' }
+            if (-not [string]::IsNullOrWhiteSpace($fallbackGeneratedAt) -and ([string]::IsNullOrWhiteSpace($streamGeneratedAt) -or ([string]::CompareOrdinal($fallbackGeneratedAt, $streamGeneratedAt) -gt 0))) {
+                $preferStateFallback = $true
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($TaskId)) {
+                $filteredStreamEvents = if ($stream.PSObject.Properties['events'] -and $null -ne $stream.events) { @($stream.events | Where-Object {
+                            $candidateTaskId = if ($_.PSObject.Properties['task_id']) { [string]$_.task_id } else { '' }
+                            [string]::Equals($candidateTaskId, $TaskId, [System.StringComparison]::OrdinalIgnoreCase)
+                        }) } else { @() }
+                if (@($filteredStreamEvents).Count -eq 0) {
+                    $preferStateFallback = $true
+                }
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) {
+                $filteredStreamEvents = if ($stream.PSObject.Properties['events'] -and $null -ne $stream.events) { @($stream.events | Where-Object {
+                            $candidateObjectiveId = if ($_.PSObject.Properties['objective_id']) { [string]$_.objective_id } else { '' }
+                            [string]::Equals($candidateObjectiveId, $ObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)
+                        }) } else { @() }
+                if (@($filteredStreamEvents).Count -eq 0) {
+                    $preferStateFallback = $true
+                }
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($fallbackGeneratedAt) -and [string]::IsNullOrWhiteSpace($streamGeneratedAt)) {
+                $preferStateFallback = $true
+            }
+        }
+    }
+
+    if ($preferStateFallback) {
+        return $stateFallbackPayload
     }
 
     if ($null -eq $stream) {
