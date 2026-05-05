@@ -5547,6 +5547,7 @@ async def tod_console() -> HTMLResponse:
                     border-radius: 999px;
                     border: 1px solid var(--line);
                     background: rgba(4,18,16,0.75);
+                    color: #ffffff;
                     text-decoration: none;
                     font-size: 12px;
                     font-weight: 800;
@@ -5554,6 +5555,7 @@ async def tod_console() -> HTMLResponse:
                     text-transform: uppercase;
                     transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
                 }}
+                .console-link span {{ color: #ffffff; }}
                 .console-link:hover {{ border-color: var(--line-strong); box-shadow: 0 0 12px rgba(45,255,157,0.18); transform: translateY(-1px); }}
                 .console-link.active {{ border-color: var(--line-strong); box-shadow: inset 0 0 0 1px rgba(45,255,157,0.14), 0 0 12px rgba(45,255,157,0.12); }}
                 .console-link.utility {{ background: rgba(4,18,16,0.62); }}
@@ -6212,7 +6214,8 @@ async def chat_console() -> HTMLResponse:
         .shell {{ border:1px solid var(--line); border-radius:16px; background:var(--panel); overflow:hidden; box-shadow:0 0 28px rgba(45,255,157,0.10); }}
         .hero {{ padding:24px; border-bottom:1px solid var(--line); background:linear-gradient(120deg, rgba(45,255,157,0.14), rgba(0,120,90,0.05)); }}
         .console-nav {{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }}
-        .console-link {{ display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; border:1px solid var(--line); background:rgba(4,18,16,0.78); color:var(--ink); text-decoration:none; font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; }}
+                .console-link {{ display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; border:1px solid var(--line); background:rgba(4,18,16,0.78); color:#ffffff; text-decoration:none; font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; }}
+                .console-link span {{ color:#ffffff; }}
         .console-link.active {{ border-color:var(--line-strong); box-shadow:inset 0 0 0 1px rgba(45,255,157,0.14), 0 0 12px rgba(45,255,157,0.12); }}
         .console-link.utility {{ background:rgba(4,18,16,0.64); }}
         .eyebrow {{ font-size:12px; text-transform:uppercase; letter-spacing:0.16em; color:var(--accent); font-weight:700; }}
