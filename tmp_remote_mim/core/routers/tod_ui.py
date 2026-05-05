@@ -3774,6 +3774,8 @@ def _compose_task_worklog(
 _GENERATED_PROGRESS_PREFIXES = (
     "Accepted. TOD opened a live troubleshooting lane for",
     "Thinking:",
+    "TOD is ",
+    "Action:",
     "Objective now:",
     "Task now:",
     "Current slice:",
@@ -3820,6 +3822,53 @@ def _summarize_execution_slice(summary: Any) -> str:
     if not text:
         return ""
     return _compact_text(text, 140)
+
+
+def _execution_live_status(activity_state: str, execution_state: str) -> str:
+    combined = " ".join(part for part in (activity_state, execution_state) if part).strip().lower()
+    if not combined:
+        return "idle"
+    if "idle" in combined and "wait" not in combined:
+        return "idle"
+    if any(token in combined for token in ("wait", "blocked", "stall", "stalled", "dependency", "rejected")):
+        return "blocked"
+    if any(token in combined for token in ("complete", "completed", "published", "passed", "done", "success")):
+        return "complete"
+    return "executing"
+
+
+def _build_execution_event(
+    *,
+    action: str,
+    target: str,
+    status: str,
+    created_at: str,
+    reason: str = "",
+    result: str = "",
+    next_action: str = "",
+    waiting_on: str = "",
+    retry_rule: str = "",
+) -> dict[str, str]:
+    lines = [
+        f"Action: {action}",
+        f"Target: {target or 'unknown'}",
+        f"Status: {status or 'unknown'}",
+    ]
+    if waiting_on:
+        lines.append(f"Waiting on: {waiting_on}")
+    if reason:
+        lines.append(f"Reason: {reason}")
+    if result:
+        lines.append(f"Result: {result}")
+    if next_action:
+        lines.append(f"Next: {next_action}")
+    if retry_rule:
+        lines.append(f"Retry: {retry_rule}")
+    return {
+        "role": "system",
+        "content": "\n".join(lines),
+        "created_at": created_at,
+    }
 
 
 def _describe_execution_validation_target(execution: dict[str, Any]) -> str:
@@ -3937,104 +3986,14 @@ def _build_execution_feed_messages(state: dict[str, Any]) -> list[dict[str, str]
     activity_state = _compact_text(execution.get("activity_state"), 80) or activity_label.lower()
     execution_state = _compact_text(execution.get("execution_state"), 120) or _compact_text(execution.get("status"), 120) or "unknown"
     updated_age = _pick_first_text(execution.get("updated_age")) or "unknown"
+    live_status = _execution_live_status(activity_state, execution_state)
     files_changed = execution.get("files_changed") if isinstance(execution.get("files_changed"), list) else []
     matched_files = execution.get("matched_files") if isinstance(execution.get("matched_files"), list) else []
     file_focus = _pick_first_text(
         next((_compact_text(item, 120) for item in files_changed if _compact_text(item, 120)), ""),
         next((_compact_text(item, 120) for item in matched_files if _compact_text(item, 120)), ""),
     )
-    messages: list[dict[str, str]] = [
-        {
-            "role": "tod",
-            "content": f"Live execution feed: TOD is {activity_label.lower()} on {title}.",
-            "created_at": created_at,
-        }
-    ]
-    messages.append(
-        {
-            "role": "system",
-            "content": f"Live state: {activity_state}. execution_state={execution_state}. Freshness: {updated_age}.",
-            "created_at": created_at,
-        }
-    )
-    execution_lane = ""
-    if objective_id and title:
-        execution_lane = f"Objective now: {objective_id} -> {title}"
-    elif objective_id:
-        execution_lane = f"Objective now: {objective_id}"
-    elif title:
-        execution_lane = f"Task now: {title}"
-    elif task_id:
-        execution_lane = f"Task now: {task_id}"
-    if execution_lane:
-        messages.append(
-            {
-                "role": "system",
-                "content": execution_lane,
-                "created_at": created_at,
-            }
-        )
-    if summary:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Current slice: {summary}",
-                "created_at": created_at,
-            }
-        )
-    if file_focus:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"File focus: {file_focus}",
-                "created_at": created_at,
-            }
-        )
-    if phase_progress.get("available"):
-        progress_percent = int(phase_progress.get("percent_complete") or 0)
-        phase_label = _compact_text(phase_progress.get("label"), 80) or "Phase progress"
-        next_gate = _compact_text(phase_progress.get("next_gate"), 80) or "Unknown"
-        progress_summary = _compact_text(phase_progress.get("summary"), 180)
-        messages.append(
-            {
-                "role": "system",
-                "content": f"{phase_label}: {progress_percent}% complete. Next gate: {next_gate}.",
-                "created_at": created_at,
-            }
-        )
-        if progress_summary:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": f"Progress detail: {progress_summary}",
-                    "created_at": created_at,
-                }
-            )
-    if activity_summary:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Status now: {activity_label}. {activity_summary}",
-                "created_at": created_at,
-            }
-        )
-    if stall_signal.get("flagged") or str(stall_signal.get("level") or "ok").strip().lower() != "ok":
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Stall watch: {str(stall_signal.get('summary') or '').strip()}",
-                "created_at": created_at,
-            }
-        )
     current_action = _compact_text(execution.get("current_action"), 220)
-    if current_action:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Working now: {current_action}",
-                "created_at": created_at,
-            }
-        )
     wait_reason = _compact_text(execution.get("wait_reason"), 220)
     wait_target = _pick_first_text(execution.get("wait_target_label"), execution.get("wait_target"))
     wait_owner = ""
@@ -4053,98 +4012,166 @@ def _build_execution_feed_messages(state: dict[str, Any]) -> list[dict[str, str]
         wait_owner = "execution lock"
     elif activity_state == "waiting":
         wait_owner = "TOD"
-
-    if wait_reason or wait_target or activity_state == "waiting":
-        wait_target_text = wait_target or wait_owner or "next bounded step"
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Waiting on: {wait_target_text}. {wait_reason or 'No explicit wait reason published.'}",
-                "created_at": created_at,
-            }
-        )
-    if wait_owner:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Wait owner: {wait_owner}",
-                "created_at": created_at,
-            }
-        )
     next_step = _compact_text(execution.get("next_step"), 220)
-    if next_step:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Applying next: {next_step}",
-                "created_at": created_at,
-            }
-        )
+    if not next_step and live_status == "blocked":
+        next_step = "Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path."
     next_validation = _describe_execution_validation_target(execution)
-    if next_validation:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Testing next: {next_validation}",
-                "created_at": created_at,
-            }
-        )
     command_output = _compact_text(execution.get("command_output"), 220)
-    if command_output:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Execution evidence: {command_output}",
-                "created_at": created_at,
-            }
-        )
     validation_summary = _compact_text(execution.get("validation_summary"), 220)
-    if validation_summary:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Validation summary: {validation_summary}",
-                "created_at": created_at,
-            }
-        )
     checks = execution.get("validation_checks") if isinstance(execution.get("validation_checks"), list) else []
-    if checks:
-        check_summary = ", ".join(
-            f"{_compact_text(item.get('name'), 80)}={'passed' if bool(item.get('passed')) else 'failed'}"
-            for item in checks
-            if isinstance(item, dict)
-        )
-        if check_summary:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": f"Validation checks: {check_summary}",
-                    "created_at": created_at,
-                }
-            )
-    if files_changed:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Files changed: {', '.join(_compact_text(item, 120) for item in files_changed if _compact_text(item, 120))}",
-                "created_at": created_at,
-            }
-        )
-    if matched_files:
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Matched surfaces: {', '.join(_compact_text(item, 120) for item in matched_files if _compact_text(item, 120))}",
-                "created_at": created_at,
-            }
-        )
+    check_summary = ", ".join(
+        f"{_compact_text(item.get('name'), 80)}={'passed' if bool(item.get('passed')) else 'failed'}"
+        for item in checks
+        if isinstance(item, dict)
+    )
+    wait_target_text = wait_target or wait_owner or "next bounded step"
+    retry_rule = ""
+    if live_status == "blocked":
+        retry_rule = "Retry on the next execution heartbeat and escalate if the stall threshold is crossed without newer execution evidence."
+    elif live_status == "idle":
+        retry_rule = "Check the next eligible source on the next activity sweep."
+
+    if live_status == "idle":
+        live_line = "TOD is idle: no eligible work selected."
+    elif live_status == "blocked":
+        live_line = f"TOD is blocked: waiting on {wait_target_text}."
+    elif live_status == "complete":
+        live_line = f"TOD is complete: {title}."
+    else:
+        live_line = f"TOD is executing: {file_focus or current_action or title}."
     if updated_age:
+        live_line = f"{live_line}\nLast heartbeat: {updated_age}."
+
+    messages: list[dict[str, str]] = [
+        {
+            "role": "tod",
+            "content": live_line,
+            "created_at": created_at,
+        }
+    ]
+
+    selected_target = title if title and title != "the active TOD execution" else task_id or "current TOD task"
+    if objective_id:
+        selected_target = f"{objective_id} -> {selected_target}"
+    messages.append(
+        _build_execution_event(
+            action="selected_task",
+            target=selected_target,
+            status=live_status,
+            created_at=created_at,
+            reason=summary or activity_summary or "TOD selected the current execution slice.",
+            next_action=next_step,
+        )
+    )
+    if task_id:
         messages.append(
-            {
-                "role": "system",
-                "content": f"Updated: {updated_age}",
-                "created_at": created_at,
-            }
+            _build_execution_event(
+                action="claimed_task",
+                target=task_id,
+                status=live_status,
+                created_at=created_at,
+                reason="TOD has an active execution claim for this bounded task.",
+                result=_pick_first_text(objective_id, title),
+            )
+        )
+
+    inspection_context = " ".join(part for part in (current_action, summary, str(execution.get("phase") or "")) if part).lower()
+    if file_focus and (not files_changed or any(token in inspection_context for token in ("inspect", "inspection", "review", "scan", "workspace_inspection"))):
+        messages.append(
+            _build_execution_event(
+                action="inspecting_file",
+                target=file_focus,
+                status="observing" if live_status == "executing" else live_status,
+                created_at=created_at,
+                reason=current_action or summary or "TOD is reading the active execution surface.",
+                result=_compact_text(", ".join(_compact_text(item, 120) for item in matched_files if _compact_text(item, 120)), 220),
+            )
+        )
+    if files_changed or any(token in inspection_context for token in ("patch", "edit", "implement", "write", "apply")):
+        messages.append(
+            _build_execution_event(
+                action="editing_file",
+                target=file_focus or title,
+                status="executing" if live_status == "executing" else live_status,
+                created_at=created_at,
+                reason=current_action or "TOD is applying the current implementation slice.",
+                result=_compact_text(", ".join(_compact_text(item, 120) for item in files_changed if _compact_text(item, 120)), 220),
+            )
+        )
+    if command_output or any(token in inspection_context for token in ("command", "run", "execute", "restart")):
+        messages.append(
+            _build_execution_event(
+                action="running_command",
+                target=_pick_first_text(file_focus, title, task_id) or "current command lane",
+                status="executing" if live_status == "executing" else live_status,
+                created_at=created_at,
+                reason=current_action or "TOD is running the current command slice.",
+                result=command_output,
+            )
+        )
+    if next_validation or checks:
+        messages.append(
+            _build_execution_event(
+                action="running_test",
+                target=next_validation or check_summary or "focused validation",
+                status="running" if live_status == "executing" else live_status,
+                created_at=created_at,
+                reason="TOD is validating the current bounded slice.",
+                result=check_summary,
+            )
+        )
+    if validation_summary or checks:
+        passed_checks = any(isinstance(item, dict) and bool(item.get("passed")) for item in checks)
+        failed_checks = any(isinstance(item, dict) and not bool(item.get("passed")) for item in checks)
+        messages.append(
+            _build_execution_event(
+                action="validation_failed" if failed_checks else "validation_passed",
+                target=next_validation or title,
+                status="failed" if failed_checks else ("passed" if passed_checks or validation_summary else live_status),
+                created_at=created_at,
+                reason=validation_summary or "TOD published the latest validation outcome.",
+                result=check_summary,
+                next_action=next_step if failed_checks else "",
+            )
+        )
+    if live_status == "blocked":
+        messages.append(
+            _build_execution_event(
+                action="blocked_with_reason",
+                target=wait_target_text,
+                status="blocked",
+                created_at=created_at,
+                waiting_on=wait_target_text,
+                reason=wait_reason or _compact_text(stall_signal.get("summary"), 220) or "TOD published a wait state without a reason.",
+                result=_compact_text(stall_signal.get("summary"), 220),
+                next_action=next_step,
+                retry_rule=retry_rule,
+            )
+        )
+    elif live_status == "idle":
+        messages.append(
+            _build_execution_event(
+                action="idle_no_eligible_work",
+                target=selected_target,
+                status="idle",
+                created_at=created_at,
+                reason="No eligible work is currently selected for execution.",
+                result=_pick_first_text(validation_summary, activity_summary, summary, "No active execution evidence is published."),
+                next_action=next_step or "Check the next eligible source.",
+                retry_rule=retry_rule,
+            )
+        )
+    if live_status == "complete" or execution_state.lower() in {"completed", "complete", "published"}:
+        messages.append(
+            _build_execution_event(
+                action="result_published",
+                target=selected_target,
+                status="completed",
+                created_at=created_at,
+                reason=activity_summary or summary or "TOD published the final result for the active slice.",
+                result=validation_summary or command_output or check_summary,
+                next_action=next_step or "Check the next eligible objective.",
+            )
         )
     return messages
 
@@ -4158,7 +4185,7 @@ def _messages_include_execution_feed(messages: list[dict[str, Any]], execution_u
         if str(item.get("created_at") or "").strip() != execution_updated_at:
             continue
         content = str(item.get("content") or "").strip()
-        if content.startswith("Live execution feed:") or content.startswith("Working now:") or content.startswith("Waiting on:"):
+        if content.startswith("Live execution feed:") or content.startswith("TOD is ") or content.startswith("Action:"):
             return True
     return False
 

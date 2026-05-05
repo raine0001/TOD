@@ -273,17 +273,21 @@ class TodUiStateClassificationTests(unittest.TestCase):
 
         messages = self.tod_ui._build_execution_feed_messages(state)
         contents = [item["content"] for item in messages]
-        current_slice = next(item for item in contents if item.startswith("Current slice:"))
-        testing_next = next(item for item in contents if item.startswith("Testing next:"))
-        phase_progress = next(item for item in contents if item.startswith("Phase 1 progress:"))
-
-        self.assertLess(len(current_slice), 170)
-        self.assertTrue(current_slice.endswith("..."))
-        self.assertEqual(phase_progress, "Phase 1 progress: 55% complete. Next gate: Implementation.")
         self.assertEqual(
-            testing_next,
-            "Testing next: Focused check after: Patch the local execution engine and rerun execute-chat-task against the same bounded request.",
+            contents[0],
+            "TOD is executing: Make TOD a local execution agent.\nLast heartbeat: unknown.",
         )
+        selected_task = next(item for item in contents if item.startswith("Action: selected_task"))
+        running_test = next(item for item in contents if item.startswith("Action: running_test"))
+
+        self.assertIn("Target: TOD-LOCAL-EXECUTION-AGENT-PHASE-1 -> Make TOD a local execution agent", selected_task)
+        self.assertIn("Status: executing", selected_task)
+        self.assertIn("Next: Patch the local execution engine and rerun execute-chat-task against the same bounded request.", selected_task)
+        self.assertIn(
+            "Target: Focused check after: Patch the local execution engine and rerun execute-chat-task against the same bounded request.",
+            running_test,
+        )
+        self.assertIn("Status: running", running_test)
 
     def test_normalize_execution_status_reports_phase_progress_and_probable_stall(self) -> None:
         active_task = {
@@ -356,10 +360,13 @@ class TodUiStateClassificationTests(unittest.TestCase):
 
         messages = self.tod_ui._build_execution_feed_messages(state)
         contents = [item["content"] for item in messages]
+        blocked = next(item for item in contents if item.startswith("Action: blocked_with_reason"))
 
+        self.assertEqual(contents[0], "TOD is blocked: waiting on next bounded step.\nLast heartbeat: unknown.")
+        self.assertIn("Status: blocked", blocked)
         self.assertIn(
-            "Stall watch: Probable stall: Phase 1 is holding at 60% for about 30m without a newer execution update.",
-            contents,
+            "Result: Probable stall: Phase 1 is holding at 60% for about 30m without a newer execution update.",
+            blocked,
         )
 
     def test_normalize_execution_status_reports_implementation_gate_hold_before_hard_stall(self) -> None:
@@ -793,22 +800,126 @@ class TodUiStateClassificationTests(unittest.TestCase):
         messages = self.tod_ui._build_execution_feed_messages(state)
         contents = [item["content"] for item in messages]
 
-        self.assertIn(
-            "Stall watch: Held at implementation gate: Phase 2 is at 63% until the next implementation slice starts. Fresh execution evidence landed 1m ago, so this wait is for the next implementation slice rather than stale output.",
-            contents,
+        blocked = next(item for item in contents if item.startswith("Action: blocked_with_reason"))
+        inspect = next(item for item in contents if item.startswith("Action: inspecting_file"))
+
+        self.assertEqual(
+            contents[0],
+            "TOD is blocked: waiting on TOD local executor.\nLast heartbeat: unknown.",
         )
-        self.assertIn(
-            "Live state: waiting. execution_state=waiting_on_next_step. Freshness: unknown.",
-            contents,
-        )
-        self.assertIn(
-            "File focus: /home/testpilot/mim/core/tod_execution_loop.py",
-            contents,
-        )
-        self.assertIn(
-            "Wait owner: TOD local executor",
-            contents,
-        )
+        self.assertIn("Target: TOD local executor", blocked)
+        self.assertIn("Status: blocked", blocked)
+        self.assertIn("Waiting on: TOD local executor", blocked)
+        self.assertIn("Reason: TOD is waiting on its own next bounded local implementation step.", blocked)
+        self.assertIn("Next: Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path.", blocked)
+        self.assertIn("Target: /home/testpilot/mim/core/tod_execution_loop.py", inspect)
+        self.assertIn("Status: blocked", inspect)
+
+    def test_execution_feed_does_not_render_updated_as_standalone_card(self) -> None:
+        state = {
+            "generated_at": "2026-04-26T10:00:00Z",
+            "execution": {
+                "available": True,
+                "updated_at": "2026-04-26T10:00:00Z",
+                "updated_age": "8m ago",
+                "title": "Hold the current bounded slice",
+                "activity_label": "Waiting",
+                "activity_state": "waiting",
+                "execution_state": "waiting_on_next_step",
+                "wait_reason": "TOD is waiting on a local executor retry.",
+                "wait_target_label": "TOD local executor",
+            },
+        }
+
+        messages = self.tod_ui._build_execution_feed_messages(state)
+        contents = [item["content"] for item in messages]
+
+        self.assertFalse(any(item == "Updated: 8m ago" for item in contents))
+        self.assertEqual(contents[0], "TOD is blocked: waiting on TOD local executor.\nLast heartbeat: 8m ago.")
+
+    def test_execution_feed_structured_cards_include_action_target_and_status(self) -> None:
+        state = {
+            "generated_at": "2026-04-26T10:00:00Z",
+            "execution": {
+                "available": True,
+                "updated_at": "2026-04-26T10:00:00Z",
+                "title": "Implement the active slice",
+                "task_id": "objective-14-task-79",
+                "objective_id": "14",
+                "activity_label": "Working",
+                "activity_state": "working",
+                "execution_state": "running",
+                "current_action": "Edit core/tod_execution_loop.py and rerun the focused validation command.",
+                "files_changed": ["/home/testpilot/mim/core/tod_execution_loop.py"],
+                "command_output": "python -m unittest test_tmp_remote_mim_tod_ui_state.py",
+                "next_step": "Publish the focused validation result.",
+                "next_validation": "python -m unittest test_tmp_remote_mim_tod_ui_state.py",
+                "validation_checks": [{"name": "test_tmp_remote_mim_tod_ui_state.py", "passed": True}],
+            },
+        }
+
+        messages = self.tod_ui._build_execution_feed_messages(state)
+        system_messages = [item["content"] for item in messages if item.get("role") == "system"]
+
+        self.assertTrue(system_messages)
+        self.assertTrue(all("Action: " in item and "Target: " in item and "Status: " in item for item in system_messages))
+
+    def test_execution_feed_idle_state_renders_clearly(self) -> None:
+        state = {
+            "generated_at": "2026-04-26T10:00:00Z",
+            "execution": {
+                "available": True,
+                "updated_at": "2026-04-26T10:00:00Z",
+                "updated_age": "2m ago",
+                "activity_label": "Idle",
+                "activity_state": "idle",
+                "execution_state": "idle",
+                "validation_summary": "Completed the last bounded local objective.",
+            },
+        }
+
+        messages = self.tod_ui._build_execution_feed_messages(state)
+        contents = [item["content"] for item in messages]
+        idle_event = next(item for item in contents if item.startswith("Action: idle_no_eligible_work"))
+
+        self.assertEqual(contents[0], "TOD is idle: no eligible work selected.\nLast heartbeat: 2m ago.")
+        self.assertIn("Status: idle", idle_event)
+        self.assertIn("Reason: No eligible work is currently selected for execution.", idle_event)
+        self.assertIn("Next: Check the next eligible source.", idle_event)
+
+    def test_execution_feed_executing_state_renders_file_command_and_test(self) -> None:
+        state = {
+            "generated_at": "2026-04-26T10:00:00Z",
+            "execution": {
+                "available": True,
+                "updated_at": "2026-04-26T10:00:00Z",
+                "updated_age": "12s ago",
+                "title": "Patch TOD feed clarity",
+                "activity_label": "Working",
+                "activity_state": "working",
+                "execution_state": "running",
+                "current_action": "Editing core/tod_execution_loop.py and running the focused validation slice.",
+                "files_changed": ["/home/testpilot/mim/core/tod_execution_loop.py"],
+                "command_output": "python -m unittest test_tmp_remote_mim_tod_ui_state.TodUiStateClassificationTests",
+                "next_validation": "python -m unittest test_tmp_remote_mim_tod_ui_state.TodUiStateClassificationTests",
+                "validation_checks": [{"name": "focused feed slice", "passed": True}],
+            },
+        }
+
+        messages = self.tod_ui._build_execution_feed_messages(state)
+        contents = [item["content"] for item in messages]
+        edit_event = next(item for item in contents if item.startswith("Action: editing_file"))
+        command_event = next(item for item in contents if item.startswith("Action: running_command"))
+        test_event = next(item for item in contents if item.startswith("Action: running_test"))
+
+        self.assertEqual(contents[0], "TOD is executing: /home/testpilot/mim/core/tod_execution_loop.py.\nLast heartbeat: 12s ago.")
+        self.assertIn("Target: /home/testpilot/mim/core/tod_execution_loop.py", edit_event)
+        self.assertIn("Status: executing", edit_event)
+        self.assertIn("Result: /home/testpilot/mim/core/tod_execution_loop.py", edit_event)
+        self.assertIn("Status: executing", command_event)
+        self.assertIn("Result: python -m unittest test_tmp_remote_mim_tod_ui_state.TodUiStateClassificationTests", command_event)
+        self.assertIn("Target: python -m unittest test_tmp_remote_mim_tod_ui_state.TodUiStateClassificationTests", test_event)
+        self.assertIn("Status: running", test_event)
 
     def test_tod_console_includes_phase_progress_fact_cards(self) -> None:
         html = asyncio.run(self.tod_ui.tod_console())
@@ -899,9 +1010,8 @@ class TodUiStateClassificationTests(unittest.TestCase):
                             "updated_at": "2026-05-05T05:32:38.674201Z",
                             "state_marker": {"canonical_objective": "2913", "status_code": "accepted_complete"},
                             "messages": [
-                                {"role": "tod", "content": "Live execution feed: TOD is complete on the current task.", "created_at": "2026-05-05T05:32:38.674201Z"},
-                                {"role": "system", "content": "Phase 1 progress: 100% complete. Next gate: Phase 2 handoff.", "created_at": "2026-05-05T05:32:38.674201Z"},
-                                {"role": "system", "content": "Updated: 12m ago", "created_at": "2026-05-05T05:32:38.674201Z"},
+                                {"role": "tod", "content": "TOD is complete: the current task.\nLast heartbeat: 12m ago.", "created_at": "2026-05-05T05:32:38.674201Z"},
+                                {"role": "system", "content": "Action: result_published\nTarget: objective-2913-task-7144\nStatus: completed\nResult: Focused validation passed.", "created_at": "2026-05-05T05:32:38.674201Z"},
                             ],
                             "pending_progress": [],
                         },
