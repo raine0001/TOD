@@ -112,7 +112,7 @@ function Get-RequestKind {
     param([Parameter(Mandatory = $true)][string]$QueryText)
 
     $normalized = $QueryText.ToLowerInvariant()
-    if ($normalized -match '(?m)^\s*(objective|task|stop condition|acceptance criteria)\s*:') {
+    if ($normalized -match '(?m)^\s*(objective|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:') {
         return 'implementation_request'
     }
     if ($normalized -match 'implement|implementation|build|wire|setup|set up|create|add|change|make|begin|start|ship|develop|conversation|communicat') {
@@ -150,7 +150,7 @@ function Get-IntentRoute {
     $intent = 'CONVERSATION'
     $action = 'direct reply'
     $requestKind = Get-RequestKind -QueryText $QueryText
-    $hasStructuredTaskRequest = ($normalized -match '(?m)^\s*(objective|task|stop condition|acceptance criteria)\s*:')
+    $hasStructuredTaskRequest = ($normalized -match '(?m)^\s*(objective|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:')
 
     if ($normalized -match '^(override|control|force|policy|priority|admin|elevat|restart tod|freeze|unfreeze|disable restriction)\b') {
         $intent = 'SYSTEM'
@@ -219,6 +219,22 @@ function Get-StructuredDirectiveValue {
     return ''
 }
 
+function Get-StructuredDirectiveValueAny {
+    param(
+        [Parameter(Mandatory = $true)][string]$QueryText,
+        [Parameter(Mandatory = $true)][string[]]$Labels
+    )
+
+    foreach ($label in @($Labels)) {
+        $value = Get-StructuredDirectiveValue -QueryText $QueryText -Label $label
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            return [string]$value
+        }
+    }
+
+    return ''
+}
+
 function Convert-ToObjectiveLabelSlug {
     param([string]$Text)
 
@@ -272,10 +288,10 @@ function Resolve-DirectChatTaskCategory {
     }
 
     $normalized = ([string]$QueryText).ToLowerInvariant()
-    $hasDocsHint = $normalized -match '(readme\.md|docs/[a-z0-9_./-]+\.md|\bmarkdown\b|section title:)'
+    $hasDocsHint = $normalized -match '(readme\.md|docs/[a-z0-9_./-]+\.(?:md|txt)|\bmarkdown\b|section title:)'
     $hasConfigHint = $normalized -match '(tod/config/[a-z0-9_./-]+\.json|execution_engine\.|readiness_policy\.|\btod-config\.json\b|\bconfig\b)'
     $hasTestHint = $normalized -match '(tests/[a-z0-9_./-]+\.(?:ps1|py|md)|\bpester\b|\bpytest\b|\bunittest\b|\btest\b)'
-    $hasCodePathHint = $normalized -match '(scripts/[a-z0-9_./-]+\.(?:ps1|psm1|py|json|md)|tmp_remote_mim/(?:core|tests)/[a-z0-9_./-]+\.(?:py|json|md)|\.ps1\b|\.py\b)'
+    $hasCodePathHint = $normalized -match '(scripts/[a-z0-9_./-]+\.(?:ps1|psm1|py|json|md|txt)|tmp_remote_mim/(?:core|tests)/[a-z0-9_./-]+\.(?:py|json|md|txt)|tod/out/tests/[a-z0-9_./-]+\.txt|\.ps1\b|\.py\b|\.txt\b)'
     $hasChangeHint = $normalized -match '\b(update|patch|edit|replace|modify|write|append|insert|refactor|implement|fix)\b'
     $hasDiagnosticHint = $normalized -match '\b(diagnos|debug|inspect|investigat|validate|verify|check|search|locate|find|trace)\b'
 
@@ -466,11 +482,15 @@ function Invoke-IntentCommandDispatch {
     if (-not [string]::IsNullOrWhiteSpace($dispatchObjectiveId)) {
         $result.objective_id = $dispatchObjectiveId
     }
-    $taskDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'TASK'
+    $goalDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'GOAL'
+    $taskDirective = Get-StructuredDirectiveValueAny -QueryText $QueryText -Labels @('TASK', 'TASKS')
     $stopConditionDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'STOP CONDITION'
-    $acceptanceDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'ACCEPTANCE CRITERIA'
+    $acceptanceDirective = Get-StructuredDirectiveValueAny -QueryText $QueryText -Labels @('ACCEPTANCE CRITERIA', 'ACCEPTANCE')
     $title = if (-not [string]::IsNullOrWhiteSpace($taskDirective)) {
         [string]$taskDirective
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($goalDirective)) {
+        [string]$goalDirective
     }
     elseif (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) {
         [string]$objectiveDirective
@@ -494,6 +514,9 @@ function Invoke-IntentCommandDispatch {
     }
     $objectiveDescription = if (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) {
         ('Objective created from TOD direct chat input: {0}' -f $objectiveDirective)
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($goalDirective)) {
+        ('Objective created from TOD direct chat goal: {0}' -f $goalDirective)
     }
     else {
         'Objective created from TOD direct chat task dispatch.'

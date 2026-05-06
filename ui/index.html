@@ -3831,6 +3831,7 @@
             var TOD_HISTORY_KEY = 'todConversationHistoryV2';
             var TOD_OPERATOR_KEY = 'todConversationOperatorName';
             var TOD_TTS_KEY = 'todConversationTtsEnabled';
+            window.__todConversationLatestTaskId = '';
 
             function getTodConversationEndpoint() {
               try {
@@ -4172,10 +4173,19 @@
                   conversation_history_json: JSON.stringify(history.slice(-12)),
                   window_minutes: 10
                 }).then(function (parsed) {
+                var latestTaskId = String(parsed && parsed.command_dispatch && parsed.command_dispatch.task_id || parsed && parsed.activity_stream && parsed.activity_stream.task_id || '').trim();
+                if (latestTaskId) {
+                  window.__todConversationLatestTaskId = latestTaskId;
+                }
                 history.push({ role: 'assistant', text: String(parsed.reply_text || 'TOD replied without text.'), timestamp: new Date().toISOString() });
                 saveTodConversationHistory(history);
                 renderTodThread(history);
                 updateTodSummary(parsed);
+                if (parsed && parsed.activity_stream && parsed.activity_stream.ok === true && typeof window.renderActivityFeedFromConversation === 'function') {
+                  window.renderActivityFeedFromConversation(parsed.activity_stream);
+                } else if (latestTaskId && typeof window.loadActivityStreamForConversationTask === 'function') {
+                  window.loadActivityStreamForConversationTask(latestTaskId);
+                }
                 speakTodReply(String(parsed.reply_text || ''));
                 if (inputEl) {
                   inputEl.value = '';
@@ -6634,6 +6644,13 @@
         if (systemTodChatOutputEl) {
           systemTodChatOutputEl.textContent = String(data.reply_text || 'TOD replied without text.');
         }
+        if (data && data.activity_stream && data.activity_stream.ok === true) {
+          const latestTaskId = String(data && data.command_dispatch && data.command_dispatch.task_id || data.activity_stream.task_id || '').trim();
+          if (latestTaskId) {
+            window.__todConversationLatestTaskId = latestTaskId;
+          }
+          renderActivityFeed(data.activity_stream);
+        }
         if (systemTodChatMetaEl) {
           const objectiveText = data && data.current_objective ? `Objective ${data.current_objective}` : 'No explicit objective reported';
           systemTodChatMetaEl.textContent = `${objectiveText} | reply updated ${new Date().toLocaleTimeString()}`;
@@ -7900,6 +7917,19 @@
       }).join('');
     }
 
+    window.renderActivityFeedFromConversation = function (data) {
+      renderActivityFeed(data);
+    };
+
+    window.loadActivityStreamForConversationTask = function (taskId) {
+      const normalizedTaskId = String(taskId || '').trim();
+      if (!normalizedTaskId) {
+        return Promise.resolve();
+      }
+      window.__todConversationLatestTaskId = normalizedTaskId;
+      return loadActivityStream({ objectiveId: '', taskId: normalizedTaskId, limit: 60 });
+    };
+
     async function loadActivityStream({ objectiveId = selectedObjectiveId || '', taskId = '', limit = 60 } = {}) {
       if (!activityFeedMetaEl) {
         return;
@@ -8103,7 +8133,12 @@
     async function loadProjectStatus() {
       initializeTabbedSurface();
       loadDialogSessions();
-      loadActivityStream({ objectiveId: selectedObjectiveId || '' });
+      const latestConversationTaskId = String(window.__todConversationLatestTaskId || '').trim();
+      if (latestConversationTaskId) {
+        loadActivityStream({ objectiveId: '', taskId: latestConversationTaskId });
+      } else {
+        loadActivityStream({ objectiveId: selectedObjectiveId || '' });
+      }
       try {
         const params = appendOperatorChatValidationHarness(new URLSearchParams());
         if (selectedObjectiveId) {
@@ -11028,11 +11063,22 @@
       });
     }
     if (activityFeedRefreshBtnEl) {
-      activityFeedRefreshBtnEl.addEventListener('click', () => loadActivityStream({ objectiveId: selectedObjectiveId || '' }));
+      activityFeedRefreshBtnEl.addEventListener('click', () => {
+        const latestConversationTaskId = String(window.__todConversationLatestTaskId || '').trim();
+        if (latestConversationTaskId) {
+          loadActivityStream({ objectiveId: '', taskId: latestConversationTaskId });
+          return;
+        }
+        loadActivityStream({ objectiveId: selectedObjectiveId || '' });
+      });
     }
     if (todConversationViewActivityBtnEl) {
       todConversationViewActivityBtnEl.addEventListener('click', () => {
         activateConsoleTab('tod');
+        const latestConversationTaskId = String(window.__todConversationLatestTaskId || '').trim();
+        if (latestConversationTaskId) {
+          loadActivityStream({ objectiveId: '', taskId: latestConversationTaskId });
+        }
         focusDashboardCardById('activityFeedCard');
       });
     }

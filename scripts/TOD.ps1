@@ -12921,14 +12921,6 @@ switch ($Action) {
             $resultPayload.failures = @(@($resultPayload.failures) + @([string]$noOpAssessment.detail) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
             $resultPayload.recommendations = @(@($resultPayload.recommendations) + @('Trigger replay_or_replan_required and rerun only after a state-changing execution path is available.') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
         }
-        $filesChangedCsv = (@($resultPayload.files_changed) | ForEach-Object { [string]$_ }) -join ","
-        $testsRunCsv = (@($resultPayload.tests_run) | ForEach-Object { [string]$_ }) -join ","
-        $testResultsCsv = (@($resultPayload.test_results) | ForEach-Object { [string]$_ }) -join ","
-        $failuresCsv = (@($resultPayload.failures) | ForEach-Object { [string]$_ }) -join ","
-        $recommendationsCsv = (@($resultPayload.recommendations) | ForEach-Object { [string]$_ }) -join ","
-
-        $addResultResponse = (& $PSCommandPath -Action add-result -ConfigPath $configPath -StatePath $statePath -TaskId $TaskId -Summary ([string]$resultPayload.summary) -FilesChanged $filesChangedCsv -TestsRun $testsRunCsv -TestResults $testResultsCsv -Failures $failuresCsv -Recommendations $recommendationsCsv) | ConvertFrom-Json
-
         $reviewDecision = "pass"
         if ([bool]$resultPayload.needs_escalation) {
             $reviewDecision = "escalate"
@@ -12968,8 +12960,37 @@ switch ($Action) {
             $rationale = "run-task rejected as a no-op: $([string]$noOpAssessment.detail)"
         }
 
+        $filesChangedCsv = (@($resultPayload.files_changed) | ForEach-Object { [string]$_ }) -join ","
+        $testsRunCsv = (@($resultPayload.tests_run) | ForEach-Object { [string]$_ }) -join ","
+        $testResultsCsv = (@($resultPayload.test_results) | ForEach-Object { [string]$_ }) -join ","
+        $failuresCsv = (@($resultPayload.failures) | ForEach-Object { [string]$_ }) -join ","
+        $recommendationsCsv = (@($resultPayload.recommendations) | ForEach-Object { [string]$_ }) -join ","
+        $addResultResponse = $null
+        $addResultError = ''
+        try {
+            $addResultResponse = (& $PSCommandPath -Action add-result -ConfigPath $configPath -StatePath $statePath -TaskId $TaskId -Summary ([string]$resultPayload.summary) -FilesChanged $filesChangedCsv -TestsRun $testsRunCsv -TestResults $testResultsCsv -Failures $failuresCsv -Recommendations $recommendationsCsv) | ConvertFrom-Json
+        }
+        catch {
+            if (-not $SkipPostCompletionTail) {
+                throw
+            }
+
+            $addResultError = [string]$_.Exception.Message
+        }
+
         $unresolvedCsv = (@($resultPayload.failures) + @($precheckWarnings) | ForEach-Object { [string]$_ }) -join ","
-        $reviewResponse = (& $PSCommandPath -Action review-task -ConfigPath $configPath -StatePath $statePath -TaskId $TaskId -Decision $reviewDecision -Rationale $rationale -UnresolvedIssues $unresolvedCsv) | ConvertFrom-Json
+        $reviewResponse = $null
+        $reviewError = ''
+        try {
+            $reviewResponse = (& $PSCommandPath -Action review-task -ConfigPath $configPath -StatePath $statePath -TaskId $TaskId -Decision $reviewDecision -Rationale $rationale -UnresolvedIssues $unresolvedCsv) | ConvertFrom-Json
+        }
+        catch {
+            if (-not $SkipPostCompletionTail) {
+                throw
+            }
+
+            $reviewError = [string]$_.Exception.Message
+        }
         Publish-TodActivityEvent -EventType 'validation' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'validator' -Status $(if ([string]::Equals($reviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } else { 'blocked' }) -Message ('Review decision resolved to ' + $reviewDecision + '.') -Details ([ordered]@{
                 review_decision = $reviewDecision
                 rationale = $rationale
@@ -12990,7 +13011,9 @@ switch ($Action) {
                 package_path = $packagePath
                 engine_invocation = $invokeResult
                 add_result_response = $addResultResponse
+                add_result_error = $addResultError
                 review_response = $reviewResponse
+                review_error = $reviewError
                 decision = $reviewDecision
                 execution_feedback = @($feedbackEvents)
                 execution_readiness = $executionReadinessGate.trace

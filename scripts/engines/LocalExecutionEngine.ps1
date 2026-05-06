@@ -63,7 +63,8 @@ function Get-LocalExecutionSafeRoots {
         'tests/',
         'tmp_remote_mim/core/',
         'tmp_remote_mim/tests/',
-        'tod/config/'
+        'tod/config/',
+        'tod/out/tests/'
     )
 }
 
@@ -131,7 +132,7 @@ function Get-LocalExecutionTargetFiles {
     }
 
     $combined = Get-LocalExecutionCombinedText -Context $Context
-    $matches = [regex]::Matches($combined, '(?im)(?<![A-Za-z0-9_./-])(README\.md|docs/[A-Za-z0-9_./-]+\.md|scripts/[A-Za-z0-9_./-]+\.(?:ps1|psm1|py|json|md)|tests/[A-Za-z0-9_./-]+\.(?:ps1|py|md)|tmp_remote_mim/(?:core|tests)/[A-Za-z0-9_./-]+\.(?:py|json|md)|tod/config/[A-Za-z0-9_./-]+\.json)(?=$|[\s''""`,:;\.\!\?\)\]])')
+    $matches = [regex]::Matches($combined, '(?im)(?<![A-Za-z0-9_./-])(README\.md|docs/[A-Za-z0-9_./-]+\.(?:md|txt)|scripts/[A-Za-z0-9_./-]+\.(?:ps1|psm1|py|json|md|txt)|tests/[A-Za-z0-9_./-]+\.(?:ps1|py|md|txt)|tmp_remote_mim/(?:core|tests)/[A-Za-z0-9_./-]+\.(?:py|json|md|txt)|tod/config/[A-Za-z0-9_./-]+\.json|tod/out/tests/[A-Za-z0-9_./-]+\.txt)(?=$|[\s''""`,:;\.\!\?\)\]])')
     $paths = New-Object System.Collections.Generic.List[string]
     foreach ($match in $matches) {
         $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$match.Groups[1].Value)

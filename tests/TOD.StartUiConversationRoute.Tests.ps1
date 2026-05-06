@@ -205,4 +205,76 @@ param(
             }
         }
     }
+
+    It 'prefers the fresh direct-chat task stream over stale state fallback for a new OBJECTIVE prompt' {
+        $artifactRoot = Join-Path $repoRoot ('tod/out/tests/ui-direct-chat-stale-bypass-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+
+        try {
+            $script:directChatActivityStreamPath = Join-Path $artifactRoot 'tod_direct_chat_activity_stream.latest.json'
+            $script:activityStreamPrimaryPath = Join-Path $artifactRoot 'TOD_ACTIVITY_STREAM.latest.json'
+            $script:activityStreamMirrorPath = Join-Path $artifactRoot 'TOD_ACTIVITY_STREAM.mirror.latest.json'
+            $script:statePath = Join-Path $artifactRoot 'tod-state.json'
+            $script:todActivityStreamBuildId = 'fresh-direct-chat-activity-v1'
+
+            @'
+{
+  "tasks": [
+    {
+      "id": "objective-14-task-79",
+      "objective_id": "objective-14",
+      "title": "Legacy stale task",
+      "status": "in_progress",
+      "assigned_executor": "codex",
+      "updated_at": "2026-05-05T00:00:00Z"
+    },
+    {
+      "id": "TSKCHAT-FRESH-001",
+      "objective_id": "objective-tod-direct-chat-stale-claim-bypass",
+      "title": "Fresh direct chat task",
+      "status": "blocked",
+      "assigned_executor": "local",
+      "updated_at": "2026-05-06T00:40:00Z"
+    }
+  ]
+}
+'@ | Set-Content -Path $script:statePath
+
+            $replyPayload = [pscustomobject]@{
+                generated_at = '2026-05-06T00:40:00Z'
+                command_dispatch = [pscustomobject]@{
+                    created = $true
+                    task_id = 'TSKCHAT-FRESH-001'
+                    objective_id = 'objective-tod-direct-chat-stale-claim-bypass'
+                    request_id = 'REQ-FRESH-001'
+                    correlation_id = 'CORR-FRESH-001'
+                    title = 'Fresh direct chat task'
+                    detail = 'executor local'
+                    payload = [pscustomobject]@{
+                        activity_event_types = @('local_executor_invoked', 'result_published')
+                        run_task = [pscustomobject]@{
+                            decision = 'blocked'
+                            summary = 'Fresh direct chat task is now the visible task lane.'
+                        }
+                    }
+                }
+            }
+
+            $finalReply = Finalize-TodConversationReplyPayload -ReplyPayload $replyPayload
+            $scoped = Get-ActivityStreamPayload -TaskId 'TSKCHAT-FRESH-001' -Limit 20
+
+            [string]$finalReply.activity_stream.task_id | Should Be 'TSKCHAT-FRESH-001'
+            [string]$finalReply.activity_stream.source_path | Should Be $script:directChatActivityStreamPath
+            [string]$scoped.task_id | Should Be 'TSKCHAT-FRESH-001'
+            [string]$scoped.source_path | Should Be $script:directChatActivityStreamPath
+            [string]$scoped.title | Should Be 'Fresh direct chat task'
+            [string]$scoped.task_id | Should Not Be 'objective-14-task-79'
+            (@($scoped.events | ForEach-Object { [string]$_.event_type }) -contains 'chat_task_created') | Should Be $true
+        }
+        finally {
+            if (Test-Path -Path $artifactRoot) {
+                Remove-Item -Path $artifactRoot -Recurse -Force
+            }
+        }
+    }
 }

@@ -42,7 +42,54 @@ function New-ConversationalReplyFixture {
         ListenerDecisionPath = Join-Path $base 'TOD_MIM_EXECUTION_DECISION.latest.json'
         TodConfigPath = Join-Path $base 'tod-config.json'
         TodStatePath = Join-Path $base 'tod-state.json'
+        ExecutionReadinessPath = Join-Path $base 'tod_execution_readiness.latest.json'
+        ExecutionReadinessHistoryPath = Join-Path $base 'tod_execution_readiness_history.latest.json'
     }
+}
+
+function Write-ExecutionReadyTodConfig {
+    param(
+        [Parameter(Mandatory = $true)]$Fixture,
+        [string]$ActiveEngine = 'codex',
+        [string]$FallbackEngine = 'local'
+    )
+
+    Write-JsonNoBom -PathValue $Fixture.ExecutionReadinessPath -Payload ([pscustomobject]@{
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        summary = [pscustomobject]@{
+            passed_all = $true
+            exit_code = 0
+        }
+    })
+
+    Write-JsonNoBom -PathValue $Fixture.TodConfigPath -Payload ([pscustomobject]@{
+        mode = 'local'
+        fallback_to_local = $true
+        timeout_seconds = 30
+        engineering_loop = [pscustomobject]@{
+            max_run_history = 150
+            max_scorecard_history = 150
+            max_cycle_records = 300
+        }
+        execution_engine = [pscustomobject]@{
+            active = $ActiveEngine
+            fallback = $FallbackEngine
+            allow_fallback = $true
+            readiness_policy = [pscustomobject]@{
+                enabled = $true
+                signal_path = $Fixture.ExecutionReadinessPath
+                history_path = $Fixture.ExecutionReadinessHistoryPath
+                max_artifact_age_minutes = 30
+                display_max_artifact_age_minutes = 10
+                block_actions = @('run-task')
+                degrade_actions = @('engineer-run', 'codex_handoff')
+                block_states = @('stale', 'invalid', 'unknown')
+                degrade_states = @('degraded', 'stale', 'invalid', 'unknown')
+                degrade_apply_plan = $true
+                history_max_entries = 50
+            }
+        }
+    })
 }
 
 function Backup-ChatDispatchArtifacts {
@@ -85,6 +132,65 @@ function Restore-ChatDispatchArtifacts {
 }
 
 Describe 'TOD conversational reply' {
+    It 'dispatches GOAL TASKS ACCEPTANCE prompts through the execution lane' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        $artifactBackup = Backup-ChatDispatchArtifacts
+        try {
+            Write-JsonNoBom -PathValue $fixture.BuildStatePath -Payload ([pscustomobject]@{
+                status = 'active'
+                task = 'Direct chat dispatch'
+            })
+            Write-JsonNoBom -PathValue $fixture.ObjectivesPath -Payload ([pscustomobject]@{
+                objectives = @()
+            })
+            Write-JsonNoBom -PathValue $fixture.MaintenancePath -Payload ([pscustomobject]@{
+                overall_status = 'healthy'
+                overall_severity = 'info'
+            })
+            Write-JsonNoBom -PathValue $fixture.WatchdogPath -Payload ([pscustomobject]@{
+                state = 'healthy'
+            })
+            Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{
+                enabled = $true
+            })
+            Write-ExecutionReadyTodConfig -Fixture $fixture
+            Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
+                objectives = @()
+                tasks = @()
+                execution_results = @()
+                review_decisions = @()
+                journal = @()
+                engine_performance = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_decisions = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_feedback = [pscustomobject]@{ learned_weights = [pscustomobject]@{}; sample_size = 0; version = 'feedback_v1'; updated_at = '' }
+                sync_state = [pscustomobject]@{ expected_contract_version = ''; expected_schema_version = ''; local_repo_signature = ''; cached_manifest = $null; last_comparison = $null; last_sync_decision = ''; last_sync_code = ''; compared_at = '' }
+            })
+
+            $query = @'
+GOAL: Make /api/tod-conversation return quickly after creating a task, while execution continues asynchronously and progress appears through /api/activity-stream.
+TASKS: 1. Split direct-chat handling into request/ack path and background execution path.
+ACCEPTANCE: /api/tod-conversation responds quickly and background execution continues through the activity stream.
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+
+            [bool]$result.ok | Should Be $true
+            [string]$result.request_kind | Should Be 'implementation_request'
+            [string]$result.intent.intent | Should Be 'COMMAND'
+            [bool]$result.command_dispatch.attempted | Should Be $true
+            [bool]$result.command_dispatch.created | Should Be $true
+            [string]$result.command_dispatch.task_id | Should Not BeNullOrEmpty
+        }
+        finally {
+            Restore-ChatDispatchArtifacts -Records $artifactBackup
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
     It 'classifies implementation requests and reports bounded steps with mim_wall status' {
         (Test-Path -Path $scriptUnderTest) | Should Be $true
 
@@ -182,6 +288,7 @@ Describe 'TOD conversational reply' {
             Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{
                 enabled = $true
             })
+            Write-ExecutionReadyTodConfig -Fixture $fixture
             Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
                 objectives = @()
                 tasks = @()
@@ -252,6 +359,7 @@ STOP CONDITION: TOD chat creates a task, writes the live request artifact, and e
             Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{
                 enabled = $true
             })
+            Write-ExecutionReadyTodConfig -Fixture $fixture
             Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
                 objectives = @(
                     [pscustomobject]@{
@@ -392,21 +500,7 @@ STOP CONDITION: TOD direct chat creates a second fresh executable task lane.
             Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{
                 enabled = $true
             })
-            Write-JsonNoBom -PathValue $fixture.TodConfigPath -Payload ([pscustomobject]@{
-                mode = 'local'
-                fallback_to_local = $true
-                timeout_seconds = 30
-                engineering_loop = [pscustomobject]@{
-                    max_run_history = 150
-                    max_scorecard_history = 150
-                    max_cycle_records = 300
-                }
-                execution_engine = [pscustomobject]@{
-                    active = 'codex'
-                    fallback = 'local'
-                    allow_fallback = $true
-                }
-            })
+            Write-ExecutionReadyTodConfig -Fixture $fixture
             Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
                 objectives = @()
                 tasks = @()
