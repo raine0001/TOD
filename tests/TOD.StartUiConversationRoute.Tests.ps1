@@ -39,6 +39,7 @@ Describe 'TOD UI conversation route backend' {
         Import-UiRouteFunction -Name 'Get-StateActivityFallbackPayload'
         Import-UiRouteFunction -Name 'Update-DirectChatActivityStream'
         Import-UiRouteFunction -Name 'Get-ActivityStreamPayload'
+        Import-UiRouteFunction -Name 'Finalize-TodConversationReplyPayload'
     }
 
     It 'requires a non-empty query' {
@@ -118,6 +119,85 @@ param(
             ($events -contains 'local_executor_completed') | Should Be $true
             ($events -contains 'validation_passed') | Should Be $true
             ($events -contains 'result_published') | Should Be $true
+        }
+        finally {
+            if (Test-Path -Path $artifactRoot) {
+                Remove-Item -Path $artifactRoot -Recurse -Force
+            }
+        }
+    }
+
+    It 'preserves no_change_required end to end for idempotent direct-chat smoke reruns' {
+        $artifactRoot = Join-Path $repoRoot ('tod/out/tests/ui-direct-chat-idempotent-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+
+        try {
+            $script:directChatActivityStreamPath = Join-Path $artifactRoot 'tod_direct_chat_activity_stream.latest.json'
+            $script:activityStreamPrimaryPath = Join-Path $artifactRoot 'TOD_ACTIVITY_STREAM.latest.json'
+            $script:activityStreamMirrorPath = Join-Path $artifactRoot 'TOD_ACTIVITY_STREAM.mirror.latest.json'
+            $script:statePath = Join-Path $artifactRoot 'tod-state.json'
+            $script:todActivityStreamBuildId = 'fresh-direct-chat-activity-v1'
+
+            @'
+{
+  "tasks": [
+    {
+      "id": "TSKCHAT-SMOKE-NOOP",
+      "objective_id": "objective-direct-chat-smoke",
+      "title": "stale state fallback task",
+      "status": "reviewed_pass",
+      "assigned_executor": "local",
+      "updated_at": "2026-05-05T23:31:00Z"
+    }
+  ]
+}
+'@ | Set-Content -Path $script:statePath
+
+            $replyPayload = [pscustomobject]@{
+                generated_at = '2026-05-05T23:32:00Z'
+                command_dispatch = [pscustomobject]@{
+                    created = $true
+                    task_id = 'TSKCHAT-SMOKE-NOOP'
+                    objective_id = 'objective-direct-chat-smoke'
+                    request_id = 'REQ-SMOKE-NOOP'
+                    correlation_id = 'CORR-SMOKE-NOOP'
+                    title = 'Re-run direct-chat local executor smoke task'
+                    detail = 'executor local'
+                    payload = [pscustomobject]@{
+                        activity_event_types = @('local_executor_invoked', 'local_executor_completed', 'result_published')
+                        run_task = [pscustomobject]@{
+                            decision = 'pass'
+                            summary = 'Local smoke rerun completed without applying a new change.'
+                            engine_invocation = [pscustomobject]@{
+                                active_engine = 'local'
+                                result = [pscustomobject]@{
+                                    files_changed = @()
+                                    no_change_required = $true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            $finalReply = Finalize-TodConversationReplyPayload -ReplyPayload $replyPayload
+            $replyEvents = @($finalReply.activity_stream.events | ForEach-Object { [string]$_.event_type })
+            $replyCompletion = @($finalReply.activity_stream.events | Where-Object { [string]$_.event_type -eq 'local_executor_completed' } | Select-Object -Last 1)
+            $replyCompletion = if (@($replyCompletion).Count -gt 0) { $replyCompletion[0] } else { $null }
+            $scoped = Get-ActivityStreamPayload -TaskId 'TSKCHAT-SMOKE-NOOP' -Limit 20
+            $scopedCompletion = @($scoped.events | Where-Object { [string]$_.event_type -eq 'local_executor_completed' } | Select-Object -Last 1)
+            $scopedCompletion = if (@($scopedCompletion).Count -gt 0) { $scopedCompletion[0] } else { $null }
+
+            [string]$finalReply.activity_stream.task_id | Should Be 'TSKCHAT-SMOKE-NOOP'
+            [string]$finalReply.activity_stream.source_path | Should Be $script:directChatActivityStreamPath
+            ($replyEvents -contains 'validation_passed') | Should Be $true
+            ($replyEvents -contains 'result_published') | Should Be $true
+            [bool]$finalReply.command_dispatch.payload.run_task.engine_invocation.result.no_change_required | Should Be $true
+            $null -ne $replyCompletion | Should Be $true
+            [bool]$replyCompletion.details.no_change_required | Should Be $true
+            $null -ne $scopedCompletion | Should Be $true
+            [string]$scoped.source_path | Should Be $script:directChatActivityStreamPath
+            [bool]$scopedCompletion.details.no_change_required | Should Be $true
         }
         finally {
             if (Test-Path -Path $artifactRoot) {

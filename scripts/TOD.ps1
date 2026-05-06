@@ -103,6 +103,7 @@ param(
     ,[string]$CycleId
     ,[ValidateSet("approve_apply", "reject_apply", "continue_cycle", "freeze_objective", "mark_complete")][string]$CycleReviewAction
     ,[switch]$SkipNextTaskSelectionLoop
+    ,[switch]$SkipPostCompletionTail
     ,[string]$SelectionReason
 )
 
@@ -8255,6 +8256,7 @@ function Convert-EngineResultToNormalizedEnvelope {
         blockers = if ($EngineResult.PSObject.Properties['blockers'] -and $null -ne $EngineResult.blockers) { @($EngineResult.blockers) } else { @() }
         confidence = if ($EngineResult.PSObject.Properties['confidence']) { [string]$EngineResult.confidence } else { '' }
         rollback_hint = if ($EngineResult.PSObject.Properties['rollback_hint']) { [string]$EngineResult.rollback_hint } else { '' }
+        no_change_required = if ($EngineResult.PSObject.Properties['no_change_required'] -and $null -ne $EngineResult.no_change_required) { [bool]$EngineResult.no_change_required } else { $false }
         execution_engine = [pscustomobject]@{
             name = [string]$engineName
             version = [string]$EngineResult.engine_version
@@ -8303,6 +8305,7 @@ function Normalize-EngineResultPayload {
         blockers = if ($EngineResult.PSObject.Properties['blockers'] -and $null -ne $EngineResult.blockers) { @($EngineResult.blockers) } else { @() }
         confidence = if ($EngineResult.PSObject.Properties['confidence']) { [string]$EngineResult.confidence } else { '' }
         rollback_hint = if ($EngineResult.PSObject.Properties['rollback_hint']) { [string]$EngineResult.rollback_hint } else { '' }
+        no_change_required = if ($EngineResult.PSObject.Properties['no_change_required'] -and $null -ne $EngineResult.no_change_required) { [bool]$EngineResult.no_change_required } else { $false }
     }
 }
 
@@ -10218,6 +10221,8 @@ function Invoke-ExecuteChatTaskRequest {
             PackagePath = $packagePath
             ConfigPath = $ResolvedConfigPath
             StatePath = $ResolvedStatePath
+            SkipNextTaskSelectionLoop = $true
+            SkipPostCompletionTail = $true
         }
     }
     catch {
@@ -12971,6 +12976,39 @@ switch ($Action) {
                 failures = @($resultPayload.failures)
                 warnings = @($precheckWarnings)
             }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$resultPayload.summary) -CurrentAction 'Validated the bounded execution outcome.' -ExecutionState $reviewDecision | Out-Null
+        if ($SkipPostCompletionTail) {
+            $memoryProfile.after_result_persist = Get-ProcessMemorySnapshot
+            $memoryProfile.peak_private_memory_mb = [math]::Round((@(
+                    [double]$memoryProfile.before_execution.private_memory_mb,
+                    [double]$(if ($null -ne $memoryProfile.after_execution) { $memoryProfile.after_execution.private_memory_mb } else { 0.0 }),
+                    [double]$(if ($null -ne $memoryProfile.after_result_persist) { $memoryProfile.after_result_persist.private_memory_mb } else { 0.0 })
+                ) | Measure-Object -Maximum).Maximum, 2)
+
+            [pscustomobject]@{
+                task_id = $TaskId
+                execution_id = [string]$resolvedExecutionId
+                package_path = $packagePath
+                engine_invocation = $invokeResult
+                add_result_response = $addResultResponse
+                review_response = $reviewResponse
+                decision = $reviewDecision
+                execution_feedback = @($feedbackEvents)
+                execution_readiness = $executionReadinessGate.trace
+                execution_trace = [pscustomobject]@{
+                    action = 'run-task'
+                    execution_readiness = $executionReadinessGate.trace
+                }
+                routing_decision_preinvoke = $routingPre[0]
+                routing_decision = $null
+                engine_performance_record = $null
+                next_task_selection = $null
+                next_task_selection_error = ''
+                post_completion_tail_skipped = $true
+                state_access = $stateAccess
+                memory_profile = [pscustomobject]$memoryProfile
+            } | ConvertTo-Json -Depth 14
+            break
+        }
     $memoryProfile.after_result_persist = Get-ProcessMemorySnapshot
     $memoryProfile.peak_private_memory_mb = [math]::Round((@(
             [double]$memoryProfile.before_execution.private_memory_mb,

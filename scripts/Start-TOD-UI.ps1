@@ -440,6 +440,18 @@ function Update-DirectChatActivityStream {
     $runTask = if ($dispatchPayload -and $dispatchPayload.PSObject.Properties['run_task']) { $dispatchPayload.run_task } else { $null }
     $runTaskDecision = if ($runTask -and $runTask.PSObject.Properties['decision']) { [string]$runTask.decision } else { '' }
     $runTaskSummary = if ($runTask -and $runTask.PSObject.Properties['summary']) { [string]$runTask.summary } else { '' }
+    $engineInvocation = if ($runTask -and $runTask.PSObject.Properties['engine_invocation']) { $runTask.engine_invocation } else { $null }
+    $engineResult = if ($engineInvocation -and $engineInvocation.PSObject.Properties['result']) { $engineInvocation.result } else { $null }
+    $filesChanged = if ($engineResult -and $engineResult.PSObject.Properties['files_changed'] -and $null -ne $engineResult.files_changed) {
+        @($engineResult.files_changed | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { [string]$_ })
+    }
+    else {
+        @()
+    }
+    $noChangeRequired = $false
+    if ($engineResult -and $engineResult.PSObject.Properties['no_change_required'] -and $null -ne $engineResult.no_change_required) {
+        $noChangeRequired = [bool]$engineResult.no_change_required
+    }
     $reportedEventTypes = if ($dispatchPayload -and $dispatchPayload.PSObject.Properties['activity_event_types']) { @($dispatchPayload.activity_event_types | ForEach-Object { [string]$_ }) } else { @() }
     $isLocalExecution = ($reportedEventTypes -contains 'local_executor_invoked') -or ($reportedEventTypes -contains 'local_executor_completed') -or ([string]$commandDispatch.detail -match '(?i)executor\s+local')
 
@@ -499,8 +511,12 @@ function Update-DirectChatActivityStream {
                 title = $title
                 step = 'engine_invocation'
                 status = 'completed'
-                message = 'Local execution completed for the direct chat task.'
-                details = [pscustomobject]@{ run_task_summary = $runTaskSummary }
+                message = if ($noChangeRequired) { 'Local execution completed for the direct chat task without applying a new change.' } else { 'Local execution completed for the direct chat task.' }
+                details = [pscustomobject]@{
+                    run_task_summary = $runTaskSummary
+                    no_change_required = $noChangeRequired
+                    files_changed = @($filesChanged)
+                }
                 source = 'tod.ui.direct_chat'
                 surface = 'tod-conversation'
             })
@@ -553,7 +569,11 @@ function Update-DirectChatActivityStream {
                 step = 'result_publisher'
                 status = if ([string]::Equals($terminalReviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } else { 'blocked' }
                 message = 'Direct chat execution published bounded result artifacts.'
-                details = [pscustomobject]@{ review_decision = $terminalReviewDecision }
+                details = [pscustomobject]@{
+                    review_decision = $terminalReviewDecision
+                    no_change_required = $noChangeRequired
+                    files_changed = @($filesChanged)
+                }
                 source = 'tod.ui.direct_chat'
                 surface = 'tod-conversation'
             })
@@ -614,6 +634,46 @@ function Update-DirectChatActivityStream {
 
     Write-JsonArtifact -Path $directChatActivityStreamPath -Payload $directPayload -Depth 20
     return $directPayload
+}
+
+function Finalize-TodConversationReplyPayload {
+    param($ReplyPayload)
+
+    if ($null -eq $ReplyPayload) {
+        return $null
+    }
+
+    $freshActivityPayload = Update-DirectChatActivityStream -ReplyPayload $ReplyPayload
+    $replyTaskId = if ($ReplyPayload.PSObject.Properties['command_dispatch'] -and $ReplyPayload.command_dispatch -and $ReplyPayload.command_dispatch.PSObject.Properties['task_id']) {
+        [string]$ReplyPayload.command_dispatch.task_id
+    }
+    else {
+        ''
+    }
+
+    $scopedActivityPayload = $null
+    if (-not [string]::IsNullOrWhiteSpace($replyTaskId) -and $freshActivityPayload -and [string]::Equals([string]$freshActivityPayload.task_id, $replyTaskId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $scopedActivityPayload = New-ActivityStreamCandidatePayload -Payload $freshActivityPayload -SourcePath $directChatActivityStreamPath -TaskId $replyTaskId -Limit 20
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($replyTaskId)) {
+        $scopedActivityPayload = Get-ActivityStreamPayload -TaskId $replyTaskId -Limit 20
+    }
+
+    if ($ReplyPayload.PSObject.Properties['tod_activity_stream_build_id']) {
+        $ReplyPayload.tod_activity_stream_build_id = $todActivityStreamBuildId
+    }
+    else {
+        Add-Member -InputObject $ReplyPayload -NotePropertyName 'tod_activity_stream_build_id' -NotePropertyValue $todActivityStreamBuildId -Force
+    }
+
+    if ($null -ne $scopedActivityPayload) {
+        Add-Member -InputObject $ReplyPayload -NotePropertyName 'activity_stream' -NotePropertyValue $scopedActivityPayload -Force
+    }
+    elseif ($null -ne $freshActivityPayload) {
+        Add-Member -InputObject $ReplyPayload -NotePropertyName 'activity_stream' -NotePropertyValue $freshActivityPayload -Force
+    }
+
+    return $ReplyPayload
 }
 
 function Test-ShouldUseLightweightStateBus {
@@ -2792,29 +2852,7 @@ try {
                 }
 
                 $replyPayload = Invoke-TodConversationReplyRequest -Query $query -ObjectiveId $objectiveId -OperatorName $operatorName -ConversationHistoryJson $conversationHistoryJson -WindowMinutes $windowMinutes
-                $freshActivityPayload = Update-DirectChatActivityStream -ReplyPayload $replyPayload
-                $scopedActivityPayload = $null
-                $replyTaskId = if ($replyPayload -and $replyPayload.PSObject.Properties['command_dispatch'] -and $replyPayload.command_dispatch -and $replyPayload.command_dispatch.PSObject.Properties['task_id']) {
-                    [string]$replyPayload.command_dispatch.task_id
-                }
-                else {
-                    ''
-                }
-                if (-not [string]::IsNullOrWhiteSpace($replyTaskId)) {
-                    $scopedActivityPayload = Get-ActivityStreamPayload -TaskId $replyTaskId -Limit 20
-                }
-                if ($replyPayload -and $replyPayload.PSObject.Properties['tod_activity_stream_build_id']) {
-                    $replyPayload.tod_activity_stream_build_id = $todActivityStreamBuildId
-                }
-                else {
-                    Add-Member -InputObject $replyPayload -NotePropertyName 'tod_activity_stream_build_id' -NotePropertyValue $todActivityStreamBuildId -Force
-                }
-                if ($null -ne $scopedActivityPayload) {
-                    Add-Member -InputObject $replyPayload -NotePropertyName 'activity_stream' -NotePropertyValue $scopedActivityPayload -Force
-                }
-                elseif ($null -ne $freshActivityPayload) {
-                    Add-Member -InputObject $replyPayload -NotePropertyName 'activity_stream' -NotePropertyValue $freshActivityPayload -Force
-                }
+                $replyPayload = Finalize-TodConversationReplyPayload -ReplyPayload $replyPayload
                 Write-JsonResponse -Response $response -StatusCode 200 -Json ($replyPayload | ConvertTo-Json -Depth 20)
             }
             catch {

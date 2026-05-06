@@ -442,6 +442,8 @@ STOP CONDITION: TOD direct chat routes the bounded task through LocalExecutionEn
             [bool]$result.command_dispatch.codex_needed | Should Be $false
             [string]$runTask.engine_invocation.active_engine | Should Be 'local'
             [string]$runTask.decision | Should Be 'pass'
+            [bool]$runTask.post_completion_tail_skipped | Should Be $true
+            [bool]$runTask.engine_invocation.result.no_change_required | Should Be $false
             ($eventTypes -contains 'local_executor_invoked') | Should Be $true
             ($eventTypes -contains 'local_executor_completed') | Should Be $true
             ($eventTypes -contains 'result_published') | Should Be $true
