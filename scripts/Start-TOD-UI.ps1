@@ -2561,8 +2561,12 @@ function Get-ActivityStreamPayload {
     $candidates = New-Object System.Collections.Generic.List[object]
     $directChatPayload = Read-JsonFileIfExists -Path $directChatActivityStreamPath
     $directCandidate = New-ActivityStreamCandidatePayload -Payload $directChatPayload -SourcePath $directChatActivityStreamPath -ObjectiveId $ObjectiveId -TaskId $TaskId -Limit $safeLimit
+    $directUnscopedCandidate = New-ActivityStreamCandidatePayload -Payload $directChatPayload -SourcePath $directChatActivityStreamPath -Limit $safeLimit
     if ($null -ne $directCandidate) {
         [void]$candidates.Add($directCandidate)
+    }
+    elseif ($null -ne $directUnscopedCandidate) {
+        [void]$candidates.Add($directUnscopedCandidate)
     }
 
     foreach ($candidatePath in @($activityStreamPrimaryPath, $activityStreamMirrorPath)) {
@@ -2600,9 +2604,18 @@ function Get-ActivityStreamPayload {
     }
 
     $preferDirectChatForScopedTask = -not [string]::IsNullOrWhiteSpace($TaskId)
+    $preferFreshDirectChat = (
+        $null -ne $directUnscopedCandidate -and
+        [string]::Equals([string]$directUnscopedCandidate.source_path, $directChatActivityStreamPath, [System.StringComparison]::OrdinalIgnoreCase) -and
+        [string]::Equals([string]$directUnscopedCandidate.tod_activity_stream_build_id, $todActivityStreamBuildId, [System.StringComparison]::OrdinalIgnoreCase) -and
+        ([string]$directUnscopedCandidate.task_id -match '^TSKCHAT-')
+    )
     $selectedCandidate = @($candidates | Sort-Object -Property @(
             @{ Expression = {
                     if ($preferDirectChatForScopedTask -and [string]::Equals([string]$_.source_path, $directChatActivityStreamPath, [System.StringComparison]::OrdinalIgnoreCase) -and [string]::Equals([string]$_.task_id, $TaskId, [System.StringComparison]::OrdinalIgnoreCase)) { 1 } else { 0 }
+                }; Descending = $true },
+            @{ Expression = {
+                    if ($preferFreshDirectChat -and [string]::Equals([string]$_.source_path, $directChatActivityStreamPath, [System.StringComparison]::OrdinalIgnoreCase) -and [string]::Equals([string]$_.tod_activity_stream_build_id, $todActivityStreamBuildId, [System.StringComparison]::OrdinalIgnoreCase) -and ([string]$_.task_id -match '^TSKCHAT-')) { 1 } else { 0 }
                 }; Descending = $true },
             @{ Expression = { Get-ActivityTimestampTicks -Value $_ }; Descending = $true },
             @{ Expression = { if ([string]::Equals([string]$_.source_path, $directChatActivityStreamPath, [System.StringComparison]::OrdinalIgnoreCase)) { 1 } else { 0 } }; Descending = $true }

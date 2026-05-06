@@ -29,8 +29,8 @@
                                                }
                          },
     "execution_engine":  {
-                             "active":  "codex",
-                             "fallback":  "local",
+                             "active":  "local",
+                             "fallback":  "codex",
                              "allow_fallback":  true,
                              "retry_policy":  {
                                                   "enabled":  false,
@@ -57,7 +57,7 @@
                                                                                   }
                                               },
                              "routing_policy":  {
-                                                    "enabled":  false,
+                                                    "enabled":  true,
                                                     "min_runs":  1,
                                                     "min_success_rate":  75,
                                                     "improvement_margin":  5,

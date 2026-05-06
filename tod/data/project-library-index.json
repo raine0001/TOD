@@ -1,7 +1,7 @@
 {
     "ok":  true,
     "source":  "tod-project-library-index-v1",
-    "generated_at":  "2026-05-04T13:25:30.6310055Z",
+    "generated_at":  "2026-05-05T19:12:58.4132951Z",
     "library_root":  "E:/",
     "registry_path":  "E:/TOD/tod/config/project-registry.json",
     "registered_project_count":  12,
@@ -45,34 +45,34 @@
                                             "notes":  "Runtime/state artifacts are read-only by default; code/docs require review gates."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:29.6167570Z",
+                                           "scanned_at":  "2026-05-05T19:12:57.7685887Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "shared_state/integration_status.json",
                                                                  "shared_state/tod_training_status.latest.json",
-                                                                 "shared_state/tod_execution_readiness_history.latest.json",
-                                                                 "shared_state/tod_catchup_gate_watcher.log.jsonl",
-                                                                 "shared_state/tod_catchup_gate_watcher.latest.json",
-                                                                 "shared_state/tod_recoupling_gate_state.latest.json",
-                                                                 "shared_state/tod_recoupling_gate_state.latest.json.writer.lock.json",
-                                                                 "tod/state/engineering_memory.json",
-                                                                 "tod/data/engineering-memory.json",
-                                                                 "tod/out/tod-ui-crash.log",
                                                                  "shared_state/chatgpt_update.md",
                                                                  "shared_state/chatgpt_update.json",
-                                                                 "shared_state/dev_journal.jsonl",
                                                                  "shared_state/latest_summary.md",
+                                                                 "shared_state/dev_journal.jsonl",
                                                                  "shared_state/shared_development_log_plan.json",
                                                                  "shared_state/next_actions.json",
                                                                  "shared_state/contracts.json",
                                                                  "shared_state/objectives.json",
-                                                                 "tod/data/state.json",
                                                                  "shared_state/current_build_state.json",
                                                                  "shared_state/execution_evidence.json",
                                                                  "shared_state/TOD_INTEGRATION_STATUS_UPLOAD_RECEIPT.latest.json",
                                                                  "shared_state/TOD_MIM_ARM_STATUS_UPLOAD_RECEIPT.latest.json",
                                                                  "shared_state/tod_objective_roadmap.json",
-                                                                 "shared_state/bus_unified_state_multidomain_integration_sample.json"
+                                                                 "shared_state/tod_autonomy_status.latest.json",
+                                                                 "shared_state/tod_catchup_gate_watcher.log.jsonl",
+                                                                 "shared_state/tod_catchup_gate_watcher.latest.json",
+                                                                 "shared_state/tod_recoupling_gate_state.latest.json",
+                                                                 "shared_state/tod_recoupling_gate_state.latest.json.writer.lock.json",
+                                                                 "shared_state/tod_watchdog_drift_guard.log.jsonl",
+                                                                 "shared_state/tod_watchdog_drift_guard.latest.json",
+                                                                 ".git/gk/config",
+                                                                 "shared_state/tod_recovery_watchdog.latest.json",
+                                                                 "shared_state/tod_recovery_watchdog.log.jsonl"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -105,11 +105,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".env",
-                                                                         "count":  1
+                                                                         "count":  2
                                                                      },
                                                                      {
                                                                          "extension":  ".exe",
-                                                                         "count":  47
+                                                                         "count":  53
                                                                      },
                                                                      {
                                                                          "extension":  ".fish",
@@ -137,19 +137,19 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".json",
-                                                                         "count":  2924
+                                                                         "count":  2947
                                                                      },
                                                                      {
                                                                          "extension":  ".jsonl",
-                                                                         "count":  2708
+                                                                         "count":  2714
                                                                      },
                                                                      {
                                                                          "extension":  ".log",
-                                                                         "count":  4652
+                                                                         "count":  4896
                                                                      },
                                                                      {
                                                                          "extension":  ".md",
-                                                                         "count":  74
+                                                                         "count":  77
                                                                      },
                                                                      {
                                                                          "extension":  ".pending",
@@ -161,15 +161,15 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".ps1",
-                                                                         "count":  253
+                                                                         "count":  296
                                                                      },
                                                                      {
                                                                          "extension":  ".py",
-                                                                         "count":  37
+                                                                         "count":  130
                                                                      },
                                                                      {
                                                                          "extension":  ".pyc",
-                                                                         "count":  13
+                                                                         "count":  20
                                                                      },
                                                                      {
                                                                          "extension":  ".sample",
@@ -181,7 +181,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".txt",
-                                                                         "count":  39
+                                                                         "count":  41
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".yaml",
+                                                                         "count":  1
                                                                      },
                                                                      {
                                                                          "extension":  ".yml",
@@ -193,20 +197,20 @@
                                                                      },
                                                                      {
                                                                          "extension":  "\u003cnone\u003e",
-                                                                         "count":  11
+                                                                         "count":  12
                                                                      }
                                                                  ],
                                            "detected_test_artifacts":  [
                                                                            "test_probe_canonical_task_request.py",
+                                                                           "test_reconcile_tod_mim_shared_truth.py",
                                                                            "test_tmp_remote_mim_mim_ui_state.py",
                                                                            "test_tmp_remote_mim_play_routine.py",
                                                                            "test_tmp_remote_mim_tod_ui_state.py",
+                                                                           "test_tod_canonical_latest_artifact_recoupling.py",
                                                                            "test_tod_social_conversation_simulation.py",
-                                                                           "tmp_tod_ui_console_live_test_output.txt",
-                                                                           "tmp_tod_ui_console_live_test_output_utf8.txt",
-                                                                           "scripts/Invoke-TODExecutionSelfTest.ps1",
-                                                                           "scripts/Invoke-TODMimIntegrationLoopTest.ps1",
-                                                                           "scripts/Invoke-TODRepoEditTestRecoverSimulation.ps1"
+                                                                           "test_validate_tod_mim_runtime_packet.py",
+                                                                           "tmp_inspect_remote_latest_live_task_request_signal.ps1",
+                                                                           "tmp_tod_ui_console_live_test_output.txt"
                                                                        ],
                                            "detected_entrypoints":  [
                                                                         "README.md",
@@ -260,34 +264,34 @@
                                             "notes":  "Business logic and workflow routes require explicit test plans before write operations. Feature-scoped verification should start with the AgentMIM admin marketing avatar/video surface before broader app edits. Use the TOD comm_app managed-work command to separate product patch scope from QA/support artifacts before live edits."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:30.0111263Z",
+                                           "scanned_at":  "2026-05-05T19:12:57.9396923Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
-                                                                 ".git/gk/config",
                                                                  ".git/index",
                                                                  "routes/routes.py",
                                                                  "tests/test_forum_post_quality.py",
-                                                                 "routes/admin/__init__.py",
                                                                  ".git/logs/HEAD",
                                                                  ".git/COMMIT_EDITMSG",
                                                                  "instance/flask_session/2029240f6d1128be89ddc32729463129",
-                                                                 "tests/__pycache__/test_forum_post_quality.cpython-311-pytest-8.4.2.pyc",
                                                                  "routes/__pycache__/routes.cpython-311.pyc",
-                                                                 "instance/flask_session/3e2980bc7e17543cbb6a6ffd29ed737b",
-                                                                 ".git/rss_stage.patch",
-                                                                 "app/__pycache__/models.cpython-311.pyc",
-                                                                 "app/__pycache__/__init__.cpython-311.pyc",
-                                                                 "app/models.py",
-                                                                 "migrations/versions/20260420123000_add_forum_image_ratings.py",
-                                                                 "app/__init__.py",
-                                                                 "tests/test_admin_customer_directory.py",
-                                                                 "instance/flask_session/bb8ef7dad0ba444281c2b4eea98d412d",
-                                                                 "instance/flask_session/621b29a08cacdf1aa7d2969997b0e171",
-                                                                 "tests/__pycache__/test_admin_customer_directory.cpython-311-pytest-8.4.2.pyc",
-                                                                 "migrations/versions/20260420110000_add_forum_image_training_profiles.py",
-                                                                 "tmp_forum_training_debug.db",
-                                                                 "tests/__pycache__/test_forum_post_quality.cpython-311.pyc",
-                                                                 "tests/test_agent_tools.py"
+                                                                 "tests/__pycache__/test_forum_post_quality.cpython-311-pytest-8.4.2.pyc",
+                                                                 ".git/gk/config",
+                                                                 "worker/handler.py",
+                                                                 "worker/app.py",
+                                                                 "tmp_live_forum_image_batch.py",
+                                                                 "tmp_forum_image_batch/results.json",
+                                                                 "tmp_forum_image_batch/forum_batch/04101a67c9e646c19cac4babd0537ede.png",
+                                                                 "tmp_forum_image_batch/forum_batch/954c839df3c34782a22f3db1974282d5.png",
+                                                                 "worker/README.md",
+                                                                 "worker/Dockerfile",
+                                                                 "tests/test_marketing_animation_provider.py",
+                                                                 "worker/__pycache__/app.cpython-311.pyc",
+                                                                 "tests/__pycache__/test_marketing_animation_provider.cpython-311-pytest-8.4.2.pyc",
+                                                                 "worker/requirements.txt",
+                                                                 "app/.env",
+                                                                 "__pycache__/config.cpython-311.pyc",
+                                                                 "config.py",
+                                                                 "worker/output/7d66e3411d31404cbca88d5a66c24046.png"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -364,7 +368,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".json",
-                                                                         "count":  18
+                                                                         "count":  19
                                                                      },
                                                                      {
                                                                          "extension":  ".mako",
@@ -400,7 +404,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".png",
-                                                                         "count":  265
+                                                                         "count":  268
                                                                      },
                                                                      {
                                                                          "extension":  ".ps1",
@@ -408,11 +412,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".py",
-                                                                         "count":  265
+                                                                         "count":  266
                                                                      },
                                                                      {
                                                                          "extension":  ".pyc",
-                                                                         "count":  94
+                                                                         "count":  95
                                                                      },
                                                                      {
                                                                          "extension":  ".sample",
@@ -464,7 +468,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  "\u003cnone\u003e",
-                                                                         "count":  97
+                                                                         "count":  56
                                                                      }
                                                                  ],
                                            "detected_test_artifacts":  [
@@ -520,7 +524,7 @@
                                             "notes":  "Prefer advisory mode first; promote to patch mode after baseline test map is stable."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:30.0651447Z",
+                                           "scanned_at":  "2026-05-05T19:12:58.0565810Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -677,7 +681,7 @@
                                             "notes":  "Architecture-sensitive domain; start in read-only and advisory modes."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:30.1866855Z",
+                                           "scanned_at":  "2026-05-05T19:12:58.1388615Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -861,7 +865,7 @@
                                             "notes":  "Hardware-facing changes should require explicit human approval and rollback plans."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:30.2467485Z",
+                                           "scanned_at":  "2026-05-05T19:12:58.1931489Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1110,7 +1114,7 @@
                                             "notes":  "ML model weights, training outputs and frame caches are data-critical and excluded from automated edits. Deployed on Render — validate changes against Dockerfile before push."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:30.4469066Z",
+                                           "scanned_at":  "2026-05-05T19:12:58.2749599Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1348,7 +1352,7 @@
                                             "notes":  "Enable controlled implementation once baseline architecture map is generated."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:30.5015469Z",
+                                           "scanned_at":  "2026-05-05T19:12:58.3069793Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1526,7 +1530,7 @@
                                             "notes":  "Treat as experimental domain; prioritize architecture summaries and drift tracking."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:30.5225123Z",
+                                           "scanned_at":  "2026-05-05T19:12:58.3209874Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "~$ project MIM devl.docx",
@@ -1659,9 +1663,15 @@
                                             "notes":  "Use as pattern library and experiments workspace; avoid unmanaged refactors."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:30.5701551Z",
+                                           "scanned_at":  "2026-05-05T19:12:58.3579272Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
+                                                                 "app development/~$age process.docx",
+                                                                 "app development/Image process.docx",
+                                                                 "accounting/may-jun-2026/render Receipt-2528-9706.pdf",
+                                                                 "accounting/may-jun-2026/Gmail - Your OpenAI API account has been funded.pdf",
+                                                                 "proposals/~$P realestate.docx",
+                                                                 "proposals/EXP realestate.docx",
                                                                  "accounting/may-jun-2026/linkedin marketing invoice_1006.pdf",
                                                                  "Investment deck/~$M Robots LLC capital raise overview.docx",
                                                                  "Investment deck/MIM Core Pitch.docx",
@@ -1680,13 +1690,7 @@
                                                                  "app development/AgentMIM link pyramid by 3 tier backlinks.xlsx",
                                                                  "app development/Link pyramid by 3 tier backlinks.zip",
                                                                  "Training \u0026 content/~$M_TOD Deep Architecture Appendix.docx",
-                                                                 "Training \u0026 content/MIM_TOD whitepaper Mar 2026.pdf",
-                                                                 "Marketing media/agentmim upload commissions.png",
-                                                                 "TOD.md",
-                                                                 "accounting/MAR-APR-2026-DR/github-raine0001-receipt-2026-04-11.pdf",
-                                                                 "accounting/MAR-APR-2026-DR/Render Receipt-2357-3238.pdf",
-                                                                 "Marketing media/push_pull.png",
-                                                                 "accounting/MAR-APR-2026-DR/linked in leads payment Gmail - Your USDC transfer is on its way.pdf"
+                                                                 "Training \u0026 content/MIM_TOD whitepaper Mar 2026.pdf"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -1695,7 +1699,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".docx",
-                                                                         "count":  76
+                                                                         "count":  80
                                                                      },
                                                                      {
                                                                          "extension":  ".drp",
@@ -1719,7 +1723,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".pdf",
-                                                                         "count":  173
+                                                                         "count":  175
                                                                      },
                                                                      {
                                                                          "extension":  ".png",
@@ -1808,7 +1812,7 @@
                                             "notes":  "Primary domain for generated media/content workflows; keep secret-bearing config out of automated edits."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:30.5753350Z",
+                                           "scanned_at":  "2026-05-05T19:12:58.3619934Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1869,7 +1873,7 @@
                                             "notes":  "Dedicated media creation and processing domain for TOD image/video/audio outputs and workflow indexing."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:30.5799980Z",
+                                           "scanned_at":  "2026-05-05T19:12:58.3667659Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1955,7 +1959,7 @@
                                             "notes":  "Android app changes should keep build, lint, and automated dialog regression gates green before publish. Prefer README.md, TOD.md, MIM_ASSIST_SPEC.md, DEVELOPMENT_PLAN.md, and sprint plan docs as the default familiarization path."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-04T13:25:30.6245428Z",
+                                           "scanned_at":  "2026-05-05T19:12:58.4064634Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  ".git/gk/config",

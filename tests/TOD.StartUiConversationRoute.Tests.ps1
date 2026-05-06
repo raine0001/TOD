@@ -291,4 +291,73 @@ param(
             }
         }
     }
+
+    It 'prefers the fresh direct-chat task stream even when the requested objective id is stale' {
+        $artifactRoot = Join-Path $repoRoot ('tod/out/tests/ui-direct-chat-stale-objective-override-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+
+        try {
+            $script:directChatActivityStreamPath = Join-Path $artifactRoot 'tod_direct_chat_activity_stream.latest.json'
+            $script:activityStreamPrimaryPath = Join-Path $artifactRoot 'TOD_ACTIVITY_STREAM.latest.json'
+            $script:activityStreamMirrorPath = Join-Path $artifactRoot 'TOD_ACTIVITY_STREAM.mirror.latest.json'
+            $script:statePath = Join-Path $artifactRoot 'tod-state.json'
+            $script:todActivityStreamBuildId = 'fresh-direct-chat-activity-v1'
+
+            @'
+{
+  "tasks": [
+    {
+      "id": "objective-14-task-79",
+      "objective_id": "objective-14",
+      "title": "Legacy stale task",
+      "status": "blocked",
+      "assigned_executor": "local",
+      "updated_at": "2026-05-06T00:58:00Z",
+      "scope": "/home/testpilot/mim/core/tod_execution_loop.py"
+    }
+  ]
+}
+'@ | Set-Content -Path $script:statePath
+
+            $replyPayload = [pscustomobject]@{
+                generated_at = '2026-05-06T01:10:00Z'
+                command_dispatch = [pscustomobject]@{
+                    created = $true
+                    task_id = 'TSKCHAT-FRESH-LOCAL-002'
+                    objective_id = 'objective-tod-local-first-smoke'
+                    request_id = 'REQ-FRESH-LOCAL-002'
+                    correlation_id = 'CORR-FRESH-LOCAL-002'
+                    title = 'Fresh local-first direct chat task'
+                    detail = 'executor local'
+                    payload = [pscustomobject]@{
+                        activity_event_types = @('executor_classified', 'local_executor_invoked', 'result_published')
+                        executor_classification = [pscustomobject]@{
+                            selected_executor = 'local'
+                            classification_reason = 'validation_is_local_first'
+                            local_supported = $true
+                            codex_allowed = $false
+                        }
+                        run_task = [pscustomobject]@{
+                            decision = 'blocked'
+                            summary = 'Fresh local-first direct chat task is the authoritative visible lane.'
+                        }
+                    }
+                }
+            }
+
+            $null = Finalize-TodConversationReplyPayload -ReplyPayload $replyPayload
+            $scoped = Get-ActivityStreamPayload -ObjectiveId 'objective-14' -Limit 20
+
+            [string]$scoped.source_path | Should Be $script:directChatActivityStreamPath
+            [string]$scoped.task_id | Should Be 'TSKCHAT-FRESH-LOCAL-002'
+            [string]$scoped.objective_id | Should Be 'objective-tod-local-first-smoke'
+            [string]$scoped.task_id | Should Not Be 'objective-14-task-79'
+            [string]$scoped.tod_activity_stream_build_id | Should Be 'fresh-direct-chat-activity-v1'
+        }
+        finally {
+            if (Test-Path -Path $artifactRoot) {
+                Remove-Item -Path $artifactRoot -Recurse -Force
+            }
+        }
+    }
 }

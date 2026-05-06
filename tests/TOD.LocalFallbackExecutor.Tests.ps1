@@ -102,6 +102,8 @@ Describe 'TOD local fallback executor' {
 
         Import-ScriptFunction -ScriptPath $todScript -Name 'Get-UtcNow'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Get-NormalizedObjectiveToken'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-TaskRoutingText'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-TaskRoutingFileHints'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Resolve-TaskCategory'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Convert-EngineResultToNormalizedEnvelope'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Normalize-EngineResultPayload'

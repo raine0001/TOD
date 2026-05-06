@@ -6312,8 +6312,13 @@
       const watchdogState = String(recoveryWatchdog && recoveryWatchdog.state || '').trim();
       const steadyStateStatus = String(steadyState && steadyState.status || '').trim();
       const executionStatus = String(listenerActivity && (listenerActivity.latest_execution_status || listenerActivity.result_status) || '').trim();
-      const currentTaskId = String(shellTask && shellTask.id || bridgeStatus && bridgeStatus.current_task_id || listenerActivity && listenerActivity.latest_request_id || '').trim();
-      const objectiveId = String(shellObjective && shellObjective.id || marker && marker.objective_id || bridgeStatus && bridgeStatus.canonical_mim_objective_id || bridgeStatus && bridgeStatus.task_request_objective_id || selectedObjectiveId || '-').trim() || '-';
+      const latestConversationTaskId = String(window.__todConversationLatestTaskId || '').trim();
+      const activityTaskId = String(lastActivityStreamSnapshot && lastActivityStreamSnapshot.task_id || '').trim();
+      const activityObjectiveId = String(lastActivityStreamSnapshot && lastActivityStreamSnapshot.objective_id || '').trim();
+      const activitySourcePath = String(lastActivityStreamSnapshot && lastActivityStreamSnapshot.source_path || '').trim();
+      const preferDirectActivity = Boolean(activityTaskId && /^TSKCHAT-/i.test(activityTaskId) && /tod_direct_chat_activity_stream\.latest\.json$/i.test(activitySourcePath));
+      const currentTaskId = String(latestConversationTaskId || (preferDirectActivity ? activityTaskId : '') || shellTask && shellTask.id || bridgeStatus && bridgeStatus.current_task_id || listenerActivity && listenerActivity.latest_request_id || '').trim();
+      const objectiveId = String((preferDirectActivity ? activityObjectiveId : '') || shellObjective && shellObjective.id || marker && marker.objective_id || bridgeStatus && bridgeStatus.canonical_mim_objective_id || bridgeStatus && bridgeStatus.task_request_objective_id || selectedObjectiveId || '-').trim() || '-';
       const objectiveTitle = String(shellObjective && shellObjective.title || marker && marker.title || '').trim();
       const objectiveText = buildInlineSystemText([
         objectiveId,
@@ -7875,7 +7880,7 @@
 
       const events = Array.isArray(data.events) ? data.events.slice() : [];
       lastActivityStreamSnapshot = data;
-      activityFeedMetaEl.textContent = `${events.length} events | source ${data.source_path || 'n/a'} | stream ${formatTimestamp(data.stream_generated_at || data.generated_at || '')}`;
+      activityFeedMetaEl.textContent = `${events.length} events | source ${data.source_path || 'n/a'} | build ${data.tod_activity_stream_build_id || 'n/a'} | stream ${formatTimestamp(data.stream_generated_at || data.generated_at || '')}`;
 
       const latestEvent = data.latest_event || (events.length ? events[events.length - 1] : null);
       activityFeedSummaryEl.textContent = latestEvent
@@ -8137,7 +8142,7 @@
       if (latestConversationTaskId) {
         loadActivityStream({ objectiveId: '', taskId: latestConversationTaskId });
       } else {
-        loadActivityStream({ objectiveId: selectedObjectiveId || '' });
+        loadActivityStream();
       }
       try {
         const params = appendOperatorChatValidationHarness(new URLSearchParams());
@@ -11069,7 +11074,7 @@
           loadActivityStream({ objectiveId: '', taskId: latestConversationTaskId });
           return;
         }
-        loadActivityStream({ objectiveId: selectedObjectiveId || '' });
+        loadActivityStream();
       });
     }
     if (todConversationViewActivityBtnEl) {

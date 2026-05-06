@@ -4364,7 +4364,7 @@ function Sync-LocalTaskFromRequest {
             dependencies = @($dependencies)
             acceptance_criteria = @($acceptanceCriteria)
             status = 'planned'
-            assigned_executor = 'codex'
+            assigned_executor = 'local'
             source = 'mim_request_sync'
             correlation_id = if ($Request.PSObject.Properties['correlation_id']) { [string]$Request.correlation_id } else { '' }
             priority = $priority
@@ -4500,7 +4500,7 @@ function Sync-LocalTaskMirror {
             dependencies = @()
             acceptance_criteria = @()
             status = $Status
-            assigned_executor = 'codex'
+            assigned_executor = 'local'
             source = $Source
             correlation_id = $CorrelationId
             created_at = $updatedAt
