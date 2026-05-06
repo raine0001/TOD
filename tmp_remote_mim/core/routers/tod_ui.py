@@ -782,6 +782,25 @@ def _same_objective(left: Any, right: Any) -> bool:
     return bool(left_token and right_token and left_token == right_token)
 
 
+def _extract_objective_from_prefix(message: str) -> str:
+    """Extract objective name from OBJECTIVE: prefix in message.
+
+    Handles user-issued chat commands of the form:
+        OBJECTIVE: TOD-NEW-OBJECTIVE-NAME  [optional Goal: / Title: etc.]
+    Returns the first token after OBJECTIVE:, or empty string if not found.
+    """
+    text = str(message or "").strip()
+    m = re.match(r"(?i)^\s*OBJECTIVE\s*:\s*(.+)", text)
+    if not m:
+        return ""
+    name_raw = m.group(1).strip().splitlines()[0].strip()
+    # Strip any trailing labeled-field suffix (e.g. "Goal:", "Title:", "Mission:")
+    name_raw = re.split(r"\s+(?:GOAL|TITLE|MISSION|PRIMARY\s+OUTCOME)\s*:", name_raw, flags=re.IGNORECASE)[0].strip()
+    # Take the first whitespace-delimited token as the objective identifier
+    name_token = name_raw.split()[0] if name_raw else ""
+    return name_token or ""
+
+
 def _message_declares_new_objective(message: str, authoritative_objective_id: str) -> bool:
     """Return True when message opens with OBJECTIVE: <name> that differs from the active objective.
 
@@ -789,15 +808,7 @@ def _message_declares_new_objective(message: str, authoritative_objective_id: st
         OBJECTIVE: TOD-NEW-OBJECTIVE-NAME  [optional Goal: / Title: etc.]
     without requiring an explicit OBJECTIVE_ID: label.
     """
-    text = str(message or "").strip()
-    m = re.match(r"(?i)^\s*OBJECTIVE\s*:\s*(.+)", text)
-    if not m:
-        return False
-    name_raw = m.group(1).strip().splitlines()[0].strip()
-    # Strip any trailing labeled-field suffix (e.g. "Goal:", "Title:", "Mission:")
-    name_raw = re.split(r"\s+(?:GOAL|TITLE|MISSION|PRIMARY\s+OUTCOME)\s*:", name_raw, flags=re.IGNORECASE)[0].strip()
-    # Take the first whitespace-delimited token as the objective identifier
-    name_token = name_raw.split()[0] if name_raw else ""
+    name_token = _extract_objective_from_prefix(message)
     if not name_token:
         return False
     if not authoritative_objective_id:
@@ -2436,6 +2447,9 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
     quick_facts = state.get("quick_facts") if isinstance(state.get("quick_facts"), dict) else {}
     authoritative_objective_id, authoritative_task_id = _resolve_operator_action_ids(state)
     prompt_objective_id = _extract_labeled_prompt_value(message, "OBJECTIVE_ID")
+    # If OBJECTIVE_ID: label not found, try extracting from OBJECTIVE: prefix
+    if not prompt_objective_id:
+        prompt_objective_id = _extract_objective_from_prefix(message)
     prompt_title = _extract_labeled_prompt_value(message, "TITLE")
     prompt_mission = _extract_labeled_prompt_value(message, "MISSION")
     prompt_primary_outcome = _extract_labeled_prompt_value(message, "PRIMARY OUTCOME")
@@ -2948,6 +2962,9 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
     quick_facts = state.get("quick_facts") if isinstance(state.get("quick_facts"), dict) else {}
     authoritative_objective_id, authoritative_task_id = _resolve_operator_action_ids(state)
     prompt_objective_id = _extract_labeled_prompt_value(message, "OBJECTIVE_ID")
+    # If OBJECTIVE_ID: label not found, try extracting from OBJECTIVE: prefix
+    if not prompt_objective_id:
+        prompt_objective_id = _extract_objective_from_prefix(message)
     prompt_title = _extract_labeled_prompt_value(message, "TITLE")
     prompt_mission = _extract_labeled_prompt_value(message, "MISSION")
     prompt_primary_outcome = _extract_labeled_prompt_value(message, "PRIMARY OUTCOME")
