@@ -293,7 +293,8 @@ function Resolve-DirectChatTaskCategory {
     $hasTestHint = $normalized -match '(tests/[a-z0-9_./-]+\.(?:ps1|py|md)|\bpester\b|\bpytest\b|\bunittest\b|\btest\b)'
     $hasCodePathHint = $normalized -match '(scripts/[a-z0-9_./-]+\.(?:ps1|psm1|py|json|md|txt)|tmp_remote_mim/(?:core|tests)/[a-z0-9_./-]+\.(?:py|json|md|txt)|tod/out/tests/[a-z0-9_./-]+\.txt|\.ps1\b|\.py\b|\.txt\b)'
     $hasChangeHint = $normalized -match '\b(update|patch|edit|replace|modify|write|append|insert|refactor|implement|fix)\b'
-    $hasDiagnosticHint = $normalized -match '\b(diagnos|debug|inspect|investigat|validate|verify|check|search|locate|find|trace)\b'
+    $hasValidationHint = $normalized -match '\b(validate|validation|verify|verification|regression|smoke test|unit test|integration test|lint|compile|typecheck|publish validation only)\b'
+    $hasInspectionHint = $normalized -match '\b(diagnos|debug|inspect|inspection|investigat|check|search|locate|find|scan|trace|status|query|analy[sz]e|review evidence)\b'
 
     if ($hasDocsHint) {
         return 'docs_change'
@@ -307,13 +308,24 @@ function Resolve-DirectChatTaskCategory {
     if ($hasCodePathHint -and $hasChangeHint) {
         return 'code_change'
     }
-    if ($hasDiagnosticHint -and -not $hasChangeHint) {
+    if ($hasValidationHint -and -not $hasChangeHint) {
         return 'validation'
+    }
+    if ($hasInspectionHint -and -not $hasChangeHint) {
+        return 'inspection'
     }
 
     $routeAction = if ($IntentRoute -and $IntentRoute.PSObject.Properties['action']) { ([string]$IntentRoute.action).ToLowerInvariant() } else { '' }
     if ($routeAction -match 'implement|patch|fix|update|write') {
-        return 'chat_execution'
+        if ($hasCodePathHint) {
+            return 'code_change'
+        }
+        if ($hasValidationHint) {
+            return 'validation'
+        }
+        if ($hasInspectionHint) {
+            return 'inspection'
+        }
     }
 
     return 'chat_execution'

@@ -438,6 +438,7 @@ function Update-DirectChatActivityStream {
     $title = if ($commandDispatch.PSObject.Properties['title']) { [string]$commandDispatch.title } else { '' }
     $taskCategory = if ($commandDispatch.PSObject.Properties['task_category']) { [string]$commandDispatch.task_category } else { '' }
     $runTask = if ($dispatchPayload -and $dispatchPayload.PSObject.Properties['run_task']) { $dispatchPayload.run_task } else { $null }
+    $executorClassification = if ($dispatchPayload -and $dispatchPayload.PSObject.Properties['executor_classification']) { $dispatchPayload.executor_classification } else { $null }
     $runTaskDecision = if ($runTask -and $runTask.PSObject.Properties['decision']) { [string]$runTask.decision } else { '' }
     $runTaskSummary = if ($runTask -and $runTask.PSObject.Properties['summary']) { [string]$runTask.summary } else { '' }
     $engineInvocation = if ($runTask -and $runTask.PSObject.Properties['engine_invocation']) { $runTask.engine_invocation } else { $null }
@@ -474,6 +475,30 @@ function Update-DirectChatActivityStream {
             source = 'tod.ui.direct_chat'
             surface = 'tod-conversation'
         })
+
+    if ($null -ne $executorClassification) {
+        $eventList.Add([pscustomobject]@{
+                timestamp = $generatedAt
+                event_type = 'executor_classified'
+                objective_id = $objectiveId
+                task_id = $taskId
+                request_id = $requestId
+                correlation_id = $correlationId
+                title = $title
+                step = 'task_dispatch'
+                status = 'completed'
+                message = ('Direct TOD conversation classified the bounded task for executor {0}.' -f [string]$executorClassification.selected_executor)
+                details = [pscustomobject]@{
+                    task_category = $taskCategory
+                    selected_executor = if ($executorClassification.PSObject.Properties['selected_executor']) { [string]$executorClassification.selected_executor } else { '' }
+                    classification_reason = if ($executorClassification.PSObject.Properties['classification_reason']) { [string]$executorClassification.classification_reason } else { '' }
+                    local_supported = if ($executorClassification.PSObject.Properties['local_supported']) { [bool]$executorClassification.local_supported } else { $false }
+                    codex_allowed = if ($executorClassification.PSObject.Properties['codex_allowed']) { [bool]$executorClassification.codex_allowed } else { $false }
+                }
+                source = 'tod.ui.direct_chat'
+                surface = 'tod-conversation'
+            })
+    }
 
     if ($isLocalExecution) {
         $eventList.Add([pscustomobject]@{

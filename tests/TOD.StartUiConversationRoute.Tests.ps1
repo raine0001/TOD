@@ -98,7 +98,13 @@ param(
                     title = 'Run direct-chat local executor smoke task'
                     detail = 'executor local'
                     payload = [pscustomobject]@{
-                        activity_event_types = @('local_executor_invoked', 'local_executor_completed', 'result_published')
+                        activity_event_types = @('executor_classified', 'local_executor_invoked', 'local_executor_completed', 'result_published')
+                        executor_classification = [pscustomobject]@{
+                            selected_executor = 'local'
+                            classification_reason = 'validation_is_local_first'
+                            local_supported = $true
+                            codex_allowed = $false
+                        }
                         run_task = [pscustomobject]@{
                             decision = 'pass'
                             summary = 'Local smoke task completed and published bounded result evidence.'
@@ -115,10 +121,18 @@ param(
             [string]$scoped.source_path | Should Be $script:directChatActivityStreamPath
             [string]$scoped.tod_activity_stream_build_id | Should Be 'fresh-direct-chat-activity-v1'
             ($events -contains 'chat_task_created') | Should Be $true
+            ($events -contains 'executor_classified') | Should Be $true
             ($events -contains 'local_executor_invoked') | Should Be $true
             ($events -contains 'local_executor_completed') | Should Be $true
             ($events -contains 'validation_passed') | Should Be $true
             ($events -contains 'result_published') | Should Be $true
+
+            $classificationEvent = @($scoped.events | Where-Object { [string]$_.event_type -eq 'executor_classified' } | Select-Object -Last 1)
+            $classificationEvent = if (@($classificationEvent).Count -gt 0) { $classificationEvent[0] } else { $null }
+            $null -ne $classificationEvent | Should Be $true
+            [string]$classificationEvent.details.selected_executor | Should Be 'local'
+            [bool]$classificationEvent.details.local_supported | Should Be $true
+            [bool]$classificationEvent.details.codex_allowed | Should Be $false
         }
         finally {
             if (Test-Path -Path $artifactRoot) {

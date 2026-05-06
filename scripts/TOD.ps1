@@ -6097,45 +6097,58 @@ function Resolve-LocalExecutionSuitability {
     $reuse = Get-LocalExecutionReuseSignal -State $State -TaskCategory $taskCategory -FileHints $fileHints
     $singleFileHint = (@($fileHints).Count -eq 1)
     $boundedEditHint = ($text -match 'update|patch|edit|replace|append|write|modify|inspect|validate|verify|check|search|locate|find')
-    $highRiskHint = ($text -match 'deploy|push|remote host|ssh|service restart|systemctl|daemon|azure|kubernetes|database|migration|schema|provision|commit|branch|merge|publish')
+    $highRiskHint = ($text -match 'deploy|push|remote host|ssh|service restart|systemctl|daemon|azure|kubernetes|database|migration|schema|provision|commit|branch|merge')
+    $explicitCodexRequest = ($text -match '\b(use codex|codex only|route to codex|handoff to codex|send to codex)\b')
+    $avoidCodexHint = ($text -match '\b(do not call codex|without codex|local[- ]first|local only|keep local)\b')
 
     $classification = 'codex_required'
     $reason = 'default_codex_required'
+    $codexAllowed = $false
+    $fallbackReasonCodes = @()
+    $boundedLocalSlice = $false
 
     if ($highRiskHint) {
         $classification = 'codex_required'
         $reason = 'high_risk_or_remote_scope'
+        $codexAllowed = $true
     }
     else {
         switch ($taskCategory) {
             'docs_change' {
                 $classification = 'local_supported'
                 $reason = 'bounded_docs_change'
+                $boundedLocalSlice = $true
             }
             'config_change' {
                 $classification = 'local_supported'
                 $reason = 'bounded_config_change'
+                $boundedLocalSlice = $true
             }
             'inspection' {
                 $classification = 'local_supported'
                 $reason = 'inspection_is_local_first'
+                $boundedLocalSlice = $true
             }
             'validation' {
                 $classification = 'local_supported'
                 $reason = 'validation_is_local_first'
+                $boundedLocalSlice = $true
             }
             'review_only' {
                 $classification = 'local_supported'
                 $reason = 'review_is_local_first'
+                $boundedLocalSlice = $true
             }
             'sync_check' {
                 $classification = 'local_supported'
                 $reason = 'sync_checks_are_local_first'
+                $boundedLocalSlice = $true
             }
             'code_change' {
                 if ($singleFileHint -and $boundedEditHint) {
                     $classification = 'local_supported'
                     $reason = 'single_file_bounded_code_change'
+                    $boundedLocalSlice = $true
                 }
                 else {
                     $classification = 'local_possible'
@@ -6160,6 +6173,23 @@ function Resolve-LocalExecutionSuitability {
     if ([bool]$reuse.matched -and $classification -eq 'local_possible') {
         $classification = 'local_supported'
         $reason = 'local_execution_memory_reuse'
+        $boundedLocalSlice = $true
+    }
+
+    if ($explicitCodexRequest) {
+        $codexAllowed = $true
+    }
+    elseif (-not $avoidCodexHint) {
+        if ($classification -eq 'codex_required') {
+            $codexAllowed = $true
+        }
+        elseif ($classification -eq 'local_possible' -and -not $boundedLocalSlice -and @($fileHints).Count -eq 0) {
+            $codexAllowed = $true
+        }
+    }
+
+    if ($codexAllowed -and $classification -ne 'codex_required') {
+        $fallbackReasonCodes = @('blocked_missing_capability')
     }
 
     return [pscustomobject]@{
@@ -6168,6 +6198,9 @@ function Resolve-LocalExecutionSuitability {
         reason = $reason
         file_hints = @($fileHints)
         local_reuse = $reuse
+        local_supported = @('local_supported', 'local_possible') -contains $classification
+        codex_allowed = [bool]$codexAllowed
+        fallback_reason_codes = @($fallbackReasonCodes)
     }
 }
 
@@ -6995,6 +7028,7 @@ function Resolve-ExecutionEngineConfig {
                     elseif ($supported -contains 'codex' -and $active -ne 'codex') {
                         $fallback = 'codex'
                     }
+                    $allowFallback = [bool]$taskRouting.codex_allowed
                     $routingApplied = $true
                     $routingReason = 'local_suitability_local_supported'
                     $selectionReason = 'Task matched local_supported suitability, so local execution is selected before any Codex handoff.'
@@ -7016,7 +7050,7 @@ function Resolve-ExecutionEngineConfig {
                     elseif ($supported -contains 'codex' -and $active -ne 'codex') {
                         $fallback = 'codex'
                     }
-                    $allowFallback = $true
+                    $allowFallback = [bool]$taskRouting.codex_allowed
                     $routingApplied = $true
                     $routingReason = 'local_suitability_local_possible'
                     $selectionReason = 'Task matched local_possible suitability, so TOD will try local execution before Codex fallback.'
@@ -7406,6 +7440,7 @@ function Resolve-ExecutionEngineConfig {
         active = $active
         fallback = $fallback
         allow_fallback = $allowFallback
+        fallback_reason_codes = @($taskRouting.fallback_reason_codes)
         retry_policy = $Config.execution_engine.retry_policy
         supported = @($supported)
         routing = [pscustomobject]@{
@@ -8605,6 +8640,10 @@ function Invoke-ExecutionEngine {
     $mustFallbackByStatus = $false
     $primaryAttempt = Invoke-OneEngineWithRetry -EngineName $selected -Ctx $context
     $attemptDetails += @($primaryAttempt.attempts)
+    $primaryReasonCode = ''
+    if ($primaryAttempt.result -and $primaryAttempt.result.PSObject.Properties['reason_code'] -and -not [string]::IsNullOrWhiteSpace([string]$primaryAttempt.result.reason_code)) {
+        $primaryReasonCode = ([string]$primaryAttempt.result.reason_code).ToLowerInvariant()
+    }
     if ($primaryAttempt.success) {
         $engineResult = $primaryAttempt.result
     }
@@ -8618,7 +8657,15 @@ function Invoke-ExecutionEngine {
 
     if ($mustFallbackByStatus) {
         $fallback = [string]$EngineConfig.fallback
-        $canFallback = [bool]$EngineConfig.allow_fallback -and -not [string]::IsNullOrWhiteSpace($fallback) -and ($fallback -ne $selected)
+        $fallbackReasonCodes = if ($EngineConfig.PSObject.Properties['fallback_reason_codes'] -and $null -ne $EngineConfig.fallback_reason_codes) {
+            @($EngineConfig.fallback_reason_codes | ForEach-Object { ([string]$_).ToLowerInvariant() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+        }
+        else {
+            @()
+        }
+        $requiresFallbackReasonCode = @($fallbackReasonCodes).Count -gt 0
+        $fallbackReasonAllowed = (-not $requiresFallbackReasonCode) -or ((-not [string]::IsNullOrWhiteSpace($primaryReasonCode)) -and ($fallbackReasonCodes -contains $primaryReasonCode))
+        $canFallback = [bool]$EngineConfig.allow_fallback -and -not [string]::IsNullOrWhiteSpace($fallback) -and ($fallback -ne $selected) -and $fallbackReasonAllowed
         if ($canFallback) {
             $attempted += $fallback
             $fallbackAttempt = Invoke-OneEngineWithRetry -EngineName $fallback -Ctx $context
@@ -8639,6 +8686,9 @@ function Invoke-ExecutionEngine {
         elseif ($null -eq $engineResult) {
             if ($primaryAttempt.result -and $primaryAttempt.result.PSObject.Properties['reason_code'] -and [string]$primaryAttempt.result.reason_code -eq 'codex_wrapper_only_no_execution') {
                 $engineResult = New-ExecutionEngineBlockedResult -Task $Task -TaskId $TaskId -PackagePath $PackagePath -PrimaryResult $primaryAttempt.result -FallbackResult $null -AttemptedEngines @($attempted) -AttemptDetails @($attemptDetails)
+            }
+            elseif ($primaryAttempt.result) {
+                $engineResult = $primaryAttempt.result
             }
             else {
                 throw "Execution engine '$selected' failed and fallback is unavailable. $fallbackReason"
@@ -10259,11 +10309,47 @@ function Invoke-ExecuteChatTaskRequest {
     [void]$activityEventTypeList.Add('execution_started')
     $runTaskPayload = if ($runTask -and $runTask.PSObject.Properties['payload']) { $runTask.payload } else { $null }
     $engineInvocationPayload = if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['engine_invocation']) { $runTaskPayload.engine_invocation } else { $null }
+    $routingDecisionPayload = if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['routing_decision_preinvoke'] -and $runTaskPayload.routing_decision_preinvoke) {
+        $runTaskPayload.routing_decision_preinvoke
+    }
+    elseif ($runTaskPayload -and $runTaskPayload.PSObject.Properties['routing_decision'] -and $runTaskPayload.routing_decision) {
+        $runTaskPayload.routing_decision
+    }
+    else {
+        $null
+    }
+    $routingSuitabilityPayload = if ($routingDecisionPayload -and $routingDecisionPayload.PSObject.Properties['routing'] -and $routingDecisionPayload.routing -and $routingDecisionPayload.routing.PSObject.Properties['suitability']) {
+        $routingDecisionPayload.routing.suitability
+    }
+    else {
+        $null
+    }
     $activeEngineName = if ($engineInvocationPayload -and $engineInvocationPayload.PSObject.Properties['active_engine']) { [string]$engineInvocationPayload.active_engine } else { '' }
     $engineResultPayload = if ($engineInvocationPayload -and $engineInvocationPayload.PSObject.Properties['result']) { $engineInvocationPayload.result } else { $null }
+    $executorClassificationPayload = $null
+    $selectedExecutorForEvent = if (-not [string]::IsNullOrWhiteSpace($activeEngineName)) {
+        $activeEngineName
+    }
+    elseif ($routingDecisionPayload -and $routingDecisionPayload.PSObject.Properties['selected_engine'] -and -not [string]::IsNullOrWhiteSpace([string]$routingDecisionPayload.selected_engine)) {
+        [string]$routingDecisionPayload.selected_engine
+    }
+    else {
+        $resolvedAssignedExecutor
+    }
+    if (-not [string]::IsNullOrWhiteSpace($selectedExecutorForEvent)) {
+        $executorClassificationPayload = [pscustomobject]@{
+            selected_executor = $selectedExecutorForEvent
+            classification_reason = if ($routingDecisionPayload -and $routingDecisionPayload.PSObject.Properties['selection_reason'] -and -not [string]::IsNullOrWhiteSpace([string]$routingDecisionPayload.selection_reason)) { [string]$routingDecisionPayload.selection_reason } elseif ($routingSuitabilityPayload -and $routingSuitabilityPayload.PSObject.Properties['reason']) { [string]$routingSuitabilityPayload.reason } else { '' }
+            local_supported = if ($routingSuitabilityPayload -and $routingSuitabilityPayload.PSObject.Properties['local_supported']) { [bool]$routingSuitabilityPayload.local_supported } else { [string]::Equals($selectedExecutorForEvent, 'local', [System.StringComparison]::OrdinalIgnoreCase) }
+            codex_allowed = if ($routingSuitabilityPayload -and $routingSuitabilityPayload.PSObject.Properties['codex_allowed']) { [bool]$routingSuitabilityPayload.codex_allowed } else { $false }
+        }
+    }
     $localAttempted = $false
     if ($engineInvocationPayload -and $engineInvocationPayload.PSObject.Properties['attempted_engines']) {
         $localAttempted = (@($engineInvocationPayload.attempted_engines | ForEach-Object { ([string]$_).ToLowerInvariant() }) -contains 'local')
+    }
+    if ($null -ne $executorClassificationPayload) {
+        [void]$activityEventTypeList.Add('executor_classified')
     }
     if ([string]::Equals($activeEngineName, 'local', [System.StringComparison]::OrdinalIgnoreCase) -or $localAttempted) {
         [void]$activityEventTypeList.Add('local_executor_invoked')
@@ -10302,6 +10388,7 @@ function Invoke-ExecuteChatTaskRequest {
         request_artifact_path = $primaryRequestArtifactPath
         request_artifact_paths = $requestArtifactPathList
         activity_event_types = @($activityEventTypeList)
+        executor_classification = $executorClassificationPayload
         superseded_claim = $supersededLane
         task_mirror = $mirror
         package_path = $packagePath

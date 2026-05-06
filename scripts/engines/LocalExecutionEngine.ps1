@@ -1462,6 +1462,7 @@ function Invoke-LocalExecutionEngine {
             message = "bounded_local_scope_not_matched"
             generated_at = (Get-Date).ToUniversalTime().ToString("o")
         }
+        $result | Add-Member -NotePropertyName reason_code -NotePropertyValue 'blocked_missing_capability' -Force
         $result = Complete-EngineExecutionResult -Result $result -Status "not_implemented"
     }
 

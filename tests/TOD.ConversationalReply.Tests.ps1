@@ -534,6 +534,10 @@ STOP CONDITION: TOD direct chat routes the bounded task through LocalExecutionEn
             [bool]$result.ok | Should Be $true
             [string]$result.command_dispatch.task_category | Should Be 'code_change'
             [bool]$result.command_dispatch.codex_needed | Should Be $false
+            (@($result.command_dispatch.payload.activity_event_types) -contains 'executor_classified') | Should Be $true
+            [string]$result.command_dispatch.payload.executor_classification.selected_executor | Should Be 'local'
+            [bool]$result.command_dispatch.payload.executor_classification.local_supported | Should Be $true
+            [bool]$result.command_dispatch.payload.executor_classification.codex_allowed | Should Be $false
             [string]$runTask.engine_invocation.active_engine | Should Be 'local'
             [string]$runTask.decision | Should Be 'pass'
             [bool]$runTask.post_completion_tail_skipped | Should Be $true
@@ -550,6 +554,73 @@ STOP CONDITION: TOD direct chat routes the bounded task through LocalExecutionEn
             if (Test-Path -Path $absolutePath) {
                 Remove-Item -Path $absolutePath -Force
             }
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'keeps bounded validation-only direct-chat objectives local-first without codex fallback' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        $artifactBackup = Backup-ChatDispatchArtifacts
+        try {
+            Write-JsonNoBom -PathValue $fixture.BuildStatePath -Payload ([pscustomobject]@{
+                status = 'active'
+                task = 'Direct chat validation dispatch'
+            })
+            Write-JsonNoBom -PathValue $fixture.ObjectivesPath -Payload ([pscustomobject]@{
+                objectives = @()
+            })
+            Write-JsonNoBom -PathValue $fixture.MaintenancePath -Payload ([pscustomobject]@{
+                overall_status = 'healthy'
+                overall_severity = 'info'
+            })
+            Write-JsonNoBom -PathValue $fixture.WatchdogPath -Payload ([pscustomobject]@{
+                state = 'healthy'
+            })
+            Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{
+                enabled = $true
+            })
+            Write-ExecutionReadyTodConfig -Fixture $fixture
+            Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
+                objectives = @()
+                tasks = @()
+                execution_results = @()
+                review_decisions = @()
+                journal = @()
+                engine_performance = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_decisions = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_feedback = [pscustomobject]@{ learned_weights = [pscustomobject]@{}; sample_size = 0; version = 'feedback_v1'; updated_at = '' }
+                sync_state = [pscustomobject]@{ expected_contract_version = ''; expected_schema_version = ''; local_repo_signature = ''; cached_manifest = $null; last_comparison = $null; last_sync_decision = ''; last_sync_code = ''; compared_at = '' }
+            })
+
+            $query = @'
+OBJECTIVE: TOD-LOCAL-FIRST-SMOKE
+TASK: Inspect scripts/TOD.ps1 and publish validation only. Do not call Codex.
+ACCEPTANCE: Route locally first, record executor classification, and return the bounded validation result without Codex fallback.
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+
+            $eventTypes = @($result.command_dispatch.payload.activity_event_types | ForEach-Object { [string]$_ })
+            $runTask = $result.command_dispatch.payload.run_task
+            $attemptedEngines = @($runTask.engine_invocation.attempted_engines | ForEach-Object { [string]$_ })
+
+            [bool]$result.ok | Should Be $true
+            [string]$result.command_dispatch.task_category | Should Be 'validation'
+            [bool]$result.command_dispatch.codex_needed | Should Be $false
+            [string]$result.command_dispatch.payload.executor_classification.selected_executor | Should Be 'local'
+            [bool]$result.command_dispatch.payload.executor_classification.local_supported | Should Be $true
+            [bool]$result.command_dispatch.payload.executor_classification.codex_allowed | Should Be $false
+            ($eventTypes -contains 'executor_classified') | Should Be $true
+            [string]$runTask.engine_invocation.active_engine | Should Be 'local'
+            [int]@($attemptedEngines).Count | Should Be 1
+            [string]$attemptedEngines[0] | Should Be 'local'
+        }
+        finally {
+            Restore-ChatDispatchArtifacts -Records $artifactBackup
             if ($fixture -and (Test-Path -Path $fixture.Base)) {
                 Remove-Item -Path $fixture.Base -Recurse -Force
             }
