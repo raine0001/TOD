@@ -6695,17 +6695,17 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     <header class="hero mim-hero">
       <div class="console-nav">
         <a class="console-link utility" href="/"><span>Public Home</span></a>
-        <a class="console-link active" href="/mim"><span id="mimConsoleLight" class="console-nav-light"></span><span>MIM Primary Operator Surface</span></a>
-        <a class="console-link" href="/tod"><span id="todConsoleLight" class="console-nav-light"></span><span>TOD Console</span></a>
+        <a class="console-link active" href="/mim"><span id="mimConsoleLight" class="console-nav-light"></span><span>MIM Coordination Console</span></a>
+        <a class="console-link" href="/tod"><span id="todConsoleLight" class="console-nav-light"></span><span>TOD Execution Console</span></a>
         <a class="console-link utility" href="/chat"><span>Direct Chat</span></a>
         <button id="settingsBtn" class="console-link utility" type="button"><span>Settings</span></button>
         <a class="console-link utility" href="/mim/logout"><span>Logout</span></a>
       </div>
-      <div class="surface-kicker">MIM Primary Operator Surface</div>
+      <div class="surface-kicker">MIM Coordination Console</div>
       <div class="hero-row">
         <div class="hero-copy">
           <h1 id="mimIcon" class="mim-icon">MIM</h1>
-          <div class="summary">Persistent operator conversation, voice, camera, and TOD bridge telemetry stay on this surface.</div>
+          <div class="summary">Persistent coordination conversation, training guidance, and TOD handoff telemetry stay on this surface.</div>
         </div>
         <div class="hero-status-cluster">
           <div id="buildTag" class="status-chip subtle">UI_BUILD_ID = unified-console-recovery-v1</div>
@@ -6720,7 +6720,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
           <button id="debugModeBtn" class="mode-chip" type="button">Debug</button>
         </div>
         <div class="thread-tools">
-          <div id="threadStatusChip" class="status-chip subtle">Thread loading…</div>
+          <div id="threadStatusChip" class="status-chip subtle">Conversation loading…</div>
           <div id="voiceHintChip" class="status-chip subtle">Voice replies stay in this thread.</div>
           <button id="chatClearBtn" class="thread-clear" type="button">Clear View</button>
         </div>
@@ -6773,11 +6773,11 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     <div class="system-activity-banner">
       <div class="system-activity-banner-head">
         <div class="system-activity-banner-copy">
-          <div class="surface-kicker">System Activity Status</div>
-          <strong id="systemActivityHeadlineText">Loading…</strong>
-          <div id="systemActivitySummaryText" class="system-activity-banner-summary">Checking whether MIM is actually progressing work right now…</div>
+          <div class="surface-kicker">Agent Communication Status</div>
+          <strong id="systemActivityHeadlineText">Loading communication timeline…</strong>
+          <div id="systemActivitySummaryText" class="system-activity-banner-summary">Checking request, acknowledgement, execution, and result consumption across TOD and MIM…</div>
         </div>
-        <div id="systemActivityBadge" class="status-chip subtle" data-tone="warn">Checking…</div>
+        <div id="systemActivityBadge" class="status-chip subtle" data-tone="warn">Syncing…</div>
       </div>
       <div class="progress-meter activity-truth-meter" aria-hidden="true">
         <div id="systemActivityFill" class="progress-meter-fill"></div>
@@ -6796,7 +6796,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         <div id="coordinationStateCard" class="activity-feed-card" data-tone="warn">
           <div class="activity-feed-head">
             <div>
-              <div class="activity-feed-label">TOD Coordination</div>
+              <div class="activity-feed-label">TOD Acknowledgement</div>
               <strong id="coordinationStateText">Checking…</strong>
             </div>
           </div>
@@ -6836,17 +6836,17 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       </div>
       <div class="system-relation-grid">
         <div class="status-tile">
-          <span>Objective Alignment</span>
+          <span>Task Request</span>
           <strong id="relationObjectiveText">Loading…</strong>
           <div id="relationObjectiveDetailText" class="status-subtext">Checking MIM and TOD objective agreement…</div>
         </div>
         <div class="status-tile">
-          <span>Bridge Health</span>
+          <span>TOD Acknowledgement</span>
           <strong id="relationBridgeText">Loading…</strong>
           <div id="relationBridgeDetailText" class="status-subtext">Checking handoff bridge health…</div>
         </div>
         <div class="status-tile">
-          <span>Execution Flow</span>
+          <span>Execution State</span>
           <strong id="relationFlowText">Loading…</strong>
           <div id="relationFlowDetailText" class="status-subtext">Checking whether work is flowing or blocked…</div>
         </div>
@@ -6856,7 +6856,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
           <div id="relationHandoffDetailText" class="status-subtext">Checking last request or bridge receive…</div>
         </div>
         <div class="status-tile">
-          <span>Last Feedback</span>
+          <span>Result Consumption</span>
           <strong id="relationFeedbackText">Loading…</strong>
           <div id="relationFeedbackDetailText" class="status-subtext">Checking last TOD feedback or completion…</div>
         </div>
@@ -7329,7 +7329,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     function renderSystemActivityTruth(systemActivity = {}) {
       const state = safeText(systemActivity.status_code || systemActivity.state, 'idle').toLowerCase();
       const headline = safeText(systemActivity.headline || systemActivity.label, 'IDLE - healthy, no live task right now');
-      const summary = safeText(systemActivity.summary, 'No active work is currently required.');
+      const summary = safeText(systemActivity.summary, 'No active communication work is currently required.');
       const shouldBeWorking = Boolean(systemActivity.should_be_working);
       const lastActivity = safeText(systemActivity.last_activity_at || systemActivity.mim_last_activity_at || systemActivity.tod_last_activity_at);
       const lastTaskProgress = safeText(systemActivity.last_task_progress_at);
@@ -7340,12 +7340,12 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       const stalenessDetail = safeText(systemActivity.staleness_detail, 'No current staleness evidence.');
       const relation = (systemActivity.relation && typeof systemActivity.relation === 'object') ? systemActivity.relation : {};
       const relationObjective = safeText(relation.objective_alignment, 'Aligned');
-      const relationObjectiveDetail = safeText(relation.objective_alignment_detail, 'MIM and TOD agree on the active objective.');
+      const relationObjectiveDetail = safeText(relation.objective_alignment_detail, 'MIM and TOD agree on the active request context.');
       const relationBridge = safeText(relation.bridge_health, 'Healthy');
-      const relationBridgeDetail = safeText(relation.summary, 'The MIM↔TOD bridge looks healthy.');
-      const relationFlow = safeText(relation.execution_flow, 'Flowing');
+      const relationBridgeDetail = safeText(relation.summary, 'The MIM/TOD acknowledgement lane looks healthy.');
+      const relationFlow = safeText(relation.execution_flow, 'Running');
       const relationFlowDetail = shouldBeWorking
-        ? 'Work is expected to move through the current objective.'
+        ? 'Execution is expected to move through the current request.'
         : 'No live execution flow is required right now.';
       const relationHandoffAt = safeText(relation.last_handoff_at);
       const relationFeedbackAt = safeText(relation.last_feedback_at);
