@@ -396,6 +396,12 @@ function Get-CommandDispatchClassification {
 function Get-CommandDispatchNextStep {
     param($ExecutionPayload)
 
+    if ($ExecutionPayload -and $ExecutionPayload.PSObject.Properties['execution_status']) {
+        $executionStatus = [string]$ExecutionPayload.execution_status
+        if ([string]::Equals($executionStatus, 'queued', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($executionStatus, 'running', [System.StringComparison]::OrdinalIgnoreCase)) {
+            return 'await TOD execution results through the task activity stream'
+        }
+    }
     if ($ExecutionPayload -and $ExecutionPayload.PSObject.Properties['next_task_selection'] -and $ExecutionPayload.next_task_selection -and $ExecutionPayload.next_task_selection.PSObject.Properties['selected_task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$ExecutionPayload.next_task_selection.selected_task_id)) {
         return ('next task selected: {0}' -f [string]$ExecutionPayload.next_task_selection.selected_task_id)
     }
@@ -457,6 +463,7 @@ function Invoke-TodActionJson {
 function New-IntentDispatchResult {
     return [ordered]@{
         attempted = $false
+        accepted = $false
         created = $false
         dispatched = $false
         executed = $false
@@ -469,10 +476,12 @@ function New-IntentDispatchResult {
         correlation_id = ''
         title = ''
         task_category = ''
+        execution_status = ''
         classification = ''
         next_step = ''
         codex_needed = $false
         request_artifact_path = ''
+        activity_stream_url = ''
         detail = ''
         payload = $null
     }
@@ -556,25 +565,43 @@ function Invoke-IntentCommandDispatch {
             AssignedExecutor = $assignedExecutor
             TaskCategory = $taskCategory
             Type = 'implementation'
+            ExecutionMode = 'async'
         }
         $taskId = [string](Get-PropertyValue -InputObject $parsed -PropertyName 'task_id' -Default '')
         $result.objective_id = [string](Get-PropertyValue -InputObject $parsed -PropertyName 'objective_id' -Default $dispatchObjectiveId)
         $result.created = (-not [string]::IsNullOrWhiteSpace($taskId))
+        $result.accepted = $result.created
         $result.dispatched = $result.created
-        $result.executed = $result.created
+        $runTaskPayload = Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null
+        $result.execution_status = [string](Get-PropertyValue -InputObject $runTaskPayload -PropertyName 'execution_status' -Default '')
+        if ([string]::IsNullOrWhiteSpace($result.execution_status)) {
+            $decisionText = [string](Get-PropertyValue -InputObject $runTaskPayload -PropertyName 'decision' -Default '')
+            $result.execution_status = if ([string]::Equals($decisionText, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } elseif ([string]::IsNullOrWhiteSpace($decisionText)) { '' } else { $decisionText }
+        }
+        $result.executed = $result.created -and (-not [string]::Equals($result.execution_status, 'queued', [System.StringComparison]::OrdinalIgnoreCase))
         $result.task_id = $taskId
         $result.title = $title
         $result.task_category = $taskCategory
-        $result.classification = Get-CommandDispatchClassification -ExecutionPayload $(Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null) -DefaultTaskCategory $taskCategory
-        $result.next_step = Get-CommandDispatchNextStep -ExecutionPayload $(Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null)
-        $result.codex_needed = Test-CommandDispatchCodexNeeded -ExecutionPayload $(Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null)
+        $result.classification = Get-CommandDispatchClassification -ExecutionPayload $runTaskPayload -DefaultTaskCategory $taskCategory
+        $result.next_step = Get-CommandDispatchNextStep -ExecutionPayload $runTaskPayload
+        $result.codex_needed = Test-CommandDispatchCodexNeeded -ExecutionPayload $runTaskPayload
         $result.request_artifact_path = [string](Get-PropertyValue -InputObject $parsed -PropertyName 'request_artifact_path' -Default '')
-        $runTaskPayload = Get-PropertyValue -InputObject $parsed -PropertyName 'run_task' -Default $null
+        if (-not [string]::IsNullOrWhiteSpace($taskId)) {
+            $result.activity_stream_url = ('/api/activity-stream?task_id={0}&limit=20' -f $taskId)
+        }
         if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['decision']) {
-            $result.blocked = (-not [string]::Equals([string]$runTaskPayload.decision, 'pass', [System.StringComparison]::OrdinalIgnoreCase))
+            $decisionText = [string]$runTaskPayload.decision
+            $result.blocked = (-not [string]::Equals($decisionText, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) -and (-not [string]::Equals($decisionText, 'queued', [System.StringComparison]::OrdinalIgnoreCase)) -and (-not [string]::Equals($decisionText, 'running', [System.StringComparison]::OrdinalIgnoreCase))
         }
         $result.payload = $parsed
-        $result.detail = if ($result.created) { ('Task created, request artifact written, and TOD execution started immediately via executor ' + $assignedExecutor + '.') } else { 'TOD ran execute-chat-task but did not receive a task id back.' }
+        $result.detail = if ($result.created) {
+            if ([string]::Equals($result.execution_status, 'queued', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($result.execution_status, 'running', [System.StringComparison]::OrdinalIgnoreCase)) {
+                'Task created, request artifact written, and TOD execution queued asynchronously via executor ' + $assignedExecutor + '.'
+            }
+            else {
+                'Task created, request artifact written, and TOD execution started immediately via executor ' + $assignedExecutor + '.'
+            }
+        } else { 'TOD ran execute-chat-task but did not receive a task id back.' }
         return [pscustomobject]$result
     }
     catch {

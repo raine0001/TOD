@@ -107,9 +107,12 @@ function Get-LocalExecutionTargetFiles {
     $paths = New-Object System.Collections.Generic.List[string]
     if ($Context.PSObject.Properties['metadata'] -and $Context.metadata) {
         if ($Context.metadata.ContainsKey('local_fallback_target_file')) {
-            $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$Context.metadata.local_fallback_target_file)
-            if (-not [string]::IsNullOrWhiteSpace($value) -and -not $paths.Contains($value)) {
-                $paths.Add($value)
+            $rawValue = [string]$Context.metadata.local_fallback_target_file
+            if (-not [string]::IsNullOrWhiteSpace($rawValue)) {
+                $value = Convert-ToLocalExecutionRepoRelativePath -PathValue $rawValue
+                if (-not [string]::IsNullOrWhiteSpace($value) -and -not $paths.Contains($value)) {
+                    $paths.Add($value)
+                }
             }
         }
         if ($Context.metadata.ContainsKey('local_fallback_target_files') -and $null -ne $Context.metadata.local_fallback_target_files) {
@@ -178,6 +181,95 @@ function Get-LocalExecutionDirectiveValue {
     }
 
     return ''
+}
+
+function Convert-ToLocalExecutionEditMode {
+    param([AllowEmptyString()][string]$Mode)
+
+    $normalized = ([string]$Mode).Trim().ToLowerInvariant() -replace '[\s-]+', '_'
+    switch ($normalized) {
+        'replace_text' { return 'replace_text' }
+        'replace_exact_text' { return 'replace_text' }
+        'append_section' { return 'append_section' }
+        'docs_append_section' { return 'append_section' }
+        'insert_after' { return 'insert_after' }
+        'insert_after_anchor' { return 'insert_after' }
+        'append_marker' { return 'insert_after' }
+        'add_small_function' { return 'insert_after' }
+        'update_json_field' { return 'update_json_field' }
+        'validation_only' { return 'validation_only' }
+        default { return '' }
+    }
+}
+
+function ConvertFrom-LocalExecutionJsonValue {
+    param([AllowEmptyString()][string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace([string]$Text)) {
+        return ''
+    }
+
+    $trimmed = ([string]$Text).Trim()
+    try {
+        return ($trimmed | ConvertFrom-Json)
+    }
+    catch {
+        $boolValue = $false
+        if ([bool]::TryParse($trimmed, [ref]$boolValue)) {
+            return $boolValue
+        }
+        $intValue = 0
+        if ([int]::TryParse($trimmed, [ref]$intValue)) {
+            return $intValue
+        }
+        $doubleValue = 0.0
+        if ([double]::TryParse($trimmed, [ref]$doubleValue)) {
+            return $doubleValue
+        }
+        return $trimmed
+    }
+}
+
+function Set-LocalExecutionJsonFieldValue {
+    param(
+        [Parameter(Mandatory = $true)]$Object,
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)]$Value
+    )
+
+    $segments = @(([string]$Path).Split('.') | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    if (@($segments).Count -eq 0) {
+        throw 'Json field path is empty.'
+    }
+
+    $cursor = $Object
+    for ($index = 0; $index -lt ($segments.Count - 1); $index++) {
+        $segment = [string]$segments[$index]
+        $next = $null
+        if ($cursor -is [System.Collections.IDictionary]) {
+            if (-not $cursor.Contains($segment) -or $null -eq $cursor[$segment]) {
+                $cursor[$segment] = [ordered]@{}
+            }
+            $next = $cursor[$segment]
+        }
+        else {
+            if (-not $cursor.PSObject.Properties[$segment] -or $null -eq $cursor.$segment) {
+                $cursor | Add-Member -NotePropertyName $segment -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            $next = $cursor.$segment
+        }
+        $cursor = $next
+    }
+
+    $leaf = [string]$segments[$segments.Count - 1]
+    if ($cursor -is [System.Collections.IDictionary]) {
+        $cursor[$leaf] = $Value
+    }
+    else {
+        $cursor | Add-Member -NotePropertyName $leaf -NotePropertyValue $Value -Force
+    }
+
+    return $Object
 }
 
 function Get-LocalExecutionMarkdownSectionSpec {
@@ -311,7 +403,8 @@ function Invoke-LocalExecutionGenericBoundedTask {
     $updatedContent = $originalContent
     $actionSummary = ''
     $validationCommand = ''
-    $mode = (Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Edit Mode').ToLowerInvariant()
+    $skipWriteBack = $false
+    $mode = Convert-ToLocalExecutionEditMode -Mode (Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Edit Mode')
     if ([string]::IsNullOrWhiteSpace($mode) -and $targetFile.ToLowerInvariant().EndsWith('.md') -and (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant() -match '\bsection\b') {
         $mode = 'append_section'
     }
@@ -377,6 +470,39 @@ function Invoke-LocalExecutionGenericBoundedTask {
             if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $newText }
             $validationCommand = "Get-Content -Path '.\\$($targetFile -replace '/', '\\')' | Select-String -SimpleMatch '$($validationPattern.Replace("'","''"))'"
         }
+        'update_json_field' {
+            $jsonField = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Json Field'
+            $jsonValue = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Json Value'
+            if ([string]::IsNullOrWhiteSpace($jsonField)) {
+                return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine requires a Json Field directive for update_json_field mode.' -MissingVariable 'json_field')
+            }
+            if ([string]::IsNullOrWhiteSpace($jsonValue)) {
+                return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine requires a Json Value directive for update_json_field mode.' -MissingVariable 'json_value')
+            }
+            $jsonObject = $originalContent | ConvertFrom-Json
+            $typedJsonValue = ConvertFrom-LocalExecutionJsonValue -Text $jsonValue
+            $jsonObject = Set-LocalExecutionJsonFieldValue -Object $jsonObject -Path $jsonField -Value $typedJsonValue
+            $updatedContent = ($jsonObject | ConvertTo-Json -Depth 20)
+            $actionSummary = ('Updated JSON field {0} in {1}' -f $jsonField, $targetFile)
+            $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
+            if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $jsonField }
+            $validationCommand = "Get-Content -Path '.\\$($targetFile -replace '/', '\\')' | Select-String -SimpleMatch '$($validationPattern.Replace("'","''"))'"
+        }
+        'validation_only' {
+            $actionSummary = ('Validated bounded target in {0}' -f $targetFile)
+            $skipWriteBack = $true
+            $validationCommand = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Command'
+            if ([string]::IsNullOrWhiteSpace($validationCommand)) {
+                $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
+                if (-not [string]::IsNullOrWhiteSpace($validationPattern)) {
+                    $validationCommand = "Get-Content -Path '.\\$($targetFile -replace '/', '\\')' | Select-String -SimpleMatch '$($validationPattern.Replace("'","''"))'"
+                }
+                else {
+                    $validationCommand = "if (Test-Path -Path '.\\$($targetFile -replace '/', '\\')') { 'validated' } else { throw 'Target file missing.' }"
+                }
+            }
+            $updatedContent = $originalContent
+        }
         default {
             return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine requires an explicit bounded edit mode or an inferable markdown section update for this task.' -MissingVariable 'edit_mode')
         }
@@ -387,10 +513,12 @@ function Invoke-LocalExecutionGenericBoundedTask {
     $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
     $fileLeaf = Split-Path -Path $absoluteTargetPath -Leaf
     $backupPath = Join-Path $backupRoot ('{0}.{1}.bak' -f $fileLeaf, $timestamp)
-    Copy-Item -Path $absoluteTargetPath -Destination $backupPath -Force
     $prePatchHash = [string](Get-FileHash -Path $absoluteTargetPath -Algorithm SHA256).Hash
-    $changeApplied = ($updatedContent -ne $originalContent)
-    Write-Utf8NoBomFile -Path $absoluteTargetPath -Content $updatedContent
+    $changeApplied = ((-not $skipWriteBack) -and ($updatedContent -ne $originalContent))
+    if (-not $skipWriteBack) {
+        Copy-Item -Path $absoluteTargetPath -Destination $backupPath -Force
+        Write-Utf8NoBomFile -Path $absoluteTargetPath -Content $updatedContent
+    }
 
     $commandCapture = Invoke-LocalShellCapture -Command $validationCommand -WorkingDirectory $script:LocalEngineRepoRoot
     $validatedContent = [string](Get-Content -Path $absoluteTargetPath -Raw)
@@ -398,12 +526,12 @@ function Invoke-LocalExecutionGenericBoundedTask {
     $passed = ([int]$commandCapture.exit_code -eq 0)
     $diffSummary = Get-LocalExecutionDiffSummary -RelativePath $targetFile -BeforeContent $originalContent -AfterContent $updatedContent -ActionSummary $actionSummary
     $rollbackState = [pscustomobject]@{
-        available = $true
-        backup_path = $backupPath
+        available = (-not $skipWriteBack)
+        backup_path = $(if ($skipWriteBack) { '' } else { $backupPath })
         target_path = $absoluteTargetPath
         pre_patch_hash = $prePatchHash
         post_patch_hash = $postPatchHash
-        restore_command = "Copy-Item -Path '$backupPath' -Destination '$absoluteTargetPath' -Force"
+        restore_command = $(if ($skipWriteBack) { '' } else { "Copy-Item -Path '$backupPath' -Destination '$absoluteTargetPath' -Force" })
     }
     $validationChecks = @(
         [pscustomobject]@{ name = 'target_file_exists'; passed = (Test-Path -Path $absoluteTargetPath) },
@@ -412,9 +540,11 @@ function Invoke-LocalExecutionGenericBoundedTask {
     )
 
     if (-not $passed) {
-        Copy-Item -Path $backupPath -Destination $absoluteTargetPath -Force
+        if (-not $skipWriteBack) {
+            Copy-Item -Path $backupPath -Destination $absoluteTargetPath -Force
+        }
         $Result.summary = ('LocalExecutionEngine rolled back the bounded local fallback for {0} because focused validation failed.' -f $targetFile)
-        $Result.files_changed = @()
+        $Result.files_changed = [string[]]@()
         $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
         $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
         $Result.failures = @('Focused validation failed after the local fallback patch, so the target file was restored from backup.')
@@ -449,7 +579,7 @@ function Invoke-LocalExecutionGenericBoundedTask {
     }
 
     $Result.summary = ('LocalExecutionEngine completed the bounded local fallback for {0} and published real execution evidence.' -f $targetFile)
-    $Result.files_changed = if ($changeApplied) { @($targetFile) } else { @() }
+    $Result.files_changed = [string[]]$(if ($changeApplied) { @($targetFile) } else { @() })
     $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
     $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
     $Result.failures = @()
@@ -618,9 +748,12 @@ function Get-LocalExecutionPromptTokenExtractionTargetFile {
     param([Parameter(Mandatory = $true)]$Context)
 
     if ($Context.PSObject.Properties['metadata'] -and $Context.metadata -and $Context.metadata.ContainsKey('local_fallback_target_file')) {
-        $overridePath = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$Context.metadata.local_fallback_target_file)
-        if (-not [string]::IsNullOrWhiteSpace($overridePath)) {
-            return $overridePath
+        $rawOverridePath = [string]$Context.metadata.local_fallback_target_file
+        if (-not [string]::IsNullOrWhiteSpace($rawOverridePath)) {
+            $overridePath = Convert-ToLocalExecutionRepoRelativePath -PathValue $rawOverridePath
+            if (-not [string]::IsNullOrWhiteSpace($overridePath)) {
+                return $overridePath
+            }
         }
     }
 

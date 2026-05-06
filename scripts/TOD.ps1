@@ -48,6 +48,7 @@ param(
         "get-state-bus",
         "get-version",
         "add-result",
+        "persist-task-terminal-state",
         "review-task",
         "show-journal"
     )]
@@ -105,6 +106,8 @@ param(
     ,[switch]$SkipNextTaskSelectionLoop
     ,[switch]$SkipPostCompletionTail
     ,[string]$SelectionReason
+    ,[string]$TargetFile
+    ,[ValidateSet('sync', 'async')][string]$ExecutionMode = 'sync'
 )
 
 Set-StrictMode -Version Latest
@@ -1672,6 +1675,110 @@ function Start-TodTrainingRunbookProcess {
         runner = $powershellExe
         script_path = $runbookPath
         no_wait = $true
+        launched_at = Get-UtcNow
+        command_preview = [string](($arguments | ForEach-Object {
+                    if ([string]$_ -match '\s') { '"' + [string]$_ + '"' } else { [string]$_ }
+                }) -join ' ')
+    }
+}
+
+function Start-TodChatTaskProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        [Parameter(Mandatory = $true)][string]$PackagePath,
+        [string]$ResolvedConfigPath,
+        [string]$ResolvedStatePath
+    )
+
+    $todScriptPath = Join-Path $PSScriptRoot 'TOD.ps1'
+    if (-not (Test-Path -Path $todScriptPath)) {
+        throw "TOD action script not found: $todScriptPath"
+    }
+
+    $powershellExe = Join-Path $PSHOME 'powershell.exe'
+    if (-not (Test-Path -Path $powershellExe)) {
+        $powershellExe = 'powershell.exe'
+    }
+
+    $logRoot = Join-Path $repoRoot 'tod/out/background-chat'
+    New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+    $stdoutPath = Join-Path $logRoot ($TaskId + '.stdout.log')
+    $stderrPath = Join-Path $logRoot ($TaskId + '.stderr.log')
+
+    $invocationPayload = [ordered]@{
+        Action = 'run-task'
+        TaskId = $TaskId
+        PackagePath = $PackagePath
+        SkipNextTaskSelectionLoop = 'true'
+        SkipPostCompletionTail = 'true'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ResolvedConfigPath)) {
+        $invocationPayload['ConfigPath'] = $ResolvedConfigPath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ResolvedStatePath)) {
+        $invocationPayload['StatePath'] = $ResolvedStatePath
+    }
+
+    $parameterJson = $invocationPayload | ConvertTo-Json -Compress -Depth 10
+    $parameterJsonBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($parameterJson))
+    $safeConfigPath = if ([string]::IsNullOrWhiteSpace($ResolvedConfigPath)) { '' } else { [string]$ResolvedConfigPath }
+    $safeStatePath = if ([string]::IsNullOrWhiteSpace($ResolvedStatePath)) { '' } else { [string]$ResolvedStatePath }
+    $encodedCommand = @"
+`$ProgressPreference = 'SilentlyContinue'
+`$ErrorActionPreference = 'Stop'
+Set-Location -Path '$repoRoot'
+`$parameterJson = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('$parameterJsonBase64'))
+`$parameterObject = `$parameterJson | ConvertFrom-Json
+`$invokeParams = @{}
+`$parsedSwitch = `$false
+foreach (`$property in `$parameterObject.PSObject.Properties) {
+    if ([string]::Equals([string]`$property.Name, 'SkipNextTaskSelectionLoop', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals([string]`$property.Name, 'SkipPostCompletionTail', [System.StringComparison]::OrdinalIgnoreCase)) {
+        if ([bool]::TryParse([string]`$property.Value, [ref]`$parsedSwitch) -and `$parsedSwitch) {
+            `$invokeParams[`$property.Name] = `$true
+        }
+        continue
+    }
+    `$invokeParams[`$property.Name] = [string]`$property.Value
+}
+try {
+    if ([string]::Equals([string]`$env:TOD_FORCE_ASYNC_CHAT_WORKER_FAILURE, '1', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Forced async chat worker failure for test.'
+    }
+
+    & '$todScriptPath' @invokeParams
+}
+catch {
+    `$detailPayload = [ordered]@{
+        error = [string]`$_.Exception.Message
+        package_path = '$PackagePath'
+        worker_runner = '$powershellExe'
+        worker_script_path = '$todScriptPath'
+        working_directory = '$repoRoot'
+        stdout_path = '$stdoutPath'
+        stderr_path = '$stderrPath'
+    }
+    if (-not [string]::IsNullOrWhiteSpace('$safeStatePath')) {
+        & '$todScriptPath' -Action 'persist-task-terminal-state' -TaskId '$TaskId' -StatePath '$safeStatePath' -ConfigPath '$safeConfigPath' -Type 'blocked' -Summary 'Async chat worker failed before TOD could persist a terminal result.' -Description (([pscustomobject]`$detailPayload) | ConvertTo-Json -Compress -Depth 10) -AssignedExecutor 'worker_startup_failure' | Out-Null
+    }
+    throw
+}
+"@
+
+    $arguments = @(
+        '-NoProfile',
+        '-ExecutionPolicy', 'Bypass',
+        '-EncodedCommand', [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($encodedCommand))
+    )
+
+    $process = Start-Process -FilePath $powershellExe -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -WorkingDirectory $repoRoot
+    return [pscustomobject]@{
+        ok = $true
+        pid = [int]$process.Id
+        runner = $powershellExe
+        script_path = $todScriptPath
+        working_directory = $repoRoot
+        stdout_path = $stdoutPath
+        stderr_path = $stderrPath
         launched_at = Get-UtcNow
         command_preview = [string](($arguments | ForEach-Object {
                     if ([string]$_ -match '\s') { '"' + [string]$_ + '"' } else { [string]$_ }
@@ -6022,6 +6129,422 @@ function Get-TaskRoutingFileHints {
     return @($items | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
 }
 
+function Get-BoundedEditDirectiveValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$Text,
+        [Parameter(Mandatory = $true)][string]$FieldName
+    )
+
+    $match = [regex]::Match($Text, ('(?im)^\s*{0}\s*:\s*(.+?)\s*$' -f [regex]::Escape($FieldName)))
+    if ($match.Success) {
+        return ([string]$match.Groups[1].Value).Trim()
+    }
+
+    return ''
+}
+
+function Convert-ToCanonicalBoundedEditMode {
+    param([AllowEmptyString()][string]$Mode)
+
+    $normalized = ([string]$Mode).Trim().ToLowerInvariant() -replace '[\s-]+', '_'
+    switch ($normalized) {
+        'replace_text' { return 'replace_text' }
+        'replace_exact_text' { return 'replace_text' }
+        'append_section' { return 'append_section' }
+        'docs_append_section' { return 'append_section' }
+        'insert_after' { return 'insert_after' }
+        'insert_after_anchor' { return 'insert_after' }
+        'append_marker' { return 'insert_after' }
+        'add_small_function' { return 'insert_after' }
+        'update_json_field' { return 'update_json_field' }
+        'validation_only' { return 'validation_only' }
+        default { return '' }
+    }
+}
+
+function Get-BoundedEditSectionTitle {
+    param([Parameter(Mandatory = $true)][string]$Text)
+
+    $explicitTitle = Get-BoundedEditDirectiveValue -Text $Text -FieldName 'Section Title'
+    if (-not [string]::IsNullOrWhiteSpace($explicitTitle)) {
+        return $explicitTitle
+    }
+
+    $match = [regex]::Match($Text, '(?im)\b(?:with|add|insert|append)\s+(?:a\s+)?(?:short\s+)?(.+?)\s+section\b')
+    if ($match.Success) {
+        $sectionTitle = [string]$match.Groups[1].Value
+        return ($sectionTitle -replace '^[\s\.\:\-`"]+|[\s\.\:\-`"]+$', '')
+    }
+
+    return ''
+}
+
+function New-BoundedEditMaterializationBlockedPayload {
+    param(
+        [Parameter(Mandatory = $true)]$Task,
+        [Parameter(Mandatory = $true)][string]$TaskCategory,
+        [string[]]$TargetFileCandidates = @(),
+        [string[]]$RequiredClarification = @(),
+        [AllowEmptyString()][string]$Reason = ''
+    )
+
+    $why = if (-not [string]::IsNullOrWhiteSpace($Reason)) {
+        [string]$Reason
+    }
+    else {
+        'TOD could not derive a safe bounded edit mode and explicit directives for LocalExecutionEngine.'
+    }
+
+    $taskIdValue = ''
+    if ($Task -and $Task.PSObject.Properties['id']) {
+        $taskIdValue = [string]$Task.id
+    }
+
+    return [pscustomobject]@{
+        status = 'blocked'
+        blocked = $true
+        reason_code = 'blocked_missing_bounded_edit_mode'
+        task_category = [string]$TaskCategory
+        task_id = $taskIdValue
+        target_file_candidates = @($TargetFileCandidates | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+        required_clarification = @($RequiredClarification | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+        why_local_executor_cannot_proceed = $why
+        supported_modes = @('append_marker', 'replace_exact_text', 'insert_after_anchor', 'update_json_field', 'add_small_function', 'docs_append_section', 'validation_only')
+        prompt_directives = [ordered]@{}
+    }
+}
+
+function Resolve-TaskBoundedEditMaterialization {
+    param($Task)
+
+    if ($null -eq $Task) {
+        return (New-BoundedEditMaterializationBlockedPayload -Task $Task -TaskCategory 'code_change' -Reason 'TOD could not materialize a null task payload for local execution.' -RequiredClarification @('task_payload'))
+    }
+
+    if ($Task.PSObject.Properties['materialization'] -and $null -ne $Task.materialization -and $Task.materialization.PSObject.Properties['status']) {
+        return $Task.materialization
+    }
+
+    $taskCategory = Resolve-TaskCategory -Task $Task
+    $text = Get-TaskRoutingText -Task $Task
+    $fileHints = @(Get-TaskRoutingFileHints -Task $Task)
+    $requestedMode = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Edit Mode'
+    $engineMode = Convert-ToCanonicalBoundedEditMode -Mode $requestedMode
+    $targetFile = if (@($fileHints).Count -eq 1) { [string]$fileHints[0] } else { '' }
+    $validationPattern = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Validation Pattern'
+    $validationCommand = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Validation Command'
+    $oldText = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Old Text'
+    $newText = Get-BoundedEditDirectiveValue -Text $text -FieldName 'New Text'
+    $anchor = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Anchor'
+    $snippet = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Snippet'
+    $sectionTitle = Get-BoundedEditSectionTitle -Text $text
+    $sectionBody = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Section Body'
+    $jsonField = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Json Field'
+    $jsonValue = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Json Value'
+    $lowerText = ([string]$text).ToLowerInvariant()
+
+    if ([string]::IsNullOrWhiteSpace($engineMode)) {
+        if (-not [string]::IsNullOrWhiteSpace($oldText) -and -not [string]::IsNullOrWhiteSpace($newText)) {
+            $engineMode = 'replace_text'
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($anchor) -and -not [string]::IsNullOrWhiteSpace($snippet)) {
+            $engineMode = 'insert_after'
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($jsonField) -and -not [string]::IsNullOrWhiteSpace($jsonValue)) {
+            $engineMode = 'update_json_field'
+        }
+        elseif (([string]$taskCategory -eq 'validation') -or ($lowerText -match 'validation[- ]only|publish validation only|validate only|do not call codex')) {
+            $engineMode = 'validation_only'
+        }
+        elseif ((-not [string]::IsNullOrWhiteSpace($targetFile)) -and $targetFile.ToLowerInvariant().EndsWith('.md') -and -not [string]::IsNullOrWhiteSpace($sectionTitle)) {
+            $engineMode = 'append_section'
+        }
+    }
+
+    if (@($fileHints).Count -ne 1) {
+        $blockedPayload = New-BoundedEditMaterializationBlockedPayload -Task $Task -TaskCategory $taskCategory -TargetFileCandidates @($fileHints) -RequiredClarification @('target_file') -Reason 'TOD needs exactly one bounded target file before LocalExecutionEngine can proceed.'
+        return $blockedPayload
+    }
+
+    $promptDirectives = [ordered]@{
+        'Target File' = $targetFile
+    }
+    $validationPlan = [ordered]@{}
+    if (-not [string]::IsNullOrWhiteSpace($validationPattern)) {
+        $validationPlan['pattern'] = $validationPattern
+    }
+    if (-not [string]::IsNullOrWhiteSpace($validationCommand)) {
+        $validationPlan['command'] = $validationCommand
+    }
+
+    switch ($engineMode) {
+        'replace_text' {
+            if ([string]::IsNullOrWhiteSpace($oldText) -or [string]::IsNullOrWhiteSpace($newText)) {
+                $blockedPayload = New-BoundedEditMaterializationBlockedPayload -Task $Task -TaskCategory $taskCategory -TargetFileCandidates @($fileHints) -RequiredClarification @('old_text', 'new_text') -Reason 'TOD requires explicit Old Text and New Text directives for bounded replace-text execution.'
+                return $blockedPayload
+            }
+            $promptDirectives['Edit Mode'] = 'replace_text'
+            $promptDirectives['Old Text'] = $oldText
+            $promptDirectives['New Text'] = $newText
+            if (-not [string]::IsNullOrWhiteSpace($validationPattern)) {
+                $promptDirectives['Validation Pattern'] = $validationPattern
+            }
+            if (-not [string]::IsNullOrWhiteSpace($validationCommand)) {
+                $promptDirectives['Validation Command'] = $validationCommand
+            }
+        }
+        'append_section' {
+            if ([string]::IsNullOrWhiteSpace($sectionTitle)) {
+                $blockedPayload = New-BoundedEditMaterializationBlockedPayload -Task $Task -TaskCategory $taskCategory -TargetFileCandidates @($fileHints) -RequiredClarification @('section_title') -Reason 'TOD requires a section title before it can materialize a bounded docs append operation.'
+                return $blockedPayload
+            }
+            $promptDirectives['Edit Mode'] = 'append_section'
+            $promptDirectives['Section Title'] = $sectionTitle
+            if (-not [string]::IsNullOrWhiteSpace($sectionBody)) {
+                $promptDirectives['Section Body'] = $sectionBody
+            }
+            if (-not [string]::IsNullOrWhiteSpace($validationPattern)) {
+                $promptDirectives['Validation Pattern'] = $validationPattern
+            }
+            if (-not [string]::IsNullOrWhiteSpace($validationCommand)) {
+                $promptDirectives['Validation Command'] = $validationCommand
+            }
+        }
+        'insert_after' {
+            if ([string]::IsNullOrWhiteSpace($anchor) -or [string]::IsNullOrWhiteSpace($snippet)) {
+                $blockedPayload = New-BoundedEditMaterializationBlockedPayload -Task $Task -TaskCategory $taskCategory -TargetFileCandidates @($fileHints) -RequiredClarification @('anchor', 'snippet') -Reason 'TOD requires explicit Anchor and Snippet directives for insert-after bounded execution.'
+                return $blockedPayload
+            }
+            $promptDirectives['Edit Mode'] = 'insert_after'
+            $promptDirectives['Anchor'] = $anchor
+            $promptDirectives['Snippet'] = $snippet
+            if (-not [string]::IsNullOrWhiteSpace($validationPattern)) {
+                $promptDirectives['Validation Pattern'] = $validationPattern
+            }
+            if (-not [string]::IsNullOrWhiteSpace($validationCommand)) {
+                $promptDirectives['Validation Command'] = $validationCommand
+            }
+        }
+        'update_json_field' {
+            if ([string]::IsNullOrWhiteSpace($jsonField) -or [string]::IsNullOrWhiteSpace($jsonValue)) {
+                $blockedPayload = New-BoundedEditMaterializationBlockedPayload -Task $Task -TaskCategory $taskCategory -TargetFileCandidates @($fileHints) -RequiredClarification @('json_field', 'json_value') -Reason 'TOD requires explicit Json Field and Json Value directives for bounded JSON updates.'
+                return $blockedPayload
+            }
+            $promptDirectives['Edit Mode'] = 'update_json_field'
+            $promptDirectives['Json Field'] = $jsonField
+            $promptDirectives['Json Value'] = $jsonValue
+            if (-not [string]::IsNullOrWhiteSpace($validationPattern)) {
+                $promptDirectives['Validation Pattern'] = $validationPattern
+            }
+            if (-not [string]::IsNullOrWhiteSpace($validationCommand)) {
+                $promptDirectives['Validation Command'] = $validationCommand
+            }
+        }
+        'validation_only' {
+            $promptDirectives['Edit Mode'] = 'validation_only'
+            if (-not [string]::IsNullOrWhiteSpace($validationPattern)) {
+                $promptDirectives['Validation Pattern'] = $validationPattern
+            }
+            if (-not [string]::IsNullOrWhiteSpace($validationCommand)) {
+                $promptDirectives['Validation Command'] = $validationCommand
+            }
+        }
+        default {
+            $blockedPayload = New-BoundedEditMaterializationBlockedPayload -Task $Task -TaskCategory $taskCategory -TargetFileCandidates @($fileHints) -RequiredClarification @('edit_mode') -Reason 'TOD could not derive a bounded edit mode from the direct-chat task. Add explicit directives or restate the request as validation-only.'
+            return $blockedPayload
+        }
+    }
+
+    $requestedSummary = ''
+    if ($Task.PSObject.Properties['scope']) {
+        $requestedSummary = [string]$Task.scope
+    }
+
+    return [pscustomobject]@{
+        status = 'materialized'
+        blocked = $false
+        reason_code = ''
+        task_category = [string]$taskCategory
+        requested_mode = [string]$requestedMode
+        edit_mode = [string]$engineMode
+        target_files = @($targetFile)
+        target_file_candidates = @($fileHints)
+        required_clarification = @()
+        why_local_executor_cannot_proceed = ''
+        prompt_directives = $promptDirectives
+        requested_change = [ordered]@{
+            target_file = $targetFile
+            edit_mode = [string]$engineMode
+            summary = $requestedSummary
+        }
+        validation_plan = [pscustomobject]$validationPlan
+        safety_scope = [pscustomobject]@{
+            allowed_files = @($fileHints)
+            task_category = [string]$taskCategory
+            execution = 'local_bounded'
+        }
+        supported_modes = @('append_marker', 'replace_exact_text', 'insert_after_anchor', 'update_json_field', 'add_small_function', 'docs_append_section', 'validation_only')
+    }
+}
+
+function Convert-BoundedEditMaterializationToPromptBlock {
+    param($Materialization)
+
+    if ($null -eq $Materialization) {
+        return ''
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('## Bounded Edit Materialization') | Out-Null
+    $lines.Add('') | Out-Null
+
+    if ($Materialization.PSObject.Properties['status'] -and [string]::Equals([string]$Materialization.status, 'materialized', [System.StringComparison]::OrdinalIgnoreCase)) {
+        foreach ($entry in $Materialization.prompt_directives.GetEnumerator()) {
+            $lines.Add(('{0}: {1}' -f [string]$entry.Key, [string]$entry.Value)) | Out-Null
+        }
+    }
+    else {
+        $lines.Add('Materialization Status: blocked_missing_bounded_edit_mode') | Out-Null
+        if ($Materialization.PSObject.Properties['target_file_candidates'] -and $null -ne $Materialization.target_file_candidates -and @($Materialization.target_file_candidates).Count -gt 0) {
+            $lines.Add(('Target File Candidates: {0}' -f (@($Materialization.target_file_candidates) -join ', '))) | Out-Null
+        }
+        if ($Materialization.PSObject.Properties['required_clarification'] -and $null -ne $Materialization.required_clarification -and @($Materialization.required_clarification).Count -gt 0) {
+            $lines.Add(('Required Clarification: {0}' -f (@($Materialization.required_clarification) -join ', '))) | Out-Null
+        }
+        if ($Materialization.PSObject.Properties['why_local_executor_cannot_proceed'] -and -not [string]::IsNullOrWhiteSpace([string]$Materialization.why_local_executor_cannot_proceed)) {
+            $lines.Add(('Why Local Executor Cannot Proceed: {0}' -f [string]$Materialization.why_local_executor_cannot_proceed)) | Out-Null
+        }
+    }
+
+    return (@($lines) -join "`n")
+}
+
+function New-RunTaskMaterializationBlockedResult {
+    param(
+        [Parameter(Mandatory = $true)]$Task,
+        [Parameter(Mandatory = $true)]$Materialization,
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        [Parameter(Mandatory = $true)]$ActionEngineConfig,
+        [Parameter(Mandatory = $true)][string]$PackagePath
+    )
+
+    $summary = if ($Materialization.PSObject.Properties['why_local_executor_cannot_proceed']) { [string]$Materialization.why_local_executor_cannot_proceed } else { 'TOD could not derive a bounded edit mode.' }
+    $materializationTaskCategory = ''
+    if ($Materialization.PSObject.Properties['task_category']) {
+        $materializationTaskCategory = [string]$Materialization.task_category
+    }
+    $materializationTargetFileCandidates = if ($Materialization.PSObject.Properties['target_file_candidates']) { @($Materialization.target_file_candidates) } else { @() }
+    $materializationClarification = if ($Materialization.PSObject.Properties['required_clarification']) { @($Materialization.required_clarification) } else { @() }
+
+    $resultPayload = [pscustomobject]@{
+        engine_name = 'local'
+        engine_version = 'materializer'
+        execution_id = [string]$TaskId
+        status = 'failed'
+        task_id = [string]$TaskId
+        summary = $summary
+        files_changed = @()
+        tests_run = @('bounded_edit_materialization')
+        test_results = @('blocked')
+        failures = @($summary)
+        recommendations = @('Provide one explicit target file and bounded edit directives, or restate the request as validation-only.')
+        structured_findings = @(
+            [pscustomobject]@{
+                type = 'blocker'
+                reason_code = 'blocked_missing_bounded_edit_mode'
+                task_id = [string]$TaskId
+                task_category = $materializationTaskCategory
+                target_file_candidates = @($materializationTargetFileCandidates)
+                required_clarification = @($materializationClarification)
+            }
+        )
+        needs_escalation = $false
+        started_at = (Get-Date).ToUniversalTime().ToString('o')
+        completed_at = (Get-Date).ToUniversalTime().ToString('o')
+        reason_code = 'blocked_missing_bounded_edit_mode'
+        blockers = @()
+        commands_run = @()
+        validation_results = @()
+        no_change_required = $true
+        recovery_state = 'blocked_with_reason'
+        raw_output = [pscustomobject]@{
+            action = 'bounded_edit_materialization_blocked'
+            package_path = $PackagePath
+            engine = 'local'
+            active_engine = [string]$ActionEngineConfig.active
+            fallback_engine = [string]$ActionEngineConfig.fallback
+            materialization = $Materialization
+        }
+    }
+    $resultPayload.blockers = @($resultPayload.structured_findings)
+
+    return [pscustomobject]@{
+        task_id = [string]$TaskId
+        package_path = $PackagePath
+        attempted_engines = @()
+        active_engine = [string]$ActionEngineConfig.active
+        fallback_applied = $false
+        failure_category = 'materialization_blocked'
+        attempts = @()
+        result = $resultPayload
+    }
+}
+
+function Set-PersistedTaskTerminalState {
+    param(
+        [Parameter(Mandatory = $true)]$Task,
+        [Parameter(Mandatory = $true)][string]$Status,
+        [Parameter(Mandatory = $true)][string]$EventType,
+        [Parameter(Mandatory = $true)][string]$Message,
+        [AllowEmptyString()][string]$ReasonCode = '',
+        $Details = $null,
+        [AllowEmptyString()][string]$TaskStatus = ''
+    )
+
+    $timestamp = Get-UtcNow
+    $resolvedTaskStatus = if (-not [string]::IsNullOrWhiteSpace($TaskStatus)) {
+        [string]$TaskStatus
+    }
+    elseif ([string]::Equals($Status, 'completed', [System.StringComparison]::OrdinalIgnoreCase)) {
+        'completed'
+    }
+    else {
+        'blocked'
+    }
+
+    $Task.status = $resolvedTaskStatus
+    $Task.updated_at = $timestamp
+    $Task | Add-Member -NotePropertyName terminal_state -NotePropertyValue ([pscustomobject]@{
+            timestamp = $timestamp
+            status = [string]$Status
+            event_type = [string]$EventType
+            message = [string]$Message
+            reason_code = [string]$ReasonCode
+            details = if ($null -ne $Details) { $Details } else { [pscustomobject]@{} }
+        }) -Force
+}
+
+function Update-TaskTerminalStateInStore {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        [Parameter(Mandatory = $true)][string]$Status,
+        [Parameter(Mandatory = $true)][string]$EventType,
+        [Parameter(Mandatory = $true)][string]$Message,
+        [AllowEmptyString()][string]$ReasonCode = '',
+        $Details = $null,
+        [AllowEmptyString()][string]$TaskStatus = ''
+    )
+
+    $taskRecord = @($State.tasks | Where-Object { [string]$_.id -eq [string]$TaskId } | Select-Object -First 1)
+    if (@($taskRecord).Count -eq 0) {
+        return $null
+    }
+
+    Set-PersistedTaskTerminalState -Task $taskRecord[0] -Status $Status -EventType $EventType -Message $Message -ReasonCode $ReasonCode -Details $Details -TaskStatus $TaskStatus
+    return $taskRecord[0]
+}
+
 function Get-LocalExecutionReuseSignal {
     param(
         $State,
@@ -9840,6 +10363,12 @@ function Write-CodexHandoffTaskPackage {
     $rendered = $rendered.Replace('{{TASK_ACCEPTANCE_CRITERIA}}', $acceptanceCriteria)
     $taskAssignedExecutor = if ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json -and $Request.metadata_json.PSObject.Properties['assigned_executor'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.metadata_json.assigned_executor)) { [string]$Request.metadata_json.assigned_executor } else { 'codex' }
     $rendered = $rendered.Replace('{{TASK_ASSIGNED_EXECUTOR}}', $taskAssignedExecutor)
+    if ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json -and $Request.metadata_json.PSObject.Properties['materialization'] -and $null -ne $Request.metadata_json.materialization) {
+        $materializationBlock = Convert-BoundedEditMaterializationToPromptBlock -Materialization $Request.metadata_json.materialization
+        if (-not [string]::IsNullOrWhiteSpace($materializationBlock)) {
+            $rendered = ($rendered.TrimEnd() + "`n`n" + $materializationBlock + "`n")
+        }
+    }
 
     if (-not (Test-Path -Path $promptOutDir)) {
         New-Item -ItemType Directory -Path $promptOutDir -Force | Out-Null
@@ -10168,8 +10697,10 @@ function Invoke-ExecuteChatTaskRequest {
         [string]$AssignedExecutor,
         [string]$TaskCategory,
         [string]$CorrelationId,
+        [string]$TargetFile,
         [string]$ResolvedConfigPath,
-        [string]$ResolvedStatePath
+        [string]$ResolvedStatePath,
+        [ValidateSet('sync', 'async')][string]$ExecutionMode = 'sync'
     )
 
     if ([string]::IsNullOrWhiteSpace($TaskId)) { throw '-TaskId is required' }
@@ -10244,9 +10775,29 @@ function Invoke-ExecuteChatTaskRequest {
     $task[0].assigned_executor = $resolvedAssignedExecutor
     $task[0].task_category = $resolvedTaskCategory
     $task[0].type = 'implementation'
+    $task[0] | Add-Member -NotePropertyName source -NotePropertyValue 'direct_chat' -Force
     $task[0].acceptance_criteria = [string[]](Split-List -Value $resolvedAcceptance)
+    if (-not [string]::IsNullOrWhiteSpace($TargetFile)) {
+        $normalizedTargetFile = ([string]$TargetFile) -replace '[\\/]+', '/'
+        if ($task[0].PSObject.Properties['allowed_files']) {
+            $task[0].allowed_files = [string[]]@($normalizedTargetFile)
+        }
+        else {
+            $task[0] | Add-Member -NotePropertyName allowed_files -NotePropertyValue ([string[]]@($normalizedTargetFile)) -Force
+        }
+        if ($task[0].PSObject.Properties['files_involved']) {
+            $task[0].files_involved = [string[]]@($normalizedTargetFile)
+        }
+        else {
+            $task[0] | Add-Member -NotePropertyName files_involved -NotePropertyValue ([string[]]@($normalizedTargetFile)) -Force
+        }
+    }
     $task[0].scope = [string]$Scope
     $task[0].title = if (-not [string]::IsNullOrWhiteSpace($Title)) { [string]$Title } else { "Chat task $TaskId" }
+    $materialization = Resolve-TaskBoundedEditMaterialization -Task $task[0]
+    $task[0] | Add-Member -NotePropertyName materialization -NotePropertyValue $materialization -Force
+    $request.metadata_json | Add-Member -NotePropertyName materialization -NotePropertyValue $materialization -Force
+    $request.metadata_json | Add-Member -NotePropertyName task_source -NotePropertyValue 'direct_chat' -Force
     $task[0].updated_at = Get-UtcNow
     Save-State -State $state
 
@@ -10265,30 +10816,106 @@ function Invoke-ExecuteChatTaskRequest {
         }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Invoked run-task immediately after chat task creation.'
     [void]$activityEvents.Add($executionStartedEvent)
 
-    try {
-        $runTask = Invoke-TodSelfJsonAction -ActionName 'run-task' -Arguments @{
-            TaskId = [string]$TaskId
-            PackagePath = $packagePath
-            ConfigPath = $ResolvedConfigPath
-            StatePath = $ResolvedStatePath
-            SkipNextTaskSelectionLoop = $true
-            SkipPostCompletionTail = $true
+    if ([string]::Equals($ExecutionMode, 'async', [System.StringComparison]::OrdinalIgnoreCase)) {
+        try {
+            $queuedProcess = Start-TodChatTaskProcess -TaskId ([string]$TaskId) -PackagePath $packagePath -ResolvedConfigPath $ResolvedConfigPath -ResolvedStatePath $ResolvedStatePath
+            $task[0] | Add-Member -NotePropertyName async_worker -NotePropertyValue ([pscustomobject]@{
+                    pid = [int]$queuedProcess.pid
+                    runner = [string]$queuedProcess.runner
+                    script_path = [string]$queuedProcess.script_path
+                    working_directory = if ($queuedProcess.PSObject.Properties['working_directory']) { [string]$queuedProcess.working_directory } else { '' }
+                    stdout_path = [string]$queuedProcess.stdout_path
+                    stderr_path = [string]$queuedProcess.stderr_path
+                    launched_at = [string]$queuedProcess.launched_at
+                    command_preview = [string]$queuedProcess.command_preview
+                }) -Force
+            Save-State -State $state
+            $queuedEvent = Publish-TodActivityEvent -EventType 'execution_queued' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$task[0].title) -Status 'queued' -Message 'Queued background TOD execution for the chat task.' -Details ([ordered]@{
+                    assigned_executor = $resolvedAssignedExecutor
+                    package_path = $packagePath
+                    pid = [int]$queuedProcess.pid
+                    stdout_path = [string]$queuedProcess.stdout_path
+                    stderr_path = [string]$queuedProcess.stderr_path
+                    working_directory = if ($queuedProcess.PSObject.Properties['working_directory']) { [string]$queuedProcess.working_directory } else { '' }
+                    command_preview = [string]$queuedProcess.command_preview
+                }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Queued background run-task execution.'
+            [void]$activityEvents.Add($queuedEvent)
+            $runTask = [pscustomobject]@{
+                payload = [pscustomobject]@{
+                    task_id = [string]$TaskId
+                    decision = 'queued'
+                    blocked = $false
+                    accepted = $true
+                    execution_status = 'queued'
+                    summary = 'Task accepted and queued for background execution.'
+                    post_completion_tail_skipped = $true
+                    engine_invocation = [pscustomobject]@{
+                        active_engine = $resolvedAssignedExecutor
+                        attempted_engines = @($resolvedAssignedExecutor)
+                        background_queued = $true
+                        process_id = [int]$queuedProcess.pid
+                        stdout_path = [string]$queuedProcess.stdout_path
+                        stderr_path = [string]$queuedProcess.stderr_path
+                        launched_at = [string]$queuedProcess.launched_at
+                    }
+                }
+                output = ''
+            }
+        }
+        catch {
+            Set-PersistedTaskTerminalState -Task $task[0] -Status 'blocked' -EventType 'blocked' -Message 'Background chat task execution could not be queued.' -ReasonCode 'worker_startup_failure' -Details ([pscustomobject]@{
+                    error = [string]$_.Exception.Message
+                    package_path = $packagePath
+                }) -TaskStatus 'blocked'
+            Save-State -State $state
+            $blockedEvent = Publish-TodActivityEvent -EventType 'blocked' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$task[0].title) -Status 'blocked' -Message 'Background chat task execution could not be queued.' -Details ([ordered]@{
+                    reason_code = 'worker_startup_failure'
+                    error = [string]$_.Exception.Message
+                    package_path = $packagePath
+                }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Recorded the blocking condition for background chat execution.' -RecoveryState 'required'
+            [void]$activityEvents.Add($blockedEvent)
+            $runTask = [pscustomobject]@{
+                payload = [pscustomobject]@{
+                    task_id = [string]$TaskId
+                    decision = 'blocked'
+                    blocked = $true
+                    accepted = $false
+                    execution_status = 'blocked'
+                    reason_code = 'worker_startup_failure'
+                    summary = [string]$_.Exception.Message
+                }
+                output = [string]$_.Exception.Message
+            }
         }
     }
-    catch {
-        $blockedEvent = Publish-TodActivityEvent -EventType 'blocked' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$task[0].title) -Status 'blocked' -Message 'Immediate chat task execution was blocked before TOD could complete run-task.' -Details ([ordered]@{
-                error = [string]$_.Exception.Message
-                package_path = $packagePath
-            }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Recorded the blocking condition for the chat task.' -RecoveryState 'required'
-        [void]$activityEvents.Add($blockedEvent)
-        $runTask = [pscustomobject]@{
-            payload = [pscustomobject]@{
-                task_id = [string]$TaskId
-                decision = 'blocked'
-                blocked = $true
-                summary = [string]$_.Exception.Message
+    else {
+        try {
+            $runTask = Invoke-TodSelfJsonAction -ActionName 'run-task' -Arguments @{
+                TaskId = [string]$TaskId
+                PackagePath = $packagePath
+                ConfigPath = $ResolvedConfigPath
+                StatePath = $ResolvedStatePath
+                SkipNextTaskSelectionLoop = $true
+                SkipPostCompletionTail = $true
             }
-            output = [string]$_.Exception.Message
+        }
+        catch {
+            $blockedEvent = Publish-TodActivityEvent -EventType 'blocked' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$task[0].title) -Status 'blocked' -Message 'Immediate chat task execution was blocked before TOD could complete run-task.' -Details ([ordered]@{
+                    error = [string]$_.Exception.Message
+                    package_path = $packagePath
+                }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Recorded the blocking condition for the chat task.' -RecoveryState 'required'
+            [void]$activityEvents.Add($blockedEvent)
+            $runTask = [pscustomobject]@{
+                payload = [pscustomobject]@{
+                    task_id = [string]$TaskId
+                    decision = 'blocked'
+                    blocked = $true
+                    accepted = $false
+                    execution_status = 'blocked'
+                    summary = [string]$_.Exception.Message
+                }
+                output = [string]$_.Exception.Message
+            }
         }
     }
 
@@ -10307,6 +10934,16 @@ function Invoke-ExecuteChatTaskRequest {
     [void]$activityEventTypeList.Add('task_created_from_chat')
     [void]$activityEventTypeList.Add('task_claimed')
     [void]$activityEventTypeList.Add('execution_started')
+    if ($materialization.PSObject.Properties['status'] -and [string]::Equals([string]$materialization.status, 'materialized', [System.StringComparison]::OrdinalIgnoreCase)) {
+        [void]$activityEventTypeList.Add('bounded_edit_materialized')
+        [void]$activityEventTypeList.Add('local_executor_ready')
+    }
+    elseif ($materialization.PSObject.Properties['reason_code'] -and [string]::Equals([string]$materialization.reason_code, 'blocked_missing_bounded_edit_mode', [System.StringComparison]::OrdinalIgnoreCase)) {
+        [void]$activityEventTypeList.Add('bounded_edit_mode_missing')
+    }
+    if ($runTask -and $runTask.PSObject.Properties['payload'] -and $runTask.payload -and $runTask.payload.PSObject.Properties['execution_status'] -and [string]::Equals([string]$runTask.payload.execution_status, 'queued', [System.StringComparison]::OrdinalIgnoreCase)) {
+        [void]$activityEventTypeList.Add('execution_queued')
+    }
     $runTaskPayload = if ($runTask -and $runTask.PSObject.Properties['payload']) { $runTask.payload } else { $null }
     $engineInvocationPayload = if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['engine_invocation']) { $runTaskPayload.engine_invocation } else { $null }
     $routingDecisionPayload = if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['routing_decision_preinvoke'] -and $runTaskPayload.routing_decision_preinvoke) {
@@ -10394,6 +11031,7 @@ function Invoke-ExecuteChatTaskRequest {
         package_path = $packagePath
         run_task = $runTask.payload
         run_task_output = $runTask.output
+        execution_mode = $ExecutionMode
     }
 }
 
@@ -12239,8 +12877,49 @@ switch ($Action) {
     "execute-chat-task" {
         if ([string]::IsNullOrWhiteSpace($TaskId)) { throw '-TaskId is required' }
 
-        $result = Invoke-ExecuteChatTaskRequest -ObjectiveId $ObjectiveId -TaskId $TaskId -RequestId $RequestId -Title $Title -Description $Description -Priority $Priority -Scope $Scope -AcceptanceCriteria $AcceptanceCriteria -SuccessCriteria $SuccessCriteria -AssignedExecutor $AssignedExecutor -TaskCategory $TaskCategory -CorrelationId $CorrelationId -ResolvedConfigPath $configPath -ResolvedStatePath $statePath
+        $result = Invoke-ExecuteChatTaskRequest -ObjectiveId $ObjectiveId -TaskId $TaskId -RequestId $RequestId -Title $Title -Description $Description -Priority $Priority -Scope $Scope -AcceptanceCriteria $AcceptanceCriteria -SuccessCriteria $SuccessCriteria -AssignedExecutor $AssignedExecutor -TaskCategory $TaskCategory -CorrelationId $CorrelationId -TargetFile $TargetFile -ResolvedConfigPath $configPath -ResolvedStatePath $statePath -ExecutionMode $ExecutionMode
         $result | ConvertTo-Json -Depth 16
+    }
+
+    "persist-task-terminal-state" {
+        if ([string]::IsNullOrWhiteSpace($TaskId)) { throw '-TaskId is required' }
+
+        $detailPayload = $null
+        if (-not [string]::IsNullOrWhiteSpace($Description)) {
+            try {
+                $detailPayload = ($Description | ConvertFrom-Json)
+            }
+            catch {
+                $detailPayload = [pscustomobject]@{ description = [string]$Description }
+            }
+        }
+
+        $terminalStateValue = if ([string]::Equals([string]$Type, 'completed', [System.StringComparison]::OrdinalIgnoreCase)) {
+            'completed'
+        }
+        else {
+            'blocked'
+        }
+
+        $terminalEventValue = if ([string]::IsNullOrWhiteSpace($Type)) {
+            'blocked'
+        }
+        else {
+            [string]$Type
+        }
+
+        $updatedTask = Update-TaskTerminalStateInStore -State $state -TaskId $TaskId -Status $terminalStateValue -EventType $terminalEventValue -Message $(if ([string]::IsNullOrWhiteSpace($Summary)) { 'Persisted terminal task state.' } else { [string]$Summary }) -ReasonCode $(if ([string]::Equals([string]$AssignedExecutor, 'worker_startup_failure', [System.StringComparison]::OrdinalIgnoreCase)) { 'worker_startup_failure' } else { '' }) -Details $detailPayload -TaskStatus $terminalStateValue
+        if ($null -eq $updatedTask) {
+            throw ("Task '{0}' not found while persisting terminal state." -f $TaskId)
+        }
+
+        Save-State -State $state
+        [pscustomobject]@{
+            ok = $true
+            action = 'persist-task-terminal-state'
+            task_id = [string]$TaskId
+            terminal_state = $updatedTask.terminal_state
+        } | ConvertTo-Json -Depth 12
     }
 
     "publish-activity-event" {
@@ -12771,6 +13450,8 @@ switch ($Action) {
         $actionEngineConfig = Resolve-ExecutionEngineConfig -Config $config -State $state -DisableAdaptiveRouting:$ForceConfiguredEngine -TaskCategoryHint $taskCategoryResolved -Task $task
         $routingPre = Add-RoutingDecisionRecord -State $state -TaskId $TaskId -ActionName "run_task" -EngineConfig $actionEngineConfig -TaskCategory $taskCategoryResolved -FinalOutcome "pre_invocation"
         $routingPre = @($routingPre | Select-Object -First 1)
+        $taskMaterialization = Resolve-TaskBoundedEditMaterialization -Task $task
+        $task | Add-Member -NotePropertyName materialization -NotePropertyValue $taskMaterialization -Force
         Publish-TodActivityEvent -EventType 'task_start' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'task_intake' -Status 'active' -Message 'Accepted bounded task for execution.' -Details ([ordered]@{
                 task_category = $taskCategoryResolved
                 assigned_executor = if ($task.PSObject.Properties['assigned_executor']) { [string]$task.assigned_executor } else { '' }
@@ -12868,6 +13549,36 @@ switch ($Action) {
         }
 
         $packagePath = Resolve-TaskPackagePath -TaskId $TaskId -ExplicitPath $PackagePath
+        $invokeResult = $null
+        if ($taskMaterialization.PSObject.Properties['status'] -and [string]::Equals([string]$taskMaterialization.status, 'materialized', [System.StringComparison]::OrdinalIgnoreCase)) {
+            Publish-TodActivityEvent -EventType 'bounded_edit_materialized' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'task_intake' -Status 'completed' -Message 'TOD materialized the direct-chat task into explicit bounded edit directives.' -Details ([ordered]@{
+                    edit_mode = [string]$taskMaterialization.edit_mode
+                    target_files = if ($taskMaterialization.PSObject.Properties['target_files']) { @($taskMaterialization.target_files) } else { @() }
+                    validation_plan = if ($taskMaterialization.PSObject.Properties['validation_plan']) { $taskMaterialization.validation_plan } else { $null }
+                }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$task.scope) -CurrentAction 'Prepared explicit bounded edit directives.' | Out-Null
+            if ([string]::Equals([string]$actionEngineConfig.active, 'local', [System.StringComparison]::OrdinalIgnoreCase)) {
+                Publish-TodActivityEvent -EventType 'local_executor_ready' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'task_intake' -Status 'completed' -Message 'LocalExecutionEngine has an explicit bounded edit mode and target file.' -Details ([ordered]@{
+                        edit_mode = [string]$taskMaterialization.edit_mode
+                        target_files = if ($taskMaterialization.PSObject.Properties['target_files']) { @($taskMaterialization.target_files) } else { @() }
+                    }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$task.scope) -CurrentAction 'Prepared LocalExecutionEngine invocation.' | Out-Null
+            }
+        }
+        elseif ([string]::Equals([string]$actionEngineConfig.active, 'local', [System.StringComparison]::OrdinalIgnoreCase)) {
+            Publish-TodActivityEvent -EventType 'bounded_edit_mode_missing' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'task_intake' -Status 'blocked' -Message 'TOD could not derive a bounded edit mode for LocalExecutionEngine.' -Details ([ordered]@{
+                    reason_code = if ($taskMaterialization.PSObject.Properties['reason_code']) { [string]$taskMaterialization.reason_code } else { 'blocked_missing_bounded_edit_mode' }
+                    target_file_candidates = if ($taskMaterialization.PSObject.Properties['target_file_candidates']) { @($taskMaterialization.target_file_candidates) } else { @() }
+                    required_clarification = if ($taskMaterialization.PSObject.Properties['required_clarification']) { @($taskMaterialization.required_clarification) } else { @() }
+                    why_local_executor_cannot_proceed = if ($taskMaterialization.PSObject.Properties['why_local_executor_cannot_proceed']) { [string]$taskMaterialization.why_local_executor_cannot_proceed } else { '' }
+                }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$task.scope) -CurrentAction 'Blocked LocalExecutionEngine before invocation.' -RecoveryState 'required' | Out-Null
+            Set-PersistedTaskTerminalState -Task $task -Status 'blocked' -EventType 'bounded_edit_mode_missing' -Message 'TOD could not derive a bounded edit mode for LocalExecutionEngine.' -ReasonCode $(if ($taskMaterialization.PSObject.Properties['reason_code']) { [string]$taskMaterialization.reason_code } else { 'blocked_missing_bounded_edit_mode' }) -Details ([pscustomobject]@{
+                    target_file_candidates = if ($taskMaterialization.PSObject.Properties['target_file_candidates']) { @($taskMaterialization.target_file_candidates) } else { @() }
+                    required_clarification = if ($taskMaterialization.PSObject.Properties['required_clarification']) { @($taskMaterialization.required_clarification) } else { @() }
+                    why_local_executor_cannot_proceed = if ($taskMaterialization.PSObject.Properties['why_local_executor_cannot_proceed']) { [string]$taskMaterialization.why_local_executor_cannot_proceed } else { '' }
+                }) -TaskStatus 'blocked'
+            Save-State -State $state
+            $invokeResult = New-RunTaskMaterializationBlockedResult -Task $task -Materialization $taskMaterialization -TaskId $TaskId -ActionEngineConfig $actionEngineConfig -PackagePath $packagePath
+            $memoryProfile.after_execution = Get-ProcessMemorySnapshot
+        }
         Publish-TodActivityEvent -EventType 'step_start' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'active' -Message ('Starting execution with engine ' + [string]$actionEngineConfig.active + '.') -Details ([ordered]@{
                 package_path = $packagePath
                 task_category = $taskCategoryResolved
@@ -12902,26 +13613,27 @@ switch ($Action) {
             })
         $feedbackEvents += @([pscustomobject]@{ status = "running"; publish = $runningFeedback })
 
-        $invokeResult = $null
-        try {
-            $invokeResult = Invoke-ExecutionEngine -Task $task -TaskId $TaskId -PackagePath $packagePath -EngineConfig $actionEngineConfig
-            $memoryProfile.after_execution = Get-ProcessMemorySnapshot
-        }
-        catch {
-            $memoryProfile.after_execution = Get-ProcessMemorySnapshot
-            Publish-TodActivityEvent -EventType 'failure' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'failed' -Message 'Execution engine invocation threw before result normalization.' -Details ([ordered]@{
-                    reason = 'executor_unavailable'
-                    task_category = $taskCategoryResolved
-                    error = [string]$_.Exception.Message
-                    active_engine = [string]$actionEngineConfig.active
-                }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary 'Executor unavailable during run-task.' -CurrentAction 'Execution engine invocation failed.' -RecoveryState 'required' | Out-Null
-            $failedFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status "failed" -TaskId $TaskId -Details ([pscustomobject]@{
-                    reason = "executor_unavailable"
-                    task_category = $taskCategoryResolved
-                    error = [string]$_.Exception.Message
-                })
-            $feedbackEvents += @([pscustomobject]@{ status = "failed"; publish = $failedFeedback })
-            throw
+        if ($null -eq $invokeResult) {
+            try {
+                $invokeResult = Invoke-ExecutionEngine -Task $task -TaskId $TaskId -PackagePath $packagePath -EngineConfig $actionEngineConfig
+                $memoryProfile.after_execution = Get-ProcessMemorySnapshot
+            }
+            catch {
+                $memoryProfile.after_execution = Get-ProcessMemorySnapshot
+                Publish-TodActivityEvent -EventType 'failure' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'failed' -Message 'Execution engine invocation threw before result normalization.' -Details ([ordered]@{
+                        reason = 'executor_unavailable'
+                        task_category = $taskCategoryResolved
+                        error = [string]$_.Exception.Message
+                        active_engine = [string]$actionEngineConfig.active
+                    }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary 'Executor unavailable during run-task.' -CurrentAction 'Execution engine invocation failed.' -RecoveryState 'required' | Out-Null
+                $failedFeedback = Try-PublishExecutionFeedback -Config $config -FeedbackConfig $feedbackConfig -ExecutionId $resolvedExecutionId -Status "failed" -TaskId $TaskId -Details ([pscustomobject]@{
+                        reason = "executor_unavailable"
+                        task_category = $taskCategoryResolved
+                        error = [string]$_.Exception.Message
+                    })
+                $feedbackEvents += @([pscustomobject]@{ status = "failed"; publish = $failedFeedback })
+                throw
+            }
         }
 
         $resultPayload = $invokeResult.result
@@ -13078,6 +13790,27 @@ switch ($Action) {
 
             $reviewError = [string]$_.Exception.Message
         }
+        $terminalEventType = if ([string]::Equals($reviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) {
+            'local_executor_completed'
+        }
+        elseif ($resultPayload.PSObject.Properties['reason_code'] -and [string]::Equals([string]$resultPayload.reason_code, 'blocked_missing_bounded_edit_mode', [System.StringComparison]::OrdinalIgnoreCase)) {
+            'bounded_edit_mode_missing'
+        }
+        else {
+            'blocked'
+        }
+        $terminalStatusValue = if ([string]::Equals($reviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } else { 'blocked' }
+        $terminalReasonCode = if ($resultPayload.PSObject.Properties['reason_code']) { [string]$resultPayload.reason_code } else { '' }
+        Set-PersistedTaskTerminalState -Task $task -Status $terminalStatusValue -EventType $terminalEventType -Message ([string]$resultPayload.summary) -ReasonCode $terminalReasonCode -Details ([pscustomobject]@{
+                review_decision = $reviewDecision
+                failures = @($resultPayload.failures)
+                recommendations = @($resultPayload.recommendations)
+                tests_run = @($resultPayload.tests_run)
+                files_changed = @($resultPayload.files_changed)
+                add_result_error = $addResultError
+                review_error = $reviewError
+            }) -TaskStatus $(if ([string]::Equals($reviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } else { 'blocked' })
+        Save-State -State $state
         Publish-TodActivityEvent -EventType 'validation' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'validator' -Status $(if ([string]::Equals($reviewDecision, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } else { 'blocked' }) -Message ('Review decision resolved to ' + $reviewDecision + '.') -Details ([ordered]@{
                 review_decision = $reviewDecision
                 rationale = $rationale

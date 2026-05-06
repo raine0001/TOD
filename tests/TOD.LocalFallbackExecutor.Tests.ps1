@@ -194,6 +194,25 @@ Validation Pattern: NEW_SENTINEL
         Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
     }
 
+    It 'completes validation_only tasks without changing the target file' {
+        $promptText = @"
+Inspect scripts/TOD.ps1.
+Edit Mode: validation_only
+Validation Pattern: function Invoke-ExecuteChatTaskRequest
+"@
+        $promptPath = New-LocalFallbackPromptFile -Content $promptText
+        $context = New-LocalFallbackContext -TaskId 'TSK-LF-VALIDATE' -ObjectiveId 'OBJ-LF' -Title 'Validate TOD task route' -Scope 'Inspect scripts/TOD.ps1 and publish validation only.' -PromptPath $promptPath -Metadata @{ task_category = 'validation'; local_fallback_target_file = 'scripts/TOD.ps1' }
+
+        $result = Invoke-LocalExecutionEngine -Context $context
+
+        [string]$result.status | Should Be 'completed'
+        [bool]$result.no_change_required | Should Be $true
+        [string]$result.diff_summary | Should Match 'Validated bounded target'
+        @($result.commands_run).Count | Should Be 1
+
+        Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+    }
+
     It 'blocks missing target files with the exact missing variable' {
         $relativePath = ('docs/local-fallback-missing-{0}.md' -f [guid]::NewGuid().ToString('N'))
         $promptText = @"
@@ -371,6 +390,36 @@ def _extract_labeled_prompt_value(message: str, label: str) -> str:
             $script:LocalEngineRepoRoot = $originalRoot
             if (Test-Path -Path $tempRoot) {
                 Remove-Item -Path $tempRoot -Recurse -Force
+            }
+        }
+    }
+
+    It 'ignores an empty local_fallback_target_file and still infers the bounded docs target from prompt text' {
+        $relativePath = ('docs/local-fallback-empty-target-{0}.md' -f [guid]::NewGuid().ToString('N'))
+        $absolutePath = Join-Path $repoRoot ($relativePath -replace '/', '\\')
+        $absoluteDir = Split-Path -Parent $absolutePath
+        New-Item -ItemType Directory -Path $absoluteDir -Force | Out-Null
+        [System.IO.File]::WriteAllText($absolutePath, "# Empty Target Override`n", (New-Object System.Text.UTF8Encoding($false)))
+
+        $promptPath = New-LocalFallbackPromptFile -Content ("Update {0} with a short Async Dispatch section." -f $relativePath)
+        $context = New-LocalFallbackContext -TaskId 'TSK-LF-EMPTY-TARGET' -ObjectiveId 'OBJ-LF' -Title 'Ignore empty target override' -Scope ("Update {0} with a short Async Dispatch section." -f $relativePath) -PromptPath $promptPath -Metadata @{
+            task_category = 'docs_change'
+            local_fallback_target_file = ''
+        }
+
+        try {
+            $result = Invoke-LocalExecutionEngine -Context $context
+
+            [string]$result.status | Should Be 'completed'
+            (@($result.files_changed | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }) -contains $relativePath) | Should Be $true
+            ([string](Get-Content -Path $absolutePath -Raw)) | Should Match 'Async Dispatch'
+        }
+        finally {
+            if (Test-Path -Path $promptPath) {
+                Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+            }
+            if (Test-Path -Path $absolutePath) {
+                Remove-Item -Path $absolutePath -Force
             }
         }
     }

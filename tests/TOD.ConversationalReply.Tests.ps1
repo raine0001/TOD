@@ -131,6 +131,112 @@ function Restore-ChatDispatchArtifacts {
     }
 }
 
+function Get-TaskActivityEvents {
+    param([Parameter(Mandatory = $true)][string]$TaskId)
+
+    $paths = @(
+        (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVITY_STREAM.latest.json'),
+        (Join-Path $repoRoot 'tmp_remote_mim/runtime/shared/TOD_ACTIVITY_STREAM.latest.json')
+    )
+
+    foreach ($path in $paths) {
+        if (-not (Test-Path -Path $path)) {
+            continue
+        }
+
+        try {
+            $payload = Get-Content -Path $path -Raw | ConvertFrom-Json
+        }
+        catch {
+            continue
+        }
+
+        $events = @()
+        if ($payload -and $payload.PSObject.Properties['events'] -and $null -ne $payload.events) {
+            $events = @($payload.events | Where-Object { [string]$_.task_id -eq $TaskId })
+        }
+        if (@($events).Count -gt 0) {
+            return @($events)
+        }
+    }
+
+    return @()
+}
+
+function Wait-ForTaskActivityEvent {
+    param(
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        [Parameter(Mandatory = $true)][string[]]$EventTypes,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        $events = @(Get-TaskActivityEvents -TaskId $TaskId)
+        $eventTypeValues = @($events | ForEach-Object { [string]$_.event_type })
+        $allPresent = $true
+        foreach ($eventType in @($EventTypes)) {
+            if ($eventTypeValues -notcontains [string]$eventType) {
+                $allPresent = $false
+                break
+            }
+        }
+        if ($allPresent) {
+            return @($events)
+        }
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $deadline)
+
+    return @()
+}
+
+function Wait-ForFilePattern {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Pattern,
+        [int]$TimeoutSeconds = 90
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        if (Test-Path -Path $Path) {
+            $content = [string](Get-Content -Path $Path -Raw)
+            if ($content -match $Pattern) {
+                return $true
+            }
+        }
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $deadline)
+
+    return $false
+}
+
+function Wait-ForTaskTerminalState {
+    param(
+        [Parameter(Mandatory = $true)][string]$StatePath,
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        [int]$TimeoutSeconds = 90
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        if (Test-Path -Path $StatePath) {
+            try {
+                $state = Get-Content -Path $StatePath -Raw | ConvertFrom-Json
+                $task = @($state.tasks | Where-Object { [string]$_.id -eq $TaskId } | Select-Object -First 1)
+                if (@($task).Count -gt 0 -and $task[0].PSObject.Properties['terminal_state'] -and $null -ne $task[0].terminal_state) {
+                    return $task[0]
+                }
+            }
+            catch {
+            }
+        }
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $deadline)
+
+    return $null
+}
+
 Describe 'TOD conversational reply' {
     It 'dispatches GOAL TASKS ACCEPTANCE prompts through the execution lane' {
         (Test-Path -Path $scriptUnderTest) | Should Be $true
@@ -526,34 +632,149 @@ Validation Pattern: NEW_SENTINEL
 STOP CONDITION: TOD direct chat routes the bounded task through LocalExecutionEngine and returns execution evidence.
 "@
 
+            $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
             $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $stopwatch.Stop()
 
             $eventTypes = @($result.command_dispatch.payload.activity_event_types | ForEach-Object { [string]$_ })
             $runTask = $result.command_dispatch.payload.run_task
+            $backgroundApplied = $false
+            $terminalTask = $null
 
             [bool]$result.ok | Should Be $true
             [string]$result.command_dispatch.task_category | Should Be 'code_change'
             [bool]$result.command_dispatch.codex_needed | Should Be $false
+            [bool]$result.command_dispatch.accepted | Should Be $true
+            [string]$result.command_dispatch.execution_status | Should Be 'queued'
+            [string]$result.command_dispatch.activity_stream_url | Should Match ([regex]::Escape([string]$result.command_dispatch.task_id))
             (@($result.command_dispatch.payload.activity_event_types) -contains 'executor_classified') | Should Be $true
             [string]$result.command_dispatch.payload.executor_classification.selected_executor | Should Be 'local'
             [bool]$result.command_dispatch.payload.executor_classification.local_supported | Should Be $true
             [bool]$result.command_dispatch.payload.executor_classification.codex_allowed | Should Be $false
             [string]$runTask.engine_invocation.active_engine | Should Be 'local'
-            [string]$runTask.decision | Should Be 'pass'
+            [string]$runTask.decision | Should Be 'queued'
+            [bool]$runTask.accepted | Should Be $true
+            [bool]$runTask.engine_invocation.background_queued | Should Be $true
             [bool]$runTask.post_completion_tail_skipped | Should Be $true
-            [bool]$runTask.engine_invocation.result.no_change_required | Should Be $false
             ($eventTypes -contains 'local_executor_invoked') | Should Be $true
-            ($eventTypes -contains 'local_executor_completed') | Should Be $true
-            ($eventTypes -contains 'result_published') | Should Be $true
-            [string]@($runTask.engine_invocation.result.files_changed)[0] | Should Be $relativePath
-            [string]$runTask.engine_invocation.result.diff_summary | Should Match 'Replaced bounded text'
+
+            $backgroundApplied = Wait-ForFilePattern -Path $absolutePath -Pattern 'NEW_SENTINEL' -TimeoutSeconds 90
+            $terminalTask = Wait-ForTaskTerminalState -StatePath $fixture.TodStatePath -TaskId ([string]$result.command_dispatch.task_id) -TimeoutSeconds 90
+
+            [bool]$backgroundApplied | Should Be $true
             ([string](Get-Content -Path $absolutePath -Raw)) | Should Match 'NEW_SENTINEL'
+            $null -ne $terminalTask | Should Be $true
+            [string]$terminalTask.terminal_state.status | Should Be 'completed'
+            [string]$terminalTask.terminal_state.event_type | Should Be 'local_executor_completed'
         }
         finally {
             Restore-ChatDispatchArtifacts -Records $artifactBackup
             if (Test-Path -Path $absolutePath) {
                 Remove-Item -Path $absolutePath -Force
             }
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'persists a terminal bounded-edit blocker for abstract async direct-chat tasks' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        $artifactBackup = Backup-ChatDispatchArtifacts
+        try {
+            Write-JsonNoBom -PathValue $fixture.BuildStatePath -Payload ([pscustomobject]@{ status = 'active'; task = 'Direct chat bounded-edit blocker' })
+            Write-JsonNoBom -PathValue $fixture.ObjectivesPath -Payload ([pscustomobject]@{ objectives = @() })
+            Write-JsonNoBom -PathValue $fixture.MaintenancePath -Payload ([pscustomobject]@{ overall_status = 'healthy'; overall_severity = 'info' })
+            Write-JsonNoBom -PathValue $fixture.WatchdogPath -Payload ([pscustomobject]@{ state = 'healthy' })
+            Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{ enabled = $true })
+            Write-ExecutionReadyTodConfig -Fixture $fixture
+            Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
+                objectives = @()
+                tasks = @()
+                execution_results = @()
+                review_decisions = @()
+                journal = @()
+                engine_performance = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_decisions = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_feedback = [pscustomobject]@{ learned_weights = [pscustomobject]@{}; sample_size = 0; version = 'feedback_v1'; updated_at = '' }
+                sync_state = [pscustomobject]@{ expected_contract_version = ''; expected_schema_version = ''; local_repo_signature = ''; cached_manifest = $null; last_comparison = $null; last_sync_decision = ''; last_sync_code = ''; compared_at = '' }
+            })
+
+            $query = @'
+OBJECTIVE: TOD-ASYNC-BOUNDED-EDIT-BLOCKER
+GOAL: Repair async direct chat execution for abstract implementation requests.
+TASKS: Make queued tasks persist a readable terminal blocker instead of remaining queued forever.
+ACCEPTANCE: An abstract async task reaches blocked_missing_bounded_edit_mode and surfaces through the activity stream.
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $terminalTask = Wait-ForTaskTerminalState -StatePath $fixture.TodStatePath -TaskId ([string]$result.command_dispatch.task_id) -TimeoutSeconds 90
+
+            [bool]$result.ok | Should Be $true
+            [string]$result.command_dispatch.execution_status | Should Be 'queued'
+            $null -ne $terminalTask | Should Be $true
+            [string]$terminalTask.terminal_state.status | Should Be 'blocked'
+            [string]$terminalTask.terminal_state.event_type | Should Be 'bounded_edit_mode_missing'
+            [string]$terminalTask.terminal_state.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
+        }
+        finally {
+            Restore-ChatDispatchArtifacts -Records $artifactBackup
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'persists a readable worker startup failure terminal state for async direct-chat tasks' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        $artifactBackup = Backup-ChatDispatchArtifacts
+        $env:TOD_FORCE_ASYNC_CHAT_WORKER_FAILURE = '1'
+        try {
+            Write-JsonNoBom -PathValue $fixture.BuildStatePath -Payload ([pscustomobject]@{ status = 'active'; task = 'Direct chat worker startup failure' })
+            Write-JsonNoBom -PathValue $fixture.ObjectivesPath -Payload ([pscustomobject]@{ objectives = @() })
+            Write-JsonNoBom -PathValue $fixture.MaintenancePath -Payload ([pscustomobject]@{ overall_status = 'healthy'; overall_severity = 'info' })
+            Write-JsonNoBom -PathValue $fixture.WatchdogPath -Payload ([pscustomobject]@{ state = 'healthy' })
+            Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{ enabled = $true })
+            Write-ExecutionReadyTodConfig -Fixture $fixture
+            Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
+                objectives = @()
+                tasks = @()
+                execution_results = @()
+                review_decisions = @()
+                journal = @()
+                engine_performance = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_decisions = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_feedback = [pscustomobject]@{ learned_weights = [pscustomobject]@{}; sample_size = 0; version = 'feedback_v1'; updated_at = '' }
+                sync_state = [pscustomobject]@{ expected_contract_version = ''; expected_schema_version = ''; local_repo_signature = ''; cached_manifest = $null; last_comparison = $null; last_sync_decision = ''; last_sync_code = ''; compared_at = '' }
+            })
+
+            $query = @'
+OBJECTIVE: TOD-ASYNC-WORKER-STARTUP-FAILURE
+TASK: Replace OLD_SENTINEL with NEW_SENTINEL in a bounded file and keep the task from hanging forever if the async worker crashes at startup.
+Edit Mode: replace_text
+Target File: scripts/Start-TOD-UI.ps1
+Old Text: OLD_SENTINEL
+New Text: NEW_SENTINEL
+ACCEPTANCE: Persist a readable terminal blocker when async worker startup fails.
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $terminalTask = Wait-ForTaskTerminalState -StatePath $fixture.TodStatePath -TaskId ([string]$result.command_dispatch.task_id) -TimeoutSeconds 90
+
+            [bool]$result.ok | Should Be $true
+            [string]$result.command_dispatch.execution_status | Should Be 'queued'
+            $null -ne $terminalTask | Should Be $true
+            [string]$terminalTask.terminal_state.status | Should Be 'blocked'
+            [string]$terminalTask.terminal_state.reason_code | Should Be 'worker_startup_failure'
+            [string]$terminalTask.terminal_state.message | Should Match 'Async chat worker failed before TOD could persist a terminal result'
+        }
+        finally {
+            $env:TOD_FORCE_ASYNC_CHAT_WORKER_FAILURE = $null
+            Restore-ChatDispatchArtifacts -Records $artifactBackup
             if ($fixture -and (Test-Path -Path $fixture.Base)) {
                 Remove-Item -Path $fixture.Base -Recurse -Force
             }
