@@ -782,6 +782,30 @@ def _same_objective(left: Any, right: Any) -> bool:
     return bool(left_token and right_token and left_token == right_token)
 
 
+def _message_declares_new_objective(message: str, authoritative_objective_id: str) -> bool:
+    """Return True when message opens with OBJECTIVE: <name> that differs from the active objective.
+
+    Handles user-issued chat commands of the form:
+        OBJECTIVE: TOD-NEW-OBJECTIVE-NAME  [optional Goal: / Title: etc.]
+    without requiring an explicit OBJECTIVE_ID: label.
+    """
+    text = str(message or "").strip()
+    m = re.match(r"(?i)^\s*OBJECTIVE\s*:\s*(.+)", text)
+    if not m:
+        return False
+    name_raw = m.group(1).strip().splitlines()[0].strip()
+    # Strip any trailing labeled-field suffix (e.g. "Goal:", "Title:", "Mission:")
+    name_raw = re.split(r"\s+(?:GOAL|TITLE|MISSION|PRIMARY\s+OUTCOME)\s*:", name_raw, flags=re.IGNORECASE)[0].strip()
+    # Take the first whitespace-delimited token as the objective identifier
+    name_token = name_raw.split()[0] if name_raw else ""
+    if not name_token:
+        return False
+    if not authoritative_objective_id:
+        return True
+    return not _same_objective(name_token, authoritative_objective_id)
+
+
+
 def _same_task_identity(left: Any, right: Any) -> bool:
     left_text = str(left or "").strip().lower()
     right_text = str(right or "").strip().lower()
@@ -2424,9 +2448,12 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
     ) or "objective-unknown"
     normalized_objective = _normalize_objective_token(objective_id) or objective_id.lower().replace(" ", "-")
     prompt_starts_new_objective = bool(
-        prompt_objective_id
-        and authoritative_objective_id
-        and not _same_objective(prompt_objective_id, authoritative_objective_id)
+        (
+            prompt_objective_id
+            and authoritative_objective_id
+            and not _same_objective(prompt_objective_id, authoritative_objective_id)
+        )
+        or _message_declares_new_objective(message, authoritative_objective_id)
     )
     request_objective_slug = _objective_request_slug(prompt_objective_id if prompt_starts_new_objective else objective_id) or normalized_objective
     request_sequence = int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -2933,9 +2960,12 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
     ) or "objective-unknown"
     normalized_objective = _normalize_objective_token(objective_id) or objective_id.lower().replace(" ", "-")
     prompt_starts_new_objective = bool(
-        prompt_objective_id
-        and authoritative_objective_id
-        and not _same_objective(prompt_objective_id, authoritative_objective_id)
+        (
+            prompt_objective_id
+            and authoritative_objective_id
+            and not _same_objective(prompt_objective_id, authoritative_objective_id)
+        )
+        or _message_declares_new_objective(message, authoritative_objective_id)
     )
     request_objective_slug = _objective_request_slug(prompt_objective_id if prompt_starts_new_objective else objective_id) or normalized_objective
     request_sequence = int(datetime.now(timezone.utc).timestamp() * 1000)

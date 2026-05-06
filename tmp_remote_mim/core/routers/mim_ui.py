@@ -15062,13 +15062,17 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
 
 @router.get("/mim/ui/state")
 async def mim_ui_state(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
+  ensure_authenticated_mimtod_api_request(request)
   try:
     return await _build_live_mim_ui_state(request, db)
   except Exception as exc:  # noqa: BLE001
-    if not _is_mim_ui_db_unavailable(exc):
-      raise
-    logger.warning("MIM UI state degraded because database connectivity is unavailable: %s", exc)
-    ensure_authenticated_mimtod_api_request(request)
+    db_unavailable = _is_mim_ui_db_unavailable(exc)
+    logger.warning(
+      "MIM UI state degraded due to %s (%s): %s",
+      "database unavailability" if db_unavailable else "unexpected exception",
+      type(exc).__name__,
+      exc,
+    )
     return _build_mim_ui_degraded_state(db_error_text=str(exc))
 
 
