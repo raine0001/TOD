@@ -916,6 +916,213 @@ def _select_runtime_live_task_request(integration_live_task: dict[str, Any], act
     }
 
 
+def _derive_task_identity_contention(
+    *,
+    canonical_objective: str,
+    live_task_request: dict[str, Any],
+    active_task_payload: dict[str, Any],
+    listener_decision: dict[str, Any],
+    decision_payload: dict[str, Any],
+) -> dict[str, Any]:
+    live_task = live_task_request if isinstance(live_task_request, dict) else {}
+    active_task = active_task_payload if isinstance(active_task_payload, dict) else {}
+    listener = listener_decision if isinstance(listener_decision, dict) else {}
+    runtime_decision = decision_payload if isinstance(decision_payload, dict) else {}
+
+    authoritative_objective_id = _pick_first_text(
+        canonical_objective,
+        active_task.get("objective_id"),
+        active_task.get("normalized_objective_id"),
+        live_task.get("objective_id"),
+        live_task.get("normalized_objective_id"),
+    )
+    request_objective_id = _pick_first_text(
+        live_task.get("objective_id"),
+        live_task.get("normalized_objective_id"),
+    )
+    active_task_id = _pick_first_text(active_task.get("task_id"), active_task.get("request_id"))
+    request_task_id = _pick_first_text(live_task.get("task_id"), live_task.get("request_id"))
+    active_source = _pick_first_text(active_task.get("source_service"), active_task.get("source"))
+    request_source = _pick_first_text(live_task.get("source_service"), live_task.get("source"))
+    last_writer = request_source or active_source
+
+    objective_aligned = bool(
+        _same_objective(authoritative_objective_id, request_objective_id)
+        or (
+            canonical_objective
+            and _same_objective(canonical_objective, request_objective_id)
+            and _same_objective(canonical_objective, authoritative_objective_id or canonical_objective)
+        )
+    )
+    task_mismatch = bool(active_task_id and request_task_id and not _same_task_identity(active_task_id, request_task_id))
+    listener_reason = _pick_first_text(listener.get("reason_code"), runtime_decision.get("reason_code")).lower()
+    listener_state = _pick_first_text(listener.get("execution_state"), runtime_decision.get("execution_state")).lower()
+    listener_rejected = listener_state == "rejected" or listener_reason in {"objective_mismatch", "external_coordination_blocker"}
+    detected = bool(objective_aligned and task_mismatch and listener_rejected)
+
+    active_generated_at = _pick_latest_timestamp(active_task.get("updated_at"), active_task.get("generated_at"))
+    request_generated_at = _pick_latest_timestamp(live_task.get("generated_at"), live_task.get("updated_at"))
+    active_dt = _parse_timestamp(active_generated_at)
+    request_dt = _parse_timestamp(request_generated_at)
+    active_newer = bool(active_dt and request_dt and active_dt > request_dt)
+    active_status = str(active_task.get("status") or "").strip().lower()
+    active_not_terminal = active_status not in {"completed", "complete", "failed", "rejected", "superseded", "cancelled", "canceled", "expired"}
+    request_from_watchdog = request_source == "tod_watchdog_autorepair"
+    active_from_console = active_source.startswith("tod-ui")
+    safe_self_repair = bool(detected and active_newer and active_not_terminal and request_from_watchdog and active_from_console)
+
+    mismatch_type = "task_id_mismatch_same_objective" if detected else ""
+    summary = (
+        "Task ID mismatch inside the same objective. Console dispatch and watchdog repair are writing different task identities."
+        if detected
+        else ""
+    )
+    repair_step = (
+        "Preserve the newer console task identity, suppress stale watchdog restore for this pair, republish execute-chat-task, then retry listener dispatch once."
+        if detected
+        else ""
+    )
+
+    return {
+        "detected": detected,
+        "reason_code": mismatch_type,
+        "summary": summary,
+        "blocker_type": "task_identity_contention" if detected else "",
+        "mismatch_type": mismatch_type,
+        "authoritative_objective_id": authoritative_objective_id,
+        "request_objective_id": request_objective_id,
+        "active_task_id": active_task_id,
+        "request_task_id": request_task_id,
+        "source_service": request_source,
+        "last_writer": last_writer,
+        "recommended_repair": repair_step,
+        "safe_self_repair": safe_self_repair,
+        "active_generated_at": active_generated_at,
+        "request_generated_at": request_generated_at,
+    }
+
+
+def _record_task_identity_event(event: str, contention: dict[str, Any], details: dict[str, Any] | None = None) -> None:
+    payload = {
+        "generated_at": _utc_now_iso(),
+        "action": event,
+        "status": "completed",
+        "objective_id": str(contention.get("authoritative_objective_id") or "").strip(),
+        "task_id": str(contention.get("active_task_id") or "").strip(),
+        "request_id": str(contention.get("request_task_id") or "").strip(),
+        "source_service": str(contention.get("source_service") or "").strip(),
+    }
+    if isinstance(details, dict) and details:
+        payload["details"] = details
+    _record_operator_action(payload)
+
+
+def _attempt_task_identity_self_repair(contention: dict[str, Any]) -> dict[str, Any]:
+    marker_path = SHARED_RUNTIME_ROOT / "TOD_TASK_IDENTITY_REPAIR.latest.json"
+    repair_key = "|".join(
+        [
+            str(contention.get("authoritative_objective_id") or "").strip(),
+            str(contention.get("active_task_id") or "").strip(),
+            str(contention.get("request_task_id") or "").strip(),
+        ]
+    )
+    previous = _load_json(marker_path)
+    if str(previous.get("repair_key") or "") == repair_key and bool(previous.get("attempted") is True):
+        return {
+            "attempted": False,
+            "reason": "already_attempted_for_pair",
+        }
+
+    if not bool(contention.get("safe_self_repair") is True):
+        return {
+            "attempted": False,
+            "reason": "unsafe_or_not_needed",
+        }
+
+    _record_task_identity_event("task_identity_contention_detected", contention)
+    _record_task_identity_event("watchdog_restore_suppressed_newer_console_task", contention)
+    _record_task_identity_event("canonical_task_identity_selected", contention)
+
+    objective_id = str(contention.get("authoritative_objective_id") or "").strip()
+    task_id = str(contention.get("active_task_id") or "").strip()
+    generated_at = _utc_now_iso()
+    request_path = SHARED_RUNTIME_ROOT / "MIM_TOD_TASK_REQUEST.latest.json"
+    trigger_path = SHARED_RUNTIME_ROOT / "MIM_TO_TOD_TRIGGER.latest.json"
+    request_payload = {
+        "packet_type": "mim-tod-task-request-v1",
+        "generated_at": generated_at,
+        "source": "tod-ui-task-identity-self-repair-v1",
+        "source_service": "tod-ui-task-identity-self-repair",
+        "target": "TOD",
+        "request_id": task_id,
+        "task_id": task_id,
+        "objective_id": objective_id,
+        "correlation_id": task_id,
+        "sequence": int(datetime.now(timezone.utc).timestamp() * 1000),
+        "tod_action": "execute-chat-task",
+        "canonical_lane_source": "task_identity_arbitration",
+        "title": "Resume authoritative console task identity",
+        "description": "Task identity contention repair republished the authoritative console task for the same objective.",
+        "priority": "high",
+        "scope": "Preserve newer same-objective console task identity and retry listener dispatch once.",
+        "acceptance_criteria": "Listener accepts the canonical same-objective task identity.",
+        "success_criteria": "Listener accepts the canonical same-objective task identity.",
+        "requested_outcome": "Listener accepts the canonical same-objective task identity.",
+        "task_classification": "programming",
+        "assigned_executor": "codex",
+    }
+    request_text = json.dumps(request_payload, indent=2, ensure_ascii=True)
+    request_sha256 = hashlib.sha256(request_text.encode("utf-8")).hexdigest()
+    trigger_payload = {
+        "packet_type": "mim-to-tod-trigger-v1",
+        "generated_at": generated_at,
+        "emitted_at": generated_at,
+        "source_actor": "MIM",
+        "target_actor": "TOD",
+        "source_service": "tod-ui-task-identity-self-repair",
+        "trigger": task_id,
+        "artifact": request_path.name,
+        "artifact_path": str(request_path),
+        "artifact_sha256": request_sha256,
+        "task_id": task_id,
+        "request_id": task_id,
+        "correlation_id": task_id,
+    }
+
+    _record_task_identity_event("listener_retry_started", contention)
+    result = {
+        "attempted": True,
+        "published": False,
+        "request_path": str(request_path),
+        "trigger_path": str(trigger_path),
+    }
+    try:
+        _write_shared_json(request_path, request_payload)
+        _write_shared_json(trigger_path, trigger_payload)
+        result["published"] = True
+        result["reason"] = "published"
+        _record_task_identity_event("listener_retry_result", contention, {"status": "published"})
+    except Exception as exc:
+        result["reason"] = "publish_failed"
+        result["error"] = _compact_text(exc, 220)
+        _record_task_identity_event("listener_retry_result", contention, {"status": "failed", "error": result["error"]})
+
+    _write_shared_json(
+        marker_path,
+        {
+            "generated_at": generated_at,
+            "repair_key": repair_key,
+            "attempted": True,
+            "published": bool(result.get("published")),
+            "reason": str(result.get("reason") or "").strip(),
+            "objective_id": objective_id,
+            "active_task_id": task_id,
+            "request_task_id": str(contention.get("request_task_id") or "").strip(),
+        },
+    )
+    return result
+
+
 def _detect_phase_label(active_task: dict[str, Any], execution_result: dict[str, Any]) -> str:
     active_contract = active_task.get("execution_contract") if isinstance(active_task.get("execution_contract"), dict) else {}
     result_contract = execution_result.get("execution_contract") if isinstance(execution_result.get("execution_contract"), dict) else {}
@@ -4871,6 +5078,27 @@ def _build_tod_console_state() -> dict[str, Any]:
         or ""
     ).strip()
     alignment_status = str(alignment.get("status") or "unknown").strip().lower() or "unknown"
+
+    task_identity_contention = _derive_task_identity_contention(
+        canonical_objective=canonical_objective,
+        live_task_request=live_task_request,
+        active_task_payload=active_task_payload,
+        listener_decision=listener_decision,
+        decision_payload=decision_payload,
+    )
+    task_identity_repair = {"attempted": False, "reason": "not_needed"}
+    if bool(task_identity_contention.get("safe_self_repair") is True):
+        task_identity_repair = _attempt_task_identity_self_repair(task_identity_contention)
+        if bool(task_identity_repair.get("published")):
+            # Preserve the selected canonical task identity in this rendered state.
+            live_task_request = {
+                **live_task_request,
+                "request_id": str(task_identity_contention.get("active_task_id") or live_task_request.get("request_id") or "").strip(),
+                "task_id": str(task_identity_contention.get("active_task_id") or live_task_request.get("task_id") or "").strip(),
+                "objective_id": str(task_identity_contention.get("authoritative_objective_id") or live_task_request.get("objective_id") or "").strip(),
+                "source_service": "tod-ui-task-identity-self-repair",
+                "generated_at": _utc_now_iso(),
+            }
     evidence_status = str(evidence.get("status") or "unknown").strip().lower() or "unknown"
     publish_status = str(publish.get("status") or "unknown").strip().lower() or "unknown"
     publish_consumer_status = str(publish.get("consumer_status") or "").strip().lower()
@@ -4893,6 +5121,9 @@ def _build_tod_console_state() -> dict[str, Any]:
         listener_decision.get("summary") or decision_payload.get("summary") or "",
         220,
     ).lower()
+    if bool(task_identity_contention.get("detected") is True):
+        decision_reason = str(task_identity_contention.get("reason_code") or "task_id_mismatch_same_objective").strip().lower()
+        decision_summary = str(task_identity_contention.get("summary") or "").strip().lower()
     probe_status = str(probe_payload.get("status") or "unknown").strip().lower() or "unknown"
     authority_reset_active = bool(authority_reset.get("active") is True)
     canonical_token = _normalize_objective_token(canonical_objective)
@@ -5028,6 +5259,26 @@ def _build_tod_console_state() -> dict[str, Any]:
             220,
         ),
     }
+    if bool(task_identity_contention.get("detected") is True):
+        effective_listener_decision = {
+            **effective_listener_decision,
+            "decision_outcome": "reject_with_specific_policy_reason",
+            "reason_code": str(task_identity_contention.get("reason_code") or "task_id_mismatch_same_objective").strip(),
+            "execution_state": "rejected",
+            "next_step_recommendation": _compact_text(task_identity_contention.get("recommended_repair") or "", 220),
+            "summary": _compact_text(task_identity_contention.get("summary") or "", 220),
+            "authoritative_objective_id": str(task_identity_contention.get("authoritative_objective_id") or "").strip(),
+            "request_objective_id": str(task_identity_contention.get("request_objective_id") or "").strip(),
+            "active_task_id": str(task_identity_contention.get("active_task_id") or "").strip(),
+            "request_task_id": str(task_identity_contention.get("request_task_id") or "").strip(),
+            "source_service": str(task_identity_contention.get("source_service") or "").strip(),
+            "last_writer": str(task_identity_contention.get("last_writer") or "").strip(),
+            "blocker_type": "task_identity_contention",
+            "mismatch_type": str(task_identity_contention.get("mismatch_type") or "").strip(),
+            "can_self_repair": bool(task_identity_contention.get("safe_self_repair") is True),
+            "self_repair_attempted": bool(task_identity_repair.get("attempted") is True),
+            "self_repair_result": str(task_identity_repair.get("reason") or "").strip(),
+        }
     if stale_residue_suppressed:
         effective_listener_decision = {
             "decision_outcome": "superseded_stale_listener_residue",
@@ -5188,6 +5439,14 @@ def _build_tod_console_state() -> dict[str, Any]:
         "training_state": training_status.get("state_label") or "Unknown",
         "training_progress": f"{training_status.get('percent_complete', 0)}%" if training_status.get("available") else "Unknown",
         "shared_truth_state": shared_truth_state or "Unknown",
+        "blocker_type": str(effective_listener_decision.get("blocker_type") or "").strip(),
+        "mismatch_type": str(effective_listener_decision.get("mismatch_type") or "").strip(),
+        "active_task_id": str(effective_listener_decision.get("active_task_id") or "").strip(),
+        "request_task_id": str(effective_listener_decision.get("request_task_id") or "").strip(),
+        "source_service": str(effective_listener_decision.get("source_service") or "").strip(),
+        "last_writer": str(effective_listener_decision.get("last_writer") or "").strip(),
+        "self_repair_attempted": bool(effective_listener_decision.get("self_repair_attempted") is True),
+        "self_repair_result": str(effective_listener_decision.get("self_repair_result") or "").strip(),
     }
 
     latest_operator_action = _latest_operator_action_payload()
@@ -5380,6 +5639,32 @@ def _build_tod_console_state() -> dict[str, Any]:
             "generated_at": effective_listener_decision.get("generated_at") or "",
             "generated_age": _format_age(effective_listener_decision.get("generated_at")),
             "summary": effective_listener_decision.get("summary") or "No listener decision summary is available.",
+            "authoritative_objective_id": effective_listener_decision.get("authoritative_objective_id") or "",
+            "request_objective_id": effective_listener_decision.get("request_objective_id") or "",
+            "active_task_id": effective_listener_decision.get("active_task_id") or "",
+            "request_task_id": effective_listener_decision.get("request_task_id") or "",
+            "source_service": effective_listener_decision.get("source_service") or "",
+            "last_writer": effective_listener_decision.get("last_writer") or "",
+            "blocker_type": effective_listener_decision.get("blocker_type") or "",
+            "mismatch_type": effective_listener_decision.get("mismatch_type") or "",
+            "can_self_repair": bool(effective_listener_decision.get("can_self_repair") is True),
+            "self_repair_attempted": bool(effective_listener_decision.get("self_repair_attempted") is True),
+            "self_repair_result": effective_listener_decision.get("self_repair_result") or "",
+        },
+        "task_identity_contention": {
+            "detected": bool(task_identity_contention.get("detected") is True),
+            "blocker_type": str(task_identity_contention.get("blocker_type") or "").strip(),
+            "mismatch_type": str(task_identity_contention.get("mismatch_type") or "").strip(),
+            "authoritative_objective_id": str(task_identity_contention.get("authoritative_objective_id") or "").strip(),
+            "request_objective_id": str(task_identity_contention.get("request_objective_id") or "").strip(),
+            "active_task_id": str(task_identity_contention.get("active_task_id") or "").strip(),
+            "request_task_id": str(task_identity_contention.get("request_task_id") or "").strip(),
+            "source_service": str(task_identity_contention.get("source_service") or "").strip(),
+            "last_writer": str(task_identity_contention.get("last_writer") or "").strip(),
+            "recommended_repair": str(task_identity_contention.get("recommended_repair") or "").strip(),
+            "can_self_repair": bool(task_identity_contention.get("safe_self_repair") is True),
+            "self_repair_attempted": bool(task_identity_repair.get("attempted") is True),
+            "self_repair_result": str(task_identity_repair.get("reason") or "").strip(),
         },
         "operator_guidance": effective_guidance,
         "publish": {

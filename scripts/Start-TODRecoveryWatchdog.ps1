@@ -924,6 +924,68 @@ function Get-CanonicalObjectiveForSelfHeal {
     return ''
 }
 
+function Get-WatchdogRestoreSuppression {
+    param(
+        [Parameter(Mandatory = $true)][string]$CanonicalObjective,
+        [string]$CanonicalTaskId = '',
+        [AllowNull()]$BridgeSmoke = $null
+    )
+
+    if (-not $BridgeSmoke -or -not $BridgeSmoke.PSObject.Properties['canonical_request'] -or -not $BridgeSmoke.canonical_request) {
+        return $null
+    }
+
+    $canonicalRequest = $BridgeSmoke.canonical_request
+    $localMirror = if ($canonicalRequest.PSObject.Properties['local_listener_mirror']) { $canonicalRequest.local_listener_mirror } else { $null }
+    $remoteSurface = if ($canonicalRequest.PSObject.Properties['remote_surface']) { $canonicalRequest.remote_surface } else { $null }
+    if (-not $localMirror -or -not $remoteSurface) {
+        return $null
+    }
+
+    $canonicalObjectiveId = Normalize-ObjectiveIdentity -Value $CanonicalObjective
+    $localObjectiveId = Normalize-ObjectiveIdentity -Value $(if ($localMirror.PSObject.Properties['objective_id']) { [string]$localMirror.objective_id } else { '' })
+    $remoteObjectiveId = Normalize-ObjectiveIdentity -Value $(if ($remoteSurface.PSObject.Properties['objective_id']) { [string]$remoteSurface.objective_id } else { '' })
+    if ([string]::IsNullOrWhiteSpace($canonicalObjectiveId) -or -not [string]::Equals($canonicalObjectiveId, $localObjectiveId, [System.StringComparison]::OrdinalIgnoreCase) -or -not [string]::Equals($canonicalObjectiveId, $remoteObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $null
+    }
+
+    $localTaskId = if ($localMirror.PSObject.Properties['task_id']) { [string]$localMirror.task_id } elseif ($localMirror.PSObject.Properties['request_id']) { [string]$localMirror.request_id } else { '' }
+    $remoteTaskId = if ($remoteSurface.PSObject.Properties['task_id']) { [string]$remoteSurface.task_id } elseif ($remoteSurface.PSObject.Properties['request_id']) { [string]$remoteSurface.request_id } else { '' }
+    if ([string]::IsNullOrWhiteSpace($localTaskId) -or [string]::IsNullOrWhiteSpace($remoteTaskId) -or [string]::Equals($localTaskId, $remoteTaskId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $null
+    }
+
+    $remoteSourceService = if ($remoteSurface.PSObject.Properties['source_service']) { [string]$remoteSurface.source_service } else { '' }
+    $remoteFromWatchdog = [string]::Equals($remoteSourceService, 'tod_watchdog_autorepair', [System.StringComparison]::OrdinalIgnoreCase)
+
+    $localMtime = Get-DateOrMinValue -Value $(if ($localMirror.PSObject.Properties['mtime']) { [string]$localMirror.mtime } else { '' })
+    $remoteGenerated = Get-DateOrMinValue -Value $(if ($remoteSurface.PSObject.Properties['generated_at']) { [string]$remoteSurface.generated_at } else { '' })
+    $remoteMtime = Get-DateOrMinValue -Value $(if ($remoteSurface.PSObject.Properties['mtime']) { [string]$remoteSurface.mtime } else { '' })
+    $remoteLatest = if ($remoteGenerated -gt $remoteMtime) { $remoteGenerated } else { $remoteMtime }
+    $localIsNewer = ($localMtime -gt [datetime]::MinValue -and $remoteLatest -gt [datetime]::MinValue -and $localMtime -gt $remoteLatest)
+
+    $canonicalTaskText = ([string]$CanonicalTaskId).Trim()
+    $localMatchesCanonical = (-not [string]::IsNullOrWhiteSpace($canonicalTaskText) -and [string]::Equals($localTaskId, $canonicalTaskText, [System.StringComparison]::OrdinalIgnoreCase))
+    $localLooksConsole = ($localTaskId -match '^tod-' -or $localTaskId -match '^handoff-' -or $localTaskId -match '^TSKCHAT-' -or ($localTaskId -notmatch '^objective-\d+-task-\d+$'))
+
+    if (-not $remoteFromWatchdog -or -not $localIsNewer -or (-not $localLooksConsole -and -not $localMatchesCanonical)) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        suppress = $true
+        reason = 'watchdog_restore_suppressed_newer_console_task'
+        canonical_objective = $CanonicalObjective
+        request_id = $localTaskId
+        active_task_id = $localTaskId
+        request_task_id = $remoteTaskId
+        source_service = $remoteSourceService
+        last_writer = $remoteSourceService
+        local_mtime = if ($localMtime -gt [datetime]::MinValue) { $localMtime.ToString('o') } else { '' }
+        remote_generated_at = if ($remoteLatest -gt [datetime]::MinValue) { $remoteLatest.ToString('o') } else { '' }
+    }
+}
+
 function New-CanonicalRepublishTaskRequest {
     param(
         [Parameter(Mandatory = $true)][string]$ObjectiveId,
@@ -1023,6 +1085,26 @@ function Invoke-PublicationSurfaceSelfHeal {
 
     $normalizedObjective = Normalize-ObjectiveIdentity -Value $canonicalObjective
     $canonicalTaskId = Get-CanonicalTaskIdForSelfHeal -ObjectiveId $canonicalObjective -BridgeSmoke $BridgeSmoke
+    $suppression = Get-WatchdogRestoreSuppression -CanonicalObjective $canonicalObjective -CanonicalTaskId $canonicalTaskId -BridgeSmoke $BridgeSmoke
+    if ($suppression -and [bool]$suppression.suppress) {
+        return [pscustomobject]@{
+            attempted = $true
+            repaired = $true
+            suppressed = $true
+            method = 'watchdog_restore_suppressed_newer_console_task'
+            canonical_objective = $canonicalObjective
+            request_id = [string]$suppression.request_id
+            reason = [string]$suppression.reason
+            remote_host = $hostAlias
+            blocker_type = 'task_identity_contention'
+            mismatch_type = 'task_id_mismatch_same_objective'
+            active_task_id = [string]$suppression.active_task_id
+            request_task_id = [string]$suppression.request_task_id
+            source_service = [string]$suppression.source_service
+            last_writer = [string]$suppression.last_writer
+            recommended_repair = 'Preserved newer console/direct-chat task identity. Retry listener dispatch once using the preserved task id.'
+        }
+    }
     $requestPayload = New-CanonicalRepublishTaskRequest -ObjectiveId $canonicalObjective -TaskId $canonicalTaskId -CorrelationId $(if (-not [string]::IsNullOrWhiteSpace($canonicalTaskId)) { $canonicalTaskId } else { 'watchdog-publication-surface-self-heal' })
     $requestId = [string]$requestPayload.request_id
     $remoteRequestPath = ((Join-Path $RemoteRoot 'MIM_TOD_TASK_REQUEST.latest.json') -replace '[\\/]+', '/')
@@ -1379,6 +1461,9 @@ while ($true) {
         elseif ($issueCode -eq "publication_surface_divergence") {
             $recoveryAction = "republish_authoritative_request"
             $publicationRepairResult = Invoke-PublicationSurfaceSelfHeal -BridgeSmoke $bridgeSmoke -IntegrationStatusPath $integrationStatusPath -EnvPath $envAbs -LocalRepairPacketPath $publicationRepairPacketPath
+            if ($publicationRepairResult -and $publicationRepairResult.PSObject.Properties['suppressed'] -and [bool]$publicationRepairResult.suppressed) {
+                $recoveryAction = "watchdog_restore_suppressed_newer_console_task"
+            }
             if ([bool]$publicationRepairResult.repaired -and (Test-Path -Path $sharedStateSyncAbs)) {
                 try {
                     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sharedStateSyncAbs -RefreshMimContextFromSsh -PublishTodStatusToMimArm | Out-Null
