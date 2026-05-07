@@ -1,0 +1,12 @@
+{
+    "generated_at":  "2026-05-07T20:22:55.6239929Z",
+    "emitted_at":  "2026-05-07T20:22:55.6239929Z",
+    "request_id":  "objective-2914-task-1778185375",
+    "task_id":  "objective-2914-task-1778185375",
+    "objective_id":  "objective-2914",
+    "correlation_id":  "watchdog-publication-surface-self-heal",
+    "sequence":  1778185375,
+    "source_service":  "tod_watchdog_autorepair",
+    "canonical_lane_source":  "shared_truth",
+    "source_instance_id":  "TOD-3322"
+}
