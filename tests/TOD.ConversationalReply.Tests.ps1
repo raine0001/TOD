@@ -581,6 +581,116 @@ STOP CONDITION: TOD direct chat creates a second fresh executable task lane.
         }
     }
 
+    It 'bypasses stale blocked state and materializes a fresh OBJECTIVE repair task' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        $artifactBackup = Backup-ChatDispatchArtifacts
+        try {
+            Write-JsonNoBom -PathValue $fixture.BuildStatePath -Payload ([pscustomobject]@{
+                objective_id = 'objective-14'
+                status = 'blocked'
+                task = 'TOD is blocked: waiting on scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine.'
+                blocker = 'waiting on scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine'
+            })
+            Write-JsonNoBom -PathValue $fixture.ObjectivesPath -Payload ([pscustomobject]@{ objectives = @() })
+            Write-JsonNoBom -PathValue $fixture.MaintenancePath -Payload ([pscustomobject]@{ overall_status = 'healthy'; overall_severity = 'info' })
+            Write-JsonNoBom -PathValue $fixture.WatchdogPath -Payload ([pscustomobject]@{ state = 'healthy' })
+            Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{ enabled = $true })
+            Write-ExecutionReadyTodConfig -Fixture $fixture
+            Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
+                objectives = @(
+                    [pscustomobject]@{ id = 'objective-14'; title = 'Legacy stale objective'; description = 'Legacy'; priority = 'high'; constraints = @(); success_criteria = @(); status = 'in_progress'; created_at = '2026-05-05T00:00:00Z'; updated_at = '2026-05-05T00:00:00Z' }
+                )
+                tasks = @(
+                    [pscustomobject]@{ id = 'objective-14-task-79'; objective_id = 'objective-14'; title = 'Legacy LocalExecutionEngine blocker'; type = 'implementation'; task_category = 'chat_execution'; scope = 'TOD is blocked: waiting on scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine.'; dependencies = @(); acceptance_criteria = @('Legacy'); status = 'blocked'; assigned_executor = 'local'; source = 'bridge_runtime_sync'; created_at = '2026-05-05T00:00:00Z'; updated_at = '2026-05-05T00:00:00Z' }
+                )
+                execution_results = @()
+                review_decisions = @()
+                journal = @()
+                engine_performance = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_decisions = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_feedback = [pscustomobject]@{ learned_weights = [pscustomobject]@{}; sample_size = 0; version = 'feedback_v1'; updated_at = '' }
+                sync_state = [pscustomobject]@{ expected_contract_version = ''; expected_schema_version = ''; local_repo_signature = ''; cached_manifest = $null; last_comparison = $null; last_sync_decision = ''; last_sync_code = ''; compared_at = '' }
+            })
+
+            $query = 'OBJECTIVE: TOD-NEXT-SLICE-MATERIALIZATION'
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $eventTypes = @($result.command_dispatch.payload.activity_event_types | ForEach-Object { [string]$_ })
+            $stateAfter = Get-Content -Path $fixture.TodStatePath -Raw | ConvertFrom-Json
+            $freshTask = @($stateAfter.tasks | Where-Object { [string]$_.id -eq [string]$result.command_dispatch.task_id } | Select-Object -First 1)
+
+            [bool]$result.command_dispatch.created | Should Be $true
+            [string]$result.command_dispatch.task_id | Should Match '^TSKCHAT-'
+            [string]$result.command_dispatch.task_id | Should Not Be 'objective-14-task-79'
+            [string]$result.command_dispatch.objective_id | Should Be 'objective-tod-next-slice-materialization'
+            [string]$result.command_dispatch.task_category | Should Be 'diagnostic_implementation_repair'
+            ($eventTypes -contains 'blocked_state_bypass_applied') | Should Be $true
+            ($eventTypes -contains 'fresh_repair_task_created') | Should Be $true
+            ($eventTypes -contains 'repair_task_materialization_started') | Should Be $true
+            ($eventTypes -contains 'stale_blocker_ignored_for_new_objective') | Should Be $true
+            (@($result.command_dispatch.payload.reason_codes) -contains 'fresh_objective_materialized_from_blocked_state') | Should Be $true
+            [string]$result.command_dispatch.payload.selected_task.task_id | Should Be ([string]$result.command_dispatch.task_id)
+            [string]$result.command_dispatch.payload.claimed_task.task_id | Should Be ([string]$result.command_dispatch.task_id)
+            [string]$result.reply_text | Should Match 'blocked_state_bypass_applied'
+            [string]$result.reply_text | Should Not Be 'TOD is blocked: waiting on scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine.'
+            @($freshTask).Count | Should Be 1
+            [string]$freshTask[0].id | Should Be ([string]$result.command_dispatch.task_id)
+        }
+        finally {
+            Restore-ChatDispatchArtifacts -Records $artifactBackup
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'bypasses stale blocked state for ADMIN ACTION and creates a fresh task id' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        $artifactBackup = Backup-ChatDispatchArtifacts
+        try {
+            Write-JsonNoBom -PathValue $fixture.BuildStatePath -Payload ([pscustomobject]@{
+                objective_id = 'objective-14'
+                status = 'blocked'
+                blocker = 'waiting on scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine'
+            })
+            Write-JsonNoBom -PathValue $fixture.ObjectivesPath -Payload ([pscustomobject]@{ objectives = @() })
+            Write-JsonNoBom -PathValue $fixture.MaintenancePath -Payload ([pscustomobject]@{ overall_status = 'healthy'; overall_severity = 'info' })
+            Write-JsonNoBom -PathValue $fixture.WatchdogPath -Payload ([pscustomobject]@{ state = 'healthy' })
+            Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{ enabled = $true })
+            Write-ExecutionReadyTodConfig -Fixture $fixture
+            Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
+                objectives = @()
+                tasks = @([pscustomobject]@{ id = 'objective-14-task-79'; objective_id = 'objective-14'; title = 'Legacy blocker'; type = 'implementation'; task_category = 'chat_execution'; scope = 'LocalExecutionEngine blocker'; dependencies = @(); acceptance_criteria = @('Legacy'); status = 'blocked'; assigned_executor = 'local'; created_at = '2026-05-05T00:00:00Z'; updated_at = '2026-05-05T00:00:00Z' })
+                execution_results = @()
+                review_decisions = @()
+                journal = @()
+                engine_performance = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_decisions = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_feedback = [pscustomobject]@{ learned_weights = [pscustomobject]@{}; sample_size = 0; version = 'feedback_v1'; updated_at = '' }
+                sync_state = [pscustomobject]@{ expected_contract_version = ''; expected_schema_version = ''; local_repo_signature = ''; cached_manifest = $null; last_comparison = $null; last_sync_decision = ''; last_sync_code = ''; compared_at = '' }
+            })
+
+            $result = (& $scriptUnderTest -Query 'ADMIN ACTION: create a fresh direct-chat repair task for the blocked loop' -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $eventTypes = @($result.command_dispatch.payload.activity_event_types | ForEach-Object { [string]$_ })
+
+            [string]$result.intent.intent | Should Be 'COMMAND'
+            [bool]$result.command_dispatch.created | Should Be $true
+            [string]$result.command_dispatch.task_id | Should Match '^TSKCHAT-'
+            [string]$result.command_dispatch.task_id | Should Not Be 'objective-14-task-79'
+            ($eventTypes -contains 'blocked_state_bypass_applied') | Should Be $true
+            [string]$result.reply_text | Should Not Be 'TOD is blocked: waiting on scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine.'
+        }
+        finally {
+            Restore-ChatDispatchArtifacts -Records $artifactBackup
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
     It 'routes bounded direct-chat code changes through LocalExecutionEngine and reports local activity events' {
         (Test-Path -Path $scriptUnderTest) | Should Be $true
 
