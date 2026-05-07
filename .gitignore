@@ -9,6 +9,10 @@ output/
 sandbox/
 tod/sandbox/
 tod/out/
+runtime/shared/diagnostics/
+runtime/shared/history/
+runtime/shared/handoff/
+runtime/shared/backups/
 
 *.log
 *.tmp
@@ -104,6 +108,13 @@ tod/data/state.json.repairing
 tmp_*
 tmp/
 raw-sweep*
+.idea/
+.fleet/
+*.swp
+*.swo
+*~
+Thumbs.db
+.DS_Store
 
 # Additional generated runtime artifacts
 shared_state/objective_authority_reset.json
