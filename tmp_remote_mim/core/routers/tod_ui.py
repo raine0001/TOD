@@ -46,7 +46,7 @@ TOD_OPERATOR_ACTION_LATEST_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTIO
 TOD_OPERATOR_ACTION_LOG_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTION.log.jsonl"
 TOD_OPERATOR_EVIDENCE_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_EVIDENCE.latest.json"
 TOD_OPERATOR_ACTION_TIMEOUT_SECONDS = 180
-UI_BUILD_ID = "task-identity-contention-repair-v1"
+UI_BUILD_ID = "live-console-state-alignment-v1"
 LOCAL_EXECUTOR_BINDING = "scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine"
 LOCAL_EXECUTOR_BINDING_COMMAND = "execute-chat-task"
 LEDGER_PHASE_A_COVERAGE_ARTIFACT = "runtime/shared/TOD_MIM_LEDGER_PHASE_A_COVERAGE.latest.json"
@@ -1017,13 +1017,33 @@ def _derive_task_identity_contention(
     runtime_decision = decision_payload if isinstance(decision_payload, dict) else {}
 
     explicit_active_lane = active_lane if _lane_is_explicit_active(active_lane) else {}
+    request_source = _pick_first_text(live_task.get("source_service"), live_task.get("source"))
+    active_source = _pick_first_text(
+        explicit_active_lane.get("source_service"),
+        explicit_active_lane.get("source"),
+        active_task.get("source_service"),
+        active_task.get("source"),
+    )
+    if request_source == "tod_watchdog_autorepair":
+        authoritative_candidates = (
+            canonical_objective,
+            explicit_active_lane.get("objective_id"),
+            active_task.get("objective_id"),
+            active_task.get("normalized_objective_id"),
+            live_task.get("objective_id"),
+            live_task.get("normalized_objective_id"),
+        )
+    else:
+        authoritative_candidates = (
+            explicit_active_lane.get("objective_id"),
+            active_task.get("objective_id"),
+            active_task.get("normalized_objective_id"),
+            canonical_objective,
+            live_task.get("objective_id"),
+            live_task.get("normalized_objective_id"),
+        )
     authoritative_objective_id = _pick_first_text(
-        explicit_active_lane.get("objective_id"),
-        active_task.get("objective_id"),
-        active_task.get("normalized_objective_id"),
-        canonical_objective,
-        live_task.get("objective_id"),
-        live_task.get("normalized_objective_id"),
+        *authoritative_candidates,
     )
     request_objective_id = _pick_first_text(
         live_task.get("objective_id"),
@@ -1036,13 +1056,6 @@ def _derive_task_identity_contention(
         active_task.get("request_id"),
     )
     request_task_id = _pick_first_text(live_task.get("task_id"), live_task.get("request_id"))
-    active_source = _pick_first_text(
-        explicit_active_lane.get("source_service"),
-        explicit_active_lane.get("source"),
-        active_task.get("source_service"),
-        active_task.get("source"),
-    )
-    request_source = _pick_first_text(live_task.get("source_service"), live_task.get("source"))
     last_writer = request_source or active_source
 
     objective_aligned = bool(
@@ -5595,19 +5608,6 @@ def _build_tod_console_state() -> dict[str, Any]:
     intake_state = _load_tod_intake_state()
     active_execution_lane = intake_state.get("active_execution_lane") if isinstance(intake_state.get("active_execution_lane"), dict) else {}
     intake_arbitration = intake_state.get("intake_arbitration") if isinstance(intake_state.get("intake_arbitration"), dict) else {}
-    if _lane_is_explicit_active(active_execution_lane):
-        lane_task_id = str(active_execution_lane.get("task_id") or active_execution_lane.get("request_id") or "").strip()
-        lane_objective_id = str(active_execution_lane.get("objective_id") or "").strip()
-        live_task_request = {
-            **live_task_request,
-            "request_id": str(active_execution_lane.get("request_id") or lane_task_id or live_task_request.get("request_id") or "").strip(),
-            "task_id": lane_task_id or str(live_task_request.get("task_id") or "").strip(),
-            "objective_id": lane_objective_id or str(live_task_request.get("objective_id") or "").strip(),
-            "normalized_objective_id": str(active_execution_lane.get("normalized_objective_id") or _normalize_objective_token(lane_objective_id) or live_task_request.get("normalized_objective_id") or "").strip(),
-            "generated_at": str(active_execution_lane.get("started_at") or active_execution_lane.get("generated_at") or live_task_request.get("generated_at") or "").strip(),
-            "source_service": str(active_execution_lane.get("source_service") or active_execution_lane.get("source") or live_task_request.get("source_service") or "").strip(),
-            "active_precedence": "active_execution_lane",
-        }
     integration_listener_decision = (
         integration_payload.get("listener_decision")
         if isinstance(integration_payload.get("listener_decision"), dict)
@@ -6003,6 +6003,27 @@ def _build_tod_console_state() -> dict[str, Any]:
             "self_repair_attempted": bool(task_identity_repair.get("attempted") is True),
             "self_repair_result": str(task_identity_repair.get("reason") or "").strip(),
         }
+    elif str(task_identity_contention.get("reason_code") or "").strip() in {"stale_request_ignored", "queued_or_superseded_request"}:
+        diagnostic_reason = str(task_identity_contention.get("reason_code") or "").strip()
+        effective_listener_decision = {
+            **effective_listener_decision,
+            "decision_outcome": diagnostic_reason,
+            "reason_code": diagnostic_reason,
+            "execution_state": "diagnostic",
+            "next_step_recommendation": _compact_text(task_identity_contention.get("recommended_repair") or "", 220),
+            "summary": _compact_text(task_identity_contention.get("summary") or "", 220),
+            "authoritative_objective_id": str(task_identity_contention.get("authoritative_objective_id") or "").strip(),
+            "request_objective_id": str(task_identity_contention.get("request_objective_id") or "").strip(),
+            "active_task_id": str(task_identity_contention.get("active_task_id") or "").strip(),
+            "request_task_id": str(task_identity_contention.get("request_task_id") or "").strip(),
+            "source_service": str(task_identity_contention.get("source_service") or "").strip(),
+            "last_writer": str(task_identity_contention.get("last_writer") or "").strip(),
+            "blocker_type": "request_identity_diagnostic",
+            "mismatch_type": diagnostic_reason,
+            "can_self_repair": False,
+            "self_repair_attempted": False,
+            "self_repair_result": "not_needed",
+        }
     if stale_residue_suppressed:
         effective_listener_decision = {
             "decision_outcome": "superseded_stale_listener_residue",
@@ -6040,6 +6061,27 @@ def _build_tod_console_state() -> dict[str, Any]:
                 220,
             ),
         }
+
+    if str(task_identity_contention.get("reason_code") or "").strip() == "stale_request_ignored":
+        active_task_id = str(task_identity_contention.get("active_task_id") or "").strip()
+        active_objective_id = str(task_identity_contention.get("authoritative_objective_id") or "").strip()
+        if active_task_id or active_objective_id:
+            live_task_request = {
+                **live_task_request,
+                "stale_request_diagnostic": {
+                    "request_id": str(task_identity_contention.get("request_task_id") or "").strip(),
+                    "objective_id": str(task_identity_contention.get("request_objective_id") or "").strip(),
+                    "reason_code": "stale_request_ignored",
+                },
+                "request_id": active_task_id or str(live_task_request.get("request_id") or "").strip(),
+                "task_id": active_task_id or str(live_task_request.get("task_id") or "").strip(),
+                "objective_id": active_objective_id or str(live_task_request.get("objective_id") or "").strip(),
+                "normalized_objective_id": str(_normalize_objective_token(active_objective_id) or live_task_request.get("normalized_objective_id") or "").strip(),
+                "source_service": str(task_identity_contention.get("active_precedence") or "active_task").strip(),
+            }
+            live_objective = active_objective_id or live_objective
+            live_token = _normalize_objective_token(live_objective)
+            live_request_token = _normalize_objective_token(active_objective_id)
 
     status_code = "attention"
     status_label = "ATTENTION"
@@ -6221,6 +6263,30 @@ def _build_tod_console_state() -> dict[str, Any]:
         planner_state["summary"] = missing_summary
         planner_state["current_step"] = "Executor binding missing"
         planner_state["next_step"] = str(binding_materialization.get("next_executable_repair") or planner_state.get("next_step") or "").strip()
+        execution_status["execution_classification"] = {
+            **(execution_status.get("execution_classification") if isinstance(execution_status.get("execution_classification"), dict) else {}),
+            "state": "local_execution_binding_missing",
+            "blocker_reason": "blocked_missing_local_executor_binding",
+            "local_execution_binding_missing": True,
+            "local_execution_started": False,
+            "local_executor_invoked": False,
+        }
+        execution_status["phase_progress"] = _derive_phase_progress(
+            active_task_payload,
+            execution_result_payload,
+            validation_payload,
+            execution_status.get("activity_state") or "",
+            execution_status.get("next_step") or "",
+            execution_status.get("wait_reason") or "",
+            execution_status["execution_classification"],
+        )
+        execution_status["stall_signal"] = _derive_stall_signal(
+            execution_status.get("activity_state") or "",
+            execution_status.get("last_update_age_seconds"),
+            execution_status.get("phase_progress") if isinstance(execution_status.get("phase_progress"), dict) else {},
+            execution_status.get("next_step") or "",
+            execution_status.get("wait_reason") or "",
+        )
 
     execution_status["planner_state"] = planner_state
 
@@ -6445,6 +6511,13 @@ def _build_tod_console_state() -> dict[str, Any]:
             "can_self_repair": bool(task_identity_contention.get("safe_self_repair") is True),
             "self_repair_attempted": bool(task_identity_repair.get("attempted") is True),
             "self_repair_result": str(task_identity_repair.get("reason") or "").strip(),
+        },
+        "intake_state": {
+            "active_execution_lane": active_execution_lane,
+            "arbitration_decision": str(intake_arbitration.get("decision") or "").strip() if isinstance(intake_arbitration, dict) else "",
+            "arbitration_reason": str(intake_arbitration.get("reason") or "").strip() if isinstance(intake_arbitration, dict) else "",
+            "queue_count": int((intake_state.get("intake_queue") or {}).get("count") or 0) if isinstance(intake_state.get("intake_queue"), dict) else 0,
+            "queued_count": int((intake_state.get("intake_queue") or {}).get("queued_count") or 0) if isinstance(intake_state.get("intake_queue"), dict) else 0,
         },
         "operator_guidance": effective_guidance,
         "publish": {
