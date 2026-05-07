@@ -478,3 +478,83 @@ def _extract_labeled_prompt_value(message: str, label: str) -> str:
         Remove-Item -Path $absolutePath -Force
     }
 }
+Describe 'TOD local ledger coverage handler' {
+    BeforeAll {
+        Import-ScriptFunction -ScriptPath $executionEngineScript -Name 'Get-ExecutionEngineInterfaceSpec'
+        Import-ScriptFunction -ScriptPath $executionEngineScript -Name 'New-EngineTaskContext'
+        Import-ScriptFunction -ScriptPath $executionEngineScript -Name 'New-EngineExecutionResult'
+        Import-ScriptFunction -ScriptPath $executionEngineScript -Name 'Complete-EngineExecutionResult'
+        Import-ScriptFunction -ScriptPath $executionEngineScript -Name 'Test-EngineContract'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-UtcNow'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-NormalizedObjectiveToken'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-TaskRoutingText'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-TaskRoutingFileHints'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Resolve-TaskCategory'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Convert-EngineResultToNormalizedEnvelope'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Normalize-EngineResultPayload'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Test-EngineResultPrecheck'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'New-ExecutionEngineBlockedResult'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-LocalExecutionValidationChecks'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-LocalExecutionCommandCapture'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-LocalExecutionRollbackState'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Resolve-LocalExecutionTaskClass'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Test-LocalExecutionPatchRequired'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-LocalExecutionNoOpAssessment'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Publish-LocalExecutionArtifacts'
+        Import-ScriptFunctionWithLiteralRoot -ScriptPath $todScript -Name 'Invoke-ExecutionEngine' -LiteralRoot (Join-Path $repoRoot 'scripts')
+
+        . $localEngineScript
+    }
+
+    It 'Test-LocalExecutionLedgerCoverageTask matches a message-ledger coverage report objective' {
+        $promptPath = New-LocalFallbackPromptFile -Content 'Measure Phase A observe-only message-ledger coverage across TOD/MIM communication paths.'
+        $context = New-LocalFallbackContext `
+            -TaskId 'TSK-LEDGER-COVERAGE' `
+            -ObjectiveId 'TOD-MESSAGE-LEDGER-COVERAGE-REPORT' `
+            -Title 'Measure Phase A observe-only message-ledger coverage' `
+            -Scope 'Perform a non-mutating ledger coverage measurement and write the Phase A coverage report.' `
+            -PromptPath $promptPath
+        Test-LocalExecutionLedgerCoverageTask -Context $context | Should Be $true
+        Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+    }
+
+    It 'Test-LocalExecutionLedgerCoverageTask does not match an unrelated code_change task' {
+        $promptPath = New-LocalFallbackPromptFile -Content 'Update scripts/TOD.ps1 to fix the boundary check.'
+        $context = New-LocalFallbackContext `
+            -TaskId 'TSK-UNRELATED' `
+            -ObjectiveId 'OBJ-CODE-CHANGE' `
+            -Title 'Fix boundary check in TOD.ps1' `
+            -Scope 'Apply bounded patch to scripts/TOD.ps1.' `
+            -PromptPath $promptPath `
+            -Metadata @{ task_category = 'code_change' }
+        Test-LocalExecutionLedgerCoverageTask -Context $context | Should Be $false
+        Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+    }
+
+    It 'Invoke-LocalExecutionEngine executes ledger coverage and writes coverage report' {
+        $promptPath = New-LocalFallbackPromptFile -Content 'Measure Phase A observe-only message-ledger coverage across TOD/MIM communication paths.'
+        $context = New-LocalFallbackContext `
+            -TaskId 'TSK-LEDGER-COVERAGE' `
+            -ObjectiveId 'TOD-MESSAGE-LEDGER-COVERAGE-REPORT' `
+            -Title 'Measure Phase A observe-only message-ledger coverage' `
+            -Scope 'Perform a non-mutating ledger coverage measurement and write the Phase A coverage report.' `
+            -PromptPath $promptPath
+
+        $result = Invoke-LocalExecutionEngine -Context $context
+
+        [string]$result.status | Should Be 'completed'
+        @($result.files_changed).Count | Should BeGreaterThan 0
+        [string]@($result.files_changed)[0] | Should Match 'TOD_MIM_LEDGER_PHASE_A_COVERAGE'
+        [string]$result.summary | Should Match 'coverage'
+        @($result.failures).Count | Should Be 0
+        [bool]$result.needs_escalation | Should Be $false
+
+        $coverageFile = Join-Path $repoRoot 'runtime\shared\TOD_MIM_LEDGER_PHASE_A_COVERAGE.latest.json'
+        Test-Path $coverageFile | Should Be $true
+        $parsed = Get-Content $coverageFile -Raw | ConvertFrom-Json
+        $parsed.observe_only | Should Be $true
+        $parsed.coverage_percent | Should BeGreaterThan 0
+
+        Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+    }
+}

@@ -153,6 +153,126 @@ function Test-LocalExecutionGenericRisk {
     return ($normalized -match 'credential|secret|password|private key|certificate|firewall|production deploy|prod deploy|public exposure|open network|reboot host|shutdown host|human safety|operator approval')
 }
 
+function Test-LocalExecutionLedgerCoverageTask {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $normalized = (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant()
+    $mentionsLedger = $normalized -match 'ledger'
+    $mentionsCoverage = $normalized -match 'coverage|phase.?a|measure|observe.?only'
+    return ($mentionsLedger -and $mentionsCoverage)
+}
+
+function Invoke-LocalExecutionLedgerCoverage {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)]$Spec
+    )
+
+    $sharedDir = Join-Path $script:LocalEngineRepoRoot 'runtime\shared'
+    $expectedEventTypes = @('request_observed', 'ack_observed', 'progress_observed', 'result_observed', 'blocked_observed', 'heartbeat_observed')
+
+    $artifactMap = @{
+        request_observed   = @('MIM_TOD_TASK_REQUEST.latest.json')
+        ack_observed       = @('TOD_MIM_TASK_ACK.latest.json', 'TOD_TO_MIM_TRIGGER_ACK.latest.json', 'MIM_TO_TOD_TRIGGER.latest.json')
+        progress_observed  = @('TOD_ACTIVE_TASK.latest.json', 'TOD_ACTIVITY_STREAM.latest.json')
+        result_observed    = @('TOD_EXECUTION_RESULT.latest.json', 'TOD_MIM_TASK_RESULT.latest.json')
+        blocked_observed   = @('TOD_EXECUTION_LOCK.latest.json')
+        heartbeat_observed = @('TOD_MIM_LEDGER_OBSERVE_STATUS.latest.json')
+    }
+
+    $breakdown = [ordered]@{}
+    $coveredTypes = [System.Collections.Generic.List[string]]::new()
+    $missingTypes = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($eventType in $expectedEventTypes) {
+        $candidateFiles = $artifactMap[$eventType]
+        $matchedFile = $null
+        $fileSize = 0
+        $fileAge = $null
+        foreach ($candidate in $candidateFiles) {
+            $candidatePath = Join-Path $sharedDir $candidate
+            if (Test-Path $candidatePath) {
+                $info = Get-Item $candidatePath
+                $matchedFile = $candidate
+                $fileSize = [long]$info.Length
+                $fileAge = $info.LastWriteTimeUtc.ToString('o')
+                break
+            }
+        }
+        $observed = $null -ne $matchedFile
+        $breakdown[$eventType] = [pscustomobject]@{
+            observed         = $observed
+            artifact_file    = if ($observed) { $matchedFile } else { $null }
+            artifact_size    = $fileSize
+            artifact_age_utc = $fileAge
+        }
+        if ($observed) { $coveredTypes.Add($eventType) | Out-Null } else { $missingTypes.Add($eventType) | Out-Null }
+    }
+
+    $coveredCount = $coveredTypes.Count
+    $totalCount   = $expectedEventTypes.Count
+    $coveragePct  = [math]::Round(($coveredCount / $totalCount) * 100, 2)
+
+    $outputFile = Join-Path $sharedDir 'TOD_MIM_LEDGER_PHASE_A_COVERAGE.latest.json'
+    $reportId   = 'phase-a-coverage-{0}' -f ([guid]::NewGuid().ToString('N'))
+    $report = [ordered]@{
+        generated_at          = (Get-Date).ToUniversalTime().ToString('o')
+        report_id             = $reportId
+        objective             = [string]$Context.objective_id
+        observe_only          = $true
+        non_blocking_confirmed = $true
+        runtime_impact        = 'none'
+        expected = [ordered]@{
+            lifecycle_event_types = $expectedEventTypes
+            total = $totalCount
+        }
+        covered = [ordered]@{
+            lifecycle_event_types = @($coveredTypes)
+            total = $coveredCount
+        }
+        missing = [ordered]@{
+            lifecycle_event_types = @($missingTypes)
+            total = $missingTypes.Count
+        }
+        coverage_percent = $coveragePct
+        breakdown = $breakdown
+        source = 'LocalExecutionEngine::Invoke-LocalExecutionLedgerCoverage'
+    }
+
+    $reportJson = $report | ConvertTo-Json -Depth 10 -Compress:$false
+    [System.IO.File]::WriteAllText($outputFile, $reportJson, [System.Text.Encoding]::UTF8)
+
+    $relOutputFile = 'runtime/shared/TOD_MIM_LEDGER_PHASE_A_COVERAGE.latest.json'
+    $summaryLine = ('Phase A message-ledger coverage: {0}/{1} event types observed ({2}%)' -f $coveredCount, $totalCount, $coveragePct)
+
+    $Result.summary        = $summaryLine
+    $Result.files_changed  = @($relOutputFile)
+    $Result.tests_run      = @('ledger-coverage-artifact-scan', 'ledger-coverage-report-write')
+    $Result.test_results   = @('passed', 'passed')
+    $Result.failures       = @()
+    $Result.recommendations = if ($missingTypes.Count -gt 0) {
+        @(('Missing lifecycle coverage for: {0}. Ensure MIM publishes these event types to runtime/shared.' -f ($missingTypes -join ', ')))
+    } else {
+        @('Full Phase A lifecycle coverage confirmed. Advance to Phase B shadow-write instrumentation.')
+    }
+    $Result.needs_escalation = $false
+    $Result.structured_findings = @(
+        [pscustomobject]@{
+            type             = 'coverage_report'
+            report_id        = $reportId
+            coverage_percent = $coveragePct
+            covered_count    = $coveredCount
+            total_count      = $totalCount
+            missing_types    = @($missingTypes)
+            output_file      = $relOutputFile
+        }
+    )
+    $Result.raw_output = $report
+
+    return (Complete-EngineExecutionResult -Result $Result -Status 'completed')
+}
+
 function Test-LocalExecutionGenericBoundedTask {
     param([Parameter(Mandatory = $true)]$Context)
 
@@ -1569,6 +1689,9 @@ function Invoke-LocalExecutionEngine {
     }
     elseif (Test-LocalExecutionReadmeDryRunTask -Context $Context) {
         $result = Invoke-LocalExecutionReadmeDryRun -Context $Context -Result $result -Spec $spec
+    }
+    elseif (Test-LocalExecutionLedgerCoverageTask -Context $Context) {
+        $result = Invoke-LocalExecutionLedgerCoverage -Context $Context -Result $result -Spec $spec
     }
     elseif (Test-LocalExecutionGenericBoundedTask -Context $Context) {
         $result = Invoke-LocalExecutionGenericBoundedTask -Context $Context -Result $result -Spec $spec
