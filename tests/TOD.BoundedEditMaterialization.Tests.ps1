@@ -255,4 +255,66 @@ Validation Pattern: function Invoke-ExecuteChatTaskRequest
             }
         }
     }
+
+    It 'allows observe-only ledger coverage tasks to invoke LocalExecutionEngine without edit directives' {
+        $fixture = New-MaterializationFixture
+        try {
+            Write-ExecutionReadyTodConfig -Fixture $fixture -ActiveEngine 'local' -FallbackEngine 'local'
+            [System.IO.File]::WriteAllText($fixture.PromptPath, 'OBJECTIVE: TOD-MESSAGE-LEDGER-COVERAGE-REPORT GOAL: Measure Phase A observe-only message-ledger coverage.', (New-Object System.Text.UTF8Encoding($false)))
+            Write-JsonNoBom -PathValue $fixture.TodStatePath -Payload ([pscustomobject]@{
+                objectives = @(
+                    [pscustomobject]@{
+                        id = 'TOD-MESSAGE-LEDGER-COVERAGE-REPORT'
+                        title = 'TOD message-ledger coverage report'
+                        description = 'Observe-only coverage report objective.'
+                        priority = 'high'
+                        constraints = @()
+                        success_criteria = @('Publish coverage report without mutating production surfaces.')
+                        status = 'in_progress'
+                        created_at = (Get-Date).ToUniversalTime().ToString('o')
+                        updated_at = (Get-Date).ToUniversalTime().ToString('o')
+                    }
+                )
+                tasks = @(
+                    [pscustomobject]@{
+                        id = 'TSK-LEDGER-NONEDIT'
+                        objective_id = 'TOD-MESSAGE-LEDGER-COVERAGE-REPORT'
+                        title = 'Measure Phase A observe-only message-ledger coverage'
+                        type = 'implementation'
+                        task_category = 'mim_synced'
+                        scope = 'Measure Phase A observe-only message-ledger coverage across TOD/MIM communication paths.'
+                        dependencies = @()
+                        acceptance_criteria = @('execute_now')
+                        status = 'in_progress'
+                        assigned_executor = 'local'
+                        allowed_files = @()
+                        files_involved = @()
+                        source = 'mim_request_sync'
+                        correlation_id = 'TSK-LEDGER-NONEDIT'
+                        created_at = (Get-Date).ToUniversalTime().ToString('o')
+                        updated_at = (Get-Date).ToUniversalTime().ToString('o')
+                    }
+                )
+                execution_results = @()
+                review_decisions = @()
+                journal = @()
+                engine_performance = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_decisions = [pscustomobject]@{ records = @(); updated_at = '' }
+                routing_feedback = [pscustomobject]@{ learned_weights = [pscustomobject]@{}; sample_size = 0; version = 'feedback_v1'; updated_at = '' }
+                sync_state = [pscustomobject]@{ expected_contract_version = ''; expected_schema_version = ''; local_repo_signature = ''; cached_manifest = $null; last_comparison = $null; last_sync_decision = ''; last_sync_code = ''; compared_at = '' }
+            })
+
+            $result = (& $todScript -Action run-task -TaskId 'TSK-LEDGER-NONEDIT' -ConfigPath $fixture.TodConfigPath -StatePath $fixture.TodStatePath -PackagePath $fixture.PromptPath -SkipNextTaskSelectionLoop -SkipPostCompletionTail | Out-String | ConvertFrom-Json)
+
+            (@($result.engine_invocation.attempted_engines) -contains 'local') | Should Be $true
+            [string]$result.engine_invocation.result.status | Should Be 'completed'
+            [string]$result.engine_invocation.result.reason_code | Should Be ''
+            [string]$result.engine_invocation.result.summary | Should Match 'Phase A message-ledger coverage'
+        }
+        finally {
+            if (Test-Path -Path $fixture.Base) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
 }

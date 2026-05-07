@@ -6490,6 +6490,43 @@ function New-RunTaskMaterializationBlockedResult {
     }
 }
 
+function Test-TaskAllowsLocalExecutionWithoutMaterialization {
+    param(
+        [Parameter(Mandatory = $true)]$Task,
+        [string]$TaskCategory = '',
+        $TaskMaterialization = $null
+    )
+
+    if ($null -eq $Task) {
+        return $false
+    }
+
+    $materializationStatus = if ($null -ne $TaskMaterialization -and $TaskMaterialization.PSObject.Properties['status']) {
+        ([string]$TaskMaterialization.status).ToLowerInvariant()
+    }
+    else {
+        ''
+    }
+    if ($materializationStatus -eq 'materialized') {
+        return $false
+    }
+
+    $objectiveId = if ($Task.PSObject.Properties['objective_id']) { ([string]$Task.objective_id).ToLowerInvariant() } else { '' }
+    if ($objectiveId -match 'message-ledger-coverage-report') {
+        return $true
+    }
+
+    $category = ([string]$TaskCategory).ToLowerInvariant()
+    if (@('inspection', 'validation', 'mim_synced', 'chat_execution') -notcontains $category) {
+        return $false
+    }
+
+    $blob = (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
+    $mentionsLedger = $blob -match 'message.?ledger|ledger'
+    $mentionsCoverage = $blob -match 'coverage|phase.?a|observe.?only|measure'
+    return ($mentionsLedger -and $mentionsCoverage)
+}
+
 function Set-PersistedTaskTerminalState {
     param(
         [Parameter(Mandatory = $true)]$Task,
@@ -13550,6 +13587,11 @@ switch ($Action) {
 
         $packagePath = Resolve-TaskPackagePath -TaskId $TaskId -ExplicitPath $PackagePath
         $invokeResult = $null
+        $allowLocalExecutionWithoutMaterialization = $false
+        if ([string]::Equals([string]$actionEngineConfig.active, 'local', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $allowLocalExecutionWithoutMaterialization = Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory $taskCategoryResolved -TaskMaterialization $taskMaterialization
+        }
+
         if ($taskMaterialization.PSObject.Properties['status'] -and [string]::Equals([string]$taskMaterialization.status, 'materialized', [System.StringComparison]::OrdinalIgnoreCase)) {
             Publish-TodActivityEvent -EventType 'bounded_edit_materialized' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'task_intake' -Status 'completed' -Message 'TOD materialized the direct-chat task into explicit bounded edit directives.' -Details ([ordered]@{
                     edit_mode = [string]$taskMaterialization.edit_mode
@@ -13563,7 +13605,7 @@ switch ($Action) {
                     }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$task.scope) -CurrentAction 'Prepared LocalExecutionEngine invocation.' | Out-Null
             }
         }
-        elseif ([string]::Equals([string]$actionEngineConfig.active, 'local', [System.StringComparison]::OrdinalIgnoreCase)) {
+        elseif ([string]::Equals([string]$actionEngineConfig.active, 'local', [System.StringComparison]::OrdinalIgnoreCase) -and -not $allowLocalExecutionWithoutMaterialization) {
             Publish-TodActivityEvent -EventType 'bounded_edit_mode_missing' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'task_intake' -Status 'blocked' -Message 'TOD could not derive a bounded edit mode for LocalExecutionEngine.' -Details ([ordered]@{
                     reason_code = if ($taskMaterialization.PSObject.Properties['reason_code']) { [string]$taskMaterialization.reason_code } else { 'blocked_missing_bounded_edit_mode' }
                     target_file_candidates = if ($taskMaterialization.PSObject.Properties['target_file_candidates']) { @($taskMaterialization.target_file_candidates) } else { @() }
@@ -13578,6 +13620,12 @@ switch ($Action) {
             Save-State -State $state
             $invokeResult = New-RunTaskMaterializationBlockedResult -Task $task -Materialization $taskMaterialization -TaskId $TaskId -ActionEngineConfig $actionEngineConfig -PackagePath $packagePath
             $memoryProfile.after_execution = Get-ProcessMemorySnapshot
+        }
+        elseif ($allowLocalExecutionWithoutMaterialization) {
+            Publish-TodActivityEvent -EventType 'local_executor_ready' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'task_intake' -Status 'completed' -Message 'LocalExecutionEngine can execute this bounded observe-only task without edit directives.' -Details ([ordered]@{
+                    task_category = $taskCategoryResolved
+                    reason = 'local_non_edit_execution_allowed'
+                }) -Source 'tod.run-task' -Surface 'tod-run-task' -Summary ([string]$task.scope) -CurrentAction 'Prepared LocalExecutionEngine invocation without edit directives.' | Out-Null
         }
         Publish-TodActivityEvent -EventType 'step_start' -ObjectiveId ([string]$task.objective_id) -TaskId $TaskId -RequestId $taskRequestId -ExecutionId $resolvedExecutionId -CorrelationId $taskCorrelationId -Title $taskTitle -Step 'engine_invocation' -Status 'active' -Message ('Starting execution with engine ' + [string]$actionEngineConfig.active + '.') -Details ([ordered]@{
                 package_path = $packagePath
