@@ -5153,6 +5153,141 @@ function Invoke-OptionalValidator {
     }
 }
 
+function Invoke-LedgerObserveShadowWrite {
+    param(
+        [Parameter(Mandatory = $true)][string]$RequestId,
+        [string]$TaskId = '',
+        [string]$CorrelationId = '',
+        [string]$SourceArtifact = 'MIM_TOD_TASK_REQUEST.latest.json',
+        [string]$EventType = 'request_observed',
+        [string]$MessageType = 'request',
+        [string]$FromAgent = 'MIM',
+        [string]$ToAgent = 'TOD',
+        [string]$Status = 'observed',
+        [Parameter(Mandatory = $true)][string]$PythonCommand,
+        [Parameter(Mandatory = $true)][string]$LedgerScriptAbs,
+        [Parameter(Mandatory = $true)][string]$LedgerDbAbs,
+        [Parameter(Mandatory = $true)][string]$LedgerMigrationAbs,
+        [Parameter(Mandatory = $true)][string]$LedgerStatusAbs
+    )
+
+    $observedAt = (Get-Date).ToUniversalTime().ToString('o')
+    $safeRequestId = [string]$RequestId
+    $safeEventType = if ([string]::IsNullOrWhiteSpace($EventType)) { 'request_observed' } else { ([string]$EventType).Trim().ToLowerInvariant() }
+    $safeStatus = if ([string]::IsNullOrWhiteSpace($Status)) { 'observed' } else { [string]$Status }
+    $messageId = ('obs-{0}-{1}' -f $safeEventType, $safeRequestId)
+    $payloadPath = ''
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+    try {
+        $statusDir = Split-Path -Parent $LedgerStatusAbs
+        if (-not [string]::IsNullOrWhiteSpace($statusDir) -and -not (Test-Path -Path $statusDir)) {
+            New-Item -ItemType Directory -Path $statusDir -Force | Out-Null
+        }
+
+        $payloadPath = Join-Path $statusDir ('.ledger_obs_payload_' + ([guid]::NewGuid().ToString('N').Substring(0, 8)) + '.json')
+        $payload = [ordered]@{
+            message_id     = $messageId
+            task_id        = $TaskId
+            request_id     = $safeRequestId
+            correlation_id = $CorrelationId
+            from_agent     = [string]$FromAgent
+            to_agent       = [string]$ToAgent
+            event_type     = $safeEventType
+            message_type   = [string]$MessageType
+            status         = $safeStatus
+            source_surface = $SourceArtifact
+            observed_at    = $observedAt
+            created_at     = $observedAt
+        }
+        [System.IO.File]::WriteAllText($payloadPath, ($payload | ConvertTo-Json -Depth 6), $utf8NoBom)
+
+        $savedEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $ledgerRaw = & $PythonCommand $LedgerScriptAbs `
+            --db $LedgerDbAbs `
+            --migration $LedgerMigrationAbs `
+            --status-path $LedgerStatusAbs `
+            --mode 'observe_only' `
+            --operation 'append_message' `
+            --payload-file $payloadPath 2>&1
+        $ledgerExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $savedEAP
+        # Normalise mixed stdout/ErrorRecord output to plain strings (avoids EAP=Stop escalation)
+        $ledgerOutput = @($ledgerRaw | ForEach-Object { [string]$_ })
+
+        try {
+            $existingStatus = $null
+            if (Test-Path -Path $LedgerStatusAbs) {
+                $existingStatus = Get-Content -Path $LedgerStatusAbs -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+            }
+            $lastSuccessAt = ''
+            if ($ledgerExitCode -eq 0) {
+                $lastSuccessAt = $observedAt
+            } elseif ($null -ne $existingStatus -and $existingStatus.PSObject.Properties['last_success_at']) {
+                $lastSuccessAt = [string]$existingStatus.last_success_at
+            }
+            $lastErrorText = if ($ledgerExitCode -ne 0) { ($ledgerOutput -join "`n").Trim() } else { '' }
+            $lastEventType = $safeEventType
+            if ($null -ne $existingStatus) {
+                $existingStatus | Add-Member -NotePropertyName 'enabled'               -NotePropertyValue $true            -Force
+                $existingStatus | Add-Member -NotePropertyName 'non_blocking'          -NotePropertyValue $true            -Force
+                $existingStatus | Add-Member -NotePropertyName 'last_attempt_at'       -NotePropertyValue $observedAt      -Force
+                $existingStatus | Add-Member -NotePropertyName 'last_success_at'       -NotePropertyValue $lastSuccessAt   -Force
+                $existingStatus | Add-Member -NotePropertyName 'last_error'            -NotePropertyValue $lastErrorText   -Force
+                $existingStatus | Add-Member -NotePropertyName 'last_observed_task_id' -NotePropertyValue $TaskId          -Force
+                $existingStatus | Add-Member -NotePropertyName 'last_event_type'       -NotePropertyValue $lastEventType   -Force
+                $existingStatus | Add-Member -NotePropertyName 'last_request_id'       -NotePropertyValue $safeRequestId   -Force
+                [System.IO.File]::WriteAllText($LedgerStatusAbs, (($existingStatus | ConvertTo-Json -Depth 10) + "`n"), $utf8NoBom)
+            } else {
+                $fallbackStatus = [ordered]@{
+                    enabled               = $true
+                    non_blocking          = $true
+                    last_attempt_at       = $observedAt
+                    last_success_at       = $lastSuccessAt
+                    last_error            = $lastErrorText
+                    last_observed_task_id = $TaskId
+                    last_event_type       = $lastEventType
+                    last_request_id       = $safeRequestId
+                }
+                [System.IO.File]::WriteAllText($LedgerStatusAbs, (($fallbackStatus | ConvertTo-Json -Depth 6) + "`n"), $utf8NoBom)
+            }
+        } catch {
+            # Status augmentation failure is non-fatal; swallow silently
+        }
+
+        if ($ledgerExitCode -ne 0) {
+            Write-Warning ("[TOD-LISTENER-LEDGER] observe shadow write non-zero exit for request {0} event {1}: {2}" -f $safeRequestId, $safeEventType, ($ledgerOutput -join "`n").Trim())
+        }
+    } catch {
+        try {
+            $prevSuccessAt = ''
+            if (Test-Path -Path $LedgerStatusAbs) {
+                $prev = Get-Content -Path $LedgerStatusAbs -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+                if ($null -ne $prev -and $prev.PSObject.Properties['last_success_at']) {
+                    $prevSuccessAt = [string]$prev.last_success_at
+                }
+            }
+            $errStatus = [ordered]@{
+                enabled               = $true
+                non_blocking          = $true
+                last_attempt_at       = $observedAt
+                last_success_at       = $prevSuccessAt
+                last_error            = [string]$_.Exception.Message
+                last_observed_task_id = $TaskId
+                last_event_type       = $safeEventType
+                last_request_id       = $safeRequestId
+            }
+            [System.IO.File]::WriteAllText($LedgerStatusAbs, (($errStatus | ConvertTo-Json -Depth 6) + "`n"), $utf8NoBom)
+        } catch {}
+        Write-Warning ("[TOD-LISTENER-LEDGER] shadow write failed (non-fatal) for request {0} event {1}: {2}" -f $safeRequestId, $safeEventType, [string]$_.Exception.Message)
+    } finally {
+        if (-not [string]::IsNullOrWhiteSpace($payloadPath) -and (Test-Path -Path $payloadPath)) {
+            try { Remove-Item -Path $payloadPath -Force -ErrorAction SilentlyContinue } catch {}
+        }
+    }
+}
+
 $envAbs = Get-LocalPath -PathValue $EnvFile
 $dialogScriptAbs = Get-LocalPath -PathValue $DialogScriptPath
 $conversationProviderScriptAbs = Join-Path $PSScriptRoot 'Invoke-TODConversationProvider.ps1'
@@ -5257,6 +5392,17 @@ $remoteEmergencyAckPath = ("{0}/MIM_TOD_EMERGENCY_ACK.latest.json" -f $RemoteRoo
 
 $listenerState = New-ListenerState -ExistingState (Read-JsonFileIfExists -PathValue $listenerStatePath)
 $pythonCommand = Get-PythonCommand
+
+$messageLedgerMode = ''
+if ($null -ne $env:MESSAGE_LEDGER_MODE -and -not [string]::IsNullOrWhiteSpace($env:MESSAGE_LEDGER_MODE)) {
+    $messageLedgerMode = ([string]$env:MESSAGE_LEDGER_MODE).Trim().ToLowerInvariant()
+}
+$messageLedgerEnabled = [string]::Equals($messageLedgerMode, 'observe_only', [System.StringComparison]::OrdinalIgnoreCase)
+$ledgerScriptAbs = Join-Path $PSScriptRoot 'tod_mim_message_ledger.py'
+$ledgerDbAbs = Get-LocalPath -PathValue 'runtime/shared/TOD_MIM_MESSAGE_LEDGER.sqlite3'
+$ledgerMigrationAbs = Get-LocalPath -PathValue 'db/migrations/20260506_tod_mim_message_ledger_phase_a_observe_only.sql'
+$ledgerStatusAbs = Get-LocalPath -PathValue 'runtime/shared/TOD_MIM_LEDGER_OBSERVE_STATUS.latest.json'
+
 $contractBinding = Get-ContractBindingMetadata -ContractDirPath $contractDirAbs -RemoteSurface $RemoteRoot -LocalStageDir $stageAbs
 Write-RuntimeBindingState -StatePath $localRuntimeBindingStatePath -State (Read-RuntimeBindingState -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding)
 $regressionStallState = New-RegressionStallState -ExistingState (Read-JsonFileIfExists -PathValue $localRegressionStallPath)
@@ -6000,6 +6146,18 @@ try {
             $listenerState.last_trigger_event_signature = $triggerEventSignature
             Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status "command_observed" -Detail "Pulled latest MIM task/go-order command files." -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -TriggerPacket $livenessTrigger -BridgeRuntime $bridgeRuntime
             Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt
+            if ($messageLedgerEnabled) {
+                Invoke-LedgerObserveShadowWrite `
+                    -RequestId $requestId `
+                    -TaskId $requestTaskId `
+                    -CorrelationId $requestCorrelationId `
+                    -SourceArtifact 'MIM_TOD_TASK_REQUEST.latest.json' `
+                    -PythonCommand $pythonCommand `
+                    -LedgerScriptAbs $ledgerScriptAbs `
+                    -LedgerDbAbs $ledgerDbAbs `
+                    -LedgerMigrationAbs $ledgerMigrationAbs `
+                    -LedgerStatusAbs $ledgerStatusAbs
+            }
         }
 
         # Quarantine guard: if this request_id has been quarantined after repeated failures, skip execution entirely.
@@ -6153,6 +6311,23 @@ try {
         $ackJson = Get-Content -Path $localAckPath -Raw
         Write-RemoteFileFromText -Connections $connections -RemotePath $remoteAckPath -Content $ackJson
         Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status ([string]$ack.status) -Detail "Task ACK emitted to shared path." -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -AckPacket $ack -TriggerPacket $taskAckTrigger -BridgeRuntime $bridgeRuntime -DecisionPayload $requestDecision
+        if ($messageLedgerEnabled) {
+            Invoke-LedgerObserveShadowWrite `
+                -RequestId $requestId `
+                -TaskId $requestTaskId `
+                -CorrelationId $requestCorrelationId `
+                -SourceArtifact 'TOD_MIM_TASK_ACK.latest.json' `
+                -EventType 'ack_observed' `
+                -MessageType 'ack' `
+                -FromAgent 'TOD' `
+                -ToAgent 'MIM' `
+                -Status ([string]$ack.status) `
+                -PythonCommand $pythonCommand `
+                -LedgerScriptAbs $ledgerScriptAbs `
+                -LedgerDbAbs $ledgerDbAbs `
+                -LedgerMigrationAbs $ledgerMigrationAbs `
+                -LedgerStatusAbs $ledgerStatusAbs
+        }
 
         $acceptedFeedback = Publish-ExecutionFeedbackFromRequest -Request $request -Status 'accepted' -TaskId ([string]$ack.task_id) -HostReceivedTimestamp ([string]$ack.emitted_at)
         if ([bool]$acceptedFeedback.attempted -and -not [bool]$acceptedFeedback.published) {
@@ -6163,6 +6338,23 @@ try {
         $runningFeedback = Publish-ExecutionFeedbackFromRequest -Request $request -Status 'running' -TaskId ([string]$ack.task_id) -HostReceivedTimestamp $executionFeedbackStartedAt
         if ([bool]$runningFeedback.attempted -and -not [bool]$runningFeedback.published) {
             Write-Warning ("[TOD-LISTENER] Unable to publish running execution feedback for request {0}: {1}" -f $requestId, [string]$runningFeedback.reason)
+        }
+        if ($messageLedgerEnabled) {
+            Invoke-LedgerObserveShadowWrite `
+                -RequestId $requestId `
+                -TaskId $requestTaskId `
+                -CorrelationId $requestCorrelationId `
+                -SourceArtifact 'TOD_MIM_EXECUTION_FEEDBACK.latest.json' `
+                -EventType 'progress_observed' `
+                -MessageType 'progress' `
+                -FromAgent 'TOD' `
+                -ToAgent 'MIM' `
+                -Status 'running' `
+                -PythonCommand $pythonCommand `
+                -LedgerScriptAbs $ledgerScriptAbs `
+                -LedgerDbAbs $ledgerDbAbs `
+                -LedgerMigrationAbs $ledgerMigrationAbs `
+                -LedgerStatusAbs $ledgerStatusAbs
         }
 
         Write-Host ("[TOD-LISTENER] Executing request {0}..." -f $requestId)
@@ -6317,6 +6509,23 @@ try {
         if ([string]::Equals([string]$resultPacket.status, 'blocked', [System.StringComparison]::OrdinalIgnoreCase)) {
             Save-BlockedRecoveryState -ListenerState $listenerState -RequestId $requestId -RequestSignature $requestSignature -TaskId $requestTaskId -ObjectiveId $requestObjectiveId -CorrelationId $requestCorrelationId -Action ([string]$resultPacket.action) -ReasonCode ([string]$resultPacket.result_reason_code) -Summary ([string]$resultPacket.error) -ReadinessTrace $resultPacket.execution_readiness
             Write-JsonFile -PathValue $listenerStatePath -Payload $listenerState
+            if ($messageLedgerEnabled) {
+                Invoke-LedgerObserveShadowWrite `
+                    -RequestId $requestId `
+                    -TaskId $requestTaskId `
+                    -CorrelationId $requestCorrelationId `
+                    -SourceArtifact 'TOD_MIM_TASK_RESULT.latest.json' `
+                    -EventType 'blocked_observed' `
+                    -MessageType 'result' `
+                    -FromAgent 'TOD' `
+                    -ToAgent 'MIM' `
+                    -Status 'blocked' `
+                    -PythonCommand $pythonCommand `
+                    -LedgerScriptAbs $ledgerScriptAbs `
+                    -LedgerDbAbs $ledgerDbAbs `
+                    -LedgerMigrationAbs $ledgerMigrationAbs `
+                    -LedgerStatusAbs $ledgerStatusAbs
+            }
         }
         elseif ([string]::Equals([string]$listenerState.blocked_resume_request_id, [string]$requestId, [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals([string]$listenerState.blocked_resume_task_id, [string]$requestTaskId, [System.StringComparison]::OrdinalIgnoreCase)) {
             Clear-BlockedRecoveryState -ListenerState $listenerState
@@ -6550,6 +6759,23 @@ try {
         $resultJson = Get-Content -Path $localResultPath -Raw
         Write-RemoteFileFromText -Connections $connections -RemotePath $remoteResultPath -Content $resultJson
         Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $localCommandStatusPath -RemotePath $remoteCommandStatusPath -Connections $connections -Status ([string]$resultPacket.status) -Detail "Task RESULT emitted to shared path." -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -RequestSignature $requestSignature -GoOrderSignature $goOrderSignature -Action ([string]$resultPacket.action) -ExecutionReadiness $resultPacket.execution_readiness -AckPacket $ack -ResultPacket $resultPacket -TriggerPacket $resultTrigger -BridgeRuntime $bridgeRuntime -DecisionPayload $requestDecision
+        if ($messageLedgerEnabled) {
+            Invoke-LedgerObserveShadowWrite `
+                -RequestId $requestId `
+                -TaskId $requestTaskId `
+                -CorrelationId $requestCorrelationId `
+                -SourceArtifact 'TOD_MIM_TASK_RESULT.latest.json' `
+                -EventType 'result_observed' `
+                -MessageType 'result' `
+                -FromAgent 'TOD' `
+                -ToAgent 'MIM' `
+                -Status ([string]$resultPacket.status) `
+                -PythonCommand $pythonCommand `
+                -LedgerScriptAbs $ledgerScriptAbs `
+                -LedgerDbAbs $ledgerDbAbs `
+                -LedgerMigrationAbs $ledgerMigrationAbs `
+                -LedgerStatusAbs $ledgerStatusAbs
+        }
 
         $failureCategory = ''
         if ([string]::Equals([string]$resultPacket.status, 'failed', [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -6574,6 +6800,23 @@ try {
             $null = Remove-ScopedForcedReplayMatch -ListenerState $listenerState -RequestId $requestId
         }
         Update-ListenerHeartbeat -State $listenerState -StatePath $listenerStatePath -CycleStartedAt $cycleStartedAt -RequestId $requestId -RequestSignature $requestSignature -MarkProcessed
+        if ($messageLedgerEnabled) {
+            Invoke-LedgerObserveShadowWrite `
+                -RequestId $requestId `
+                -TaskId $requestTaskId `
+                -CorrelationId $requestCorrelationId `
+                -SourceArtifact 'TOD_MIM_LISTENER_STATE.latest.json' `
+                -EventType 'heartbeat_observed' `
+                -MessageType 'heartbeat' `
+                -FromAgent 'TOD' `
+                -ToAgent 'MIM' `
+                -Status 'alive' `
+                -PythonCommand $pythonCommand `
+                -LedgerScriptAbs $ledgerScriptAbs `
+                -LedgerDbAbs $ledgerDbAbs `
+                -LedgerMigrationAbs $ledgerMigrationAbs `
+                -LedgerStatusAbs $ledgerStatusAbs
+        }
         $resultRetryReason = if ([string]::Equals([string]$resultPacket.status, "failed", [System.StringComparison]::OrdinalIgnoreCase)) { "failure" } else { "none" }
         $resultClassification = if ([string]::Equals([string]$resultPacket.status, "failed", [System.StringComparison]::OrdinalIgnoreCase)) { "execution_failed" } elseif ([string]::Equals([string]$resultPacket.status, "blocked", [System.StringComparison]::OrdinalIgnoreCase)) { "execution_blocked" } else { "execution_completed" }
         $cadencePlan = Update-CadencePlan -ListenerState $listenerState -ListenerStatePath $listenerStatePath -CycleClassification $resultClassification -RetryReason $resultRetryReason -WasSuccess:([string]::Equals([string]$resultPacket.status, "succeeded", [System.StringComparison]::OrdinalIgnoreCase)) -BasePollSeconds $PollSeconds

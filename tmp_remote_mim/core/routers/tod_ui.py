@@ -46,7 +46,10 @@ TOD_OPERATOR_ACTION_LATEST_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTIO
 TOD_OPERATOR_ACTION_LOG_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTION.log.jsonl"
 TOD_OPERATOR_EVIDENCE_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_EVIDENCE.latest.json"
 TOD_OPERATOR_ACTION_TIMEOUT_SECONDS = 180
-UI_BUILD_ID = "unified-console-recovery-v1"
+UI_BUILD_ID = "task-identity-contention-repair-v1"
+LOCAL_EXECUTOR_BINDING = "scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine"
+LOCAL_EXECUTOR_BINDING_COMMAND = "execute-chat-task"
+LEDGER_PHASE_A_COVERAGE_ARTIFACT = "runtime/shared/TOD_MIM_LEDGER_PHASE_A_COVERAGE.latest.json"
 
 OPERATOR_ACTION_SPECS: dict[str, dict[str, Any]] = {
     "refresh_status": {
@@ -295,6 +298,7 @@ def _build_objective_cards(state: dict[str, Any]) -> list[dict[str, Any]]:
     conversation = state.get("conversation") if isinstance(state.get("conversation"), dict) else {}
     operator_actions = state.get("operator_actions") if isinstance(state.get("operator_actions"), list) else []
     planner_state = state.get("planner_state") if isinstance(state.get("planner_state"), dict) else {}
+    live_state = execution.get("live_state") if isinstance(execution.get("live_state"), dict) else {}
 
     operator_action_map = {
         str(item.get("id") or "").strip(): item
@@ -336,6 +340,7 @@ def _build_objective_cards(state: dict[str, Any]) -> list[dict[str, Any]]:
     )
     summary = _pick_first_text(
         planner_state.get("summary") if planner_is_primary else "",
+        live_state.get("status_detail"),
         execution.get("activity_summary"),
         execution.get("summary"),
         status.get("summary"),
@@ -405,6 +410,26 @@ def _build_objective_cards(state: dict[str, Any]) -> list[dict[str, Any]]:
             "summary": _compact_text(summary, 220),
             "status": _pick_first_text(planner_state.get("status_label") if planner_is_primary else "", execution.get("activity_label"), status.get("label"), "Idle"),
             "activity_state": str(planner_state.get("status") if planner_is_primary else execution.get("activity_state") or "idle").strip(),
+            "live_state": {
+                "status": str(live_state.get("status") or "").strip(),
+                "status_label": str(live_state.get("status_label") or "").strip(),
+                "status_detail": str(live_state.get("status_detail") or "").strip(),
+                "stuck_on": str(live_state.get("stuck_on") or "").strip(),
+                "next_to_progress": str(live_state.get("next_to_progress") or "").strip(),
+                "is_stuck": bool(live_state.get("is_stuck") is True),
+                "is_working_background": bool(live_state.get("is_working_background") is True),
+                "mim_priority": bool(live_state.get("mim_priority") is True),
+                "barriers": [
+                    str(item).strip()
+                    for item in (live_state.get("barriers") if isinstance(live_state.get("barriers"), list) else [])
+                    if str(item).strip()
+                ],
+                "escalation_channels": [
+                    str(item).strip()
+                    for item in (live_state.get("escalation_channels") if isinstance(live_state.get("escalation_channels"), list) else [])
+                    if str(item).strip()
+                ],
+            },
             "phase_progress": {
                 "available": bool(phase_progress.get("available")),
                 "label": str(phase_progress.get("label") or "").strip(),
@@ -1017,6 +1042,321 @@ def _record_task_identity_event(event: str, contention: dict[str, Any], details:
     _record_operator_action(payload)
 
 
+def _record_executor_binding_event(event: str, objective_id: str, task_id: str, details: dict[str, Any] | None = None) -> None:
+    payload = {
+        "generated_at": _utc_now_iso(),
+        "action": event,
+        "status": "completed",
+        "objective_id": str(objective_id or "").strip(),
+        "task_id": str(task_id or "").strip(),
+        "source_service": "tod-ui-executor-binding-repair",
+    }
+    if isinstance(details, dict) and details:
+        payload["details"] = details
+    _record_operator_action(payload)
+
+
+def _is_ledger_coverage_task(live_task: dict[str, Any], execution: dict[str, Any]) -> bool:
+    metadata = live_task.get("metadata_json") if isinstance(live_task.get("metadata_json"), dict) else {}
+    text_blob = " ".join(
+        str(item or "")
+        for item in (
+            live_task.get("objective_id"),
+            live_task.get("normalized_objective_id"),
+            live_task.get("task_id"),
+            live_task.get("title"),
+            live_task.get("scope"),
+            live_task.get("summary"),
+            live_task.get("requested_outcome"),
+            metadata.get("task_title"),
+            metadata.get("task_acceptance_criteria"),
+            execution.get("objective_id"),
+            execution.get("task_id"),
+            execution.get("title"),
+            execution.get("summary"),
+            execution.get("task_focus"),
+        )
+    ).lower()
+    if "tod-message-ledger-coverage-report" in text_blob:
+        return True
+    return bool(("ledger" in text_blob or "message-ledger" in text_blob) and ("coverage" in text_blob or "phase a" in text_blob))
+
+
+def _resolve_local_executor_mode() -> str:
+    for mode in ("validation_only", "report_generation"):
+        if mode == "validation_only":
+            return mode
+    return ""
+
+
+def _attempt_executor_binding_materialization(
+    live_task: dict[str, Any],
+    execution: dict[str, Any],
+    planner_state: dict[str, Any],
+) -> dict[str, Any]:
+    live_task = live_task if isinstance(live_task, dict) else {}
+    execution = execution if isinstance(execution, dict) else {}
+    planner_state = planner_state if isinstance(planner_state, dict) else {}
+    metadata = live_task.get("metadata_json") if isinstance(live_task.get("metadata_json"), dict) else {}
+
+    objective_id = str(live_task.get("objective_id") or execution.get("objective_id") or planner_state.get("objective_id") or "").strip()
+    task_id = str(live_task.get("task_id") or live_task.get("request_id") or execution.get("task_id") or planner_state.get("task_id") or "").strip()
+    planner_status = str(planner_state.get("status") or "").strip().lower()
+    assigned_executor = str(live_task.get("assigned_executor") or metadata.get("assigned_executor") or planner_state.get("assigned_executor") or "").strip()
+    selected_executor = str(live_task.get("selected_executor") or metadata.get("selected_executor") or "").strip()
+    expected_executor = str(live_task.get("expected_executor") or metadata.get("expected_executor") or "").strip()
+    active_engine = str(live_task.get("active_engine") or metadata.get("active_engine") or "").strip()
+    executor_binding = str(live_task.get("executor_binding") or metadata.get("executor_binding") or "").strip()
+    bounded_mode = str(live_task.get("bounded_edit_mode") or metadata.get("bounded_edit_mode") or "").strip()
+    target_artifact_path = str(live_task.get("target_artifact_path") or metadata.get("target_artifact_path") or "").strip()
+
+    if not expected_executor:
+        expected_executor = "local" if _is_ledger_coverage_task(live_task, execution) else (assigned_executor or "local")
+
+    missing_fields: list[str] = []
+    if not selected_executor:
+        missing_fields.append("selected_executor")
+    if not active_engine:
+        missing_fields.append("active_engine")
+    if not executor_binding:
+        missing_fields.append("executor_binding")
+    if not bounded_mode:
+        missing_fields.append("bounded_edit_mode")
+
+    message = "Task identity is repaired, but no executor binding was produced for the queued next step."
+    next_repair = (
+        "Materialize a local executor binding and republish execute-chat-task with selected_executor=local, "
+        f"active_engine=local, and executor_binding={LOCAL_EXECUTOR_BINDING}."
+    )
+    result = {
+        "attempted": False,
+        "published": False,
+        "materialized": False,
+        "status": "not_needed",
+        "reason_code": "",
+        "message": "",
+        "task_id": task_id,
+        "objective_id": objective_id,
+        "assigned_executor": assigned_executor,
+        "selected_executor": selected_executor,
+        "expected_executor": expected_executor,
+        "active_engine": active_engine,
+        "executor_binding": executor_binding,
+        "bounded_edit_mode": bounded_mode,
+        "task_category": str(live_task.get("task_category") or metadata.get("task_category") or "").strip(),
+        "target_artifact_path": target_artifact_path,
+        "missing_field_or_function": ", ".join(missing_fields),
+        "next_executable_repair": next_repair,
+        "updated_live_task_request": None,
+    }
+
+    if planner_status != "queued":
+        result["status"] = "not_queued"
+        return result
+    if not missing_fields:
+        result["status"] = "already_bound"
+        result["materialized"] = True
+        return result
+
+    result["status"] = "missing"
+    result["reason_code"] = "planner_queued_without_executor_binding"
+    result["message"] = message
+    _record_executor_binding_event(
+        "executor_binding_missing_detected",
+        objective_id,
+        task_id,
+        {
+            "assigned_executor": assigned_executor,
+            "missing_field_or_function": result["missing_field_or_function"],
+            "planner_status": planner_status,
+        },
+    )
+
+    local_capable = _is_ledger_coverage_task(live_task, execution)
+    _record_executor_binding_event(
+        "local_suitability_evaluated",
+        objective_id,
+        task_id,
+        {
+            "local_capable": local_capable,
+            "expected_executor": expected_executor,
+            "task_category": result["task_category"],
+        },
+    )
+    if not local_capable:
+        result["reason_code"] = "local_suitability_not_materialized"
+        _record_executor_binding_event(
+            "blocked_missing_local_executor_binding",
+            objective_id,
+            task_id,
+            {
+                "reason_code": result["reason_code"],
+                "missing_field_or_function": result["missing_field_or_function"],
+            },
+        )
+        return result
+
+    local_mode = _resolve_local_executor_mode()
+    if not local_mode:
+        result["reason_code"] = "blocked_missing_local_executor_binding"
+        result["missing_field_or_function"] = "bounded_edit_mode"
+        _record_executor_binding_event(
+            "blocked_missing_local_executor_binding",
+            objective_id,
+            task_id,
+            {
+                "reason_code": result["reason_code"],
+                "missing_field_or_function": result["missing_field_or_function"],
+            },
+        )
+        return result
+
+    marker_path = SHARED_RUNTIME_ROOT / "TOD_EXECUTOR_BINDING_REPAIR.latest.json"
+    repair_key = "|".join((objective_id, task_id, str(live_task.get("request_id") or "").strip()))
+    previous = _load_json(marker_path)
+    if str(previous.get("repair_key") or "").strip() == repair_key and bool(previous.get("attempted") is True):
+        result["reason_code"] = "executor_binding_already_attempted"
+        result["status"] = "already_attempted"
+        return result
+
+    generated_at = _utc_now_iso()
+    request_id = str(live_task.get("request_id") or task_id or "").strip()
+    request_path = SHARED_RUNTIME_ROOT / "MIM_TOD_TASK_REQUEST.latest.json"
+    trigger_path = SHARED_RUNTIME_ROOT / "MIM_TO_TOD_TRIGGER.latest.json"
+    request_payload = {
+        **live_task,
+        "generated_at": generated_at,
+        "source": "tod-ui-executor-binding-repair-v1",
+        "source_service": "tod-ui-executor-binding-repair",
+        "request_id": request_id,
+        "task_id": task_id,
+        "objective_id": objective_id,
+        "correlation_id": str(live_task.get("correlation_id") or task_id or request_id).strip(),
+        "tod_action": "execute-chat-task",
+        "task_classification": "validation/reporting/diagnostic",
+        "task_category": "validation",
+        "assigned_executor": "local",
+        "selected_executor": "local",
+        "expected_executor": "local",
+        "active_engine": "local",
+        "executor_binding": LOCAL_EXECUTOR_BINDING,
+        "bounded_edit_mode": local_mode,
+        "target_artifact_path": LEDGER_PHASE_A_COVERAGE_ARTIFACT,
+        "scope": _pick_first_text(
+            live_task.get("scope"),
+            "Validate message-ledger Phase A coverage artifacts and publish the local coverage report.",
+        ),
+        "requested_outcome": _pick_first_text(
+            live_task.get("requested_outcome"),
+            "Publish runtime/shared/TOD_MIM_LEDGER_PHASE_A_COVERAGE.latest.json via LocalExecutionEngine.",
+        ),
+    }
+    request_payload["metadata_json"] = {
+        **metadata,
+        "task_category": "validation",
+        "assigned_executor": "local",
+        "selected_executor": "local",
+        "expected_executor": "local",
+        "active_engine": "local",
+        "executor_binding": LOCAL_EXECUTOR_BINDING,
+        "bounded_edit_mode": local_mode,
+        "target_artifact_path": LEDGER_PHASE_A_COVERAGE_ARTIFACT,
+        "task_source": "executor_binding_repair",
+    }
+    trigger_payload = {
+        "packet_type": "mim-to-tod-trigger-v1",
+        "generated_at": generated_at,
+        "emitted_at": generated_at,
+        "source_actor": "MIM",
+        "target_actor": "TOD",
+        "source_service": "tod-ui-executor-binding-repair",
+        "trigger": request_id or task_id,
+        "artifact": request_path.name,
+        "artifact_path": str(request_path),
+        "artifact_sha256": hashlib.sha256(json.dumps(request_payload, indent=2, ensure_ascii=True).encode("utf-8")).hexdigest(),
+        "task_id": task_id,
+        "request_id": request_id,
+        "correlation_id": str(request_payload.get("correlation_id") or "").strip(),
+    }
+
+    _record_executor_binding_event(
+        "local_executor_binding_materialized",
+        objective_id,
+        task_id,
+        {
+            "selected_executor": "local",
+            "active_engine": "local",
+            "executor_binding": LOCAL_EXECUTOR_BINDING,
+            "bounded_edit_mode": local_mode,
+        },
+    )
+    _record_executor_binding_event("dispatch_retry_started", objective_id, task_id, {"tod_action": "execute-chat-task"})
+    result["attempted"] = True
+    try:
+        _write_shared_json(request_path, request_payload)
+        _write_shared_json(trigger_path, trigger_payload)
+        _write_shared_json(
+            marker_path,
+            {
+                "generated_at": generated_at,
+                "repair_key": repair_key,
+                "attempted": True,
+                "published": True,
+                "task_id": task_id,
+                "objective_id": objective_id,
+            },
+        )
+        result.update(
+            {
+                "published": True,
+                "materialized": True,
+                "status": "materialized",
+                "reason_code": "local_executor_binding_materialized",
+                "selected_executor": "local",
+                "expected_executor": "local",
+                "active_engine": "local",
+                "executor_binding": LOCAL_EXECUTOR_BINDING,
+                "bounded_edit_mode": local_mode,
+                "task_category": "validation/reporting/diagnostic",
+                "target_artifact_path": LEDGER_PHASE_A_COVERAGE_ARTIFACT,
+                "updated_live_task_request": request_payload,
+                "missing_field_or_function": "",
+            }
+        )
+        _record_executor_binding_event("dispatch_retry_result", objective_id, task_id, {"status": "published"})
+        _record_executor_binding_event("local_executor_invoked", objective_id, task_id, {"dispatch": "queued_for_listener"})
+    except Exception as exc:
+        result["reason_code"] = "blocked_missing_local_executor_binding"
+        result["status"] = "blocked"
+        result["message"] = _compact_text(exc, 220)
+        _record_executor_binding_event(
+            "dispatch_retry_result",
+            objective_id,
+            task_id,
+            {"status": "failed", "error": result["message"]},
+        )
+        _record_executor_binding_event(
+            "blocked_missing_local_executor_binding",
+            objective_id,
+            task_id,
+            {"missing_field_or_function": result["missing_field_or_function"], "error": result["message"]},
+        )
+        _write_shared_json(
+            marker_path,
+            {
+                "generated_at": generated_at,
+                "repair_key": repair_key,
+                "attempted": True,
+                "published": False,
+                "task_id": task_id,
+                "objective_id": objective_id,
+                "error": result["message"],
+            },
+        )
+
+    return result
+
+
 def _attempt_task_identity_self_repair(contention: dict[str, Any]) -> dict[str, Any]:
     marker_path = SHARED_RUNTIME_ROOT / "TOD_TASK_IDENTITY_REPAIR.latest.json"
     repair_key = "|".join(
@@ -1045,6 +1385,16 @@ def _attempt_task_identity_self_repair(contention: dict[str, Any]) -> dict[str, 
 
     objective_id = str(contention.get("authoritative_objective_id") or "").strip()
     task_id = str(contention.get("active_task_id") or "").strip()
+    local_capable = _is_ledger_coverage_task(
+        {
+            "objective_id": objective_id,
+            "task_id": task_id,
+            "title": "Resume authoritative console task identity",
+            "scope": "Preserve newer same-objective console task identity and retry listener dispatch once.",
+        },
+        {},
+    )
+    local_mode = _resolve_local_executor_mode() if local_capable else ""
     generated_at = _utc_now_iso()
     request_path = SHARED_RUNTIME_ROOT / "MIM_TOD_TASK_REQUEST.latest.json"
     trigger_path = SHARED_RUNTIME_ROOT / "MIM_TO_TOD_TRIGGER.latest.json"
@@ -1068,9 +1418,21 @@ def _attempt_task_identity_self_repair(contention: dict[str, Any]) -> dict[str, 
         "acceptance_criteria": "Listener accepts the canonical same-objective task identity.",
         "success_criteria": "Listener accepts the canonical same-objective task identity.",
         "requested_outcome": "Listener accepts the canonical same-objective task identity.",
-        "task_classification": "programming",
-        "assigned_executor": "codex",
+        "task_classification": "validation/reporting/diagnostic" if local_capable and local_mode else "programming",
+        "task_category": "validation" if local_capable and local_mode else "chat_execution",
+        "assigned_executor": "local" if local_capable and local_mode else "codex",
     }
+    if local_capable and local_mode:
+        request_payload.update(
+            {
+                "selected_executor": "local",
+                "expected_executor": "local",
+                "active_engine": "local",
+                "executor_binding": LOCAL_EXECUTOR_BINDING,
+                "bounded_edit_mode": local_mode,
+                "target_artifact_path": LEDGER_PHASE_A_COVERAGE_ARTIFACT,
+            }
+        )
     request_text = json.dumps(request_payload, indent=2, ensure_ascii=True)
     request_sha256 = hashlib.sha256(request_text.encode("utf-8")).hexdigest()
     trigger_payload = {
@@ -1319,7 +1681,7 @@ def _derive_planner_state(
         "task_id": task_id,
         "objective_id": objective_id,
         "title": _compact_text(title, 180),
-        "assigned_executor": str(live_task.get("assigned_executor") or "").strip(),
+        "assigned_executor": str(live_task.get("assigned_executor") or execution.get("selected_executor") or "codex").strip(),
         "requested_outcome": str(live_task.get("requested_outcome") or live_task.get("acceptance_criteria") or "").strip(),
         "status": status,
         "status_label": status_label,
@@ -1815,6 +2177,129 @@ def _derive_stall_signal(activity_state: str, age_seconds: float | None, phase_p
         "threshold_seconds": threshold_seconds,
         "age_seconds": age_seconds,
         "summary": _compact_text(summary, 220),
+    }
+
+
+def _derive_execution_live_state(
+    execution_status: dict[str, Any],
+    planner_state: dict[str, Any],
+    operator_actions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    execution_status = execution_status if isinstance(execution_status, dict) else {}
+    planner_state = planner_state if isinstance(planner_state, dict) else {}
+    operator_actions = operator_actions if isinstance(operator_actions, list) else []
+
+    activity_state = str(execution_status.get("activity_state") or "idle").strip().lower() or "idle"
+    activity_label = str(execution_status.get("activity_label") or "Idle").strip() or "Idle"
+    activity_summary = _compact_text(execution_status.get("activity_summary") or execution_status.get("summary"), 220)
+    wait_reason = _compact_text(execution_status.get("wait_reason"), 220)
+    next_step = _compact_text(execution_status.get("next_step"), 220)
+    current_action = _compact_text(execution_status.get("current_action"), 220)
+    stall_signal = execution_status.get("stall_signal") if isinstance(execution_status.get("stall_signal"), dict) else {}
+    stall_flagged = bool(stall_signal.get("flagged") is True)
+    stall_summary = _compact_text(stall_signal.get("summary"), 220)
+
+    barriers: list[str] = []
+    if stall_flagged:
+        barriers.append(stall_summary or "Execution evidence is stale and TOD may be frozen on the current objective.")
+    if activity_state in {"blocked", "stalled"} and activity_summary:
+        barriers.append(activity_summary)
+    if execution_status.get("executor_binding_status") == "missing":
+        barriers.append(
+            "Executor binding is missing for the queued objective step; dispatch cannot continue until the local binding is materialized."
+        )
+    if activity_state == "waiting" and wait_reason:
+        barriers.append(wait_reason)
+    if activity_state in {"waiting", "stalled", "blocked"} and not wait_reason and not next_step:
+        barriers.append("No executable next step was published for the active objective.")
+
+    unique_barriers: list[str] = []
+    seen_barriers: set[str] = set()
+    for barrier in barriers:
+        text = _compact_text(barrier, 220)
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen_barriers:
+            continue
+        seen_barriers.add(key)
+        unique_barriers.append(text)
+
+    action_map: dict[str, dict[str, Any]] = {}
+    for item in operator_actions:
+        if not isinstance(item, dict):
+            continue
+        action_id = str(item.get("id") or "").strip()
+        if action_id:
+            action_map[action_id] = item
+
+    recommended_ids = [
+        "run_shared_truth_reconciliation",
+        "recover_stale_state",
+        "force_replay_current_task",
+        "start_next_task",
+        "show_evidence",
+    ]
+    recommended_actions: list[dict[str, Any]] = []
+    for action_id in recommended_ids:
+        item = action_map.get(action_id)
+        if not item:
+            continue
+        recommended_actions.append(
+            {
+                "id": action_id,
+                "label": str(item.get("label") or action_id).strip(),
+                "enabled": bool(item.get("enabled")),
+                "disabled_reason": _compact_text(item.get("disabled_reason"), 180),
+            }
+        )
+
+    has_active_objective = bool(
+        str(execution_status.get("objective_id") or planner_state.get("objective_id") or "").strip()
+        or str(execution_status.get("task_id") or planner_state.get("task_id") or "").strip()
+    )
+    is_working_background = activity_state in {"working"} or (activity_state == "waiting" and not stall_flagged and not unique_barriers)
+    is_stuck = activity_state in {"stalled", "blocked"} or stall_flagged or bool(unique_barriers)
+    prefer_execution_surface = bool(
+        execution_status.get("available")
+        and has_active_objective
+        and activity_state in {"working", "waiting", "stalled", "blocked", "paused"}
+    )
+    mim_priority = is_stuck
+
+    if is_working_background:
+        status_detail = _pick_first_text(current_action, activity_summary, "TOD is actively executing the current objective in the background.")
+    elif is_stuck:
+        status_detail = _pick_first_text(unique_barriers[0] if unique_barriers else "", stall_summary, activity_summary, wait_reason, "TOD is blocked and requires escalation.")
+    else:
+        status_detail = _pick_first_text(activity_summary, current_action, "TOD is idle.")
+
+    stuck_on = _pick_first_text(next_step, wait_reason, unique_barriers[0] if unique_barriers else "", status_detail)
+    next_to_progress = _pick_first_text(
+        next_step,
+        "Run Reconcile Truth first (MIM priority), then Recover Stale State if TOD remains frozen.",
+    )
+    if is_stuck and not stuck_on:
+        stuck_on = "Execution appears blocked, but no explicit blocker details were published."
+    if not next_to_progress:
+        next_to_progress = "Run Reconcile Truth first (MIM priority), then Recover Stale State if TOD remains frozen."
+    if is_stuck and not unique_barriers and stuck_on:
+        unique_barriers = [stuck_on]
+
+    return {
+        "has_active_objective": has_active_objective,
+        "is_working_background": is_working_background,
+        "is_stuck": is_stuck,
+        "mim_priority": mim_priority,
+        "prefer_execution_surface": prefer_execution_surface,
+        "status": activity_state,
+        "status_label": activity_label,
+        "status_detail": status_detail,
+        "stuck_on": stuck_on,
+        "barriers": unique_barriers,
+        "next_to_progress": next_to_progress,
+        "recommended_actions": recommended_actions,
+        "escalation_channels": ["MIM", "Codex", "Operator"],
     }
 
 
@@ -5456,6 +5941,48 @@ def _build_tod_console_state() -> dict[str, Any]:
         execution_status,
         latest_operator_action,
     )
+    binding_materialization = _attempt_executor_binding_materialization(live_task_request, execution_status, planner_state)
+    if isinstance(binding_materialization.get("updated_live_task_request"), dict):
+        live_task_request = binding_materialization.get("updated_live_task_request") or live_task_request
+    if binding_materialization.get("materialized"):
+        planner_state["assigned_executor"] = str(binding_materialization.get("selected_executor") or "local").strip()
+
+    binding_status = "ready" if bool(binding_materialization.get("materialized")) else "missing" if str(binding_materialization.get("reason_code") or "").strip() else "unknown"
+    execution_status["executor_binding"] = {
+        "status": binding_status,
+        "reason_code": str(binding_materialization.get("reason_code") or "").strip(),
+        "message": str(binding_materialization.get("message") or "").strip(),
+        "task_id": str(binding_materialization.get("task_id") or "").strip(),
+        "objective_id": str(binding_materialization.get("objective_id") or "").strip(),
+        "assigned_executor": str(binding_materialization.get("assigned_executor") or "").strip(),
+        "selected_executor": str(binding_materialization.get("selected_executor") or "").strip(),
+        "expected_executor": str(binding_materialization.get("expected_executor") or "").strip(),
+        "active_engine": str(binding_materialization.get("active_engine") or "").strip(),
+        "executor_binding": str(binding_materialization.get("executor_binding") or "").strip(),
+        "task_category": str(binding_materialization.get("task_category") or "").strip(),
+        "bounded_edit_mode": str(binding_materialization.get("bounded_edit_mode") or "").strip(),
+        "target_artifact_path": str(binding_materialization.get("target_artifact_path") or "").strip(),
+        "missing_field_or_function": str(binding_materialization.get("missing_field_or_function") or "").strip(),
+        "next_executable_repair": str(binding_materialization.get("next_executable_repair") or "").strip(),
+    }
+    if binding_status == "missing":
+        missing_summary = "Task identity is repaired, but no executor binding was produced for the queued next step."
+        execution_status["activity_state"] = "blocked"
+        execution_status["activity_label"] = "Binding Required"
+        execution_status["activity_summary"] = missing_summary
+        execution_status["wait_reason"] = missing_summary
+        execution_status["wait_target"] = LOCAL_EXECUTOR_BINDING
+        execution_status["wait_target_label"] = LOCAL_EXECUTOR_BINDING
+        execution_status["executor_binding_status"] = "missing"
+        execution_status["executor_binding_target"] = LOCAL_EXECUTOR_BINDING
+        execution_status["executor_binding_command"] = LOCAL_EXECUTOR_BINDING_COMMAND
+        execution_status["next_step"] = str(binding_materialization.get("next_executable_repair") or execution_status.get("next_step") or "").strip()
+        planner_state["status"] = "blocked"
+        planner_state["status_label"] = "Binding Required"
+        planner_state["summary"] = missing_summary
+        planner_state["current_step"] = "Executor binding missing"
+        planner_state["next_step"] = str(binding_materialization.get("next_executable_repair") or planner_state.get("next_step") or "").strip()
+
     execution_status["planner_state"] = planner_state
 
     operator_state = {
@@ -5474,6 +6001,20 @@ def _build_tod_console_state() -> dict[str, Any]:
         "live_task_request": live_task_request,
     }
     operator_actions = _operator_action_specs(operator_state)
+    execution_live_state = _derive_execution_live_state(execution_status, planner_state, operator_actions)
+    execution_status["live_state"] = execution_live_state
+    if bool(execution_live_state.get("prefer_execution_surface")):
+        planner_state["is_newer_than_executor"] = False
+    if bool(execution_live_state.get("is_stuck")):
+        barrier_summary = " | ".join(str(item) for item in execution_live_state.get("barriers", []) if str(item).strip())
+        if barrier_summary:
+            execution_status["wait_reason"] = _compact_text(barrier_summary, 220)
+            execution_status["activity_summary"] = _compact_text(
+                f"{execution_status.get('activity_summary') or ''} Escalation: {execution_live_state.get('next_to_progress') or ''}",
+                220,
+            )
+            if not str(execution_status.get("next_step") or "").strip():
+                execution_status["next_step"] = str(execution_live_state.get("next_to_progress") or "").strip()
     objective_cards = _build_objective_cards(
         {
             "execution": execution_status,

@@ -1235,6 +1235,71 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertEqual(selected["task_id"], "objective-2913-task-7144")
         self.assertEqual(selected["objective_id"], "2913")
 
+    def test_derive_execution_live_state_supplies_stuck_and_next_defaults(self) -> None:
+        execution = {
+            "available": True,
+            "activity_state": "blocked",
+            "activity_label": "Blocked",
+            "activity_summary": "objective_mismatch; task_mismatch; tod_execution_truth_lock_mismatch",
+            "wait_reason": "",
+            "next_step": "",
+            "stall_signal": {"flagged": False, "summary": ""},
+        }
+        planner = {
+            "objective_id": "2913",
+            "task_id": "objective-2913-task-7144",
+            "status": "blocked",
+        }
+
+        live_state = self.tod_ui._derive_execution_live_state(execution, planner, [])
+
+        self.assertTrue(live_state["is_stuck"])
+        self.assertTrue(live_state["mim_priority"])
+        self.assertTrue(bool(str(live_state["stuck_on"]).strip()))
+        self.assertTrue(bool(str(live_state["next_to_progress"]).strip()))
+        self.assertTrue(isinstance(live_state["barriers"], list))
+        self.assertGreaterEqual(len(live_state["barriers"]), 1)
+        self.assertIn("MIM", live_state["escalation_channels"])
+
+    def test_build_objective_cards_includes_execution_live_state_projection(self) -> None:
+        state = {
+            "execution": {
+                "objective_id": "2913",
+                "task_id": "objective-2913-task-7144",
+                "activity_state": "blocked",
+                "activity_label": "Blocked",
+                "activity_summary": "Execution is blocked pending objective reconciliation.",
+                "phase_progress": {"available": False},
+                "live_state": {
+                    "status": "blocked",
+                    "status_label": "Blocked",
+                    "status_detail": "Execution is blocked pending objective reconciliation.",
+                    "stuck_on": "Objective mismatch in listener decision path.",
+                    "next_to_progress": "Run Reconcile Truth first (MIM priority), then Recover Stale State if TOD remains frozen.",
+                    "is_stuck": True,
+                    "is_working_background": False,
+                    "mim_priority": True,
+                    "barriers": ["Objective mismatch in listener decision path."],
+                    "escalation_channels": ["MIM", "Codex", "Operator"],
+                },
+            },
+            "shared_truth": {},
+            "status": {"label": "Blocked", "summary": "Execution is blocked pending objective reconciliation."},
+            "objective_alignment": {"tod_current_objective": "2913", "mim_objective_active": "2913"},
+            "live_task_request": {"objective_id": "2913", "task_id": "objective-2913-task-7144", "request_id": "objective-2913-task-7144"},
+            "conversation": {"quick_actions": []},
+            "operator_actions": [],
+            "planner_state": {},
+        }
+
+        cards = self.tod_ui._build_objective_cards(state)
+        self.assertEqual(len(cards), 1)
+        live = cards[0].get("live_state") if isinstance(cards[0], dict) else None
+        self.assertTrue(isinstance(live, dict))
+        self.assertTrue(live.get("is_stuck"))
+        self.assertEqual(live.get("stuck_on"), "Objective mismatch in listener decision path.")
+        self.assertIn("MIM", live.get("escalation_channels") or [])
+
 
 if __name__ == "__main__":
     unittest.main()
