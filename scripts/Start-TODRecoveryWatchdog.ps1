@@ -128,6 +128,23 @@ function Test-PublicationSurfaceRecoveryNeeded {
     }
 
     if (-not $LocalTerminalRequestFinished) {
+        # If the remote surface was recently written by the TOD UI (operator-issued objective), trust it.
+        $earlyCanonicalRequest = if ($BridgeSmoke.PSObject.Properties['canonical_request']) { $BridgeSmoke.canonical_request } else { $null }
+        $earlyRemoteSurface = if ($earlyCanonicalRequest -and $earlyCanonicalRequest.PSObject.Properties['remote_surface']) { $earlyCanonicalRequest.remote_surface } else { $null }
+        $earlySourceService = if ($earlyRemoteSurface -and $earlyRemoteSurface.PSObject.Properties['source_service']) { [string]$earlyRemoteSurface.source_service } else { '' }
+        if (-not [string]::IsNullOrWhiteSpace($earlySourceService) -and $earlySourceService -match '^tod-ui') {
+            $earlyGeneratedAt = if ($earlyRemoteSurface -and $earlyRemoteSurface.PSObject.Properties['generated_at']) { [string]$earlyRemoteSurface.generated_at } else { '' }
+            $earlyAgeMinutes = [double]::MaxValue
+            if (-not [string]::IsNullOrWhiteSpace($earlyGeneratedAt)) {
+                $parsedDt = [datetime]::MinValue
+                if ([datetime]::TryParse($earlyGeneratedAt, [ref]$parsedDt)) {
+                    $earlyAgeMinutes = ([datetime]::UtcNow - $parsedDt.ToUniversalTime()).TotalMinutes
+                }
+            }
+            if ($earlyAgeMinutes -le 20.0) {
+                return $false
+            }
+        }
         return $true
     }
 
@@ -140,6 +157,21 @@ function Test-PublicationSurfaceRecoveryNeeded {
     $localRequestId = if ($localBridge -and $localBridge.PSObject.Properties['request_id']) { [string]$localBridge.request_id } else { '' }
 
     if (-not [string]::IsNullOrWhiteSpace($expectedObjectiveId) -and -not [string]::IsNullOrWhiteSpace($remoteObjectiveId) -and -not [string]::Equals($expectedObjectiveId, $remoteObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) {
+        # If the divergence is because the TOD UI recently issued a new objective, defer to that authority.
+        $remoteSourceService = if ($remoteSurface -and $remoteSurface.PSObject.Properties['source_service']) { [string]$remoteSurface.source_service } else { '' }
+        if (-not [string]::IsNullOrWhiteSpace($remoteSourceService) -and $remoteSourceService -match '^tod-ui') {
+            $remoteGeneratedAt = if ($remoteSurface -and $remoteSurface.PSObject.Properties['generated_at']) { [string]$remoteSurface.generated_at } else { '' }
+            $uiWriteAgeMinutes = [double]::MaxValue
+            if (-not [string]::IsNullOrWhiteSpace($remoteGeneratedAt)) {
+                $parsedDt = [datetime]::MinValue
+                if ([datetime]::TryParse($remoteGeneratedAt, [ref]$parsedDt)) {
+                    $uiWriteAgeMinutes = ([datetime]::UtcNow - $parsedDt.ToUniversalTime()).TotalMinutes
+                }
+            }
+            if ($uiWriteAgeMinutes -le 20.0) {
+                return $false
+            }
+        }
         return $true
     }
 

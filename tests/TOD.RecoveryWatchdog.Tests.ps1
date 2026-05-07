@@ -153,4 +153,54 @@ Describe 'TOD recovery watchdog coordination fallback' {
         [string]$request.required_ack.ack_file | Should Be 'MIM_TOD_EMERGENCY_ACK.latest.json'
         [string]$request.requested_action | Should Match 'Reply immediately on MIM_TOD_EMERGENCY_ACK.latest.json'
     }
+
+    It 'skips self-heal when remote surface was recently written by tod-ui-chat' {
+        $recentAt = ([datetime]::UtcNow.AddMinutes(-2)).ToString('o')
+        $bridgeSmoke = [pscustomobject]@{
+            passed = $false
+            classification = 'publication_surface_divergence'
+            canonical_request = [pscustomobject]@{
+                expected_objective_id = 'objective-2914'
+                remote_surface = [pscustomobject]@{
+                    objective_id = 'tod-message-ledger-coverage-report'
+                    request_id = 'tod-message-ledger-coverage-report-task-1778114000'
+                    task_id = 'tod-message-ledger-coverage-report-task-1778114000'
+                    source_service = 'tod-ui-chat'
+                    generated_at = $recentAt
+                }
+            }
+            local_bridge = [pscustomobject]@{
+                request_id = 'objective-2914-task-7144'
+            }
+        }
+
+        $needsRecovery = Test-PublicationSurfaceRecoveryNeeded -BridgeSmoke $bridgeSmoke -BridgeFailureModes @('publication_surface_divergence', 'stale_remote_request_identity') -LocalTerminalRequestFinished $false
+
+        $needsRecovery | Should Be $false
+    }
+
+    It 'allows self-heal when tod-ui-chat write is stale (older than 20 minutes)' {
+        $staleAt = ([datetime]::UtcNow.AddMinutes(-25)).ToString('o')
+        $bridgeSmoke = [pscustomobject]@{
+            passed = $false
+            classification = 'publication_surface_divergence'
+            canonical_request = [pscustomobject]@{
+                expected_objective_id = 'objective-2914'
+                remote_surface = [pscustomobject]@{
+                    objective_id = 'tod-message-ledger-coverage-report'
+                    request_id = 'tod-message-ledger-coverage-report-task-1778100000'
+                    task_id = 'tod-message-ledger-coverage-report-task-1778100000'
+                    source_service = 'tod-ui-chat'
+                    generated_at = $staleAt
+                }
+            }
+            local_bridge = [pscustomobject]@{
+                request_id = 'objective-2914-task-7144'
+            }
+        }
+
+        $needsRecovery = Test-PublicationSurfaceRecoveryNeeded -BridgeSmoke $bridgeSmoke -BridgeFailureModes @('publication_surface_divergence', 'stale_remote_request_identity') -LocalTerminalRequestFinished $false
+
+        $needsRecovery | Should Be $true
+    }
 }
