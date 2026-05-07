@@ -1429,7 +1429,7 @@ def _attempt_executor_binding_materialization(
             }
         )
         _record_executor_binding_event("dispatch_retry_result", objective_id, task_id, {"status": "published"})
-        _record_executor_binding_event("local_executor_invoked", objective_id, task_id, {"dispatch": "queued_for_listener"})
+        _record_executor_binding_event("local_executor_dispatch_queued", objective_id, task_id, {"dispatch": "queued_for_listener"})
     except Exception as exc:
         result["reason_code"] = "blocked_missing_local_executor_binding"
         result["status"] = "blocked"
@@ -5592,6 +5592,22 @@ def _build_tod_console_state() -> dict[str, Any]:
         if not integration_live_task_request or runtime_live_dt is None or integration_live_dt is None or runtime_live_dt >= integration_live_dt:
             live_task_request_source = {**integration_live_task_request, **runtime_task_request_payload}
     live_task_request = _select_runtime_live_task_request(live_task_request_source, active_task_payload)
+    intake_state = _load_tod_intake_state()
+    active_execution_lane = intake_state.get("active_execution_lane") if isinstance(intake_state.get("active_execution_lane"), dict) else {}
+    intake_arbitration = intake_state.get("intake_arbitration") if isinstance(intake_state.get("intake_arbitration"), dict) else {}
+    if _lane_is_explicit_active(active_execution_lane):
+        lane_task_id = str(active_execution_lane.get("task_id") or active_execution_lane.get("request_id") or "").strip()
+        lane_objective_id = str(active_execution_lane.get("objective_id") or "").strip()
+        live_task_request = {
+            **live_task_request,
+            "request_id": str(active_execution_lane.get("request_id") or lane_task_id or live_task_request.get("request_id") or "").strip(),
+            "task_id": lane_task_id or str(live_task_request.get("task_id") or "").strip(),
+            "objective_id": lane_objective_id or str(live_task_request.get("objective_id") or "").strip(),
+            "normalized_objective_id": str(active_execution_lane.get("normalized_objective_id") or _normalize_objective_token(lane_objective_id) or live_task_request.get("normalized_objective_id") or "").strip(),
+            "generated_at": str(active_execution_lane.get("started_at") or active_execution_lane.get("generated_at") or live_task_request.get("generated_at") or "").strip(),
+            "source_service": str(active_execution_lane.get("source_service") or active_execution_lane.get("source") or live_task_request.get("source_service") or "").strip(),
+            "active_precedence": "active_execution_lane",
+        }
     integration_listener_decision = (
         integration_payload.get("listener_decision")
         if isinstance(integration_payload.get("listener_decision"), dict)
@@ -5791,6 +5807,8 @@ def _build_tod_console_state() -> dict[str, Any]:
         active_task_payload=active_task_payload,
         listener_decision=listener_decision,
         decision_payload=decision_payload,
+        active_execution_lane=active_execution_lane,
+        intake_arbitration=intake_arbitration,
     )
     task_identity_repair = {"attempted": False, "reason": "not_needed"}
     if bool(task_identity_contention.get("safe_self_repair") is True):
