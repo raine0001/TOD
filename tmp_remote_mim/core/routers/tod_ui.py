@@ -790,10 +790,25 @@ def _extract_objective_from_prefix(message: str) -> str:
     Returns the first token after OBJECTIVE:, or empty string if not found.
     """
     text = str(message or "").strip()
-    m = re.match(r"(?i)^\s*OBJECTIVE\s*:\s*(.+)", text)
-    if not m:
-        return ""
-    name_raw = m.group(1).strip().splitlines()[0].strip()
+
+    # Accept both line-start directives and inline one-line prompts such as:
+    # "tod complete this objective: OBJECTIVE: TOD-MESSAGE-LEDGER-COVERAGE-REPORT"
+    # Choose the last OBJECTIVE label to avoid earlier natural-language phrases.
+    inline_matches = list(re.finditer(r"(?i)\bOBJECTIVE\s*:\s*(.+)", text))
+    if inline_matches:
+        name_raw = inline_matches[-1].group(1).strip().splitlines()[0].strip()
+    else:
+        m = re.match(r"(?i)^\s*OBJECTIVE\s*:\s*(.+)", text)
+        if not m:
+            return ""
+        name_raw = m.group(1).strip().splitlines()[0].strip()
+
+    # Normalize accidental nested labels such as "OBJECTIVE: OBJECTIVE: X".
+    nested = re.match(r"(?i)^\s*OBJECTIVE\s*:\s*(.+)$", name_raw)
+    while nested:
+        name_raw = nested.group(1).strip()
+        nested = re.match(r"(?i)^\s*OBJECTIVE\s*:\s*(.+)$", name_raw)
+
     # Strip any trailing labeled-field suffix (e.g. "Goal:", "Title:", "Mission:")
     name_raw = re.split(r"\s+(?:GOAL|TITLE|MISSION|PRIMARY\s+OUTCOME)\s*:", name_raw, flags=re.IGNORECASE)[0].strip()
     # Take the first whitespace-delimited token as the objective identifier
@@ -1555,7 +1570,7 @@ def _derive_stall_signal(activity_state: str, age_seconds: float | None, phase_p
     threshold_seconds = 1200 if normalized_state == "waiting" else 900 if normalized_state == "working" else 600 if normalized_state == "stalled" else None
     flagged = bool(threshold_seconds is not None and age_seconds >= threshold_seconds)
     if not flagged:
-        implementation_pending = normalized_state == "waiting" and str(phase_progress.get("next_gate") or "").strip().lower() == "implementation" and progress_percent >= 60
+        implementation_pending = normalized_state == "waiting" and str(phase_progress.get("next_gate") or "").strip().lower() == "implementation" and progress_percent >= 30
         if implementation_pending:
             delay_minutes = max(1, int(round(age_seconds / 60.0)))
             freshness_text = (
@@ -3802,10 +3817,10 @@ def _classify_prompt(message: str) -> str:
     if any(
         re.search(pattern, normalized)
         for pattern in (
-            r"\bstart(?: your| the| a| next)?\s+(?:bounded\s+)?(?:6h|six[- ]hour\s+)?training(?:\s+(?:cycle|run|runbook|loop))?\b",
-            r"\blaunch(?: the| a| your| next)?\s+(?:bounded\s+)?(?:6h|six[- ]hour\s+)?training(?:\s+(?:cycle|run|runbook|loop))?\b",
-            r"\bbegin(?: the| a| your| next)?\s+(?:bounded\s+)?(?:6h|six[- ]hour\s+)?training(?:\s+(?:cycle|run|runbook|loop))?\b",
-            r"\brun(?: the| a| your| next)?\s+(?:bounded\s+)?(?:6h|six[- ]hour\s+)?training(?:\s+(?:cycle|run|runbook|loop))?\b",
+            r"\bstart(?:\s+(?:your|the|a|next))*\s+(?:bounded\s+)?(?:6h\s+|six[- ]hour\s+)?training(?:\s+(?:cycle|run|runbook|loop))?\b",
+            r"\blaunch(?:\s+(?:the|a|your|next))*\s+(?:bounded\s+)?(?:6h\s+|six[- ]hour\s+)?training(?:\s+(?:cycle|run|runbook|loop))?\b",
+            r"\bbegin(?:\s+(?:the|a|your|next))*\s+(?:bounded\s+)?(?:6h\s+|six[- ]hour\s+)?training(?:\s+(?:cycle|run|runbook|loop))?\b",
+            r"\brun(?:\s+(?:the|a|your|next))*\s+(?:bounded\s+)?(?:6h\s+|six[- ]hour\s+)?training(?:\s+(?:cycle|run|runbook|loop))?\b",
         )
     ):
         return "training"

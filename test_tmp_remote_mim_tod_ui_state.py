@@ -132,6 +132,7 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.tod_ui._first_existing_payload = lambda *paths: (integration_payload, "integration.json")
         self.tod_ui._load_json = lambda path: {}
         self.tod_ui._load_remote_recovery_payload = lambda: ({}, "")
+        self.tod_ui._load_shared_truth_payload = lambda: ({}, "")
         self.tod_ui._load_recent_copilot_handoffs = lambda **kwargs: []
 
         state = self.tod_ui._build_tod_console_state()
@@ -379,8 +380,8 @@ class TodUiStateClassificationTests(unittest.TestCase):
             "updated_at": fresh_timestamp,
             "status": "waiting",
             "execution_state": "waiting_on_next_step",
-            "next_step": "Implement the next bounded local implementation step in the inspected surfaces.",
-            "wait_reason": "TOD is waiting on its own next bounded local implementation step.",
+            "next_step": "Implement the execution control surface changes in the inspected TOD scripts.",
+            "wait_reason": "TOD is at the implementation gate and waiting for the next execution slice.",
             "execution_contract": {
                 "task_intake": {"status": "accepted"},
                 "bounded_step_planner": {
@@ -479,7 +480,7 @@ class TodUiStateClassificationTests(unittest.TestCase):
             "status": "waiting",
             "execution_state": "waiting_on_next_step",
             "next_step": "Implement the next bounded local implementation step in the inspected surfaces.",
-            "wait_reason": "TOD is waiting on its own next bounded local implementation step.",
+            "wait_reason": "TOD is at the implementation gate and waiting for the next execution slice.",
             "execution_contract": {
                 "task_intake": {"status": "accepted"},
                 "bounded_step_planner": {
@@ -506,8 +507,8 @@ class TodUiStateClassificationTests(unittest.TestCase):
             "status": "waiting",
             "execution_state": "waiting_on_next_step",
             "updated_at": stale_timestamp,
-            "next_step": "Implement the next bounded local implementation step in the inspected surfaces.",
-            "wait_reason": "TOD is waiting on its own next bounded local implementation step.",
+            "next_step": "Implement the execution control surface changes in the inspected TOD scripts.",
+            "wait_reason": "TOD is at the implementation gate and waiting for the next execution slice.",
         }
         truth = {
             "generated_at": fresh_truth_timestamp,
@@ -642,8 +643,8 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertEqual(execution["shared_truth"]["task_id"], "objective-2913-task-7144")
 
     def test_build_tod_console_state_prefers_newer_execution_over_older_shared_truth_from_other_objective(self) -> None:
-        shared_truth_timestamp = "2026-05-05T05:32:38.674201Z"
-        execution_timestamp = "2026-05-05T05:51:21Z"
+        shared_truth_timestamp = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=25)).isoformat()
+        execution_timestamp = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=3)).isoformat()
         integration_payload = {
             "objective_alignment": {
                 "status": "in_sync",
@@ -687,12 +688,12 @@ class TodUiStateClassificationTests(unittest.TestCase):
             "objective_id": "TOD-OPERATIONAL-CONTROL-SURFACE-PHASE-3",
             "task_id": "tod-operational-control-surface-phase-3-task-1777960281766",
             "title": "Make the TOD UI an execution control surface.",
-            "summary": "Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path.",
+            "summary": "Implement the execution control surface changes in the inspected TOD scripts.",
             "updated_at": execution_timestamp,
             "status": "waiting",
             "execution_state": "waiting_on_next_step",
-            "next_step": "Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path.",
-            "wait_reason": "TOD is waiting on its own next bounded local implementation step. It is not waiting on MIM, the operator, or Codex.",
+            "next_step": "Implement the execution control surface changes in the inspected TOD scripts.",
+            "wait_reason": "TOD is at the implementation gate and waiting for the next execution slice.",
             "execution_contract": {
                 "task_intake": {"status": "accepted"},
                 "bounded_step_planner": {
@@ -709,7 +710,7 @@ class TodUiStateClassificationTests(unittest.TestCase):
             "status": "waiting",
             "execution_state": "waiting_on_next_step",
             "updated_at": execution_timestamp,
-            "wait_reason": "TOD is waiting on its own next bounded local implementation step. It is not waiting on MIM, the operator, or Codex.",
+            "wait_reason": "TOD is at the implementation gate and waiting for the next execution slice.",
         }
         validation_payload = {
             "status": "passed",
@@ -720,8 +721,8 @@ class TodUiStateClassificationTests(unittest.TestCase):
             "execution_state": "waiting_on_next_step",
             "phase": "workspace_inspection",
             "updated_at": execution_timestamp,
-            "next_step": "Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path.",
-            "wait_reason": "TOD is waiting on its own next bounded local implementation step. It is not waiting on MIM, the operator, or Codex.",
+            "next_step": "Implement the execution control surface changes in the inspected TOD scripts.",
+            "wait_reason": "TOD is at the implementation gate and waiting for the next execution slice.",
             "command_output": "Inspected 4 local execution-loop surfaces under E:/TOD.",
             "validation_summary": "Completed the bounded local workspace inspection.",
             "validation_checks": [{"name": "exists:tod_ui.py", "passed": True}],

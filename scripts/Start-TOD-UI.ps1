@@ -217,9 +217,32 @@ function Get-TodConversationDirectiveValue {
         [Parameter(Mandatory = $true)][string]$Label
     )
 
+    $labelPattern = ('(?i)^\s*{0}\s*:\s*(.+)$' -f [regex]::Escape($Label))
+
     $match = [regex]::Match($QueryText, ('(?im)^\s*{0}\s*:\s*(.+)$' -f [regex]::Escape($Label)))
     if ($match.Success) {
-        return [string]$match.Groups[1].Value.Trim()
+        $value = [string]$match.Groups[1].Value.Trim()
+        while ($value -match $labelPattern) {
+            $value = [string]$Matches[1].Trim()
+        }
+        return $value
+    }
+
+    # Also support inline directives in single-line prompts (for example:
+    # "complete this objective: OBJECTIVE: TOD-MESSAGE-LEDGER-COVERAGE-REPORT").
+    # Prefer the last matching label to avoid capturing natural-language prefixes
+    # like "this objective:" when a canonical directive appears later in the line.
+    $inlineMatches = [regex]::Matches($QueryText, ('(?i)\b{0}\s*:\s*(?<value>[^\r\n]+)' -f [regex]::Escape($Label)))
+    if ($inlineMatches.Count -gt 0) {
+        for ($i = $inlineMatches.Count - 1; $i -ge 0; $i -= 1) {
+            $value = [string]$inlineMatches[$i].Groups['value'].Value.Trim()
+            while ($value -match $labelPattern) {
+                $value = [string]$Matches[1].Trim()
+            }
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                return $value
+            }
+        }
     }
 
     return ''
@@ -380,12 +403,6 @@ function Try-StartAsyncTodConversationDispatch {
         return $null
     }
 
-    $isStructured = $normalized -match '(?im)^\s*(objective|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:'
-    $isCommandLead = $normalized.Trim().ToLowerInvariant() -match '^(fix|create|add|remove|update|run|start|setup|stop|restart|enable|disable|make|repair|sync|deploy|train|turn|open|close|package|dispatch)\b'
-    if (-not $isStructured -and -not $isCommandLead) {
-        return $null
-    }
-
     $objectiveDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'OBJECTIVE'
     $goalDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'GOAL'
     $taskDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'TASK'
@@ -397,6 +414,23 @@ function Try-StartAsyncTodConversationDispatch {
         $acceptanceDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'ACCEPTANCE CRITERIA'
     }
     $stopConditionDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'STOP CONDITION'
+
+    $hasInlineDirective =
+        (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) -or
+        (-not [string]::IsNullOrWhiteSpace($goalDirective)) -or
+        (-not [string]::IsNullOrWhiteSpace($taskDirective)) -or
+        (-not [string]::IsNullOrWhiteSpace($acceptanceDirective)) -or
+        (-not [string]::IsNullOrWhiteSpace($stopConditionDirective))
+
+    $isStructured = $hasInlineDirective -or ($normalized -match '(?im)^\s*(objective|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:')
+    $normalizedLead = $normalized.Trim().ToLowerInvariant()
+    if ($normalizedLead.StartsWith('tod ')) {
+        $normalizedLead = $normalizedLead.Substring(4).TrimStart()
+    }
+    $isCommandLead = $normalizedLead -match '^(fix|create|add|remove|update|run|start|setup|stop|restart|enable|disable|make|repair|sync|deploy|train|turn|open|close|package|dispatch|complete)\b'
+    if (-not $isStructured -and -not $isCommandLead) {
+        return $null
+    }
 
     $slug = Convert-ToTodConversationSlug -Text $objectiveDirective
     $dispatchObjectiveId = if (-not [string]::IsNullOrWhiteSpace($slug)) { 'objective-' + $slug } elseif (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) { [string]$ObjectiveId } else { 'objective-direct-chat' }
@@ -1752,6 +1786,7 @@ function Resolve-ProjectSelectedObjectiveId {
         [AllowNull()]$ListenerActivity,
         [AllowNull()]$BridgeStatus,
         [AllowNull()]$NextActions,
+        [AllowNull()]$Tasks,
         [AllowNull()]$Objectives
     )
 
@@ -1774,6 +1809,54 @@ function Resolve-ProjectSelectedObjectiveId {
         $nextActionsObjectiveId = [string]$NextActions.current_objective_in_progress
     }
 
+    $statePreferredObjectiveId = ""
+    if ($Tasks) {
+        $stateTaskCandidates = @($Tasks | Where-Object {
+                $_ -and
+                $_.PSObject.Properties['objective_id'] -and
+                -not [string]::IsNullOrWhiteSpace([string]$_.objective_id)
+            } | ForEach-Object {
+                $statusText = if ($_.PSObject.Properties['status']) { [string]$_.status } else { '' }
+                $normalizedStatus = $statusText.Trim().ToLowerInvariant()
+                $statusRank = switch -Regex ($normalizedStatus) {
+                    '^(in_progress|running|executing|queued|pending|started)$' { 3 }
+                    '^(completed|done|passed|success|succeeded)$' { 2 }
+                    '^(failed|error|blocked|stalled|cancelled|canceled)$' { 1 }
+                    default { 0 }
+                }
+
+                $timestampText = ''
+                foreach ($field in @('updated_at', 'completed_at', 'ended_at', 'created_at')) {
+                    if ($_.PSObject.Properties[$field] -and -not [string]::IsNullOrWhiteSpace([string]$_.$field)) {
+                        $timestampText = [string]$_.$field
+                        break
+                    }
+                }
+
+                $timestampTicks = 0
+                $parsedTimestamp = [DateTimeOffset]::MinValue
+                if (-not [string]::IsNullOrWhiteSpace($timestampText) -and [DateTimeOffset]::TryParse($timestampText, [ref]$parsedTimestamp)) {
+                    $timestampTicks = $parsedTimestamp.UtcTicks
+                }
+
+                [pscustomobject]@{
+                    objective_id = [string]$_.objective_id
+                    status_rank = $statusRank
+                    timestamp_ticks = $timestampTicks
+                }
+            })
+
+        if (@($stateTaskCandidates).Count -gt 0) {
+            $preferredStateTask = @($stateTaskCandidates | Sort-Object -Property @(
+                    @{ Expression = { [int]$_.status_rank }; Descending = $true },
+                    @{ Expression = { [long]$_.timestamp_ticks }; Descending = $true }
+                ) | Select-Object -First 1)
+            if (@($preferredStateTask).Count -gt 0 -and $preferredStateTask[0] -and -not [string]::IsNullOrWhiteSpace([string]$preferredStateTask[0].objective_id)) {
+                $statePreferredObjectiveId = [string]$preferredStateTask[0].objective_id
+            }
+        }
+    }
+
     if (-not [string]::IsNullOrWhiteSpace($listenerObjectiveId) -and -not [string]::IsNullOrWhiteSpace($bridgeCanonicalObjectiveId)) {
         if ([string]::Equals($listenerObjectiveId, $bridgeCanonicalObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) {
             return $listenerObjectiveId
@@ -1784,6 +1867,10 @@ function Resolve-ProjectSelectedObjectiveId {
         if ([string]::Equals($nextActionsObjectiveId, $bridgeCanonicalObjectiveId, [System.StringComparison]::OrdinalIgnoreCase)) {
             return $nextActionsObjectiveId
         }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($statePreferredObjectiveId)) {
+        return $statePreferredObjectiveId
     }
 
     if (-not [string]::IsNullOrWhiteSpace($listenerObjectiveId)) {
@@ -2769,7 +2856,7 @@ function Get-ProjectStatusPayload {
     }
 
     $marker = $null
-    $selectedObjectiveId = Resolve-ProjectSelectedObjectiveId -ExplicitObjectiveId $ObjectiveId -ListenerActivity $listenerActivity -BridgeStatus $bridgeStatus -NextActions $nextActions -Objectives $objectives
+    $selectedObjectiveId = Resolve-ProjectSelectedObjectiveId -ExplicitObjectiveId $ObjectiveId -ListenerActivity $listenerActivity -BridgeStatus $bridgeStatus -NextActions $nextActions -Tasks $tasks -Objectives $objectives
 
     if (-not [string]::IsNullOrWhiteSpace($selectedObjectiveId)) {
         $selected = @($objectives | Where-Object { [string]$_.id -eq [string]$selectedObjectiveId } | Select-Object -First 1)
@@ -3018,6 +3105,34 @@ function Get-ActivityStreamPayload {
         $stateCandidate = New-ActivityStreamCandidatePayload -Payload $stateFallbackPayload -SourcePath $statePath -ObjectiveId $ObjectiveId -TaskId $TaskId -Limit $safeLimit
         if ($null -ne $stateCandidate) {
             [void]$candidates.Add($stateCandidate)
+        }
+    }
+    else {
+        $stateFallbackPayload = Get-StateActivityFallbackPayload
+        $stateCandidate = New-ActivityStreamCandidatePayload -Payload $stateFallbackPayload -SourcePath $statePath -Limit $safeLimit
+        if ($null -ne $stateCandidate) {
+            $latestPublishedCandidate = @($candidates | Sort-Object -Property @{ Expression = { Get-ActivityTimestampTicks -Value $_ }; Descending = $true } | Select-Object -First 1)
+            $latestPublished = if (@($latestPublishedCandidate).Count -gt 0) { $latestPublishedCandidate[0] } else { $null }
+            $publishedTicks = if ($latestPublished) { Get-ActivityTimestampTicks -Value $latestPublished } else { 0 }
+            $stateTicks = Get-ActivityTimestampTicks -Value $stateCandidate
+
+            $publishedObjective = if ($latestPublished -and $latestPublished.PSObject.Properties['objective_id']) { [string]$latestPublished.objective_id } else { '' }
+            $stateObjective = if ($stateCandidate.PSObject.Properties['objective_id']) { [string]$stateCandidate.objective_id } else { '' }
+            $publishedTask = if ($latestPublished -and $latestPublished.PSObject.Properties['task_id']) { [string]$latestPublished.task_id } else { '' }
+            $stateTask = if ($stateCandidate.PSObject.Properties['task_id']) { [string]$stateCandidate.task_id } else { '' }
+
+            $objectiveMismatch =
+                (-not [string]::IsNullOrWhiteSpace($publishedObjective)) -and
+                (-not [string]::IsNullOrWhiteSpace($stateObjective)) -and
+                (-not [string]::Equals($publishedObjective, $stateObjective, [System.StringComparison]::OrdinalIgnoreCase))
+            $taskMismatch =
+                (-not [string]::IsNullOrWhiteSpace($publishedTask)) -and
+                (-not [string]::IsNullOrWhiteSpace($stateTask)) -and
+                (-not [string]::Equals($publishedTask, $stateTask, [System.StringComparison]::OrdinalIgnoreCase))
+
+            if (($stateTicks -gt $publishedTicks) -or $objectiveMismatch -or $taskMismatch) {
+                [void]$candidates.Add($stateCandidate)
+            }
         }
     }
 
