@@ -42,6 +42,9 @@ $trainingStatusPath = Join-Path $repoRoot "shared_state/tod_training_status.late
 $recoveryWatchdogStatePath = Join-Path $repoRoot "shared_state/tod_recovery_watchdog.latest.json"
 $activityStreamPrimaryPath = Join-Path $repoRoot "runtime/shared/TOD_ACTIVITY_STREAM.latest.json"
 $activityStreamMirrorPath = Join-Path $repoRoot "tmp_remote_mim/runtime/shared/TOD_ACTIVITY_STREAM.latest.json"
+$intakeQueuePath = Join-Path $repoRoot "runtime/shared/TOD_INTAKE_QUEUE.latest.json"
+$activeExecutionLanePath = Join-Path $repoRoot "runtime/shared/TOD_ACTIVE_EXECUTION_LANE.latest.json"
+$intakeArbitrationPath = Join-Path $repoRoot "runtime/shared/TOD_INTAKE_ARBITRATION.latest.json"
 $directChatActivityStreamPath = Join-Path $repoRoot "shared_state/tod_direct_chat_activity_stream.latest.json"
 $todActivityStreamBuildId = 'fresh-direct-chat-activity-v1'
 $voiceAdapterConfigPath = Join-Path $repoRoot "tod/config/voice-adapter.json"
@@ -276,6 +279,11 @@ function Resolve-TodConversationTaskCategory {
     $hasChangeHint = $normalized -match '\b(update|patch|edit|replace|modify|write|append|insert|refactor|implement|fix)\b'
     $hasValidationHint = $normalized -match '\b(validate|validation|verify|verification|regression|smoke test|unit test|integration test|lint|compile|typecheck|publish validation only)\b'
     $hasInspectionHint = $normalized -match '\b(diagnos|debug|inspect|inspection|investigat|check|search|locate|find|scan|trace|status|query|analy[sz]e|review evidence)\b'
+    $hasBlockedStateBypassDirective = $normalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic)\s*:'
+
+    if ($hasBlockedStateBypassDirective -and $normalized -match '(tod-next-slice-materialization|materialization|repair|diagnostic)') {
+        return 'diagnostic_implementation_repair'
+    }
 
     if ($hasDocsHint) { return 'docs_change' }
     if ($hasConfigHint -and -not $hasTestHint) { return 'config_change' }
@@ -290,6 +298,9 @@ function Resolve-TodConversationPrimaryTargetFile {
     param([Parameter(Mandatory = $true)][string]$QueryText)
 
     $normalized = ([string]$QueryText).ToLowerInvariant()
+    if ($normalized -match 'tod-next-slice-materialization') {
+        return 'scripts/Start-TOD-UI.ps1'
+    }
     if ($normalized -match '/api/tod-conversation|/api/activity-stream|\btod-conversation\b|\bactivity-stream\b') {
         return 'scripts/Start-TOD-UI.ps1'
     }
@@ -404,6 +415,10 @@ function Try-StartAsyncTodConversationDispatch {
     }
 
     $objectiveDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'OBJECTIVE'
+    $adminDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'ADMIN ACTION'
+    $repairDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'REPAIR'
+    $forceDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'FORCE'
+    $diagnosticDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'DIAGNOSTIC'
     $goalDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'GOAL'
     $taskDirective = Get-TodConversationDirectiveValue -QueryText $Query -Label 'TASK'
     if ([string]::IsNullOrWhiteSpace($taskDirective)) {
@@ -417,24 +432,30 @@ function Try-StartAsyncTodConversationDispatch {
 
     $hasInlineDirective =
         (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) -or
+        (-not [string]::IsNullOrWhiteSpace($adminDirective)) -or
+        (-not [string]::IsNullOrWhiteSpace($repairDirective)) -or
+        (-not [string]::IsNullOrWhiteSpace($forceDirective)) -or
+        (-not [string]::IsNullOrWhiteSpace($diagnosticDirective)) -or
         (-not [string]::IsNullOrWhiteSpace($goalDirective)) -or
         (-not [string]::IsNullOrWhiteSpace($taskDirective)) -or
         (-not [string]::IsNullOrWhiteSpace($acceptanceDirective)) -or
         (-not [string]::IsNullOrWhiteSpace($stopConditionDirective))
 
-    $isStructured = $hasInlineDirective -or ($normalized -match '(?im)^\s*(objective|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:')
+    $isBlockedStateBypassDirective = ($normalized -match '(?im)^\s*(objective|admin action|repair|force|diagnostic)\s*:')
+    $isStructured = $hasInlineDirective -or ($normalized -match '(?im)^\s*(objective|admin action|repair|force|diagnostic|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:')
     $normalizedLead = $normalized.Trim().ToLowerInvariant()
     if ($normalizedLead.StartsWith('tod ')) {
         $normalizedLead = $normalizedLead.Substring(4).TrimStart()
     }
-    $isCommandLead = $normalizedLead -match '^(fix|create|add|remove|update|run|start|setup|stop|restart|enable|disable|make|repair|sync|deploy|train|turn|open|close|package|dispatch|complete)\b'
+    $isCommandLead = $normalizedLead -match '^(fix|create|add|remove|update|run|start|setup|stop|restart|enable|disable|make|repair|sync|deploy|train|turn|open|close|package|dispatch|complete|force|diagnostic|admin)\b'
     if (-not $isStructured -and -not $isCommandLead) {
         return $null
     }
 
-    $slug = Convert-ToTodConversationSlug -Text $objectiveDirective
+    $primaryDirective = if (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) { $objectiveDirective } elseif (-not [string]::IsNullOrWhiteSpace($adminDirective)) { $adminDirective } elseif (-not [string]::IsNullOrWhiteSpace($repairDirective)) { $repairDirective } elseif (-not [string]::IsNullOrWhiteSpace($forceDirective)) { $forceDirective } elseif (-not [string]::IsNullOrWhiteSpace($diagnosticDirective)) { $diagnosticDirective } else { '' }
+    $slug = Convert-ToTodConversationSlug -Text $primaryDirective
     $dispatchObjectiveId = if (-not [string]::IsNullOrWhiteSpace($slug)) { 'objective-' + $slug } elseif (-not [string]::IsNullOrWhiteSpace($ObjectiveId)) { [string]$ObjectiveId } else { 'objective-direct-chat' }
-    $title = if (-not [string]::IsNullOrWhiteSpace($taskDirective)) { $taskDirective } elseif (-not [string]::IsNullOrWhiteSpace($goalDirective)) { $goalDirective } elseif (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) { $objectiveDirective } else { 'UI command: ' + $normalized.Trim() }
+    $title = if (-not [string]::IsNullOrWhiteSpace($taskDirective)) { $taskDirective } elseif (-not [string]::IsNullOrWhiteSpace($goalDirective)) { $goalDirective } elseif (-not [string]::IsNullOrWhiteSpace($primaryDirective)) { $primaryDirective } else { 'UI command: ' + $normalized.Trim() }
     $scope = @(
         'Operator command routed from TOD direct conversation. Target: files / workspace. Requested action: create + dispatch task.',
         'Original query:',
@@ -442,6 +463,9 @@ function Try-StartAsyncTodConversationDispatch {
     ) -join "`n"
     $acceptanceCriteria = if (-not [string]::IsNullOrWhiteSpace($acceptanceDirective)) { $acceptanceDirective } elseif (-not [string]::IsNullOrWhiteSpace($stopConditionDirective)) { $stopConditionDirective } else { 'Publish bounded execution evidence and validation output.' }
     $taskCategory = Resolve-TodConversationTaskCategory -QueryText $Query
+    if ($isBlockedStateBypassDirective -and [string]::Equals($taskCategory, 'chat_execution', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $taskCategory = 'diagnostic_implementation_repair'
+    }
     $targetFile = Resolve-TodConversationPrimaryTargetFile -QueryText $Query
     $assignedExecutor = 'local'
     $requestId = New-TodConversationDispatchId -Prefix 'REQ'
@@ -453,7 +477,7 @@ function Try-StartAsyncTodConversationDispatch {
             RequestId = $requestId
             CorrelationId = $correlationId
             Title = $title
-            Description = if (-not [string]::IsNullOrWhiteSpace($goalDirective)) { $goalDirective } elseif (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) { $objectiveDirective } else { $title }
+            Description = if (-not [string]::IsNullOrWhiteSpace($goalDirective)) { $goalDirective } elseif (-not [string]::IsNullOrWhiteSpace($primaryDirective)) { $primaryDirective } else { $title }
             Scope = $scope
             AcceptanceCriteria = $acceptanceCriteria
             SuccessCriteria = $acceptanceCriteria
@@ -476,6 +500,9 @@ function Try-StartAsyncTodConversationDispatch {
     $accepted = if ($runTask -and $runTask.PSObject.Properties['accepted']) { [bool]$runTask.accepted } else { $true }
     $blocked = if ($runTask -and $runTask.PSObject.Properties['blocked']) { [bool]$runTask.blocked } else { $false }
     $activityEventTypes = if ($executeResult.PSObject.Properties['activity_event_types']) { @($executeResult.activity_event_types | ForEach-Object { [string]$_ }) } else { @('chat_task_created', 'task_claimed', 'execution_started') }
+    if ($isBlockedStateBypassDirective) {
+        $activityEventTypes = @('blocked_state_bypass_applied', 'fresh_repair_task_created', 'repair_task_materialization_started', 'stale_blocker_ignored_for_new_objective') + @($activityEventTypes)
+    }
     if ($runTask -and $runTask.PSObject.Properties['task_id'] -and [string]::IsNullOrWhiteSpace([string]$runTask.task_id)) {
         $runTask.task_id = $resolvedTaskId
     }
@@ -490,7 +517,7 @@ function Try-StartAsyncTodConversationDispatch {
             query = $Query
         }
         request_kind = 'implementation_request'
-        reply_text = ('task accepted: {0}`nexecution_status: {1}`nactivity_stream: /api/activity-stream?task_id={2}&limit=20' -f $dispatchObjectiveId, $(if ([string]::IsNullOrWhiteSpace($executionStatus)) { 'queued' } else { $executionStatus }), $resolvedTaskId)
+        reply_text = ('task accepted: {0}`ntask_id: {1}`nreason_code: {2}`nexecution_status: {3}`nactivity_stream: /api/activity-stream?task_id={4}&limit=20' -f $dispatchObjectiveId, $resolvedTaskId, $(if ($isBlockedStateBypassDirective) { 'blocked_state_bypass_applied' } else { 'direct_chat_task_dispatched' }), $(if ([string]::IsNullOrWhiteSpace($executionStatus)) { 'queued' } else { $executionStatus }), $resolvedTaskId)
         source = if ([string]::Equals($executionStatus, 'queued', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($executionStatus, 'running', [System.StringComparison]::OrdinalIgnoreCase)) { 'tod_async_request_ack' } else { 'tod_async_request_result' }
         provider_status = [pscustomobject]@{
             attempted = $false
@@ -520,6 +547,9 @@ function Try-StartAsyncTodConversationDispatch {
             detail = if ([string]::Equals($executionStatus, 'queued', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($executionStatus, 'running', [System.StringComparison]::OrdinalIgnoreCase)) { 'Task created and queued asynchronously via executor local.' } else { [string]$(if ($runTask -and $runTask.PSObject.Properties['summary']) { $runTask.summary } else { 'Task executed through TOD.' }) }
             payload = [pscustomobject]@{
                 activity_event_types = $activityEventTypes
+                reason_codes = if ($isBlockedStateBypassDirective) { @('blocked_state_bypass_applied', 'fresh_objective_materialized_from_blocked_state') } else { @() }
+                selected_task = if ($executeResult.PSObject.Properties['selected_task']) { $executeResult.selected_task } else { [pscustomobject]@{ task_id = $resolvedTaskId; objective_id = $dispatchObjectiveId } }
+                claimed_task = if ($executeResult.PSObject.Properties['claimed_task']) { $executeResult.claimed_task } else { [pscustomobject]@{ task_id = $resolvedTaskId; objective_id = $dispatchObjectiveId; assigned_executor = $assignedExecutor } }
                 executor_classification = [pscustomobject]@{
                     selected_executor = 'local'
                     classification_reason = 'structured_direct_chat_async_dispatch'
@@ -840,6 +870,31 @@ function Update-DirectChatActivityStream {
     $isLocalExecution = ($reportedEventTypes -contains 'local_executor_invoked') -or ($reportedEventTypes -contains 'local_executor_completed') -or ([string]$commandDispatch.detail -match '(?i)executor\s+local')
 
     $eventList = New-Object System.Collections.Generic.List[object]
+    foreach ($bypassEventType in @('blocked_state_bypass_applied', 'fresh_repair_task_created', 'repair_task_materialization_started', 'stale_blocker_ignored_for_new_objective')) {
+        if ($reportedEventTypes -notcontains $bypassEventType) {
+            continue
+        }
+
+        $eventList.Add([pscustomobject]@{
+                timestamp = $generatedAt
+                event_type = $bypassEventType
+                objective_id = $objectiveId
+                task_id = $taskId
+                request_id = $requestId
+                correlation_id = $correlationId
+                title = $title
+                step = 'task_dispatch'
+                status = 'completed'
+                message = if ([string]::Equals($bypassEventType, 'blocked_state_bypass_applied', [System.StringComparison]::OrdinalIgnoreCase)) { 'Direct TOD conversation bypassed stale blocked-state rendering for a new operator directive.' } elseif ([string]::Equals($bypassEventType, 'fresh_repair_task_created', [System.StringComparison]::OrdinalIgnoreCase)) { 'Direct TOD conversation created a fresh repair task for the new operator directive.' } elseif ([string]::Equals($bypassEventType, 'repair_task_materialization_started', [System.StringComparison]::OrdinalIgnoreCase)) { 'Direct TOD conversation routed the fresh repair task into task materialization.' } else { 'Direct TOD conversation ignored the stale blocker while accepting the new operator directive.' }
+                details = [pscustomobject]@{
+                    reason_code = if ([string]::Equals($bypassEventType, 'blocked_state_bypass_applied', [System.StringComparison]::OrdinalIgnoreCase)) { 'blocked_state_bypass_applied' } elseif ([string]::Equals($bypassEventType, 'repair_task_materialization_started', [System.StringComparison]::OrdinalIgnoreCase)) { 'fresh_objective_materialized_from_blocked_state' } else { $bypassEventType }
+                    task_category = $taskCategory
+                }
+                source = 'tod.ui.direct_chat'
+                surface = 'tod-conversation'
+            })
+    }
+
     $eventList.Add([pscustomobject]@{
             timestamp = $generatedAt
             event_type = 'chat_task_created'
@@ -3017,6 +3072,9 @@ function Get-TaskStatePayload {
     $recoveryWatchdog = Get-RecoveryWatchdogStatus
     $listenerActivity = Get-ListenerActivity
     $trainingStatus = Get-TrainingStatusPayload
+    $intakeQueue = Read-JsonFileIfExists -Path $intakeQueuePath
+    $activeExecutionLane = Read-JsonFileIfExists -Path $activeExecutionLanePath
+    $intakeArbitration = Read-JsonFileIfExists -Path $intakeArbitrationPath
     $latestExecutionStatus = if ($listenerActivity -and $listenerActivity.PSObject.Properties["latest_execution_status"]) { [string]$listenerActivity.latest_execution_status } else { '' }
     $latestRequestId = if ($listenerActivity -and $listenerActivity.PSObject.Properties["latest_request_id"]) { [string]$listenerActivity.latest_request_id } else { '' }
     $resultRequestId = if ($listenerActivity -and $listenerActivity.PSObject.Properties["result_request_id"]) { [string]$listenerActivity.result_request_id } else { '' }
@@ -3067,6 +3125,19 @@ function Get-TaskStatePayload {
         latest_request_id = $latestRequestId
         latest_execution_status = $latestExecutionStatus
         training_status = $trainingStatus
+        intake = [pscustomobject]@{
+            active_task = $activeExecutionLane
+            queued_tasks = if ($intakeQueue -and $intakeQueue.PSObject.Properties['items']) { @($intakeQueue.items | Where-Object { [string]$_.status -eq 'queued' }) } else { @() }
+            queued_count = if ($intakeQueue -and $intakeQueue.PSObject.Properties['queued_count']) { [int]$intakeQueue.queued_count } else { 0 }
+            next_task_after_current = if ($intakeQueue -and $intakeQueue.PSObject.Properties['next_task_after_current']) { $intakeQueue.next_task_after_current } else { $null }
+            arbitration_decision = if ($intakeArbitration -and $intakeArbitration.PSObject.Properties['decision']) { [string]$intakeArbitration.decision } else { '' }
+            arbitration_reason = if ($intakeArbitration -and $intakeArbitration.PSObject.Properties['reason']) { [string]$intakeArbitration.reason } else { '' }
+            artifact_paths = [pscustomobject]@{
+                intake_queue = $intakeQueuePath
+                active_execution_lane = $activeExecutionLanePath
+                intake_arbitration = $intakeArbitrationPath
+            }
+        }
     }
 }
 

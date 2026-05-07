@@ -112,7 +112,7 @@ function Get-RequestKind {
     param([Parameter(Mandatory = $true)][string]$QueryText)
 
     $normalized = $QueryText.ToLowerInvariant()
-    if ($normalized -match '(?m)^\s*(objective|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:') {
+    if ($normalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:') {
         return 'implementation_request'
     }
     if ($normalized -match 'implement|implementation|build|wire|setup|set up|create|add|change|make|begin|start|ship|develop|conversation|communicat') {
@@ -150,9 +150,14 @@ function Get-IntentRoute {
     $intent = 'CONVERSATION'
     $action = 'direct reply'
     $requestKind = Get-RequestKind -QueryText $QueryText
-    $hasStructuredTaskRequest = ($normalized -match '(?m)^\s*(objective|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:')
+    $hasStructuredTaskRequest = ($normalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:')
 
-    if ($normalized -match '^(override|control|force|policy|priority|admin|elevat|restart tod|freeze|unfreeze|disable restriction)\b') {
+    if ($normalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic)\s*:') {
+        $intent = 'COMMAND'
+        $action = 'create + dispatch task'
+        $requestKind = 'implementation_request'
+    }
+    elseif ($normalized -match '^(override|control|force|policy|priority|admin|admin action|elevat|restart tod|freeze|unfreeze|disable restriction)\b') {
         $intent = 'SYSTEM'
         $action = 'override / control'
         $requestKind = 'implementation_request'
@@ -162,7 +167,7 @@ function Get-IntentRoute {
         $action = 'explain system'
         $requestKind = 'status_request'
     }
-    elseif ($normalized -match '^(fix|create|add|remove|update|run|start|setup|stop|restart|enable|disable|make|repair|sync|deploy|train|turn|open|close|package|dispatch)\b') {
+    elseif ($normalized -match '^(fix|create|add|remove|update|run|start|setup|stop|restart|enable|disable|make|repair|sync|deploy|train|turn|open|close|package|dispatch|diagnostic)\b') {
         $intent = 'COMMAND'
         $action = 'create + dispatch task'
         $requestKind = 'implementation_request'
@@ -257,7 +262,7 @@ function Resolve-StructuredObjectiveDispatchId {
         [Parameter(Mandatory = $true)][string]$QueryText
     )
 
-    $objectiveDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'OBJECTIVE'
+    $objectiveDirective = Get-StructuredDirectiveValueAny -QueryText $QueryText -Labels @('OBJECTIVE', 'ADMIN ACTION', 'REPAIR', 'FORCE', 'DIAGNOSTIC')
     if ([string]::IsNullOrWhiteSpace($objectiveDirective)) {
         return [string]$ExistingObjectiveId
     }
@@ -288,6 +293,10 @@ function Resolve-DirectChatTaskCategory {
     }
 
     $normalized = ([string]$QueryText).ToLowerInvariant()
+    $hasBlockedStateBypassDirective = $normalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic)\s*:'
+    if ($hasBlockedStateBypassDirective -and $normalized -match '(tod-next-slice-materialization|materialization|repair|diagnostic)') {
+        return 'diagnostic_implementation_repair'
+    }
     $hasDocsHint = $normalized -match '(readme\.md|docs/[a-z0-9_./-]+\.(?:md|txt)|\bmarkdown\b|section title:)'
     $hasConfigHint = $normalized -match '(tod/config/[a-z0-9_./-]+\.json|execution_engine\.|readiness_policy\.|\btod-config\.json\b|\bconfig\b)'
     $hasTestHint = $normalized -match '(tests/[a-z0-9_./-]+\.(?:ps1|py|md)|\bpester\b|\bpytest\b|\bunittest\b|\btest\b)'
@@ -344,6 +353,7 @@ function Resolve-DirectChatAssignedExecutor {
         'review_only' { return 'local' }
         'sync_check' { return 'local' }
         'chat_execution' { return 'local' }
+        'diagnostic_implementation_repair' { return 'local' }
         default { return 'codex' }
     }
 }
@@ -499,6 +509,12 @@ function Invoke-IntentCommandDispatch {
     $taskCategory = Resolve-DirectChatTaskCategory -IntentRoute $IntentRoute -QueryText $QueryText
     $assignedExecutor = Resolve-DirectChatAssignedExecutor -TaskCategory $taskCategory
     $objectiveDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'OBJECTIVE'
+    $adminDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'ADMIN ACTION'
+    $repairDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'REPAIR'
+    $forceDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'FORCE'
+    $diagnosticDirective = Get-StructuredDirectiveValue -QueryText $QueryText -Label 'DIAGNOSTIC'
+    $primaryDirective = if (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) { $objectiveDirective } elseif (-not [string]::IsNullOrWhiteSpace($adminDirective)) { $adminDirective } elseif (-not [string]::IsNullOrWhiteSpace($repairDirective)) { $repairDirective } elseif (-not [string]::IsNullOrWhiteSpace($forceDirective)) { $forceDirective } elseif (-not [string]::IsNullOrWhiteSpace($diagnosticDirective)) { $diagnosticDirective } else { '' }
+    $isBlockedStateBypassDirective = ([string]$QueryText -match '(?im)^\s*(objective|admin action|repair|force|diagnostic)\s*:')
     $dispatchObjectiveId = Resolve-StructuredObjectiveDispatchId -ExistingObjectiveId $ResolvedObjectiveId -QueryText $QueryText
     if (-not [string]::IsNullOrWhiteSpace($dispatchObjectiveId)) {
         $result.objective_id = $dispatchObjectiveId
@@ -513,8 +529,8 @@ function Invoke-IntentCommandDispatch {
     elseif (-not [string]::IsNullOrWhiteSpace($goalDirective)) {
         [string]$goalDirective
     }
-    elseif (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) {
-        [string]$objectiveDirective
+    elseif (-not [string]::IsNullOrWhiteSpace($primaryDirective)) {
+        [string]$primaryDirective
     }
     else {
         'UI command: ' + $QueryText.Trim()
@@ -533,8 +549,8 @@ function Invoke-IntentCommandDispatch {
     else {
         (New-IntentAcceptanceCriteria -IntentTarget ([string]$IntentRoute.target) -QueryText $QueryText) -join "`n"
     }
-    $objectiveDescription = if (-not [string]::IsNullOrWhiteSpace($objectiveDirective)) {
-        ('Objective created from TOD direct chat input: {0}' -f $objectiveDirective)
+    $objectiveDescription = if (-not [string]::IsNullOrWhiteSpace($primaryDirective)) {
+        ('Objective created from TOD direct chat input: {0}' -f $primaryDirective)
     }
     elseif (-not [string]::IsNullOrWhiteSpace($goalDirective)) {
         ('Objective created from TOD direct chat goal: {0}' -f $goalDirective)
@@ -594,6 +610,11 @@ function Invoke-IntentCommandDispatch {
             $result.blocked = (-not [string]::Equals($decisionText, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) -and (-not [string]::Equals($decisionText, 'queued', [System.StringComparison]::OrdinalIgnoreCase)) -and (-not [string]::Equals($decisionText, 'running', [System.StringComparison]::OrdinalIgnoreCase))
         }
         $result.payload = $parsed
+        if ($isBlockedStateBypassDirective -and $result.payload -and $result.payload.PSObject.Properties['activity_event_types']) {
+            $existingEventTypes = @($result.payload.activity_event_types | ForEach-Object { [string]$_ })
+            $result.payload.activity_event_types = @('blocked_state_bypass_applied', 'fresh_repair_task_created', 'repair_task_materialization_started', 'stale_blocker_ignored_for_new_objective') + @($existingEventTypes)
+            Add-Member -InputObject $result.payload -NotePropertyName 'reason_codes' -NotePropertyValue @('blocked_state_bypass_applied', 'fresh_objective_materialized_from_blocked_state') -Force
+        }
         $result.detail = if ($result.created) {
             if ([string]::Equals($result.execution_status, 'queued', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($result.execution_status, 'running', [System.StringComparison]::OrdinalIgnoreCase)) {
                 'Task created, request artifact written, and TOD execution queued asynchronously via executor ' + $assignedExecutor + '.'
@@ -1498,7 +1519,11 @@ if ([string]::IsNullOrWhiteSpace($replyText)) {
         else {
             [string]$commandDispatch.detail
         }
-        $replyText = "intent: COMMAND`ntarget: $($intentRoute.target)`naction: $($intentRoute.action)`nobjective: $($commandDispatch.objective_id)`ntask_id: $($commandDispatch.task_id)`nrequest_id: $($commandDispatch.request_id)`nclassification: $($commandDispatch.classification)`nnext: $($commandDispatch.next_step)`ncodex_needed: $($commandDispatch.codex_needed.ToString().ToLowerInvariant())`ndispatch: $dispatchDetail"
+        $reasonLine = ''
+        if ($commandDispatch.payload -and $commandDispatch.payload.PSObject.Properties['reason_codes'] -and @($commandDispatch.payload.reason_codes).Count -gt 0) {
+            $reasonLine = "`nreason_codes: " + ((@($commandDispatch.payload.reason_codes) | ForEach-Object { [string]$_ }) -join ', ')
+        }
+        $replyText = "intent: COMMAND`ntarget: $($intentRoute.target)`naction: $($intentRoute.action)`nobjective: $($commandDispatch.objective_id)`ntask_id: $($commandDispatch.task_id)`nrequest_id: $($commandDispatch.request_id)$reasonLine`nclassification: $($commandDispatch.classification)`nnext: $($commandDispatch.next_step)`ncodex_needed: $($commandDispatch.codex_needed.ToString().ToLowerInvariant())`ndispatch: $dispatchDetail"
     }
     elseif ([string]::Equals([string]$intentRoute.intent, 'DIAGNOSTIC', [System.StringComparison]::OrdinalIgnoreCase)) {
         $replyText = "intent: DIAGNOSTIC`ntarget: $($intentRoute.target)`naction: $($intentRoute.action)`nsummary: $($currentWork.initiative_summary)`nruntime: $($listenerRuntime.summary)"

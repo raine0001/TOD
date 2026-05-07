@@ -46,6 +46,7 @@ param(
         "repair-state",
         "rewrite-state-history",
         "get-state-bus",
+        "get-intake-arbitration",
         "get-version",
         "add-result",
         "persist-task-terminal-state",
@@ -132,7 +133,17 @@ else {
     $ConfigPath
 }
 $templatePath = Join-Path $repoRoot "tod/templates/codex-task-prompt.md"
-$promptOutDir = Join-Path $repoRoot "tod/out/prompts"
+$promptOutDir = if (-not [string]::IsNullOrWhiteSpace($env:TOD_PROMPT_OUT_DIR)) {
+    if ([System.IO.Path]::IsPathRooted($env:TOD_PROMPT_OUT_DIR)) {
+        [string]$env:TOD_PROMPT_OUT_DIR
+    }
+    else {
+        Join-Path $repoRoot ([string]$env:TOD_PROMPT_OUT_DIR)
+    }
+}
+else {
+    Join-Path $repoRoot "tod/out/prompts"
+}
 $mimClientPath = Join-Path $repoRoot "client/mim_api_client.ps1"
 $syncPolicyPath = Join-Path $repoRoot "tod/config/sync-policy.json"
 $todEngineerPath = Join-Path $PSScriptRoot "TOD-Engineer.ps1"
@@ -146,7 +157,20 @@ $engineeringKnowledgeDir = Join-Path $repoRoot "tod/knowledge/engineering-memory
 $rewriteStateHistoryScript = Join-Path $PSScriptRoot "Rewrite-TODOperationalState.ps1"
 $projectAccessPolicyScript = Join-Path $PSScriptRoot "Test-TODProjectAccessPolicy.ps1"
 $projectPriorityPath = Join-Path $repoRoot "tod/config/project-priority.json"
-$bridgeRequestPacketPath = Join-Path $repoRoot "tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json"
+$bridgeRequestPacketPath = if (-not [string]::IsNullOrWhiteSpace($env:TOD_BRIDGE_REQUEST_PACKET_PATH)) {
+    if ([System.IO.Path]::IsPathRooted($env:TOD_BRIDGE_REQUEST_PACKET_PATH)) {
+        [string]$env:TOD_BRIDGE_REQUEST_PACKET_PATH
+    }
+    else {
+        Join-Path $repoRoot ([string]$env:TOD_BRIDGE_REQUEST_PACKET_PATH)
+    }
+}
+else {
+    Join-Path $repoRoot "tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json"
+}
+$todIntakeQueueFileName = 'TOD_INTAKE_QUEUE.latest.json'
+$todActiveExecutionLaneFileName = 'TOD_ACTIVE_EXECUTION_LANE.latest.json'
+$todIntakeArbitrationFileName = 'TOD_INTAKE_ARBITRATION.latest.json'
 $defaultMaxStateReadBytes = 256MB
 
 if (Test-Path -Path $mimClientPath) {
@@ -1633,6 +1657,7 @@ function Test-ActionRequiresState {
         "codex_handoff" { return $false }
         "get-capabilities" { return $false }
         "get-execution-readiness" { return $false }
+        "get-intake-arbitration" { return $false }
         "get-version" { return $false }
         "ping-mim" { return $false }
         "repair-state" { return $false }
@@ -6204,6 +6229,12 @@ function New-BoundedEditMaterializationBlockedPayload {
         status = 'blocked'
         blocked = $true
         reason_code = 'blocked_missing_bounded_edit_mode'
+        missing_binding = [pscustomobject]@{
+            file = 'scripts/TOD.ps1'
+            function = 'Resolve-TaskBoundedEditMaterialization'
+            required_binding = 'scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine'
+            reason_code = 'blocked_missing_bounded_edit_mode'
+        }
         task_category = [string]$TaskCategory
         task_id = $taskIdValue
         target_file_candidates = @($TargetFileCandidates | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
@@ -6452,6 +6483,9 @@ function New-RunTaskMaterializationBlockedResult {
             [pscustomobject]@{
                 type = 'blocker'
                 reason_code = 'blocked_missing_bounded_edit_mode'
+                file = 'scripts/TOD.ps1'
+                function = 'Resolve-TaskBoundedEditMaterialization'
+                required_binding = 'scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine'
                 task_id = [string]$TaskId
                 task_category = $materializationTaskCategory
                 target_file_candidates = @($materializationTargetFileCandidates)
@@ -10772,6 +10806,72 @@ function Invoke-ExecuteChatTaskRequest {
         }
     }
 
+    $requestedTaskCategory = if (-not [string]::IsNullOrWhiteSpace($TaskCategory)) { [string]$TaskCategory } else { 'chat_execution' }
+    $intakePriority = Resolve-TodIntakePriority -Source 'operator_chat' -TaskCategory $requestedTaskCategory -Text (($Title, $Scope, $Description) -join "`n")
+    $intakeInterruptPolicy = if ($intakePriority -in @('emergency_stop', 'operator_cancel', 'operator_admin_repair')) { 'interrupt_safe' } else { 'no_interrupt' }
+    $intakePayloadHash = Get-TodIntakePayloadHash -Payload ([pscustomobject]@{
+            request_id = $resolvedRequestId
+            task_id = [string]$TaskId
+            objective_id = [string]$objective.id
+            title = [string]$request.title
+            scope = [string]$Scope
+            summary = [string]$resolvedDescription
+            requested_outcome = [string]$request.requested_outcome
+            task_category = $requestedTaskCategory
+            assigned_executor = if (-not [string]::IsNullOrWhiteSpace($AssignedExecutor)) { [string]$AssignedExecutor } else { 'local' }
+        })
+    $intakeItem = New-TodIntakeItem -RequestId $resolvedRequestId -TaskId ([string]$TaskId) -ObjectiveId ([string]$objective.id) -Source 'operator_chat' -Priority $intakePriority -InterruptPolicy $intakeInterruptPolicy -RelationToActiveTask 'new' -Title ([string]$request.title) -Summary ([string]$resolvedDescription) -TaskCategory $requestedTaskCategory -PayloadHash $intakePayloadHash
+    $intakeArbitration = Register-TodIntakeItem -Item $intakeItem
+    if ([string]$intakeArbitration.decision -in @('queue', 'defer', 'reject_duplicate', 'merge_with_active', 'blocked_needs_operator')) {
+        $intakeEventType = if ([string]::Equals([string]$intakeArbitration.decision, 'reject_duplicate', [System.StringComparison]::OrdinalIgnoreCase)) { 'intake_rejected_duplicate' } else { 'intake_queued' }
+        Publish-TodActivityEvent -EventType $intakeEventType -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$request.title) -Status ([string]$intakeArbitration.decision) -Message ('TOD intake arbitration decision: {0}. {1}' -f [string]$intakeArbitration.decision, [string]$intakeArbitration.reason) -Details ([ordered]@{
+                decision = [string]$intakeArbitration.decision
+                reason = [string]$intakeArbitration.reason
+                relation_to_active_task = [string]$intakeArbitration.relation_to_active_task
+                active_task_id = if ($intakeArbitration.active_lane -and $intakeArbitration.active_lane.PSObject.Properties['task_id']) { [string]$intakeArbitration.active_lane.task_id } else { '' }
+            }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Recorded the operator request in TOD intake arbitration without overwriting the active execution lane.' | Out-Null
+
+        $activityTypes = @($intakeEventType, 'intake_arbitrated')
+        return [pscustomobject]@{
+            request_id = $resolvedRequestId
+            task_id = [string]$TaskId
+            objective_id = [string]$objective.id
+            correlation_id = $resolvedCorrelationId
+            request_artifact_path = ''
+            request_artifact_paths = @()
+            activity_event_types = @($activityTypes)
+            reason_codes = @('intake_arbitration_' + [string]$intakeArbitration.decision)
+            selected_task = [pscustomobject]@{
+                task_id = if ($intakeArbitration.active_lane -and $intakeArbitration.active_lane.PSObject.Properties['task_id']) { [string]$intakeArbitration.active_lane.task_id } else { '' }
+                objective_id = if ($intakeArbitration.active_lane -and $intakeArbitration.active_lane.PSObject.Properties['objective_id']) { [string]$intakeArbitration.active_lane.objective_id } else { '' }
+                reason_code = 'active_execution_lane_preserved'
+            }
+            claimed_task = [pscustomobject]@{
+                task_id = if ($intakeArbitration.active_lane -and $intakeArbitration.active_lane.PSObject.Properties['task_id']) { [string]$intakeArbitration.active_lane.task_id } else { '' }
+                objective_id = if ($intakeArbitration.active_lane -and $intakeArbitration.active_lane.PSObject.Properties['objective_id']) { [string]$intakeArbitration.active_lane.objective_id } else { '' }
+                assigned_executor = if ($intakeArbitration.active_lane -and $intakeArbitration.active_lane.PSObject.Properties['source']) { [string]$intakeArbitration.active_lane.source } else { '' }
+                reason_code = 'active_execution_lane_preserved'
+            }
+            intake_arbitration = $intakeArbitration.arbitration
+            intake_queue = $intakeArbitration.queue
+            executor_classification = $null
+            superseded_claim = $null
+            task_mirror = $null
+            package_path = ''
+            run_task = [pscustomobject]@{
+                task_id = [string]$TaskId
+                decision = [string]$intakeArbitration.decision
+                blocked = [string]::Equals([string]$intakeArbitration.decision, 'blocked_needs_operator', [System.StringComparison]::OrdinalIgnoreCase)
+                accepted = (-not ([string]$intakeArbitration.decision -in @('reject_duplicate', 'blocked_needs_operator')))
+                execution_status = [string]$intakeArbitration.decision
+                summary = ('TOD intake arbitration stored the request as {0}; active task identity was preserved.' -f [string]$intakeArbitration.decision)
+                intake_arbitration = $intakeArbitration.arbitration
+            }
+            run_task_output = ''
+            execution_mode = $ExecutionMode
+        }
+    }
+
     $requestArtifactPaths = New-Object System.Collections.Generic.List[string]
     $activityEvents = New-Object System.Collections.Generic.List[object]
     foreach ($sharedRoot in @(Get-TodExecutionSharedRoots)) {
@@ -10809,6 +10909,7 @@ function Invoke-ExecuteChatTaskRequest {
 
     $resolvedAssignedExecutor = if (-not [string]::IsNullOrWhiteSpace($AssignedExecutor)) { [string]$AssignedExecutor } else { 'local' }
     $resolvedTaskCategory = if (-not [string]::IsNullOrWhiteSpace($TaskCategory)) { [string]$TaskCategory } else { 'chat_execution' }
+    $applyBlockedStateBypass = [string]::Equals($resolvedTaskCategory, 'diagnostic_implementation_repair', [System.StringComparison]::OrdinalIgnoreCase)
     $task[0].assigned_executor = $resolvedAssignedExecutor
     $task[0].task_category = $resolvedTaskCategory
     $task[0].type = 'implementation'
@@ -10837,6 +10938,16 @@ function Invoke-ExecuteChatTaskRequest {
     $request.metadata_json | Add-Member -NotePropertyName task_source -NotePropertyValue 'direct_chat' -Force
     $task[0].updated_at = Get-UtcNow
     Save-State -State $state
+
+    if ($applyBlockedStateBypass) {
+        foreach ($bypassEventType in @('blocked_state_bypass_applied', 'fresh_repair_task_created', 'repair_task_materialization_started', 'stale_blocker_ignored_for_new_objective')) {
+            $bypassEvent = Publish-TodActivityEvent -EventType $bypassEventType -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$task[0].title) -Status 'completed' -Message $(if ([string]::Equals($bypassEventType, 'blocked_state_bypass_applied', [System.StringComparison]::OrdinalIgnoreCase)) { 'Bypassed stale blocked-state rendering for a new direct-chat operator directive.' } elseif ([string]::Equals($bypassEventType, 'fresh_repair_task_created', [System.StringComparison]::OrdinalIgnoreCase)) { 'Created a fresh direct-chat repair task for the new operator directive.' } elseif ([string]::Equals($bypassEventType, 'repair_task_materialization_started', [System.StringComparison]::OrdinalIgnoreCase)) { 'Started materialization for the fresh direct-chat repair task.' } else { 'Ignored the stale blocker while accepting the new direct-chat objective.' }) -Details ([ordered]@{
+                    reason_code = if ([string]::Equals($bypassEventType, 'blocked_state_bypass_applied', [System.StringComparison]::OrdinalIgnoreCase)) { 'blocked_state_bypass_applied' } elseif ([string]::Equals($bypassEventType, 'repair_task_materialization_started', [System.StringComparison]::OrdinalIgnoreCase)) { 'fresh_objective_materialized_from_blocked_state' } else { $bypassEventType }
+                    task_category = $resolvedTaskCategory
+                }) -Source 'tod.execute-chat-task' -Surface 'tod-chat' -Summary ([string]$resolvedDescription) -CurrentAction 'Routing a fresh direct-chat repair task instead of returning stale blocked state.'
+            [void]$activityEvents.Add($bypassEvent)
+        }
+    }
 
     $taskClaimedEvent = Publish-TodActivityEvent -EventType 'task_claimed' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$task[0].title) -Status 'in_progress' -Message ('Claimed the chat task for executor {0}.' -f $resolvedAssignedExecutor) -Details ([ordered]@{
             assigned_executor = $resolvedAssignedExecutor
@@ -10968,6 +11079,12 @@ function Invoke-ExecuteChatTaskRequest {
     if ($null -ne $supersededLane) {
         [void]$activityEventTypeList.Add('task_superseded_by_operator_objective')
     }
+    if ($applyBlockedStateBypass) {
+        [void]$activityEventTypeList.Add('blocked_state_bypass_applied')
+        [void]$activityEventTypeList.Add('fresh_repair_task_created')
+        [void]$activityEventTypeList.Add('repair_task_materialization_started')
+        [void]$activityEventTypeList.Add('stale_blocker_ignored_for_new_objective')
+    }
     [void]$activityEventTypeList.Add('task_created_from_chat')
     [void]$activityEventTypeList.Add('task_claimed')
     [void]$activityEventTypeList.Add('execution_started')
@@ -11022,6 +11139,20 @@ function Invoke-ExecuteChatTaskRequest {
     if ($engineInvocationPayload -and $engineInvocationPayload.PSObject.Properties['attempted_engines']) {
         $localAttempted = (@($engineInvocationPayload.attempted_engines | ForEach-Object { ([string]$_).ToLowerInvariant() }) -contains 'local')
     }
+    $materializationBlockedBeforeLocalExecution = $false
+    if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['failure_category'] -and [string]::Equals([string]$runTaskPayload.failure_category, 'materialization_blocked', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $materializationBlockedBeforeLocalExecution = $true
+    }
+    if ($runTaskPayload -and $runTaskPayload.PSObject.Properties['reason_code'] -and [string]::Equals([string]$runTaskPayload.reason_code, 'blocked_missing_bounded_edit_mode', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $materializationBlockedBeforeLocalExecution = $true
+    }
+    if ($engineResultPayload -and $engineResultPayload.PSObject.Properties['reason_code'] -and [string]::Equals([string]$engineResultPayload.reason_code, 'blocked_missing_bounded_edit_mode', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $materializationBlockedBeforeLocalExecution = $true
+    }
+    if ($materializationBlockedBeforeLocalExecution) {
+        $localAttempted = $false
+        $activeEngineName = ''
+    }
     if ($null -ne $executorClassificationPayload) {
         [void]$activityEventTypeList.Add('executor_classified')
     }
@@ -11062,6 +11193,20 @@ function Invoke-ExecuteChatTaskRequest {
         request_artifact_path = $primaryRequestArtifactPath
         request_artifact_paths = $requestArtifactPathList
         activity_event_types = @($activityEventTypeList)
+        reason_codes = if ($applyBlockedStateBypass) { @('blocked_state_bypass_applied', 'fresh_objective_materialized_from_blocked_state') } else { @() }
+        selected_task = [pscustomobject]@{
+            task_id = [string]$TaskId
+            objective_id = [string]$objective.id
+            reason_code = if ($applyBlockedStateBypass) { 'fresh_objective_materialized_from_blocked_state' } else { 'direct_chat_task_created' }
+        }
+        claimed_task = [pscustomobject]@{
+            task_id = [string]$TaskId
+            objective_id = [string]$objective.id
+            assigned_executor = $resolvedAssignedExecutor
+            reason_code = if ($applyBlockedStateBypass) { 'fresh_objective_materialized_from_blocked_state' } else { 'direct_chat_task_claimed' }
+        }
+        intake_arbitration = $intakeArbitration.arbitration
+        intake_queue = $intakeArbitration.queue
         executor_classification = $executorClassificationPayload
         superseded_claim = $supersededLane
         task_mirror = $mirror
@@ -11300,10 +11445,16 @@ function Resolve-ExecutionFeedbackConfig {
 }
 
 function Get-TodExecutionSharedRoots {
-    $roots = @(
-        (Join-Path $repoRoot "runtime/shared"),
-        (Join-Path $repoRoot "tmp_remote_mim/runtime/shared")
-    )
+    $roots = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:TOD_EXECUTION_SHARED_ROOTS)) {
+        $roots = @(([string]$env:TOD_EXECUTION_SHARED_ROOTS) -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    }
+    else {
+        $roots = @(
+            (Join-Path $repoRoot "runtime/shared"),
+            (Join-Path $repoRoot "tmp_remote_mim/runtime/shared")
+        )
+    }
 
     $seen = @{}
     $resolved = @()
@@ -11317,6 +11468,24 @@ function Get-TodExecutionSharedRoots {
     }
 
     return @($resolved)
+}
+
+function Get-TodIntakePayloadHash {
+    param([AllowNull()]$Payload)
+
+    if ($null -eq $Payload) {
+        return ''
+    }
+
+    $json = $Payload | ConvertTo-Json -Depth 20 -Compress
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$json)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [System.BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha.Dispose()
+    }
 }
 
 function Write-TodExecutionJsonAtomically {
@@ -11368,6 +11537,536 @@ function Read-TodExecutionJsonIfExists {
     }
     catch {
         return $null
+    }
+}
+
+function Get-TodIntakeArtifactPath {
+    param([Parameter(Mandatory = $true)][string]$FileName)
+
+    $roots = @(Get-TodExecutionSharedRoots)
+    if (@($roots).Count -eq 0) {
+        return (Join-Path $repoRoot (Join-Path 'runtime/shared' $FileName))
+    }
+
+    return (Join-Path ([string]$roots[0]) $FileName)
+}
+
+function Write-TodIntakeArtifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$FileName,
+        [Parameter(Mandatory = $true)]$Payload
+    )
+
+    $paths = New-Object System.Collections.Generic.List[string]
+    foreach ($sharedRoot in @(Get-TodExecutionSharedRoots)) {
+        $path = Join-Path $sharedRoot $FileName
+        Write-TodExecutionJsonAtomically -Path $path -Payload $Payload
+        [void]$paths.Add($path)
+    }
+
+    return [string[]]@($paths)
+}
+
+function Read-TodIntakeArtifact {
+    param([Parameter(Mandatory = $true)][string]$FileName)
+
+    return (Read-TodExecutionJsonIfExists -Path (Get-TodIntakeArtifactPath -FileName $FileName))
+}
+
+function Get-TodIntakePriorityRank {
+    param([AllowEmptyString()][string]$Priority)
+
+    switch (([string]$Priority).ToLowerInvariant()) {
+        'emergency_stop' { return 700 }
+        'operator_cancel' { return 700 }
+        'operator_admin_repair' { return 600 }
+        'operator_direct_objective' { return 500 }
+        'active_task_continuation' { return 400 }
+        'mim_request' { return 300 }
+        'watchdog_recovery' { return 200 }
+        'scheduled_maintenance' { return 100 }
+        'informational_chat' { return 10 }
+        default { return 0 }
+    }
+}
+
+function Resolve-TodIntakePriority {
+    param(
+        [AllowEmptyString()][string]$Source,
+        [AllowEmptyString()][string]$TaskCategory,
+        [AllowEmptyString()][string]$Text
+    )
+
+    $normalizedSource = ([string]$Source).ToLowerInvariant()
+    $normalizedCategory = ([string]$TaskCategory).ToLowerInvariant()
+    $normalizedText = ([string]$Text).ToLowerInvariant()
+
+    if ($normalizedText -match '\b(emergency stop|operator cancel|cancel active|pause active|stop active)\b') {
+        return 'emergency_stop'
+    }
+    if ($normalizedSource -eq 'operator_chat' -and ($normalizedCategory -eq 'diagnostic_implementation_repair' -or $normalizedText -match '(?m)^\s*(admin action|repair|force|diagnostic)\s*:')) {
+        return 'operator_admin_repair'
+    }
+    if ($normalizedSource -eq 'operator_chat') {
+        return 'operator_direct_objective'
+    }
+    if ($normalizedSource -eq 'mim_request') {
+        return 'mim_request'
+    }
+    if ($normalizedSource -eq 'watchdog') {
+        return 'watchdog_recovery'
+    }
+    if ($normalizedSource -eq 'maintenance') {
+        return 'scheduled_maintenance'
+    }
+    if ($normalizedSource -eq 'recovery') {
+        return 'watchdog_recovery'
+    }
+
+    return 'informational_chat'
+}
+
+function Get-TodTaskStatusFromState {
+    param([AllowEmptyString()][string]$TaskId)
+
+    if ([string]::IsNullOrWhiteSpace($TaskId) -or -not (Test-Path -Path $statePath)) {
+        return ''
+    }
+
+    try {
+        $localState = Load-State
+        $task = @($localState.tasks | Where-Object { [string]$_.id -eq [string]$TaskId } | Select-Object -First 1)
+        if (@($task).Count -eq 0) {
+            return ''
+        }
+
+        return [string]$task[0].status
+    }
+    catch {
+        return ''
+    }
+}
+
+function Test-TodIntakeLaneActive {
+    param($Lane)
+
+    if ($null -eq $Lane -or -not $Lane.PSObject.Properties['task_id'] -or [string]::IsNullOrWhiteSpace([string]$Lane.task_id)) {
+        return $false
+    }
+
+    $laneStatus = if ($Lane.PSObject.Properties['status']) { ([string]$Lane.status).ToLowerInvariant() } else { '' }
+    if ($laneStatus -in @('completed', 'blocked', 'failed', 'superseded', 'idle', 'cleared')) {
+        return $false
+    }
+
+    $stateStatus = (Get-TodTaskStatusFromState -TaskId ([string]$Lane.task_id)).ToLowerInvariant()
+    if ($stateStatus -in @('completed', 'blocked', 'failed', 'superseded')) {
+        return $false
+    }
+
+    return $true
+}
+
+function Test-TodIntakeTerminalStatus {
+    param([AllowEmptyString()][string]$Status)
+
+    return (([string]$Status).Trim().ToLowerInvariant() -in @('completed', 'failed', 'cancelled', 'canceled', 'rejected', 'superseded'))
+}
+
+function Get-TodIntakeLaneTerminalStatus {
+    param($Lane)
+
+    if ($null -eq $Lane -or -not $Lane.PSObject.Properties['task_id'] -or [string]::IsNullOrWhiteSpace([string]$Lane.task_id)) {
+        return ''
+    }
+
+    $laneStatus = if ($Lane.PSObject.Properties['status']) { [string]$Lane.status } else { '' }
+    if (Test-TodIntakeTerminalStatus -Status $laneStatus) {
+        return $laneStatus
+    }
+
+    $stateStatus = Get-TodTaskStatusFromState -TaskId ([string]$Lane.task_id)
+    if (Test-TodIntakeTerminalStatus -Status $stateStatus) {
+        return $stateStatus
+    }
+
+    return ''
+}
+
+function Get-TodActiveExecutionLane {
+    $lane = Read-TodIntakeArtifact -FileName $todActiveExecutionLaneFileName
+    if (Test-TodIntakeLaneActive -Lane $lane) {
+        return $lane
+    }
+
+    return $null
+}
+
+function New-TodIntakeItem {
+    param(
+        [Parameter(Mandatory = $true)][string]$RequestId,
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        [AllowEmptyString()][string]$ObjectiveId,
+        [Parameter(Mandatory = $true)][string]$Source,
+        [AllowEmptyString()][string]$Priority,
+        [AllowEmptyString()][string]$InterruptPolicy,
+        [AllowEmptyString()][string]$RelationToActiveTask,
+        [AllowEmptyString()][string]$Title,
+        [AllowEmptyString()][string]$Summary,
+        [AllowEmptyString()][string]$TaskCategory,
+        [AllowEmptyString()][string]$PayloadHash
+    )
+
+    $receivedAt = Get-UtcNow
+    return [pscustomobject]@{
+        request_id = [string]$RequestId
+        task_id = [string]$TaskId
+        objective_id = [string]$ObjectiveId
+        source = [string]$Source
+        priority = [string]$Priority
+        interrupt_policy = [string]$InterruptPolicy
+        status = 'received'
+        received_at = $receivedAt
+        expires_at = (Get-Date).ToUniversalTime().AddHours(6).ToString('o')
+        relation_to_active_task = [string]$RelationToActiveTask
+        title = [string]$Title
+        summary = [string]$Summary
+        task_category = [string]$TaskCategory
+        payload_hash = [string]$PayloadHash
+    }
+}
+
+function Get-MatchingTodIntakeItem {
+    param(
+        $IncomingItem,
+        [object[]]$ExistingItems = @()
+    )
+
+    foreach ($existing in @($ExistingItems)) {
+        if ([string]::Equals([string]$existing.request_id, [string]$IncomingItem.request_id, [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals([string]$existing.task_id, [string]$IncomingItem.task_id, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $existing
+        }
+    }
+
+    return $null
+}
+
+function Resolve-TodIntakeRelation {
+    param(
+        $IncomingItem,
+        $ActiveLane,
+        [object[]]$ExistingItems = @()
+    )
+
+    if ($null -ne (Get-MatchingTodIntakeItem -IncomingItem $IncomingItem -ExistingItems $ExistingItems)) {
+        return 'duplicate'
+    }
+    if ($null -eq $ActiveLane -or [string]::IsNullOrWhiteSpace([string]$ActiveLane.task_id)) {
+        return 'new'
+    }
+    if ([string]::Equals([string]$IncomingItem.task_id, [string]$ActiveLane.task_id, [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals([string]$IncomingItem.request_id, [string]$ActiveLane.request_id, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return 'continuation'
+    }
+    if ([string]$IncomingItem.priority -match 'repair') {
+        return 'repair'
+    }
+    if ([string]$IncomingItem.priority -match 'emergency|cancel') {
+        return 'supersedes'
+    }
+
+    return 'conflicts'
+}
+
+function Resolve-TodIntakeDecision {
+    param(
+        $IncomingItem,
+        $ActiveLane,
+        [object[]]$ExistingItems = @()
+    )
+
+    $relation = Resolve-TodIntakeRelation -IncomingItem $IncomingItem -ActiveLane $ActiveLane -ExistingItems $ExistingItems
+    $incomingRank = Get-TodIntakePriorityRank -Priority ([string]$IncomingItem.priority)
+    $activePriority = if ($ActiveLane -and $ActiveLane.PSObject.Properties['priority']) { [string]$ActiveLane.priority } else { '' }
+    $activeRank = Get-TodIntakePriorityRank -Priority $activePriority
+    $interruptPolicy = ([string]$IncomingItem.interrupt_policy).ToLowerInvariant()
+
+    if ($relation -eq 'duplicate') {
+        $matching = Get-MatchingTodIntakeItem -IncomingItem $IncomingItem -ExistingItems $ExistingItems
+        $incomingHash = if ($IncomingItem.PSObject.Properties['payload_hash']) { [string]$IncomingItem.payload_hash } else { '' }
+        $existingHash = if ($matching -and $matching.PSObject.Properties['payload_hash']) { [string]$matching.payload_hash } else { '' }
+        if (-not [string]::IsNullOrWhiteSpace($incomingHash) -and -not [string]::IsNullOrWhiteSpace($existingHash) -and -not [string]::Equals($incomingHash, $existingHash, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return [pscustomobject]@{ decision = 'blocked_needs_operator'; relation_to_active_task = 'conflicts'; reason = 'idempotency_conflict' }
+        }
+        $matchingStatus = if ($matching -and $matching.PSObject.Properties['status']) { ([string]$matching.status).Trim().ToLowerInvariant() } else { '' }
+        if ($matchingStatus -in @('accepted', 'completed')) {
+            return [pscustomobject]@{ decision = 'reject_duplicate'; relation_to_active_task = $relation; reason = 'duplicate_completed_replay_prior_result' }
+        }
+        return [pscustomobject]@{ decision = 'reject_duplicate'; relation_to_active_task = $relation; reason = 'request_or_task_id_already_present_in_intake_queue' }
+    }
+    if ($relation -eq 'continuation') {
+        return [pscustomobject]@{ decision = 'merge_with_active'; relation_to_active_task = $relation; reason = 'incoming_request_matches_active_execution_lane' }
+    }
+    if ($null -eq $ActiveLane) {
+        return [pscustomobject]@{ decision = 'run_now'; relation_to_active_task = $relation; reason = 'no_active_execution_lane' }
+    }
+    if ($incomingRank -gt $activeRank -and $interruptPolicy -in @('interrupt_safe', 'pause_active', 'supersede_active')) {
+        $decision = if ($interruptPolicy -eq 'pause_active') { 'pause_active' } elseif ($interruptPolicy -eq 'supersede_active') { 'supersede_active' } else { 'supersede_active' }
+        return [pscustomobject]@{ decision = $decision; relation_to_active_task = 'supersedes'; reason = 'incoming_request_outranks_active_lane_and_is_interrupt_safe' }
+    }
+    if ([string]$IncomingItem.priority -eq 'informational_chat') {
+        return [pscustomobject]@{ decision = 'defer'; relation_to_active_task = $relation; reason = 'informational_chat_waits_for_active_execution' }
+    }
+
+    return [pscustomobject]@{ decision = 'queue'; relation_to_active_task = $relation; reason = 'active_execution_lane_is_protected' }
+}
+
+function Register-TodIntakeItem {
+    param(
+        [Parameter(Mandatory = $true)]$Item
+    )
+
+    $drainResult = Drain-TodIntakeQueueAfterTerminalActiveLane
+    $queuePayload = Read-TodIntakeArtifact -FileName $todIntakeQueueFileName
+    $existingItems = if ($queuePayload -and $queuePayload.PSObject.Properties['items'] -and $null -ne $queuePayload.items) { @($queuePayload.items) } else { @() }
+    $activeLane = Get-TodActiveExecutionLane
+    $decision = Resolve-TodIntakeDecision -IncomingItem $Item -ActiveLane $activeLane -ExistingItems $existingItems
+    $Item.relation_to_active_task = [string]$decision.relation_to_active_task
+    $Item.status = if ([string]::Equals([string]$decision.decision, 'run_now', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals([string]$decision.decision, 'supersede_active', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals([string]$decision.decision, 'pause_active', [System.StringComparison]::OrdinalIgnoreCase)) { 'accepted' } elseif ([string]::Equals([string]$decision.decision, 'reject_duplicate', [System.StringComparison]::OrdinalIgnoreCase)) { 'rejected' } elseif ([string]::Equals([string]$decision.decision, 'blocked_needs_operator', [System.StringComparison]::OrdinalIgnoreCase)) { 'blocked' } else { 'queued' }
+
+    $updatedItems = @()
+    if ([string]::Equals([string]$decision.decision, 'blocked_needs_operator', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $updatedItems = @($existingItems)
+    }
+    elseif (-not [string]::Equals([string]$decision.decision, 'reject_duplicate', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $updatedItems += @($existingItems | Where-Object { -not [string]::Equals([string]$_.request_id, [string]$Item.request_id, [System.StringComparison]::OrdinalIgnoreCase) -and -not [string]::Equals([string]$_.task_id, [string]$Item.task_id, [System.StringComparison]::OrdinalIgnoreCase) })
+        $updatedItems += $Item
+    }
+    else {
+        $updatedItems = @($existingItems)
+    }
+
+    $queuedItems = @($updatedItems | Where-Object { [string]$_.status -eq 'queued' })
+    $nextTask = @($queuedItems | Sort-Object -Property @{ Expression = { Get-TodIntakePriorityRank -Priority ([string]$_.priority) }; Descending = $true }, @{ Expression = { [string]$_.received_at }; Descending = $false } | Select-Object -First 1)
+    $queueOut = [pscustomobject]@{
+        generated_at = Get-UtcNow
+        packet_type = 'tod-intake-queue-v1'
+        active_task_id = if ($activeLane -and $activeLane.PSObject.Properties['task_id']) { [string]$activeLane.task_id } else { '' }
+        count = @($updatedItems).Count
+        queued_count = @($queuedItems).Count
+        next_task_after_current = if (@($nextTask).Count -gt 0) { $nextTask[0] } else { $null }
+        items = @($updatedItems)
+    }
+    $queuePaths = Write-TodIntakeArtifact -FileName $todIntakeQueueFileName -Payload $queueOut
+
+    $newActiveLane = $activeLane
+    if ([string]$decision.decision -in @('run_now', 'supersede_active', 'pause_active')) {
+        $newActiveLane = [pscustomobject]@{
+            generated_at = Get-UtcNow
+            packet_type = 'tod-active-execution-lane-v1'
+            request_id = [string]$Item.request_id
+            task_id = [string]$Item.task_id
+            objective_id = [string]$Item.objective_id
+            source = [string]$Item.source
+            priority = [string]$Item.priority
+            status = 'active'
+            started_at = Get-UtcNow
+            relation_to_previous_active = [string]$decision.relation_to_active_task
+            previous_active_task_id = if ($activeLane -and $activeLane.PSObject.Properties['task_id']) { [string]$activeLane.task_id } else { '' }
+        }
+        Write-TodIntakeArtifact -FileName $todActiveExecutionLaneFileName -Payload $newActiveLane | Out-Null
+    }
+    elseif ($null -eq $newActiveLane) {
+        $newActiveLane = [pscustomobject]@{
+            generated_at = Get-UtcNow
+            packet_type = 'tod-active-execution-lane-v1'
+            request_id = ''
+            task_id = ''
+            objective_id = ''
+            source = ''
+            priority = ''
+            status = 'idle'
+            started_at = ''
+            relation_to_previous_active = ''
+            previous_active_task_id = ''
+        }
+        Write-TodIntakeArtifact -FileName $todActiveExecutionLaneFileName -Payload $newActiveLane | Out-Null
+    }
+
+    $arbitration = [pscustomobject]@{
+        generated_at = Get-UtcNow
+        packet_type = 'tod-intake-arbitration-v1'
+        decision = [string]$decision.decision
+        reason = [string]$decision.reason
+        relation_to_active_task = [string]$decision.relation_to_active_task
+        incoming = $Item
+        active_lane = $newActiveLane
+        pre_registration_drain = $drainResult
+        priority_order = @('emergency_stop/operator_cancel', 'operator_admin_repair', 'operator_direct_objective', 'active_task_continuation', 'mim_request', 'watchdog_recovery', 'scheduled_maintenance', 'informational_chat')
+        queue_path = if (@($queuePaths).Count -gt 0) { [string]$queuePaths[0] } else { '' }
+    }
+    Write-TodIntakeArtifact -FileName $todIntakeArbitrationFileName -Payload $arbitration | Out-Null
+
+    return [pscustomobject]@{
+        decision = [string]$decision.decision
+        reason = [string]$decision.reason
+        relation_to_active_task = [string]$decision.relation_to_active_task
+        item = $Item
+        active_lane = $newActiveLane
+        queue = $queueOut
+        arbitration = $arbitration
+    }
+}
+
+function Drain-TodIntakeQueueAfterTerminalActiveLane {
+    $activeLane = Read-TodIntakeArtifact -FileName $todActiveExecutionLaneFileName
+    $terminalStatus = Get-TodIntakeLaneTerminalStatus -Lane $activeLane
+    if ([string]::IsNullOrWhiteSpace($terminalStatus)) {
+        return [pscustomobject]@{
+            drained = $false
+            decision = 'active_lane_not_terminal'
+            reason = 'active execution lane has not reached a drainable terminal status'
+            active_lane = $activeLane
+            queue = Read-TodIntakeArtifact -FileName $todIntakeQueueFileName
+            arbitration = Read-TodIntakeArtifact -FileName $todIntakeArbitrationFileName
+        }
+    }
+
+    $queuePayload = Read-TodIntakeArtifact -FileName $todIntakeQueueFileName
+    $existingItems = if ($queuePayload -and $queuePayload.PSObject.Properties['items'] -and $null -ne $queuePayload.items) { @($queuePayload.items) } else { @() }
+    if (@($existingItems).Count -eq 0) {
+        return [pscustomobject]@{
+            drained = $false
+            decision = 'queue_empty'
+            reason = 'active lane is terminal but no queued intake items exist'
+            active_lane = $activeLane
+            queue = $queuePayload
+            arbitration = Read-TodIntakeArtifact -FileName $todIntakeArbitrationFileName
+        }
+    }
+
+    $eligibleItems = @()
+    $retainedItems = New-Object System.Collections.Generic.List[object]
+    foreach ($item in @($existingItems)) {
+        $itemStatus = if ($item.PSObject.Properties['status']) { ([string]$item.status).Trim().ToLowerInvariant() } else { '' }
+        $taskId = if ($item.PSObject.Properties['task_id']) { [string]$item.task_id } else { '' }
+        $requestId = if ($item.PSObject.Properties['request_id']) { [string]$item.request_id } else { '' }
+        $objectiveId = if ($item.PSObject.Properties['objective_id']) { [string]$item.objective_id } else { '' }
+
+        if ([string]::IsNullOrWhiteSpace($taskId) -or [string]::IsNullOrWhiteSpace($requestId) -or [string]::IsNullOrWhiteSpace($objectiveId)) {
+            $item | Add-Member -NotePropertyName status -NotePropertyValue 'blocked' -Force
+            $item | Add-Member -NotePropertyName blocked_reason_code -NotePropertyValue 'intake_item_missing_required_identity' -Force
+            $item | Add-Member -NotePropertyName blocked_at -NotePropertyValue (Get-UtcNow) -Force
+            [void]$retainedItems.Add($item)
+            Publish-TodActivityEvent -EventType 'queued_task_blocked_with_reason' -ObjectiveId $objectiveId -TaskId $taskId -RequestId $requestId -CorrelationId '' -Title $(if ($item.PSObject.Properties['title']) { [string]$item.title } else { '' }) -Status 'blocked' -Message 'Queued intake item could not be drained because it is missing required identity fields.' -Details ([ordered]@{
+                    reason_code = 'intake_item_missing_required_identity'
+                    request_id = $requestId
+                    task_id = $taskId
+                    objective_id = $objectiveId
+                }) -Source 'tod.intake' -Surface 'tod-intake' -Summary 'Queued task blocked during intake drain.' -CurrentAction 'Skipped invalid queued intake item.' -RecoveryState 'required' | Out-Null
+            continue
+        }
+
+        if ($itemStatus -in @('queued', 'deferred')) {
+            $eligibleItems += $item
+        }
+        else {
+            [void]$retainedItems.Add($item)
+        }
+    }
+
+    $selectedItems = @($eligibleItems | Sort-Object -Property @{ Expression = { Get-TodIntakePriorityRank -Priority ([string]$_.priority) }; Descending = $true }, @{ Expression = { [string]$_.received_at }; Descending = $false } | Select-Object -First 1)
+    if (@($selectedItems).Count -eq 0) {
+        $remainingQueued = @($retainedItems.ToArray() | Where-Object { [string]$_.status -eq 'queued' })
+        $queueOutNoSelection = [pscustomobject]@{
+            generated_at = Get-UtcNow
+            packet_type = 'tod-intake-queue-v1'
+            active_task_id = if ($activeLane -and $activeLane.PSObject.Properties['task_id']) { [string]$activeLane.task_id } else { '' }
+            count = @($retainedItems.ToArray()).Count
+            queued_count = @($remainingQueued).Count
+            next_task_after_current = $null
+            items = @($retainedItems.ToArray())
+        }
+        Write-TodIntakeArtifact -FileName $todIntakeQueueFileName -Payload $queueOutNoSelection | Out-Null
+        return [pscustomobject]@{
+            drained = $false
+            decision = 'no_eligible_queued_task'
+            reason = 'no queued intake item was eligible for promotion'
+            active_lane = $activeLane
+            queue = $queueOutNoSelection
+            arbitration = Read-TodIntakeArtifact -FileName $todIntakeArbitrationFileName
+        }
+    }
+
+    $selected = $selectedItems[0]
+    foreach ($item in @($eligibleItems)) {
+        if ([string]::Equals([string]$item.task_id, [string]$selected.task_id, [System.StringComparison]::OrdinalIgnoreCase) -and [string]::Equals([string]$item.request_id, [string]$selected.request_id, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+        [void]$retainedItems.Add($item)
+    }
+
+    $remainingQueuedItems = @($retainedItems.ToArray() | Where-Object { [string]$_.status -eq 'queued' })
+    $nextTask = @($remainingQueuedItems | Sort-Object -Property @{ Expression = { Get-TodIntakePriorityRank -Priority ([string]$_.priority) }; Descending = $true }, @{ Expression = { [string]$_.received_at }; Descending = $false } | Select-Object -First 1)
+    $newActiveLane = [pscustomobject]@{
+        generated_at = Get-UtcNow
+        packet_type = 'tod-active-execution-lane-v1'
+        request_id = [string]$selected.request_id
+        task_id = [string]$selected.task_id
+        objective_id = [string]$selected.objective_id
+        source = [string]$selected.source
+        priority = [string]$selected.priority
+        status = 'active'
+        started_at = Get-UtcNow
+        relation_to_previous_active = 'dequeue_after_completion'
+        previous_active_task_id = if ($activeLane -and $activeLane.PSObject.Properties['task_id']) { [string]$activeLane.task_id } else { '' }
+    }
+
+    $queueOut = [pscustomobject]@{
+        generated_at = Get-UtcNow
+        packet_type = 'tod-intake-queue-v1'
+        active_task_id = [string]$newActiveLane.task_id
+        count = @($retainedItems.ToArray()).Count
+        queued_count = @($remainingQueuedItems).Count
+        next_task_after_current = if (@($nextTask).Count -gt 0) { $nextTask[0] } else { $null }
+        items = @($retainedItems.ToArray())
+    }
+
+    $arbitration = [pscustomobject]@{
+        generated_at = Get-UtcNow
+        packet_type = 'tod-intake-arbitration-v1'
+        decision = 'dequeue_after_completion'
+        reason = 'prior_active_execution_lane_reached_terminal_status'
+        relation_to_active_task = 'continuation'
+        prior_active_task = $activeLane
+        prior_active_terminal_status = $terminalStatus
+        selected_task = $selected
+        remaining_queue_count = @($remainingQueuedItems).Count
+        active_lane = $newActiveLane
+        queue_path = Get-TodIntakeArtifactPath -FileName $todIntakeQueueFileName
+        priority_order = @('emergency_stop/operator_cancel', 'operator_admin_repair', 'operator_direct_objective', 'active_task_continuation', 'mim_request', 'watchdog_recovery', 'scheduled_maintenance', 'informational_chat')
+    }
+
+    Write-TodIntakeArtifact -FileName $todActiveExecutionLaneFileName -Payload $newActiveLane | Out-Null
+    Write-TodIntakeArtifact -FileName $todIntakeQueueFileName -Payload $queueOut | Out-Null
+    Write-TodIntakeArtifact -FileName $todIntakeArbitrationFileName -Payload $arbitration | Out-Null
+
+    $priorTaskId = if ($activeLane -and $activeLane.PSObject.Properties['task_id']) { [string]$activeLane.task_id } else { '' }
+    $priorObjectiveId = if ($activeLane -and $activeLane.PSObject.Properties['objective_id']) { [string]$activeLane.objective_id } else { '' }
+    Publish-TodActivityEvent -EventType 'active_lane_completed' -ObjectiveId $priorObjectiveId -TaskId $priorTaskId -RequestId $(if ($activeLane -and $activeLane.PSObject.Properties['request_id']) { [string]$activeLane.request_id } else { '' }) -CorrelationId '' -Title 'TOD active execution lane completed' -Status $terminalStatus -Message 'TOD active execution lane reached a drainable terminal state.' -Details ([ordered]@{ prior_active_task = $activeLane; terminal_status = $terminalStatus }) -Source 'tod.intake' -Surface 'tod-intake' -Summary 'Active lane terminal state detected.' -CurrentAction 'Preparing to drain one queued intake task.' | Out-Null
+    Publish-TodActivityEvent -EventType 'queued_task_selected' -ObjectiveId ([string]$selected.objective_id) -TaskId ([string]$selected.task_id) -RequestId ([string]$selected.request_id) -CorrelationId '' -Title ([string]$selected.title) -Status 'selected' -Message 'Selected the next eligible queued intake task after active completion.' -Details ([ordered]@{ selected_task = $selected; remaining_queue_count = @($remainingQueuedItems).Count }) -Source 'tod.intake' -Surface 'tod-intake' -Summary ([string]$selected.summary) -CurrentAction 'Selected queued task for active lane promotion.' | Out-Null
+    Publish-TodActivityEvent -EventType 'queued_task_claimed' -ObjectiveId ([string]$selected.objective_id) -TaskId ([string]$selected.task_id) -RequestId ([string]$selected.request_id) -CorrelationId '' -Title ([string]$selected.title) -Status 'claimed' -Message 'Claimed the selected queued intake task.' -Details ([ordered]@{ selected_task = $selected }) -Source 'tod.intake' -Surface 'tod-intake' -Summary ([string]$selected.summary) -CurrentAction 'Claimed queued task for the single active execution lane.' | Out-Null
+    Publish-TodActivityEvent -EventType 'queued_task_started' -ObjectiveId ([string]$selected.objective_id) -TaskId ([string]$selected.task_id) -RequestId ([string]$selected.request_id) -CorrelationId '' -Title ([string]$selected.title) -Status 'started' -Message 'Promoted the selected queued intake task into TOD_ACTIVE_EXECUTION_LANE.' -Details ([ordered]@{ selected_task = $selected; active_lane = $newActiveLane }) -Source 'tod.intake' -Surface 'tod-intake' -Summary ([string]$selected.summary) -CurrentAction 'Started queued task by promoting it to the active lane.' | Out-Null
+
+    return [pscustomobject]@{
+        drained = $true
+        decision = 'dequeue_after_completion'
+        reason = 'prior_active_execution_lane_reached_terminal_status'
+        prior_active_task = $activeLane
+        selected_task = $selected
+        active_lane = $newActiveLane
+        remaining_queue_count = @($remainingQueuedItems).Count
+        queue = $queueOut
+        arbitration = $arbitration
     }
 }
 
@@ -14029,7 +14728,35 @@ switch ($Action) {
     "run-bridge-request" {
         if ([string]::IsNullOrWhiteSpace($RequestId)) { throw "-RequestId is required" }
 
+        $bridgePacket = Get-BridgeRequestPacket
+        $bridgeRequest = $bridgePacket.payload
+        $bridgeTaskId = if ($bridgeRequest.PSObject.Properties['task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$bridgeRequest.task_id)) { [string]$bridgeRequest.task_id } else { [string]$RequestId }
+        $bridgeObjectiveId = if ($bridgeRequest.PSObject.Properties['objective_id']) { [string]$bridgeRequest.objective_id } else { '' }
+        $bridgeTitle = if ($bridgeRequest.PSObject.Properties['title']) { [string]$bridgeRequest.title } else { 'MIM task request ' + [string]$RequestId }
+        $bridgeSummary = if ($bridgeRequest.PSObject.Properties['summary']) { [string]$bridgeRequest.summary } elseif ($bridgeRequest.PSObject.Properties['scope']) { [string]$bridgeRequest.scope } else { $bridgeTitle }
+        $bridgeIntakeItem = New-TodIntakeItem -RequestId ([string]$RequestId) -TaskId $bridgeTaskId -ObjectiveId $bridgeObjectiveId -Source 'mim_request' -Priority (Resolve-TodIntakePriority -Source 'mim_request' -TaskCategory '' -Text $bridgeSummary) -InterruptPolicy 'no_interrupt' -RelationToActiveTask 'new' -Title $bridgeTitle -Summary $bridgeSummary -TaskCategory 'mim_request'
+        $bridgeArbitration = Register-TodIntakeItem -Item $bridgeIntakeItem
+        if ([string]$bridgeArbitration.decision -in @('queue', 'defer', 'reject_duplicate', 'merge_with_active', 'blocked_needs_operator')) {
+            [pscustomobject]@{
+                request_id = [string]$RequestId
+                task_id = $bridgeTaskId
+                objective_id = $bridgeObjectiveId
+                tod_action = 'run-bridge-request'
+                execution_lane = 'intake_arbitration'
+                accepted = -not [string]::Equals([string]$bridgeArbitration.decision, 'reject_duplicate', [System.StringComparison]::OrdinalIgnoreCase)
+                execution_status = [string]$bridgeArbitration.decision
+                decision = [string]$bridgeArbitration.decision
+                reason = [string]$bridgeArbitration.reason
+                intake_arbitration = $bridgeArbitration.arbitration
+                intake_queue = $bridgeArbitration.queue
+                active_task_preserved = $true
+            } | ConvertTo-Json -Depth 16
+            break
+        }
+
         $bridgeExecution = Invoke-BridgeRequestExecution -RequestId $RequestId -ResolvedConfigPath $configPath -ResolvedStatePath $statePath
+        $bridgeExecution | Add-Member -NotePropertyName intake_arbitration -NotePropertyValue $bridgeArbitration.arbitration -Force
+        $bridgeExecution | Add-Member -NotePropertyName intake_queue -NotePropertyValue $bridgeArbitration.queue -Force
         $bridgeExecution | ConvertTo-Json -Depth 14
     }
 
@@ -14319,6 +15046,29 @@ switch ($Action) {
 
         $payload = & $rewriteStateHistoryScript -StatePath $statePath
         $payload | ConvertTo-Json -Depth 12
+    }
+
+    "get-intake-arbitration" {
+        $drainResult = Drain-TodIntakeQueueAfterTerminalActiveLane
+        $queue = Read-TodIntakeArtifact -FileName $todIntakeQueueFileName
+        $activeLane = Read-TodIntakeArtifact -FileName $todActiveExecutionLaneFileName
+        $arbitration = Read-TodIntakeArtifact -FileName $todIntakeArbitrationFileName
+        [pscustomobject]@{
+            ok = $true
+            generated_at = Get-UtcNow
+            intake_sources = @('operator_chat', 'mim_request', 'watchdog', 'recovery', 'maintenance', 'listener_retry')
+            drain = $drainResult
+            active_task = $activeLane
+            queued_tasks = if ($queue -and $queue.PSObject.Properties['items']) { @($queue.items | Where-Object { [string]$_.status -eq 'queued' }) } else { @() }
+            queue = $queue
+            arbitration = $arbitration
+            next_task_after_current = if ($queue -and $queue.PSObject.Properties['next_task_after_current']) { $queue.next_task_after_current } else { $null }
+            artifact_paths = [pscustomobject]@{
+                intake_queue = Get-TodIntakeArtifactPath -FileName $todIntakeQueueFileName
+                active_execution_lane = Get-TodIntakeArtifactPath -FileName $todActiveExecutionLaneFileName
+                intake_arbitration = Get-TodIntakeArtifactPath -FileName $todIntakeArbitrationFileName
+            }
+        } | ConvertTo-Json -Depth 18
     }
 
     "get-state-bus" {
