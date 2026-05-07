@@ -50,6 +50,17 @@ UI_BUILD_ID = "task-identity-contention-repair-v1"
 LOCAL_EXECUTOR_BINDING = "scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine"
 LOCAL_EXECUTOR_BINDING_COMMAND = "execute-chat-task"
 LEDGER_PHASE_A_COVERAGE_ARTIFACT = "runtime/shared/TOD_MIM_LEDGER_PHASE_A_COVERAGE.latest.json"
+TOD_ACTIVE_EXECUTION_LANE_ARTIFACT = "TOD_ACTIVE_EXECUTION_LANE.latest.json"
+TOD_INTAKE_QUEUE_ARTIFACT = "TOD_INTAKE_QUEUE.latest.json"
+TOD_INTAKE_ARBITRATION_ARTIFACT = "TOD_INTAKE_ARBITRATION.latest.json"
+TOD_DIRECT_CHAT_ACTIVE_SOURCES = {
+    "operator_chat",
+    "direct_chat",
+    "tod-ui-tod-operator-v1",
+    "tod-ui-task-identity-self-repair",
+    "tod-ui-executor-binding-repair",
+    "tod.execute-chat-task",
+}
 
 OPERATOR_ACTION_SPECS: dict[str, dict[str, Any]] = {
     "refresh_status": {
@@ -941,6 +952,53 @@ def _select_runtime_live_task_request(integration_live_task: dict[str, Any], act
     }
 
 
+def _load_tod_intake_state() -> dict[str, Any]:
+    def _safe_load(name: str) -> dict[str, Any]:
+        try:
+            payload = _load_json(SHARED_RUNTIME_ROOT / name)
+        except Exception:
+            payload = {}
+        return payload if isinstance(payload, dict) else {}
+
+    return {
+        "active_execution_lane": _safe_load(TOD_ACTIVE_EXECUTION_LANE_ARTIFACT),
+        "intake_queue": _safe_load(TOD_INTAKE_QUEUE_ARTIFACT),
+        "intake_arbitration": _safe_load(TOD_INTAKE_ARBITRATION_ARTIFACT),
+    }
+
+
+def _lane_is_explicit_active(lane: dict[str, Any]) -> bool:
+    if not isinstance(lane, dict):
+        return False
+    task_id = str(lane.get("task_id") or lane.get("request_id") or "").strip()
+    status = str(lane.get("status") or "").strip().lower()
+    return bool(task_id and status in {"active", "running", "in_progress", "accepted", "started"})
+
+
+def _request_is_terminal(payload: dict[str, Any]) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    status = str(payload.get("status") or payload.get("execution_status") or "").strip().lower()
+    return status in {"completed", "complete", "failed", "rejected", "superseded", "cancelled", "canceled", "expired"}
+
+
+def _arbitration_decision_for_request(intake_arbitration: dict[str, Any], live_task: dict[str, Any]) -> str:
+    if not isinstance(intake_arbitration, dict) or not isinstance(live_task, dict):
+        return ""
+    incoming = intake_arbitration.get("incoming") if isinstance(intake_arbitration.get("incoming"), dict) else {}
+    selected = intake_arbitration.get("selected_task") if isinstance(intake_arbitration.get("selected_task"), dict) else {}
+    request_id = str(live_task.get("request_id") or "").strip()
+    task_id = str(live_task.get("task_id") or "").strip()
+    for candidate in (incoming, selected):
+        candidate_request_id = str(candidate.get("request_id") or "").strip()
+        candidate_task_id = str(candidate.get("task_id") or "").strip()
+        if (request_id and candidate_request_id and _same_task_identity(request_id, candidate_request_id)) or (
+            task_id and candidate_task_id and _same_task_identity(task_id, candidate_task_id)
+        ):
+            return str(intake_arbitration.get("decision") or "").strip().lower()
+    return ""
+
+
 def _derive_task_identity_contention(
     *,
     canonical_objective: str,
@@ -948,16 +1006,22 @@ def _derive_task_identity_contention(
     active_task_payload: dict[str, Any],
     listener_decision: dict[str, Any],
     decision_payload: dict[str, Any],
+    active_execution_lane: dict[str, Any] | None = None,
+    intake_arbitration: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     live_task = live_task_request if isinstance(live_task_request, dict) else {}
     active_task = active_task_payload if isinstance(active_task_payload, dict) else {}
+    active_lane = active_execution_lane if isinstance(active_execution_lane, dict) else {}
+    arbitration = intake_arbitration if isinstance(intake_arbitration, dict) else {}
     listener = listener_decision if isinstance(listener_decision, dict) else {}
     runtime_decision = decision_payload if isinstance(decision_payload, dict) else {}
 
+    explicit_active_lane = active_lane if _lane_is_explicit_active(active_lane) else {}
     authoritative_objective_id = _pick_first_text(
-        canonical_objective,
+        explicit_active_lane.get("objective_id"),
         active_task.get("objective_id"),
         active_task.get("normalized_objective_id"),
+        canonical_objective,
         live_task.get("objective_id"),
         live_task.get("normalized_objective_id"),
     )
@@ -965,9 +1029,19 @@ def _derive_task_identity_contention(
         live_task.get("objective_id"),
         live_task.get("normalized_objective_id"),
     )
-    active_task_id = _pick_first_text(active_task.get("task_id"), active_task.get("request_id"))
+    active_task_id = _pick_first_text(
+        explicit_active_lane.get("task_id"),
+        explicit_active_lane.get("request_id"),
+        active_task.get("task_id"),
+        active_task.get("request_id"),
+    )
     request_task_id = _pick_first_text(live_task.get("task_id"), live_task.get("request_id"))
-    active_source = _pick_first_text(active_task.get("source_service"), active_task.get("source"))
+    active_source = _pick_first_text(
+        explicit_active_lane.get("source_service"),
+        explicit_active_lane.get("source"),
+        active_task.get("source_service"),
+        active_task.get("source"),
+    )
     request_source = _pick_first_text(live_task.get("source_service"), live_task.get("source"))
     last_writer = request_source or active_source
 
@@ -983,28 +1057,55 @@ def _derive_task_identity_contention(
     listener_reason = _pick_first_text(listener.get("reason_code"), runtime_decision.get("reason_code")).lower()
     listener_state = _pick_first_text(listener.get("execution_state"), runtime_decision.get("execution_state")).lower()
     listener_rejected = listener_state == "rejected" or listener_reason in {"objective_mismatch", "external_coordination_blocker"}
-    detected = bool(objective_aligned and task_mismatch and listener_rejected)
-
-    active_generated_at = _pick_latest_timestamp(active_task.get("updated_at"), active_task.get("generated_at"))
+    active_generated_at = _pick_latest_timestamp(
+        explicit_active_lane.get("started_at"),
+        explicit_active_lane.get("generated_at"),
+        active_task.get("updated_at"),
+        active_task.get("generated_at"),
+    )
     request_generated_at = _pick_latest_timestamp(live_task.get("generated_at"), live_task.get("updated_at"))
     active_dt = _parse_timestamp(active_generated_at)
     request_dt = _parse_timestamp(request_generated_at)
     active_newer = bool(active_dt and request_dt and active_dt > request_dt)
-    active_status = str(active_task.get("status") or "").strip().lower()
+    identity_age_delta_seconds = abs((active_dt - request_dt).total_seconds()) if active_dt and request_dt else None
+    active_status = str(explicit_active_lane.get("status") or active_task.get("status") or "").strip().lower()
     active_not_terminal = active_status not in {"completed", "complete", "failed", "rejected", "superseded", "cancelled", "canceled", "expired"}
     request_from_watchdog = request_source == "tod_watchdog_autorepair"
-    active_from_console = active_source.startswith("tod-ui")
+    active_from_console = active_source.startswith("tod-ui") or active_source in TOD_DIRECT_CHAT_ACTIVE_SOURCES
+    arbitration_decision = _arbitration_decision_for_request(arbitration, live_task)
+    request_terminal = _request_is_terminal(live_task)
+    request_stale = bool(request_terminal or (active_newer and identity_age_delta_seconds is not None and identity_age_delta_seconds > 900))
+    request_fresh = bool(request_dt and (identity_age_delta_seconds is None or identity_age_delta_seconds <= 900))
+    both_fresh_conflicting = bool(objective_aligned and task_mismatch and request_fresh and active_not_terminal and not request_stale)
+    queued_or_superseded = arbitration_decision in {"queue", "defer", "supersede_active", "pause_active", "dequeue_after_completion"}
+    unrelated_to_active = bool(task_mismatch and active_task_id and request_task_id and authoritative_objective_id and request_objective_id and not objective_aligned)
+    detected = bool(both_fresh_conflicting and listener_rejected and not queued_or_superseded)
     safe_self_repair = bool(detected and active_newer and active_not_terminal and request_from_watchdog and active_from_console)
 
-    mismatch_type = "task_id_mismatch_same_objective" if detected else ""
+    if detected:
+        mismatch_type = "task_id_mismatch_same_objective"
+    elif queued_or_superseded and task_mismatch:
+        mismatch_type = "queued_or_superseded_request"
+    elif task_mismatch and (request_stale or unrelated_to_active):
+        mismatch_type = "stale_request_ignored"
+    else:
+        mismatch_type = ""
     summary = (
         "Task ID mismatch inside the same objective. Console dispatch and watchdog repair are writing different task identities."
         if detected
+        else "Stale or unrelated request identity ignored; active TOD execution lane remains authoritative."
+        if mismatch_type == "stale_request_ignored"
+        else "Queued or superseded request identity preserved as queue state, not as the active blocker."
+        if mismatch_type == "queued_or_superseded_request"
         else ""
     )
     repair_step = (
         "Preserve the newer console task identity, suppress stale watchdog restore for this pair, republish execute-chat-task, then retry listener dispatch once."
         if detected
+        else "Continue rendering the active execution lane; keep the stale request as diagnostic evidence only."
+        if mismatch_type == "stale_request_ignored"
+        else "Show the queued/superseded request in intake state and keep the active task identity unchanged."
+        if mismatch_type == "queued_or_superseded_request"
         else ""
     )
 
@@ -1012,7 +1113,7 @@ def _derive_task_identity_contention(
         "detected": detected,
         "reason_code": mismatch_type,
         "summary": summary,
-        "blocker_type": "task_identity_contention" if detected else "",
+        "blocker_type": "task_identity_contention" if detected else "request_identity_diagnostic" if mismatch_type else "",
         "mismatch_type": mismatch_type,
         "authoritative_objective_id": authoritative_objective_id,
         "request_objective_id": request_objective_id,
@@ -1024,6 +1125,10 @@ def _derive_task_identity_contention(
         "safe_self_repair": safe_self_repair,
         "active_generated_at": active_generated_at,
         "request_generated_at": request_generated_at,
+        "active_precedence": "active_execution_lane" if explicit_active_lane else "active_task" if active_task_id else "historical_request",
+        "arbitration_decision": arbitration_decision,
+        "request_stale": request_stale,
+        "identity_age_delta_seconds": identity_age_delta_seconds,
     }
 
 
@@ -1528,6 +1633,94 @@ def _detect_phase_label(active_task: dict[str, Any], execution_result: dict[str,
     return "Current objective"
 
 
+def _payload_reason_codes(*payloads: dict[str, Any]) -> set[str]:
+    codes: set[str] = set()
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        for key in ("reason_code", "blocker_code", "execution_status", "status"):
+            value = str(payload.get(key) or "").strip().lower()
+            if value:
+                codes.add(value)
+        materialization = payload.get("materialization") if isinstance(payload.get("materialization"), dict) else {}
+        for key in ("reason_code", "status"):
+            value = str(materialization.get(key) or "").strip().lower()
+            if value:
+                codes.add(value)
+        raw_output = payload.get("raw_output") if isinstance(payload.get("raw_output"), dict) else {}
+        raw_materialization = raw_output.get("materialization") if isinstance(raw_output.get("materialization"), dict) else {}
+        for key in ("reason_code", "status"):
+            value = str(raw_materialization.get(key) or "").strip().lower()
+            if value:
+                codes.add(value)
+    return codes
+
+
+def _payload_activity_events(*payloads: dict[str, Any]) -> set[str]:
+    events: set[str] = set()
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        values = payload.get("activity_event_types")
+        if isinstance(values, list):
+            events.update(str(item or "").strip().lower() for item in values if str(item or "").strip())
+        event_type = str(payload.get("event_type") or payload.get("action") or "").strip().lower()
+        if event_type:
+            events.add(event_type)
+    return events
+
+
+def _derive_exact_execution_classification(
+    active_task: dict[str, Any],
+    execution_result: dict[str, Any],
+    validation: dict[str, Any],
+    activity: dict[str, Any],
+) -> dict[str, Any]:
+    reason_codes = _payload_reason_codes(active_task, execution_result, validation, activity)
+    events = _payload_activity_events(active_task, execution_result, validation, activity)
+    wait_blob = " ".join(
+        str(value or "")
+        for payload in (active_task, execution_result, validation, activity)
+        if isinstance(payload, dict)
+        for value in (
+            payload.get("wait_target"),
+            payload.get("wait_reason"),
+            payload.get("next_step"),
+            payload.get("summary"),
+            payload.get("current_action"),
+        )
+    ).lower()
+    exact_state = "unknown"
+    blocker_reason = ""
+    local_execution_started = bool("local_executor_started" in events or "local_execution_started" in events or "local_executor_completed" in events)
+    if "blocked_missing_bounded_edit_mode" in reason_codes or "bounded_edit_mode_missing" in events:
+        exact_state = "materialization_blocked"
+        blocker_reason = "blocked_missing_bounded_edit_mode"
+    elif "blocked_missing_local_executor_binding" in reason_codes or LOCAL_EXECUTOR_BINDING.lower() in wait_blob:
+        exact_state = "local_execution_binding_missing"
+        blocker_reason = "blocked_missing_local_executor_binding"
+    elif "bounded_edit_materialized" in events or "slice_materialized" in events or "materialized" in reason_codes:
+        exact_state = "slice_materialized"
+    elif local_execution_started:
+        exact_state = "local_execution_started"
+    elif "listener_consumed" in events:
+        exact_state = "listener_consumed"
+    elif "task_created_from_chat" in events or "request_published" in events:
+        exact_state = "request_published"
+
+    return {
+        "state": exact_state,
+        "blocker_reason": blocker_reason,
+        "request_published": exact_state in {"request_published", "listener_consumed", "slice_materialized", "local_execution_started"},
+        "listener_consumed": exact_state in {"listener_consumed", "slice_materialized", "local_execution_started"},
+        "materialization_blocked": exact_state == "materialization_blocked",
+        "local_execution_binding_missing": exact_state == "local_execution_binding_missing",
+        "slice_materialized": exact_state in {"slice_materialized", "local_execution_started"},
+        "local_execution_started": local_execution_started,
+        "local_executor_invoked": local_execution_started,
+    }
+
+
 def _load_remote_recovery_payload() -> tuple[dict[str, Any], str]:
     return _first_existing_payload(
         REMOTE_RECOVERY_ROOT / "TOD_MIM_REMOTE_RECOVERY.latest.json",
@@ -2019,6 +2212,7 @@ def _derive_phase_progress(
     activity_state: str,
     next_step: str,
     wait_reason: str,
+    execution_classification: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     phase_label = _detect_phase_label(active_task, execution_result)
     contract = (
@@ -2076,6 +2270,24 @@ def _derive_phase_progress(
             "complete": _stage_is_complete(result_publisher_status),
         },
     ]
+
+    exact_state = str((execution_classification or {}).get("state") or "").strip().lower()
+    if exact_state in {"materialization_blocked", "local_execution_binding_missing"}:
+        summary = (
+            "materialization_blocked: TOD published/claimed the request, but bounded edit materialization is blocked before local execution can start."
+            if exact_state == "materialization_blocked"
+            else f"local_execution_binding_missing: current active task is blocked on {LOCAL_EXECUTOR_BINDING}."
+        )
+        return {
+            "available": bool(contract) or bool(active_task) or bool(execution_result),
+            "label": f"{phase_label} progress",
+            "percent_complete": 30 if exact_state == "materialization_blocked" else 0,
+            "completed_milestones": sum(1 for item in milestones if item["complete"]),
+            "total_milestones": len(milestones),
+            "next_gate": exact_state,
+            "summary": summary,
+            "milestones": milestones,
+        }
 
     percent_complete = sum(item["weight"] for item in milestones if item["complete"])
     implementation_pending = not milestones[2]["complete"] and any(
@@ -2520,6 +2732,13 @@ def _normalize_execution_status(
             "scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine."
         )
 
+    execution_classification = _derive_exact_execution_classification(
+        active_task,
+        execution_result,
+        validation,
+        activity,
+    )
+
     phase_progress = _derive_phase_progress(
         active_task,
         execution_result,
@@ -2527,6 +2746,7 @@ def _normalize_execution_status(
         activity_state,
         next_step,
         wait_reason,
+        execution_classification,
     )
     stall_signal = _derive_stall_signal(activity_state, age_seconds, phase_progress, next_step, wait_reason)
     if stall_signal.get("flagged") and activity_state in {"waiting", "working", "stalled"}:
@@ -2569,6 +2789,7 @@ def _normalize_execution_status(
         "activity_summary": activity_summary,
         "phase_progress": phase_progress,
         "stall_signal": stall_signal,
+        "execution_classification": execution_classification,
         "active": active,
         "executor_binding_status": executor_binding_status,
         "executor_binding_target": executor_binding_target,
