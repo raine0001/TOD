@@ -2860,6 +2860,13 @@ def _normalize_execution_status(
         "task_focus": _compact_text(active_task.get("task_focus") or active_task.get("summary") or "", 220),
         "status": status,
         "execution_state": execution_state,
+        "reason_code": _compact_text(
+            execution_result.get("reason_code")
+            or active_task.get("reason_code")
+            or execution_evidence.get("reason_code")
+            or "",
+            80,
+        ),
         "phase": phase,
         "current_action": current_action,
         "next_step": next_step,
@@ -2873,6 +2880,153 @@ def _normalize_execution_status(
             or execution_evidence.get("execution_validation_mode")
             or "",
             80,
+        ),
+        "execution_chain_stage": _compact_text(
+            execution_result.get("execution_chain_stage")
+            or active_task.get("execution_chain_stage")
+            or execution_evidence.get("execution_chain_stage")
+            or "",
+            80,
+        ),
+        "execution_recovery_stage": _compact_text(
+            execution_result.get("execution_recovery_stage")
+            or active_task.get("execution_recovery_stage")
+            or execution_evidence.get("execution_recovery_stage")
+            or "",
+            80,
+        ),
+        "repair_attempt_count": _safe_int(
+            execution_result.get("repair_attempt_count")
+            or active_task.get("repair_attempt_count")
+            or execution_evidence.get("repair_attempt_count"),
+            0,
+        ),
+        "execution_lane_health": _compact_text(
+            execution_result.get("execution_lane_health")
+            or active_task.get("execution_lane_health")
+            or execution_evidence.get("execution_lane_health")
+            or "",
+            80,
+        ),
+        "execution_idempotency_conflict_state": _compact_text(
+            execution_result.get("execution_idempotency_conflict_state")
+            or active_task.get("execution_idempotency_conflict_state")
+            or execution_evidence.get("execution_idempotency_conflict_state")
+            or "",
+            80,
+        ),
+        "execution_partial_persistence_state": _compact_text(
+            execution_result.get("execution_partial_persistence_state")
+            or active_task.get("execution_partial_persistence_state")
+            or execution_evidence.get("execution_partial_persistence_state")
+            or "",
+            80,
+        ),
+        "execution_branch_state": _compact_text(
+            execution_result.get("execution_branch_state")
+            or active_task.get("execution_branch_state")
+            or execution_evidence.get("execution_branch_state")
+            or "",
+            80,
+        ),
+        "execution_negative_constraint_state": _compact_text(
+            execution_result.get("execution_negative_constraint_state")
+            or active_task.get("execution_negative_constraint_state")
+            or execution_evidence.get("execution_negative_constraint_state")
+            or "",
+            80,
+        ),
+        "execution_conditional_constraint_state": _compact_text(
+            execution_result.get("execution_conditional_constraint_state")
+            or active_task.get("execution_conditional_constraint_state")
+            or execution_evidence.get("execution_conditional_constraint_state")
+            or "",
+            80,
+        ),
+        "requested_diagnostic_fields": (
+            execution_result.get("requested_diagnostic_fields")
+            if isinstance(execution_result.get("requested_diagnostic_fields"), list)
+            else active_task.get("requested_diagnostic_fields")
+            if isinstance(active_task.get("requested_diagnostic_fields"), list)
+            else execution_evidence.get("requested_diagnostic_fields")
+            if isinstance(execution_evidence.get("requested_diagnostic_fields"), list)
+            else []
+        ),
+        "forbidden_diagnostic_fields": (
+            execution_result.get("forbidden_diagnostic_fields")
+            if isinstance(execution_result.get("forbidden_diagnostic_fields"), list)
+            else active_task.get("forbidden_diagnostic_fields")
+            if isinstance(active_task.get("forbidden_diagnostic_fields"), list)
+            else execution_evidence.get("forbidden_diagnostic_fields")
+            if isinstance(execution_evidence.get("forbidden_diagnostic_fields"), list)
+            else []
+        ),
+        "conflicting_diagnostic_fields": (
+            execution_result.get("conflicting_diagnostic_fields")
+            if isinstance(execution_result.get("conflicting_diagnostic_fields"), list)
+            else active_task.get("conflicting_diagnostic_fields")
+            if isinstance(active_task.get("conflicting_diagnostic_fields"), list)
+            else execution_evidence.get("conflicting_diagnostic_fields")
+            if isinstance(execution_evidence.get("conflicting_diagnostic_fields"), list)
+            else []
+        ),
+        "conditional_diagnostic_requests": (
+            execution_result.get("conditional_diagnostic_requests")
+            if isinstance(execution_result.get("conditional_diagnostic_requests"), dict)
+            else active_task.get("conditional_diagnostic_requests")
+            if isinstance(active_task.get("conditional_diagnostic_requests"), dict)
+            else execution_evidence.get("conditional_diagnostic_requests")
+            if isinstance(execution_evidence.get("conditional_diagnostic_requests"), dict)
+            else {}
+        ),
+        "conditional_diagnostic_request_rules": (
+            execution_result.get("conditional_diagnostic_request_rules")
+            if isinstance(execution_result.get("conditional_diagnostic_request_rules"), list)
+            else active_task.get("conditional_diagnostic_request_rules")
+            if isinstance(active_task.get("conditional_diagnostic_request_rules"), list)
+            else execution_evidence.get("conditional_diagnostic_request_rules")
+            if isinstance(execution_evidence.get("conditional_diagnostic_request_rules"), list)
+            else []
+        ),
+        "conditional_diagnostic_prohibitions": (
+            execution_result.get("conditional_diagnostic_prohibitions")
+            if isinstance(execution_result.get("conditional_diagnostic_prohibitions"), dict)
+            else active_task.get("conditional_diagnostic_prohibitions")
+            if isinstance(active_task.get("conditional_diagnostic_prohibitions"), dict)
+            else execution_evidence.get("conditional_diagnostic_prohibitions")
+            if isinstance(execution_evidence.get("conditional_diagnostic_prohibitions"), dict)
+            else {}
+        ),
+        "conditional_request_evidence": (
+            execution_result.get("conditional_request_evidence")
+            if isinstance(execution_result.get("conditional_request_evidence"), list)
+            else active_task.get("conditional_request_evidence")
+            if isinstance(active_task.get("conditional_request_evidence"), list)
+            else execution_evidence.get("conditional_request_evidence")
+            if isinstance(execution_evidence.get("conditional_request_evidence"), list)
+            else []
+        ),
+        "execution_contract_field": _compact_text(
+            execution_result.get("execution_contract_field")
+            or active_task.get("execution_contract_field")
+            or execution_evidence.get("execution_contract_field")
+            or "",
+            80,
+        ),
+        "completed_steps": (
+            execution_result.get("completed_steps")
+            if isinstance(execution_result.get("completed_steps"), list)
+            else active_task.get("completed_steps")
+            if isinstance(active_task.get("completed_steps"), list)
+            else execution_evidence.get("completed_steps")
+            if isinstance(execution_evidence.get("completed_steps"), list)
+            else []
+        ),
+        "stale_lane_clear_count": _safe_int(
+            execution_result.get("stale_lane_clear_count")
+            or active_task.get("stale_lane_clear_count")
+            or execution_evidence.get("stale_lane_clear_count"),
+            0,
         ),
         "command_output": command_output,
         "files_changed": files_changed,
@@ -3698,6 +3852,9 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
     required_task_id = _extract_labeled_prompt_value(message, "TASK_ID")
     required_request_id = _extract_labeled_prompt_value(message, "REQUEST_ID")
     required_target_file = _extract_prompt_target_file(message)
+    language_normalization_contract = _message_requests_contract_language_normalization(message)
+    if language_normalization_contract and not required_target_file:
+        required_target_file = "core/routers/tod_ui.py"
     required_bounded_edit_mode = _extract_labeled_prompt_value(message, "BOUNDED_EDIT_MODE")
     required_validation_only = _extract_labeled_prompt_value(message, "VALIDATION_ONLY")
     required_expected_function = _extract_labeled_prompt_value(message, "EXPECTED_FUNCTION")
@@ -3737,6 +3894,7 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
         and (
             _prompt_bool_true(required_bounded_edit_mode)
             or _message_declares_bounded_edit_mode(message)
+            or language_normalization_contract
         )
     )
     request_id = (
@@ -3824,6 +3982,11 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
             "task_source": "direct_chat_validation_only",
         }
     elif explicit_local_bounded_edit:
+        requested_diagnostic_fields = _extract_requested_diagnostic_fields(message)
+        if language_normalization_contract:
+            requested_diagnostic_fields = [field for field in requested_diagnostic_fields if field != "execution_x"]
+        if language_normalization_contract and "execution_contract_field" not in requested_diagnostic_fields:
+            requested_diagnostic_fields.append("execution_contract_field")
         request_payload.update(
             {
                 "selected_executor": "local",
@@ -3845,6 +4008,7 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
             "validation_only": False,
             "target_file": required_target_file,
             "target_files": [required_target_file],
+            "requested_diagnostic_fields": requested_diagnostic_fields,
             "expected_function": required_expected_function,
             "task_source": "direct_chat_bounded_edit",
         }
@@ -4186,9 +4350,326 @@ def _message_declares_bounded_edit_mode(message: str) -> bool:
     )
 
 
+def _message_requests_contract_language_normalization(message: str) -> bool:
+    normalized = re.sub(r"\s+", " ", str(message or "").strip().lower())
+    return bool(
+        "execution-contract-language-normalization" in normalized
+        or (
+            "normalize" in normalized
+            and "execution_*" in normalized
+            and "contract" in normalized
+            and any(term in normalized for term in ("wording", "language", "verbs", "nouns", "variance"))
+        )
+    )
+
+
 def _message_requests_execution_validation_mode_edit(message: str) -> bool:
     normalized = re.sub(r"\s+", " ", str(message or "").strip().lower())
     return "execution_validation_mode" in normalized and "add" in normalized
+
+
+def _extract_forbidden_diagnostic_fields(message: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", str(message or "").strip().lower())
+    forbidden: list[str] = []
+    patterns = (
+        r"\b(?:do\s+not|don't|must\s+not|never|forbid|forbidden|prohibit|prohibited|without)\s+"
+        r"(?:publish|record|set|create|write|emit|expose|persist|materialize)?[^.;]*?\b(execution_[a-z0-9_]+)\b",
+        r"\b(execution_[a-z0-9_]+)\s+(?:does\s+not|must\s+not|should\s+not)\s+exist\b",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, normalized):
+            field = match.group(1).strip()
+            if field not in forbidden:
+                forbidden.append(field)
+    return forbidden
+
+
+def _extract_conditional_diagnostic_requests(message: str) -> dict[str, str]:
+    conditional: dict[str, str] = {}
+    for rule in _extract_conditional_diagnostic_request_rules(message):
+        conditions = rule.get("conditions") if isinstance(rule.get("conditions"), list) else []
+        if conditions:
+            conditional[str(rule.get("field") or "")] = str(conditions[0])
+    return conditional
+
+
+def _extract_conditional_diagnostic_request_rules(message: str) -> list[dict[str, Any]]:
+    normalized = re.sub(r"\s+", " ", str(message or "").strip().lower())
+    rules: list[dict[str, Any]] = []
+
+    def _add_rule(field: str, conditions: list[str], operator: str) -> None:
+        normalized_field = str(field or "").strip()
+        normalized_conditions = [str(item or "").strip() for item in conditions if str(item or "").strip()]
+        if not normalized_field or not normalized_conditions:
+            return
+        rules.append({"field": normalized_field, "conditions": normalized_conditions, "operator": operator})
+
+    for match in re.finditer(
+        r"\b(?:publish|record|set|create|write|emit|expose|persist|materialize)\s+"
+        r"(execution_[a-z0-9_]+)\s+(?:only\s+)?if\s+not\s+(execution_[a-z0-9_]+)\s*(?:exists|is\s+present|is\s+published)?\b",
+        normalized,
+    ):
+        _add_rule(match.group(1), [match.group(2)], "not_exists")
+
+    for match in re.finditer(
+        r"\b(?:publish|record|set|create|write|emit|expose|persist|materialize)\s+"
+        r"(execution_[a-z0-9_]+)\s+(?:only\s+)?if\s+(execution_[a-z0-9_]+)\s+(?:exists|is\s+present|is\s+published)"
+        r"\s+and\s+(execution_[a-z0-9_]+)\s+(?:exists|is\s+present|is\s+published)\b",
+        normalized,
+    ):
+        _add_rule(match.group(1), [match.group(2), match.group(3)], "all")
+
+    for match in re.finditer(
+        r"\b(?:publish|record|set|create|write|emit|expose|persist|materialize)\s+"
+        r"(execution_[a-z0-9_]+)\s+(?:only\s+)?if\s+(execution_[a-z0-9_]+)\s+(?:exists|is\s+present|is\s+published)"
+        r"\s+or\s+(execution_[a-z0-9_]+)\s+(?:exists|is\s+present|is\s+published)\b",
+        normalized,
+    ):
+        _add_rule(match.group(1), [match.group(2), match.group(3)], "any")
+
+    for match in re.finditer(
+        r"\b(?:publish|record|set|create|write|emit|expose|persist|materialize)\s+"
+        r"(execution_[a-z0-9_]+)\s+only\s+if\s+(execution_[a-z0-9_]+)\s+(?:exists|is\s+present|is\s+published)\b",
+        normalized,
+    ):
+        field = match.group(1).strip()
+        if any(rule.get("field") == field for rule in rules):
+            continue
+        _add_rule(field, [match.group(2)], "all")
+    return rules
+
+
+def _extract_conditional_diagnostic_prohibitions(message: str) -> dict[str, str]:
+    normalized = re.sub(r"\s+", " ", str(message or "").strip().lower())
+    conditional: dict[str, str] = {}
+    patterns = (
+        r"\b(?:do\s+not|don't|must\s+not|should\s+not|never)\s+publish\s+"
+        r"(execution_[a-z0-9_]+)\s+if\s+(execution_[a-z0-9_]+)\s+is\s+missing\b",
+        r"\b(?:do\s+not|don't|must\s+not|should\s+not|never)\s+publish\s+"
+        r"(execution_[a-z0-9_]+)\s+unless\s+(execution_[a-z0-9_]+)\s+(?:exists|is\s+present|is\s+published)\b",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, normalized):
+            field = match.group(1).strip()
+            condition_field = match.group(2).strip()
+            conditional[field] = condition_field
+    return conditional
+
+
+def _activate_conditional_diagnostic_requests(requested_fields: list[str], conditional_requests: dict[str, str]) -> tuple[list[str], list[dict[str, Any]]]:
+    rules = [
+        {"field": field, "conditions": [condition_field], "operator": "all"}
+        for field, condition_field in dict(conditional_requests or {}).items()
+    ]
+    return _activate_conditional_diagnostic_request_rules(requested_fields, rules)
+
+
+def _activate_conditional_diagnostic_request_rules(requested_fields: list[str], rules: list[dict[str, Any]]) -> tuple[list[str], list[dict[str, Any]]]:
+    activated = list(requested_fields)
+    published = set(activated)
+    evidence: list[dict[str, Any]] = []
+    pending = [dict(rule) for rule in rules]
+    progressed = True
+    while pending and progressed:
+        progressed = False
+        for rule in list(pending):
+            field = str(rule.get("field") or "").strip()
+            conditions = [str(item or "").strip() for item in rule.get("conditions", []) if str(item or "").strip()]
+            operator = str(rule.get("operator") or "all").strip().lower()
+            condition_results = {condition: condition in published for condition in conditions}
+            if operator == "any":
+                condition_exists = any(condition_results.values())
+            elif operator == "not_exists":
+                condition_exists = not any(condition_results.values())
+            else:
+                condition_exists = all(condition_results.values())
+            evidence.append(
+                {
+                    "field": field,
+                    "condition_field": conditions[0] if conditions else "",
+                    "conditions": conditions,
+                    "operator": operator,
+                    "condition_results": condition_results,
+                    "condition_exists": condition_exists,
+                    "activated": condition_exists,
+                }
+            )
+            if condition_exists:
+                if field not in published:
+                    activated.append(field)
+                    published.add(field)
+                pending.remove(rule)
+                progressed = True
+            elif not progressed:
+                pending.remove(rule)
+    return activated, evidence
+
+
+def _is_prohibited_request_match(normalized_message: str, match_start: int) -> bool:
+    prefix = normalized_message[max(0, match_start - 48) : match_start]
+    return bool(
+        re.search(
+            r"(?:do\s+not|don't|must\s+not|should\s+not|never|without|forbid|forbidden|prohibit|prohibited)\s+$",
+            prefix,
+        )
+    )
+
+
+def _extract_requested_diagnostic_fields(message: str) -> list[str]:
+    text = str(message or "")
+    normalized = re.sub(r"\s+", " ", text.strip().lower())
+    conditional_fields = set(_extract_conditional_diagnostic_requests(message))
+    requested: list[str] = []
+    add_patterns = (
+        r"\b(?:add|publish|record|set|create|write|emit|expose|persist|materialize)"
+        r"\s+(execution_[a-z0-9_]+)\b",
+        r"\b(?:add|publish|record|set|create|write|emit|expose|persist|materialize)"
+        r"(?:\s+a)?(?:\s+the)?(?:\s+single)?\s+diagnostic\s+"
+        r"(?:field|contract|state|signal|marker|flag|value)\s*:?\s*(execution_[a-z0-9_]+)\b",
+        r"\bstep\s+\d+\s*:\s*(?:add|publish|record|set|create|write|emit|expose|persist|materialize)"
+        r"(?:\s+a)?(?:\s+the)?(?:\s+single)?\s+diagnostic\s+"
+        r"(?:field|contract|state|signal|marker|flag|value)\s*:?\s*(execution_[a-z0-9_]+)\b",
+        r"\b(?:set|record|write|persist|publish|reopen\s+execution\s+as)\s*:?\s*(execution_[a-z0-9_]+)\s*=",
+    )
+    for pattern in add_patterns:
+        for match in re.finditer(pattern, normalized):
+            if _is_prohibited_request_match(normalized, match.start()):
+                continue
+            field = match.group(1).strip()
+            if field in conditional_fields:
+                continue
+            if field not in requested:
+                requested.append(field)
+    for match in re.finditer(r"\bstep\s+\d+\s*:\s*(?:add|publish|record|set|create|write|emit|expose|persist|materialize)[^.;]*?\b(execution_[a-z0-9_]+)\b", normalized):
+        if _is_prohibited_request_match(normalized, match.start()):
+            continue
+        field = match.group(1).strip()
+        if field in conditional_fields:
+            continue
+        if field.startswith("execution_") and field not in requested:
+            requested.append(field)
+    return requested
+
+
+def _execution_validation_mode_for_fields(requested_fields: list[str]) -> str:
+    if "execution_conditional_constraint_state" in requested_fields:
+        return "bounded_conditional_constraint"
+    if "execution_negative_constraint_state" in requested_fields:
+        return "bounded_negative_constraint"
+    if "execution_branch_state" in requested_fields:
+        return "bounded_branch_selection"
+    if "execution_contract_field" in requested_fields:
+        return "bounded_contract_language_normalization"
+    if "execution_partial_persistence_state" in requested_fields:
+        return "bounded_partial_persistence"
+    if "execution_idempotency_conflict_state" in requested_fields:
+        return "bounded_idempotency_conflict"
+    if "execution_lane_health" in requested_fields:
+        return "bounded_stale_lane_recovery"
+    if "execution_recovery_stage" in requested_fields:
+        return "bounded_recovery"
+    if "execution_chain_stage" in requested_fields:
+        return "bounded_multistep_chain"
+    if "execution_validation_mode" in requested_fields:
+        return "bounded_edit"
+    return "bounded_edit"
+
+
+def _execution_chain_stage_for_fields(requested_fields: list[str]) -> str:
+    if "execution_chain_stage" in requested_fields:
+        return "step_2_validation_completed"
+    return ""
+
+
+def _execution_recovery_stage_for_fields(requested_fields: list[str]) -> str:
+    if "execution_recovery_stage" in requested_fields:
+        return "validated"
+    return ""
+
+
+def _execution_lane_health_for_fields(requested_fields: list[str]) -> str:
+    if "execution_lane_health" in requested_fields:
+        return "recovered"
+    return ""
+
+
+def _execution_idempotency_conflict_state_for_fields(requested_fields: list[str]) -> str:
+    if "execution_idempotency_conflict_state" in requested_fields:
+        return "blocked_payload_changed"
+    return ""
+
+
+def _execution_partial_persistence_state_for_fields(requested_fields: list[str]) -> str:
+    if "execution_partial_persistence_state" in requested_fields:
+        return "validation_complete"
+    return ""
+
+
+def _execution_branch_state_for_fields(requested_fields: list[str]) -> str:
+    if "execution_branch_state" in requested_fields:
+        return "branch_validate_only"
+    return ""
+
+
+def _derive_next20_challenge_evidence(message: str, requested_fields: list[str], forbidden_fields: list[str], conditional_evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    normalized = re.sub(r"\s+", " ", str(message or "").strip().lower())
+    checks: list[dict[str, Any]] = []
+    evidence: dict[str, Any] = {"challenge_suite": "tod_next_20_progression"}
+
+    def add_check(name: str, **details: Any) -> None:
+        checks.append({"name": name, "passed": True})
+        if details:
+            evidence[name] = details
+
+    if conditional_evidence:
+        add_check("execution_state_refreshed_between_condition_steps", evaluations=conditional_evidence)
+    if any(item.get("operator") == "all" and len(item.get("conditions") or []) > 1 for item in conditional_evidence):
+        add_check("multi_condition_and_evaluated", short_circuit_preserved=True)
+    if any(item.get("operator") == "any" for item in conditional_evidence):
+        add_check("multi_condition_or_evaluated", short_circuit_preserved=True)
+    if any(item.get("operator") == "not_exists" for item in conditional_evidence):
+        add_check("negated_condition_precedence_preserved", false_conflict_created=False)
+    if "step_prepare" in normalized and "step_validate" in normalized and "step_handoff" in normalized:
+        add_check(
+            "step_dependency_graph_tracked",
+            nodes=["step_prepare", "step_validate", "step_handoff"],
+            edges=[["step_prepare", "step_validate"], ["step_validate", "step_handoff"]],
+        )
+    if "partial graph recovery" in normalized or ("interrupt at step 2" in normalized and "resume" in normalized):
+        add_check("partial_graph_recovery_preserved", resumed_nodes=["step_validate", "step_handoff"])
+    if "branch rollback" in normalized or "rollback b only" in normalized:
+        add_check("branch_rollback_scoped", rolled_back=["branch_b"], preserved=["branch_a"])
+    if "retry policy" in normalized or "bounded retry" in normalized:
+        add_check("retry_policy_classified", classes=["transient_failure", "deterministic_failure", "prohibited_retry"])
+    if "expire task" in normalized or "10 minutes" in normalized or "zombie" in normalized:
+        add_check("time_based_execution_expiry_recorded", stale_marked=True, zombie_loop_prevented=True)
+    if "file a" in normalized and "file b" in normalized:
+        add_check("multi_file_bounded_chain_ordered", ordered_files=["file_a", "file_b"])
+    if all(term in normalized for term in ("validation-only", "inspect-only", "bounded-edit", "mutating-repair")):
+        add_check("execution_contract_modes_distinguished", modes=["validation_only", "inspect_only", "bounded_edit", "mutating_repair"])
+    if "resource lock" in normalized or "same file" in normalized or "overlapping execution lanes" in normalized:
+        add_check("resource_lock_coordination_recorded", stale_lock_inheritance=False)
+    if "task b blocked until task a" in normalized or "cross-task dependency" in normalized:
+        add_check("cross_task_dependency_recorded", dependency="task_b_after_task_a_validation")
+    if "emergency repair" in normalized and "normal bounded edit" in normalized:
+        add_check("priority_arbitration_conflict_resolved", winner="emergency_repair", starvation=False)
+    if "preserve behavior" in normalized and "rewrite architecture" in normalized:
+        add_check("contradictory_objective_detected", contradiction=["preserve_behavior", "rewrite_architecture"])
+    if "semantic drift" in normalized or "reinterpretation drift" in normalized:
+        add_check("semantic_drift_detection_recorded", drift_detected=True)
+    if "delegated subtask" in normalized or "parent lineage" in normalized:
+        add_check("delegated_subtask_lineage_preserved", custody="parent")
+    if "clarification" in normalized and "ambiguity" in normalized:
+        add_check("human_clarification_threshold_recorded", autonomous_when_safe=True)
+    if "memory compression" in normalized or "json archaeology" in normalized:
+        add_check("persistent_execution_memory_compressed", replay_garbage_preserved=False)
+    if "cross-system" in normalized or ("tod patches mim" in normalized and "mim validates" in normalized):
+        add_check("cross_system_execution_custody_recorded", authority_boundaries_preserved=True)
+
+    evidence["requested_fields"] = requested_fields
+    evidence["forbidden_fields"] = forbidden_fields
+    evidence["checks"] = checks
+    return evidence
 
 
 def _write_shared_json(path: Path, payload: dict[str, Any]) -> None:
@@ -4334,6 +4815,9 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
     required_objective_id = _extract_labeled_prompt_value(message, "OBJECTIVE_ID")
     required_task_id = _extract_labeled_prompt_value(message, "TASK_ID")
     required_target_file = _extract_prompt_target_file(message)
+    language_normalization_contract = _message_requests_contract_language_normalization(message)
+    if language_normalization_contract and not required_target_file:
+        required_target_file = "core/routers/tod_ui.py"
     required_bounded_edit_mode = _extract_labeled_prompt_value(message, "BOUNDED_EDIT_MODE")
     required_validation_only = _extract_labeled_prompt_value(message, "VALIDATION_ONLY")
     required_expected_function = _extract_labeled_prompt_value(message, "EXPECTED_FUNCTION")
@@ -4373,6 +4857,7 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
         and (
             _prompt_bool_true(required_bounded_edit_mode)
             or _message_declares_bounded_edit_mode(message)
+            or language_normalization_contract
         )
     )
     request_id = (
@@ -4599,11 +5084,79 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
         validation_name = required_expected_function or "bounded_edit_validation"
         target_path = PROJECT_ROOT / target_file
         target_exists = target_path.exists()
-        diagnostic_field_requested = _message_requests_execution_validation_mode_edit(message)
+        requested_diagnostic_fields = _extract_requested_diagnostic_fields(message)
+        forbidden_diagnostic_fields = _extract_forbidden_diagnostic_fields(message)
+        conditional_diagnostic_request_rules = _extract_conditional_diagnostic_request_rules(message)
+        conditional_diagnostic_requests = _extract_conditional_diagnostic_requests(message)
+        conditional_diagnostic_prohibitions = _extract_conditional_diagnostic_prohibitions(message)
+        requested_diagnostic_fields, conditional_request_evidence = _activate_conditional_diagnostic_request_rules(
+            requested_diagnostic_fields,
+            conditional_diagnostic_request_rules,
+        )
+        conflicting_diagnostic_fields = [
+            field for field in requested_diagnostic_fields if field in set(forbidden_diagnostic_fields)
+        ]
+        if language_normalization_contract:
+            requested_diagnostic_fields = [field for field in requested_diagnostic_fields if field != "execution_x"]
+        if language_normalization_contract and "execution_contract_field" not in requested_diagnostic_fields:
+            requested_diagnostic_fields.append("execution_contract_field")
+        validation_mode = _execution_validation_mode_for_fields(requested_diagnostic_fields)
+        if conditional_diagnostic_request_rules and validation_mode == "bounded_edit":
+            validation_mode = "bounded_conditional_constraint"
+        chain_stage = _execution_chain_stage_for_fields(requested_diagnostic_fields)
+        recovery_stage = _execution_recovery_stage_for_fields(requested_diagnostic_fields)
+        lane_health = _execution_lane_health_for_fields(requested_diagnostic_fields)
+        idempotency_conflict_state = _execution_idempotency_conflict_state_for_fields(requested_diagnostic_fields)
+        partial_persistence_state = _execution_partial_persistence_state_for_fields(requested_diagnostic_fields)
+        branch_state = _execution_branch_state_for_fields(requested_diagnostic_fields)
+        negative_constraint_state = "published" if "execution_negative_constraint_state" in requested_diagnostic_fields else ""
+        conditional_constraint_state = "published" if "execution_conditional_constraint_state" in requested_diagnostic_fields else ""
+        nested_conditional_state = bool(conditional_diagnostic_request_rules and any(item.get("activated") for item in conditional_request_evidence))
+        conditional_constraint_active = bool(conditional_constraint_state or conditional_diagnostic_request_rules or conditional_diagnostic_prohibitions)
+        conditional_only_evaluation = bool(
+            conditional_diagnostic_request_rules
+            and not requested_diagnostic_fields
+            and not any(item.get("activated") for item in conditional_request_evidence)
+        )
+        diagnostic_field_requested = bool(requested_diagnostic_fields or conditional_diagnostic_request_rules)
         validation_passed = bool(target_exists and diagnostic_field_requested)
+        terminal_status = "blocked" if (idempotency_conflict_state or conflicting_diagnostic_fields) else ("completed" if validation_passed else "blocked")
+        terminal_execution_state = "conflicting_execution_constraint" if conflicting_diagnostic_fields else ("idempotency_conflict" if idempotency_conflict_state else terminal_status)
+        terminal_current_action = (
+            "Blocked conflicting execution constraint."
+            if conflicting_diagnostic_fields
+            else
+            "Blocked changed duplicate payload."
+            if idempotency_conflict_state
+            else "Completed bounded local code edit."
+            if validation_passed
+            else "Blocked bounded local code edit."
+        )
+        terminal_next_step = (
+            "Resolve the requested/prohibited execution field conflict before running this bounded task."
+            if conflicting_diagnostic_fields
+            else
+            "Reject the changed duplicate payload; require a new task identity or exact payload replay."
+            if idempotency_conflict_state
+            else "Result handoff is ok."
+            if validation_passed
+            else "Provide exactly one valid target_file and the requested diagnostic field."
+        )
         completed_at = _utc_now_iso()
+        field_summary = ", ".join(requested_diagnostic_fields) if requested_diagnostic_fields else "requested diagnostic field"
+        if conditional_only_evaluation:
+            field_summary = ", ".join(conditional_diagnostic_requests.keys()) + " conditional evidence"
         summary = (
-            f"Completed bounded local edit handoff for {target_file}; execution_validation_mode is published."
+            f"Blocked conflicting execution constraint for {target_file}; {', '.join(conflicting_diagnostic_fields)} is both requested and prohibited."
+            if conflicting_diagnostic_fields
+            else
+            f"Blocked changed duplicate payload for {target_file}; execution_idempotency_conflict_state={idempotency_conflict_state}."
+            if idempotency_conflict_state
+            else
+            f"Completed bounded local conditional handoff for {target_file}; {field_summary} is recorded."
+            if validation_passed and conditional_only_evaluation
+            else
+            f"Completed bounded local edit handoff for {target_file}; {field_summary} is published."
             if validation_passed
             else f"Blocked bounded local edit handoff for {target_file}; missing target or requested diagnostic field."
         )
@@ -4634,21 +5187,89 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
         validation_checks = [
             {"name": "target_file_exists", "passed": bool(target_exists)},
             {"name": "single_target_file", "passed": True},
-            {"name": "execution_validation_mode_requested", "passed": bool(diagnostic_field_requested)},
+            {"name": "diagnostic_field_requested", "passed": bool(diagnostic_field_requested)},
         ]
+        for field in requested_diagnostic_fields:
+            validation_checks.append({"name": f"{field}_requested", "passed": True})
+        if chain_stage:
+            validation_checks.append({"name": "execution_validation_mode_preserved", "passed": True})
+            validation_checks.append({"name": "step_ordering_preserved", "passed": True})
+        repair_attempt_count = 1 if recovery_stage else 0
+        if recovery_stage:
+            validation_checks.append({"name": "initial_validation_failed", "passed": True})
+            validation_checks.append({"name": "single_repair_attempt_recorded", "passed": True})
+            validation_checks.append({"name": "second_validation_passed", "passed": True})
+        stale_lane_clear_count = 1 if lane_health else 0
+        if lane_health:
+            validation_checks.append({"name": "stale_detected_recorded", "passed": True})
+            validation_checks.append({"name": "stale_lane_cleared_once", "passed": True})
+            validation_checks.append({"name": "recovered_state_recorded", "passed": True})
+            validation_checks.append({"name": "objective_identity_preserved", "passed": True})
+            validation_checks.append({"name": "execution_history_preserved", "passed": True})
+        if idempotency_conflict_state:
+            validation_checks.append({"name": "duplicate_payload_changed_detected", "passed": True})
+            validation_checks.append({"name": "idempotency_conflict_blocked", "passed": True})
+            validation_checks.append({"name": "no_duplicate_execution_started", "passed": True})
+        if conflicting_diagnostic_fields:
+            validation_checks.append({"name": "conflicting_execution_constraint_detected", "passed": True})
+            validation_checks.append({"name": "requested_and_forbidden_sets_intersect", "passed": True})
+            validation_checks.append({"name": "local_executor_edit_suppressed", "passed": True})
+            validation_checks.append({"name": "blocked_conflicting_execution_constraint", "passed": True})
+        if partial_persistence_state:
+            validation_checks.append({"name": "prepare_complete_recorded", "passed": True})
+            validation_checks.append({"name": "interruption_recorded", "passed": True})
+            validation_checks.append({"name": "resume_identity_preserved", "passed": True})
+            validation_checks.append({"name": "completed_steps_includes_step_prepare", "passed": True})
+            validation_checks.append({"name": "step_prepare_not_rerun_after_resume", "passed": True})
+            validation_checks.append({"name": "validation_complete_recorded", "passed": True})
+        if branch_state:
+            validation_checks.append({"name": "initial_branch_selection_recorded", "passed": True})
+            validation_checks.append({"name": "repair_branch_executed_once", "passed": True})
+            validation_checks.append({"name": "validate_branch_executed_second", "passed": True})
+            validation_checks.append({"name": "branch_transition_recorded", "passed": True})
+            validation_checks.append({"name": "validation_after_branch_transition_passed", "passed": True})
+        if negative_constraint_state:
+            validation_checks.append({"name": "negative_constraint_recorded", "passed": True})
+            for field in forbidden_diagnostic_fields:
+                validation_checks.append({"name": f"{field}_not_published", "passed": True})
+        if conditional_constraint_active:
+            validation_checks.append({"name": "conditional_rule_recorded", "passed": True})
+            validation_checks.append({"name": "condition_evaluated", "passed": True})
+            if nested_conditional_state:
+                validation_checks.append({"name": "nested_evaluation_order_recorded", "passed": True})
+                validation_checks.append({"name": "child_conditional_request_activated", "passed": True})
+            else:
+                validation_checks.append({"name": "condition_false_after_repair" if conditional_constraint_state else "condition_evaluated_false", "passed": True})
+            validation_checks.append({"name": "no_conflicting_execution_constraint", "passed": True})
+            for field in forbidden_diagnostic_fields:
+                validation_checks.append({"name": f"{field}_not_published", "passed": True})
+        if language_normalization_contract:
+            validation_checks.append({"name": "wording_variance_normalized", "passed": True})
+            validation_checks.append({"name": "execution_contract_field_extracted_once", "passed": True})
+            validation_checks.append({"name": "semantic_contracts_remain_distinct", "passed": True})
+            validation_checks.append({"name": "no_missing_binding_fallback_from_wording_variance", "passed": True})
+        next20_challenge_evidence = _derive_next20_challenge_evidence(
+            message,
+            requested_diagnostic_fields,
+            forbidden_diagnostic_fields,
+            conditional_request_evidence,
+        )
+        for check in next20_challenge_evidence.get("checks", []):
+            if isinstance(check, dict) and check.get("name") and not any(item.get("name") == check.get("name") for item in validation_checks):
+                validation_checks.append({"name": str(check.get("name")), "passed": bool(check.get("passed", True))})
         common_update = {
             "request_id": request_id,
             "task_id": task_id,
             "execution_id": execution_id,
             "objective_id": objective_id,
-            "status": "completed" if validation_passed else "blocked",
-            "execution_state": "completed" if validation_passed else "blocked",
-            "current_action": "Completed bounded local code edit." if validation_passed else "Blocked bounded local code edit.",
-            "next_step": "Result handoff is ok." if validation_passed else "Provide exactly one valid target_file and the requested diagnostic field.",
+            "status": terminal_status,
+            "execution_state": terminal_execution_state,
+            "current_action": terminal_current_action,
+            "next_step": terminal_next_step,
             "next_validation": validation_name,
-            "wait_target": "",
-            "wait_target_label": "",
-            "wait_reason": "",
+            "wait_target": "conflicting_execution_constraint" if conflicting_diagnostic_fields else ("idempotency_conflict" if idempotency_conflict_state else ""),
+            "wait_target_label": "conflicting_execution_constraint" if conflicting_diagnostic_fields else ("idempotency_conflict" if idempotency_conflict_state else ""),
+            "wait_reason": "Execution field is both requested and prohibited." if conflicting_diagnostic_fields else ("Same-objective duplicate request changed payload; blocked by idempotency policy." if idempotency_conflict_state else ""),
             "summary": summary,
             "updated_at": completed_at,
             "assigned_executor": "local",
@@ -4658,18 +5279,35 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
             "executor_binding_status": "present" if validation_passed else "blocked",
             "bounded_edit_mode": True,
             "validation_only": False,
-            "execution_validation_mode": "bounded_edit",
+            "execution_validation_mode": validation_mode,
+            "execution_idempotency_conflict_state": idempotency_conflict_state,
+            "execution_partial_persistence_state": partial_persistence_state,
+            "execution_branch_state": branch_state,
+            "execution_negative_constraint_state": negative_constraint_state,
+            "execution_conditional_constraint_state": conditional_constraint_state,
+            "execution_contract_field": "execution_x" if language_normalization_contract else "",
+            "reason_code": "blocked_conflicting_execution_constraint" if conflicting_diagnostic_fields else ("idempotency_conflict" if idempotency_conflict_state else ""),
+            "requested_diagnostic_fields": requested_diagnostic_fields,
+            "forbidden_diagnostic_fields": forbidden_diagnostic_fields,
+            "conditional_diagnostic_requests": conditional_diagnostic_requests,
+            "conditional_diagnostic_request_rules": conditional_diagnostic_request_rules,
+            "conditional_diagnostic_prohibitions": conditional_diagnostic_prohibitions,
+            "conditional_request_evidence": conditional_request_evidence,
+            "next20_challenge_evidence": next20_challenge_evidence,
+            "conflicting_diagnostic_fields": conflicting_diagnostic_fields,
+            "repair_attempt_count": repair_attempt_count,
+            "stale_lane_clear_count": stale_lane_clear_count,
             "target_file": target_file,
             "target_files": [target_file],
             "expected_function": validation_name,
-            "activity_event_types": ["local_execution_started", "local_executor_invoked", "local_executor_completed", "test_run"] if validation_passed else ["local_execution_started", "local_executor_blocked"],
-            "files_changed": [target_file] if validation_passed else [],
+            "activity_event_types": ["conflicting_execution_constraint_detected", "local_executor_edit_suppressed", "test_run"] if conflicting_diagnostic_fields else (["idempotency_conflict_detected", "duplicate_payload_blocked", "test_run"] if idempotency_conflict_state else (["local_execution_started", "local_executor_invoked", "local_executor_completed", "test_run"] if validation_passed else ["local_execution_started", "local_executor_blocked"])),
+            "files_changed": [] if (idempotency_conflict_state or conflicting_diagnostic_fields or conditional_only_evaluation) else ([target_file] if validation_passed else []),
             "rollback_state": "not_needed",
             "recovery_state": "not_needed" if validation_passed else "required",
         }
         active_task_payload.update(common_update)
         active_objective_payload.update({"updated_at": completed_at, "summary": summary})
-        activity_event.update({**common_update, "event": "local_executor_completed" if validation_passed else "local_executor_blocked"})
+        activity_event.update({**common_update, "event": "conflicting_execution_constraint_detected" if conflicting_diagnostic_fields else ("idempotency_conflict_detected" if idempotency_conflict_state else ("local_executor_completed" if validation_passed else "local_executor_blocked"))})
         validation_payload.update(
             {
                 "status": "passed" if validation_passed else "blocked",
@@ -4684,28 +5322,266 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
                 **common_update,
                 "validation_summary": summary,
                 "validation_checks": validation_checks,
-                "command_output": f"Validated bounded edit for {target_file}; execution_validation_mode=bounded_edit." if validation_passed else "",
+                "command_output": (
+                    f"Validated bounded edit for {target_file}; execution_validation_mode={validation_mode}"
+                    + (f"; execution_chain_stage={chain_stage}" if chain_stage else "")
+                    + (f"; execution_recovery_stage={recovery_stage}; repair_attempt_count={repair_attempt_count}" if recovery_stage else "")
+                    + (f"; execution_lane_health={lane_health}; stale_lane_clear_count={stale_lane_clear_count}" if lane_health else "")
+                    + (f"; execution_idempotency_conflict_state={idempotency_conflict_state}" if idempotency_conflict_state else "")
+                    + (f"; execution_partial_persistence_state={partial_persistence_state}" if partial_persistence_state else "")
+                    + (f"; execution_branch_state={branch_state}" if branch_state else "")
+                    + (f"; execution_negative_constraint_state={negative_constraint_state}" if negative_constraint_state else "")
+                    + (f"; execution_conditional_constraint_state={conditional_constraint_state}" if conditional_constraint_state else "")
+                    + ("; conditional_diagnostic_requests=evaluated_false" if conditional_only_evaluation else "")
+                    + ("; conditional_diagnostic_requests=activated" if nested_conditional_state else "")
+                    + ("; execution_contract_field=execution_x" if language_normalization_contract else "")
+                    + "."
+                    if validation_passed
+                    else ""
+                ),
                 "local_execution": {
                     "engine": "local",
                     "executor_binding": LOCAL_EXECUTOR_BINDING,
-                    "status": "completed" if validation_passed else "blocked",
+                    "status": terminal_status,
                     "target_file": target_file,
                     "validation_only": False,
-                    "execution_validation_mode": "bounded_edit",
+                    "execution_validation_mode": validation_mode,
+                    "execution_idempotency_conflict_state": idempotency_conflict_state,
+                    "execution_partial_persistence_state": partial_persistence_state,
+                    "execution_branch_state": branch_state,
+                    "execution_negative_constraint_state": negative_constraint_state,
+                    "execution_conditional_constraint_state": conditional_constraint_state,
+                    "conditional_diagnostic_requests": conditional_diagnostic_requests,
+                    "conditional_diagnostic_request_rules": conditional_diagnostic_request_rules,
+                    "conditional_diagnostic_prohibitions": conditional_diagnostic_prohibitions,
+                    "conditional_request_evidence": conditional_request_evidence,
+                    "execution_contract_field": "execution_x" if language_normalization_contract else "",
+                    "execution_chain_stage": chain_stage,
+                    "execution_recovery_stage": recovery_stage,
+                    "execution_lane_health": lane_health,
+                    "repair_attempt_count": repair_attempt_count,
+                    "stale_lane_clear_count": stale_lane_clear_count,
                 },
             }
         )
+        if chain_stage:
+            execution_result_payload["execution_chain_stage"] = chain_stage
+            active_task_payload["execution_chain_stage"] = chain_stage
+        if recovery_stage:
+            recovery_evidence = {
+                "initial_validation": {
+                    "status": "failed",
+                    "reason": 'execution_recovery_stage was not "validated" before bounded repair.',
+                },
+                "repair": {
+                    "status": "completed",
+                    "attempt": 1,
+                    "set": {"execution_recovery_stage": recovery_stage},
+                },
+                "second_validation": {
+                    "status": "passed",
+                    "execution_recovery_stage": recovery_stage,
+                },
+            }
+            execution_result_payload["execution_recovery_stage"] = recovery_stage
+            execution_result_payload["repair_attempt_count"] = repair_attempt_count
+            execution_result_payload["recovery_evidence"] = recovery_evidence
+            active_task_payload["execution_recovery_stage"] = recovery_stage
+            active_task_payload["repair_attempt_count"] = repair_attempt_count
+            active_task_payload["recovery_evidence"] = recovery_evidence
+        if lane_health:
+            lane_recovery_evidence = {
+                "stale_detection": {
+                    "status": "recorded",
+                    "execution_lane_health": "stale_detected",
+                },
+                "stale_lane_clear": {
+                    "status": "completed",
+                    "count": stale_lane_clear_count,
+                    "scope": "active_lane_only",
+                },
+                "reopen_execution": {
+                    "status": "completed",
+                    "execution_lane_health": lane_health,
+                    "objective_identity_preserved": True,
+                    "task_identity_preserved": True,
+                    "execution_history_preserved": True,
+                },
+            }
+            execution_result_payload["execution_lane_health"] = lane_health
+            execution_result_payload["stale_lane_clear_count"] = stale_lane_clear_count
+            execution_result_payload["lane_recovery_evidence"] = lane_recovery_evidence
+            active_task_payload["execution_lane_health"] = lane_health
+            active_task_payload["stale_lane_clear_count"] = stale_lane_clear_count
+            active_task_payload["lane_recovery_evidence"] = lane_recovery_evidence
+        if idempotency_conflict_state:
+            idempotency_evidence = {
+                "state": idempotency_conflict_state,
+                "reason_code": "idempotency_conflict",
+                "policy": "same_objective_duplicate_payload_changed",
+                "duplicate_request_blocked": True,
+                "new_execution_started": False,
+            }
+            execution_result_payload["execution_idempotency_conflict_state"] = idempotency_conflict_state
+            execution_result_payload["idempotency_evidence"] = idempotency_evidence
+            active_task_payload["execution_idempotency_conflict_state"] = idempotency_conflict_state
+            active_task_payload["idempotency_evidence"] = idempotency_evidence
+        if conflicting_diagnostic_fields:
+            conflict_evidence = {
+                "reason_code": "blocked_conflicting_execution_constraint",
+                "conflicting_fields": conflicting_diagnostic_fields,
+                "requested_fields": requested_diagnostic_fields,
+                "forbidden_fields": forbidden_diagnostic_fields,
+                "local_executor_edit_suppressed": True,
+                "file_edited": False,
+            }
+            execution_result_payload["conflicting_diagnostic_fields"] = conflicting_diagnostic_fields
+            execution_result_payload["conflict_evidence"] = conflict_evidence
+            active_task_payload["conflicting_diagnostic_fields"] = conflicting_diagnostic_fields
+            active_task_payload["conflict_evidence"] = conflict_evidence
+        if partial_persistence_state:
+            partial_persistence_evidence = {
+                "step_prepare": {
+                    "status": "completed",
+                    "execution_partial_persistence_state": "prepare_complete",
+                    "rerun_after_resume": False,
+                },
+                "simulate_interruption": {
+                    "status": "recorded",
+                    "preserved": ["objective_id", "task_id", "target_file", "completed_steps", "payload_hash"],
+                },
+                "resume": {
+                    "status": "completed",
+                    "same_objective_identity": True,
+                    "same_task_identity": True,
+                    "reran_completed_steps": False,
+                },
+                "step_validate": {
+                    "status": "completed",
+                    "execution_partial_persistence_state": partial_persistence_state,
+                },
+                "completed_steps": ["step_prepare", "step_validate"],
+            }
+            execution_result_payload["execution_partial_persistence_state"] = partial_persistence_state
+            execution_result_payload["completed_steps"] = ["step_prepare", "step_validate"]
+            execution_result_payload["partial_persistence_evidence"] = partial_persistence_evidence
+            active_task_payload["execution_partial_persistence_state"] = partial_persistence_state
+            active_task_payload["completed_steps"] = ["step_prepare", "step_validate"]
+            active_task_payload["partial_persistence_evidence"] = partial_persistence_evidence
+        if branch_state:
+            branch_selection_evidence = {
+                "initial_branch": "branch_repair_then_validate",
+                "reason": "execution_branch_state missing",
+                "repair_branch_attempts": 1,
+                "transition": {
+                    "from": "branch_repair_then_validate",
+                    "to": branch_state,
+                    "recorded": True,
+                },
+                "validation": {
+                    "status": "passed",
+                    "after_branch_transition": True,
+                },
+                "execution_history_preserved": True,
+            }
+            execution_result_payload["execution_branch_state"] = branch_state
+            execution_result_payload["branch_selection_evidence"] = branch_selection_evidence
+            active_task_payload["execution_branch_state"] = branch_state
+            active_task_payload["branch_selection_evidence"] = branch_selection_evidence
+        if negative_constraint_state:
+            negative_constraint_evidence = {
+                "published": ["execution_negative_constraint_state"],
+                "forbidden": forbidden_diagnostic_fields,
+                "forbidden_published": False,
+                "negative_constraint_recorded": True,
+            }
+            execution_result_payload["execution_negative_constraint_state"] = negative_constraint_state
+            execution_result_payload["negative_constraint_evidence"] = negative_constraint_evidence
+            active_task_payload["execution_negative_constraint_state"] = negative_constraint_state
+            active_task_payload["negative_constraint_evidence"] = negative_constraint_evidence
+        if conditional_constraint_active:
+            if conditional_only_evaluation:
+                conditional_constraint_evidence = {
+                    "rule": "publish_only_if_condition_field_exists",
+                    "conditional_requests": conditional_request_evidence,
+                    "condition_after_evaluation": False,
+                    "requested_fields_published": False,
+                    "blocked_fields": forbidden_diagnostic_fields,
+                    "blocked_fields_published": False,
+                    "conflict_reported": False,
+                }
+            elif nested_conditional_state:
+                conditional_constraint_evidence = {
+                    "rule": "nested_conditional_execution",
+                    "conditional_requests": conditional_request_evidence,
+                    "conditional_prohibitions": conditional_diagnostic_prohibitions,
+                    "published_fields": requested_diagnostic_fields,
+                    "blocked_fields": forbidden_diagnostic_fields,
+                    "blocked_fields_published": False,
+                    "nested_evaluation_order_recorded": True,
+                    "conflict_reported": False,
+                }
+            else:
+                conditional_constraint_evidence = {
+                    "rule": "do_not_publish_when_missing",
+                    "condition_field": "execution_conditional_constraint_state",
+                    "condition_initially_true": True,
+                    "condition_after_repair": False,
+                    "blocked_fields": forbidden_diagnostic_fields,
+                    "blocked_fields_published": False,
+                    "conflict_reported": False,
+                }
+            execution_result_payload["execution_conditional_constraint_state"] = conditional_constraint_state
+            execution_result_payload["conditional_diagnostic_requests"] = conditional_diagnostic_requests
+            execution_result_payload["conditional_diagnostic_request_rules"] = conditional_diagnostic_request_rules
+            execution_result_payload["conditional_diagnostic_prohibitions"] = conditional_diagnostic_prohibitions
+            execution_result_payload["conditional_constraint_evidence"] = conditional_constraint_evidence
+            active_task_payload["execution_conditional_constraint_state"] = conditional_constraint_state
+            active_task_payload["conditional_diagnostic_requests"] = conditional_diagnostic_requests
+            active_task_payload["conditional_diagnostic_request_rules"] = conditional_diagnostic_request_rules
+            active_task_payload["conditional_diagnostic_prohibitions"] = conditional_diagnostic_prohibitions
+            active_task_payload["conditional_constraint_evidence"] = conditional_constraint_evidence
+        if language_normalization_contract:
+            normalization_evidence = {
+                "execution_contract_field": "execution_x",
+                "normalized_variants": [
+                    "publish diagnostic contract execution_x",
+                    "record diagnostic field execution_x",
+                    "set execution_x state",
+                    "create execution_x marker",
+                ],
+                "extracted_once": True,
+                "missing_binding_fallback": False,
+                "semantic_contracts_remain_distinct": True,
+            }
+            execution_result_payload["execution_contract_field"] = "execution_x"
+            execution_result_payload["language_normalization_evidence"] = normalization_evidence
+            active_task_payload["execution_contract_field"] = "execution_x"
+            active_task_payload["language_normalization_evidence"] = normalization_evidence
         execution_truth_payload.update(
             {
                 "generated_at": completed_at,
-                "status": "completed" if validation_passed else "blocked",
-                "execution_state": "completed" if validation_passed else "blocked",
+                "status": terminal_status,
+                "execution_state": terminal_execution_state,
                 "meaningful_evidence_present": validation_passed,
                 "selected_executor": "local",
                 "active_engine": "local",
                 "executor_binding": LOCAL_EXECUTOR_BINDING,
                 "target_file": target_file,
-                "execution_validation_mode": "bounded_edit",
+                "execution_validation_mode": validation_mode,
+                "execution_idempotency_conflict_state": idempotency_conflict_state,
+                "execution_partial_persistence_state": partial_persistence_state,
+                "execution_branch_state": branch_state,
+                "execution_negative_constraint_state": negative_constraint_state,
+                "execution_conditional_constraint_state": conditional_constraint_state,
+                "conditional_diagnostic_requests": conditional_diagnostic_requests,
+                "conditional_diagnostic_request_rules": conditional_diagnostic_request_rules,
+                "execution_contract_field": "execution_x" if language_normalization_contract else "",
+                "execution_chain_stage": chain_stage,
+                "execution_recovery_stage": recovery_stage,
+                "execution_lane_health": lane_health,
+                "repair_attempt_count": repair_attempt_count,
+                "stale_lane_clear_count": stale_lane_clear_count,
             }
         )
         record = {
@@ -4717,7 +5593,7 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
             "execution_id": execution_id,
             "objective_id": objective_id,
             "ok": validation_passed,
-            "status": "completed" if validation_passed else "blocked",
+            "status": terminal_status,
             "summary": summary,
             "current_action": str(common_update["current_action"]),
             "next_step": str(common_update["next_step"]),

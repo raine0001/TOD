@@ -1040,6 +1040,14 @@ def _build_mim_ui_degraded_state(*, db_error_text: str = "") -> dict[str, object
     "operator_reasoning": operator_reasoning,
     "system_activity": system_activity,
     "tod_truth_reconciliation": system_activity.get("tod_truth_reconciliation") if isinstance(system_activity.get("tod_truth_reconciliation"), dict) else tod_truth_reconciliation,
+    "console_freshness": system_activity.get("console_freshness") if isinstance(system_activity.get("console_freshness"), dict) else {},
+    "last_handoff_id": str(system_activity.get("last_handoff_id") or "").strip(),
+    "last_tod_task_id": str(system_activity.get("last_tod_task_id") or "").strip(),
+    "last_tod_result_status": str(system_activity.get("last_tod_result_status") or "").strip(),
+    "last_consumed_at": str(system_activity.get("last_consumed_at") or "").strip(),
+    "reply_status": str(system_activity.get("reply_status") or "").strip(),
+    "session_message_id": str(system_activity.get("session_message_id") or "").strip(),
+    "console_freshness_status": str(system_activity.get("console_freshness_status") or "").strip(),
     "initiative_driver": initiative_driver,
     "collaboration_progress": {},
     "dispatch_telemetry": {},
@@ -1485,6 +1493,14 @@ def _build_mim_live_worklog_messages(
   relation = activity.get("relation") if isinstance(activity.get("relation"), dict) else {}
   tod_phase_progress = activity.get("tod_phase_progress") if isinstance(activity.get("tod_phase_progress"), dict) else {}
   tod_stall_signal = activity.get("tod_stall_signal") if isinstance(activity.get("tod_stall_signal"), dict) else {}
+  tod_truth_reconciliation = activity.get("tod_truth_reconciliation") if isinstance(activity.get("tod_truth_reconciliation"), dict) else {}
+  console_freshness = (
+    activity.get("console_freshness")
+    if isinstance(activity.get("console_freshness"), dict)
+    else tod_truth_reconciliation.get("console_freshness")
+    if isinstance(tod_truth_reconciliation.get("console_freshness"), dict)
+    else {}
+  )
 
   objective = _resolve_initiative_label(initiative.get("active_objective"), "No active objective")
   active_task = _resolve_initiative_label(initiative.get("active_task"), "")
@@ -1548,6 +1564,24 @@ def _build_mim_live_worklog_messages(
         "message_type": "system_summary",
         "content": f"Objective now: {objective}",
         "created_at": updated_at,
+      }
+    )
+  if str(console_freshness.get("console_freshness_status") or "").strip() == "fresh_done":
+    handoff_id = str(console_freshness.get("last_handoff_id") or "").strip()
+    task_id = str(console_freshness.get("last_tod_task_id") or "").strip()
+    result_reason = _compact_sentence(
+      _first_nonempty_text(
+        console_freshness.get("result_reason"),
+        f"TOD completed handoff {task_id}; result handoff is ok.",
+      ),
+      max_len=160,
+    )
+    messages.append(
+      {
+        "role": "mim",
+        "message_type": "system_summary",
+        "content": f"TOD handoff complete: {result_reason} Handoff id: {handoff_id}.",
+        "created_at": str(console_freshness.get("last_consumed_at") or updated_at).strip(),
       }
     )
   if current_slice:
@@ -3615,6 +3649,87 @@ def _coordination_ack_matches_request(request_status: str, ack_status: str) -> b
   return normalized_ack == normalized_request
 
 
+def _completed_mim_tod_handoff_identity(*payloads: dict) -> dict:
+  completed_statuses = {"succeeded", "done", "complete", "completed", "resolved", "closed", "ok"}
+  for payload in payloads:
+    if not isinstance(payload, dict):
+      continue
+    current_payload = payload.get("current") if isinstance(payload.get("current"), dict) else {}
+    task_result = current_payload.get("task_result") if isinstance(current_payload.get("task_result"), dict) else {}
+    dispatch_kind = str(
+      payload.get("dispatch_kind")
+      or task_result.get("dispatch_kind")
+      or ""
+    ).strip().lower()
+    handoff_id = str(payload.get("handoff_id") or task_result.get("handoff_id") or "").strip()
+    objective_id = str(payload.get("objective_id") or task_result.get("objective_id") or "").strip()
+    task_id = str(payload.get("task_id") or task_result.get("task_id") or "").strip()
+    looks_like_handoff = bool(
+      dispatch_kind == "mim_tod_executable_handoff"
+      or handoff_id.startswith("mim-tod-handoff-")
+      or objective_id.startswith("mim-tod-handoff-")
+      or task_id.startswith("mim-tod-handoff-")
+    )
+    if not looks_like_handoff:
+      continue
+    status = str(payload.get("status") or payload.get("result_status") or task_result.get("status") or "").strip().lower()
+    result_status = str(payload.get("result_status") or payload.get("status") or task_result.get("result_status") or task_result.get("status") or "").strip().lower()
+    if status not in completed_statuses and result_status not in completed_statuses:
+      continue
+    return {
+      "request_id": str(payload.get("request_id") or task_result.get("request_id") or "").strip(),
+      "task_id": task_id,
+      "objective_id": objective_id,
+      "handoff_id": handoff_id,
+      "result_status": result_status or status,
+      "result_reason": str(payload.get("result_reason") or task_result.get("result_reason") or payload.get("summary") or task_result.get("summary") or "").strip(),
+      "consumed_at": str(payload.get("consumed_at") or payload.get("generated_at") or task_result.get("consumed_at") or "").strip(),
+    }
+  return {}
+
+
+def _mim_tod_handoff_console_freshness(*, shared_root: Path = SHARED_RUNTIME_ROOT) -> dict:
+  durable_handoff = _load_json_artifact(shared_root / "MIM_TOD_HANDOFF_RESULT.latest.json")
+  task_result = _load_json_artifact(shared_root / "TOD_MIM_TASK_RESULT.latest.json")
+  consume_evidence = _load_json_artifact(shared_root / "MIM_TOD_CONSUME_EVIDENCE.latest.json")
+  identity = _completed_mim_tod_handoff_identity(durable_handoff, consume_evidence, task_result)
+  result_status = str(identity.get("result_status") or "").strip().lower()
+  current_payload = consume_evidence.get("current") if isinstance(consume_evidence.get("current"), dict) else {}
+  consumed_at = str(
+    consume_evidence.get("consumed_at")
+    or consume_evidence.get("generated_at")
+    or durable_handoff.get("consumed_at")
+    or durable_handoff.get("generated_at")
+    or identity.get("consumed_at")
+    or ""
+  ).strip()
+  reply_status = "done" if result_status in {"succeeded", "done", "complete", "completed", "resolved", "closed", "ok"} else ""
+  console_status = "no_handoff_result"
+  if identity and reply_status == "done" and consumed_at:
+    console_status = "fresh_done"
+  elif identity and reply_status == "done":
+    console_status = "done_missing_consumed_at"
+  elif identity:
+    console_status = "handoff_result_pending"
+  return {
+    "last_handoff_id": str(identity.get("handoff_id") or "").strip(),
+    "last_tod_task_id": str(identity.get("task_id") or "").strip(),
+    "last_tod_objective_id": str(identity.get("objective_id") or "").strip(),
+    "last_tod_result_status": result_status,
+    "last_consumed_at": consumed_at,
+    "reply_status": reply_status,
+    "session_message_id": str(
+      consume_evidence.get("session_message_id")
+      or task_result.get("session_message_id")
+      or durable_handoff.get("session_message_id")
+      or current_payload.get("session_message_id")
+      or ""
+    ).strip(),
+    "result_reason": str(identity.get("result_reason") or "").strip(),
+    "console_freshness_status": console_status,
+  }
+
+
 def _build_tod_truth_reconciliation_snapshot(
     *,
     initiative_driver: dict,
@@ -3649,7 +3764,20 @@ def _build_tod_truth_reconciliation_snapshot(
   bridge_task_ack = _load_json_artifact(shared_root / "TOD_MIM_TASK_ACK.latest.json")
   bridge_task_result = _load_json_artifact(shared_root / "TOD_MIM_TASK_RESULT.latest.json")
   bridge_consume_evidence = _load_json_artifact(shared_root / "MIM_TOD_CONSUME_EVIDENCE.latest.json")
+  durable_handoff_result = _load_json_artifact(shared_root / "MIM_TOD_HANDOFF_RESULT.latest.json")
   authoritative_request_status = load_authoritative_request_status(shared_root=shared_root) or {}
+  completed_handoff_identity = _completed_mim_tod_handoff_identity(bridge_task_result, bridge_consume_evidence, durable_handoff_result)
+  console_freshness = _mim_tod_handoff_console_freshness(shared_root=shared_root)
+  completed_handoff_ignored_for_alignment = False
+  if (
+    completed_handoff_identity
+    and canonical_objective_id
+    and live_request_objective_id
+    and live_request_objective_id == str(completed_handoff_identity.get("objective_id") or "").strip()
+    and canonical_objective_id != live_request_objective_id
+  ):
+    live_request_objective_id = canonical_objective_id
+    completed_handoff_ignored_for_alignment = True
 
   summary_payload = truth_payload.get("summary") if isinstance(truth_payload.get("summary"), dict) else {}
   truth_rows = truth_payload.get("recent_execution_truth") if isinstance(truth_payload.get("recent_execution_truth"), list) else []
@@ -3832,6 +3960,16 @@ def _build_tod_truth_reconciliation_snapshot(
     "bridge_request_id": active_request_id,
     "bridge_request_confirmed": bridge_request_confirmed,
     "bridge_confirmation_source": bridge_confirmation_source,
+    "completed_mim_tod_handoff": completed_handoff_identity,
+    "completed_handoff_ignored_for_alignment": completed_handoff_ignored_for_alignment,
+    "console_freshness": console_freshness,
+    "last_handoff_id": str(console_freshness.get("last_handoff_id") or "").strip(),
+    "last_tod_task_id": str(console_freshness.get("last_tod_task_id") or "").strip(),
+    "last_tod_result_status": str(console_freshness.get("last_tod_result_status") or "").strip(),
+    "last_consumed_at": str(console_freshness.get("last_consumed_at") or "").strip(),
+    "reply_status": str(console_freshness.get("reply_status") or "").strip(),
+    "session_message_id": str(console_freshness.get("session_message_id") or "").strip(),
+    "console_freshness_status": str(console_freshness.get("console_freshness_status") or "").strip(),
     "coordination_request_id": coordination_request_id,
     "coordination_request_status": coordination_request_status,
     "coordination_ack_id": coordination_ack_id,
@@ -4397,6 +4535,11 @@ def _build_system_activity_snapshot(
   elif bool(tod_truth_reconciliation.get("should_override_completion", False)):
     tod_truth_reconciliation["progress_label"] = "Execution unconfirmed"
     tod_truth_reconciliation["progress_detail"] = str(tod_truth_reconciliation.get("summary") or "").strip()
+  console_freshness = (
+    tod_truth_reconciliation.get("console_freshness")
+    if isinstance(tod_truth_reconciliation.get("console_freshness"), dict)
+    else {}
+  )
 
   frontend_media = (
     health.get("frontend_media") if isinstance(health.get("frontend_media"), dict) else {}
@@ -4474,6 +4617,7 @@ def _build_system_activity_snapshot(
     _runtime_recovery_activity_timestamps(recovery),
   )
   last_task_progress_at = _latest_timestamp_value(
+    console_freshness.get("last_consumed_at"),
     dispatch.get("host_completed_timestamp"),
     dispatch.get("host_received_timestamp"),
     collaboration.get("generated_at"),
@@ -4563,11 +4707,26 @@ def _build_system_activity_snapshot(
     headline = "IDLE - healthy, no live task right now"
     tone = "ready"
 
+  fresh_handoff_complete = bool(
+    str(console_freshness.get("console_freshness_status") or "").strip() == "fresh_done"
+    and str(console_freshness.get("reply_status") or "").strip() == "done"
+  )
+  if fresh_handoff_complete and not objective_drift and not boundary_blocked:
+    status_code = "idle"
+    status_label = "DONE"
+    headline = "DONE - latest TOD handoff result consumed"
+    tone = "ready"
+    should_be_working = False
+    should_be_working_reason = "The latest MIM to TOD handoff completed and MIM consumed the result."
+    stall_reason = "No current stall evidence; latest MIM to TOD handoff result is consumed."
+
   if status_code == "active":
     if current_task_waiting_on_ack:
       summary = str(tod_truth_reconciliation.get("summary") or "").strip()
     else:
       summary = activity_summary or active_work_summary or "MIM is actively advancing the current objective."
+  elif fresh_handoff_complete:
+    summary = str(console_freshness.get("result_reason") or "").strip() or "MIM consumed the latest TOD handoff result successfully."
   elif status_code == "idle":
     summary = activity_summary or "MIM is healthy, but no live task is currently executing."
   elif status_code == "blocked":
@@ -4588,6 +4747,8 @@ def _build_system_activity_snapshot(
     relation_flow = "Awaiting TOD confirmation"
   elif current_task_waiting_on_ack:
     relation_flow = "Waiting"
+  elif fresh_handoff_complete:
+    relation_flow = "Complete"
   elif not execution_allowed:
     relation_flow = "Blocked"
   elif objective_drift:
@@ -4602,6 +4763,8 @@ def _build_system_activity_snapshot(
     bridge_health = "Waiting on MIM"
   elif boundary_blocked:
     bridge_health = "Human gate"
+  elif fresh_handoff_complete:
+    bridge_health = "Healthy"
   elif bool(escalation.get("required", False)):
     bridge_health = "Escalated"
   elif objective_drift:
@@ -4621,7 +4784,7 @@ def _build_system_activity_snapshot(
     tod_truth_reconciliation.get("coordination_response_missing", False)
     or boundary_blocked
     or tod_truth_reconciliation.get("should_override_completion", False)
-  ) else (str(tod_truth_reconciliation.get("summary") or "").strip() if current_task_waiting_on_ack else readiness_summary) or (
+  ) else (summary if fresh_handoff_complete else (str(tod_truth_reconciliation.get("summary") or "").strip() if current_task_waiting_on_ack else readiness_summary)) or (
     "Execution is allowed."
     if execution_allowed
     else "Execution is currently blocked by readiness policy."
@@ -4655,6 +4818,14 @@ def _build_system_activity_snapshot(
     "authoritative_source": "TOD",
     "authoritative_reason": str(tod_truth_reconciliation.get("summary") or "").strip(),
     "tod_truth_reconciliation": tod_truth_reconciliation,
+    "console_freshness": console_freshness,
+    "last_handoff_id": str(console_freshness.get("last_handoff_id") or "").strip(),
+    "last_tod_task_id": str(console_freshness.get("last_tod_task_id") or "").strip(),
+    "last_tod_result_status": str(console_freshness.get("last_tod_result_status") or "").strip(),
+    "last_consumed_at": str(console_freshness.get("last_consumed_at") or "").strip(),
+    "reply_status": str(console_freshness.get("reply_status") or "").strip(),
+    "session_message_id": str(console_freshness.get("session_message_id") or "").strip(),
+    "console_freshness_status": str(console_freshness.get("console_freshness_status") or "").strip(),
     "tod_phase_progress": tod_execution_progress.get("phase_progress") if isinstance(tod_execution_progress.get("phase_progress"), dict) else {},
     "tod_stall_signal": tod_execution_progress.get("stall_signal") if isinstance(tod_execution_progress.get("stall_signal"), dict) else {},
     "should_be_working": should_be_working,
@@ -4689,9 +4860,9 @@ def _build_system_activity_snapshot(
       "bridge_health": bridge_health,
       "execution_flow": relation_flow,
       "authoritative_source": "TOD",
-      "authoritative_reason": str(tod_truth_reconciliation.get("summary") or "").strip(),
+      "authoritative_reason": summary if fresh_handoff_complete else str(tod_truth_reconciliation.get("summary") or "").strip(),
       "last_handoff_at": _latest_timestamp_value(request.get("generated_at"), dispatch.get("host_received_timestamp")),
-      "last_feedback_at": _latest_timestamp_value(dispatch.get("host_completed_timestamp"), tod_decision.get("generated_at")),
+      "last_feedback_at": _latest_timestamp_value(console_freshness.get("last_consumed_at"), dispatch.get("host_completed_timestamp"), tod_decision.get("generated_at")),
       "summary": relation_summary,
     },
     "canonical_objective_id": canonical_objective_id,
@@ -5864,6 +6035,24 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     .chat-bubble.mim {
       background: linear-gradient(135deg, rgba(11, 38, 54, 0.98), rgba(10, 28, 40, 0.98));
       border-color: #1b5d7e;
+    }
+    .chat-bubble.mim.thinking {
+      border-color: rgba(65, 203, 255, 0.72);
+      background: linear-gradient(135deg, rgba(12, 48, 69, 0.98), rgba(9, 33, 48, 0.98));
+    }
+    .thinking-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #d8f5ff;
+    }
+    .thinking-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #41cbff;
+      box-shadow: 0 0 0 rgba(65, 203, 255, 0.4);
+      animation: activityPulse 1.15s ease-in-out infinite;
     }
     .chat-bubble.system {
       justify-self: center;
@@ -7740,7 +7929,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 
     function normalizeMessageType(message = {}) {
       const explicit = safeText(message.message_type).toLowerCase();
-      if (['user', 'mim_reply', 'system_execution', 'system_summary'].includes(explicit)) {
+      if (['user', 'mim_reply', 'system_execution', 'system_summary', 'thinking'].includes(explicit)) {
         return explicit;
       }
       const role = safeText(message.role || message.direction || 'mim').toLowerCase();
@@ -7812,6 +8001,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     function messageLabel(message = {}) {
       const messageType = normalizeMessageType(message);
       if (messageType === 'user') return 'Operator';
+      if (messageType === 'thinking') return 'MIM';
       if (messageType === 'system_execution') return 'Execution';
       if (messageType === 'system_summary') return 'System';
       return 'MIM';
@@ -8130,6 +8320,9 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       const bubble = document.createElement('div');
       const messageType = normalizeMessageType(message);
       bubble.className = `chat-bubble ${messageRoleClass(message)}${messageType === 'system_execution' ? ' execution' : ''}`;
+      if (messageType === 'thinking') {
+        bubble.classList.add('thinking');
+      }
       const metaParts = [messageLabel(message)];
       const mode = (messageType === 'system_execution' || messageType === 'system_summary')
         ? messageType.replace(/_/g, ' ')
@@ -8180,8 +8373,21 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 
       const inlineText = safeText(message.inline_text || message.summary_text || message.content);
       if (inlineText) {
-        const body = buildTextBlock(inlineText, messageType === 'system_summary' ? 'bubble-summary' : 'bubble-text');
-        if (body) bubble.appendChild(body);
+        if (messageType === 'thinking') {
+          const body = document.createElement('div');
+          body.className = 'bubble-text thinking-indicator';
+          const dot = document.createElement('span');
+          dot.className = 'thinking-dot';
+          dot.setAttribute('aria-hidden', 'true');
+          const label = document.createElement('span');
+          label.textContent = inlineText;
+          body.appendChild(dot);
+          body.appendChild(label);
+          bubble.appendChild(body);
+        } else {
+          const body = buildTextBlock(inlineText, messageType === 'system_summary' ? 'bubble-summary' : 'bubble-text');
+          if (body) bubble.appendChild(body);
+        }
       }
       return bubble;
     }
@@ -8254,8 +8460,10 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 
     function appendChatMessage(role, text, options = {}) {
       const clean = safeText(text);
-      if (!clean) return;
+      if (!clean) return '';
+      const clientMessageId = safeText(options.clientMessageId) || `client-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
       const tempMessage = {
+        client_message_id: clientMessageId,
         role: role === 'user' ? 'operator' : role,
         content: clean,
         created_at: new Date().toISOString(),
@@ -8265,6 +8473,55 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       };
       chatThreadMessages = [...chatThreadMessages, tempMessage];
       renderChatThread(chatThreadMessages, { force: true });
+      return clientMessageId;
+    }
+
+    function removeChatMessageByClientId(clientMessageId) {
+      const id = safeText(clientMessageId);
+      if (!id) return;
+      const nextMessages = chatThreadMessages.filter((message) => safeText(message.client_message_id) !== id);
+      if (nextMessages.length !== chatThreadMessages.length) {
+        chatThreadMessages = nextMessages;
+        renderChatThread(chatThreadMessages, { force: true });
+      }
+    }
+
+    function setTextChatBusy(isBusy) {
+      textChatInFlight = Boolean(isBusy);
+      if (chatSendBtn) {
+        chatSendBtn.disabled = textChatInFlight;
+        chatSendBtn.textContent = textChatInFlight ? 'Sending' : 'Send';
+        chatSendBtn.setAttribute('aria-busy', textChatInFlight ? 'true' : 'false');
+      }
+      if (chatInput) {
+        chatInput.setAttribute('aria-busy', textChatInFlight ? 'true' : 'false');
+      }
+    }
+
+    function delay(ms) {
+      return new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    async function pollStateAfterGatewayTimeout(thinkingMessageId) {
+      appendChatMessage('mim', 'MIM is still working. The gateway timed out before the result came back, so I am checking live state now.', {
+        interactionMode: 'status',
+        messageType: 'thinking',
+      });
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await delay(attempt < 2 ? 2500 : 5000);
+        await refreshState();
+        const freshness = latestUiState && typeof latestUiState === 'object'
+          ? safeText(latestUiState.console_freshness_status)
+          : '';
+        const statusLabel = latestUiState && latestUiState.system_activity
+          ? safeText(latestUiState.system_activity.status_label)
+          : '';
+        if (freshness === 'fresh_done' || statusLabel.toLowerCase() === 'done') {
+          removeChatMessageByClientId(thinkingMessageId);
+          return true;
+        }
+      }
+      return false;
     }
 
     function createClientMessageId(prefix) {
@@ -8367,6 +8624,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     async function submitConversationTurn(messageText, interactionMode = 'text') {
       const text = String(messageText || '').trim();
       if (!text) return;
+      if (textChatInFlight) return;
       const parsedIntent = classifyTextChatIntent(text);
       const safetyFlags = classifyTextChatSafetyFlags(text);
       const source = interactionMode === 'voice'
@@ -8376,6 +8634,14 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
           : 'mim_ui_text_chat';
 
       appendChatMessage('user', text, { interactionMode });
+      if (chatInput && interactionMode !== 'voice') {
+        chatInput.value = '';
+      }
+      setTextChatBusy(true);
+      const thinkingMessageId = appendChatMessage('mim', 'MIM is routing this request...', {
+        interactionMode: 'status',
+        messageType: 'thinking',
+      });
 
       try {
         const response = await fetch('/gateway/intake/text', {
@@ -8395,21 +8661,31 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
           }),
         });
         if (!response.ok) {
+          if (response.status === 524) {
+            const recovered = await pollStateAfterGatewayTimeout(thinkingMessageId);
+            if (!recovered) {
+              removeChatMessageByClientId(thinkingMessageId);
+              appendChatMessage('mim', 'MIM is still checking this request. Refresh the console state before sending it again.');
+            }
+            return;
+          }
+          removeChatMessageByClientId(thinkingMessageId);
           appendChatMessage('mim', `Text chat request failed (${response.status}).`);
           return;
         }
 
         const result = await response.json();
-        if (chatInput && interactionMode !== 'voice') {
-          chatInput.value = '';
-        }
+        removeChatMessageByClientId(thinkingMessageId);
         await refreshState();
         if (!latestUiState?.chat_thread) {
           appendChatMessage('mim', summarizeTextResolution(result));
         }
       } catch (error) {
+        removeChatMessageByClientId(thinkingMessageId);
         const detail = error && error.message ? String(error.message) : 'request_failed';
         appendChatMessage('mim', `Text chat is temporarily unavailable (${detail}).`);
+      } finally {
+        setTextChatBusy(false);
       }
     }
 
@@ -8615,6 +8891,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     let lastSpokenPhraseAt = 0;
     let refreshInFlight = false;
     let refreshPending = false;
+    let textChatInFlight = false;
     const SPEECH_INTERRUPTION_CONFIRM_MS = 1200;
     const runtimeHealthRecoveryCooldownUntil = {
       camera: 0,
@@ -14824,6 +15101,14 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
         "operator_reasoning": operator_reasoning,
         "system_activity": system_activity,
         "tod_truth_reconciliation": system_activity.get("tod_truth_reconciliation") if isinstance(system_activity.get("tod_truth_reconciliation"), dict) else tod_truth_reconciliation,
+        "console_freshness": system_activity.get("console_freshness") if isinstance(system_activity.get("console_freshness"), dict) else {},
+        "last_handoff_id": str(system_activity.get("last_handoff_id") or "").strip(),
+        "last_tod_task_id": str(system_activity.get("last_tod_task_id") or "").strip(),
+        "last_tod_result_status": str(system_activity.get("last_tod_result_status") or "").strip(),
+        "last_consumed_at": str(system_activity.get("last_consumed_at") or "").strip(),
+        "reply_status": str(system_activity.get("reply_status") or "").strip(),
+        "session_message_id": str(system_activity.get("session_message_id") or "").strip(),
+        "console_freshness_status": str(system_activity.get("console_freshness_status") or "").strip(),
           "initiative_driver": initiative_driver,
         "collaboration_progress": collaboration_progress,
         "dispatch_telemetry": dispatch_telemetry,

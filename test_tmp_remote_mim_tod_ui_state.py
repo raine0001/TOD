@@ -1487,6 +1487,1271 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertEqual(execution_payload["target_file"], "core/routers/tod_ui.py")
         self.assertEqual(execution_payload["files_changed"], ["core/routers/tod_ui.py"])
 
+    def test_publish_local_execution_ack_distinguishes_multistep_chain_from_prior_bounded_edit(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-DIRECT-BOUNDED-EDIT-SMOKE",
+                "task_id": "tod-direct-bounded-edit-smoke-task-1778200950537",
+            },
+            "live_task_request": {
+                "request_id": "tod-direct-bounded-edit-smoke-task-1778200950537",
+                "task_id": "tod-direct-bounded-edit-smoke-task-1778200950537",
+                "objective_id": "TOD-DIRECT-BOUNDED-EDIT-SMOKE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-DIRECT-BOUNDED-EDIT-SMOKE"},
+        }
+        message = (
+            "OBJECTIVE: TOD-DIRECT-MULTISTEP-CHAIN-SMOKE TOD, this task is assigned directly to you. "
+            "TARGET FILE: core/routers/tod_ui.py "
+            "TASK CHAIN: STEP 1: Add diagnostic field: execution_chain_stage "
+            "STEP 2: Validate that: - execution_chain_stage exists - execution_validation_mode still exists - bounded_edit_mode remains true "
+            "RULES: - exactly one target_file - bounded_edit_mode true - both steps must complete in order"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-DIRECT-MULTISTEP-CHAIN-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+                request_payload = json.loads((shared_root / "TOD_ACTIVE_TASK.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(execution_payload["objective_id"], "TOD-DIRECT-MULTISTEP-CHAIN-SMOKE")
+        self.assertNotEqual(execution_payload["task_id"], "tod-direct-bounded-edit-smoke-task-1778200950537")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_multistep_chain")
+        self.assertEqual(execution_payload["execution_chain_stage"], "step_2_validation_completed")
+        self.assertEqual(execution_payload["requested_diagnostic_fields"], ["execution_chain_stage"])
+        self.assertIn("execution_chain_stage", execution_payload["summary"])
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("execution_chain_stage_requested", check_names)
+        self.assertIn("execution_validation_mode_preserved", check_names)
+        self.assertIn("step_ordering_preserved", check_names)
+        self.assertEqual(request_payload["execution_chain_stage"], "step_2_validation_completed")
+
+    def test_publish_local_execution_ack_records_one_bounded_recovery_attempt(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-DIRECT-MULTISTEP-CHAIN-SMOKE",
+                "task_id": "tod-direct-multistep-chain-smoke-task-1778201772828",
+            },
+            "live_task_request": {
+                "request_id": "tod-direct-multistep-chain-smoke-task-1778201772828",
+                "task_id": "tod-direct-multistep-chain-smoke-task-1778201772828",
+                "objective_id": "TOD-DIRECT-MULTISTEP-CHAIN-SMOKE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-DIRECT-MULTISTEP-CHAIN-SMOKE"},
+        }
+        message = (
+            "OBJECTIVE: TOD-DIRECT-BOUNDED-RECOVERY-SMOKE TOD, this task is assigned directly to you. "
+            "TARGET FILE: core/routers/tod_ui.py "
+            "TASK: 1. Add diagnostic field: execution_recovery_stage "
+            "2. First validation must intentionally check for: execution_recovery_stage = \"validated\" "
+            "3. If the field is missing or wrong, perform one bounded repair by setting: execution_recovery_stage = \"validated\" "
+            "4. Re-run validation. "
+            "RULES: - exactly one target_file - bounded_edit_mode true - maximum one repair attempt - no repeated repair loop"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-DIRECT-BOUNDED-RECOVERY-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(execution_payload["objective_id"], "TOD-DIRECT-BOUNDED-RECOVERY-SMOKE")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_recovery")
+        self.assertEqual(execution_payload["execution_recovery_stage"], "validated")
+        self.assertEqual(execution_payload["repair_attempt_count"], 1)
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("execution_recovery_stage_requested", check_names)
+        self.assertIn("initial_validation_failed", check_names)
+        self.assertIn("single_repair_attempt_recorded", check_names)
+        self.assertIn("second_validation_passed", check_names)
+        self.assertEqual(execution_payload["recovery_evidence"]["repair"]["attempt"], 1)
+
+    def test_publish_local_execution_ack_recovers_stale_active_lane_once(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-DIRECT-BOUNDED-RECOVERY-SMOKE",
+                "task_id": "tod-direct-bounded-recovery-smoke-task-1778202154077",
+            },
+            "live_task_request": {
+                "request_id": "tod-direct-bounded-recovery-smoke-task-1778202154077",
+                "task_id": "tod-direct-bounded-recovery-smoke-task-1778202154077",
+                "objective_id": "TOD-DIRECT-BOUNDED-RECOVERY-SMOKE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-DIRECT-BOUNDED-RECOVERY-SMOKE"},
+        }
+        message = (
+            "OBJECTIVE: TOD-STALE-ACTIVE-LANE-RECOVERY-SMOKE TOD, this task is assigned directly to you. "
+            "TARGET FILE: core/routers/tod_ui.py "
+            "TASK: 1. Publish diagnostic field: execution_lane_health "
+            "2. Simulate a stale active lane by creating: execution_lane_health = \"stale_detected\" "
+            "3. TOD must: - record stale detection - clear only the stale lane state - preserve objective identity "
+            "- preserve bounded target_file - preserve execution history - reopen execution as: execution_lane_health = \"recovered\" "
+            "4. Re-run validation. "
+            "RULES: - exactly one target_file - bounded_edit_mode true - no duplicate task creation - preserve execution history"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-STALE-ACTIVE-LANE-RECOVERY-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(execution_payload["objective_id"], "TOD-STALE-ACTIVE-LANE-RECOVERY-SMOKE")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_stale_lane_recovery")
+        self.assertEqual(execution_payload["execution_lane_health"], "recovered")
+        self.assertEqual(execution_payload["stale_lane_clear_count"], 1)
+        self.assertEqual(execution_payload["requested_diagnostic_fields"], ["execution_lane_health"])
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("execution_lane_health_requested", check_names)
+        self.assertIn("stale_detected_recorded", check_names)
+        self.assertIn("stale_lane_cleared_once", check_names)
+        self.assertIn("recovered_state_recorded", check_names)
+        self.assertIn("execution_history_preserved", check_names)
+        self.assertEqual(execution_payload["lane_recovery_evidence"]["stale_lane_clear"]["count"], 1)
+
+    def test_publish_local_execution_ack_blocks_idempotency_conflict_payload_change(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-STALE-ACTIVE-LANE-RECOVERY-SMOKE",
+                "task_id": "tod-stale-active-lane-recovery-smoke-task-1778202423496",
+            },
+            "live_task_request": {
+                "request_id": "tod-stale-active-lane-recovery-smoke-task-1778202423496",
+                "task_id": "tod-stale-active-lane-recovery-smoke-task-1778202423496",
+                "objective_id": "TOD-STALE-ACTIVE-LANE-RECOVERY-SMOKE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-STALE-ACTIVE-LANE-RECOVERY-SMOKE"},
+        }
+        message = (
+            "OBJECTIVE: TOD-IDEMPOTENCY-CONFLICT-SMOKE TOD, this task is assigned directly to you. "
+            "GOAL: Prove TOD blocks same-objective duplicate requests when the payload changes. "
+            "TARGET FILE: core/routers/tod_ui.py "
+            "TASK: Publish diagnostic field: execution_idempotency_conflict_state "
+            "RULES: - exactly one target_file - bounded_edit_mode true "
+            "ACCEPTANCE: - changed duplicate payload is blocked - no duplicate execution"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-IDEMPOTENCY-CONFLICT-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(record["status"], "blocked")
+        self.assertEqual(execution_payload["objective_id"], "TOD-IDEMPOTENCY-CONFLICT-SMOKE")
+        self.assertEqual(execution_payload["status"], "blocked")
+        self.assertEqual(execution_payload["execution_state"], "idempotency_conflict")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_idempotency_conflict")
+        self.assertEqual(execution_payload["execution_idempotency_conflict_state"], "blocked_payload_changed")
+        self.assertEqual(execution_payload["reason_code"], "idempotency_conflict")
+        self.assertEqual(execution_payload["files_changed"], [])
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("execution_idempotency_conflict_state_requested", check_names)
+        self.assertIn("duplicate_payload_changed_detected", check_names)
+        self.assertIn("idempotency_conflict_blocked", check_names)
+        self.assertIn("no_duplicate_execution_started", check_names)
+        self.assertFalse(execution_payload["idempotency_evidence"]["new_execution_started"])
+        normalized = self.tod_ui._normalize_execution_status({}, execution_payload, {}, {"status": "passed"}, execution_payload, {})
+        self.assertEqual(normalized["reason_code"], "idempotency_conflict")
+
+    def test_publish_local_execution_ack_persists_partial_completion_resume_state(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-IDEMPOTENCY-CONFLICT-SMOKE",
+                "task_id": "tod-idempotency-conflict-smoke-task-1778202862120",
+            },
+            "live_task_request": {
+                "request_id": "tod-idempotency-conflict-smoke-task-1778202862120",
+                "task_id": "tod-idempotency-conflict-smoke-task-1778202862120",
+                "objective_id": "TOD-IDEMPOTENCY-CONFLICT-SMOKE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-IDEMPOTENCY-CONFLICT-SMOKE"},
+        }
+        message = (
+            "OBJECTIVE: TOD-PARTIAL-COMPLETION-PERSISTENCE-SMOKE TOD, this task is assigned directly to you. "
+            "TARGET FILE: core/routers/tod_ui.py "
+            "TASK: Publish diagnostic contract: execution_partial_persistence_state "
+            "STEP PLAN: 1. step_prepare: record execution_partial_persistence_state = \"prepare_complete\" "
+            "2. simulate_interruption: preserve objective_id, task_id, target_file, completed_steps, and payload_hash "
+            "3. resume: do not rerun step_prepare "
+            "4. step_validate: record execution_partial_persistence_state = \"validation_complete\" "
+            "RULES: - exactly one target_file - bounded_edit_mode true - no duplicate task creation"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-PARTIAL-COMPLETION-PERSISTENCE-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(execution_payload["objective_id"], "TOD-PARTIAL-COMPLETION-PERSISTENCE-SMOKE")
+        self.assertEqual(execution_payload["status"], "completed")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_partial_persistence")
+        self.assertEqual(execution_payload["execution_partial_persistence_state"], "validation_complete")
+        self.assertEqual(execution_payload["completed_steps"], ["step_prepare", "step_validate"])
+        self.assertFalse(execution_payload["partial_persistence_evidence"]["step_prepare"]["rerun_after_resume"])
+        self.assertFalse(execution_payload["partial_persistence_evidence"]["resume"]["reran_completed_steps"])
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("execution_partial_persistence_state_requested", check_names)
+        self.assertIn("prepare_complete_recorded", check_names)
+        self.assertIn("interruption_recorded", check_names)
+        self.assertIn("resume_identity_preserved", check_names)
+        self.assertIn("completed_steps_includes_step_prepare", check_names)
+        self.assertIn("step_prepare_not_rerun_after_resume", check_names)
+        self.assertIn("validation_complete_recorded", check_names)
+
+    def test_extract_requested_diagnostic_fields_accepts_variance_terms_without_validation_mentions(self) -> None:
+        message = (
+            "TASK: Emit diagnostic signal: execution_variance_signal "
+            "STEP 1: create diagnostic marker: execution_variance_marker "
+            "STEP 2: set: execution_variance_state = \"ready\" "
+            "STEP 3: Validate that execution_validation_mode still exists "
+            "STEP 4: reopen execution as: execution_variance_resume = \"done\" "
+            "STEP 5: persist diagnostic value: execution_variance_value"
+        )
+
+        fields = self.tod_ui._extract_requested_diagnostic_fields(message)
+
+        self.assertEqual(
+            fields,
+            [
+                "execution_variance_signal",
+                "execution_variance_marker",
+                "execution_variance_value",
+                "execution_variance_state",
+                "execution_variance_resume",
+            ],
+        )
+        self.assertNotIn("execution_validation_mode", fields)
+
+    def test_extract_requested_diagnostic_fields_handles_hundreds_of_wording_variants(self) -> None:
+        verbs = ("add", "publish", "record", "set", "create", "write", "emit", "expose", "persist", "materialize")
+        articles = ("", " a", " the", " a single")
+        nouns = ("field", "contract", "state", "signal", "marker", "flag", "value")
+        cases: list[tuple[str, str]] = []
+        index = 0
+        for verb in verbs:
+            for article in articles:
+                for noun in nouns:
+                    field = f"execution_matrix_{index}_state"
+                    cases.append((f"TASK: {verb}{article} diagnostic {noun}: {field}", field))
+                    index += 1
+        for verb in verbs:
+            field = f"execution_direct_{verb}_state"
+            cases.append((f"TASK: {verb} {field}", field))
+        for verb in verbs:
+            field = f"execution_assignment_{verb}_state"
+            cases.append((f"STEP 2: {verb}: {field} = \"ready\"", field))
+        for verb in verbs:
+            field = f"execution_step_{verb}_state"
+            cases.append((f"STEP 3: {verb} diagnostic marker: {field}", field))
+        cases.append(("TASK: reopen execution as: execution_reopen_state = \"done\"", "execution_reopen_state"))
+
+        self.assertGreaterEqual(len(cases), 300)
+        for message, expected_field in cases:
+            with self.subTest(message=message):
+                self.assertEqual(self.tod_ui._extract_requested_diagnostic_fields(message), [expected_field])
+
+    def test_extract_requested_diagnostic_fields_ignores_passive_validation_mentions(self) -> None:
+        passive_messages = (
+            "Validate that execution_validation_mode still exists.",
+            "Confirm execution_chain_stage exists before continuing.",
+            "Check execution_lane_health remains recovered.",
+            "Expected result includes execution_recovery_stage in prior evidence.",
+            "Acceptance: execution_branch_state should be visible after the branch transition.",
+            "Explicitly do not publish execution_forbidden_state.",
+            "Validate that execution_forbidden_state does not exist.",
+        )
+
+        for message in passive_messages:
+            with self.subTest(message=message):
+                self.assertEqual(self.tod_ui._extract_requested_diagnostic_fields(message), [])
+
+    def test_extract_forbidden_diagnostic_fields_captures_negative_constraints(self) -> None:
+        message = (
+            "TASK: Publish execution_negative_constraint_state. "
+            "Explicitly do not publish execution_forbidden_state. "
+            "Never set execution_blocked_marker. "
+            "Validate that execution_absent_state does not exist."
+        )
+
+        self.assertEqual(
+            self.tod_ui._extract_requested_diagnostic_fields(message),
+            ["execution_negative_constraint_state"],
+        )
+        self.assertEqual(
+            self.tod_ui._extract_forbidden_diagnostic_fields(message),
+            ["execution_forbidden_state", "execution_blocked_marker", "execution_absent_state"],
+        )
+
+    def test_publish_local_execution_ack_blocks_conflicting_request_and_prohibition(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-NEGATIVE-CONSTRAINT-SMOKE",
+                "task_id": "tod-negative-constraint-smoke-task-1778204611889",
+            },
+            "live_task_request": {
+                "request_id": "tod-negative-constraint-smoke-task-1778204611889",
+                "task_id": "tod-negative-constraint-smoke-task-1778204611889",
+                "objective_id": "TOD-NEGATIVE-CONSTRAINT-SMOKE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-NEGATIVE-CONSTRAINT-SMOKE"},
+        }
+        message = (
+            "OBJECTIVE: TOD-CONFLICTING-REQUEST-PROHIBITION-SMOKE TOD, this task is assigned directly to you. "
+            "TARGET FILE: core/routers/tod_ui.py "
+            "TASK: 1. Publish execution_conflicting_constraint_state. "
+            "2. Do not publish execution_conflicting_constraint_state. "
+            "RULES: - exactly one target_file - bounded_edit_mode true - conflicting request/prohibition must block execution"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-CONFLICTING-REQUEST-PROHIBITION-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(record["status"], "blocked")
+        self.assertEqual(execution_payload["status"], "blocked")
+        self.assertEqual(execution_payload["execution_state"], "conflicting_execution_constraint")
+        self.assertEqual(execution_payload["reason_code"], "blocked_conflicting_execution_constraint")
+        self.assertEqual(execution_payload["requested_diagnostic_fields"], ["execution_conflicting_constraint_state"])
+        self.assertEqual(execution_payload["forbidden_diagnostic_fields"], ["execution_conflicting_constraint_state"])
+        self.assertEqual(execution_payload["conflicting_diagnostic_fields"], ["execution_conflicting_constraint_state"])
+        self.assertEqual(execution_payload["files_changed"], [])
+        self.assertTrue(execution_payload["conflict_evidence"]["local_executor_edit_suppressed"])
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("conflicting_execution_constraint_detected", check_names)
+        self.assertIn("requested_and_forbidden_sets_intersect", check_names)
+        self.assertIn("local_executor_edit_suppressed", check_names)
+        self.assertIn("blocked_conflicting_execution_constraint", check_names)
+
+    def test_publish_local_execution_ack_handles_semantic_contract_matrix(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-CONTRACT-MATRIX-BASELINE",
+                "task_id": "tod-contract-matrix-baseline-task",
+            },
+            "live_task_request": {
+                "request_id": "tod-contract-matrix-baseline-task",
+                "task_id": "tod-contract-matrix-baseline-task",
+                "objective_id": "TOD-CONTRACT-MATRIX-BASELINE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-CONTRACT-MATRIX-BASELINE"},
+        }
+        cases = (
+            (
+                "TOD-MATRIX-BOUNDED-EDIT",
+                "TASK: emit diagnostic signal: execution_matrix_generic_state",
+                "bounded_edit",
+                {"execution_matrix_generic_state_requested"},
+                "completed",
+            ),
+            (
+                "TOD-MATRIX-RECOVERY",
+                "TASK: record diagnostic state: execution_recovery_stage",
+                "bounded_recovery",
+                {"initial_validation_failed", "single_repair_attempt_recorded", "second_validation_passed"},
+                "completed",
+            ),
+            (
+                "TOD-MATRIX-STALE-LANE",
+                "TASK: set execution_lane_health = \"stale_detected\"",
+                "bounded_stale_lane_recovery",
+                {"stale_detected_recorded", "stale_lane_cleared_once", "recovered_state_recorded"},
+                "completed",
+            ),
+            (
+                "TOD-MATRIX-IDEMPOTENCY",
+                "TASK: publish diagnostic contract: execution_idempotency_conflict_state",
+                "bounded_idempotency_conflict",
+                {"duplicate_payload_changed_detected", "idempotency_conflict_blocked", "no_duplicate_execution_started"},
+                "blocked",
+            ),
+            (
+                "TOD-MATRIX-PARTIAL-PERSISTENCE",
+                "TASK: persist diagnostic value: execution_partial_persistence_state",
+                "bounded_partial_persistence",
+                {"prepare_complete_recorded", "step_prepare_not_rerun_after_resume", "validation_complete_recorded"},
+                "completed",
+            ),
+            (
+                "TOD-MATRIX-BRANCH-SELECTION",
+                "TASK: publish execution_branch_state",
+                "bounded_branch_selection",
+                {"initial_branch_selection_recorded", "repair_branch_executed_once", "branch_transition_recorded"},
+                "completed",
+            ),
+            (
+                "TOD-MATRIX-NEGATIVE-CONSTRAINT",
+                "TASK: publish execution_negative_constraint_state; do not publish execution_forbidden_state",
+                "bounded_negative_constraint",
+                {"execution_negative_constraint_state_requested", "execution_forbidden_state_not_published", "negative_constraint_recorded"},
+                "completed",
+            ),
+            (
+                "TOD-MATRIX-CONDITIONAL-CONSTRAINT",
+                "TASK: publish execution_conditional_constraint_state; do not publish execution_conditional_blocked_state if execution_conditional_constraint_state is missing",
+                "bounded_conditional_constraint",
+                {"execution_conditional_constraint_state_requested", "condition_evaluated", "condition_false_after_repair", "execution_conditional_blocked_state_not_published"},
+                "completed",
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                for objective, task_text, expected_mode, expected_checks, expected_status in cases:
+                    with self.subTest(objective=objective):
+                        artifact_fixture = {
+                            "active_objective_payload": {"objective_id": objective},
+                            "active_task_payload": {},
+                            "activity_event": {},
+                            "validation_payload": {},
+                            "execution_result_payload": {},
+                            "execution_truth_payload": {},
+                        }
+                        message = (
+                            f"OBJECTIVE: {objective} TARGET FILE: core/routers/tod_ui.py "
+                            f"{task_text} RULES: exactly one target_file; bounded_edit_mode true"
+                        )
+                        with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                            record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+                        execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+                        self.assertTrue(record["ok"])
+                        self.assertEqual(execution_payload["status"], expected_status)
+                        self.assertEqual(execution_payload["execution_validation_mode"], expected_mode)
+                        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+                        self.assertTrue(expected_checks.issubset(check_names))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+    def test_publish_local_execution_ack_completes_contract_language_normalization_without_explicit_target(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-PARTIAL-COMPLETION-PERSISTENCE-SMOKE",
+                "task_id": "tod-partial-completion-persistence-smoke-task-1778203342379",
+            },
+            "live_task_request": {
+                "request_id": "tod-partial-completion-persistence-smoke-task-1778203342379",
+                "task_id": "tod-partial-completion-persistence-smoke-task-1778203342379",
+                "objective_id": "TOD-PARTIAL-COMPLETION-PERSISTENCE-SMOKE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-PARTIAL-COMPLETION-PERSISTENCE-SMOKE"},
+        }
+        message = (
+            "OBJECTIVE: TOD-EXECUTION-CONTRACT-LANGUAGE-NORMALIZATION "
+            "GOAL: Normalize bounded execution smoke wording so equivalent verbs/nouns resolve to the same execution_* contract path. "
+            "EXPECTED: publish diagnostic contract execution_x record diagnostic field execution_x set execution_x state create execution_x marker all resolve to: execution_contract_field = execution_x "
+            "ACCEPTANCE: - no missing-binding fallback from wording variance - execution_* contract extracted once - semantic contracts still stay distinct from passive diagnostics - partial persistence smoke can run cleanly"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-EXECUTION-CONTRACT-LANGUAGE-NORMALIZATION"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(execution_payload["objective_id"], "TOD-EXECUTION-CONTRACT-LANGUAGE-NORMALIZATION")
+        self.assertEqual(execution_payload["target_file"], "core/routers/tod_ui.py")
+        self.assertEqual(execution_payload["status"], "completed")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_contract_language_normalization")
+        self.assertEqual(execution_payload["execution_contract_field"], "execution_x")
+        self.assertEqual(execution_payload["requested_diagnostic_fields"], ["execution_contract_field"])
+        self.assertFalse(execution_payload["language_normalization_evidence"]["missing_binding_fallback"])
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("wording_variance_normalized", check_names)
+        self.assertIn("execution_contract_field_extracted_once", check_names)
+        self.assertIn("semantic_contracts_remain_distinct", check_names)
+        self.assertIn("no_missing_binding_fallback_from_wording_variance", check_names)
+
+    def test_publish_local_execution_ack_records_bounded_branch_selection(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-EXECUTION-CONTRACT-LANGUAGE-NORMALIZATION",
+                "task_id": "tod-execution-contract-language-normalization-task-1778203732334",
+            },
+            "live_task_request": {
+                "request_id": "tod-execution-contract-language-normalization-task-1778203732334",
+                "task_id": "tod-execution-contract-language-normalization-task-1778203732334",
+                "objective_id": "TOD-EXECUTION-CONTRACT-LANGUAGE-NORMALIZATION",
+            },
+            "quick_facts": {"canonical_objective": "TOD-EXECUTION-CONTRACT-LANGUAGE-NORMALIZATION"},
+        }
+        message = (
+            "OBJECTIVE: TOD-BOUNDED-BRANCH-SELECTION-SMOKE TOD, this task is assigned directly to you. "
+            "TARGET FILE: core/routers/tod_ui.py "
+            "TASK: 1. Publish execution_branch_state. "
+            "2. Simulate two possible bounded branches: branch_validate_only and branch_repair_then_validate. "
+            "3. If execution_branch_state is missing: TOD must choose branch_repair_then_validate. "
+            "4. After repair: TOD must transition to branch_validate_only. "
+            "RULES: - exactly one target_file - bounded_edit_mode true - branch choice must be recorded"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-BOUNDED-BRANCH-SELECTION-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(execution_payload["objective_id"], "TOD-BOUNDED-BRANCH-SELECTION-SMOKE")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_branch_selection")
+        self.assertEqual(execution_payload["execution_branch_state"], "branch_validate_only")
+        evidence = execution_payload["branch_selection_evidence"]
+        self.assertEqual(evidence["initial_branch"], "branch_repair_then_validate")
+        self.assertEqual(evidence["repair_branch_attempts"], 1)
+        self.assertEqual(evidence["transition"]["to"], "branch_validate_only")
+        self.assertTrue(evidence["validation"]["after_branch_transition"])
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("execution_branch_state_requested", check_names)
+        self.assertIn("initial_branch_selection_recorded", check_names)
+        self.assertIn("repair_branch_executed_once", check_names)
+        self.assertIn("validate_branch_executed_second", check_names)
+        self.assertIn("branch_transition_recorded", check_names)
+        self.assertIn("validation_after_branch_transition_passed", check_names)
+
+    def test_publish_local_execution_ack_respects_negative_constraints(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-BOUNDED-BRANCH-SELECTION-SMOKE",
+                "task_id": "tod-bounded-branch-selection-smoke-task-1778204059788",
+            },
+            "live_task_request": {
+                "request_id": "tod-bounded-branch-selection-smoke-task-1778204059788",
+                "task_id": "tod-bounded-branch-selection-smoke-task-1778204059788",
+                "objective_id": "TOD-BOUNDED-BRANCH-SELECTION-SMOKE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-BOUNDED-BRANCH-SELECTION-SMOKE"},
+        }
+        message = (
+            "OBJECTIVE: TOD-NEGATIVE-CONSTRAINT-SMOKE TOD, this task is assigned directly to you. "
+            "TARGET FILE: core/routers/tod_ui.py "
+            "TASK: 1. Publish execution_negative_constraint_state. "
+            "2. Explicitly do not publish execution_forbidden_state. "
+            "3. Validate that execution_negative_constraint_state exists. "
+            "4. Validate that execution_forbidden_state does not exist. "
+            "RULES: - exactly one target_file - bounded_edit_mode true - negative constraints must be parsed as prohibitions, not requested fields"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-NEGATIVE-CONSTRAINT-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(execution_payload["objective_id"], "TOD-NEGATIVE-CONSTRAINT-SMOKE")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_negative_constraint")
+        self.assertEqual(execution_payload["execution_negative_constraint_state"], "published")
+        self.assertEqual(execution_payload["requested_diagnostic_fields"], ["execution_negative_constraint_state"])
+        self.assertEqual(execution_payload["forbidden_diagnostic_fields"], ["execution_forbidden_state"])
+        self.assertFalse(execution_payload["negative_constraint_evidence"]["forbidden_published"])
+        self.assertNotIn("execution_forbidden_state", execution_payload)
+        normalized = self.tod_ui._normalize_execution_status({}, execution_payload, {}, {"status": "passed"}, execution_payload, {})
+        self.assertEqual(normalized["requested_diagnostic_fields"], ["execution_negative_constraint_state"])
+        self.assertEqual(normalized["forbidden_diagnostic_fields"], ["execution_forbidden_state"])
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("execution_negative_constraint_state_requested", check_names)
+        self.assertIn("execution_forbidden_state_not_published", check_names)
+        self.assertIn("negative_constraint_recorded", check_names)
+
+    def test_publish_local_execution_ack_records_conditional_constraint_without_conflict(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-NEGATIVE-CONSTRAINT-SMOKE",
+                "task_id": "tod-negative-constraint-smoke-task-1778204611889",
+            },
+            "live_task_request": {
+                "request_id": "tod-negative-constraint-smoke-task-1778204611889",
+                "task_id": "tod-negative-constraint-smoke-task-1778204611889",
+                "objective_id": "TOD-NEGATIVE-CONSTRAINT-SMOKE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-NEGATIVE-CONSTRAINT-SMOKE"},
+        }
+        message = (
+            "OBJECTIVE: TOD-CONDITIONAL-CONSTRAINT-SMOKE TOD, this task is assigned directly to you. "
+            "TARGET FILE: core/routers/tod_ui.py "
+            "TASK: 1. Publish execution_conditional_constraint_state. "
+            "2. Do not publish execution_conditional_blocked_state if execution_conditional_constraint_state is missing. "
+            "3. Since execution_conditional_constraint_state is requested and will be published, the condition is false after repair. "
+            "RULES: - exactly one target_file - bounded_edit_mode true - conditional prohibition must not become unconditional prohibition"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-CONDITIONAL-CONSTRAINT-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(execution_payload["objective_id"], "TOD-CONDITIONAL-CONSTRAINT-SMOKE")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_conditional_constraint")
+        self.assertEqual(execution_payload["execution_conditional_constraint_state"], "published")
+        self.assertEqual(execution_payload["requested_diagnostic_fields"], ["execution_conditional_constraint_state"])
+        self.assertEqual(execution_payload["forbidden_diagnostic_fields"], ["execution_conditional_blocked_state"])
+        self.assertEqual(execution_payload["conflicting_diagnostic_fields"], [])
+        self.assertFalse(execution_payload["conditional_constraint_evidence"]["condition_after_repair"])
+        self.assertFalse(execution_payload["conditional_constraint_evidence"]["blocked_fields_published"])
+        self.assertFalse(execution_payload["conditional_constraint_evidence"]["conflict_reported"])
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("conditional_rule_recorded", check_names)
+        self.assertIn("condition_evaluated", check_names)
+        self.assertIn("condition_false_after_repair", check_names)
+        self.assertIn("execution_conditional_blocked_state_not_published", check_names)
+        self.assertIn("no_conflicting_execution_constraint", check_names)
+
+    def test_extract_conditional_diagnostic_request_does_not_become_unconditional_request(self) -> None:
+        message = (
+            "OBJECTIVE: TOD-CONDITIONAL-CONSTRAINT-TRUE-SMOKE "
+            "TASK: 1. Do not publish execution_required_condition_state. "
+            "2. Publish execution_conditional_blocked_state only if execution_required_condition_state exists. "
+            "3. Since execution_required_condition_state is missing, TOD must not publish execution_conditional_blocked_state."
+        )
+
+        self.assertEqual(
+            self.tod_ui._extract_conditional_diagnostic_requests(message),
+            {"execution_conditional_blocked_state": "execution_required_condition_state"},
+        )
+        self.assertEqual(self.tod_ui._extract_requested_diagnostic_fields(message), [])
+        self.assertEqual(
+            self.tod_ui._extract_forbidden_diagnostic_fields(message),
+            ["execution_required_condition_state", "execution_conditional_blocked_state"],
+        )
+
+    def test_publish_local_execution_ack_evaluates_false_conditional_request_without_conflict(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-CONDITIONAL-CONSTRAINT-SMOKE",
+                "task_id": "tod-conditional-constraint-smoke-task-1778205188257",
+            },
+            "live_task_request": {
+                "request_id": "tod-conditional-constraint-smoke-task-1778205188257",
+                "task_id": "tod-conditional-constraint-smoke-task-1778205188257",
+                "objective_id": "TOD-CONDITIONAL-CONSTRAINT-SMOKE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-CONDITIONAL-CONSTRAINT-SMOKE"},
+        }
+        message = (
+            "OBJECTIVE: TOD-CONDITIONAL-CONSTRAINT-TRUE-SMOKE TOD, this task is assigned directly to you. "
+            "GOAL: Prove TOD applies a conditional prohibition when its condition is true. "
+            "TARGET FILE: core/routers/tod_ui.py "
+            "TASK: 1. Do not publish execution_required_condition_state. "
+            "2. Publish execution_conditional_blocked_state only if execution_required_condition_state exists. "
+            "3. Since execution_required_condition_state is missing, TOD must not publish execution_conditional_blocked_state. "
+            "4. Record the conditional evaluation. "
+            "RULES: - exactly one target_file - bounded_edit_mode true - conditional rule must be recorded - condition must be evaluated"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-CONDITIONAL-CONSTRAINT-TRUE-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(execution_payload["objective_id"], "TOD-CONDITIONAL-CONSTRAINT-TRUE-SMOKE")
+        self.assertEqual(execution_payload["status"], "completed")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_conditional_constraint")
+        self.assertEqual(execution_payload["requested_diagnostic_fields"], [])
+        self.assertEqual(
+            execution_payload["conditional_diagnostic_requests"],
+            {"execution_conditional_blocked_state": "execution_required_condition_state"},
+        )
+        self.assertEqual(
+            execution_payload["forbidden_diagnostic_fields"],
+            ["execution_required_condition_state", "execution_conditional_blocked_state"],
+        )
+        self.assertEqual(execution_payload["conflicting_diagnostic_fields"], [])
+        self.assertEqual(execution_payload["files_changed"], [])
+        self.assertFalse(execution_payload["conditional_constraint_evidence"]["condition_after_evaluation"])
+        self.assertFalse(execution_payload["conditional_constraint_evidence"]["requested_fields_published"])
+        self.assertFalse(execution_payload["conditional_constraint_evidence"]["conflict_reported"])
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("conditional_rule_recorded", check_names)
+        self.assertIn("condition_evaluated", check_names)
+        self.assertIn("condition_evaluated_false", check_names)
+        self.assertIn("execution_required_condition_state_not_published", check_names)
+        self.assertIn("execution_conditional_blocked_state_not_published", check_names)
+        self.assertIn("no_conflicting_execution_constraint", check_names)
+
+    def test_publish_local_execution_ack_activates_nested_conditional_request_in_order(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "TOD-CONDITIONAL-CONSTRAINT-TRUE-SMOKE",
+                "task_id": "tod-conditional-constraint-true-smoke-task-1778205355881",
+            },
+            "live_task_request": {
+                "request_id": "tod-conditional-constraint-true-smoke-task-1778205355881",
+                "task_id": "tod-conditional-constraint-true-smoke-task-1778205355881",
+                "objective_id": "TOD-CONDITIONAL-CONSTRAINT-TRUE-SMOKE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-CONDITIONAL-CONSTRAINT-TRUE-SMOKE"},
+        }
+        message = (
+            "OBJECTIVE: TOD-NESTED-CONDITIONAL-BRANCH-SMOKE TOD, this task is assigned directly to you. "
+            "GOAL: Prove TOD can evaluate nested conditional execution constraints without collapsing into conflict or unconditional activation. "
+            "TARGET FILE: core/routers/tod_ui.py "
+            "TASK: 1. Publish execution_nested_parent_state. "
+            "2. Publish execution_nested_child_state only if execution_nested_parent_state exists. "
+            "3. Do not publish execution_nested_blocked_state unless execution_nested_child_state exists. "
+            "4. Since parent exists, child activates. "
+            "5. Since child activates, blocked_state remains prohibited. "
+            "RULES: - exactly one target_file - bounded_edit_mode true - nested conditions must be evaluated in order"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-NESTED-CONDITIONAL-BRANCH-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(execution_payload["objective_id"], "TOD-NESTED-CONDITIONAL-BRANCH-SMOKE")
+        self.assertEqual(execution_payload["status"], "completed")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_conditional_constraint")
+        self.assertEqual(
+            execution_payload["requested_diagnostic_fields"],
+            ["execution_nested_parent_state", "execution_nested_child_state"],
+        )
+        self.assertEqual(
+            execution_payload["conditional_diagnostic_requests"],
+            {"execution_nested_child_state": "execution_nested_parent_state"},
+        )
+        self.assertEqual(
+            execution_payload["conditional_diagnostic_prohibitions"],
+            {"execution_nested_blocked_state": "execution_nested_child_state"},
+        )
+        self.assertEqual(execution_payload["forbidden_diagnostic_fields"], ["execution_nested_blocked_state"])
+        self.assertEqual(execution_payload["conflicting_diagnostic_fields"], [])
+        self.assertFalse(execution_payload["conditional_constraint_evidence"]["blocked_fields_published"])
+        self.assertTrue(execution_payload["conditional_constraint_evidence"]["nested_evaluation_order_recorded"])
+        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+        self.assertIn("execution_nested_parent_state_requested", check_names)
+        self.assertIn("execution_nested_child_state_requested", check_names)
+        self.assertIn("child_conditional_request_activated", check_names)
+        self.assertIn("nested_evaluation_order_recorded", check_names)
+        self.assertIn("execution_nested_blocked_state_not_published", check_names)
+        self.assertIn("no_conflicting_execution_constraint", check_names)
+
+    def test_tod_next20_challenge_progression_matrix(self) -> None:
+        state = {
+            "shared_truth": {"objective_id": "TOD-NEXT20-BASELINE", "task_id": "tod-next20-baseline-task"},
+            "live_task_request": {
+                "request_id": "tod-next20-baseline-task",
+                "task_id": "tod-next20-baseline-task",
+                "objective_id": "TOD-NEXT20-BASELINE",
+            },
+            "quick_facts": {"canonical_objective": "TOD-NEXT20-BASELINE"},
+        }
+        cases = [
+            (
+                "TOD-NEXT20-01-NESTED-REEVALUATION",
+                "TASK: Publish execution_parent_state. Publish execution_child_state only if execution_parent_state exists. "
+                "Do not publish execution_blocked_state unless execution_child_state exists. step_prepare -> step_validate -> step_handoff.",
+                {"execution_parent_state_requested", "execution_child_state_requested", "execution_state_refreshed_between_condition_steps", "step_dependency_graph_tracked"},
+            ),
+            (
+                "TOD-NEXT20-02-AND-CONSTRAINTS",
+                "TASK: Publish execution_and_a_state. Publish execution_and_b_state. Publish execution_and_x_state only if execution_and_a_state exists AND execution_and_b_state exists.",
+                {"execution_and_x_state_requested", "multi_condition_and_evaluated"},
+            ),
+            (
+                "TOD-NEXT20-03-OR-CONSTRAINTS",
+                "TASK: Publish execution_or_a_state. Publish execution_or_x_state if execution_or_a_state exists OR execution_or_b_state exists.",
+                {"execution_or_x_state_requested", "multi_condition_or_evaluated"},
+            ),
+            (
+                "TOD-NEXT20-04-NOT-CONDITION",
+                "TASK: Publish execution_not_x_state only if NOT execution_not_y_state exists.",
+                {"execution_not_x_state_requested", "negated_condition_precedence_preserved", "no_conflicting_execution_constraint"},
+            ),
+            (
+                "TOD-NEXT20-05-STEP-GRAPH",
+                "TASK: Publish execution_graph_state. Track step_prepare -> step_validate -> step_handoff.",
+                {"execution_graph_state_requested", "step_dependency_graph_tracked"},
+            ),
+            (
+                "TOD-NEXT20-06-PARTIAL-GRAPH-RECOVERY",
+                "TASK: Publish execution_partial_graph_state. Partial graph recovery: interrupt at step 2, resume, run unresolved nodes only.",
+                {"execution_partial_graph_state_requested", "partial_graph_recovery_preserved"},
+            ),
+            (
+                "TOD-NEXT20-07-BRANCH-ROLLBACK",
+                "TASK: Publish execution_branch_rollback_state. Branch rollback semantics: rollback B only and preserve completed A.",
+                {"execution_branch_rollback_state_requested", "branch_rollback_scoped"},
+            ),
+            (
+                "TOD-NEXT20-08-RETRY-POLICY",
+                "TASK: Publish execution_retry_policy_state. Retry policy awareness: transient failure, deterministic failure, prohibited retry, bounded retry count.",
+                {"execution_retry_policy_state_requested", "retry_policy_classified"},
+            ),
+            (
+                "TOD-NEXT20-09-TIME-EXPIRY",
+                "TASK: Publish execution_expiry_state. Expire task if step not resumed within 10 minutes and avoid zombie loops.",
+                {"execution_expiry_state_requested", "time_based_execution_expiry_recorded"},
+            ),
+            (
+                "TOD-NEXT20-10-MULTI-FILE-CHAIN",
+                "TASK: Publish execution_multifile_state. Multi-file bounded chains: file A validated before file B edit.",
+                {"execution_multifile_state_requested", "multi_file_bounded_chain_ordered"},
+            ),
+            (
+                "TOD-NEXT20-11-CONTRACT-MODES",
+                "TASK: Publish execution_contract_modes_state. Distinguish validation-only, inspect-only, bounded-edit, mutating-repair.",
+                {"execution_contract_modes_state_requested", "execution_contract_modes_distinguished"},
+            ),
+            (
+                "TOD-NEXT20-12-RESOURCE-LOCK",
+                "TASK: Publish execution_resource_lock_state. Resource lock coordination prevents two tasks editing same file and overlapping execution lanes.",
+                {"execution_resource_lock_state_requested", "resource_lock_coordination_recorded"},
+            ),
+            (
+                "TOD-NEXT20-13-CROSS-TASK-DEPENDENCY",
+                "TASK: Publish execution_cross_task_state. Cross-task dependency awareness: Task B blocked until Task A validation passes.",
+                {"execution_cross_task_state_requested", "cross_task_dependency_recorded"},
+            ),
+            (
+                "TOD-NEXT20-14-PRIORITY-ARBITRATION",
+                "TASK: Publish execution_priority_state. Priority arbitration under conflict: emergency repair vs normal bounded edit.",
+                {"execution_priority_state_requested", "priority_arbitration_conflict_resolved"},
+            ),
+            (
+                "TOD-NEXT20-15-CONTRADICTION",
+                "TASK: Publish execution_contradiction_state. Detect contradictory objective: preserve behavior and rewrite architecture.",
+                {"execution_contradiction_state_requested", "contradictory_objective_detected"},
+            ),
+            (
+                "TOD-NEXT20-16-SEMANTIC-DRIFT",
+                "TASK: Publish execution_semantic_drift_state. Semantic drift detection catches reinterpretation drift.",
+                {"execution_semantic_drift_state_requested", "semantic_drift_detection_recorded"},
+            ),
+            (
+                "TOD-NEXT20-17-DELEGATED-SUBTASK",
+                "TASK: Publish execution_delegated_subtask_state. Delegated subtask coordination preserves parent lineage and execution custody.",
+                {"execution_delegated_subtask_state_requested", "delegated_subtask_lineage_preserved"},
+            ),
+            (
+                "TOD-NEXT20-18-CLARIFICATION",
+                "TASK: Publish execution_clarification_state. Human clarification thresholding for ambiguity safe/required/autonomous.",
+                {"execution_clarification_state_requested", "human_clarification_threshold_recorded"},
+            ),
+            (
+                "TOD-NEXT20-19-MEMORY-COMPRESSION",
+                "TASK: Publish execution_memory_compression_state. Persistent execution memory compression avoids infinite JSON archaeology.",
+                {"execution_memory_compression_state_requested", "persistent_execution_memory_compressed"},
+            ),
+            (
+                "TOD-NEXT20-20-CROSS-SYSTEM",
+                "TASK: Publish execution_cross_system_state. Cross-system coordinated execution: TOD patches MIM, MIM validates, TOD waits and resumes.",
+                {"execution_cross_system_state_requested", "cross_system_execution_custody_recorded"},
+            ),
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                for objective, task_text, expected_checks in cases:
+                    with self.subTest(objective=objective):
+                        artifact_fixture = {
+                            "active_objective_payload": {"objective_id": objective},
+                            "active_task_payload": {},
+                            "activity_event": {},
+                            "validation_payload": {},
+                            "execution_result_payload": {},
+                            "execution_truth_payload": {},
+                        }
+                        message = (
+                            f"OBJECTIVE: {objective} TARGET FILE: core/routers/tod_ui.py "
+                            f"{task_text} RULES: exactly one target_file; bounded_edit_mode true"
+                        )
+                        with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                            record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+                        execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+                        self.assertTrue(record["ok"])
+                        self.assertEqual(execution_payload["status"], "completed")
+                        check_names = {item["name"] for item in execution_payload["validation_checks"]}
+                        self.assertTrue(expected_checks.issubset(check_names))
+                        self.assertEqual(execution_payload["next20_challenge_evidence"]["challenge_suite"], "tod_next_20_progression")
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
     def test_extract_labeled_prompt_value_captures_only_identifier_token(self) -> None:
         message = (
             "## Objective Id: objective-2913 and ignore the prompt tail\n"
