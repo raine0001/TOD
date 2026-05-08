@@ -434,6 +434,125 @@ class MimTodStateConsumerTest(unittest.TestCase):
                 for message in messages
             )
         )
+        messages_with_next_move = [
+            str(message.get("content") or "")
+            for message in messages
+            if str(message.get("content") or "").startswith("Next move:")
+        ]
+        self.assertEqual(messages_with_next_move, [])
+
+    def test_fresh_done_worklog_suppresses_stale_next_move_recommendation(self) -> None:
+        now = "2026-05-08T02:45:00Z"
+        messages = self.mim_ui._build_mim_live_worklog_messages(
+            system_activity={
+                "status_label": "DONE",
+                "headline": "DONE - latest TOD handoff result consumed",
+                "console_freshness": {
+                    "console_freshness_status": "fresh_done",
+                    "last_handoff_id": "mim-tod-handoff-mim-request-abc",
+                    "last_tod_task_id": "mim-tod-task-abc",
+                    "last_tod_result_status": "succeeded",
+                    "last_consumed_at": now,
+                    "reply_status": "done",
+                    "result_reason": "TOD completed bounded edit handoff mim-tod-task-abc; result handoff is ok.",
+                },
+            },
+            initiative_driver={"active_objective": {"objective_id": "2913"}},
+            operator_reasoning={
+                "current_recommendation": {
+                    "summary": "Continue Intentions Stabilization now, complete its remaining bounded tasks.",
+                }
+            },
+            generated_at=now,
+        )
+        contents = [str(message.get("content") or "") for message in messages]
+
+        self.assertTrue(any("TOD handoff complete" in content for content in contents))
+        self.assertFalse(
+            any(content.startswith("Next move: Continue Intentions Stabilization") for content in contents)
+        )
+        self.assertFalse(any(content.startswith("Current slice:") for content in contents))
+        self.assertFalse(any(content.startswith("Waiting on:") for content in contents))
+
+    def test_live_worklog_append_replaces_prior_generated_cards(self) -> None:
+        now = "2026-05-08T02:46:00Z"
+        chat_thread = {
+            "messages": [
+                {
+                    "role": "operator",
+                    "message_type": "user",
+                    "content": "yes Continue Intentions Stabilization now",
+                },
+                {
+                    "role": "system",
+                    "message_type": "system_summary",
+                    "content": "Next move: Continue Intentions Stabilization now.",
+                },
+                {
+                    "role": "system",
+                    "message_type": "system_summary",
+                    "content": "Current slice: stale request is working now.",
+                },
+            ]
+        }
+        updated = self.mim_ui._append_mim_live_worklog(
+            chat_thread,
+            system_activity={
+                "status_label": "DONE",
+                "headline": "DONE - latest TOD handoff result consumed",
+                "console_freshness": {
+                    "console_freshness_status": "fresh_done",
+                    "last_handoff_id": "mim-tod-handoff-mim-request-abc",
+                    "last_tod_task_id": "mim-tod-task-abc",
+                    "last_tod_result_status": "succeeded",
+                    "last_consumed_at": now,
+                    "reply_status": "done",
+                    "result_reason": "TOD completed bounded edit handoff mim-tod-task-abc; result handoff is ok.",
+                },
+            },
+            initiative_driver={"active_objective": {"objective_id": "2913"}},
+            operator_reasoning={
+                "current_recommendation": {
+                    "summary": "Continue Intentions Stabilization now.",
+                }
+            },
+            generated_at=now,
+        )
+        contents = [str(message.get("content") or "") for message in updated["messages"]]
+
+        self.assertIn("yes Continue Intentions Stabilization now", contents)
+        self.assertTrue(any(content.startswith("TOD handoff complete:") for content in contents))
+        self.assertFalse(any(content.startswith("Next move:") for content in contents))
+        self.assertFalse(any(content.startswith("Current slice:") for content in contents))
+        self.assertFalse(any(content.startswith("Objective now:") for content in contents))
+        self.assertFalse(any("MIM is stale" in content for content in contents))
+        self.assertTrue(any("MIM is done on mim-tod-task-abc" in content for content in contents))
+
+    def test_fresh_done_worklog_uses_handoff_target_when_task_id_missing(self) -> None:
+        now = "2026-05-08T02:47:00Z"
+        messages = self.mim_ui._build_mim_live_worklog_messages(
+            system_activity={
+                "status_label": "STALE",
+                "headline": "STALE - expected work but no real progress",
+                "console_freshness": {
+                    "console_freshness_status": "fresh_done",
+                    "last_handoff_id": "mim-tod-handoff-mim-request-abc",
+                    "last_tod_result_status": "succeeded",
+                    "last_consumed_at": now,
+                    "reply_status": "done",
+                    "result_reason": "TOD completed bounded edit handoff; result handoff is ok.",
+                },
+            },
+            initiative_driver={"active_task": {"summary": "Implement bounded work for: handle the thing"}},
+            operator_reasoning={},
+            generated_at=now,
+        )
+        contents = [str(message.get("content") or "") for message in messages]
+
+        self.assertTrue(
+            any("MIM is done on mim-tod-handoff-mim-request-abc" in content for content in contents)
+        )
+        self.assertFalse(any("handle the thing" in content for content in contents))
 
     def test_system_activity_prefers_tod_active_state_over_idle_warning(self) -> None:
         with (

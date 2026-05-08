@@ -1501,6 +1501,8 @@ def _build_mim_live_worklog_messages(
     if isinstance(tod_truth_reconciliation.get("console_freshness"), dict)
     else {}
   )
+  console_freshness_status = str(console_freshness.get("console_freshness_status") or "").strip()
+  fresh_done = console_freshness_status == "fresh_done"
 
   objective = _resolve_initiative_label(initiative.get("active_objective"), "No active objective")
   active_task = _resolve_initiative_label(initiative.get("active_task"), "")
@@ -1513,6 +1515,9 @@ def _build_mim_live_worklog_messages(
     _first_nonempty_text(activity.get("headline"), activity.get("summary"), initiative.get("summary")),
     max_len=140,
   )
+  if fresh_done:
+    status_label = "DONE"
+    headline = "DONE - latest TOD handoff result consumed"
   current_slice = _compact_sentence(
     _first_nonempty_text(
       active_work.get("summary"),
@@ -1548,7 +1553,14 @@ def _build_mim_live_worklog_messages(
     or datetime.now(timezone.utc).isoformat()
   ).strip()
 
-  live_target = _first_nonempty_text(active_task, objective, "the current MIM lane")
+  live_target = _first_nonempty_text(
+    console_freshness.get("last_tod_task_id") if fresh_done else "",
+    console_freshness.get("last_handoff_id") if fresh_done else "",
+    "latest TOD handoff" if fresh_done else "",
+    active_task,
+    objective,
+    "the current MIM lane",
+  )
   messages: list[dict[str, object]] = [
     {
       "role": "mim",
@@ -1557,7 +1569,7 @@ def _build_mim_live_worklog_messages(
       "created_at": updated_at,
     }
   ]
-  if objective:
+  if objective and not fresh_done:
     messages.append(
       {
         "role": "system",
@@ -1566,7 +1578,7 @@ def _build_mim_live_worklog_messages(
         "created_at": updated_at,
       }
     )
-  if str(console_freshness.get("console_freshness_status") or "").strip() == "fresh_done":
+  if fresh_done:
     handoff_id = str(console_freshness.get("last_handoff_id") or "").strip()
     task_id = str(console_freshness.get("last_tod_task_id") or "").strip()
     result_reason = _compact_sentence(
@@ -1584,7 +1596,7 @@ def _build_mim_live_worklog_messages(
         "created_at": str(console_freshness.get("last_consumed_at") or updated_at).strip(),
       }
     )
-  if current_slice:
+  if current_slice and not fresh_done:
     messages.append(
       {
         "role": "system",
@@ -1602,7 +1614,7 @@ def _build_mim_live_worklog_messages(
         "created_at": updated_at,
       }
     )
-  if wait_reason:
+  if wait_reason and not fresh_done:
     messages.append(
       {
         "role": "system",
@@ -1611,7 +1623,7 @@ def _build_mim_live_worklog_messages(
         "created_at": updated_at,
       }
     )
-  if bool(tod_phase_progress.get("available")):
+  if bool(tod_phase_progress.get("available")) and not fresh_done:
     messages.append(
       {
         "role": "system",
@@ -1620,7 +1632,7 @@ def _build_mim_live_worklog_messages(
         "created_at": updated_at,
       }
     )
-  if bool(tod_stall_signal):
+  if bool(tod_stall_signal) and not fresh_done:
     stall_summary = str(tod_stall_signal.get("summary") or "").strip()
     if bool(tod_stall_signal.get("flagged")) and stall_summary:
       stall_line = f"Stall watch: {stall_summary}"
@@ -1638,7 +1650,7 @@ def _build_mim_live_worklog_messages(
         "created_at": updated_at,
       }
     )
-  if next_move:
+  if next_move and not fresh_done:
     messages.append(
       {
         "role": "system",
@@ -1660,6 +1672,26 @@ def _append_mim_live_worklog(
 ) -> dict[str, object]:
   payload = dict(chat_thread or {})
   existing_messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+  generated_worklog_prefixes = (
+    "Live MIM feed:",
+    "Objective now:",
+    "TOD handoff complete:",
+    "Current slice:",
+    "Status now:",
+    "Waiting on:",
+    "Phase 1 progress:",
+    "Stall watch:",
+    "Next move:",
+  )
+  preserved_messages = [
+    message
+    for message in existing_messages
+    if not (
+      isinstance(message, dict)
+      and str(message.get("message_type") or "").strip() == "system_summary"
+      and str(message.get("content") or "").strip().startswith(generated_worklog_prefixes)
+    )
+  ]
   worklog_messages = _build_mim_live_worklog_messages(
     system_activity=system_activity,
     initiative_driver=initiative_driver,
@@ -1667,9 +1699,9 @@ def _append_mim_live_worklog(
     generated_at=generated_at,
   )
   if not worklog_messages:
-    payload["messages"] = list(existing_messages)
+    payload["messages"] = list(preserved_messages)
     return payload
-  payload["messages"] = [*existing_messages, *worklog_messages]
+  payload["messages"] = [*preserved_messages, *worklog_messages]
   return payload
 def _tokenize(text: str) -> set[str]:
     cleaned = re.sub(r"[^a-z0-9\s]", " ", str(text or "").lower())

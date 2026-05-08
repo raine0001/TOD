@@ -4626,10 +4626,75 @@ def _extract_mim_tod_execution_field(text: str) -> str:
     return "execution_mim_tod_diagnostic_state"
 
 
+def _looks_like_mim_tod_inspect_first_request(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw:
+        return False
+    inspect_terms = (
+        "check whether",
+        "verify whether",
+        "inspect whether",
+        "only if missing",
+        "if it already exists",
+        "if already present",
+        "if it is missing",
+        "if missing",
+    )
+    return any(term in raw for term in inspect_terms)
+
+
+def _payload_contains_value(payload: object, expected_value: str) -> bool:
+    expected = str(expected_value or "").strip()
+    if not expected:
+        return False
+    if isinstance(payload, dict):
+        return any(
+            str(key or "").strip() == expected
+            or _payload_contains_value(value, expected)
+            for key, value in payload.items()
+        )
+    if isinstance(payload, list):
+        return any(_payload_contains_value(item, expected) for item in payload)
+    return str(payload or "").strip() == expected
+
+
+def _load_mim_tod_inspection_artifacts(shared_root: Path) -> list[dict[str, object]]:
+    artifacts: list[dict[str, object]] = []
+    for artifact_name in (
+        "MIM_TOD_HANDOFF_RESULT.latest.json",
+        "TOD_MIM_TASK_RESULT.latest.json",
+        "MIM_TOD_CONSUME_EVIDENCE.latest.json",
+    ):
+        artifact_path = shared_root / artifact_name
+        try:
+            parsed = json.loads(artifact_path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+        if isinstance(parsed, dict):
+            artifacts.append(parsed)
+    return artifacts
+
+
+def _mim_tod_inspection_field_present(
+    *,
+    shared_root: Path,
+    inspection_state: dict[str, object],
+    execution_field: str,
+) -> bool:
+    if _payload_contains_value(inspection_state, execution_field):
+        return True
+    return any(
+        _payload_contains_value(artifact, execution_field)
+        for artifact in _load_mim_tod_inspection_artifacts(shared_root)
+    )
+
+
 def _mim_tod_handoff_default_validation_only(content: str) -> bool:
     raw = " ".join(str(content or "").strip().lower().split())
     mutating_terms = (" add ", " publish ", " create ", " set ", " change ", " edit ", " update ")
     padded = f" {raw} "
+    if _looks_like_mim_tod_inspect_first_request(content):
+        return True
     if any(term in padded for term in mutating_terms):
         return False
     if "diagnostic field" in raw:
@@ -4680,6 +4745,24 @@ def _dispatch_mim_tod_executable_handoff_request(
     shared_root = Path("runtime/shared")
     shared_root.mkdir(parents=True, exist_ok=True)
     execution_field = _extract_mim_tod_execution_field(content)
+    inspect_first_mode = _looks_like_mim_tod_inspect_first_request(content)
+    inspection_state = _get_json_from_local_tod("/tod/ui/state", timeout_seconds=20) if inspect_first_mode else {}
+    inspection_field_present = (
+        _mim_tod_inspection_field_present(
+            shared_root=shared_root,
+            inspection_state=inspection_state,
+            execution_field=execution_field,
+        )
+        if inspect_first_mode
+        else False
+    )
+    inspect_first_branch = (
+        "inspect_only_no_edit_needed"
+        if inspect_first_mode and inspection_field_present
+        else "missing_field_added_and_validated"
+        if inspect_first_mode
+        else ""
+    )
     inferred_objective_id = f"mim-tod-{_slugify_mim_tod_identifier(execution_field, fallback='diagnostic')}"
     objective_id = _extract_mim_tod_handoff_field(content, "objective_id") or inferred_objective_id
     task_id = _extract_mim_tod_handoff_field(content, "task_id") or f"{objective_id}-{request_id}"
@@ -4688,9 +4771,24 @@ def _dispatch_mim_tod_executable_handoff_request(
         _extract_mim_tod_handoff_field(content, "validation_only"),
         default=_mim_tod_handoff_default_validation_only(content),
     )
+    if inspect_first_mode:
+        validation_only = bool(inspection_field_present)
     expected_function = _extract_mim_tod_handoff_field(content, "expected_function") or "tod_ui_state"
     expected_result = _extract_mim_tod_handoff_field(content, "expected_result") or "ok"
     task_body = _extract_mim_tod_handoff_task_body(content) or f"Publish {execution_field}."
+    if inspect_first_mode:
+        if inspection_field_present:
+            task_body = (
+                f"Inspect current TOD UI state for {execution_field}. "
+                f"{execution_field} is already present in the current state, so do not edit {target_file}. "
+                "Validate the existing state and report inspect_only_no_edit_needed."
+            )
+        else:
+            task_body = (
+                f"Inspect current TOD UI state for {execution_field}. "
+                f"{execution_field} is missing, so add it safely to {target_file}, validate it, "
+                "and report missing_field_added_and_validated."
+            )
     execution_mode_label = "validation-only" if validation_only else "bounded edit"
     generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     handoff_id = f"mim-tod-handoff-{request_id}"
@@ -4715,6 +4813,10 @@ def _dispatch_mim_tod_executable_handoff_request(
         "expected_result": expected_result,
         "task": task_body,
         "content": content,
+        "inspect_first_mode": inspect_first_mode,
+        "inspect_first_branch": inspect_first_branch,
+        "inspection_field": execution_field,
+        "inspection_field_present": inspection_field_present,
     }
     (shared_root / "MIM_TOD_TASK_REQUEST.latest.json").write_text(
         json.dumps(request_payload, indent=2, sort_keys=True),
@@ -4730,6 +4832,10 @@ def _dispatch_mim_tod_executable_handoff_request(
         f"VALIDATION_ONLY: {str(validation_only).lower()}\n"
         f"EXPECTED_FUNCTION: {expected_function}\n"
         f"EXPECTED_RESULT: {expected_result}\n"
+        f"INSPECT_FIRST_MODE: {str(inspect_first_mode).lower()}\n"
+        f"INSPECTION_FIELD: {execution_field}\n"
+        f"INSPECTION_FIELD_PRESENT: {str(inspection_field_present).lower()}\n"
+        f"INSPECT_FIRST_BRANCH: {inspect_first_branch or 'not_applicable'}\n"
         f"\nTASK:\n{task_body}\n"
     )
     tod_post = _post_json_to_local_tod(
@@ -4751,15 +4857,34 @@ def _dispatch_mim_tod_executable_handoff_request(
     execution = final_state.get("execution") if isinstance(final_state.get("execution"), dict) else {}
     completed = str(execution.get("task_id") or "").strip() == task_id and str(execution.get("status") or "").strip().lower() in {"completed", "complete"}
     result_status = "succeeded" if completed else "pending"
-    completed_summary = (
-        f"Done. I asked TOD to check the direct execution lane through {target_file}. "
-        f"TOD ran a {execution_mode_label} handoff for {task_id}, "
-        f"published/validated {execution_field}, and returned result handoff ok."
-    )
-    pending_summary = (
-        f"I asked TOD to check the direct execution lane through {target_file}. "
-        f"The handoff {task_id} is published and MIM is waiting for TOD completion."
-    )
+    if inspect_first_mode and inspection_field_present:
+        completed_summary = (
+            f"Done. I asked TOD to inspect {target_file} before selecting edit mode. "
+            f"TOD found {execution_field} already present, ran validation-only handoff {task_id}, "
+            "made no edit, and reported inspect_only_no_edit_needed."
+        )
+    elif inspect_first_mode:
+        completed_summary = (
+            f"Done. I asked TOD to inspect {target_file} before selecting edit mode. "
+            f"TOD found {execution_field} missing, ran bounded edit handoff {task_id}, "
+            "validated the result, and reported missing_field_added_and_validated."
+        )
+    else:
+        completed_summary = (
+            f"Done. I asked TOD to check the direct execution lane through {target_file}. "
+            f"TOD ran a {execution_mode_label} handoff for {task_id}, "
+            f"published/validated {execution_field}, and returned result handoff ok."
+        )
+    if inspect_first_mode:
+        pending_summary = (
+            f"I asked TOD to inspect {target_file} for {execution_field} before selecting edit mode. "
+            f"The handoff {task_id} is published on branch {inspect_first_branch}, and MIM is waiting for TOD completion."
+        )
+    else:
+        pending_summary = (
+            f"I asked TOD to check the direct execution lane through {target_file}. "
+            f"The handoff {task_id} is published and MIM is waiting for TOD completion."
+        )
     result_reason = (
         completed_summary
         if completed
@@ -4785,6 +4910,9 @@ def _dispatch_mim_tod_executable_handoff_request(
         "execution_mode": "validation_only" if validation_only else "bounded_edit",
         "expected_function": expected_function,
         "execution_field": execution_field,
+        "inspect_first_mode": inspect_first_mode,
+        "inspect_first_branch": inspect_first_branch,
+        "inspection_field_present": inspection_field_present,
         "task_summary": completed_summary if completed else pending_summary,
         "tod_post": tod_post,
         "tod_execution": execution,
@@ -4807,6 +4935,9 @@ def _dispatch_mim_tod_executable_handoff_request(
         "result_status": result_status,
         "result_reason": result_reason,
         "execution_field": execution_field,
+        "inspect_first_mode": inspect_first_mode,
+        "inspect_first_branch": inspect_first_branch,
+        "inspection_field_present": inspection_field_present,
         "task_summary": completed_summary if completed else pending_summary,
     }
     (shared_root / "MIM_TOD_CONSUME_EVIDENCE.latest.json").write_text(
@@ -4824,6 +4955,9 @@ def _dispatch_mim_tod_executable_handoff_request(
         "result_status": result_status,
         "result_reason": result_reason,
         "execution_field": execution_field,
+        "inspect_first_mode": inspect_first_mode,
+        "inspect_first_branch": inspect_first_branch,
+        "inspection_field_present": inspection_field_present,
         "task_summary": completed_summary if completed else pending_summary,
         "decision_code": "mim_tod_handoff_completed" if completed else "mim_tod_handoff_pending",
         "decision_detail": result_reason,
