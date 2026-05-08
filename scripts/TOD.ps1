@@ -6154,6 +6154,45 @@ function Get-TaskRoutingFileHints {
     return @($items | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
 }
 
+function Get-TaskExplicitFieldValue {
+    param(
+        $Task,
+        [Parameter(Mandatory = $true)][string[]]$Names
+    )
+
+    if ($null -eq $Task) {
+        return $null
+    }
+
+    foreach ($name in @($Names)) {
+        if ($Task.PSObject.Properties[$name] -and $null -ne $Task.$name) {
+            return $Task.$name
+        }
+    }
+
+    if ($Task.PSObject.Properties['metadata_json'] -and $null -ne $Task.metadata_json) {
+        $metadata = $Task.metadata_json
+        foreach ($name in @($Names)) {
+            if ($metadata.PSObject.Properties[$name] -and $null -ne $metadata.$name) {
+                return $metadata.$name
+            }
+        }
+    }
+
+    return $null
+}
+
+function Test-ExplicitBooleanTrue {
+    param($Value)
+
+    if ($Value -is [bool]) {
+        return [bool]$Value
+    }
+
+    $text = ([string]$Value).Trim()
+    return @('true', '1', 'yes') -contains $text.ToLowerInvariant()
+}
+
 function Get-BoundedEditDirectiveValue {
     param(
         [Parameter(Mandatory = $true)][string]$Text,
@@ -6240,6 +6279,7 @@ function New-BoundedEditMaterializationBlockedPayload {
         target_file_candidates = @($TargetFileCandidates | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
         required_clarification = @($RequiredClarification | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
         why_local_executor_cannot_proceed = $why
+        missing_fields = @($RequiredClarification | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
         supported_modes = @('append_marker', 'replace_exact_text', 'insert_after_anchor', 'update_json_field', 'add_small_function', 'docs_append_section', 'validation_only')
         prompt_directives = [ordered]@{}
     }
@@ -6258,8 +6298,34 @@ function Resolve-TaskBoundedEditMaterialization {
 
     $taskCategory = Resolve-TaskCategory -Task $Task
     $text = Get-TaskRoutingText -Task $Task
-    $fileHints = @(Get-TaskRoutingFileHints -Task $Task)
+    $fileHints = New-Object System.Collections.Generic.List[string]
+    $explicitTargetFile = Get-TaskExplicitFieldValue -Task $Task -Names @('target_file', 'targetFile')
+    if (-not [string]::IsNullOrWhiteSpace([string]$explicitTargetFile)) {
+        $fileHints.Add((([string]$explicitTargetFile).Trim() -replace '[\\/]+', '/')) | Out-Null
+    }
+    $explicitTargetFiles = Get-TaskExplicitFieldValue -Task $Task -Names @('target_files', 'targetFiles')
+    if ($null -ne $explicitTargetFiles) {
+        foreach ($item in @($explicitTargetFiles)) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$item)) {
+                $fileHints.Add((([string]$item).Trim() -replace '[\\/]+', '/')) | Out-Null
+            }
+        }
+    }
+    foreach ($item in @(Get-TaskRoutingFileHints -Task $Task)) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$item)) {
+            $fileHints.Add([string]$item) | Out-Null
+        }
+    }
+    $fileHints = @($fileHints | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
     $requestedMode = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Edit Mode'
+    $explicitMode = Get-TaskExplicitFieldValue -Task $Task -Names @('edit_mode', 'bounded_edit_mode')
+    if ([string]::IsNullOrWhiteSpace($requestedMode) -and $null -ne $explicitMode -and -not (Test-ExplicitBooleanTrue -Value $explicitMode)) {
+        $requestedMode = [string]$explicitMode
+    }
+    $explicitValidationOnly = Test-ExplicitBooleanTrue -Value (Get-TaskExplicitFieldValue -Task $Task -Names @('validation_only', 'validationOnly'))
+    if ($explicitValidationOnly) {
+        $requestedMode = 'validation_only'
+    }
     $engineMode = Convert-ToCanonicalBoundedEditMode -Mode $requestedMode
     $targetFile = if (@($fileHints).Count -eq 1) { [string]$fileHints[0] } else { '' }
     $validationPattern = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Validation Pattern'
@@ -6292,13 +6358,22 @@ function Resolve-TaskBoundedEditMaterialization {
         }
     }
 
-    if (@($fileHints).Count -ne 1) {
-        $blockedPayload = New-BoundedEditMaterializationBlockedPayload -Task $Task -TaskCategory $taskCategory -TargetFileCandidates @($fileHints) -RequiredClarification @('target_file') -Reason 'TOD needs exactly one bounded target file before LocalExecutionEngine can proceed.'
+    if (@($fileHints).Count -eq 0 -and $explicitValidationOnly -and [string]::Equals($engineMode, 'validation_only', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $targetFile = ''
+    }
+    elseif (@($fileHints).Count -eq 0) {
+        $blockedPayload = New-BoundedEditMaterializationBlockedPayload -Task $Task -TaskCategory $taskCategory -TargetFileCandidates @($fileHints) -RequiredClarification @('target_file') -Reason 'TOD needs exactly one bounded target_file before LocalExecutionEngine can proceed; no target_file was provided.'
+        return $blockedPayload
+    }
+    elseif (@($fileHints).Count -gt 1) {
+        $blockedPayload = New-BoundedEditMaterializationBlockedPayload -Task $Task -TaskCategory $taskCategory -TargetFileCandidates @($fileHints) -RequiredClarification @('target_file_exactly_one') -Reason 'TOD needs exactly one bounded target_file before LocalExecutionEngine can proceed; multiple target_file candidates were provided.'
         return $blockedPayload
     }
 
     $promptDirectives = [ordered]@{
-        'Target File' = $targetFile
+    }
+    if (-not [string]::IsNullOrWhiteSpace($targetFile)) {
+        $promptDirectives['Target File'] = $targetFile
     }
     $validationPlan = [ordered]@{}
     if (-not [string]::IsNullOrWhiteSpace($validationPattern)) {
@@ -6398,7 +6473,7 @@ function Resolve-TaskBoundedEditMaterialization {
         task_category = [string]$taskCategory
         requested_mode = [string]$requestedMode
         edit_mode = [string]$engineMode
-        target_files = @($targetFile)
+        target_files = @($targetFile | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
         target_file_candidates = @($fileHints)
         required_clarification = @()
         why_local_executor_cannot_proceed = ''
@@ -6410,7 +6485,7 @@ function Resolve-TaskBoundedEditMaterialization {
         }
         validation_plan = [pscustomobject]$validationPlan
         safety_scope = [pscustomobject]@{
-            allowed_files = @($fileHints)
+            allowed_files = @($fileHints | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
             task_category = [string]$taskCategory
             execution = 'local_bounded'
         }

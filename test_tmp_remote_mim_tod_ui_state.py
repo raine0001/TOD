@@ -423,6 +423,42 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertEqual(execution["phase_progress"]["percent_complete"], 30)
         self.assertIn("Missing local executor binding", execution["activity_summary"])
 
+    def test_completed_local_execution_binding_is_present_not_blocked(self) -> None:
+        live_task = {
+            "request_id": "objective-2914-bounded-edit-materialization-repair",
+            "task_id": "objective-2914-bounded-edit-materialization-repair",
+            "objective_id": "objective-2914",
+            "assigned_executor": "local",
+            "selected_executor": "local",
+            "active_engine": "local",
+            "executor_binding": self.tod_ui.LOCAL_EXECUTOR_BINDING,
+            "bounded_edit_mode": True,
+            "task_category": "diagnostic/implementation-repair",
+        }
+        execution = {
+            "task_id": "objective-2914-bounded-edit-materialization-repair",
+            "objective_id": "objective-2914",
+            "status": "completed",
+            "activity_state": "complete",
+            "activity_label": "Complete",
+            "active_engine": "local",
+            "executor_binding": self.tod_ui.LOCAL_EXECUTOR_BINDING,
+        }
+        planner_state = {
+            "status": "queued",
+            "assigned_executor": "local",
+            "is_newer_than_executor": True,
+        }
+
+        binding = self.tod_ui._attempt_executor_binding_materialization(live_task, execution, planner_state)
+
+        self.assertTrue(binding["materialized"])
+        self.assertEqual(binding["status"], "present")
+        self.assertEqual(binding["reason_code"], "local_executor_binding_present")
+        self.assertEqual(binding["active_engine"], "local")
+        self.assertEqual(binding["executor_binding"], self.tod_ui.LOCAL_EXECUTOR_BINDING)
+        self.assertEqual(binding["missing_field_or_function"], "")
+
     def test_normalize_execution_status_only_moves_above_gate_floor_with_real_implementation_evidence(self) -> None:
         fresh_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
         active_task = {

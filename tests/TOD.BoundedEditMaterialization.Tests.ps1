@@ -106,6 +106,8 @@ Describe 'TOD bounded edit materialization' {
     BeforeAll {
         Import-TodFunction -Name 'Get-TaskRoutingText'
         Import-TodFunction -Name 'Get-TaskRoutingFileHints'
+        Import-TodFunction -Name 'Get-TaskExplicitFieldValue'
+        Import-TodFunction -Name 'Test-ExplicitBooleanTrue'
         Import-TodFunction -Name 'Resolve-TaskCategory'
         Import-TodFunction -Name 'Get-BoundedEditDirectiveValue'
         Import-TodFunction -Name 'Convert-ToCanonicalBoundedEditMode'
@@ -193,6 +195,79 @@ Validation Pattern: function Invoke-ExecuteChatTaskRequest
         [string]$materialization.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
         (@($materialization.required_clarification) -contains 'edit_mode') | Should Be $true
         [string]@($materialization.target_file_candidates)[0] | Should Be 'scripts/Start-TOD-UI.ps1'
+    }
+
+    It 'blocks missing target_file with exact missing field' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-MISSING-TARGET'
+            title = 'Repair bounded materialization'
+            scope = 'Patch Resolve-TaskBoundedEditMaterialization.'
+            task_category = 'code_change'
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'blocked'
+        [string]$materialization.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
+        (@($materialization.required_clarification) -contains 'target_file') | Should Be $true
+        (@($materialization.missing_fields) -contains 'target_file') | Should Be $true
+        [string]$materialization.why_local_executor_cannot_proceed | Should Match 'no target_file was provided'
+    }
+
+    It 'materializes exactly one explicit target_file for objective 2914 validation repair' {
+        $task = [pscustomobject]@{
+            id = 'objective-2914-bounded-edit-materialization-repair'
+            objective_id = 'objective-2914'
+            title = 'Repair bounded materialization'
+            scope = 'Validate Resolve-TaskBoundedEditMaterialization after bounded target_file repair.'
+            task_category = 'validation'
+            target_file = 'scripts/TOD.ps1'
+            bounded_edit_mode = $true
+            validation_only = $true
+            expected_function = 'Resolve-TaskBoundedEditMaterialization'
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]$materialization.edit_mode | Should Be 'validation_only'
+        [string]@($materialization.target_files)[0] | Should Be 'scripts/TOD.ps1'
+        [string]$materialization.prompt_directives['Target File'] | Should Be 'scripts/TOD.ps1'
+    }
+
+    It 'blocks multiple target_files with exact missing field' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-MULTI-TARGET'
+            title = 'Ambiguous bounded materialization'
+            scope = 'Validate one target only.'
+            task_category = 'validation'
+            target_files = @('scripts/TOD.ps1', 'scripts/Start-TOD-UI.ps1')
+            validation_only = $true
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'blocked'
+        [string]$materialization.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
+        (@($materialization.required_clarification) -contains 'target_file_exactly_one') | Should Be $true
+        (@($materialization.missing_fields) -contains 'target_file_exactly_one') | Should Be $true
+        @($materialization.target_file_candidates).Count | Should Be 2
+    }
+
+    It 'allows no target_file only for explicit validation_only true' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-VALIDATION-NO-TARGET'
+            title = 'Validation only without edit target'
+            scope = 'Run validation-only materialization without changing a file.'
+            task_category = 'validation'
+            validation_only = $true
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]$materialization.edit_mode | Should Be 'validation_only'
+        @($materialization.target_files).Count | Should Be 0
     }
 
     It 'does not invoke LocalExecutionEngine when edit_mode is missing' {

@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -46,10 +47,11 @@ TOD_OPERATOR_ACTION_LATEST_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTIO
 TOD_OPERATOR_ACTION_LOG_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_ACTION.log.jsonl"
 TOD_OPERATOR_EVIDENCE_PATH = TOD_OPERATOR_ACTION_ROOT / "TOD_OPERATOR_EVIDENCE.latest.json"
 TOD_OPERATOR_ACTION_TIMEOUT_SECONDS = 180
-UI_BUILD_ID = "live-console-state-alignment-v1"
+UI_BUILD_ID = "tod-ui-polling-backpressure-v1"
 LOCAL_EXECUTOR_BINDING = "scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine"
 LOCAL_EXECUTOR_BINDING_COMMAND = "execute-chat-task"
 LEDGER_PHASE_A_COVERAGE_ARTIFACT = "runtime/shared/TOD_MIM_LEDGER_PHASE_A_COVERAGE.latest.json"
+LOCAL_EXECUTOR_BINDING_REPAIR_ARTIFACT = "runtime/shared/TOD_EXECUTOR_BINDING_REPAIR.latest.json"
 TOD_ACTIVE_EXECUTION_LANE_ARTIFACT = "TOD_ACTIVE_EXECUTION_LANE.latest.json"
 TOD_INTAKE_QUEUE_ARTIFACT = "TOD_INTAKE_QUEUE.latest.json"
 TOD_INTAKE_ARBITRATION_ARTIFACT = "TOD_INTAKE_ARBITRATION.latest.json"
@@ -60,6 +62,21 @@ TOD_DIRECT_CHAT_ACTIVE_SOURCES = {
     "tod-ui-task-identity-self-repair",
     "tod-ui-executor-binding-repair",
     "tod.execute-chat-task",
+}
+TOD_UI_CHAT_STATE_MIN_POLL_SECONDS = 3.0
+TOD_UI_CHAT_STATE_CACHE_SECONDS = 3.0
+TOD_UI_CHAT_SESSION_TTL_SECONDS = 60 * 60
+TOD_UI_CHAT_SESSION_ACTIVE_SECONDS = 10 * 60
+TOD_UI_CHAT_POLL_WINDOW_SECONDS = 60.0
+TOD_UI_CHAT_SESSION_CLEANUP_SECONDS = 60.0
+TOD_UI_CHAT_SESSION_FILE_MAX_AGE_SECONDS = 6 * 60 * 60
+TOD_UI_CHAT_POLL_LOCK = threading.Lock()
+TOD_UI_CHAT_STATE_CACHE: dict[str, dict[str, Any]] = {}
+TOD_UI_CHAT_POLL_SESSIONS: dict[str, dict[str, Any]] = {}
+TOD_UI_CHAT_POLL_GLOBAL: dict[str, Any] = {
+    "last_cleanup_at": 0.0,
+    "stale_sessions_dropped": 0,
+    "last_poll_backoff_reason": "",
 }
 
 OPERATOR_ACTION_SPECS: dict[str, dict[str, Any]] = {
@@ -1200,6 +1217,32 @@ def _is_ledger_coverage_task(live_task: dict[str, Any], execution: dict[str, Any
     return bool(("ledger" in text_blob or "message-ledger" in text_blob) and ("coverage" in text_blob or "phase a" in text_blob))
 
 
+def _is_local_executor_binding_repair_task(live_task: dict[str, Any], execution: dict[str, Any]) -> bool:
+    metadata = live_task.get("metadata_json") if isinstance(live_task.get("metadata_json"), dict) else {}
+    text_blob = " ".join(
+        str(item or "")
+        for item in (
+            live_task.get("objective_id"),
+            live_task.get("normalized_objective_id"),
+            live_task.get("task_id"),
+            live_task.get("title"),
+            live_task.get("scope"),
+            live_task.get("summary"),
+            live_task.get("requested_outcome"),
+            metadata.get("task_title"),
+            metadata.get("task_acceptance_criteria"),
+            execution.get("objective_id"),
+            execution.get("task_id"),
+            execution.get("title"),
+            execution.get("summary"),
+            execution.get("task_focus"),
+            execution.get("wait_target"),
+            execution.get("wait_reason"),
+        )
+    ).lower()
+    return "tod-local-execution-materializer-binding" in text_blob or LOCAL_EXECUTOR_BINDING.lower() in text_blob
+
+
 def _resolve_local_executor_mode() -> str:
     for mode in ("validation_only", "report_generation"):
         if mode == "validation_only":
@@ -1220,13 +1263,26 @@ def _attempt_executor_binding_materialization(
     objective_id = str(live_task.get("objective_id") or execution.get("objective_id") or planner_state.get("objective_id") or "").strip()
     task_id = str(live_task.get("task_id") or live_task.get("request_id") or execution.get("task_id") or planner_state.get("task_id") or "").strip()
     planner_status = str(planner_state.get("status") or "").strip().lower()
-    assigned_executor = str(live_task.get("assigned_executor") or metadata.get("assigned_executor") or planner_state.get("assigned_executor") or "").strip()
-    selected_executor = str(live_task.get("selected_executor") or metadata.get("selected_executor") or "").strip()
+    assigned_executor = str(
+        live_task.get("assigned_executor")
+        or metadata.get("assigned_executor")
+        or planner_state.get("assigned_executor")
+        or execution.get("assigned_executor")
+        or ""
+    ).strip()
+    selected_executor = str(live_task.get("selected_executor") or metadata.get("selected_executor") or execution.get("selected_executor") or "").strip()
     expected_executor = str(live_task.get("expected_executor") or metadata.get("expected_executor") or "").strip()
-    active_engine = str(live_task.get("active_engine") or metadata.get("active_engine") or "").strip()
-    executor_binding = str(live_task.get("executor_binding") or metadata.get("executor_binding") or "").strip()
+    active_engine = str(live_task.get("active_engine") or metadata.get("active_engine") or execution.get("active_engine") or "").strip()
+    executor_binding = str(live_task.get("executor_binding") or metadata.get("executor_binding") or execution.get("executor_binding") or "").strip()
     bounded_mode = str(live_task.get("bounded_edit_mode") or metadata.get("bounded_edit_mode") or "").strip()
     target_artifact_path = str(live_task.get("target_artifact_path") or metadata.get("target_artifact_path") or "").strip()
+    execution_status = str(execution.get("status") or execution.get("execution_state") or "").strip().lower()
+    execution_completed = execution_status in {"completed", "complete", "success", "succeeded"}
+    local_binding_present = (
+        active_engine.lower() == "local"
+        and bool(executor_binding)
+        and LOCAL_EXECUTOR_BINDING.lower() in executor_binding.lower()
+    )
 
     if not expected_executor:
         expected_executor = "local" if _is_ledger_coverage_task(live_task, execution) else (assigned_executor or "local")
@@ -1268,7 +1324,17 @@ def _attempt_executor_binding_materialization(
         "updated_live_task_request": None,
     }
 
-    if planner_status != "queued":
+    if local_binding_present:
+        result["status"] = "present" if execution_completed else "already_bound"
+        result["materialized"] = True
+        result["reason_code"] = "local_executor_binding_present"
+        result["missing_field_or_function"] = ""
+        if not selected_executor:
+            result["selected_executor"] = "local"
+        if not expected_executor:
+            result["expected_executor"] = "local"
+        return result
+    if planner_status not in {"queued", "ready"}:
         result["status"] = "not_queued"
         return result
     if not missing_fields:
@@ -1290,15 +1356,31 @@ def _attempt_executor_binding_materialization(
         },
     )
 
-    local_capable = _is_ledger_coverage_task(live_task, execution)
+    binding_repair_task = _is_local_executor_binding_repair_task(live_task, execution)
+    local_capable = _is_ledger_coverage_task(live_task, execution) or binding_repair_task
+    target_artifact_path_for_task = LOCAL_EXECUTOR_BINDING_REPAIR_ARTIFACT if binding_repair_task else LEDGER_PHASE_A_COVERAGE_ARTIFACT
+    task_category_for_request = "diagnostic/implementation-repair" if binding_repair_task else "validation"
+    task_classification_for_request = "diagnostic/implementation-repair" if binding_repair_task else "validation/reporting/diagnostic"
+    fallback_scope = (
+        "Materialize the missing LocalExecutionEngine binding for the active TOD execution request and publish exact validation evidence."
+        if binding_repair_task
+        else "Validate message-ledger Phase A coverage artifacts and publish the local coverage report."
+    )
+    fallback_outcome = (
+        f"Publish {LOCAL_EXECUTOR_BINDING_REPAIR_ARTIFACT} and advance TOD past local_execution_binding_missing."
+        if binding_repair_task
+        else "Publish runtime/shared/TOD_MIM_LEDGER_PHASE_A_COVERAGE.latest.json via LocalExecutionEngine."
+    )
     _record_executor_binding_event(
         "local_suitability_evaluated",
         objective_id,
         task_id,
         {
             "local_capable": local_capable,
+            "binding_repair_task": binding_repair_task,
             "expected_executor": expected_executor,
             "task_category": result["task_category"],
+            "planner_status": planner_status,
         },
     )
     if not local_capable:
@@ -1351,34 +1433,34 @@ def _attempt_executor_binding_materialization(
         "objective_id": objective_id,
         "correlation_id": str(live_task.get("correlation_id") or task_id or request_id).strip(),
         "tod_action": "execute-chat-task",
-        "task_classification": "validation/reporting/diagnostic",
-        "task_category": "validation",
-        "assigned_executor": "local",
+        "task_classification": task_classification_for_request,
+        "task_category": task_category_for_request,
+        "assigned_executor": "tod",
         "selected_executor": "local",
         "expected_executor": "local",
         "active_engine": "local",
         "executor_binding": LOCAL_EXECUTOR_BINDING,
         "bounded_edit_mode": local_mode,
-        "target_artifact_path": LEDGER_PHASE_A_COVERAGE_ARTIFACT,
+        "target_artifact_path": target_artifact_path_for_task,
         "scope": _pick_first_text(
             live_task.get("scope"),
-            "Validate message-ledger Phase A coverage artifacts and publish the local coverage report.",
+            fallback_scope,
         ),
         "requested_outcome": _pick_first_text(
             live_task.get("requested_outcome"),
-            "Publish runtime/shared/TOD_MIM_LEDGER_PHASE_A_COVERAGE.latest.json via LocalExecutionEngine.",
+            fallback_outcome,
         ),
     }
     request_payload["metadata_json"] = {
         **metadata,
-        "task_category": "validation",
-        "assigned_executor": "local",
+        "task_category": task_category_for_request,
+        "assigned_executor": "tod",
         "selected_executor": "local",
         "expected_executor": "local",
         "active_engine": "local",
         "executor_binding": LOCAL_EXECUTOR_BINDING,
         "bounded_edit_mode": local_mode,
-        "target_artifact_path": LEDGER_PHASE_A_COVERAGE_ARTIFACT,
+        "target_artifact_path": target_artifact_path_for_task,
         "task_source": "executor_binding_repair",
     }
     trigger_payload = {
@@ -1435,8 +1517,8 @@ def _attempt_executor_binding_materialization(
                 "active_engine": "local",
                 "executor_binding": LOCAL_EXECUTOR_BINDING,
                 "bounded_edit_mode": local_mode,
-                "task_category": "validation/reporting/diagnostic",
-                "target_artifact_path": LEDGER_PHASE_A_COVERAGE_ARTIFACT,
+                "task_category": task_classification_for_request,
+                "target_artifact_path": target_artifact_path_for_task,
                 "updated_live_task_request": request_payload,
                 "missing_field_or_function": "",
             }
@@ -3114,6 +3196,224 @@ def _sanitize_session_key(value: Any) -> str:
 
 def _chat_session_path(session_key: str) -> Path:
     return TOD_CONSOLE_CHAT_ROOT / f"{_sanitize_session_key(session_key)}.json"
+
+
+def _poll_cache_key(session_key: str, surface: str = "tod") -> str:
+    normalized_surface = "chat" if str(surface or "tod").strip().lower() == "chat" else "tod"
+    return f"{normalized_surface}:{_sanitize_session_key(session_key)}"
+
+
+def _json_clone(value: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return json.loads(json.dumps(value, default=str))
+    except Exception:
+        return dict(value)
+
+
+def _chat_state_payload_signature(payload: dict[str, Any]) -> str:
+    session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    activity = session.get("activity") if isinstance(session.get("activity"), dict) else {}
+    marker = payload.get("state_marker") if isinstance(payload.get("state_marker"), dict) else {}
+    status = payload.get("status") if isinstance(payload.get("status"), dict) else {}
+    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    latest_message = messages[-1] if messages and isinstance(messages[-1], dict) else {}
+    fingerprint = {
+        "session_key": session.get("session_key"),
+        "message_count": session.get("message_count"),
+        "updated_at": session.get("updated_at"),
+        "activity_state": activity.get("state"),
+        "pending_progress_count": activity.get("pending_progress_count"),
+        "latest_message_at": latest_message.get("created_at"),
+        "latest_message_role": latest_message.get("role"),
+        "state_marker": marker,
+        "status_code": status.get("code"),
+    }
+    return hashlib.sha1(json.dumps(fingerprint, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def _chat_session_file_age_seconds(path: Path) -> float | None:
+    try:
+        return max(0.0, time.time() - path.stat().st_mtime)
+    except OSError:
+        return None
+
+
+def _cleanup_inactive_chat_polling_sessions(now: float | None = None) -> int:
+    current = time.time() if now is None else float(now)
+    dropped = 0
+    with TOD_UI_CHAT_POLL_LOCK:
+        last_cleanup = float(TOD_UI_CHAT_POLL_GLOBAL.get("last_cleanup_at") or 0.0)
+        if current - last_cleanup < TOD_UI_CHAT_SESSION_CLEANUP_SECONDS:
+            return 0
+        TOD_UI_CHAT_POLL_GLOBAL["last_cleanup_at"] = current
+        stale_keys = [
+            key
+            for key, item in TOD_UI_CHAT_POLL_SESSIONS.items()
+            if current - float(item.get("last_poll_at") or 0.0) > TOD_UI_CHAT_SESSION_TTL_SECONDS
+        ]
+        for key in stale_keys:
+            TOD_UI_CHAT_POLL_SESSIONS.pop(key, None)
+            TOD_UI_CHAT_STATE_CACHE.pop(key, None)
+            dropped += 1
+        active_session_names = {
+            str((item.get("session_key") or "")).strip()
+            for item in TOD_UI_CHAT_POLL_SESSIONS.values()
+            if current - float(item.get("last_poll_at") or 0.0) <= TOD_UI_CHAT_SESSION_ACTIVE_SECONDS
+        }
+    try:
+        for path in TOD_CONSOLE_CHAT_ROOT.glob("*.json"):
+            session_name = path.stem
+            if session_name in active_session_names:
+                continue
+            age_seconds = _chat_session_file_age_seconds(path)
+            if age_seconds is None or age_seconds < TOD_UI_CHAT_SESSION_FILE_MAX_AGE_SECONDS:
+                continue
+            payload = _load_json(path)
+            messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+            pending = payload.get("pending_progress") if isinstance(payload.get("pending_progress"), list) else []
+            if messages or pending:
+                continue
+            try:
+                path.unlink()
+                dropped += 1
+            except OSError:
+                pass
+    except OSError:
+        pass
+    if dropped:
+        with TOD_UI_CHAT_POLL_LOCK:
+            TOD_UI_CHAT_POLL_GLOBAL["stale_sessions_dropped"] = int(TOD_UI_CHAT_POLL_GLOBAL.get("stale_sessions_dropped") or 0) + dropped
+    return dropped
+
+
+def _record_chat_state_poll(
+    session_key: str,
+    surface: str,
+    payload: dict[str, Any],
+    *,
+    cache_hit: bool = False,
+    backoff_reason: str = "",
+) -> dict[str, Any]:
+    current = time.time()
+    safe_session_key = _sanitize_session_key(session_key)
+    cache_key = _poll_cache_key(safe_session_key, surface)
+    signature = _chat_state_payload_signature(payload)
+    with TOD_UI_CHAT_POLL_LOCK:
+        item = TOD_UI_CHAT_POLL_SESSIONS.get(cache_key, {})
+        timestamps = [
+            float(value)
+            for value in (item.get("poll_timestamps") if isinstance(item.get("poll_timestamps"), list) else [])
+            if current - float(value) <= TOD_UI_CHAT_POLL_WINDOW_SECONDS
+        ]
+        last_signature = str(item.get("last_state_signature") or "")
+        unchanged_count = int(item.get("unchanged_count") or 0)
+        if last_signature and last_signature == signature:
+            unchanged_count += 1
+            if not backoff_reason:
+                backoff_reason = "unchanged_state"
+        else:
+            unchanged_count = 0
+            if not backoff_reason:
+                backoff_reason = "state_changed" if last_signature else "initial_poll"
+        timestamps.append(current)
+        TOD_UI_CHAT_POLL_SESSIONS[cache_key] = {
+            "session_key": safe_session_key,
+            "surface": surface,
+            "last_poll_at": current,
+            "last_state_signature": signature,
+            "unchanged_count": unchanged_count,
+            "poll_timestamps": timestamps,
+            "last_poll_backoff_reason": backoff_reason,
+        }
+        active_count = sum(
+            1
+            for session in TOD_UI_CHAT_POLL_SESSIONS.values()
+            if current - float(session.get("last_poll_at") or 0.0) <= TOD_UI_CHAT_SESSION_ACTIVE_SECONDS
+        )
+        rate_per_minute = sum(
+            len(
+                [
+                    value
+                    for value in (session.get("poll_timestamps") if isinstance(session.get("poll_timestamps"), list) else [])
+                    if current - float(value) <= TOD_UI_CHAT_POLL_WINDOW_SECONDS
+                ]
+            )
+            for session in TOD_UI_CHAT_POLL_SESSIONS.values()
+        )
+        TOD_UI_CHAT_POLL_GLOBAL["last_poll_backoff_reason"] = backoff_reason
+        stale_dropped = int(TOD_UI_CHAT_POLL_GLOBAL.get("stale_sessions_dropped") or 0)
+    next_poll_seconds = min(60, max(TOD_UI_CHAT_STATE_MIN_POLL_SECONDS, TOD_UI_CHAT_STATE_MIN_POLL_SECONDS * (2 ** min(unchanged_count, 4))))
+    return {
+        "active_polling_sessions": active_count,
+        "polling_rate_per_minute": rate_per_minute,
+        "stale_sessions_dropped": stale_dropped,
+        "last_poll_backoff_reason": backoff_reason,
+        "session_key": safe_session_key,
+        "surface": surface,
+        "cache_hit": bool(cache_hit),
+        "unchanged_state_count": unchanged_count,
+        "min_poll_seconds": TOD_UI_CHAT_STATE_MIN_POLL_SECONDS,
+        "recommended_next_poll_seconds": next_poll_seconds,
+    }
+
+
+def _attach_chat_polling_diagnostics(
+    payload: dict[str, Any],
+    session_key: str,
+    surface: str,
+    *,
+    cache_hit: bool = False,
+    backoff_reason: str = "",
+) -> dict[str, Any]:
+    document = _json_clone(payload)
+    diagnostics = _record_chat_state_poll(
+        session_key,
+        surface,
+        document,
+        cache_hit=cache_hit,
+        backoff_reason=backoff_reason,
+    )
+    document["polling"] = diagnostics
+    session = document.get("session") if isinstance(document.get("session"), dict) else {}
+    session["polling"] = diagnostics
+    document["session"] = session
+    return document
+
+
+def _invalidate_chat_state_cache(session_key: str, surface: str = "tod") -> None:
+    with TOD_UI_CHAT_POLL_LOCK:
+        TOD_UI_CHAT_STATE_CACHE.pop(_poll_cache_key(session_key, surface), None)
+
+
+def _build_or_get_chat_state_payload(session_key: str, surface: str = "tod") -> dict[str, Any]:
+    _cleanup_inactive_chat_polling_sessions()
+    safe_session_key = _sanitize_session_key(session_key)
+    cache_key = _poll_cache_key(safe_session_key, surface)
+    current = time.time()
+    cached_payload: dict[str, Any] | None = None
+    with TOD_UI_CHAT_POLL_LOCK:
+        cached = TOD_UI_CHAT_STATE_CACHE.get(cache_key)
+        if cached and current - float(cached.get("cached_at") or 0.0) < TOD_UI_CHAT_STATE_CACHE_SECONDS:
+            cached_payload = cached.get("payload") if isinstance(cached.get("payload"), dict) else {}
+    if cached_payload is not None:
+        return _attach_chat_polling_diagnostics(
+            cached_payload,
+            safe_session_key,
+            surface,
+            cache_hit=True,
+            backoff_reason="server_cache_min_interval",
+        )
+    state = _build_tod_console_state()
+    messages = _advance_pending_chat_progress(safe_session_key, state)
+    payload = _build_chat_payload(safe_session_key, messages, state, surface=surface)
+    payload_with_diagnostics = _attach_chat_polling_diagnostics(payload, safe_session_key, surface)
+    with TOD_UI_CHAT_POLL_LOCK:
+        TOD_UI_CHAT_STATE_CACHE[cache_key] = {
+            "cached_at": current,
+            "payload": _json_clone(payload),
+            "signature": _chat_state_payload_signature(payload),
+        }
+    return payload_with_diagnostics
 
 
 def _chat_state_marker(state: dict[str, Any]) -> dict[str, str]:
@@ -6228,7 +6528,7 @@ def _build_tod_console_state() -> dict[str, Any]:
     if binding_materialization.get("materialized"):
         planner_state["assigned_executor"] = str(binding_materialization.get("selected_executor") or "local").strip()
 
-    binding_status = "ready" if bool(binding_materialization.get("materialized")) else "missing" if str(binding_materialization.get("reason_code") or "").strip() else "unknown"
+    binding_status = "present" if bool(binding_materialization.get("materialized")) else "missing" if str(binding_materialization.get("reason_code") or "").strip() else "unknown"
     execution_status["executor_binding"] = {
         "status": binding_status,
         "reason_code": str(binding_materialization.get("reason_code") or "").strip(),
@@ -6246,7 +6546,35 @@ def _build_tod_console_state() -> dict[str, Any]:
         "missing_field_or_function": str(binding_materialization.get("missing_field_or_function") or "").strip(),
         "next_executable_repair": str(binding_materialization.get("next_executable_repair") or "").strip(),
     }
-    if binding_status == "missing":
+    if binding_status == "present":
+        execution_status["executor_binding_status"] = "present"
+        execution_status["executor_binding_target"] = str(binding_materialization.get("executor_binding") or LOCAL_EXECUTOR_BINDING).strip()
+        execution_status["executor_binding_command"] = ""
+        if str(execution_status.get("status") or "").strip().lower() in {"completed", "complete", "success", "succeeded"}:
+            planner_state["status"] = "completed"
+            planner_state["status_label"] = "Complete"
+            planner_state["summary"] = _pick_first_text(
+                execution_status.get("activity_summary"),
+                execution_status.get("summary"),
+                "LocalExecutionEngine completed the current bounded execution slice.",
+            )
+            planner_state["current_step"] = "Local execution completed"
+            planner_state["next_step"] = _pick_first_text(
+                execution_status.get("next_step"),
+                "Review the completed local execution evidence.",
+            )
+            planner_state["is_newer_than_executor"] = False
+    execution_completed_for_binding = str(execution_status.get("status") or execution_status.get("activity_state") or "").strip().lower() in {
+        "completed",
+        "complete",
+        "success",
+        "succeeded",
+    }
+    shared_truth_accepts_completion = str(shared_truth_state or "").strip().upper() in {
+        "ACCEPTED_COMPLETE",
+        "ACCEPTED_COMPLETE_PENDING_MIM_REFRESH",
+    }
+    if binding_status == "missing" and not execution_completed_for_binding and not shared_truth_accepts_completion:
         missing_summary = "Task identity is repaired, but no executor binding was produced for the queued next step."
         execution_status["activity_state"] = "blocked"
         execution_status["activity_label"] = "Binding Required"
@@ -6573,9 +6901,7 @@ async def tod_ui_chat_state(
     mode: str = Query("tod"),
 ) -> dict[str, Any]:
     del mode
-    state = _build_tod_console_state()
-    messages = _advance_pending_chat_progress(session_key, state)
-    return _build_chat_payload(session_key, messages, state)
+    return _build_or_get_chat_state_payload(session_key, surface="tod")
 
 
 @router.post("/tod/ui/chat/message")
@@ -6600,6 +6926,7 @@ async def tod_ui_chat_message(payload: dict[str, Any] = Body(default_factory=dic
             session_payload["pending_progress"] = []
         session_payload["messages"] = messages[-40:]
         _save_chat_session_payload(session_key, session_payload, state)
+        _invalidate_chat_state_cache(session_key, surface="tod")
     return _build_chat_payload(session_key, messages, state)
 
 
@@ -6648,6 +6975,7 @@ async def tod_ui_chat_upload_image(payload: dict[str, Any] = Body(default_factor
         }
     )
     _save_chat_messages(session_key, messages, state)
+    _invalidate_chat_state_cache(session_key, surface="tod")
     chat_payload = _build_chat_payload(session_key, messages, state)
     chat_payload["image_upload"] = {"ok": True, "attachment": _normalize_chat_attachment(attachment)}
     return chat_payload
@@ -6683,6 +7011,7 @@ async def tod_ui_chat_handoff(payload: dict[str, Any] = Body(default_factory=dic
     )
     messages.append({"role": "tod", "content": reply, "created_at": _utc_now_iso()})
     _save_chat_messages(session_key, messages, state)
+    _invalidate_chat_state_cache(session_key, surface="tod")
     chat_payload = _build_chat_payload(session_key, messages, state)
     chat_payload["handoff"] = handoff
     return chat_payload
@@ -6694,9 +7023,7 @@ async def chat_ui_state(
     mode: str = Query("chat"),
 ) -> dict[str, Any]:
     del mode
-    state = _build_tod_console_state()
-    messages = _advance_pending_chat_progress(session_key, state)
-    return _build_chat_payload(session_key, messages, state, surface="chat")
+    return _build_or_get_chat_state_payload(session_key, surface="chat")
 
 
 @router.post("/chat/ui/message")
@@ -6725,6 +7052,7 @@ async def chat_ui_message(payload: dict[str, Any] = Body(default_factory=dict)) 
             session_payload["pending_progress"] = []
         session_payload["messages"] = messages[-40:]
         _save_chat_session_payload(session_key, session_payload, state)
+        _invalidate_chat_state_cache(session_key, surface="chat")
     return _build_chat_payload(session_key, messages, state, surface="chat")
 
 
@@ -6756,6 +7084,7 @@ async def chat_ui_handoff(payload: dict[str, Any] = Body(default_factory=dict)) 
         }
     )
     _save_chat_messages(session_key, messages, state)
+    _invalidate_chat_state_cache(session_key, surface="chat")
     chat_payload = _build_chat_payload(session_key, messages, state, surface="chat")
     chat_payload["handoff"] = handoff
     return chat_payload
@@ -6770,6 +7099,7 @@ async def chat_ui_start_training(payload: dict[str, Any] = Body(default_factory=
     result = _start_training_runbook(state)
     messages.append({"role": "copilot", "content": _format_training_start_reply(result), "created_at": _utc_now_iso()})
     _save_chat_messages(session_key, messages, state)
+    _invalidate_chat_state_cache(session_key, surface="chat")
     chat_payload = _build_chat_payload(session_key, messages, state, surface="chat")
     chat_payload["training_action"] = result
     return chat_payload
@@ -7458,6 +7788,13 @@ async def tod_console() -> HTMLResponse:
     let todAvailableCameras = [];
     let todCameraStream = null;
     const autoTriggeredSessions = new Set();
+    let chatPollBackoffMs = 3000;
+    let chatPollUnchangedCount = 0;
+    let chatPollLastSignature = '';
+    let chatPollTimer = null;
+    let fullRefreshTimer = null;
+    let refreshInFlight = false;
+    let chatRefreshInFlight = false;
     function safeText(value, fallback = '-') {{ const text = String(value || '').trim(); return text || fallback; }}
     function safeJoin(values, fallback = 'None') {{ return Array.isArray(values) && values.length ? values.map((item) => safeText(item, '')).filter(Boolean).join(', ') : fallback; }}
     function plannerIsPrimary(planner) {{ return Boolean(planner && typeof planner === 'object' && planner.available && planner.is_newer_than_executor); }}
@@ -7523,14 +7860,17 @@ async def tod_console() -> HTMLResponse:
     function restoreChatScroll(snapshot, messages) {{ if (!chatThread) return; if (!snapshot || !snapshot.hadMessages) {{ chatThread.scrollTop = isSyntheticExecutionOnlyThread(messages) ? 0 : chatThread.scrollHeight; return; }} if (snapshot.atBottom) {{ chatThread.scrollTop = chatThread.scrollHeight; return; }} chatThread.scrollTop = snapshot.top; }}
     function renderChatState(data) {{ const session = data && typeof data.session === 'object' ? data.session : {{}}; const messages = Array.isArray(data && data.messages) ? data.messages : []; latestChatMessages = messages; const visitor = data && typeof data.visitor === 'object' ? data.visitor : {{}}; latestVisitor = visitor; const sessionKey = safeText(session.session_key || getChatSessionKey(latestConversation && latestConversation.default_session_key), 'unknown'); if (shouldRotateStaleChatSession(session, messages)) {{ rotateChatSession(latestConversation && latestConversation.default_session_key); chatStatus.textContent = 'Started a fresh TOD chat session because the previous thread was stale.'; clearNode(chatThread); appendCollectionItem(chatThread, 'TOD Chat', '', 'Started a fresh TOD session because the previous thread was stale. Ask for current status, next steps, or send a new request.'); renderChatActivity({{ activity: {{ state: 'idle', label: 'Fresh Session', summary: 'Started a fresh TOD session after the previous thread went stale.' }} }}); updateCopyButtonState(); setTimeout(() => {{ refreshChatState().catch((error) => {{ chatStatus.textContent = safeText(error && error.message, 'Unable to refresh fresh TOD session.'); }}); }}, 0); return; }} chatSessionMeta.textContent = `Session: ${{sessionKey}} Ã‚Â· User: ${{safeText(visitor.name, 'Dave')}}`; clearNode(chatThread); if (!messages.length) {{ appendCollectionItem(chatThread, 'TOD Chat', '', 'No TOD messages are in this session yet. Ask for status, blockers, training progress, execution work, or attach a screenshot.'); }} else {{ messages.forEach((message) => {{ const bubble = document.createElement('article'); const role = messageRole(message); bubble.className = `chat-bubble ${{role}}`; const roleNode = document.createElement('div'); roleNode.className = 'chat-role'; roleNode.textContent = messageLabel(message, role); const timeNode = document.createElement('div'); timeNode.className = 'chat-time'; timeNode.textContent = safeText(message.created_at || message.generated_at || message.timestamp, ''); const contentNode = document.createElement('div'); contentNode.className = 'chat-message'; contentNode.textContent = messageBody(message) || 'No message content'; bubble.appendChild(roleNode); if (timeNode.textContent) bubble.appendChild(timeNode); bubble.appendChild(contentNode); const attachment = messageAttachment(message); if (attachment && attachment.url) {{ const previewImg = document.createElement('img'); previewImg.src = safeText(attachment.thumbnail_url || attachment.url, ''); previewImg.alt = safeText(attachment.filename || 'Attached screenshot', 'Attached screenshot'); previewImg.style.marginTop = '10px'; previewImg.style.maxWidth = '320px'; previewImg.style.width = '100%'; previewImg.style.borderRadius = '10px'; previewImg.style.border = '1px solid rgba(97,219,191,0.18)'; previewImg.style.background = 'rgba(3,15,13,0.82)'; const attachmentMeta = document.createElement('div'); attachmentMeta.className = 'chat-time'; attachmentMeta.textContent = `${{safeText(attachment.filename, 'image')}} Ã‚Â· ${{Math.max(1, Math.round(Number(attachment.size_bytes || 0) / 1024))}} KB`; bubble.appendChild(previewImg); bubble.appendChild(attachmentMeta); }} chatThread.appendChild(bubble); }}); }} chatThread.scrollTop = chatThread.scrollHeight; updateCopyButtonState(); chatStatus.textContent = visitor.memory_summary ? safeText(visitor.memory_summary) : 'TOD operator chat is ready.'; renderChatActivity(session); const autoTrigger = latestConversation && typeof latestConversation.auto_trigger === 'object' ? latestConversation.auto_trigger : null; const enabled = Boolean(autoTrigger && autoTrigger.enabled); const statusCodes = autoTrigger && Array.isArray(autoTrigger.status_codes) ? autoTrigger.status_codes.map((value) => safeText(value, '').toLowerCase()).filter(Boolean) : []; const autoPrompt = autoTrigger ? safeText(autoTrigger.prompt, '') : ''; const shouldAutoTrigger = enabled && autoPrompt && statusCodes.includes(safeText(currentStatusCode, 'unknown').toLowerCase()) && messages.length === 0; if (shouldAutoTrigger) {{ const storageKey = getAutoTriggerStorageKey(sessionKey, currentStatusCode, autoPrompt); if (!hasAutoTriggered(storageKey)) {{ markAutoTriggered(storageKey); sendChatPrompt(autoPrompt, safeText(autoTrigger && autoTrigger.success_text, 'TOD auto-resolution request sent.')).then((ok) => {{ if (!ok) clearAutoTriggered(storageKey); }}); }} }} }}
     function renderChatState(data) {{ const session = data && typeof data.session === 'object' ? data.session : {{}}; const messages = Array.isArray(data && data.messages) ? data.messages : []; latestChatMessages = messages; const visitor = data && typeof data.visitor === 'object' ? data.visitor : {{}}; latestVisitor = visitor; latestSessionActivity = session && typeof session.activity === 'object' ? session.activity : {{}}; const sessionKey = safeText(session.session_key || getChatSessionKey(latestConversation && latestConversation.default_session_key), 'unknown'); if (shouldRotateStaleChatSession(session, messages)) {{ rotateChatSession(latestConversation && latestConversation.default_session_key); chatStatus.textContent = 'Started a fresh TOD chat session because the previous thread was stale.'; clearNode(chatThread); appendCollectionItem(chatThread, 'TOD Chat', '', 'Started a fresh TOD session because the previous thread was stale. Ask for current status, next steps, or send a new request.'); latestSessionActivity = {{ state: 'idle', label: 'Fresh Session', summary: 'Started a fresh TOD session after the previous thread went stale.' }}; renderTopActivity(); updateCopyButtonState(); setTimeout(() => {{ refreshChatState().catch((error) => {{ chatStatus.textContent = safeText(error && error.message, 'Unable to refresh fresh TOD session.'); }}); }}, 0); return; }} chatSessionMeta.textContent = `Session: ${{sessionKey}} Ã‚Â· User: ${{safeText(visitor.name, 'Dave')}}`; const scrollSnapshot = snapshotChatScroll(); clearNode(chatThread); if (!messages.length) {{ appendCollectionItem(chatThread, 'TOD Chat', '', 'No TOD messages are in this session yet. Ask for status, blockers, training progress, execution work, or attach a screenshot.'); }} else {{ messages.forEach((message) => {{ const bubble = document.createElement('article'); const role = messageRole(message); bubble.className = `chat-bubble ${{role}}`; const roleNode = document.createElement('div'); roleNode.className = 'chat-role'; roleNode.textContent = messageLabel(message, role); const timeNode = document.createElement('div'); timeNode.className = 'chat-time'; timeNode.textContent = safeText(message.created_at || message.generated_at || message.timestamp, ''); const contentNode = document.createElement('div'); contentNode.className = 'chat-message'; contentNode.textContent = messageBody(message) || 'No message content'; bubble.appendChild(roleNode); if (timeNode.textContent) bubble.appendChild(timeNode); bubble.appendChild(contentNode); const attachment = messageAttachment(message); if (attachment && attachment.url) {{ const previewImg = document.createElement('img'); previewImg.src = safeText(attachment.thumbnail_url || attachment.url, ''); previewImg.alt = safeText(attachment.filename || 'Attached screenshot', 'Attached screenshot'); previewImg.style.marginTop = '10px'; previewImg.style.maxWidth = '320px'; previewImg.style.width = '100%'; previewImg.style.borderRadius = '10px'; previewImg.style.border = '1px solid rgba(97,219,191,0.18)'; previewImg.style.background = 'rgba(3,15,13,0.82)'; const attachmentMeta = document.createElement('div'); attachmentMeta.className = 'chat-time'; attachmentMeta.textContent = `${{safeText(attachment.filename, 'image')}} Ã‚Â· ${{Math.max(1, Math.round(Number(attachment.size_bytes || 0) / 1024))}} KB`; bubble.appendChild(previewImg); bubble.appendChild(attachmentMeta); }} chatThread.appendChild(bubble); }}); }} restoreChatScroll(scrollSnapshot, messages); updateCopyButtonState(); chatStatus.textContent = visitor.memory_summary ? safeText(visitor.memory_summary) : 'TOD operator chat is ready.'; renderTopActivity(); const autoTrigger = latestConversation && typeof latestConversation.auto_trigger === 'object' ? latestConversation.auto_trigger : null; const enabled = Boolean(autoTrigger && autoTrigger.enabled); const statusCodes = autoTrigger && Array.isArray(autoTrigger.status_codes) ? autoTrigger.status_codes.map((value) => safeText(value, '').toLowerCase()).filter(Boolean) : []; const autoPrompt = autoTrigger ? safeText(autoTrigger.prompt, '') : ''; const shouldAutoTrigger = enabled && autoPrompt && statusCodes.includes(safeText(currentStatusCode, 'unknown').toLowerCase()) && messages.length === 0; if (shouldAutoTrigger) {{ const storageKey = getAutoTriggerStorageKey(sessionKey, currentStatusCode, autoPrompt); if (!hasAutoTriggered(storageKey)) {{ markAutoTriggered(storageKey); sendChatPrompt(autoPrompt, safeText(autoTrigger && autoTrigger.success_text, 'TOD auto-resolution request sent.')).then((ok) => {{ if (!ok) clearAutoTriggered(storageKey); }}); }} }} }}
-    async function refreshChatState() {{ if (!latestConversation || !latestConversation.enabled) {{ chatStatus.textContent = 'TOD operator chat is disabled on this surface.'; return; }} const sessionKey = getChatSessionKey(latestConversation.default_session_key); const url = `${{safeText(latestConversation.state_url, '/tod/ui/chat/state')}}?session_key=${{encodeURIComponent(sessionKey)}}&mode=${{encodeURIComponent(safeText(latestConversation.mode, 'tod'))}}`; const response = await fetch(url, {{ cache: 'no-store' }}); if (!response.ok) throw new Error(`chat-state-${{response.status}}`); const data = await response.json(); renderChatState(data); }}
+    function chatStateSignature(data) {{ const session = data && typeof data.session === 'object' ? data.session : {{}}; const activity = session && typeof session.activity === 'object' ? session.activity : {{}}; const messages = Array.isArray(data && data.messages) ? data.messages : []; const last = messages.length && typeof messages[messages.length - 1] === 'object' ? messages[messages.length - 1] : {{}}; return [safeText(session.session_key, ''), safeText(session.message_count, '0'), safeText(session.updated_at, ''), safeText(activity.state, ''), safeText(activity.pending_progress_count, '0'), safeText(last.created_at, ''), safeText(last.role, '')].join('|'); }}
+    function updateChatPollBackoff(data, reason) {{ const polling = data && typeof data.polling === 'object' ? data.polling : (data && data.session && typeof data.session.polling === 'object' ? data.session.polling : {{}}); const serverNextSeconds = Number(polling.recommended_next_poll_seconds); const signature = chatStateSignature(data); if (signature && signature === chatPollLastSignature) {{ chatPollUnchangedCount += 1; }} else {{ chatPollUnchangedCount = 0; chatPollLastSignature = signature; }} const computed = Math.min(60000, Math.max(3000, 3000 * Math.pow(2, Math.min(chatPollUnchangedCount, 4)))); chatPollBackoffMs = Math.max(3000, Number.isFinite(serverNextSeconds) && serverNextSeconds > 0 ? serverNextSeconds * 1000 : computed); if (polling && polling.last_poll_backoff_reason && chatStatus) chatStatus.dataset.pollBackoffReason = safeText(polling.last_poll_backoff_reason, reason || 'unchanged_state'); }}
+    function scheduleChatPoll(reason = 'scheduled') {{ if (chatPollTimer) window.clearTimeout(chatPollTimer); if (document.hidden) return; const delay = Math.max(3000, chatPollBackoffMs); chatPollTimer = window.setTimeout(() => {{ refreshChatState().catch((error) => {{ chatStatus.textContent = safeText(error && error.message, 'Unable to refresh TOD chat state.'); chatPollBackoffMs = Math.min(60000, Math.max(5000, chatPollBackoffMs * 2)); scheduleChatPoll('error_backoff'); }}); }}, delay); }}
+    async function refreshChatState(options = {{}}) {{ if (document.hidden && !(options && options.force)) {{ if (chatStatus) chatStatus.dataset.pollBackoffReason = 'hidden_tab_paused'; return; }} if (chatRefreshInFlight) return; if (!latestConversation || !latestConversation.enabled) {{ chatStatus.textContent = 'TOD operator chat is disabled on this surface.'; return; }} chatRefreshInFlight = true; const sessionKey = getChatSessionKey(latestConversation.default_session_key); const url = `${{safeText(latestConversation.state_url, '/tod/ui/chat/state')}}?session_key=${{encodeURIComponent(sessionKey)}}&mode=${{encodeURIComponent(safeText(latestConversation.mode, 'tod'))}}`; try {{ const response = await fetch(url, {{ cache: 'no-store' }}); if (!response.ok) throw new Error(`chat-state-${{response.status}}`); const data = await response.json(); renderChatState(data); updateChatPollBackoff(data, 'state_polled'); }} finally {{ chatRefreshInFlight = false; if (!(options && options.once)) scheduleChatPoll('state_polled'); }} }}
     async function sendChatPrompt(message, successText) {{ if (!latestConversation || !latestConversation.enabled) {{ chatStatus.textContent = 'TOD chat is unavailable.'; return false; }} const trimmedMessage = String(message || '').trim(); if (!trimmedMessage) {{ chatStatus.textContent = 'Enter a message for TOD first.'; return false; }} setChatButtonsDisabled(true); chatStatus.textContent = 'Sending to TOD...'; try {{ const response = await fetch(safeText(latestConversation.message_url, '/tod/ui/chat/message'), {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ message: trimmedMessage, mode: safeText(latestConversation.mode, 'tod'), session_key: getChatSessionKey(latestConversation.default_session_key) }}) }}); if (!response.ok) throw new Error(`chat-send-${{response.status}}`); chatInput.value = ''; await refreshChatState(); chatStatus.textContent = safeText(successText, 'TOD replied on this operator channel.'); return true; }} catch (error) {{ chatStatus.textContent = `TOD chat failed: ${{safeText(error && error.message, 'unknown error')}}`; return false; }} finally {{ setChatButtonsDisabled(false); }} }}
     async function uploadComposerImage() {{ if (!(selectedComposerImage instanceof File)) return false; if (!latestConversation || !latestConversation.enabled) {{ chatStatus.textContent = 'TOD image upload is unavailable.'; return false; }} const uploadUrl = safeText((latestConversation.actions && latestConversation.actions.upload_url) || latestConversation.upload_url, '/tod/ui/chat/upload-image'); setChatButtonsDisabled(true); chatStatus.textContent = 'Uploading screenshot to TOD...'; try {{ const dataUrl = await fileToDataUrl(selectedComposerImage); const response = await fetch(uploadUrl, {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ session_key: getChatSessionKey(latestConversation.default_session_key), mode: safeText(latestConversation.mode, 'tod'), prompt: String(chatInput && chatInput.value || '').trim(), attachment: {{ filename: selectedComposerImage.name || 'shared-image', mime_type: selectedComposerImage.type || 'image/png', size_bytes: Number(selectedComposerImage.size || 0), data_url: dataUrl }} }}) }}); if (!response.ok) throw new Error(`chat-upload-${{response.status}}`); const data = await response.json(); renderChatState(data); if (chatInput) chatInput.value = ''; resetComposerImage(); chatStatus.textContent = 'Screenshot attached to the TOD thread. Use Send To Codex to package it for deeper review.'; return true; }} catch (error) {{ chatStatus.textContent = `TOD image upload failed: ${{safeText(error && error.message, 'unknown error')}}`; return false; }} finally {{ setChatButtonsDisabled(false); }} }}
     async function createCopilotHandoff(message, successText) {{ if (!latestConversation || !latestConversation.enabled) {{ chatStatus.textContent = 'TOD handoff is unavailable.'; return false; }} const trimmedMessage = String(message || '').trim(); if (!trimmedMessage) {{ chatStatus.textContent = 'Enter a handoff request first.'; return false; }} setChatButtonsDisabled(true); chatStatus.textContent = 'Creating Codex handoff...'; try {{ const response = await fetch(safeText(latestConversation.handoff_url, '/tod/ui/chat/handoff'), {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ message: trimmedMessage, mode: safeText(latestConversation.mode, 'tod'), session_key: getChatSessionKey(latestConversation.default_session_key) }}) }}); if (!response.ok) throw new Error(`handoff-send-${{response.status}}`); const data = await response.json(); renderChatState(data); chatInput.value = ''; const handoff = data && typeof data.handoff === 'object' ? data.handoff : null; chatStatus.textContent = handoff && handoff.session_id ? `${{safeText(successText, 'Codex handoff created.')}} Session: ${{safeText(handoff.session_id)}} Ã‚Â· Codex receives the current request, strongest evidence, next validation target, and the latest screenshot from this thread when present.` : safeText(successText, 'Codex handoff created.'); return true; }} catch (error) {{ chatStatus.textContent = `TOD handoff failed: ${{safeText(error && error.message, 'unknown error')}}`; return false; }} finally {{ setChatButtonsDisabled(false); }} }}
     async function sendChatMessage(event) {{ event.preventDefault(); if (selectedComposerImage instanceof File) {{ await uploadComposerImage(); return; }} await sendChatPrompt(chatInput.value, 'TOD replied on this operator channel.'); }}
     async function handleQuickAction(actionId) {{ const action = chatQuickActionMap.get(String(actionId || '')); if (!action || !action.prompt) {{ chatStatus.textContent = 'That TOD quick action is not available right now.'; return; }} if (chatInput) chatInput.value = action.prompt; if (safeText(action.actionType, 'prompt') === 'handoff') {{ await createCopilotHandoff(action.prompt, `${{safeText(action.label, 'Quick action')}} created a Codex handoff.`); return; }} await sendChatPrompt(action.prompt, `${{safeText(action.label, 'Quick action')}} sent to TOD.`); }}
     function renderState(data) {{ const status = data && typeof data.status === 'object' ? data.status : {{}}; const quickFacts = data && typeof data.quick_facts === 'object' ? data.quick_facts : {{}}; const execution = data && typeof data.execution === 'object' ? data.execution : {{}}; const training = data && typeof data.training_status === 'object' ? data.training_status : {{}}; const objectiveCards = Array.isArray(data && data.objective_cards) ? data.objective_cards : []; const phaseProgress = execution.phase_progress && typeof execution.phase_progress === 'object' ? execution.phase_progress : {{}}; const stallSignal = execution.stall_signal && typeof execution.stall_signal === 'object' ? execution.stall_signal : {{}}; const stallLevel = safeText(stallSignal.level, 'ok').toLowerCase(); const alignment = data && typeof data.objective_alignment === 'object' ? data.objective_alignment : {{}}; const evidence = data && typeof data.bridge_canonical_evidence === 'object' ? data.bridge_canonical_evidence : {{}}; const liveTask = data && typeof data.live_task_request === 'object' ? data.live_task_request : {{}}; const decision = data && typeof data.listener_decision === 'object' ? data.listener_decision : {{}}; const publish = data && typeof data.publish === 'object' ? data.publish : {{}}; const authority = data && typeof data.authority_reset === 'object' ? data.authority_reset : {{}}; latestConversation = data && typeof data.conversation === 'object' ? data.conversation : null; currentStatusCode = safeText(status.code, 'unknown').toLowerCase(); if (buildTagEl) buildTagEl.textContent = `UI_BUILD_ID = ${{safeText(data.runtime_build, 'unified-console-recovery-v1')}}`; const sharedTruthPrimary = ['blocked_with_reason', 'accepted_complete', 'accepted_complete_pending_mim_refresh', 'replay_or_replan_required', 'disagreement', 'stale'].includes(currentStatusCode); renderQuickActions(latestConversation); renderExecution(execution); renderTraining(training); renderTopActivity(); renderPrimaryStatus(status, execution); renderTodActivityStrip(status, execution); renderObjectiveCards(objectiveCards); renderOperatorActions(data.operator_actions || []); renderOperatorTimeline(data.operator_activity_timeline || []); renderOperatorEvidence(data.operator_evidence || {{}}); if (alignmentQuickActionPanel) alignmentQuickActionPanel.hidden = ['aligned'].includes(safeText(status.code, 'unknown').toLowerCase()); setConsoleLight(todConsoleLight, ['aligned'].includes(safeText(status.code, 'unknown').toLowerCase())); setConsoleLight(mimConsoleLight, Boolean(data.mim_status && data.mim_status.available)); factCanonicalObjective.textContent = safeText(quickFacts.canonical_objective, 'Unknown'); factCanonicalMeta.textContent = safeText(data.mim_status && data.mim_status.generated_age, 'Unknown'); factLiveObjective.textContent = safeText(quickFacts.live_request_objective, 'Unknown'); factLiveMeta.textContent = `Request age: ${{safeText(liveTask.generated_age, 'Unknown')}}`; factAlignment.textContent = safeText(alignment.status, 'unknown').replaceAll('_', ' '); factAlignmentMeta.textContent = safeText(alignment.summary, 'No alignment summary'); factListenerState.textContent = safeText(quickFacts.listener_state, 'unknown'); factListenerMeta.textContent = safeText(decision.summary, 'No listener decision summary'); if (factPhaseProgressLabel) factPhaseProgressLabel.textContent = Boolean(phaseProgress.available) && !sharedTruthPrimary ? safeText(phaseProgress.label, 'Phase Progress') : 'Phase Progress'; factPhaseProgress.textContent = Boolean(phaseProgress.available) && !sharedTruthPrimary ? `${{Math.max(0, Math.min(100, Number(phaseProgress.percent_complete || 0)))}}%` : 'Unknown'; factPhaseProgressMeta.textContent = Boolean(phaseProgress.available) && !sharedTruthPrimary ? safeText(phaseProgress.summary, 'No phase progress summary.') : safeText(status.summary, 'Waiting for bounded execution progress.'); factStallWatch.textContent = stallSignal.flagged ? 'Probable stall' : stallLevel === 'implementation_pending' ? 'Held at gate' : sharedTruthPrimary ? 'Not a stall' : execution.available ? 'Clear' : 'Unknown'; factStallWatchMeta.textContent = sharedTruthPrimary ? safeText(status.summary, 'Shared truth superseded the older stall view.') : stallLevel !== 'ok' ? safeText(stallSignal.summary, stallSignal.flagged ? 'Probable stall detected.' : 'Implementation is pending.') : execution.available ? `Last update: ${{formatSeconds(execution.last_update_age_seconds)}} ago.` : 'Waiting for execution freshness evidence.'; factPublishStatus.textContent = safeText(quickFacts.publish_status, 'unknown'); factPublishMeta.textContent = safeText(publish.summary, 'No publish summary'); factAuthorityReset.textContent = safeText(quickFacts.authority_reset, 'Inactive'); factAuthorityMeta.textContent = authority.active ? safeText(authority.reason, 'Authority reset active') : 'No authority reset is active.'; renderGuidance(data.operator_guidance || []); renderHandoffs(data.recent_handoffs || []); publishSummary.textContent = safeText(publish.summary, 'No publish summary'); publishMirror.textContent = safeText(publish.mim_mirror_status, 'Unknown'); publishAccess.textContent = safeText(publish.remote_access_status, 'Unknown'); publishConsumer.textContent = safeText(publish.consumer_status, 'Unknown'); publishTime.textContent = `${{safeText(publish.uploaded_at, 'Unknown')}} Ã‚Â· ${{safeText(publish.uploaded_age, 'Unknown')}}`; publishError.textContent = safeText(publish.error, 'None'); alignmentSummary.textContent = safeText(alignment.summary, 'No alignment summary'); alignmentTodObjective.textContent = safeText(alignment.tod_current_objective, 'Unknown'); alignmentMimObjective.textContent = safeText(alignment.mim_objective_active, 'Unknown'); alignmentEvidence.textContent = safeText(evidence.status, 'Unknown'); alignmentSignals.textContent = Array.isArray(evidence.failure_signals) && evidence.failure_signals.length ? evidence.failure_signals.join(', ') : 'None'; decisionSummary.textContent = safeText(decision.summary, 'No listener decision summary'); decisionOutcome.textContent = safeText(decision.decision_outcome, 'Unknown'); decisionReason.textContent = safeText(decision.reason_code, 'Unknown'); decisionState.textContent = safeText(decision.execution_state, 'Unknown'); decisionNextStep.textContent = safeText(decision.next_step_recommendation, 'Unknown'); decisionAge.textContent = safeText(decision.generated_age, 'Unknown'); authoritySummary.textContent = authority.active ? safeText(authority.reason, 'Authority reset is active.') : 'Authority reset is inactive.'; authorityCurrent.textContent = safeText(authority.authoritative_current_objective, 'Unknown'); authorityMaxValid.textContent = safeText(authority.max_valid_objective, 'Unknown'); authorityEffective.textContent = authority.active ? `${{safeText(authority.effective_at, 'Unknown')}} Ã‚Â· ${{safeText(authority.effective_age, 'Unknown')}}` : 'Inactive'; authorityInvalidated.textContent = Array.isArray(authority.invalidated_objectives) && authority.invalidated_objectives.length ? authority.invalidated_objectives.join(', ') : 'None'; footerGenerated.textContent = `Generated: ${{safeText(data.generated_at, 'Unknown')}}`; }}
-    async function refresh() {{ const res = await fetch('/tod/ui/state', {{ cache: 'no-store' }}); if (!res.ok) throw new Error(`tod-ui-state-${{res.status}}`); const data = await res.json(); renderState(data); await refreshChatState(); }}
+    async function refresh() {{ if (refreshInFlight) return; if (document.hidden) {{ if (chatStatus) chatStatus.dataset.pollBackoffReason = 'hidden_tab_paused'; return; }} refreshInFlight = true; try {{ const res = await fetch('/tod/ui/state', {{ cache: 'no-store' }}); if (!res.ok) throw new Error(`tod-ui-state-${{res.status}}`); const data = await res.json(); renderState(data); await refreshChatState({{ once: true }}); }} finally {{ refreshInFlight = false; }} }}
     chatForm.addEventListener('submit', sendChatMessage);
     if (chatImageUploadButton && chatImageUploadInput) {{ chatImageUploadButton.addEventListener('click', () => chatImageUploadInput.click()); chatImageUploadInput.addEventListener('change', () => {{ const file = chatImageUploadInput.files && chatImageUploadInput.files[0] ? chatImageUploadInput.files[0] : null; if (file) setComposerImage(file); }}); }}
     if (chatImageRemoveButton) chatImageRemoveButton.addEventListener('click', resetComposerImage);
@@ -7552,10 +7892,10 @@ async def tod_console() -> HTMLResponse:
     if (trainingQuickActionButton) trainingQuickActionButton.addEventListener('click', () => handleQuickAction('start-training'));
     if (alignmentQuickActionButton) alignmentQuickActionButton.addEventListener('click', () => handleQuickAction('resolve-drift'));
     if (handoffQuickActionButton) handoffQuickActionButton.addEventListener('click', () => handleQuickAction('send-to-copilot'));
-    async function refreshLoop() {{ try {{ await refresh(); }} catch (error) {{ statusChip.textContent = 'ERROR'; statusChip.dataset.tone = 'blocked'; statusHeadline.textContent = 'TOD console refresh failed'; statusSummary.textContent = safeText(error && error.message, 'Unknown refresh failure'); chatStatus.textContent = safeText(error && error.message, 'Unknown refresh failure'); }} }}
+    async function refreshLoop() {{ try {{ await refresh(); }} catch (error) {{ statusChip.textContent = 'ERROR'; statusChip.dataset.tone = 'blocked'; statusHeadline.textContent = 'TOD console refresh failed'; statusSummary.textContent = safeText(error && error.message, 'Unknown refresh failure'); chatStatus.textContent = safeText(error && error.message, 'Unknown refresh failure'); }} finally {{ if (fullRefreshTimer) window.clearTimeout(fullRefreshTimer); if (!document.hidden) fullRefreshTimer = window.setTimeout(refreshLoop, 5000); }} }}
     refreshLoop();
     initializeTodSettings();
-    setInterval(refreshLoop, 5000);
+    document.addEventListener('visibilitychange', () => {{ if (document.hidden) {{ if (chatPollTimer) window.clearTimeout(chatPollTimer); if (fullRefreshTimer) window.clearTimeout(fullRefreshTimer); if (chatStatus) chatStatus.dataset.pollBackoffReason = 'hidden_tab_paused'; return; }} chatPollBackoffMs = Math.max(3000, Math.min(chatPollBackoffMs, 5000)); refreshLoop(); scheduleChatPoll('visible_tab_resumed'); }});
   </script>
 </body>
 </html>
@@ -7688,6 +8028,11 @@ async def chat_console() -> HTMLResponse:
         const sendToCodexButton = document.getElementById('sendToCodexButton');
         const CHAT_STORAGE_KEY = 'todDirectChatSessionKeyV1';
         let latestPayload = null;
+        let pollBackoffMs = 3000;
+        let pollUnchangedCount = 0;
+        let lastPayloadSignature = '';
+        let pollTimer = null;
+        let stateInFlight = false;
         function safeText(value, fallback = '-') {{ const text = String(value || '').trim(); return text || fallback; }}
         function clearNode(node) {{ while (node && node.firstChild) node.removeChild(node.firstChild); }}
         function getSessionKey() {{ try {{ const existing = window.localStorage.getItem(CHAT_STORAGE_KEY); if (existing) return existing; const created = `copilot-operator-chat-${{Math.random().toString(36).slice(2, 10)}}`; window.localStorage.setItem(CHAT_STORAGE_KEY, created); return created; }} catch (_error) {{ return `copilot-operator-chat-${{Math.random().toString(36).slice(2, 10)}}`; }} }}
@@ -7698,7 +8043,10 @@ async def chat_console() -> HTMLResponse:
         function getLastExchangeText() {{ const messages = latestPayload && Array.isArray(latestPayload.messages) ? latestPayload.messages : []; if (!messages.length) return ''; let lastAssistant = null; for (let index = messages.length - 1; index >= 0; index -= 1) {{ const candidate = messages[index]; if (messageRole(candidate) !== 'assistant' || !messageBody(candidate)) continue; lastAssistant = candidate; let lastUser = null; for (let userIndex = index - 1; userIndex >= 0; userIndex -= 1) {{ const prior = messages[userIndex]; if (messageRole(prior) === 'user' && messageBody(prior)) {{ lastUser = prior; break; }} }} const lines = []; if (lastUser) {{ lines.push('User action:'); lines.push(messageBody(lastUser)); lines.push(''); }} lines.push('Assistant response:'); lines.push(messageBody(lastAssistant)); return lines.join('\\n'); }} return ''; }}
         async function copyLastExchange() {{ const transcript = getLastExchangeText(); if (!transcript) {{ chatStatus.textContent = 'No assistant reply is available to copy yet.'; return; }} if (navigator.clipboard && navigator.clipboard.writeText) {{ await navigator.clipboard.writeText(transcript); chatStatus.textContent = 'Copied the last user action and assistant reply.'; return; }} const area = document.createElement('textarea'); area.value = transcript; area.style.position = 'fixed'; area.style.opacity = '0'; document.body.appendChild(area); area.focus(); area.select(); document.execCommand('copy'); document.body.removeChild(area); chatStatus.textContent = 'Copied the last user action and assistant reply.'; }}
         function renderPayload(payload) {{ latestPayload = payload || {{}}; const status = payload && typeof payload.status === 'object' ? payload.status : {{}}; const quickFacts = payload && typeof payload.quick_facts === 'object' ? payload.quick_facts : {{}}; const guardrails = payload && typeof payload.guardrails === 'object' ? payload.guardrails : {{}}; const session = payload && typeof payload.session === 'object' ? payload.session : {{}}; const capabilities = payload && typeof payload.capabilities === 'object' ? payload.capabilities : {{}}; factStatus.textContent = safeText(status.label, 'UNKNOWN'); factStatusMeta.textContent = safeText(status.summary, 'No status summary is available.'); factObjective.textContent = safeText(quickFacts.canonical_objective, 'Unknown'); factObjectiveMeta.textContent = `Live request: ${{safeText(quickFacts.live_request_objective, 'Unknown')}}`; factListener.textContent = safeText(quickFacts.listener_state, 'Unknown'); factListenerMeta.textContent = `Decision: ${{safeText(quickFacts.decision_outcome, 'Unknown')}}`; factTraining.textContent = safeText(quickFacts.training_state, 'Unknown'); factTrainingMeta.textContent = `Progress: ${{safeText(quickFacts.training_progress, 'Unknown')}} Ã‚Â· Training start ${{capabilities.training_start && capabilities.training_start.available ? 'ready' : 'unavailable'}}`; chatSummary.textContent = safeText(payload && payload.visitor && payload.visitor.memory_summary, 'Direct operator chat is ready.'); chatSessionMeta.textContent = `Session: ${{safeText(session.session_key, getSessionKey())}} Ã‚Â· Messages: ${{safeText(session.message_count, '0')}}`; chatGuardrails.textContent = `Guardrails: commands blocked = ${{guardrails.commands_blocked ? 'yes' : 'no'}}, live execution blocked = ${{guardrails.live_execution_blocked ? 'yes' : 'no'}}`; renderThread(payload && payload.messages); copyLastReplyButton.disabled = !(payload && Array.isArray(payload.messages) && payload.messages.length); }}
-        async function fetchState() {{ const response = await fetch(`/chat/ui/state?session_key=${{encodeURIComponent(getSessionKey())}}&mode=chat`, {{ cache: 'no-store' }}); if (!response.ok) throw new Error(`chat-state-${{response.status}}`); renderPayload(await response.json()); }}
+        function payloadSignature(payload) {{ const session = payload && typeof payload.session === 'object' ? payload.session : {{}}; const activity = session && typeof session.activity === 'object' ? session.activity : {{}}; const messages = Array.isArray(payload && payload.messages) ? payload.messages : []; const last = messages.length && typeof messages[messages.length - 1] === 'object' ? messages[messages.length - 1] : {{}}; return [safeText(session.session_key, ''), safeText(session.message_count, '0'), safeText(session.updated_at, ''), safeText(activity.state, ''), safeText(last.created_at, '')].join('|'); }}
+        function updatePollingBackoff(payload) {{ const polling = payload && typeof payload.polling === 'object' ? payload.polling : (payload && payload.session && typeof payload.session.polling === 'object' ? payload.session.polling : {{}}); const signature = payloadSignature(payload); if (signature && signature === lastPayloadSignature) {{ pollUnchangedCount += 1; }} else {{ pollUnchangedCount = 0; lastPayloadSignature = signature; }} const serverNextSeconds = Number(polling.recommended_next_poll_seconds); pollBackoffMs = Math.max(3000, Math.min(60000, Number.isFinite(serverNextSeconds) && serverNextSeconds > 0 ? serverNextSeconds * 1000 : 3000 * Math.pow(2, Math.min(pollUnchangedCount, 4)))); if (polling && polling.last_poll_backoff_reason) chatStatus.dataset.pollBackoffReason = safeText(polling.last_poll_backoff_reason); }}
+        function scheduleFetchState() {{ if (pollTimer) window.clearTimeout(pollTimer); if (document.hidden) return; pollTimer = window.setTimeout(() => fetchState().catch((error) => {{ chatStatus.textContent = safeText(error && error.message, 'Unable to load direct chat state.'); pollBackoffMs = Math.min(60000, Math.max(5000, pollBackoffMs * 2)); scheduleFetchState(); }}), Math.max(3000, pollBackoffMs)); }}
+        async function fetchState(options = {{}}) {{ if (document.hidden && !(options && options.force)) {{ chatStatus.dataset.pollBackoffReason = 'hidden_tab_paused'; return; }} if (stateInFlight) return; stateInFlight = true; try {{ const response = await fetch(`/chat/ui/state?session_key=${{encodeURIComponent(getSessionKey())}}&mode=chat`, {{ cache: 'no-store' }}); if (!response.ok) throw new Error(`chat-state-${{response.status}}`); const payload = await response.json(); renderPayload(payload); updatePollingBackoff(payload); }} finally {{ stateInFlight = false; if (!(options && options.once)) scheduleFetchState(); }} }}
         async function postJson(path, body, successText) {{ setButtonsDisabled(true); chatStatus.textContent = 'Sending request...'; try {{ const response = await fetch(path, {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(body) }}); if (!response.ok) throw new Error(`${{path}}-${{response.status}}`); const payload = await response.json(); renderPayload(payload); chatStatus.textContent = successText; return true; }} catch (error) {{ chatStatus.textContent = `Request failed: ${{safeText(error && error.message, 'unknown error')}}`; return false; }} finally {{ setButtonsDisabled(false); }} }}
         async function sendMessage(event) {{ event.preventDefault(); const message = String(chatInput.value || '').trim(); if (!message) {{ chatStatus.textContent = 'Enter a message first.'; return; }} const sent = await postJson('/chat/ui/message', {{ session_key: getSessionKey(), mode: 'chat', message }}, 'Direct operator message delivered.'); if (sent) chatInput.value = ''; }}
         async function startTraining() {{ await postJson('/chat/ui/action/training', {{ session_key: getSessionKey(), mode: 'chat' }}, 'Training action submitted.'); }}
@@ -7707,8 +8055,8 @@ async def chat_console() -> HTMLResponse:
         copyLastReplyButton.addEventListener('click', copyLastExchange);
         startTrainingButton.addEventListener('click', startTraining);
         sendToCodexButton.addEventListener('click', sendToCodex);
-        fetchState().catch((error) => {{ chatStatus.textContent = safeText(error && error.message, 'Unable to load direct chat state.'); }});
-        setInterval(() => fetchState().catch(() => {{}}), 5000);
+        document.addEventListener('visibilitychange', () => {{ if (document.hidden) {{ if (pollTimer) window.clearTimeout(pollTimer); chatStatus.dataset.pollBackoffReason = 'hidden_tab_paused'; return; }} pollBackoffMs = Math.max(3000, Math.min(pollBackoffMs, 5000)); fetchState({{ force: true }}).catch((error) => {{ chatStatus.textContent = safeText(error && error.message, 'Unable to load direct chat state.'); }}); }});
+        fetchState().catch((error) => {{ chatStatus.textContent = safeText(error && error.message, 'Unable to load direct chat state.'); scheduleFetchState(); }});
     </script>
 </body>
 </html>
