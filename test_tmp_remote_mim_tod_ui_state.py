@@ -1223,6 +1223,270 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertEqual(request_payload["canonical_task_id"], "")
         self.assertTrue(request_payload["request_id"].startswith("tod-operational-control-surface-phase-3-task-"))
 
+    def test_publish_task_execution_request_preserves_direct_validation_required_fields(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "2914",
+                "task_id": "objective-2914-bounded-edit-materialization-repair",
+            },
+            "live_task_request": {
+                "request_id": "objective-2914-bounded-edit-materialization-repair",
+                "task_id": "objective-2914-bounded-edit-materialization-repair",
+                "objective_id": "objective-2914",
+            },
+            "quick_facts": {"canonical_objective": "2914"},
+        }
+        message = (
+            "OBJECTIVE: TOD-DIRECT-EXECUTION-SMOKE-REAL TOD, this task is assigned directly to you. "
+            "REQUIRED FIELDS: objective_id: objective-direct-smoke-001 "
+            "task_id: objective-direct-smoke-001-validation "
+            "target_file: core/routers/tod_ui.py "
+            "bounded_edit_mode: true "
+            "validation_only: true "
+            "expected_function: tod_ui_state"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                record = self.tod_ui._publish_task_execution_request(message, state, "tod", "tod-console-public")
+
+                request_payload = json.loads((shared_root / "MIM_TOD_TASK_REQUEST.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(request_payload["objective_id"], "objective-direct-smoke-001")
+        self.assertEqual(request_payload["task_id"], "objective-direct-smoke-001-validation")
+        self.assertEqual(request_payload["request_id"], "objective-direct-smoke-001-validation")
+        self.assertEqual(request_payload["target_file"], "core/routers/tod_ui.py")
+        self.assertEqual(request_payload["bounded_edit_mode"], "validation_only")
+        self.assertTrue(request_payload["validation_only"])
+        self.assertEqual(request_payload["expected_function"], "tod_ui_state")
+        self.assertEqual(request_payload["assigned_executor"], "local")
+        self.assertEqual(request_payload["selected_executor"], "local")
+        self.assertEqual(request_payload["active_engine"], "local")
+        self.assertEqual(request_payload["executor_binding"], self.tod_ui.LOCAL_EXECUTOR_BINDING)
+
+    def test_publish_local_execution_ack_completes_direct_validation_only_task(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "2914",
+                "task_id": "objective-2914-bounded-edit-materialization-repair",
+            },
+            "live_task_request": {
+                "request_id": "objective-2914-bounded-edit-materialization-repair",
+                "task_id": "objective-2914-bounded-edit-materialization-repair",
+                "objective_id": "objective-2914",
+            },
+            "quick_facts": {"canonical_objective": "2914"},
+        }
+        message = (
+            "OBJECTIVE: TOD-DIRECT-EXECUTION-SMOKE-REAL "
+            "REQUIRED FIELDS: objective_id: objective-direct-smoke-001 "
+            "task_id: objective-direct-smoke-001-validation "
+            "target_file: core/routers/tod_ui.py "
+            "bounded_edit_mode: true "
+            "validation_only: true "
+            "expected_function: tod_ui_state"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "objective-direct-smoke-001"},
+                    "active_task_payload": {"task_id": "objective-direct-smoke-001-validation"},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {
+                        "task_id": "objective-direct-smoke-001-validation",
+                        "objective_id": "objective-direct-smoke-001",
+                    },
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(record["status"], "completed")
+        self.assertEqual(execution_payload["task_id"], "objective-direct-smoke-001-validation")
+        self.assertEqual(execution_payload["status"], "completed")
+        self.assertEqual(execution_payload["execution_state"], "completed")
+        self.assertEqual(execution_payload["executor_binding_status"], "present")
+        self.assertEqual(execution_payload["active_engine"], "local")
+        self.assertEqual(execution_payload["executor_binding"], self.tod_ui.LOCAL_EXECUTOR_BINDING)
+        self.assertEqual(execution_payload["target_file"], "core/routers/tod_ui.py")
+
+    def test_publish_task_execution_request_accepts_direct_bounded_edit_console_format(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "objective-direct-smoke-001",
+                "task_id": "objective-direct-smoke-001-validation",
+            },
+            "live_task_request": {
+                "request_id": "objective-direct-smoke-001-validation",
+                "task_id": "objective-direct-smoke-001-validation",
+                "objective_id": "objective-direct-smoke-001",
+            },
+            "quick_facts": {"canonical_objective": "objective-direct-smoke-001"},
+        }
+        message = (
+            "OBJECTIVE: TOD-DIRECT-BOUNDED-EDIT-SMOKE\n\n"
+            "TOD, this task is assigned directly to you.\n\n"
+            "TARGET FILE:\n"
+            "core/routers/tod_ui.py\n\n"
+            "TASK:\n"
+            "Add a single diagnostic field:\n"
+            "execution_validation_mode\n\n"
+            "Rules:\n"
+            "- bounded_edit_mode true\n"
+            "- exactly one target_file\n"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                record = self.tod_ui._publish_task_execution_request(message, state, "tod", "tod-console-public")
+
+                request_payload = json.loads((shared_root / "MIM_TOD_TASK_REQUEST.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(request_payload["objective_id"], "TOD-DIRECT-BOUNDED-EDIT-SMOKE")
+        self.assertTrue(request_payload["task_id"].startswith("tod-direct-bounded-edit-smoke-task-"))
+        self.assertEqual(request_payload["target_file"], "core/routers/tod_ui.py")
+        self.assertEqual(request_payload["target_files"], ["core/routers/tod_ui.py"])
+        self.assertIs(request_payload["bounded_edit_mode"], True)
+        self.assertFalse(request_payload["validation_only"])
+        self.assertEqual(request_payload["assigned_executor"], "local")
+        self.assertEqual(request_payload["selected_executor"], "local")
+        self.assertEqual(request_payload["active_engine"], "local")
+        self.assertEqual(request_payload["executor_binding"], self.tod_ui.LOCAL_EXECUTOR_BINDING)
+
+    def test_publish_local_execution_ack_completes_direct_bounded_edit_smoke(self) -> None:
+        state = {
+            "shared_truth": {
+                "objective_id": "objective-direct-smoke-001",
+                "task_id": "objective-direct-smoke-001-validation",
+            },
+            "live_task_request": {
+                "request_id": "objective-direct-smoke-001-validation",
+                "task_id": "objective-direct-smoke-001-validation",
+                "objective_id": "objective-direct-smoke-001",
+            },
+            "quick_facts": {"canonical_objective": "objective-direct-smoke-001"},
+        }
+        message = (
+            "OBJECTIVE: TOD-DIRECT-BOUNDED-EDIT-SMOKE\n\n"
+            "TARGET FILE:\n"
+            "core/routers/tod_ui.py\n\n"
+            "TASK:\n"
+            "Add a single diagnostic field:\n"
+            "execution_validation_mode\n\n"
+            "Rules:\n"
+            "- bounded_edit_mode true\n"
+            "- exactly one target_file\n"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            operator_root = shared_root / "actions"
+            original_shared_root = self.tod_ui.SHARED_RUNTIME_ROOT
+            original_operator_root = self.tod_ui.TOD_OPERATOR_ACTION_ROOT
+            original_latest_path = self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH
+            original_log_path = self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH
+            original_evidence_path = self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH
+            try:
+                self.tod_ui.SHARED_RUNTIME_ROOT = shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = operator_root / "TOD_OPERATOR_ACTION.latest.json"
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = operator_root / "TOD_OPERATOR_ACTION.log.jsonl"
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = operator_root / "TOD_OPERATOR_EVIDENCE.latest.json"
+
+                artifact_fixture = {
+                    "active_objective_payload": {"objective_id": "TOD-DIRECT-BOUNDED-EDIT-SMOKE"},
+                    "active_task_payload": {},
+                    "activity_event": {},
+                    "validation_payload": {},
+                    "execution_result_payload": {},
+                    "execution_truth_payload": {},
+                }
+                with patch.object(self.tod_ui, "build_execution_loop_contract_artifacts", return_value=artifact_fixture):
+                    record = self.tod_ui._publish_local_execution_ack(message, state, "tod", "tod-console-public")
+
+                execution_payload = json.loads((shared_root / "TOD_EXECUTION_RESULT.latest.json").read_text(encoding="utf-8"))
+            finally:
+                self.tod_ui.SHARED_RUNTIME_ROOT = original_shared_root
+                self.tod_ui.TOD_OPERATOR_ACTION_ROOT = original_operator_root
+                self.tod_ui.TOD_OPERATOR_ACTION_LATEST_PATH = original_latest_path
+                self.tod_ui.TOD_OPERATOR_ACTION_LOG_PATH = original_log_path
+                self.tod_ui.TOD_OPERATOR_EVIDENCE_PATH = original_evidence_path
+
+        self.assertTrue(record["ok"])
+        self.assertEqual(record["status"], "completed")
+        self.assertEqual(execution_payload["objective_id"], "TOD-DIRECT-BOUNDED-EDIT-SMOKE")
+        self.assertEqual(execution_payload["status"], "completed")
+        self.assertEqual(execution_payload["execution_state"], "completed")
+        self.assertEqual(execution_payload["executor_binding_status"], "present")
+        self.assertEqual(execution_payload["active_engine"], "local")
+        self.assertEqual(execution_payload["execution_validation_mode"], "bounded_edit")
+        self.assertEqual(execution_payload["target_file"], "core/routers/tod_ui.py")
+        self.assertEqual(execution_payload["files_changed"], ["core/routers/tod_ui.py"])
+
     def test_extract_labeled_prompt_value_captures_only_identifier_token(self) -> None:
         message = (
             "## Objective Id: objective-2913 and ignore the prompt tail\n"

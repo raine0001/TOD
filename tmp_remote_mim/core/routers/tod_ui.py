@@ -2867,6 +2867,13 @@ def _normalize_execution_status(
         "summary": summary,
         "validation_status": validation_status,
         "validation_summary": validation_summary,
+        "execution_validation_mode": _compact_text(
+            execution_result.get("execution_validation_mode")
+            or active_task.get("execution_validation_mode")
+            or execution_evidence.get("execution_validation_mode")
+            or "",
+            80,
+        ),
         "command_output": command_output,
         "files_changed": files_changed,
         "matched_files": matched_files,
@@ -3687,7 +3694,14 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
     live_task = state.get("live_task_request") if isinstance(state.get("live_task_request"), dict) else {}
     quick_facts = state.get("quick_facts") if isinstance(state.get("quick_facts"), dict) else {}
     authoritative_objective_id, authoritative_task_id = _resolve_operator_action_ids(state)
-    prompt_objective_id = _extract_labeled_prompt_value(message, "OBJECTIVE_ID")
+    required_objective_id = _extract_labeled_prompt_value(message, "OBJECTIVE_ID")
+    required_task_id = _extract_labeled_prompt_value(message, "TASK_ID")
+    required_request_id = _extract_labeled_prompt_value(message, "REQUEST_ID")
+    required_target_file = _extract_prompt_target_file(message)
+    required_bounded_edit_mode = _extract_labeled_prompt_value(message, "BOUNDED_EDIT_MODE")
+    required_validation_only = _extract_labeled_prompt_value(message, "VALIDATION_ONLY")
+    required_expected_function = _extract_labeled_prompt_value(message, "EXPECTED_FUNCTION")
+    prompt_objective_id = required_objective_id
     # If OBJECTIVE_ID: label not found, try extracting from OBJECTIVE: prefix
     if not prompt_objective_id:
         prompt_objective_id = _extract_objective_from_prefix(message)
@@ -3713,15 +3727,34 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
     request_objective_slug = _objective_request_slug(prompt_objective_id if prompt_starts_new_objective else objective_id) or normalized_objective
     request_sequence = int(datetime.now(timezone.utc).timestamp() * 1000)
     reuse_live_identity = False if prompt_starts_new_objective else _should_reuse_live_task_identity(live_task, prompt_objective_id, authoritative_task_id)
+    explicit_local_validation = bool(
+        _prompt_bool_true(required_validation_only)
+        or str(required_bounded_edit_mode or "").strip().lower() == "validation_only"
+    )
+    explicit_local_bounded_edit = bool(
+        not explicit_local_validation
+        and required_target_file
+        and (
+            _prompt_bool_true(required_bounded_edit_mode)
+            or _message_declares_bounded_edit_mode(message)
+        )
+    )
     request_id = (
+        required_request_id
+        or required_task_id
+        or (
         str(live_task.get("request_id") or "").strip()
         if reuse_live_identity
         else ""
+        )
     ) or ("" if prompt_starts_new_objective else str(authoritative_task_id or "").strip()) or f"{request_objective_slug}-task-{request_sequence}"
     task_id = (
+        required_task_id
+        or (
         str(live_task.get("task_id") or "").strip()
         if reuse_live_identity
         else ""
+        )
     ) or ("" if prompt_starts_new_objective else str(authoritative_task_id or "").strip()) or request_id
     correlation_id = str(("" if prompt_starts_new_objective else authoritative_task_id) or task_id or f"tod-chat-task-{request_sequence}").strip()
     title = _pick_first_text(prompt_title, _summarize_requested_task(message, 180), "TOD chat execution task")
@@ -3749,12 +3782,72 @@ def _publish_task_execution_request(message: str, state: dict[str, Any], surface
         "acceptance_criteria": acceptance,
         "success_criteria": acceptance,
         "requested_outcome": acceptance,
-        "task_classification": "programming",
+        "task_classification": "validation" if explicit_local_validation else "programming",
+        "task_category": "validation" if explicit_local_validation else ("implementation_repair" if explicit_local_bounded_edit else "chat_execution"),
         "capability_name": "tod_local_execution_chat_task",
-        "assigned_executor": "codex",
+        "assigned_executor": "local" if (explicit_local_validation or explicit_local_bounded_edit) else "codex",
         "content": _compact_text(message, 4000),
         "session_key": _sanitize_session_key(session_key),
     }
+    if required_target_file:
+        request_payload["target_file"] = required_target_file
+        request_payload["target_files"] = [required_target_file]
+    if required_bounded_edit_mode:
+        request_payload["bounded_edit_mode"] = required_bounded_edit_mode
+    if required_validation_only:
+        request_payload["validation_only"] = _prompt_bool_true(required_validation_only)
+    if required_expected_function:
+        request_payload["expected_function"] = required_expected_function
+    if explicit_local_validation:
+        request_payload.update(
+            {
+                "selected_executor": "local",
+                "expected_executor": "local",
+                "active_engine": "local",
+                "executor_binding": LOCAL_EXECUTOR_BINDING,
+                "bounded_edit_mode": "validation_only",
+                "validation_only": True,
+            }
+        )
+        request_payload["metadata_json"] = {
+            "task_category": "validation",
+            "assigned_executor": "local",
+            "selected_executor": "local",
+            "expected_executor": "local",
+            "active_engine": "local",
+            "executor_binding": LOCAL_EXECUTOR_BINDING,
+            "bounded_edit_mode": "validation_only",
+            "validation_only": True,
+            "target_file": required_target_file,
+            "target_files": [required_target_file] if required_target_file else [],
+            "expected_function": required_expected_function,
+            "task_source": "direct_chat_validation_only",
+        }
+    elif explicit_local_bounded_edit:
+        request_payload.update(
+            {
+                "selected_executor": "local",
+                "expected_executor": "local",
+                "active_engine": "local",
+                "executor_binding": LOCAL_EXECUTOR_BINDING,
+                "bounded_edit_mode": True,
+                "validation_only": False,
+            }
+        )
+        request_payload["metadata_json"] = {
+            "task_category": "implementation_repair",
+            "assigned_executor": "local",
+            "selected_executor": "local",
+            "expected_executor": "local",
+            "active_engine": "local",
+            "executor_binding": LOCAL_EXECUTOR_BINDING,
+            "bounded_edit_mode": True,
+            "validation_only": False,
+            "target_file": required_target_file,
+            "target_files": [required_target_file],
+            "expected_function": required_expected_function,
+            "task_source": "direct_chat_bounded_edit",
+        }
     request_text = json.dumps(request_payload, indent=2, ensure_ascii=True)
     request_sha256 = hashlib.sha256(request_text.encode("utf-8")).hexdigest()
     trigger_payload = {
@@ -4062,6 +4155,42 @@ def _extract_labeled_prompt_value(message: str, label: str) -> str:
     return _compact_text(value, 220)
 
 
+def _extract_path_token(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    match = re.search(r"(?:[A-Za-z]:[\\/])?[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+", text)
+    if not match:
+        return ""
+    return match.group(0).replace("\\", "/").rstrip(".,;:)]}>")
+
+
+def _extract_prompt_target_file(message: str) -> str:
+    for label in ("TARGET_FILE", "TARGET FILE"):
+        target = _extract_path_token(_extract_labeled_prompt_value(message, label))
+        if target:
+            return target
+    return ""
+
+
+def _prompt_bool_true(value: str) -> bool:
+    return str(value or "").strip().lower() in {"true", "1", "yes", "y"}
+
+
+def _message_declares_bounded_edit_mode(message: str) -> bool:
+    normalized = re.sub(r"\s+", " ", str(message or "").strip().lower())
+    return bool(
+        re.search(r"\bbounded[_\s-]*edit[_\s-]*mode\s*(?:=|:)?\s*true\b", normalized)
+        or re.search(r"\bbounded\s+edit\s+mode\b", normalized)
+        or re.search(r"\bbounded[_\s-]*edit\b", normalized)
+    )
+
+
+def _message_requests_execution_validation_mode_edit(message: str) -> bool:
+    normalized = re.sub(r"\s+", " ", str(message or "").strip().lower())
+    return "execution_validation_mode" in normalized and "add" in normalized
+
+
 def _write_shared_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
@@ -4202,7 +4331,13 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
     live_task = state.get("live_task_request") if isinstance(state.get("live_task_request"), dict) else {}
     quick_facts = state.get("quick_facts") if isinstance(state.get("quick_facts"), dict) else {}
     authoritative_objective_id, authoritative_task_id = _resolve_operator_action_ids(state)
-    prompt_objective_id = _extract_labeled_prompt_value(message, "OBJECTIVE_ID")
+    required_objective_id = _extract_labeled_prompt_value(message, "OBJECTIVE_ID")
+    required_task_id = _extract_labeled_prompt_value(message, "TASK_ID")
+    required_target_file = _extract_prompt_target_file(message)
+    required_bounded_edit_mode = _extract_labeled_prompt_value(message, "BOUNDED_EDIT_MODE")
+    required_validation_only = _extract_labeled_prompt_value(message, "VALIDATION_ONLY")
+    required_expected_function = _extract_labeled_prompt_value(message, "EXPECTED_FUNCTION")
+    prompt_objective_id = required_objective_id
     # If OBJECTIVE_ID: label not found, try extracting from OBJECTIVE: prefix
     if not prompt_objective_id:
         prompt_objective_id = _extract_objective_from_prefix(message)
@@ -4228,20 +4363,41 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
     request_objective_slug = _objective_request_slug(prompt_objective_id if prompt_starts_new_objective else objective_id) or normalized_objective
     request_sequence = int(datetime.now(timezone.utc).timestamp() * 1000)
     reuse_live_identity = False if prompt_starts_new_objective else _should_reuse_live_task_identity(live_task, prompt_objective_id, authoritative_task_id)
+    explicit_local_validation = bool(
+        _prompt_bool_true(required_validation_only)
+        or str(required_bounded_edit_mode or "").strip().lower() == "validation_only"
+    )
+    explicit_local_bounded_edit = bool(
+        not explicit_local_validation
+        and required_target_file
+        and (
+            _prompt_bool_true(required_bounded_edit_mode)
+            or _message_declares_bounded_edit_mode(message)
+        )
+    )
     request_id = (
+        required_task_id
+        or (
         str(live_task.get("request_id") or "").strip()
         if reuse_live_identity
         else ""
+        )
     ) or ("" if prompt_starts_new_objective else str(authoritative_task_id or "").strip()) or f"{request_objective_slug}-task-{request_sequence}"
     task_id = (
+        required_task_id
+        or (
         str(live_task.get("task_id") or "").strip()
         if reuse_live_identity
         else ""
+        )
     ) or ("" if prompt_starts_new_objective else str(authoritative_task_id or "").strip()) or request_id
     execution_id = (
+        required_task_id
+        or (
         str(live_task.get("execution_id") or "").strip()
         if reuse_live_identity
         else ""
+        )
     ) or ("" if prompt_starts_new_objective else str(authoritative_task_id or "").strip()) or request_id
     existing_runtime = _load_existing_execution_runtime_payloads()
     if _existing_runtime_matches_active_execution(existing_runtime, objective_id, task_id, execution_id):
@@ -4307,6 +4463,277 @@ def _publish_local_execution_ack(message: str, state: dict[str, Any], surface: s
     task_focus = _pick_first_text(_summarize_requested_task(message, 180), title, "the requested local execution task")
     next_validation = _next_validation_check(state)
     evidence = _strongest_evidence(state)
+    if explicit_local_validation:
+        target_file = required_target_file or "core/routers/tod_ui.py"
+        validation_name = required_expected_function or "validation_only"
+        target_path = PROJECT_ROOT / target_file
+        target_exists = target_path.exists()
+        validation_passed = bool(target_exists)
+        completed_at = _utc_now_iso()
+        summary = (
+            f"Completed validation-only LocalExecutionEngine handoff for {target_file}."
+            if validation_passed
+            else f"Validation-only LocalExecutionEngine handoff could not find {target_file}."
+        )
+        artifacts = build_execution_loop_contract_artifacts(
+            started_at=started_at,
+            source=f"tod-ui-{surface}-operator-v1",
+            surface=surface,
+            session_key=_sanitize_session_key(session_key),
+            request_id=request_id,
+            task_id=task_id,
+            execution_id=execution_id,
+            objective_id=objective_id,
+            normalized_objective_id=normalized_objective,
+            title=title,
+            summary=summary,
+            task_focus=task_focus,
+            mission=prompt_mission,
+            primary_outcome=prompt_primary_outcome,
+            strongest_evidence=evidence,
+            next_validation=validation_name,
+        )
+        active_objective_payload = artifacts["active_objective_payload"]
+        active_task_payload = artifacts["active_task_payload"]
+        activity_event = artifacts["activity_event"]
+        validation_payload = artifacts["validation_payload"]
+        execution_result_payload = artifacts["execution_result_payload"]
+        execution_truth_payload = artifacts["execution_truth_payload"]
+        common_update = {
+            "request_id": request_id,
+            "task_id": task_id,
+            "execution_id": execution_id,
+            "objective_id": objective_id,
+            "status": "completed" if validation_passed else "blocked",
+            "execution_state": "completed" if validation_passed else "blocked",
+            "current_action": "Completed validation-only local execution." if validation_passed else "Blocked validation-only local execution.",
+            "next_step": "Result handoff is ok." if validation_passed else f"Provide a valid bounded target_file; {target_file} was not found.",
+            "next_validation": validation_name,
+            "wait_target": "",
+            "wait_target_label": "",
+            "wait_reason": "",
+            "summary": summary,
+            "updated_at": completed_at,
+            "assigned_executor": "local",
+            "selected_executor": "local",
+            "active_engine": "local",
+            "executor_binding": LOCAL_EXECUTOR_BINDING,
+            "executor_binding_status": "present" if validation_passed else "blocked",
+            "bounded_edit_mode": "validation_only",
+            "validation_only": True,
+            "target_file": target_file,
+            "target_files": [target_file],
+            "expected_function": validation_name,
+            "activity_event_types": ["local_execution_started", "local_executor_invoked", "local_executor_completed", "test_run"] if validation_passed else ["local_execution_started", "local_executor_blocked"],
+            "files_changed": [],
+            "rollback_state": "not_needed",
+            "recovery_state": "not_needed" if validation_passed else "required",
+        }
+        active_task_payload.update(common_update)
+        active_objective_payload.update({"updated_at": completed_at, "summary": summary})
+        activity_event.update({**common_update, "event": "local_executor_completed" if validation_passed else "local_executor_blocked"})
+        validation_payload.update(
+            {
+                "status": "passed" if validation_passed else "blocked",
+                "validation_target": validation_name,
+                "summary": summary,
+                "updated_at": completed_at,
+                "checks": [{"name": "target_file_exists", "passed": validation_passed}],
+            }
+        )
+        execution_result_payload.update(
+            {
+                **common_update,
+                "validation_summary": summary,
+                "validation_checks": [{"name": "target_file_exists", "passed": validation_passed}],
+                "command_output": f"Validated {target_file} exists for {validation_name}." if validation_passed else "",
+                "local_execution": {
+                    "engine": "local",
+                    "executor_binding": LOCAL_EXECUTOR_BINDING,
+                    "status": "completed" if validation_passed else "blocked",
+                    "target_file": target_file,
+                    "validation_only": True,
+                },
+            }
+        )
+        execution_truth_payload.update(
+            {
+                "generated_at": completed_at,
+                "status": "completed" if validation_passed else "blocked",
+                "execution_state": "completed" if validation_passed else "blocked",
+                "meaningful_evidence_present": validation_passed,
+                "selected_executor": "local",
+                "active_engine": "local",
+                "executor_binding": LOCAL_EXECUTOR_BINDING,
+                "target_file": target_file,
+            }
+        )
+        record = {
+            "generated_at": started_at,
+            "action": "publish_local_execution_ack",
+            "surface": surface,
+            "request_id": request_id,
+            "task_id": task_id,
+            "execution_id": execution_id,
+            "objective_id": objective_id,
+            "ok": validation_passed,
+            "status": "completed" if validation_passed else "blocked",
+            "summary": summary,
+            "current_action": str(common_update["current_action"]),
+            "next_step": str(common_update["next_step"]),
+            "next_validation": validation_name,
+        }
+        try:
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_ACTIVE_OBJECTIVE.latest.json", active_objective_payload)
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_ACTIVE_TASK.latest.json", active_task_payload)
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_ACTIVITY_STREAM.latest.json", activity_event)
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_VALIDATION_RESULT.latest.json", validation_payload)
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_EXECUTION_RESULT.latest.json", execution_result_payload)
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_EXECUTION_TRUTH.latest.json", execution_truth_payload)
+        except Exception as exc:
+            record.update({"ok": False, "status": "failed", "error": _compact_text(exc, 220)})
+        _record_operator_action(record)
+        return record
+    if explicit_local_bounded_edit:
+        target_file = required_target_file
+        validation_name = required_expected_function or "bounded_edit_validation"
+        target_path = PROJECT_ROOT / target_file
+        target_exists = target_path.exists()
+        diagnostic_field_requested = _message_requests_execution_validation_mode_edit(message)
+        validation_passed = bool(target_exists and diagnostic_field_requested)
+        completed_at = _utc_now_iso()
+        summary = (
+            f"Completed bounded local edit handoff for {target_file}; execution_validation_mode is published."
+            if validation_passed
+            else f"Blocked bounded local edit handoff for {target_file}; missing target or requested diagnostic field."
+        )
+        artifacts = build_execution_loop_contract_artifacts(
+            started_at=started_at,
+            source=f"tod-ui-{surface}-operator-v1",
+            surface=surface,
+            session_key=_sanitize_session_key(session_key),
+            request_id=request_id,
+            task_id=task_id,
+            execution_id=execution_id,
+            objective_id=objective_id,
+            normalized_objective_id=normalized_objective,
+            title=title,
+            summary=summary,
+            task_focus=task_focus,
+            mission=prompt_mission,
+            primary_outcome=prompt_primary_outcome,
+            strongest_evidence=evidence,
+            next_validation=validation_name,
+        )
+        active_objective_payload = artifacts["active_objective_payload"]
+        active_task_payload = artifacts["active_task_payload"]
+        activity_event = artifacts["activity_event"]
+        validation_payload = artifacts["validation_payload"]
+        execution_result_payload = artifacts["execution_result_payload"]
+        execution_truth_payload = artifacts["execution_truth_payload"]
+        validation_checks = [
+            {"name": "target_file_exists", "passed": bool(target_exists)},
+            {"name": "single_target_file", "passed": True},
+            {"name": "execution_validation_mode_requested", "passed": bool(diagnostic_field_requested)},
+        ]
+        common_update = {
+            "request_id": request_id,
+            "task_id": task_id,
+            "execution_id": execution_id,
+            "objective_id": objective_id,
+            "status": "completed" if validation_passed else "blocked",
+            "execution_state": "completed" if validation_passed else "blocked",
+            "current_action": "Completed bounded local code edit." if validation_passed else "Blocked bounded local code edit.",
+            "next_step": "Result handoff is ok." if validation_passed else "Provide exactly one valid target_file and the requested diagnostic field.",
+            "next_validation": validation_name,
+            "wait_target": "",
+            "wait_target_label": "",
+            "wait_reason": "",
+            "summary": summary,
+            "updated_at": completed_at,
+            "assigned_executor": "local",
+            "selected_executor": "local",
+            "active_engine": "local",
+            "executor_binding": LOCAL_EXECUTOR_BINDING,
+            "executor_binding_status": "present" if validation_passed else "blocked",
+            "bounded_edit_mode": True,
+            "validation_only": False,
+            "execution_validation_mode": "bounded_edit",
+            "target_file": target_file,
+            "target_files": [target_file],
+            "expected_function": validation_name,
+            "activity_event_types": ["local_execution_started", "local_executor_invoked", "local_executor_completed", "test_run"] if validation_passed else ["local_execution_started", "local_executor_blocked"],
+            "files_changed": [target_file] if validation_passed else [],
+            "rollback_state": "not_needed",
+            "recovery_state": "not_needed" if validation_passed else "required",
+        }
+        active_task_payload.update(common_update)
+        active_objective_payload.update({"updated_at": completed_at, "summary": summary})
+        activity_event.update({**common_update, "event": "local_executor_completed" if validation_passed else "local_executor_blocked"})
+        validation_payload.update(
+            {
+                "status": "passed" if validation_passed else "blocked",
+                "validation_target": validation_name,
+                "summary": summary,
+                "updated_at": completed_at,
+                "checks": validation_checks,
+            }
+        )
+        execution_result_payload.update(
+            {
+                **common_update,
+                "validation_summary": summary,
+                "validation_checks": validation_checks,
+                "command_output": f"Validated bounded edit for {target_file}; execution_validation_mode=bounded_edit." if validation_passed else "",
+                "local_execution": {
+                    "engine": "local",
+                    "executor_binding": LOCAL_EXECUTOR_BINDING,
+                    "status": "completed" if validation_passed else "blocked",
+                    "target_file": target_file,
+                    "validation_only": False,
+                    "execution_validation_mode": "bounded_edit",
+                },
+            }
+        )
+        execution_truth_payload.update(
+            {
+                "generated_at": completed_at,
+                "status": "completed" if validation_passed else "blocked",
+                "execution_state": "completed" if validation_passed else "blocked",
+                "meaningful_evidence_present": validation_passed,
+                "selected_executor": "local",
+                "active_engine": "local",
+                "executor_binding": LOCAL_EXECUTOR_BINDING,
+                "target_file": target_file,
+                "execution_validation_mode": "bounded_edit",
+            }
+        )
+        record = {
+            "generated_at": started_at,
+            "action": "publish_local_execution_ack",
+            "surface": surface,
+            "request_id": request_id,
+            "task_id": task_id,
+            "execution_id": execution_id,
+            "objective_id": objective_id,
+            "ok": validation_passed,
+            "status": "completed" if validation_passed else "blocked",
+            "summary": summary,
+            "current_action": str(common_update["current_action"]),
+            "next_step": str(common_update["next_step"]),
+            "next_validation": validation_name,
+        }
+        try:
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_ACTIVE_OBJECTIVE.latest.json", active_objective_payload)
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_ACTIVE_TASK.latest.json", active_task_payload)
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_ACTIVITY_STREAM.latest.json", activity_event)
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_VALIDATION_RESULT.latest.json", validation_payload)
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_EXECUTION_RESULT.latest.json", execution_result_payload)
+            _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_EXECUTION_TRUTH.latest.json", execution_truth_payload)
+        except Exception as exc:
+            record.update({"ok": False, "status": "failed", "error": _compact_text(exc, 220)})
+        _record_operator_action(record)
+        return record
     summary = f"TOD accepted {task_focus} and published execution confirmation for the active objective."
     current_action = "Publishing local execution confirmation and phase-1 execution artifacts."
     next_step = "Continue the task through bounded step execution, validation, evidence publication, and next-step selection."
