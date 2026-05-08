@@ -4547,25 +4547,52 @@ def _looks_like_mim_tod_executable_handoff_request(
             "ask tod" in raw
             or "have tod" in raw
             or "tell tod" in raw
+            or "could tod" in raw
+            or "tod look" in raw
+            or "by tod" in raw
             or "tod to" in raw
         )
         and (
             "tod ui state" in raw
             or "tod ui" in raw
+            or "tod_ui.py" in raw
+            or "core/routers/tod_ui.py" in raw
+            or "target file" in raw
             or "direct execution lane" in raw
             or "direct execution" in raw
         )
         and (
             "diagnostic field" in raw
             or "small diagnostic" in raw
+            or "execution_" in raw
+            or "validation-only" in raw
+            or "validation only" in raw
+            or "bounded edit" in raw
+            or "coding validation" in raw
+            or "validate it" in raw
             or "validate the change" in raw
             or "report the result" in raw
             or "report back" in raw
         )
     )
+    execution_field_tod_handoff = bool(
+        "tod" in raw
+        and "execution_" in raw
+        and (
+            "publish" in raw
+            or "validate" in raw
+            or "inspect" in raw
+            or "check" in raw
+            or "verify" in raw
+            or "repeat completed" in raw
+            or "same task id" in raw
+            or "do not publish" in raw
+        )
+    )
     return bool(
         "mim-tod-handoff" in raw
         or natural_tod_handoff
+        or execution_field_tod_handoff
         or (
             "mim" in raw
             and "tod" in raw
@@ -4680,9 +4707,20 @@ def _mim_tod_inspection_field_present(
     shared_root: Path,
     inspection_state: dict[str, object],
     execution_field: str,
+    target_file: str = "",
 ) -> bool:
     if _payload_contains_value(inspection_state, execution_field):
         return True
+    target_path_text = str(target_file or "").strip()
+    if target_path_text:
+        target_path = Path(target_path_text)
+        if not target_path.is_absolute():
+            target_path = Path.cwd() / target_path
+        try:
+            if execution_field in target_path.read_text(encoding="utf-8", errors="replace"):
+                return True
+        except Exception:  # noqa: BLE001
+            pass
     return any(
         _payload_contains_value(artifact, execution_field)
         for artifact in _load_mim_tod_inspection_artifacts(shared_root)
@@ -4745,6 +4783,10 @@ def _dispatch_mim_tod_executable_handoff_request(
     shared_root = Path("runtime/shared")
     shared_root.mkdir(parents=True, exist_ok=True)
     execution_field = _extract_mim_tod_execution_field(content)
+    inferred_objective_id = f"mim-tod-{_slugify_mim_tod_identifier(execution_field, fallback='diagnostic')}"
+    objective_id = _extract_mim_tod_handoff_field(content, "objective_id") or inferred_objective_id
+    task_id = _extract_mim_tod_handoff_field(content, "task_id") or f"{objective_id}-{request_id}"
+    target_file = _extract_mim_tod_handoff_field(content, "target_file") or "core/routers/tod_ui.py"
     inspect_first_mode = _looks_like_mim_tod_inspect_first_request(content)
     inspection_state = _get_json_from_local_tod("/tod/ui/state", timeout_seconds=20) if inspect_first_mode else {}
     inspection_field_present = (
@@ -4752,6 +4794,7 @@ def _dispatch_mim_tod_executable_handoff_request(
             shared_root=shared_root,
             inspection_state=inspection_state,
             execution_field=execution_field,
+            target_file=target_file,
         )
         if inspect_first_mode
         else False
@@ -4763,10 +4806,6 @@ def _dispatch_mim_tod_executable_handoff_request(
         if inspect_first_mode
         else ""
     )
-    inferred_objective_id = f"mim-tod-{_slugify_mim_tod_identifier(execution_field, fallback='diagnostic')}"
-    objective_id = _extract_mim_tod_handoff_field(content, "objective_id") or inferred_objective_id
-    task_id = _extract_mim_tod_handoff_field(content, "task_id") or f"{objective_id}-{request_id}"
-    target_file = _extract_mim_tod_handoff_field(content, "target_file") or "core/routers/tod_ui.py"
     validation_only = _mim_tod_handoff_bool(
         _extract_mim_tod_handoff_field(content, "validation_only"),
         default=_mim_tod_handoff_default_validation_only(content),

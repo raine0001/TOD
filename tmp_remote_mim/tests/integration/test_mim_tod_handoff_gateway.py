@@ -118,6 +118,24 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
 
         self.assertTrue(present)
 
+    def test_inspect_first_uses_target_file_as_present_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target_file = Path(temp_dir) / "core" / "routers" / "tod_ui.py"
+            target_file.parent.mkdir(parents=True)
+            target_file.write_text(
+                'STATE = {"execution_direct_lane_health_state": "validated"}\n',
+                encoding="utf-8",
+            )
+
+            present = self.gateway._mim_tod_inspection_field_present(
+                shared_root=Path(temp_dir) / "runtime" / "shared",
+                inspection_state={"state": {"fields": []}},
+                execution_field="execution_direct_lane_health_state",
+                target_file=str(target_file),
+            )
+
+        self.assertTrue(present)
+
     def test_inspect_first_missing_field_dispatches_bounded_edit_branch(self) -> None:
         content = (
             "MIM, ask TOD to check whether execution_new_health_state exists in the TOD UI state. "
