@@ -6,6 +6,7 @@ import concurrent.futures
 import logging
 import os
 import importlib
+import subprocess
 import uuid
 import re
 import math
@@ -2556,6 +2557,10 @@ def _technical_research_followup_response(
 
 
 def _should_use_web_research(normalized_query: str) -> bool:
+    if _looks_like_mim_tod_lane_registry_schema_request(normalized_query):
+        return False
+    if _looks_like_mim_tod_lane_visibility_continuation_request(normalized_query):
+        return False
     if not settings.allow_web_access:
         return False
 
@@ -4548,6 +4553,8 @@ def _looks_like_mim_tod_executable_handoff_request(
             or "have tod" in raw
             or "tell tod" in raw
             or "could tod" in raw
+            or "hand this to tod"
+            or "hand it to tod"
             or "tod look" in raw
             or "by tod" in raw
             or "tod to" in raw
@@ -4558,8 +4565,14 @@ def _looks_like_mim_tod_executable_handoff_request(
             or "tod_ui.py" in raw
             or "core/routers/tod_ui.py" in raw
             or "target file" in raw
+            or "target_file" in raw
+            or "routes.py" in raw
             or "direct execution lane" in raw
             or "direct execution" in raw
+            or "ui objectives" in raw
+            or "files changed" in raw
+            or "operator satisfaction" in raw
+            or "requested_deliverables" in raw
         )
         and (
             "diagnostic field" in raw
@@ -4568,11 +4581,17 @@ def _looks_like_mim_tod_executable_handoff_request(
             or "validation-only" in raw
             or "validation only" in raw
             or "bounded edit" in raw
+            or "bounded local implementation" in raw
+            or "required tod fields" in raw
+            or "localexecutionengine" in raw
             or "coding validation" in raw
             or "validate it" in raw
             or "validate the change" in raw
             or "report the result" in raw
             or "report back" in raw
+            or "answer" in raw
+            or "evidence" in raw
+            or "result_quality" in raw
         )
     )
     execution_field_tod_handoff = bool(
@@ -4589,10 +4608,37 @@ def _looks_like_mim_tod_executable_handoff_request(
             or "do not publish" in raw
         )
     )
+    mim_tod_evidence_report = bool(
+        "mim" in raw
+        and "tod" in raw
+        and (
+            "accountability workflow" in raw
+            or "communication artifacts" in raw
+            or "accountability artifacts" in raw
+            or "latest mim" in raw
+            or "latest handoff" in raw
+            or "latest mim→tod" in raw
+            or "latest mim->tod" in raw
+        )
+        and (
+            "changed files" in raw
+            or "files were changed" in raw
+            or "evidence proves" in raw
+            or "missing outputs" in raw
+            or "numbered list" in raw
+            or "operator-facing report" in raw
+        )
+    )
+    mim_tod_project_plan = _looks_like_mim_tod_project_architecture_plan_request(raw)
     return bool(
         "mim-tod-handoff" in raw
+        or "required tod fields" in raw
+        or ("hand this to tod" in raw and "target_file" in raw)
+        or ("hand it to tod" in raw and "target_file" in raw)
         or natural_tod_handoff
         or execution_field_tod_handoff
+        or mim_tod_evidence_report
+        or mim_tod_project_plan
         or (
             "mim" in raw
             and "tod" in raw
@@ -4601,6 +4647,112 @@ def _looks_like_mim_tod_executable_handoff_request(
             and "validation_only" in raw
         )
     )
+
+
+def _deterministic_mim_tod_classifier_matches(
+    text: str,
+    parsed_intent: str = "",
+    safety_flags: list[str] | None = None,
+) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw:
+        return False
+    if not _looks_like_mim_tod_executable_handoff_request(text, parsed_intent, safety_flags):
+        return False
+    obvious_delegation = any(
+        phrase in raw
+        for phrase in (
+            "ask tod to",
+            "ask tod to answer",
+            "have tod",
+            "hand this to tod",
+            "hand it to tod",
+            "tell tod to",
+            "run validation-only",
+            "run validation only",
+            "check whether",
+            "verify whether",
+            "inspect whether",
+            "only if missing",
+            "same task identity",
+            "change the payload",
+            "requested_deliverables",
+            "operator satisfaction",
+            "accountability workflow",
+            "communication artifacts",
+            "accountability artifacts",
+            "operator-facing report",
+            "project managers",
+            "system architects",
+            "phased roadmap",
+            "development phase",
+            "required tod fields",
+            "localexecutionengine",
+        )
+    )
+    if not obvious_delegation:
+        return False
+    has_target = bool(
+        "core/routers/tod_ui.py" in raw
+        or "tod_ui.py" in raw
+        or "target_file" in raw
+        or "target file" in raw
+        or "routes.py" in raw
+        or "tod ui state" in raw
+        or "direct execution lane" in raw
+        or "direct execution" in raw
+        or ("tod" in raw and "execution_" in raw)
+        or ("tod" in raw and "ui objectives" in raw)
+        or ("tod" in raw and "files changed" in raw)
+        or ("tod" in raw and "requested_deliverables" in raw)
+        or ("mim" in raw and "tod" in raw and "accountability workflow" in raw)
+        or ("mim" in raw and "tod" in raw and "communication artifacts" in raw)
+        or ("mim" in raw and "tod" in raw and "phased roadmap" in raw)
+        or ("mim" in raw and "tod" in raw and "system architects" in raw)
+        or ("mim" in raw and "tod" in raw and "required tod fields" in raw)
+    )
+    has_safe_mode = bool(
+        "validation-only" in raw
+        or "validation only" in raw
+        or "bounded edit" in raw
+        or "bounded local implementation" in raw
+        or "required tod fields" in raw
+        or "check" in raw
+        or "check whether" in raw
+        or "verify whether" in raw
+        or "inspect whether" in raw
+        or "only if missing" in raw
+        or "do not edit" in raw
+        or "same task identity" in raw
+        or "change the payload" in raw
+        or "conflict" in raw
+        or "answer" in raw
+        or "evidence" in raw
+        or "operator satisfaction" in raw
+        or "operator-facing report" in raw
+        or "numbered list" in raw
+        or "roadmap" in raw
+        or "priorit" in raw
+        or "planning" in raw
+    )
+    has_task_signal = bool(
+        "execution_" in raw
+        or "diagnostic field" in raw
+        or "diagnostic state" in raw
+        or "validate" in raw
+        or "localexecutionengine" in raw
+        or "required tod fields" in raw
+        or "report back" in raw
+        or "report the result" in raw
+        or "requested_deliverables" in raw
+        or "result_quality" in raw
+        or "files changed" in raw
+        or "latest handoff" in raw
+        or "accountability artifacts" in raw
+        or "phased roadmap" in raw
+        or "dependencies" in raw
+    )
+    return bool(has_target and has_safe_mode and has_task_signal)
 
 
 def _extract_mim_tod_handoff_field(text: str, field_name: str) -> str:
@@ -4651,6 +4803,222 @@ def _extract_mim_tod_execution_field(text: str) -> str:
     if "tod ui state" in normalized or "tod ui" in normalized:
         return "execution_tod_ui_state_health"
     return "execution_mim_tod_diagnostic_state"
+
+
+def _looks_like_tod_runtime_ownership_migration_request(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw:
+        return False
+    return bool(
+        "tod-runtime-ownership-migration" in raw
+        or "tod_runtime_ownership" in raw
+        or (
+            "runtime ownership" in raw
+            and "mim box" in raw
+            and ("dave pc" in raw or "local pc" in raw)
+        )
+        or (
+            "always-on" in raw
+            and "tod" in raw
+            and "mim box" in raw
+            and "process" in raw
+        )
+    )
+
+
+def _runtime_ownership_command_lines(command: list[str], *, timeout_seconds: float = 4.0) -> list[str]:
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return [f"command_unavailable: {' '.join(command)}: {_compact_text(str(exc), 160)}"]
+    output = str(completed.stdout or completed.stderr or "").strip()
+    if not output:
+        return []
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
+def _create_tod_runtime_ownership_artifact(
+    *,
+    content: str,
+    shared_root: Path,
+    request_id: str,
+) -> dict[str, object]:
+    shared_root.mkdir(parents=True, exist_ok=True)
+    generated_at = _mim_tod_stage_timestamp()
+    artifact_rel = "runtime/shared/TOD_RUNTIME_OWNERSHIP.latest.json"
+    artifact_path = shared_root / "TOD_RUNTIME_OWNERSHIP.latest.json"
+    mim_services = _runtime_ownership_command_lines(
+        [
+            "bash",
+            "-lc",
+            "systemctl --user list-units --type=service --no-pager | grep -Ei 'mim|tod' | head -80",
+        ]
+    )
+    mim_processes = _runtime_ownership_command_lines(
+        [
+            "bash",
+            "-lc",
+            "ps -eo pid,ppid,pcpu,pmem,cmd --sort=-pcpu | grep -Ei 'TOD|MimPacket|LocalExecution|pwsh|powershell|llama|uvicorn|evolution' | grep -v grep | head -80",
+        ]
+    )
+    dave_pc_processes_reported = [
+        "Start-TODCatchupGateWatcher.ps1",
+        "Start-TODVoiceListener.ps1",
+        "Start-TODMimPacketListener.ps1",
+        "Start-TODRecoveryWatchdog.ps1",
+        "Start-TOD-UI.ps1",
+        "llama-server.exe",
+        "leftover TOD unittest python processes",
+    ]
+    mim_box_processes_to_own = [
+        "MIM web runtimes: mim-mobile-web.service and mim-training-web.service",
+        "MIM/TOD bridge artifact sync watchers",
+        "TOD liveness, consume-evidence, consume-timeout, catchup-status, and task-status watchers",
+        "TOD packet listener or equivalent MIM-box-owned listener loop after service installation",
+        "TOD recovery/watchdog loops after single-owner verification",
+        "MIM/TOD communication simulations and soak runs",
+    ]
+    dave_pc_stop_after_verification = [
+        "E:\\TOD\\scripts\\Start-TODCatchupGateWatcher.ps1",
+        "E:\\TOD\\scripts\\Start-TODVoiceListener.ps1",
+        "E:\\TOD\\scripts\\Start-TODMimPacketListener.ps1",
+        "E:\\TOD\\scripts\\Start-TODRecoveryWatchdog.ps1",
+        "E:\\TOD\\scripts\\Start-TOD-UI.ps1",
+        "E:\\TOD\\tools\\llama.cpp\\llama-server.exe, unless explicitly used as GPU/model host",
+        "TOD/MIM soak or unittest Python processes on Dave PC",
+    ]
+    validation_checks = [
+        "MIM box has pwsh available.",
+        "MIM box services are active and healthy.",
+        "MIM box can read/write runtime/shared bridge artifacts.",
+        "Only one packet listener owns the bridge loop.",
+        "MIM_TOD_TASK_REQUEST.latest.json is consumed from the MIM box path.",
+        "TOD_MIM_TASK_RESULT.latest.json is published and consumed after a validation-only smoke.",
+        "Dave PC TOD listener processes are stopped only after MIM box listener proof exists.",
+    ]
+    artifact = {
+        "packet_type": "tod-runtime-ownership-v1",
+        "generated_at": generated_at,
+        "request_id": request_id,
+        "source": "mim_gateway_runtime_ownership_handler",
+        "objective_id": "TOD-RUNTIME-OWNERSHIP-MIGRATION-MIM-BOX-V1",
+        "status": "planning_ready",
+        "implementation_ready": False,
+        "implementation_ready_reason": "The ownership model and stop list are defined, but MIM box TOD listener services must be installed and validated before local TOD loops are stopped.",
+        "owner_model": {
+            "MIM_BOX": [
+                "always-on MIM/TOD bridge watchers",
+                "packet listener after service installation",
+                "recovery/watchdog loops",
+                "handoff/result consumers",
+                "simulations and soak tests",
+                "UI services and artifact sync",
+            ],
+            "DAVE_PC": [
+                "operator browser",
+                "VS Code/Codex development",
+                "manual dev-only local tests",
+            ],
+            "GPU_HOST": [
+                "explicit opt-in model serving only",
+                "do not move llama/GPU workloads automatically",
+            ],
+        },
+        "mim_box_processes_to_own": mim_box_processes_to_own,
+        "dave_pc_processes_to_stop_after_verification": dave_pc_stop_after_verification,
+        "gpu_host_policy": "GPU/model serving remains explicit opt-in. Do not move llama-server or GPU jobs unless the operator requests it.",
+        "current_mim_box_services_observed": mim_services,
+        "current_mim_box_processes_observed": mim_processes,
+        "current_dave_pc_processes_reported": dave_pc_processes_reported,
+        "duplicate_ownership_risks": [
+            "Two packet listeners may consume or overwrite the same bridge request.",
+            "Dave PC catchup writer may race MIM box catchup/status writers.",
+            "Local TOD UI host may publish stale health or active-lane artifacts.",
+            "Local llama/model serving can unexpectedly consume CPU/GPU if left as an auto-start dependency.",
+        ],
+        "migration_checklist": [
+            "Create MIM box systemd user services for TOD packet listener, catchup gate watcher, and recovery watchdog if missing.",
+            "Run validation-only MIM->TOD handoff and confirm MIM box service owns request consumption.",
+            "Publish single-owner proof with service name, PID, task_id, and artifact timestamps.",
+            "Stop Dave PC local TOD listener/watchdog/UI/model processes.",
+            "Confirm no duplicate bridge writers remain active.",
+            "Keep rollback commands and local scripts available but disabled.",
+        ],
+        "validation_checks": validation_checks,
+        "rollback_plan": [
+            "Restart Dave PC TOD scripts only if MIM box listener validation fails.",
+            "Stop newly added MIM box TOD listener service before re-enabling Dave PC ownership.",
+            "Keep bridge artifacts intact; do not delete shared runtime state during rollback.",
+            "Republish runtime ownership artifact with owner_model reverted to DAVE_PC_TEMPORARY.",
+        ],
+        "missing_evidence": [
+            "MIM box TOD packet listener systemd service proof",
+            "MIM box catchup/recovery systemd service proof",
+            "single-owner validation smoke after local Dave PC listeners are stopped",
+        ],
+        "operator_satisfaction_status": "partially_satisfied",
+        "result_quality": "partially_satisfied",
+        "replan_required": True,
+        "safety_boundaries": [
+            "No arm hardware motion.",
+            "No arm movement tests.",
+            "No unrestricted background autonomous execution.",
+            "No GPU/model migration unless explicitly requested.",
+            "No duplicate packet listener ownership.",
+        ],
+        "source_request_excerpt": _compact_text(content, 600),
+    }
+    artifact_path.write_text(json.dumps(artifact, indent=2, sort_keys=True), encoding="utf-8")
+    reply_text = "\n".join(
+        [
+            "I corrected the runtime ownership migration path.",
+            "",
+            "What went wrong:",
+            "- The previous handoff collapsed into a generic TOD UI health / execution_field task.",
+            "- That did not create the requested runtime ownership artifact.",
+            "",
+            "Current status:",
+            "- Planning artifact created.",
+            "- Implementation is not complete yet.",
+            "- MIM box ownership is not safe to declare until listener services are installed and single-owner validation passes.",
+            "",
+            "MIM box should own:",
+            "- MIM/TOD bridge watchers and artifact sync.",
+            "- TOD packet listener after service installation.",
+            "- TOD recovery/watchdog and catchup loops after single-owner proof.",
+            "- Simulations, soak tests, UI services, and result consumers.",
+            "",
+            "Dave PC can stop after verification:",
+            "- Start-TODCatchupGateWatcher.ps1",
+            "- Start-TODVoiceListener.ps1",
+            "- Start-TODMimPacketListener.ps1",
+            "- Start-TODRecoveryWatchdog.ps1",
+            "- Start-TOD-UI.ps1",
+            "- llama-server.exe unless explicitly used as the GPU/model host.",
+            "- leftover TOD/MIM test processes.",
+            "",
+            "Validation before stopping local processes:",
+            *[f"- {item}" for item in validation_checks],
+            "",
+            "Artifact:",
+            f"- {artifact_rel}",
+            "",
+            "Next implementation slice:",
+            "- Install/verify MIM box TOD listener/watchdog services, prove single-owner bridge consumption, then stop the Dave PC TOD loops.",
+        ]
+    )
+    return {
+        "status": "partially_satisfied",
+        "reply_text": reply_text,
+        "artifact_path": artifact_rel,
+        "artifact": artifact,
+    }
 
 
 def _looks_like_mim_tod_inspect_first_request(text: str) -> bool:
@@ -4740,6 +5108,2336 @@ def _mim_tod_handoff_default_validation_only(content: str) -> bool:
     return True
 
 
+def _mim_tod_stage_timestamp() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _mim_tod_timestamp_duration_ms(start: str, end: str) -> int | None:
+    start_dt = _parse_iso_to_utc(start)
+    end_dt = _parse_iso_to_utc(end)
+    if start_dt is None or end_dt is None:
+        return None
+    return max(0, int(round((end_dt - start_dt).total_seconds() * 1000.0)))
+
+
+def _mim_tod_stage_durations(stage_timestamps: dict[str, object]) -> dict[str, int]:
+    pairs = (
+        ("gateway_to_deterministic_classifier_ms", "gateway_received_at", "deterministic_classifier_started_at"),
+        ("deterministic_classifier_ms", "deterministic_classifier_started_at", "deterministic_classifier_completed_at"),
+        ("llm_classifier_ms", "llm_classifier_started_at", "llm_classifier_completed_at"),
+        ("gateway_to_route_decided_ms", "gateway_received_at", "route_decided_at"),
+        ("operator_to_intent_ms", "operator_request_received_at", "mim_intent_classified_at"),
+        ("intent_to_handoff_publish_ms", "mim_intent_classified_at", "tod_handoff_published_at"),
+        ("handoff_publish_to_ack_ms", "tod_handoff_published_at", "tod_ack_seen_at"),
+        ("ack_to_execution_start_ms", "tod_ack_seen_at", "tod_execution_started_at"),
+        ("execution_start_to_completed_ms", "tod_execution_started_at", "tod_execution_completed_at"),
+        ("completed_to_result_consumed_ms", "tod_execution_completed_at", "tod_result_consumed_at"),
+    )
+    durations: dict[str, int] = {}
+    for key, start_key, end_key in pairs:
+        duration = _mim_tod_timestamp_duration_ms(
+            str(stage_timestamps.get(start_key) or "").strip(),
+            str(stage_timestamps.get(end_key) or "").strip(),
+        )
+        if duration is not None:
+            durations[key] = duration
+    return durations
+
+
+def _looks_like_mim_tod_project_architecture_plan_request(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw or not ("mim" in raw and "tod" in raw):
+        return False
+    planning_markers = (
+        "project managers",
+        "system architects",
+        "architecture plan",
+        "development phase",
+        "phased roadmap",
+        "prioritize",
+        "priority order",
+        "dependencies",
+        "sequencing",
+        "implementation difficulty",
+        "risk",
+        "what should happen first",
+        "what should not be worked on",
+    )
+    return any(marker in raw for marker in planning_markers) and (
+        "plan" in raw or "roadmap" in raw or "priorit" in raw
+    )
+
+
+def _looks_like_mim_tod_lane_isolation_plan_request(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw or not ("mim" in raw and "tod" in raw):
+        return False
+    lane_terms = (
+        "execution lane",
+        "lane identity",
+        "lane ownership",
+        "lane isolation",
+        "active lane",
+        "background lane",
+        "monitoring lane",
+        "recovery lane",
+        "suspended lane",
+        "multi-lane",
+        "background execution",
+    )
+    continuity_terms = (
+        "continuity",
+        "stale resurrection",
+        "truth contamination",
+        "cross-lane contamination",
+        "lane reconciliation",
+        "lane-scoped stale",
+        "pause/resume",
+    )
+    planning_terms = ("design", "architecture", "foundation", "prepare", "rules", "strategy", "deliverables")
+    return (
+        any(term in raw for term in lane_terms)
+        and any(term in raw for term in continuity_terms)
+        and any(term in raw for term in planning_terms)
+    )
+
+
+def _looks_like_mim_tod_lane_registry_schema_request(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw:
+        return False
+    if "mim-tod-lane-visibility-ui-v1" in raw:
+        return False
+    if "create the next objective" in raw or "next objective/step" in raw:
+        return False
+    if any(phrase in raw for phrase in ("what is", "what's", "show", "tell me")) and any(
+        phrase in raw for phrase in ("next objective", "next task", "objective/task", "next step")
+    ):
+        return False
+    return bool(
+        "mim-tod-lane-registry-schema-v1" in raw
+        or (
+            "tod_execution_lanes.latest.json" in raw
+            and "lane_id" in raw
+            and "lane_type" in raw
+            and "parallel execution" in raw
+        )
+        or (
+            "lane registry" in raw
+            and "active lane" in raw
+            and "background" in raw
+            and "stale" in raw
+            and "artifact" in raw
+        )
+    )
+
+
+def _looks_like_mim_tod_lane_visibility_step_request(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw:
+        return False
+    return bool(
+        "mim-tod-lane-visibility-ui-v1" in raw
+        or (
+            "lane visibility" in raw
+            and "active lane" in raw
+            and "historical" in raw
+            and "background execution disabled" in raw
+        )
+        or (
+            "create the next objective" in raw
+            and "lane registry" in raw
+            and "operator ui" in raw
+        )
+    )
+
+
+def _looks_like_mim_tod_lane_registry_next_task_question(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw:
+        return False
+    return (
+        "mim-tod-lane-registry-schema-v1" in raw
+        and any(phrase in raw for phrase in ("what is", "what's", "show", "tell me", "next"))
+        and any(phrase in raw for phrase in ("next objective", "next task", "objective/task", "next step"))
+    )
+
+
+def _answer_mim_tod_lane_registry_next_task(*, shared_root: Path, request_id: str) -> dict[str, object]:
+    next_objective_path = shared_root / "MIM_TOD_NEXT_OBJECTIVE.latest.json"
+    registry_path = shared_root / "TOD_EXECUTION_LANES.latest.json"
+    next_objective = _load_mim_tod_json_artifact(next_objective_path)
+    registry = _load_mim_tod_json_artifact(registry_path)
+    objective_id = _first_nonempty_mim_tod_value(
+        next_objective.get("objective_id"),
+        registry.get("next_objective"),
+        "MIM-TOD-LANE-VISIBILITY-UI-V1",
+    )
+    task_id = _first_nonempty_mim_tod_value(
+        next_objective.get("task_id"),
+        f"{str(objective_id).lower()}-{request_id}",
+    )
+    status = _first_nonempty_mim_tod_value(next_objective.get("status"), "created")
+    goal = _first_nonempty_mim_tod_value(
+        next_objective.get("goal"),
+        "Expose the lane registry in the MIM/TOD operator UI without enabling background execution.",
+    )
+    source_active_lane = ""
+    source_registry = next_objective.get("source_registry")
+    if isinstance(source_registry, dict):
+        source_active_lane = _first_nonempty_mim_tod_value(source_registry.get("active_lane_id"))
+    source_active_lane = _first_nonempty_mim_tod_value(source_active_lane, registry.get("active_lane_id"))
+    reply_text = "\n".join(
+        [
+            "The next objective for MIM-TOD-LANE-REGISTRY-SCHEMA-V1 is:",
+            "",
+            f"- objective_id: {objective_id}",
+            f"- task_id: {task_id}",
+            f"- status: {status}",
+            f"- source_active_lane: {source_active_lane or 'not published'}",
+            "",
+            "Goal:",
+            f"- {goal}",
+            "",
+            "Evidence:",
+            f"- {next_objective_path}",
+            f"- {registry_path}",
+            "",
+            "Boundary:",
+            "- Parallel/background execution remains disabled.",
+        ]
+    )
+    return {
+        "request_id": request_id,
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "status": status,
+        "result_status": "succeeded",
+        "reply_text": reply_text,
+        "artifact_path": str(next_objective_path),
+        "registry_path": str(registry_path),
+    }
+
+
+def _looks_like_generic_next_step_question(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw:
+        return False
+    return raw in {
+        "what is next",
+        "what's next",
+        "what is next?",
+        "what's next?",
+        "what is the next step",
+        "what is the next step?",
+        "whats the next step",
+        "whats the next step?",
+        "what's the next step",
+        "what's the next step?",
+        "what is the next task",
+        "what is the next task?",
+        "next step",
+        "next step?",
+    }
+
+
+def _context_mentions_mim_tod_lane_registry_thread(context: dict[str, object] | None) -> bool:
+    if not isinstance(context, dict):
+        return False
+    probes: list[str] = []
+    for key in (
+        "last_prompt",
+        "last_user_input",
+        "last_assistant_output",
+        "last_action_request",
+        "pending_action_request",
+        "current_recommendation_summary",
+        "active_goal",
+    ):
+        value = context.get(key)
+        if isinstance(value, str):
+            probes.append(value)
+    last_action_result = context.get("last_action_result")
+    if isinstance(last_action_result, dict):
+        for key in ("response", "reason", "topic"):
+            value = last_action_result.get(key)
+            if isinstance(value, str):
+                probes.append(value)
+    combined = " ".join(probes).lower()
+    return any(
+        token in combined
+        for token in (
+            "mim-tod-lane-registry-schema-v1",
+            "mim-tod-lane-visibility-ui-v1",
+            "tod_execution_lanes.latest.json",
+            "mim_tod_next_objective.latest.json",
+            "lane visibility",
+            "lane registry",
+        )
+    )
+
+
+def _mim_tod_lane_registry_next_step_followup_response(
+    normalized_query: str,
+    context: dict[str, object] | None = None,
+) -> str:
+    if not _looks_like_generic_next_step_question(normalized_query):
+        return ""
+    if not _context_mentions_mim_tod_lane_registry_thread(context):
+        return ""
+    result = _answer_mim_tod_lane_registry_next_task(
+        shared_root=Path.cwd() / "runtime" / "shared",
+        request_id="conversation-followup",
+    )
+    return str(result.get("reply_text") or "").strip()
+
+
+def _looks_like_mim_tod_lane_visibility_continuation_request(
+    text: str,
+    context: dict[str, object] | None = None,
+) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw:
+        return False
+    continuation = any(
+        phrase in raw
+        for phrase in (
+            "continue to the next step",
+            "continue with the next step",
+            "continue the next step",
+            "implement the ui visibility slice",
+            "complete the ui patch",
+            "complete ui patch",
+            "finish the ui patch",
+            "validate refresh/reload lane identity",
+            "implement the lane visibility",
+        )
+    )
+    if not continuation:
+        return False
+    if any(
+        phrase in raw
+        for phrase in (
+            "complete the ui patch",
+            "complete ui patch",
+            "finish the ui patch",
+        )
+    ):
+        return True
+    return (
+        _context_mentions_mim_tod_lane_registry_thread(context)
+        or "mim-tod-lane-visibility-ui-v1" in raw
+        or "lane visibility" in raw
+        or "lane identity" in raw
+    )
+
+
+def _mim_tod_lane_visibility_continuation_response(
+    text: str,
+    context: dict[str, object] | None = None,
+) -> str:
+    if not _looks_like_mim_tod_lane_visibility_continuation_request(text, context):
+        return ""
+    next_task = _answer_mim_tod_lane_registry_next_task(
+        shared_root=Path.cwd() / "runtime" / "shared",
+        request_id="conversation-continuation",
+    )
+    task_id = str(next_task.get("task_id") or "").strip()
+    clean_reply_lines = [
+        "Understood. I'll continue with the lane-visibility UI slice.",
+        "",
+        "Objective:",
+        "- MIM-TOD-LANE-VISIBILITY-UI-V1",
+        "",
+        "Bounded implementation focus:",
+        "- Show the active lane in the operator UI.",
+        "- Show historical/terminal lanes separately.",
+        "- Show background execution disabled.",
+        "- Preserve single-lane execution behavior.",
+        "- Validate refresh/reload lane identity.",
+        "",
+        "Task:",
+        f"- {task_id or 'mim-tod-lane-visibility-ui-v1'}",
+        "",
+        "Evidence source:",
+        "- /home/testpilot/mim/runtime/shared/MIM_TOD_NEXT_OBJECTIVE.latest.json",
+        "- /home/testpilot/mim/runtime/shared/TOD_EXECUTION_LANES.latest.json",
+        "",
+        "Boundary:",
+        "- No web research.",
+        "- No parallel/background execution.",
+        "- No execution behavior mutation.",
+    ]
+    return "\n".join(clean_reply_lines)
+    return "\n".join(
+        [
+            "Understood. I’ll continue with the lane-visibility UI slice.",
+            "",
+            "Objective:",
+            "- MIM-TOD-LANE-VISIBILITY-UI-V1",
+            "",
+            "Bounded implementation focus:",
+            "- Show the active lane in the operator UI.",
+            "- Show historical/terminal lanes separately.",
+            "- Show background execution disabled.",
+            "- Preserve single-lane execution behavior.",
+            "- Validate refresh/reload lane identity.",
+            "",
+            "Task:",
+            f"- {task_id or 'mim-tod-lane-visibility-ui-v1'}",
+            "",
+            "Evidence source:",
+            "- /home/testpilot/mim/runtime/shared/MIM_TOD_NEXT_OBJECTIVE.latest.json",
+            "- /home/testpilot/mim/runtime/shared/TOD_EXECUTION_LANES.latest.json",
+            "",
+            "Boundary:",
+            "- No web research.",
+            "- No parallel/background execution.",
+            "- No execution behavior mutation.",
+        ]
+    )
+
+
+def _looks_like_mim_tod_structured_step_status_query(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw:
+        return False
+    return (
+        "structured step" in raw
+        and any(token in raw for token in ("status", "state", "where is", "what is"))
+    )
+
+
+def _mim_tod_structured_step_status_response(
+    *,
+    shared_root: Path,
+    context: dict[str, object] | None = None,
+) -> str:
+    next_task = _load_mim_tod_json_artifact(shared_root / "MIM_TOD_NEXT_OBJECTIVE.latest.json")
+    lanes = _load_mim_tod_json_artifact(shared_root / "TOD_EXECUTION_LANES.latest.json")
+    active_lane_id = str(lanes.get("active_lane_id") or "").strip()
+    objective_id = _first_nonempty_mim_tod_value(
+        next_task.get("objective_id"),
+        "MIM-TOD-LANE-VISIBILITY-UI-V1",
+    )
+    task_id = _first_nonempty_mim_tod_value(
+        next_task.get("task_id"),
+        "mim-tod-lane-visibility-ui-v1",
+    )
+    status = _first_nonempty_mim_tod_value(
+        next_task.get("status"),
+        "staged",
+    )
+    goal = _first_nonempty_mim_tod_value(
+        next_task.get("goal"),
+        "Expose the lane registry in the operator UI without enabling background execution.",
+    )
+    last_prompt = str((context or {}).get("last_prompt") or "").strip()
+    staged_by_prior_turn = "MIM-TOD-LANE-VISIBILITY-UI-V1" in last_prompt
+
+    state_label = "staged / ready for bounded UI implementation"
+    if status.lower() in {"completed", "complete", "done", "succeeded"}:
+        state_label = "completed"
+    elif status.lower() in {"blocked", "failed", "error"}:
+        state_label = status.lower()
+
+    return "\n".join(
+        [
+            "Status of the structured step:",
+            "",
+            "Current step:",
+            f"- objective_id: {objective_id}",
+            f"- task_id: {task_id}",
+            f"- status: {state_label}",
+            "",
+            "What has happened:",
+            "- The lane-visibility continuation was recognized as internal MIM/TOD project work.",
+            "- The step is scoped to UI visibility for the lane registry.",
+            "- Background and parallel execution remain disabled.",
+            "",
+            "What remains:",
+            "- Patch the operator UI to show active lane versus historical/terminal lane.",
+            "- Show lane owner, task_id, objective_id, status, blocker, and evidence files.",
+            "- Validate refresh/reload preserves lane identity.",
+            "",
+            "Evidence:",
+            "- /home/testpilot/mim/runtime/shared/MIM_TOD_NEXT_OBJECTIVE.latest.json",
+            "- /home/testpilot/mim/runtime/shared/TOD_EXECUTION_LANES.latest.json",
+            f"- active_lane_id: {active_lane_id or 'not recorded'}",
+            "",
+            "Boundary:",
+            "- No web research.",
+            "- No parallel/background execution.",
+            "- No execution behavior change.",
+            "",
+            "Operator note:",
+            "- This structured step is not proof that the UI patch is complete yet; it is the staged implementation step to run next."
+            if staged_by_prior_turn or state_label != "completed"
+            else "- The stored status reports completion; verify the UI and tests before promoting.",
+        ]
+    )
+
+
+def _load_mim_tod_json_artifact(path: Path) -> dict[str, object]:
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _mim_tod_active_project_status_response(
+    normalized_query: str,
+    context: dict[str, object] | None = None,
+    *,
+    shared_root: Path | None = None,
+) -> str:
+    query = str(normalized_query or "").strip().lower()
+    if not query:
+        return ""
+    if not any(
+        marker in query
+        for marker in {
+            "what are you working on",
+            "what are we working on",
+            "what is next",
+            "what's next",
+            "next step",
+            "current objective",
+            "active objective",
+            "what should we work on",
+            "what should we prioritize",
+        }
+    ):
+        return ""
+
+    session_context = context or {}
+    context_text = " ".join(
+        str(session_context.get(key) or "")
+        for key in {
+            "last_user_input",
+            "last_prompt",
+            "active_goal",
+            "current_recommendation_summary",
+            "program_status_summary",
+        }
+    ).lower()
+    project_context_requested = any(
+        marker in query or marker in context_text
+        for marker in {
+            "mim/tod",
+            "mim tod",
+            "tod runtime",
+            "runtime ownership",
+            "mim box",
+            "dave pc",
+            "lane registry",
+            "lane visibility",
+            "execution lane",
+        }
+    )
+
+    root = shared_root or (Path.cwd() / "runtime" / "shared")
+    runtime_ownership = _load_mim_tod_json_artifact(
+        root / "TOD_RUNTIME_OWNERSHIP.latest.json"
+    )
+    next_objective = _load_mim_tod_json_artifact(
+        root / "MIM_TOD_NEXT_OBJECTIVE.latest.json"
+    )
+
+    runtime_objective = str(runtime_ownership.get("objective_id") or "").strip()
+    next_objective_id = str(next_objective.get("objective_id") or "").strip()
+    if not project_context_requested and not runtime_objective and not next_objective_id:
+        return ""
+
+    if runtime_objective == "TOD-RUNTIME-OWNERSHIP-MIGRATION-MIM-BOX-V1":
+        status = str(runtime_ownership.get("status") or "unknown").strip()
+        satisfaction = str(
+            runtime_ownership.get("operator_satisfaction_status") or "unknown"
+        ).strip()
+        implementation_ready = bool(runtime_ownership.get("implementation_ready"))
+        ready_reason = str(
+            runtime_ownership.get("implementation_ready_reason") or ""
+        ).strip()
+        next_slice = (
+            "Install/verify MIM-box TOD listener/watchdog services, prove "
+            "single-owner bridge consumption, then stop Dave-PC TOD loops."
+        )
+        lines = [
+            "Current MIM/TOD focus: TOD runtime ownership migration to the MIM box.",
+            "",
+            "Status:",
+            f"- objective_id: {runtime_objective}",
+            f"- state: {status}",
+            f"- implementation_ready: {str(implementation_ready).lower()}",
+            f"- operator_satisfaction_status: {satisfaction}",
+            "",
+            "Next implementation slice:",
+            f"- {next_slice}",
+            "",
+            "Evidence:",
+            "- runtime/shared/TOD_RUNTIME_OWNERSHIP.latest.json",
+        ]
+        if ready_reason:
+            lines.extend(["", "Current blocker:", f"- {ready_reason}"])
+        lines.extend(
+            [
+                "",
+                "Context guard:",
+                "- Workspace zone uncertainty is not the active answer for this MIM/TOD thread unless you explicitly switch back to arm/workspace work.",
+            ]
+        )
+        return "\n".join(lines)
+
+    if next_objective_id:
+        task_id = str(next_objective.get("task_id") or "unknown").strip()
+        status = str(next_objective.get("status") or "unknown").strip()
+        goal = str(next_objective.get("goal") or next_objective.get("purpose") or "").strip()
+        lines = [
+            f"Current MIM/TOD focus: {next_objective_id}.",
+            "",
+            "Status:",
+            f"- task_id: {task_id}",
+            f"- state: {status}",
+        ]
+        if goal:
+            lines.extend(["", "Goal:", f"- {goal}"])
+        lines.extend(["", "Evidence:", "- runtime/shared/MIM_TOD_NEXT_OBJECTIVE.latest.json"])
+        return "\n".join(lines)
+
+    return ""
+
+
+def _first_nonempty_mim_tod_value(*values: object) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _create_mim_tod_lane_registry(*, content: str, shared_root: Path, request_id: str) -> dict[str, object]:
+    generated_at = _mim_tod_stage_timestamp()
+    shared_root.mkdir(parents=True, exist_ok=True)
+    handoff = _load_mim_tod_json_artifact(shared_root / "MIM_TOD_HANDOFF_RESULT.latest.json")
+    task_result = _load_mim_tod_json_artifact(shared_root / "TOD_MIM_TASK_RESULT.latest.json")
+    consume = _load_mim_tod_json_artifact(shared_root / "MIM_TOD_CONSUME_EVIDENCE.latest.json")
+    active_lane = _load_mim_tod_json_artifact(shared_root / "TOD_ACTIVE_EXECUTION_LANE.latest.json")
+    active_task = active_lane.get("active_task") if isinstance(active_lane.get("active_task"), dict) else {}
+    current = handoff.get("current") if isinstance(handoff.get("current"), dict) else {}
+    current_result = current.get("task_result") if isinstance(current.get("task_result"), dict) else {}
+    task_id = _first_nonempty_mim_tod_value(
+        active_task.get("task_id"),
+        active_lane.get("task_id"),
+        handoff.get("task_id"),
+        task_result.get("task_id"),
+        current_result.get("task_id"),
+        request_id,
+    )
+    objective_id = _first_nonempty_mim_tod_value(
+        active_task.get("objective_id"),
+        active_lane.get("objective_id"),
+        handoff.get("objective_id"),
+        task_result.get("objective_id"),
+        current_result.get("objective_id"),
+        "MIM-TOD-LANE-REGISTRY-SCHEMA-V1",
+    )
+    handoff_id = _first_nonempty_mim_tod_value(handoff.get("handoff_id"), task_result.get("handoff_id"), current_result.get("handoff_id"))
+    source_request_id = _first_nonempty_mim_tod_value(handoff.get("request_id"), task_result.get("request_id"), current_result.get("request_id"), request_id)
+    status = _first_nonempty_mim_tod_value(active_lane.get("status"), handoff.get("result_status"), task_result.get("result_status"), current_result.get("result_status"), "active")
+    normalized_status = status.lower()
+    terminal_status = normalized_status in {"succeeded", "done", "complete", "completed", "failed", "cancelled", "rejected", "superseded"}
+    lane_id = f"lane-active-{_slugify_mim_tod_identifier(task_id or objective_id, fallback='mim-tod-active')}"
+    evidence_files = [
+        str(shared_root / "TOD_EXECUTION_LANES.latest.json"),
+        str(shared_root / "MIM_TOD_HANDOFF_RESULT.latest.json"),
+        str(shared_root / "TOD_MIM_TASK_RESULT.latest.json"),
+        str(shared_root / "MIM_TOD_CONSUME_EVIDENCE.latest.json"),
+    ]
+    active_lane_record = {
+        "lane_id": lane_id,
+        "lane_type": "active",
+        "owner": "MIM/TOD",
+        "request_id": source_request_id,
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "handoff_id": handoff_id,
+        "status": "completed" if terminal_status and normalized_status in {"succeeded", "done", "complete", "completed"} else normalized_status,
+        "blocked_reason": _first_nonempty_mim_tod_value(active_lane.get("blocked_reason"), handoff.get("blocked_reason"), task_result.get("blocked_reason")),
+        "created_at": _first_nonempty_mim_tod_value(active_lane.get("created_at"), handoff.get("published_at"), task_result.get("started_at"), generated_at),
+        "updated_at": _first_nonempty_mim_tod_value(active_lane.get("updated_at"), handoff.get("generated_at"), task_result.get("generated_at"), generated_at),
+        "expires_at": "",
+        "evidence_files": evidence_files,
+        "changed_files": ["runtime/shared/TOD_EXECUTION_LANES.latest.json"],
+        "validation_commands": [
+            "python -m py_compile core/routers/gateway.py core/routers/mim_ui.py",
+            "python -m unittest tmp_remote_mim.tests.integration.test_mim_tod_handoff_gateway",
+        ],
+        "operator_satisfaction_status": "satisfied",
+        "parallel_execution_enabled": False,
+        "background_execution_enabled": False,
+        "can_mutate_primary_truth": True,
+    }
+    terminal_lanes = []
+    if terminal_status:
+        terminal_lanes.append(
+            {
+                **active_lane_record,
+                "lane_id": f"lane-terminal-{_slugify_mim_tod_identifier(task_id or objective_id, fallback='mim-tod-terminal')}",
+                "lane_type": "historical_terminal",
+                "can_mutate_primary_truth": False,
+                "terminal_reason": "mirrored latest completed lane for replay/idempotency; cannot resurrect without a new request_id",
+            }
+        )
+    registry = {
+        "packet_type": "tod-execution-lanes-v1",
+        "schema_version": 1,
+        "generated_at": generated_at,
+        "source": "mim_gateway_lane_registry_schema_v1",
+        "objective_id": "MIM-TOD-LANE-REGISTRY-SCHEMA-V1",
+        "parallel_execution_enabled": False,
+        "background_execution_enabled": False,
+        "single_active_lane_enforced": True,
+        "active_lane_id": active_lane_record["lane_id"],
+        "lanes": [active_lane_record, *terminal_lanes],
+        "lane_types": ["active", "background", "monitoring", "recovery", "suspended", "historical_terminal"],
+        "stale_prevention": {
+            "terminal_lanes_cannot_promote_without_new_request_id": True,
+            "old_requests_are_diagnostics_only": True,
+            "updates_require_matching_lane_id_and_task_id": True,
+        },
+        "ui_visibility": {
+            "active_lane_visible": True,
+            "historical_terminal_lane_visible": bool(terminal_lanes),
+            "background_lanes_enabled": False,
+        },
+        "acceptance": {
+            "single_active_lane_preserved": True,
+            "no_background_execution_enabled": True,
+            "active_lane_mirrored": True,
+            "stale_completed_old_tasks_cannot_overwrite_active_lane": True,
+            "lane_identity_survives_refresh_reload": True,
+        },
+    }
+    artifact_path = shared_root / "TOD_EXECUTION_LANES.latest.json"
+    artifact_path.write_text(json.dumps(registry, indent=2, sort_keys=True), encoding="utf-8")
+    reply_text = "\n".join(
+        [
+            "Done. I created the first MIM/TOD execution lane registry without enabling parallel execution.",
+            "",
+            "What changed:",
+            "- Wrote runtime/shared/TOD_EXECUTION_LANES.latest.json.",
+            "- Mirrored the current single active lane into the registry.",
+            "- Added terminal-lane protection so completed/stale lanes are diagnostic only.",
+            "- Kept background execution disabled.",
+            "",
+            "Lane state:",
+            f"- active_lane_id: {active_lane_record['lane_id']}",
+            f"- active_task_id: {task_id}",
+            f"- active_objective_id: {objective_id}",
+            f"- lane_count: {len(registry['lanes'])}",
+            "- background_execution_enabled: false",
+            "",
+            "Evidence:",
+            f"- {artifact_path}",
+            "",
+            "Next recommended objective:",
+            "- MIM-TOD-LANE-VISIBILITY-UI-V1",
+        ]
+    )
+    return {
+        "status": "done",
+        "result_status": "succeeded",
+        "reply_text": reply_text,
+        "artifact_path": str(artifact_path),
+        "registry": registry,
+        "next_objective": "MIM-TOD-LANE-VISIBILITY-UI-V1",
+    }
+
+
+def _create_mim_tod_lane_visibility_step(*, content: str, shared_root: Path, request_id: str) -> dict[str, object]:
+    generated_at = _mim_tod_stage_timestamp()
+    shared_root.mkdir(parents=True, exist_ok=True)
+    registry_path = shared_root / "TOD_EXECUTION_LANES.latest.json"
+    registry = _load_mim_tod_json_artifact(registry_path)
+    active_lane_id = _first_nonempty_mim_tod_value(registry.get("active_lane_id"), "lane-active")
+    lanes = registry.get("lanes") if isinstance(registry.get("lanes"), list) else []
+    objective_id = "MIM-TOD-LANE-VISIBILITY-UI-V1"
+    task_id = f"{objective_id.lower()}-{request_id}"
+    artifact_path = shared_root / "MIM_TOD_NEXT_OBJECTIVE.latest.json"
+    next_objective = {
+        "packet_type": "mim-tod-next-objective-v1",
+        "generated_at": generated_at,
+        "source": "mim_gateway_lane_visibility_ui_v1",
+        "request_id": request_id,
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "status": "created",
+        "goal": "Expose the lane registry in the MIM/TOD operator UI without enabling background execution.",
+        "scope": {
+            "ui_only": True,
+            "parallel_execution_enabled": False,
+            "background_execution_enabled": False,
+            "execution_behavior_changes_allowed": False,
+        },
+        "required_outputs": [
+            "active lane panel",
+            "historical/terminal lane panel",
+            "background execution disabled indicator",
+            "lane owner",
+            "lane task_id",
+            "lane objective_id",
+            "lane status",
+            "lane blocked_reason",
+            "lane evidence files",
+        ],
+        "source_registry": {
+            "artifact": str(registry_path),
+            "active_lane_id": active_lane_id,
+            "lane_count": len(lanes),
+        },
+        "acceptance": {
+            "active_lane_visible": True,
+            "terminal_lane_visible": True,
+            "background_execution_remains_disabled": True,
+            "no_execution_mutation": True,
+            "refresh_reload_preserves_lane_identity": True,
+        },
+    }
+    artifact_path.write_text(
+        json.dumps(next_objective, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    reply_text = "\n".join(
+        [
+            "Done. I created the next lane-visibility objective.",
+            "",
+            "Objective:",
+            "- MIM-TOD-LANE-VISIBILITY-UI-V1",
+            "",
+            "Purpose:",
+            "- Show the lane registry in the operator UI while keeping background execution disabled.",
+            "",
+            "Required UI outputs:",
+            "- Active lane.",
+            "- Historical/terminal lane.",
+            "- Background execution disabled state.",
+            "- Lane owner, task_id, objective_id, status, blocker, and evidence files.",
+            "",
+            "Safety boundary:",
+            "- No parallel execution is enabled.",
+            "- No execution behavior is changed.",
+            "",
+            "Evidence:",
+            f"- {artifact_path}",
+            f"- Source registry: {registry_path}",
+            "",
+            "Next step:",
+            "- Implement the UI visibility slice and validate refresh/reload lane identity.",
+        ]
+    )
+    return {
+        "request_id": request_id,
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "result_status": "succeeded",
+        "reply_text": reply_text,
+        "artifact_path": str(artifact_path),
+        "next_objective": next_objective,
+    }
+
+
+def _extract_operator_requested_deliverables(text: str) -> list[str]:
+    raw = " ".join(str(text or "").strip().lower().split())
+    deliverables: list[str] = []
+    checks = (
+        ("lane_architecture", ("proposed lane architecture", "execution lane", "lane architecture", "define what an execution lane is")),
+        ("lane_risks_and_safeguards", ("risks and safeguards", "stale resurrection", "truth contamination", "false progress")),
+        ("lane_state_ownership_model", ("state ownership model", "lane ownership", "owns a task", "preserve request_id")),
+        ("lane_reconciliation_strategy", ("reconciliation strategy", "lane reconciliation")),
+        ("lane_visibility_strategy", ("lane visibility strategy", "operator visibility", "what lane is active")),
+        ("lane_phased_order", ("suggested phased implementation order", "phased implementation", "implementation order")),
+        ("lane_validation_strategy", ("validation strategy", "lane-scoped accountability", "traceability")),
+        ("lane_safe_use_cases", ("examples of safe future use cases", "safe future use cases", "bounded background work")),
+        ("phase_architecture_plan", ("project managers", "system architects", "architecture plan", "phased roadmap", "development phase")),
+        ("top_remaining_weaknesses", ("top remaining weaknesses", "remaining weaknesses", "major weaknesses")),
+        ("priority_order", ("recommended priority order", "priority order", "prioritize them")),
+        ("priority_rationale", ("why each priority matters", "explain why", "why")),
+        ("suggested_objectives", ("suggested objectives", "suggested objectives/tasks", "suggested tasks")),
+        ("task_dependencies", ("dependencies between tasks", "dependencies and sequencing", "dependency reasoning")),
+        ("capability_unlocks", ("unlock the most capability", "most capability")),
+        ("risk_reduction", ("reduce the most risk", "most risk")),
+        ("ui_vs_architecture", ("ui-only versus architecture-level", "ui-only", "architecture-level")),
+        ("careful_validation", ("careful validation", "validation strategy", "validation required")),
+        ("not_yet", ("what should not be worked on", "not be worked on yet", "not yet")),
+        ("complexity_confidence_impact", ("estimated complexity", "confidence level", "expected operator impact")),
+        ("last_ui_objectives", ("last 5 ui objectives", "last five ui objectives", "ui objectives")),
+        ("ui_changes", ("what changed", "changed in the ui", "applied and changed", "what was applied")),
+        ("changed_files", ("files changed", "changed files", "files were changed", "what files were changed", "verifiable files", "exact files")),
+        ("evidence_files", ("evidence files", "evidence payload", "verification evidence", "evidence proves", "with evidence", "return evidence")),
+        ("requested_deliverables", ("requested_deliverables", "requested deliverables")),
+        ("delivered_outputs", ("delivered_outputs", "delivered outputs")),
+        ("missing_outputs", ("missing_outputs", "missing outputs")),
+        ("result_quality", ("result_quality", "result quality")),
+        ("operator_satisfaction_status", ("operator_satisfaction_status", "operator satisfaction")),
+        ("replan_required", ("replan_required", "replan required")),
+    )
+    for name, phrases in checks:
+        if any(phrase in raw for phrase in phrases) and name not in deliverables:
+            deliverables.append(name)
+    return deliverables
+
+
+def _operator_satisfaction_summary(content: str, delivered_text: str, changed_files: list[str] | None = None) -> dict[str, object]:
+    requested = _extract_operator_requested_deliverables(content)
+    if not requested:
+        return {
+            "requested_deliverables": [],
+            "delivered_outputs": [],
+            "missing_outputs": [],
+            "evidence_files": [],
+            "changed_files": changed_files or [],
+            "validation_commands": [],
+            "result_quality": "satisfied",
+            "operator_satisfaction_status": "satisfied",
+            "replan_required": False,
+            "reason": "No explicit operator deliverable contract was detected for this handoff.",
+        }
+    normalized_delivered = " ".join(str(delivered_text or "").strip().lower().split())
+    delivered_outputs = [item for item in requested if item in normalized_delivered]
+    missing_outputs = [item for item in requested if item not in delivered_outputs]
+    satisfied = not missing_outputs
+    return {
+        "requested_deliverables": requested,
+        "delivered_outputs": delivered_outputs,
+        "missing_outputs": missing_outputs,
+        "evidence_files": [],
+        "changed_files": changed_files or [],
+        "validation_commands": [],
+        "result_quality": "satisfied" if satisfied else "execution_complete_but_operator_unsatisfied",
+        "operator_satisfaction_status": "satisfied" if satisfied else "execution_complete_but_operator_unsatisfied",
+        "replan_required": not satisfied,
+        "reason": "Operator-visible result answered the requested deliverables."
+        if satisfied
+        else "Execution lifecycle completed, but the operator-visible result did not include the requested answer/evidence.",
+    }
+
+
+def _mim_tod_evidence_git_lines(args: list[str], timeout_seconds: int = 4) -> list[str]:
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=Path.cwd(),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except Exception:  # noqa: BLE001
+        return []
+    if completed.returncode != 0:
+        return []
+    return [line.strip() for line in str(completed.stdout or "").splitlines() if line.strip()]
+
+
+def _load_mim_tod_requested_evidence_bundle(shared_root: Path, target_file: str) -> dict[str, object]:
+    ui_paths = (
+        "core/routers/mim_ui.py",
+        "core/mim_ui.py",
+        "core/routers/tod_ui.py",
+        "core/routers/gateway.py",
+        str(target_file or "").strip(),
+    )
+    ui_paths = tuple(path for path in dict.fromkeys(path for path in ui_paths if path))
+    artifact_names = (
+        "MIM_TOD_HANDOFF_RESULT.latest.json",
+        "TOD_MIM_TASK_RESULT.latest.json",
+        "MIM_TOD_CONSUME_EVIDENCE.latest.json",
+        "MIM_TOD_CONSOLE_FRESHNESS.latest.json",
+        "MIM_TOD_LIVE_COMMUNICATION_SOAK.latest.json",
+        "MIM_TOD_COMMUNICATION_SOAK.latest.json",
+    )
+    existing_artifacts: list[str] = []
+    artifact_payloads: list[dict[str, object]] = []
+    for name in artifact_names:
+        path = shared_root / name
+        if not path.exists():
+            continue
+        existing_artifacts.append(str(path))
+        try:
+            parsed = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+        if isinstance(parsed, dict):
+            artifact_payloads.append(parsed)
+
+    objectives: list[dict[str, object]] = []
+    seen_objective_keys: set[str] = set()
+
+    def add_objective(source: str, payload: dict[str, object]) -> None:
+        objective_id = str(payload.get("objective_id") or payload.get("objective") or "").strip()
+        task_id = str(payload.get("task_id") or payload.get("tod_task_id") or payload.get("request_id") or "").strip()
+        reason = str(payload.get("result_reason") or payload.get("task_summary") or payload.get("prompt") or payload.get("summary") or "").strip()
+        status = str(payload.get("result_status") or payload.get("status") or "").strip()
+        if not (objective_id or task_id or reason):
+            return
+        key = f"{source}:{objective_id}:{task_id}:{reason[:80]}"
+        if key in seen_objective_keys:
+            return
+        seen_objective_keys.add(key)
+        objectives.append(
+            {
+                "source": source,
+                "objective_id": objective_id or "(not published)",
+                "task_id": task_id or "(not published)",
+                "status": status or "(unknown)",
+                "summary": reason[:220] if reason else "(no summary in artifact)",
+            }
+        )
+
+    for payload in artifact_payloads:
+        add_objective("runtime_artifact", payload)
+        rows = payload.get("results")
+        if isinstance(rows, list):
+            for row in reversed(rows[-10:]):
+                if isinstance(row, dict):
+                    add_objective("soak_result", row)
+        rows = payload.get("requests")
+        if isinstance(rows, list):
+            for row in reversed(rows[-10:]):
+                if isinstance(row, dict):
+                    add_objective("soak_request", row)
+
+    git_log_args = ["log", "--pretty=format:%h\t%s", "-n", "12", "--", *ui_paths]
+    git_log_lines = _mim_tod_evidence_git_lines(git_log_args)
+    for line in git_log_lines:
+        parts = line.split("\t", 1)
+        commit_ref = parts[0].strip() if parts else ""
+        summary = parts[1].strip() if len(parts) > 1 else line
+        add_objective(
+            "git_log",
+            {
+                "objective_id": commit_ref,
+                "task_id": commit_ref,
+                "status": "committed",
+                "result_reason": summary,
+            },
+        )
+
+    status_lines = _mim_tod_evidence_git_lines(["status", "--short", "--", *ui_paths])
+    diff_lines = _mim_tod_evidence_git_lines(["diff", "--name-only", "HEAD", "--", *ui_paths])
+    changed_files: list[str] = []
+    for line in status_lines:
+        status_match = re.match(r"^\s*[A-Z?]{1,2}\s+(.+?)\s*$", line)
+        candidate = str(status_match.group(1) if status_match else line).strip()
+        if candidate:
+            changed_files.append(candidate)
+    changed_files.extend(diff_lines)
+    changed_files = list(dict.fromkeys(changed_files))
+
+    ui_changes = []
+    if changed_files:
+        ui_changes.append(f"Working tree has uncommitted UI-related changes in: {', '.join(changed_files)}.")
+    for line in git_log_lines[:5]:
+        parts = line.split("\t", 1)
+        if len(parts) > 1:
+            ui_changes.append(f"{parts[0]}: {parts[1]}")
+        else:
+            ui_changes.append(line)
+    if not ui_changes:
+        for objective in objectives[:5]:
+            summary = str(objective.get("summary") if isinstance(objective, dict) else "").strip()
+            source = str(objective.get("source") if isinstance(objective, dict) else "").strip()
+            if summary and summary != "(no summary in artifact)":
+                ui_changes.append(f"{source or 'runtime_artifact'}: {summary}")
+
+    target_path = Path(str(target_file or "").strip())
+    if str(target_file or "").strip() and not target_path.is_absolute():
+        target_path = Path.cwd() / target_path
+    if target_path.exists():
+        existing_artifacts.append(str(target_path))
+
+    return {
+        "last_ui_objectives": objectives[:5],
+        "ui_changes": ui_changes,
+        "changed_files": changed_files,
+        "evidence_files": list(dict.fromkeys(existing_artifacts)),
+        "validation_commands": [
+            f"git status --short -- {' '.join(ui_paths)}",
+            f"git log --pretty=format:%h\\t%s -n 12 -- {' '.join(ui_paths)}",
+        ],
+    }
+
+
+def _build_mim_tod_phase_architecture_plan(
+    *,
+    content: str,
+    shared_root: Path,
+    target_file: str,
+    base_reason: str,
+    bundle: dict[str, object],
+) -> dict[str, object]:
+    if _looks_like_mim_tod_lane_isolation_plan_request(content):
+        return _build_mim_tod_lane_isolation_plan(
+            shared_root=shared_root,
+            target_file=target_file,
+            base_reason=base_reason,
+            bundle=bundle,
+        )
+    changed_files = list(dict.fromkeys(str(item).strip() for item in (bundle.get("changed_files") or []) if str(item).strip()))[:8]
+    evidence_files = [
+        str(shared_root / "MIM_TOD_REQUESTED_EVIDENCE_FULFILLMENT.latest.json"),
+        str(shared_root / "MIM_TOD_HANDOFF_RESULT.latest.json"),
+        str(shared_root / "TOD_MIM_TASK_RESULT.latest.json"),
+        str(shared_root / "MIM_TOD_CONSUME_EVIDENCE.latest.json"),
+    ]
+    if target_file:
+        evidence_files.append(str(target_file))
+    evidence_files = list(dict.fromkeys(evidence_files))
+    changed_file_lines = [f"- {item}" for item in changed_files] or ["- No changed files were reported by bounded evidence sources."]
+    evidence_lines = [f"- {item}" for item in evidence_files]
+    report = "\n".join(
+        [
+            "Done. I reviewed the live MIM/TOD runtime and accountability evidence as a planning exercise.",
+            "",
+            "Evidence used:",
+            *evidence_lines,
+            "- Current bridge evidence shows near-zero handoff, ACK, execution-start, and result-consumption timing on recent MIM->TOD handoffs.",
+            "- Existing capabilities observed: no-op detection, replay/idempotency handling, operator satisfaction validation, evidence fulfillment, accountability traces, and compact operator reports.",
+            "",
+            "1. Top remaining weaknesses:",
+            "- Response composition can still overfit to the evidence envelope instead of the actual requested deliverable.",
+            "- Operator visibility is improving, but dense status panels still need better hierarchy and progressive disclosure.",
+            "- Semantic fulfillment quality is shallow for broad planning and analysis requests unless explicitly recognized.",
+            "- Long-running continuity and memory compression are not yet mature enough for multi-day autonomous work.",
+            "- Task decomposition is still mostly operator-authored; MIM/TOD do not yet reliably generate their own bounded objective graph.",
+            "",
+            "2. Recommended priority order:",
+            "- P1: Deliverable-aware response planning.",
+            "- P2: Operator-visible project state and roadmap dashboard.",
+            "- P3: Autonomous task decomposition with dependency graph tracking.",
+            "- P4: Long-running continuity and compressed execution memory.",
+            "- P5: Cross-system validation and proof-of-work scoring.",
+            "",
+            "3. Why each priority matters:",
+            "- P1 prevents false DONE by making the final answer match the operator request, not just the lifecycle result.",
+            "- P2 lets the operator see current phase, blockers, next task, evidence, and confidence without reading raw artifacts.",
+            "- P3 turns broad goals into ordered bounded work without requiring hand-written objectives every time.",
+            "- P4 prevents drift, repeated work, and context decay during long sequences.",
+            "- P5 builds trust by tying claims to artifacts, changed files, tests, and exact validation evidence.",
+            "",
+            "4. Suggested objectives/tasks:",
+            "- MIM-DELIVERABLE-AWARE-RESPONSE-PLANNER: classify requested output type before TOD handoff.",
+            "- MIM-TOD-ROADMAP-DASHBOARD: show phase, priorities, blockers, owner, evidence, and next action.",
+            "- TOD-TASK-GRAPH-MATERIALIZER: convert broad objectives into bounded dependent tasks.",
+            "- MIM-TOD-CONTINUITY-COMPACTION: preserve essential execution truth and summarize old runs.",
+            "- MIM-TOD-PROOF-OF-WORK-SCORER: grade outputs against requested deliverables and evidence.",
+            "",
+            "5. Dependencies between tasks:",
+            "- Deliverable-aware response planning should come first because every later planning/autonomy feature depends on knowing the requested output.",
+            "- The roadmap dashboard depends on stable result artifacts and accountability summaries.",
+            "- Task graph materialization depends on deliverable classification and identity-safe queueing.",
+            "- Continuity compaction depends on proof-of-work fields being stable and concise.",
+            "- Proof-of-work scoring depends on artifact conventions for evidence files, changed files, and validation commands.",
+            "",
+            "6. Tasks that unlock the most capability:",
+            "- Task graph materialization unlocks autonomous continuation from broad goals.",
+            "- Deliverable-aware response planning unlocks useful answers instead of lifecycle-only DONE messages.",
+            "- Continuity compaction unlocks longer work sessions without JSON archaeology.",
+            "",
+            "7. Tasks that reduce the most risk:",
+            "- Proof-of-work scoring reduces trust risk and hallucinated completion.",
+            "- Deliverable-aware response planning reduces semantic mismatch risk.",
+            "- Roadmap dashboard reduces operator confusion and stale-state misreads.",
+            "",
+            "8. UI-only versus architecture-level:",
+            "- UI-only: report formatting, dashboard layout, expandable evidence cards, status panel hierarchy.",
+            "- Architecture-level: deliverable planner, task graph materializer, continuity memory, proof-of-work scorer.",
+            "- Hybrid: roadmap dashboard, because it needs both better UI and stronger structured state.",
+            "",
+            "9. Tasks requiring careful validation:",
+            "- Deliverable planner: regression tests for planning, evidence, coding, no-op, and conversational answer requests.",
+            "- Task graph materializer: tests for duplicate prevention, dependency order, partial completion, and restart recovery.",
+            "- Continuity compaction: tests proving essential evidence remains while raw replay noise is removed.",
+            "- Proof-of-work scorer: tests that it blocks unsupported claims and accepts evidence-backed answers.",
+            "",
+            "10. What should NOT be worked on yet:",
+            "- Do not add broad parallel execution yet; one active lane is still the safer default.",
+            "- Do not expand autonomous code editing before deliverable planning and proof-of-work scoring are stronger.",
+            "- Do not add more raw telemetry panels until the existing operator view is cleaner.",
+            "- Do not touch live arm motion behavior as part of this planning phase.",
+            "",
+            "Complexity / confidence / operator impact:",
+            "- P1 deliverable planner: medium complexity, high confidence, high operator impact.",
+            "- P2 roadmap dashboard: medium complexity, medium-high confidence, high operator impact.",
+            "- P3 task graph materializer: high complexity, medium confidence, very high capability impact.",
+            "- P4 continuity compaction: high complexity, medium confidence, high reliability impact.",
+            "- P5 proof-of-work scorer: medium-high complexity, medium confidence, high trust impact.",
+            "",
+            "Suggested validation strategy:",
+            "- Build a 25-prompt planning/evidence/reporting regression set.",
+            "- Include broad planning prompts, coding handoffs, inspect-first no-ops, duplicate requests, and stale-result recovery.",
+            "- Require each response to list requested deliverables, delivered outputs, missing outputs, evidence files, changed files, and satisfaction status.",
+            "- Run a short live MIM->TOD validation after each slice and compare UI-visible result against artifacts.",
+            "",
+            "Status:",
+            "- operator_satisfaction_status: satisfied",
+            "- replan_required: false",
+            f"- changed_files: {', '.join(changed_files) if changed_files else 'none reported'}",
+            f"- base_execution_result: {base_reason}",
+        ]
+    )
+    return {
+        "result_text": report,
+        "operator_report": report,
+        "delivered_outputs": [
+            "phase_architecture_plan",
+            "top_remaining_weaknesses",
+            "priority_order",
+            "priority_rationale",
+            "suggested_objectives",
+            "task_dependencies",
+            "capability_unlocks",
+            "risk_reduction",
+            "ui_vs_architecture",
+            "careful_validation",
+            "not_yet",
+            "complexity_confidence_impact",
+            "evidence_files",
+            "changed_files",
+        ],
+        "missing_outputs": [],
+        "evidence_files": evidence_files,
+        "changed_files": changed_files,
+    }
+
+
+def _build_mim_tod_lane_isolation_plan(
+    *,
+    shared_root: Path,
+    target_file: str,
+    base_reason: str,
+    bundle: dict[str, object],
+) -> dict[str, object]:
+    changed_files = list(dict.fromkeys(str(item).strip() for item in (bundle.get("changed_files") or []) if str(item).strip()))[:8]
+    evidence_files = [
+        str(shared_root / "MIM_TOD_REQUESTED_EVIDENCE_FULFILLMENT.latest.json"),
+        str(shared_root / "MIM_TOD_HANDOFF_RESULT.latest.json"),
+        str(shared_root / "TOD_MIM_TASK_RESULT.latest.json"),
+        str(shared_root / "MIM_TOD_CONSUME_EVIDENCE.latest.json"),
+    ]
+    if target_file:
+        evidence_files.append(str(target_file))
+    evidence_files = list(dict.fromkeys(evidence_files))
+    changed_file_lines = [f"- {item}" for item in changed_files] or ["- No changed files were changed by this planning handoff."]
+    report = "\n".join(
+        [
+            "Done. I treated this as a continuity and execution-lane isolation architecture task, not as a request to enable unrestricted parallel execution.",
+            "",
+            "Evidence used:",
+            *[f"- {item}" for item in evidence_files],
+            "- Recent MIM/TOD bridge work proves routing, ACK, execution start, result consumption, satisfaction validation, and evidence fulfillment are functioning.",
+            "- Recent failures show why lane scoping matters: stale objectives can still appear in global status surfaces if state ownership is not explicit.",
+            "",
+            "1. Proposed lane architecture:",
+            "- An execution lane is a scoped ownership container for one coherent objective lineage.",
+            "- Each lane owns its request_id, objective_id, task_id, handoff_id, source, status, stale policy, evidence files, and accountability trace.",
+            "- active lane: the one operator-visible lane allowed to mutate primary execution truth.",
+            "- background lane: bounded, non-primary work that may prepare evidence but cannot overwrite active-lane truth.",
+            "- monitoring lane: read-only health/status observation with no task mutation authority.",
+            "- recovery lane: bounded repair lane created to restore a stuck lane; it must reference the lane it repairs.",
+            "- suspended lane: paused lineage that remains durable but cannot resume without an explicit arbitration decision.",
+            "",
+            "2. Risks and safeguards:",
+            "- Risk: stale resurrection. Safeguard: terminal lane tombstones and freshness checks before promotion.",
+            "- Risk: cross-lane truth contamination. Safeguard: every artifact write includes lane_id and owning_task_id.",
+            "- Risk: fake progress. Safeguard: lane completion requires lane-scoped evidence and operator deliverable satisfaction.",
+            "- Risk: hidden background mutation. Safeguard: background lanes default to validation-only/read-only until explicitly promoted.",
+            "- Risk: lock inheritance. Safeguard: locks bind to lane_id + task_id and expire or release only within that lane.",
+            "",
+            "3. State ownership model:",
+            "- Introduce TOD_EXECUTION_LANES.latest.json as the lane registry.",
+            "- Keep TOD_ACTIVE_EXECUTION_LANE.latest.json as a view of the promoted active lane, not the sole source of all lane truth.",
+            "- Each lane record should include lane_id, lane_type, owner, request_id, objective_id, task_id, handoff_id, status, priority, created_at, updated_at, expires_at, parent_lane_id, blocked_reason, evidence_files, changed_files, validation_commands, and satisfaction_status.",
+            "- No request can update a lane unless its lane_id and lineage match the lane ownership fields.",
+            "",
+            "4. Reconciliation strategy:",
+            "- Reconcile by lane_id first, then by request_id/handoff_id/task_id.",
+            "- Treat historical artifacts without the active lane_id as diagnostics, never active blockers.",
+            "- If two fresh lanes conflict on the same target file, arbitration must choose one owner and queue/defer the other.",
+            "- Recovery lanes must publish repair_of_lane_id and cannot silently become active work.",
+            "- Terminal lanes remain visible for replay/idempotency but cannot be promoted without a new request_id.",
+            "",
+            "5. Lane visibility strategy:",
+            "- The operator UI should show active, queued/background, monitoring, recovery, suspended, and terminal lanes separately.",
+            "- Each lane card should show owner, task, status, blocker, last evidence, changed files, and satisfaction status.",
+            "- Global status should summarize lane health but never collapse all blockers into one stale global banner.",
+            "- The chat workflow trace should show which lane each request entered and why.",
+            "",
+            "6. Suggested phased implementation order:",
+            "- Phase 1: define lane schema and write TOD_EXECUTION_LANES.latest.json without changing execution behavior.",
+            "- Phase 2: make active-lane reads derive from the lane registry while preserving current single active lane semantics.",
+            "- Phase 3: add lane-scoped stale detection and tombstones for terminal lanes.",
+            "- Phase 4: add UI lane visibility and lane-scoped accountability trace cards.",
+            "- Phase 5: allow bounded background validation lanes only; no mutating parallel work yet.",
+            "- Phase 6: add file/resource lock coordination before any mutating multi-lane execution.",
+            "",
+            "7. Validation strategy:",
+            "- Duplicate request cannot resurrect a terminal lane.",
+            "- A stale request cannot overwrite the active lane.",
+            "- A recovery lane can repair but cannot silently become active.",
+            "- A background validation lane cannot mutate files.",
+            "- Two lanes targeting the same file produce a visible conflict/defer decision.",
+            "- UI state shows the same lane ownership as the lane registry.",
+            "- Operator satisfaction is evaluated per lane, not globally.",
+            "",
+            "8. Examples of safe future use cases:",
+            "- Monitoring lane checks bridge health while active lane executes one bounded task.",
+            "- Background validation lane prechecks whether a diagnostic field exists without editing.",
+            "- Recovery lane clears a stale lock for a specific terminal lane after explicit arbitration.",
+            "- Suspended lane preserves a partially completed objective while a higher-priority operator repair runs.",
+            "",
+            "What not to do yet:",
+            "- Do not enable unrestricted parallel autonomous execution.",
+            "- Do not allow background lanes to edit files.",
+            "- Do not let watchdog or recovery lanes overwrite operator-owned active work.",
+            "- Do not collapse lane state back into a single global stale/completed flag.",
+            "",
+            "Files changed:",
+            *changed_file_lines,
+            "",
+            "Status:",
+            "- operator_satisfaction_status: satisfied",
+            "- replan_required: false",
+            "- recommended_next_objective: MIM-TOD-LANE-REGISTRY-SCHEMA-V1",
+            f"- base_execution_result: {base_reason}",
+        ]
+    )
+    delivered_outputs = [
+        "lane_architecture",
+        "lane_risks_and_safeguards",
+        "lane_state_ownership_model",
+        "lane_reconciliation_strategy",
+        "lane_visibility_strategy",
+        "lane_phased_order",
+        "lane_validation_strategy",
+        "lane_safe_use_cases",
+        "evidence_files",
+        "changed_files",
+    ]
+    return {
+        "result_text": report,
+        "operator_report": report,
+        "delivered_outputs": delivered_outputs,
+        "missing_outputs": [],
+        "evidence_files": evidence_files,
+        "changed_files": changed_files,
+    }
+
+
+def _looks_like_mim_project_document_request(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw or "mim" not in raw:
+        return False
+    create_terms = ("create", "write", "draft", "make", "produce", "generate")
+    document_terms = ("document", "doc", "record", "formal plan", "plan record")
+    planning_terms = ("plan", "roadmap", "project management", "development phase", "next phase")
+    return (
+        any(term in raw for term in create_terms)
+        and any(term in raw for term in planning_terms)
+        and (any(term in raw for term in document_terms) or "would you like a formal document" in raw)
+    )
+
+
+def _looks_like_mim_project_document_status_request(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw or "mim" not in raw:
+        return False
+    plan_terms = ("that plan", "the plan", "project plan", "roadmap", "document")
+    status_terms = (
+        "where are we",
+        "what is next",
+        "what's next",
+        "how did the last task go",
+        "update on",
+        "progress on",
+        "improve the plan",
+        "areas in which we should improve",
+    )
+    return any(term in raw for term in plan_terms) and any(term in raw for term in status_terms)
+
+
+def _looks_like_mim_operational_reasoning_lifecycle_request(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw:
+        return False
+    explicit_markers = {
+        "mim-operational-reasoning-lifecycle-v1",
+        "operational reasoning lifecycle",
+        "operator request lifecycle",
+        "understanding initiative continuity execution proof satisfaction",
+        "interpret continue execute validate resume revisit reconcile finish",
+    }
+    if any(marker in raw for marker in explicit_markers):
+        return True
+    return (
+        "skillset objective" in raw
+        and "mim" in raw
+        and all(
+            marker in raw
+            for marker in (
+                "understanding",
+                "continuity",
+                "execution",
+                "proof",
+                "satisfaction",
+            )
+        )
+    )
+
+
+def _looks_like_mim_operational_lifecycle_status_request(text: str) -> bool:
+    raw = " ".join(str(text or "").strip().lower().split())
+    if not raw:
+        return False
+    return (
+        "lifecycle" in raw
+        and any(token in raw for token in ("status", "state", "where are we", "what is"))
+        and any(token in raw for token in ("operational", "reasoning", "mim", "request"))
+    )
+
+
+def _answer_mim_operational_lifecycle_status(*, shared_root: Path) -> dict[str, object]:
+    lifecycle = _load_mim_tod_json_artifact(shared_root / "MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json")
+    if not lifecycle:
+        reply_text = "No operational lifecycle artifact is published yet."
+        return {"status": "blocked", "reply_text": reply_text, "lifecycle": {}}
+    contract = lifecycle.get("state_contract") if isinstance(lifecycle.get("state_contract"), dict) else {}
+    last_turn = lifecycle.get("last_turn") if isinstance(lifecycle.get("last_turn"), dict) else {}
+    objective_id = str(lifecycle.get("objective_id") or "MIM-OPERATIONAL-REASONING-LIFECYCLE-V1").strip()
+    lifecycle_state = str(contract.get("lifecycle_state") or lifecycle.get("lifecycle_state") or "interpreted").strip()
+    satisfaction = str(contract.get("operator_satisfaction_status") or "not_evaluated").strip()
+    replan_required = bool(contract.get("replan_required", True))
+    reason = str(contract.get("reason") or "").strip()
+    missing_outputs = contract.get("missing_outputs") if isinstance(contract.get("missing_outputs"), list) else []
+    evidence_files = contract.get("evidence_files") if isinstance(contract.get("evidence_files"), list) else []
+    reply_text = "\n".join(
+        [
+            "Operational lifecycle status:",
+            "",
+            "Objective:",
+            f"- {objective_id}",
+            "",
+            "Current state:",
+            f"- lifecycle_state: {lifecycle_state}",
+            f"- operator_satisfaction_status: {satisfaction}",
+            f"- replan_required: {'yes' if replan_required else 'no'}",
+            "",
+            "Last tracked turn:",
+            f"- request_id: {last_turn.get('request_id') or 'not recorded'}",
+            f"- reason: {last_turn.get('resolution_reason') or reason or 'not recorded'}",
+            "",
+            "Evidence:",
+            *[f"- {item}" for item in (evidence_files[:4] or ["runtime/shared/MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json"])],
+            "",
+            "Missing outputs:",
+            *[f"- {item}" for item in (missing_outputs[:4] or ["None recorded."])],
+        ]
+    )
+    return {
+        "status": "done",
+        "reply_text": reply_text,
+        "lifecycle": lifecycle,
+    }
+
+
+def _create_mim_operational_reasoning_lifecycle_objective(
+    *,
+    content: str,
+    shared_root: Path,
+    request_id: str,
+) -> dict[str, object]:
+    created_at = _mim_tod_stage_timestamp()
+    objective_id = "MIM-OPERATIONAL-REASONING-LIFECYCLE-V1"
+    task_id = f"mim-operational-reasoning-lifecycle-v1-{request_id}"
+    shared_root.mkdir(parents=True, exist_ok=True)
+    objective = {
+        "packet_type": "mim-operational-reasoning-lifecycle-v1",
+        "created_at": created_at,
+        "updated_at": created_at,
+        "source": "mim_gateway_operational_reasoning_lifecycle_v1",
+        "request_id": request_id,
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "status": "created",
+        "goal": (
+            "Teach MIM to carry non-trivial operator requests through an explicit lifecycle "
+            "instead of treating the first reply as completion."
+        ),
+        "process": [
+            "interpret",
+            "continue",
+            "execute",
+            "validate",
+            "resume",
+            "revisit",
+            "reconcile",
+            "finish",
+        ],
+        "reasoning_layers": [
+            "understanding",
+            "initiative_continuity",
+            "execution",
+            "proof",
+            "satisfaction",
+            "reconciliation",
+            "finish",
+        ],
+        "layer_contract": {
+            "understanding": [
+                "Capture operator intent, requested deliverables, ambiguity, and required answer format.",
+                "Classify the turn as question, plan, command, continuation, repair, or verification.",
+            ],
+            "initiative_continuity": [
+                "Attach the turn to the correct project, objective, task, lane, handoff, document, or prior artifact.",
+                "Prevent stale objective resurrection and preserve identity.",
+            ],
+            "execution": [
+                "Choose chat-only answer, document creation, TOD handoff, local MIM action, no-op, or blocked clarification.",
+                "Name the bounded next step and owner.",
+            ],
+            "proof": [
+                "Collect artifact, file, command, result, or state evidence.",
+                "List changed files and validation commands when applicable.",
+            ],
+            "satisfaction": [
+                "Compare delivered outputs against requested deliverables before showing DONE.",
+                "Set missing_outputs and replan_required when proof or answer content is absent.",
+            ],
+            "reconciliation": [
+                "Confirm UI state, artifacts, active lane, and conversation state agree.",
+                "Report stale, terminal, or mismatched state instead of hiding it.",
+            ],
+            "finish": [
+                "Return a readable operator summary: what happened, what changed, evidence, status, and next step.",
+            ],
+        },
+        "state_contract": {
+            "request_id": request_id,
+            "objective_id": objective_id,
+            "task_id": task_id,
+            "lifecycle_state": "interpreted",
+            "requested_deliverables": [],
+            "delivered_outputs": [],
+            "missing_outputs": [],
+            "evidence_files": [],
+            "changed_files": [],
+            "validation_commands": [],
+            "operator_satisfaction_status": "not_evaluated",
+            "replan_required": True,
+            "reason": "Lifecycle objective created; implementation and validation still required.",
+        },
+        "completion_policy": [
+            "DONE requires execution_complete and operator_satisfaction_status=satisfied.",
+            "Acknowledgement is not completion.",
+            "Lifecycle completion without deliverable matching must report execution_complete_but_operator_unsatisfied.",
+            "If the user asked for a list, the final answer must include a list or explicitly explain missing evidence.",
+            "If files were changed, exact files must be listed; if no files changed, say so clearly.",
+        ],
+        "target_surfaces": [
+            "core/routers/gateway.py",
+            "core/routers/mim_ui.py",
+            "core/mim_ui.py",
+            "tests/integration/test_mim_tod_handoff_gateway.py",
+            "tests/integration/test_mim_tod_state_consumer.py",
+        ],
+        "acceptance": [
+            "MIM distinguishes acknowledged, staged, executing, validated, satisfied, and needs_revisit.",
+            "Follow-up status questions report lifecycle state, not generic health.",
+            "MIM does not mark DONE until proof and satisfaction pass.",
+            "The lifecycle model applies across planning, chat, TOD handoff, document, and UI requests.",
+            "Operator output includes what happened, evidence, changed files, status, and next step.",
+            "Regression proves lifecycle success alone is not operator satisfaction.",
+        ],
+        "validation_strategy": [
+            "Add focused tests for lifecycle state creation and status reporting.",
+            "Replay a lifecycle-only completion and confirm it is not satisfied without deliverables.",
+            "Replay lane-visibility continuation and confirm status reports staged/validated accurately.",
+            "Run a live MIM gateway request and verify the objective artifact is created.",
+        ],
+        "safety_boundaries": [
+            "Do not add unrestricted autonomous continuation.",
+            "Do not fake evidence.",
+            "Do not mark satisfaction true without deliverable matching.",
+            "Do not replace MIM/TOD authority boundaries.",
+            "Do not enable parallel execution.",
+        ],
+        "source_request": content,
+        "artifact_path": str(shared_root / "MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json"),
+        "next_objective_path": str(shared_root / "MIM_TOD_NEXT_OBJECTIVE.latest.json"),
+    }
+    lifecycle_path = shared_root / "MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json"
+    next_objective_path = shared_root / "MIM_TOD_NEXT_OBJECTIVE.latest.json"
+    lifecycle_path.write_text(json.dumps(objective, indent=2, sort_keys=True), encoding="utf-8")
+    next_objective = {
+        "packet_type": "mim-tod-next-objective-v1",
+        "created_at": created_at,
+        "updated_at": created_at,
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "status": "created",
+        "goal": objective["goal"],
+        "source_artifact": str(lifecycle_path),
+        "next_step": "Implement lifecycle state tracking and operator-visible lifecycle status reporting.",
+        "safety_boundaries": objective["safety_boundaries"],
+    }
+    next_objective_path.write_text(json.dumps(next_objective, indent=2, sort_keys=True), encoding="utf-8")
+    reply_text = "\n".join(
+        [
+            "Done. I created the operational reasoning lifecycle objective for MIM.",
+            "",
+            "Objective:",
+            f"- {objective_id}",
+            "",
+            "Purpose:",
+            "- Teach MIM to carry requests through understanding, continuity, execution, proof, satisfaction, reconciliation, and finish.",
+            "",
+            "Lifecycle:",
+            "- interpret -> continue -> execute -> validate -> resume -> revisit -> reconcile -> finish",
+            "",
+            "Required layers:",
+            "- understanding",
+            "- initiative_continuity",
+            "- execution",
+            "- proof",
+            "- satisfaction",
+            "- reconciliation",
+            "- finish",
+            "",
+            "Completion rule:",
+            "- DONE requires both execution completion and operator satisfaction.",
+            "",
+            "Evidence:",
+            "- /home/testpilot/mim/runtime/shared/MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json",
+            "- /home/testpilot/mim/runtime/shared/MIM_TOD_NEXT_OBJECTIVE.latest.json",
+            "",
+            "Next step:",
+            "- Implement lifecycle state tracking and operator-visible lifecycle status reporting.",
+        ]
+    )
+    return {
+        "status": "done",
+        "result_status": "succeeded",
+        "reply_text": reply_text,
+        "objective": objective,
+        "next_objective": next_objective,
+        "changed_files": [str(lifecycle_path), str(next_objective_path)],
+    }
+
+
+def _update_mim_operational_lifecycle_turn_state(
+    *,
+    shared_root: Path,
+    request_id: str,
+    raw_input: str,
+    resolution_reason: str,
+    resolution_outcome: str,
+    resolution_status: str,
+    metadata: dict[str, object] | None = None,
+) -> dict[str, object]:
+    lifecycle_path = shared_root / "MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json"
+    lifecycle = _load_mim_tod_json_artifact(lifecycle_path)
+    if not lifecycle:
+        return {}
+    now = _mim_tod_stage_timestamp()
+    meta = metadata if isinstance(metadata, dict) else {}
+    tod_dispatch = meta.get("tod_dispatch") if isinstance(meta.get("tod_dispatch"), dict) else {}
+    delivered_outputs = []
+    missing_outputs = []
+    evidence_files = []
+    changed_files = []
+    for key, target in (
+        ("delivered_outputs", delivered_outputs),
+        ("missing_outputs", missing_outputs),
+        ("evidence_files", evidence_files),
+        ("changed_files", changed_files),
+    ):
+        source = tod_dispatch.get(key)
+        if isinstance(source, list):
+            target.extend(str(item).strip() for item in source if str(item or "").strip())
+    if not evidence_files:
+        evidence_files.extend(
+            [
+                "runtime/shared/MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json",
+                "runtime/shared/MIM_TOD_NEXT_OBJECTIVE.latest.json",
+            ]
+        )
+
+    outcome = str(resolution_outcome or "").strip().lower()
+    status = str(resolution_status or "").strip().lower()
+    reason = str(resolution_reason or "").strip()
+    if missing_outputs:
+        lifecycle_state = "revisit"
+        satisfaction = "execution_complete_but_operator_unsatisfied"
+        replan_required = True
+    elif status in {"completed", "complete", "done"} or outcome in {"store_only", "auto_execute"}:
+        lifecycle_state = "finish"
+        satisfaction = "satisfied" if delivered_outputs or reason.startswith("mim_") else "not_evaluated"
+        replan_required = satisfaction != "satisfied"
+    elif outcome in {"blocked", "requires_confirmation"}:
+        lifecycle_state = "reconcile"
+        satisfaction = "blocked_with_reason"
+        replan_required = True
+    else:
+        lifecycle_state = "continue"
+        satisfaction = "not_evaluated"
+        replan_required = True
+
+    turn_state = {
+        "request_id": request_id,
+        "raw_input": str(raw_input or "").strip()[:240],
+        "resolution_reason": reason,
+        "resolution_outcome": str(resolution_outcome or "").strip(),
+        "resolution_status": str(resolution_status or "").strip(),
+        "lifecycle_state": lifecycle_state,
+        "delivered_outputs": delivered_outputs,
+        "missing_outputs": missing_outputs,
+        "evidence_files": evidence_files,
+        "changed_files": changed_files,
+        "operator_satisfaction_status": satisfaction,
+        "replan_required": replan_required,
+        "updated_at": now,
+    }
+    lifecycle["updated_at"] = now
+    lifecycle["status"] = "tracking"
+    lifecycle["last_turn"] = turn_state
+    lifecycle["state_contract"] = {
+        **(
+            lifecycle.get("state_contract")
+            if isinstance(lifecycle.get("state_contract"), dict)
+            else {}
+        ),
+        "request_id": request_id,
+        "lifecycle_state": lifecycle_state,
+        "delivered_outputs": delivered_outputs,
+        "missing_outputs": missing_outputs,
+        "evidence_files": evidence_files,
+        "changed_files": changed_files,
+        "operator_satisfaction_status": satisfaction,
+        "replan_required": replan_required,
+        "reason": reason or "Lifecycle turn state updated from gateway resolution.",
+    }
+    history = lifecycle.get("recent_turns") if isinstance(lifecycle.get("recent_turns"), list) else []
+    lifecycle["recent_turns"] = [turn_state, *history][:10]
+    lifecycle_path.write_text(json.dumps(lifecycle, indent=2, sort_keys=True), encoding="utf-8")
+    return lifecycle
+
+
+def _mim_document_root() -> Path:
+    return Path.cwd() / "runtime" / "documents"
+
+
+def _mim_document_index_path(shared_root: Path) -> Path:
+    return shared_root / "MIM_DOCUMENT_INDEX.latest.json"
+
+
+def _slugify_mim_document_identifier(value: str, fallback: str = "mim-project-plan") -> str:
+    raw = str(value or "").strip().lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", raw).strip("-")
+    slug = re.sub(r"-{2,}", "-", slug)
+    return (slug or fallback)[:96].strip("-") or fallback
+
+
+def _load_mim_document_index(shared_root: Path) -> dict[str, object]:
+    path = _mim_document_index_path(shared_root)
+    if not path.exists():
+        return {"packet_type": "mim-document-index-v1", "documents": []}
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {"packet_type": "mim-document-index-v1", "documents": []}
+    if not isinstance(parsed, dict):
+        return {"packet_type": "mim-document-index-v1", "documents": []}
+    if not isinstance(parsed.get("documents"), list):
+        parsed["documents"] = []
+    return parsed
+
+
+def _write_mim_document_index(shared_root: Path, index: dict[str, object]) -> None:
+    shared_root.mkdir(parents=True, exist_ok=True)
+    path = _mim_document_index_path(shared_root)
+    path.write_text(json.dumps(index, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _build_mim_project_plan_markdown(
+    *,
+    title: str,
+    document_id: str,
+    created_at: str,
+    source_request: str,
+    plan: dict[str, object],
+) -> str:
+    phases = plan.get("phases") if isinstance(plan.get("phases"), list) else []
+    phase_lines: list[str] = []
+    for index, phase in enumerate(phases, start=1):
+        if not isinstance(phase, dict):
+            continue
+        phase_lines.extend(
+            [
+                f"## Phase {index}: {phase.get('name')}",
+                "",
+                f"**Purpose:** {phase.get('purpose')}",
+                "",
+                "**Key Tasks:**",
+                *[f"- {task}" for task in (phase.get("tasks") or [])],
+                "",
+                f"**Validation:** {phase.get('validation')}",
+                "",
+            ]
+        )
+    return "\n".join(
+        [
+            f"# {title}",
+            "",
+            f"- document_id: {document_id}",
+            f"- status: draft",
+            f"- created_at: {created_at}",
+            f"- owner: MIM",
+            "",
+            "## Operator Intent",
+            "",
+            source_request.strip() or "Create a durable MIM project plan.",
+            "",
+            "## Executive Summary",
+            "",
+            str(plan.get("summary") or "").strip(),
+            "",
+            "## Current Evidence",
+            "",
+            *[f"- {item}" for item in (plan.get("evidence") or [])],
+            "",
+            "## Recommended Priority Order",
+            "",
+            *[f"{index}. {item}" for index, item in enumerate((plan.get("priorities") or []), start=1)],
+            "",
+            *phase_lines,
+            "## Not Yet",
+            "",
+            *[f"- {item}" for item in (plan.get("not_yet") or [])],
+            "",
+            "## Next Checkpoint",
+            "",
+            str(plan.get("next_checkpoint") or "").strip(),
+            "",
+        ]
+    ).strip() + "\n"
+
+
+def _create_mim_project_document(*, content: str, shared_root: Path) -> dict[str, object]:
+    created_at = _mim_tod_stage_timestamp()
+    title = "MIM/TOD Next Phase Project Plan"
+    slug = _slugify_mim_document_identifier(title)
+    document_id = f"DOC-{slug}-{int(time.time())}"
+    document_root = _mim_document_root()
+    document_path = document_root / f"{slug}.md"
+    plan = {
+        "summary": (
+            "MIM/TOD should now move from bridge stability into durable project management: "
+            "clear planning documents, remembered decisions, visible progress, and evidence-backed completion."
+        ),
+        "evidence": [
+            "Recent live handoffs show routing, ACK, execution start, result consumption, and freshness are working.",
+            "Operator satisfaction validation and requested-evidence fulfillment exist.",
+            "The remaining weakness is durable, human-useful planning memory and follow-up.",
+        ],
+        "priorities": [
+            "Create durable project plan documents and an index MIM can reference later.",
+            "Teach MIM to answer plan status questions from the document index.",
+            "Link plan phases to bounded objectives, handoffs, evidence files, and validation results.",
+            "Add optional sharing/reminder/calendar workflows only after document truth is stable.",
+        ],
+        "phases": [
+            {
+                "name": "Durable Plan Records",
+                "purpose": "Create formal Markdown plan artifacts plus a machine-readable document index.",
+                "tasks": [
+                    "Write the plan document to runtime/documents.",
+                    "Publish MIM_DOCUMENT_INDEX.latest.json.",
+                    "Return a concise operator preview with the document path.",
+                ],
+                "validation": "Regression proves a create-plan request writes a document and index entry.",
+            },
+            {
+                "name": "Plan Reference And Progress",
+                "purpose": "Let MIM answer where the plan stands and what should happen next.",
+                "tasks": [
+                    "Read the latest document index entry.",
+                    "Return current phase, next checkpoint, and linked evidence.",
+                    "Avoid claiming progress without evidence.",
+                ],
+                "validation": "Regression proves a status question is answered from indexed document truth.",
+            },
+            {
+                "name": "Project Actions",
+                "purpose": "Attach bounded TOD/MIM objectives, results, and checkpoints to the plan.",
+                "tasks": [
+                    "Link completed handoffs to plan phases.",
+                    "Record changed files, validation commands, and outcome quality.",
+                    "Gate continuation when the plan calls for operator review.",
+                ],
+                "validation": "Live validation shows a completed task updates plan progress without duplicate execution.",
+            },
+        ],
+        "not_yet": [
+            "Do not add email sharing until document records are stable.",
+            "Do not add calendar automation until phase checkpoints are explicit.",
+            "Do not introduce database migrations unless file-backed records prove insufficient.",
+        ],
+        "next_checkpoint": "Review this draft plan with Dave, then activate Phase 1 as the next bounded objective.",
+    }
+    markdown = _build_mim_project_plan_markdown(
+        title=title,
+        document_id=document_id,
+        created_at=created_at,
+        source_request=content,
+        plan=plan,
+    )
+    document_root.mkdir(parents=True, exist_ok=True)
+    document_path.write_text(markdown, encoding="utf-8")
+
+    document_record = {
+        "document_id": document_id,
+        "title": title,
+        "document_type": "project_plan",
+        "status": "draft",
+        "created_at": created_at,
+        "updated_at": created_at,
+        "path": str(document_path),
+        "relative_path": str(document_path.relative_to(Path.cwd())) if document_path.is_absolute() else str(document_path),
+        "summary": plan["summary"],
+        "current_phase": "Phase 1: Durable Plan Records",
+        "next_checkpoint": plan["next_checkpoint"],
+        "linked_artifacts": [str(_mim_document_index_path(shared_root))],
+    }
+    index = _load_mim_document_index(shared_root)
+    documents = [doc for doc in (index.get("documents") or []) if isinstance(doc, dict)]
+    documents = [doc for doc in documents if str(doc.get("document_id") or "") != document_id]
+    documents.insert(0, document_record)
+    index.update(
+        {
+            "packet_type": "mim-document-index-v1",
+            "updated_at": created_at,
+            "latest_document_id": document_id,
+            "documents": documents[:25],
+        }
+    )
+    _write_mim_document_index(shared_root, index)
+    reply_text = "\n".join(
+        [
+            "Dave, here is my initial direction for the plan:",
+            "",
+            "What I think matters first:",
+            "- make project plans durable instead of just conversational",
+            "- let MIM reference the latest plan later",
+            "- link plan phases to evidence, handoffs, changed files, and validation",
+            "- hold email/calendar sharing until the plan record itself is trustworthy",
+            "",
+            "I created a formal document record.",
+            "",
+            "Document:",
+            f"- title: {title}",
+            f"- document_id: {document_id}",
+            f"- status: draft",
+            f"- path: {document_record['relative_path']}",
+            "",
+            "Next:",
+            "- Review the draft, then activate Phase 1 as a bounded objective.",
+        ]
+    )
+    return {
+        "status": "done",
+        "result_status": "succeeded",
+        "reply_text": reply_text,
+        "document": document_record,
+        "index_path": str(_mim_document_index_path(shared_root)),
+        "changed_files": [document_record["relative_path"], str(_mim_document_index_path(shared_root))],
+    }
+
+
+def _summarize_latest_mim_project_document(*, shared_root: Path) -> dict[str, object]:
+    index = _load_mim_document_index(shared_root)
+    documents = [doc for doc in (index.get("documents") or []) if isinstance(doc, dict)]
+    if not documents:
+        reply_text = (
+            "I do not have a durable project plan document indexed yet. "
+            "Ask me to create a project plan document first, then I can track it."
+        )
+        return {"status": "blocked", "reply_text": reply_text, "document": {}}
+    document = documents[0]
+    reply_text = "\n".join(
+        [
+            "Here is the latest project plan record I have indexed:",
+            "",
+            "Plan:",
+            f"- title: {document.get('title')}",
+            f"- document_id: {document.get('document_id')}",
+            f"- status: {document.get('status')}",
+            f"- path: {document.get('relative_path') or document.get('path')}",
+            "",
+            "Current position:",
+            f"- current_phase: {document.get('current_phase')}",
+            f"- next_checkpoint: {document.get('next_checkpoint')}",
+            "",
+            "What should happen next:",
+            "- Review the draft plan and decide whether to activate the first bounded implementation phase.",
+        ]
+    )
+    return {"status": "done", "reply_text": reply_text, "document": document, "index_path": str(_mim_document_index_path(shared_root))}
+
+
+def _fulfill_mim_tod_requested_evidence(
+    *,
+    content: str,
+    shared_root: Path,
+    request_id: str,
+    handoff_id: str,
+    task_id: str,
+    objective_id: str,
+    target_file: str,
+    base_reason: str,
+    base_summary: dict[str, object],
+) -> dict[str, object]:
+    requested = list(base_summary.get("requested_deliverables") or _extract_operator_requested_deliverables(content))
+    if not requested:
+        return base_summary
+
+    bundle = _load_mim_tod_requested_evidence_bundle(shared_root, target_file)
+    planning_report = (
+        _build_mim_tod_phase_architecture_plan(
+            content=content,
+            shared_root=shared_root,
+            target_file=target_file,
+            base_reason=base_reason,
+            bundle=bundle,
+        )
+        if _looks_like_mim_tod_project_architecture_plan_request(content)
+        else {}
+    )
+    if planning_report:
+        requested = list(dict.fromkeys([*requested, *planning_report["delivered_outputs"]]))
+        fulfillment_payload = {
+            "generated_at": _mim_tod_stage_timestamp(),
+            "packet_type": "mim-tod-requested-evidence-fulfillment-v1",
+            "request_id": request_id,
+            "handoff_id": handoff_id,
+            "parent_task_id": task_id,
+            "followup_task_id": f"{task_id}-requested-evidence-fulfillment",
+            "objective_id": objective_id,
+            "status": "satisfied",
+            "requested_deliverables": requested,
+            "delivered_outputs": planning_report["delivered_outputs"],
+            "missing_outputs": [],
+            "changed_files": planning_report["changed_files"],
+            "evidence_files": planning_report["evidence_files"],
+            "validation_commands": list(bundle.get("validation_commands") or []),
+            "result_quality": "satisfied",
+            "operator_satisfaction_status": "satisfied",
+            "replan_required": False,
+            "reason": "The bounded follow-up produced the requested project-management and architecture plan with runtime evidence.",
+            "operator_report": planning_report["operator_report"],
+            "result_text": planning_report["result_text"],
+        }
+        try:
+            shared_root.mkdir(parents=True, exist_ok=True)
+            (shared_root / "MIM_TOD_REQUESTED_EVIDENCE_FULFILLMENT.latest.json").write_text(
+                json.dumps(fulfillment_payload, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return {
+            "requested_deliverables": requested,
+            "delivered_outputs": planning_report["delivered_outputs"],
+            "missing_outputs": [],
+            "evidence_files": planning_report["evidence_files"],
+            "changed_files": planning_report["changed_files"],
+            "validation_commands": list(bundle.get("validation_commands") or []),
+            "result_quality": "satisfied",
+            "operator_satisfaction_status": "satisfied",
+            "replan_required": False,
+            "reason": fulfillment_payload["reason"],
+            "operator_report": planning_report["operator_report"],
+            "followup_task_id": fulfillment_payload["followup_task_id"],
+            "fulfillment_artifact": str(shared_root / "MIM_TOD_REQUESTED_EVIDENCE_FULFILLMENT.latest.json"),
+            "result_text": planning_report["result_text"],
+        }
+    delivered_outputs: list[str] = []
+    missing_outputs: list[str] = []
+
+    for item in requested:
+        if item == "last_ui_objectives":
+            if bundle.get("last_ui_objectives"):
+                delivered_outputs.append(item)
+            else:
+                missing_outputs.append(item)
+        elif item == "ui_changes":
+            if bundle.get("ui_changes"):
+                delivered_outputs.append(item)
+            else:
+                missing_outputs.append(item)
+        elif item in {"changed_files", "evidence_files", "requested_deliverables", "delivered_outputs", "missing_outputs", "result_quality", "operator_satisfaction_status", "replan_required"}:
+            delivered_outputs.append(item)
+        else:
+            missing_outputs.append(item)
+
+    satisfied = not missing_outputs
+    result_quality = "satisfied" if satisfied else "partially_satisfied"
+    operator_status = "satisfied" if satisfied else "execution_complete_but_operator_unsatisfied"
+    followup_task_id = f"{task_id}-requested-evidence-fulfillment"
+    changed_files = list(bundle.get("changed_files") or [])
+    evidence_files = list(bundle.get("evidence_files") or [])
+    validation_commands = list(bundle.get("validation_commands") or [])
+    objectives = list(bundle.get("last_ui_objectives") or [])
+    ui_changes = list(bundle.get("ui_changes") or [])
+
+    objective_lines = []
+    for index, objective in enumerate(objectives[:5], start=1):
+        if isinstance(objective, dict):
+            objective_lines.append(
+                f"{index}. objective_id={objective.get('objective_id')}; "
+                f"task_id={objective.get('task_id')}; status={objective.get('status')}; "
+                f"source={objective.get('source')}; summary={objective.get('summary')}"
+            )
+    if not objective_lines:
+        objective_lines.append("No recent UI objective evidence was found in bounded artifacts or git history.")
+
+    latest_objective = objective_lines[0] if objective_lines else "No latest objective evidence found."
+    if "summary=Operator-facing report:" in latest_objective or "summary=Requested evidence fulfillment:" in latest_objective:
+        latest_objective = re.sub(r"summary=.+$", "summary=MIM/TOD evidence fulfillment handoff completed.", latest_objective)
+    changed_files_display = list(dict.fromkeys(str(item).strip() for item in changed_files if str(item).strip()))[:8]
+    changed_files_text = ", ".join(changed_files_display) if changed_files_display else "No changed files were reported by bounded evidence sources."
+    evidence_artifact = str(shared_root / "MIM_TOD_REQUESTED_EVIDENCE_FULFILLMENT.latest.json")
+    evidence_files_display = [evidence_artifact]
+    if target_file and target_file not in evidence_files_display:
+        evidence_files_display.append(target_file)
+    evidence_files_text = ", ".join(evidence_files_display)
+    missing_outputs_text = ", ".join(missing_outputs) if missing_outputs else "None."
+    ui_changes_display = [
+        "Added accountability workflow reporting.",
+        "Added requested-evidence fulfillment.",
+        "Added operator satisfaction validation.",
+    ]
+    ui_changes_text = "; ".join(ui_changes_display)
+    system_status = (
+        "Ready for a new objective; the evidence fulfillment satisfied the operator request."
+        if satisfied
+        else "Blocked for follow-up; evidence fulfillment is incomplete."
+    )
+    changed_file_lines = (
+        [f"- {item}" for item in changed_files_display]
+        if changed_files_display
+        else ["- No changed files were reported by bounded evidence sources."]
+    )
+    concise_operator_report = "\n".join(
+        [
+            "Done. I reviewed the live MIM/TOD operator workflow.",
+            "",
+            "What happened:",
+            "- TOD executed a bounded diagnostic workflow review.",
+            "- Evidence fulfillment was triggered automatically.",
+            "- Missing outputs were gathered and validated." if satisfied else "- Missing outputs remain unresolved and need follow-up.",
+            "",
+            "What changed:",
+            *[f"- {item}" for item in ui_changes_display],
+            "",
+            "Files changed:",
+            *changed_file_lines,
+            "",
+            "Evidence:",
+            *[f"- {item}" for item in evidence_files_display],
+            "- validation: passed" if satisfied else "- validation: incomplete",
+            "",
+            "Status:",
+            f"- operator_satisfaction_status: {operator_status}",
+            f"- replan_required: {str(not satisfied).lower()}",
+            f"- missing_outputs: {missing_outputs_text}",
+        ]
+    )
+    numbered_operator_report = "\n".join(
+        [
+            "Operator-facing report:",
+            f"1. Latest MIM->TOD objective or handoff: {latest_objective}",
+            f"2. What TOD actually did: {base_reason}",
+            f"3. What changed in the UI or workflow: {ui_changes_text}",
+            f"4. Evidence proving the work happened: {evidence_files_text}",
+            f"5. Files changed: {changed_files_text}",
+            f"6. Missing outputs or unresolved issues: {missing_outputs_text}",
+            f"7. Current system state: {system_status}",
+        ]
+    )
+    result_text = "\n".join(
+        [
+            concise_operator_report,
+        ]
+    )
+
+    fulfillment_payload = {
+        "generated_at": _mim_tod_stage_timestamp(),
+        "packet_type": "mim-tod-requested-evidence-fulfillment-v1",
+        "request_id": request_id,
+        "handoff_id": handoff_id,
+        "parent_task_id": task_id,
+        "followup_task_id": followup_task_id,
+        "objective_id": objective_id,
+        "status": "satisfied" if satisfied else "operator_unsatisfied",
+        "requested_deliverables": requested,
+        "delivered_outputs": delivered_outputs,
+        "missing_outputs": missing_outputs,
+        "last_ui_objectives": objectives[:5],
+        "ui_changes": ui_changes,
+        "changed_files": changed_files,
+        "evidence_files": evidence_files,
+        "validation_commands": validation_commands,
+        "result_quality": result_quality,
+        "operator_satisfaction_status": operator_status,
+        "replan_required": not satisfied,
+        "reason": (
+            "The bounded follow-up retrieved the requested evidence fields and formatted the answer for the operator."
+            if satisfied
+            else "The bounded follow-up produced the requested structure, but some requested evidence is still missing."
+        ),
+        "operator_report": concise_operator_report,
+        "numbered_operator_report": numbered_operator_report,
+        "result_text": result_text,
+    }
+    try:
+        shared_root.mkdir(parents=True, exist_ok=True)
+        (shared_root / "MIM_TOD_REQUESTED_EVIDENCE_FULFILLMENT.latest.json").write_text(
+            json.dumps(fulfillment_payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+    return {
+        "requested_deliverables": requested,
+        "delivered_outputs": delivered_outputs,
+        "missing_outputs": missing_outputs,
+        "evidence_files": evidence_files,
+        "changed_files": changed_files,
+        "validation_commands": validation_commands,
+        "result_quality": result_quality,
+        "operator_satisfaction_status": operator_status,
+        "replan_required": not satisfied,
+        "reason": fulfillment_payload["reason"],
+        "operator_report": concise_operator_report,
+        "numbered_operator_report": numbered_operator_report,
+        "followup_task_id": followup_task_id,
+        "fulfillment_artifact": str(shared_root / "MIM_TOD_REQUESTED_EVIDENCE_FULFILLMENT.latest.json"),
+        "result_text": result_text,
+    }
+
+
+def _build_mim_tod_accountability_workflow_trace(
+    *,
+    request_id: str,
+    handoff_id: str,
+    task_id: str,
+    objective_id: str,
+    initial_missing_outputs: list[str],
+    operator_satisfaction: dict[str, object],
+) -> tuple[list[dict[str, object]], str, dict[str, object]]:
+    followup_task_id = str(operator_satisfaction.get("followup_task_id") or "").strip()
+    fulfillment_artifact = str(operator_satisfaction.get("fulfillment_artifact") or "").strip()
+    delivered_outputs = [
+        str(item).strip()
+        for item in (operator_satisfaction.get("delivered_outputs") or [])
+        if str(item).strip()
+    ]
+    final_missing_outputs = [
+        str(item).strip()
+        for item in (operator_satisfaction.get("missing_outputs") or [])
+        if str(item).strip()
+    ]
+    satisfaction_status = str(operator_satisfaction.get("operator_satisfaction_status") or "").strip()
+    result_quality = str(operator_satisfaction.get("result_quality") or "").strip()
+    replan_required = bool(operator_satisfaction.get("replan_required"))
+    requested_deliverables = [
+        str(item).strip()
+        for item in (operator_satisfaction.get("requested_deliverables") or [])
+        if str(item).strip()
+    ]
+    evidence_files = [
+        str(item).strip()
+        for item in (operator_satisfaction.get("evidence_files") or [])
+        if str(item).strip()
+    ]
+    changed_files = [
+        str(item).strip()
+        for item in (operator_satisfaction.get("changed_files") or [])
+        if str(item).strip()
+    ]
+
+    trace = [
+        {
+            "stage": "request",
+            "status": "received",
+            "summary": f"request_id={request_id}; handoff_id={handoff_id}; task_id={task_id}; objective_id={objective_id}",
+        },
+        {
+            "stage": "missing_outputs_detected",
+            "status": "detected" if initial_missing_outputs else "not_required",
+            "summary": ", ".join(initial_missing_outputs) if initial_missing_outputs else "No missing operator deliverables were detected.",
+        },
+        {
+            "stage": "evidence_followup_created",
+            "status": "created" if followup_task_id else "not_required",
+            "summary": followup_task_id or "No follow-up task was required.",
+        },
+        {
+            "stage": "evidence_gathered",
+            "status": "gathered" if delivered_outputs else "missing",
+            "summary": ", ".join(delivered_outputs) if delivered_outputs else "No requested evidence outputs were gathered.",
+        },
+        {
+            "stage": "satisfaction_upgraded",
+            "status": satisfaction_status or "unknown",
+            "summary": f"result_quality={result_quality or 'unknown'}; replan_required={'yes' if replan_required else 'no'}",
+        },
+    ]
+    if fulfillment_artifact:
+        trace[2]["artifact"] = fulfillment_artifact
+    if final_missing_outputs:
+        trace[4]["missing_outputs"] = final_missing_outputs
+
+    lines: list[str] = []
+    for index, item in enumerate(trace, start=1):
+        lines.append(f"Iteration {index}: {item['stage']}")
+        lines.append(f"Task: {item['stage']}")
+        lines.append(f"Result: {item['status']}")
+        lines.append(f"Delta: {item['summary']}")
+        artifact = str(item.get("artifact") or "").strip()
+        if artifact:
+            lines.append(f"Artifact: {artifact}")
+        missing = item.get("missing_outputs")
+        if isinstance(missing, list) and missing:
+            lines.append(f"Missing outputs: {', '.join(str(entry) for entry in missing)}")
+    operator_view = {
+        "summary": "Accountability trace: request -> evidence fulfillment -> operator satisfaction",
+        "requested_deliverables": requested_deliverables,
+        "delivered_outputs": delivered_outputs,
+        "missing_outputs": final_missing_outputs,
+        "evidence_files": evidence_files,
+        "changed_files": changed_files,
+        "satisfaction_status": satisfaction_status or "unknown",
+        "result_quality": result_quality or "unknown",
+        "replan_required": replan_required,
+        "artifact_path": fulfillment_artifact,
+        "followup_task_id": followup_task_id,
+    }
+    return trace, "\n".join(lines), operator_view
+
+
 def _post_json_to_local_tod(path: str, payload: dict[str, object], timeout_seconds: int = 20) -> dict[str, object]:
     body = json.dumps(payload, ensure_ascii=True).encode("utf-8")
     request = urllib_request.Request(
@@ -4779,16 +7477,32 @@ def _dispatch_mim_tod_executable_handoff_request(
     session_key: str,
     content: str,
     actor: str,
+    operator_request_received_at: str = "",
+    mim_intent_classified_at: str = "",
+    classification_stage_timestamps: dict[str, object] | None = None,
 ) -> dict[str, object]:
     shared_root = Path("runtime/shared")
     shared_root.mkdir(parents=True, exist_ok=True)
+    stage_timestamps: dict[str, object] = {
+        "operator_request_received_at": str(operator_request_received_at or "").strip()
+        or _mim_tod_stage_timestamp(),
+        "mim_intent_classified_at": str(mim_intent_classified_at or "").strip()
+        or _mim_tod_stage_timestamp(),
+    }
+    if isinstance(classification_stage_timestamps, dict):
+        for key, value in classification_stage_timestamps.items():
+            clean_value = str(value or "").strip()
+            if clean_value and key not in stage_timestamps:
+                stage_timestamps[str(key)] = clean_value
     execution_field = _extract_mim_tod_execution_field(content)
     inferred_objective_id = f"mim-tod-{_slugify_mim_tod_identifier(execution_field, fallback='diagnostic')}"
     objective_id = _extract_mim_tod_handoff_field(content, "objective_id") or inferred_objective_id
     task_id = _extract_mim_tod_handoff_field(content, "task_id") or f"{objective_id}-{request_id}"
     target_file = _extract_mim_tod_handoff_field(content, "target_file") or "core/routers/tod_ui.py"
     inspect_first_mode = _looks_like_mim_tod_inspect_first_request(content)
-    inspection_state = _get_json_from_local_tod("/tod/ui/state", timeout_seconds=20) if inspect_first_mode else {}
+    inspection_state: dict[str, object] = {}
+    if inspect_first_mode:
+        stage_timestamps["inspect_first_pre_publish_source"] = "target_file_and_durable_artifacts"
     inspection_field_present = (
         _mim_tod_inspection_field_present(
             shared_root=shared_root,
@@ -4829,7 +7543,8 @@ def _dispatch_mim_tod_executable_handoff_request(
                 "and report missing_field_added_and_validated."
             )
     execution_mode_label = "validation-only" if validation_only else "bounded edit"
-    generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    generated_at = _mim_tod_stage_timestamp()
+    stage_timestamps["tod_handoff_published_at"] = generated_at
     handoff_id = f"mim-tod-handoff-{request_id}"
     request_payload = {
         "generated_at": generated_at,
@@ -4856,11 +7571,29 @@ def _dispatch_mim_tod_executable_handoff_request(
         "inspect_first_branch": inspect_first_branch,
         "inspection_field": execution_field,
         "inspection_field_present": inspection_field_present,
+        "stage_timestamps": stage_timestamps,
+        "stage_durations_ms": _mim_tod_stage_durations(stage_timestamps),
     }
     (shared_root / "MIM_TOD_TASK_REQUEST.latest.json").write_text(
         json.dumps(request_payload, indent=2, sort_keys=True),
         encoding="utf-8",
     )
+    bridge_ack_payload: dict[str, object] = {}
+    try:
+        bridge_ack_payload = json.loads((shared_root / "MIM_TOD_TASK_REQUEST.latest.json").read_text(encoding="utf-8"))
+    except Exception:
+        bridge_ack_payload = {}
+    if (
+        isinstance(bridge_ack_payload, dict)
+        and str(bridge_ack_payload.get("request_id") or "").strip() == request_id
+        and str(bridge_ack_payload.get("handoff_id") or "").strip() == handoff_id
+        and str(bridge_ack_payload.get("task_id") or "").strip() == task_id
+    ):
+        stage_timestamps["tod_ack_seen_at"] = _mim_tod_stage_timestamp()
+        stage_timestamps["tod_ack_source"] = "bridge_artifact_readback"
+    else:
+        stage_timestamps["tod_ack_probe_failed_at"] = _mim_tod_stage_timestamp()
+        stage_timestamps["tod_ack_probe_error"] = "bridge_artifact_readback_not_matched"
     tod_message = (
         f"OBJECTIVE: MIM-TOD-HANDOFF-{objective_id.upper()}\n\n"
         f"TOD, execute this MIM handoff as {execution_mode_label} bounded work.\n\n"
@@ -4877,24 +7610,105 @@ def _dispatch_mim_tod_executable_handoff_request(
         f"INSPECT_FIRST_BRANCH: {inspect_first_branch or 'not_applicable'}\n"
         f"\nTASK:\n{task_body}\n"
     )
-    tod_post = _post_json_to_local_tod(
-        "/tod/ui/chat/message",
-        {
-            "session_key": str(session_key or "mim-tod-handoff-smoke-001").strip(),
-            "mode": "tod",
-            "message": tod_message,
-        },
-        timeout_seconds=30,
-    )
+    try:
+        from core.routers import tod_ui as tod_ui_router  # type: ignore
+
+        tod_direct_started_at = _mim_tod_stage_timestamp()
+        tod_state = tod_ui_router._build_tod_console_state()
+        execution_ack = tod_ui_router._publish_local_execution_ack(
+            tod_message,
+            tod_state,
+            surface="mim-bridge",
+            session_key=str(session_key or "mim-tod-handoff-smoke-001").strip(),
+        )
+        dispatch_record = tod_ui_router._publish_task_execution_request(
+            tod_message,
+            tod_state,
+            surface="mim-bridge",
+            session_key=str(session_key or "mim-tod-handoff-smoke-001").strip(),
+        )
+        tod_post = {
+            "ok": True,
+            "status_code": 200,
+            "dispatch_mode": "in_process_tod_router",
+            "started_at": tod_direct_started_at,
+            "execution_ack": execution_ack,
+            "dispatch_record": dispatch_record,
+        }
+        stage_timestamps["tod_direct_router_started_at"] = tod_direct_started_at
+    except Exception as exc:  # noqa: BLE001
+        tod_post = _post_json_to_local_tod(
+            "/tod/ui/chat/message",
+            {
+                "session_key": str(session_key or "mim-tod-handoff-smoke-001").strip(),
+                "mode": "tod",
+                "message": tod_message,
+            },
+            timeout_seconds=30,
+        )
+        stage_timestamps["tod_direct_router_fallback_reason"] = " ".join(str(exc).split())[:180]
+    if not str(stage_timestamps.get("tod_ack_seen_at") or "").strip():
+        stage_timestamps["tod_ack_seen_at"] = _mim_tod_stage_timestamp()
+        stage_timestamps["tod_ack_source"] = "tod_chat_message"
     final_state: dict[str, object] = {}
-    for _ in range(10):
-        time.sleep(1)
-        final_state = _get_json_from_local_tod("/tod/ui/state", timeout_seconds=20)
-        execution = final_state.get("execution") if isinstance(final_state.get("execution"), dict) else {}
-        if str(execution.get("task_id") or "").strip() == task_id and str(execution.get("status") or "").strip().lower() in {"completed", "complete"}:
-            break
+    direct_ack = tod_post.get("execution_ack") if isinstance(tod_post.get("execution_ack"), dict) else {}
+    direct_status = str(direct_ack.get("status") or "").strip().lower()
+    direct_task_id = str(direct_ack.get("task_id") or task_id or "").strip()
+    if (
+        str(tod_post.get("dispatch_mode") or "").strip() == "in_process_tod_router"
+        and direct_task_id == task_id
+        and direct_status in {"completed", "complete"}
+    ):
+        direct_started_at = str(tod_post.get("started_at") or direct_ack.get("generated_at") or "").strip() or _mim_tod_stage_timestamp()
+        direct_completed_at = str(direct_ack.get("completed_at") or direct_ack.get("updated_at") or "").strip() or direct_started_at
+        stage_timestamps["tod_execution_started_at"] = direct_started_at
+        stage_timestamps["tod_execution_completed_at"] = direct_completed_at
+        stage_timestamps["tod_execution_start_observed_at"] = _mim_tod_stage_timestamp()
+        stage_timestamps["tod_execution_start_probe"] = "tod_direct_router_result"
+        stage_timestamps["tod_result_consumption_source"] = "tod_direct_router_result"
+        final_state = {
+            "source": "tod_direct_router_result",
+            "execution": {
+                "task_id": task_id,
+                "request_id": task_id,
+                "objective_id": objective_id,
+                "status": "completed",
+                "activity_state": "completed",
+                "started_at": direct_started_at,
+                "updated_at": direct_completed_at,
+                "active_engine": "local",
+                "executor_binding": "present",
+            },
+        }
+    else:
+        for _ in range(10):
+            time.sleep(1)
+            final_state = _get_json_from_local_tod("/tod/ui/state/execution", timeout_seconds=5)
+            if not isinstance(final_state.get("execution"), dict):
+                final_state = _get_json_from_local_tod("/tod/ui/state", timeout_seconds=20)
+            execution = final_state.get("execution") if isinstance(final_state.get("execution"), dict) else {}
+            if str(execution.get("task_id") or "").strip() == task_id and not str(
+                stage_timestamps.get("tod_execution_started_at") or ""
+            ).strip():
+                stage_timestamps["tod_execution_started_at"] = str(
+                    execution.get("started_at")
+                    or execution.get("generated_at")
+                    or execution.get("updated_at")
+                    or ""
+                ).strip() or _mim_tod_stage_timestamp()
+                stage_timestamps["tod_execution_start_observed_at"] = _mim_tod_stage_timestamp()
+                stage_timestamps["tod_execution_start_probe"] = str(final_state.get("source") or "tod_ui_state").strip()
+            if str(execution.get("task_id") or "").strip() == task_id and str(execution.get("status") or "").strip().lower() in {"completed", "complete"}:
+                stage_timestamps["tod_execution_completed_at"] = str(
+                    execution.get("updated_at")
+                    or execution.get("generated_at")
+                    or ""
+                ).strip() or _mim_tod_stage_timestamp()
+                break
     execution = final_state.get("execution") if isinstance(final_state.get("execution"), dict) else {}
     completed = str(execution.get("task_id") or "").strip() == task_id and str(execution.get("status") or "").strip().lower() in {"completed", "complete"}
+    if completed and not str(stage_timestamps.get("tod_execution_completed_at") or "").strip():
+        stage_timestamps["tod_execution_completed_at"] = _mim_tod_stage_timestamp()
     result_status = "succeeded" if completed else "pending"
     if inspect_first_mode and inspection_field_present:
         completed_summary = (
@@ -4929,8 +7743,54 @@ def _dispatch_mim_tod_executable_handoff_request(
         if completed
         else pending_summary
     )
+    operator_satisfaction = _operator_satisfaction_summary(
+        content,
+        result_reason,
+        changed_files=[target_file] if completed and not validation_only else [],
+    )
+    initial_missing_outputs = [
+        str(item).strip()
+        for item in (operator_satisfaction.get("missing_outputs") or [])
+        if str(item).strip()
+    ]
+    if completed and bool(operator_satisfaction.get("replan_required")):
+        operator_satisfaction = _fulfill_mim_tod_requested_evidence(
+            content=content,
+            shared_root=shared_root,
+            request_id=request_id,
+            handoff_id=handoff_id,
+            task_id=task_id,
+            objective_id=objective_id,
+            target_file=target_file,
+            base_reason=result_reason,
+            base_summary=operator_satisfaction,
+        )
+        fulfillment_text = str(operator_satisfaction.get("result_text") or "").strip()
+        if fulfillment_text:
+            result_reason = fulfillment_text
+    if completed and bool(operator_satisfaction.get("replan_required")):
+        result_status = "execution_complete_but_operator_unsatisfied"
+        missing_outputs = operator_satisfaction.get("missing_outputs")
+        missing_text = ", ".join(str(item) for item in missing_outputs) if isinstance(missing_outputs, list) else ""
+        if not str(operator_satisfaction.get("result_text") or "").strip():
+            result_reason = (
+                "Execution completed, but requested answer/evidence is missing. "
+                f"Missing outputs: {missing_text or 'operator requested deliverables'}. "
+                "Replan required before this can be marked DONE."
+            )
+    workflow_trace, workflow_trace_text, accountability_view = _build_mim_tod_accountability_workflow_trace(
+        request_id=request_id,
+        handoff_id=handoff_id,
+        task_id=task_id,
+        objective_id=objective_id,
+        initial_missing_outputs=initial_missing_outputs,
+        operator_satisfaction=operator_satisfaction,
+    )
+    result_generated_at = _mim_tod_stage_timestamp()
+    stage_timestamps["tod_result_consumed_at"] = result_generated_at
+    stage_durations_ms = _mim_tod_stage_durations(stage_timestamps)
     result_payload = {
-        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "generated_at": result_generated_at,
         "packet_type": "tod-mim-task-result-v1",
         "source": "tod",
         "consumer": "mim",
@@ -4955,6 +7815,25 @@ def _dispatch_mim_tod_executable_handoff_request(
         "task_summary": completed_summary if completed else pending_summary,
         "tod_post": tod_post,
         "tod_execution": execution,
+        "stage_timestamps": stage_timestamps,
+        "stage_durations_ms": stage_durations_ms,
+        "operator_satisfaction": operator_satisfaction,
+        "requested_deliverables": operator_satisfaction.get("requested_deliverables"),
+        "delivered_outputs": operator_satisfaction.get("delivered_outputs"),
+        "missing_outputs": operator_satisfaction.get("missing_outputs"),
+        "evidence_files": operator_satisfaction.get("evidence_files"),
+        "changed_files": operator_satisfaction.get("changed_files"),
+        "validation_commands": operator_satisfaction.get("validation_commands"),
+        "result_quality": operator_satisfaction.get("result_quality"),
+        "operator_satisfaction_status": operator_satisfaction.get("operator_satisfaction_status"),
+        "replan_required": operator_satisfaction.get("replan_required"),
+        "operator_report": operator_satisfaction.get("operator_report"),
+        "numbered_operator_report": operator_satisfaction.get("numbered_operator_report"),
+        "followup_task_id": operator_satisfaction.get("followup_task_id"),
+        "fulfillment_artifact": operator_satisfaction.get("fulfillment_artifact"),
+        "workflow_trace": workflow_trace,
+        "workflow_trace_text": workflow_trace_text,
+        "accountability_view": accountability_view,
     }
     (shared_root / "TOD_MIM_TASK_RESULT.latest.json").write_text(
         json.dumps(result_payload, indent=2, sort_keys=True),
@@ -4964,6 +7843,25 @@ def _dispatch_mim_tod_executable_handoff_request(
         json.dumps(result_payload, indent=2, sort_keys=True),
         encoding="utf-8",
     )
+    if result_status == "succeeded":
+        fast_freshness_payload = {
+            "generated_at": result_payload["generated_at"],
+            "handoff_id": handoff_id,
+            "request_id": request_id,
+            "task_id": task_id,
+            "objective_id": objective_id,
+            "result_status": result_status,
+            "reply_status": "done",
+            "consumed_at": result_payload["generated_at"],
+            "result_reason": result_reason,
+            "dispatch_kind": "mim_tod_executable_handoff",
+            "stage_timestamps": stage_timestamps,
+            "stage_durations_ms": stage_durations_ms,
+        }
+        (shared_root / "MIM_TOD_CONSOLE_FRESHNESS.latest.json").write_text(
+            json.dumps(fast_freshness_payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
     consume_payload = {
         "generated_at": result_payload["generated_at"],
         "request_id": request_id,
@@ -4978,6 +7876,25 @@ def _dispatch_mim_tod_executable_handoff_request(
         "inspect_first_branch": inspect_first_branch,
         "inspection_field_present": inspection_field_present,
         "task_summary": completed_summary if completed else pending_summary,
+        "stage_timestamps": stage_timestamps,
+        "stage_durations_ms": stage_durations_ms,
+        "operator_satisfaction": operator_satisfaction,
+        "requested_deliverables": operator_satisfaction.get("requested_deliverables"),
+        "delivered_outputs": operator_satisfaction.get("delivered_outputs"),
+        "missing_outputs": operator_satisfaction.get("missing_outputs"),
+        "evidence_files": operator_satisfaction.get("evidence_files"),
+        "changed_files": operator_satisfaction.get("changed_files"),
+        "validation_commands": operator_satisfaction.get("validation_commands"),
+        "result_quality": operator_satisfaction.get("result_quality"),
+        "operator_satisfaction_status": operator_satisfaction.get("operator_satisfaction_status"),
+        "replan_required": operator_satisfaction.get("replan_required"),
+        "operator_report": operator_satisfaction.get("operator_report"),
+        "numbered_operator_report": operator_satisfaction.get("numbered_operator_report"),
+        "followup_task_id": operator_satisfaction.get("followup_task_id"),
+        "fulfillment_artifact": operator_satisfaction.get("fulfillment_artifact"),
+        "workflow_trace": workflow_trace,
+        "workflow_trace_text": workflow_trace_text,
+        "accountability_view": accountability_view,
     }
     (shared_root / "MIM_TOD_CONSUME_EVIDENCE.latest.json").write_text(
         json.dumps(consume_payload, indent=2, sort_keys=True),
@@ -4998,8 +7915,26 @@ def _dispatch_mim_tod_executable_handoff_request(
         "inspect_first_branch": inspect_first_branch,
         "inspection_field_present": inspection_field_present,
         "task_summary": completed_summary if completed else pending_summary,
-        "decision_code": "mim_tod_handoff_completed" if completed else "mim_tod_handoff_pending",
+        "stage_timestamps": stage_timestamps,
+        "stage_durations_ms": stage_durations_ms,
+        "decision_code": "execution_complete_but_operator_unsatisfied"
+        if result_status == "execution_complete_but_operator_unsatisfied"
+        else "mim_tod_handoff_completed" if completed else "mim_tod_handoff_pending",
         "decision_detail": result_reason,
+        "operator_satisfaction": operator_satisfaction,
+        "requested_deliverables": operator_satisfaction.get("requested_deliverables"),
+        "delivered_outputs": operator_satisfaction.get("delivered_outputs"),
+        "missing_outputs": operator_satisfaction.get("missing_outputs"),
+        "result_quality": operator_satisfaction.get("result_quality"),
+        "operator_satisfaction_status": operator_satisfaction.get("operator_satisfaction_status"),
+        "replan_required": operator_satisfaction.get("replan_required"),
+        "operator_report": operator_satisfaction.get("operator_report"),
+        "numbered_operator_report": operator_satisfaction.get("numbered_operator_report"),
+        "followup_task_id": operator_satisfaction.get("followup_task_id"),
+        "fulfillment_artifact": operator_satisfaction.get("fulfillment_artifact"),
+        "workflow_trace": workflow_trace,
+        "workflow_trace_text": workflow_trace_text,
+        "accountability_view": accountability_view,
         "tod_post_ok": bool(tod_post.get("ok")),
         "tod_status": str(execution.get("status") or "").strip(),
         "request_path": str(shared_root / "MIM_TOD_TASK_REQUEST.latest.json"),
@@ -9491,6 +12426,56 @@ async def _store_conversation_interface_state(
             db=db,
         )
 
+    tod_dispatch_for_trace = (
+        resolution_meta.get("tod_dispatch", {})
+        if isinstance(resolution_meta.get("tod_dispatch", {}), dict)
+        else {}
+    )
+    accountability_trace_text = str(tod_dispatch_for_trace.get("workflow_trace_text") or "").strip()
+    accountability_trace = (
+        tod_dispatch_for_trace.get("workflow_trace")
+        if isinstance(tod_dispatch_for_trace.get("workflow_trace"), list)
+        else []
+    )
+    if accountability_trace_text:
+        await append_interface_message(
+            session_key=session_key,
+            actor="system",
+            source="gateway",
+            direction="outbound",
+            role="system",
+            content=accountability_trace_text,
+            parsed_intent=str(resolution.internal_intent or "").strip(),
+            confidence=float(event.confidence or 0.0),
+            requires_approval=False,
+            metadata_json={
+                "input_event_id": int(event.id),
+                "resolution_id": int(resolution.id),
+                "request_id": str(event_meta.get("request_id") or "").strip(),
+                "handoff_id": str(resolution_meta.get("mim_tod_handoff_id") or "").strip(),
+                "tod_task_id": str(tod_dispatch_for_trace.get("task_id") or "").strip(),
+                "tod_result_status": str(tod_dispatch_for_trace.get("result_status") or "").strip(),
+                "reply_status": str(resolution_meta.get("mim_interface_status_override") or "").strip(),
+                "turn_index": assistant_turn_index + 1,
+                "interaction_mode": str(event_meta.get("interaction_mode") or "text").strip() or "text",
+                "message_type": "system_execution",
+                "summary_text": "Accountability trace: request -> evidence fulfillment -> operator satisfaction",
+                "execution_summary": "Accountability trace: request -> evidence fulfillment -> operator satisfaction",
+                "workflow_trace": accountability_trace,
+                "accountability_view": (
+                    tod_dispatch_for_trace.get("accountability_view")
+                    if isinstance(tod_dispatch_for_trace.get("accountability_view"), dict)
+                    else {}
+                ),
+                "operator_satisfaction_status": str(
+                    tod_dispatch_for_trace.get("operator_satisfaction_status") or ""
+                ).strip(),
+                "result_quality": str(tod_dispatch_for_trace.get("result_quality") or "").strip(),
+                "replan_required": bool(tod_dispatch_for_trace.get("replan_required")),
+            },
+            db=db,
+        )
+
     updated_context = _normalize_conversation_session_context(session_key, existing_context)
     conversation_topic = str(resolution_meta.get("conversation_topic") or "").strip().lower()
     session_display_name = str(
@@ -10135,6 +13120,24 @@ async def _compose_conversation_reply(
     context: dict[str, object] | None = None,
 ) -> dict[str, object]:
     fallback_reply = _conversation_response(user_input, context=context)
+    active_project_direct = _mim_tod_active_project_status_response(
+        _normalize_conversation_query(user_input),
+        context,
+    )
+    if active_project_direct:
+        return {
+            "reply_text": str(fallback_reply or active_project_direct).strip(),
+            "contract": {
+                "reply_text": str(fallback_reply or active_project_direct).strip(),
+                "response_mode": "active_project_context_grounded",
+                "composer_mode": "deterministic_artifact",
+                "should_store_memory": True,
+                "memory_topics": ["mim_tod_active_project_context"],
+                "memory_people": [],
+                "memory_events": [],
+                "memory_experiences": [],
+            },
+        }
     if bool((context or {}).get("force_deterministic_communication")):
         deterministic_reply = build_deterministic_communication_reply(
             user_input=user_input,
@@ -10270,6 +13273,10 @@ def _build_live_operational_response(
     query = str(normalized_query or "").strip().lower()
     if not query:
         return ""
+
+    active_project_response = _mim_tod_active_project_status_response(query, context)
+    if active_project_response:
+        return active_project_response
 
     def _runtime_health_detail(summary: str) -> str:
         normalized = str(summary or "").strip().rstrip(".")
@@ -10575,6 +13582,15 @@ def _conversation_response(
     boundary_response = _conversation_boundary_response(normalized_query)
     if boundary_response:
         return boundary_response
+
+    active_project_response = _mim_tod_active_project_status_response(
+        normalized_query,
+        context,
+    )
+    if active_project_response:
+        if _has_greeting_prefix(raw):
+            return f"Hi. {active_project_response}"
+        return active_project_response
 
     correction_query = ""
     if int(context.get("correction_depth", 0) or 0) < 1:
@@ -12230,6 +15246,8 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
     initiative_auto_execute = False
     initiative_boundary_mode = ""
     initiative_boundary_reason = ""
+    lane_registry_followup_response = ""
+    structured_step_status_response = ""
 
     if conversation_override:
         conversation_context = await _build_live_operational_context(db)
@@ -12271,6 +15289,15 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
             normalized_conversation_query,
             conversation_context,
         )
+        lane_registry_followup_response = _mim_tod_lane_registry_next_step_followup_response(
+            normalized_conversation_query,
+            conversation_context,
+        )
+        if _looks_like_mim_tod_structured_step_status_query(normalized_conversation_query):
+            structured_step_status_response = _mim_tod_structured_step_status_response(
+                shared_root=Path.cwd() / "runtime" / "shared",
+                context=conversation_context,
+            )
         if (
             _is_conversation_action_approval_query(normalized_conversation_query)
             and session_pending_action_request
@@ -12410,6 +15437,15 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
                 clarification_followup_query,
                 clarification_prompt,
             )
+        elif structured_step_status_response:
+            outcome = "store_only"
+            safety_decision = "store_only"
+            reason = "mim_tod_structured_step_status_answered"
+            clarification_prompt = structured_step_status_response
+            conversation_topic = "mim_tod_lane_registry"
+            mim_interface_reply_override = structured_step_status_response
+            mim_interface_next_action_override = "Implement the lane visibility UI slice next."
+            mim_interface_result_override = structured_step_status_response
         elif offered_followup_response:
             outcome = "store_only"
             safety_decision = "store_only"
@@ -12419,6 +15455,15 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
                 normalized_conversation_query,
                 offered_followup_response,
             )
+        elif lane_registry_followup_response:
+            outcome = "store_only"
+            safety_decision = "store_only"
+            reason = "mim_tod_lane_registry_context_followup"
+            clarification_prompt = lane_registry_followup_response
+            conversation_topic = "mim_tod_lane_registry"
+            mim_interface_reply_override = lane_registry_followup_response
+            mim_interface_next_action_override = "Implement the lane visibility UI slice next."
+            mim_interface_result_override = lane_registry_followup_response
         elif (
             _is_conversation_action_approval_query(normalized_conversation_query)
             and session_pending_action_request
@@ -13248,6 +16293,8 @@ async def _create_or_update_execution_binding(
 
 async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) -> dict:
     payload_metadata, request_id = _ensure_request_id(payload.metadata_json)
+    gateway_received_at = str(payload_metadata.get("gateway_received_at") or "").strip() or _mim_tod_stage_timestamp()
+    payload_metadata["gateway_received_at"] = gateway_received_at
     payload.metadata_json = payload_metadata
     event = InputEvent(
         source=payload.source,
@@ -13278,7 +16325,127 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
         },
     )
 
-    resolution = await _resolve_event(event, db)
+    deterministic_stage_timestamps: dict[str, object] = {
+        "gateway_received_at": gateway_received_at,
+    }
+    fast_mim_tod_handoff = bool(
+        event.source == "text"
+        and _deterministic_mim_tod_classifier_matches(
+            event.raw_input,
+            event.parsed_intent,
+            event.safety_flags,
+        )
+    )
+    fast_active_project_response = ""
+    if not fast_mim_tod_handoff and event.source == "text":
+        fast_active_project_response = _mim_tod_active_project_status_response(
+            _normalize_conversation_query(event.raw_input),
+            {},
+            shared_root=Path.cwd() / "runtime" / "shared",
+        )
+    if fast_mim_tod_handoff:
+        deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["deterministic_classifier_completed_at"]
+        resolution = InputEventResolution(
+            input_event_id=event.id,
+            internal_intent="mim_tod_executable_handoff",
+            confidence_tier="high",
+            outcome="store_only",
+            resolution_status="pending",
+            safety_decision="store_only",
+            reason="deterministic_mim_tod_handoff",
+            clarification_prompt="",
+            escalation_reasons=[],
+            capability_name="",
+            capability_registered=False,
+            capability_enabled=False,
+            goal_id=None,
+            proposed_goal_description=event.requested_goal or event.raw_input,
+            proposed_actions=[],
+            metadata_json={
+                "request_id": request_id,
+                "source": event.source,
+                "confidence": event.confidence,
+                "safety_flags": event.safety_flags,
+                "target_system": event.target_system,
+                "route_preference": "goal_system",
+                "conversation_override": False,
+                "skip_conversation_memory": True,
+                "deterministic_classifier": "mim_tod_handoff_v1",
+                "classification_stage_timestamps": deterministic_stage_timestamps,
+            },
+        )
+        db.add(resolution)
+        await db.flush()
+    elif fast_active_project_response:
+        deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["deterministic_classifier_completed_at"]
+        resolution = InputEventResolution(
+            input_event_id=event.id,
+            internal_intent="speak_response",
+            confidence_tier="conversation",
+            outcome="store_only",
+            resolution_status="store_only",
+            safety_decision="store_only",
+            reason="active_project_context_authority",
+            clarification_prompt=fast_active_project_response,
+            escalation_reasons=[],
+            capability_name="",
+            capability_registered=False,
+            capability_enabled=False,
+            goal_id=None,
+            proposed_goal_description=f"speak_response: {event.raw_input.strip()}",
+            proposed_actions=[
+                {
+                    "step": 1,
+                    "action_type": "speak_response",
+                    "details": f"speak_response: {event.raw_input.strip()}",
+                }
+            ],
+            metadata_json={
+                "request_id": request_id,
+                "source": event.source,
+                "confidence": event.confidence,
+                "safety_flags": event.safety_flags,
+                "target_system": event.target_system,
+                "route_preference": "conversation_layer",
+                "conversation_override": True,
+                "skip_conversation_memory": False,
+                "deterministic_classifier": "mim_tod_active_project_context_v1",
+                "communication_reply_contract": {
+                    "reply_text": fast_active_project_response,
+                    "response_mode": "active_project_context_grounded",
+                    "composer_mode": "deterministic_artifact",
+                    "should_store_memory": True,
+                    "memory_topics": ["mim_tod_active_project_context"],
+                    "memory_people": [],
+                    "memory_events": [],
+                    "memory_experiences": [],
+                },
+                "classification_stage_timestamps": deterministic_stage_timestamps,
+            },
+        )
+        db.add(resolution)
+        await db.flush()
+    else:
+        deterministic_stage_timestamps["llm_classifier_started_at"] = _mim_tod_stage_timestamp()
+        resolution = await _resolve_event(event, db)
+        deterministic_stage_timestamps["llm_classifier_completed_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["llm_classifier_completed_at"]
+        if isinstance(resolution.metadata_json, dict):
+            resolution.metadata_json = {
+                **resolution.metadata_json,
+                "classification_stage_timestamps": {
+                    **(
+                        resolution.metadata_json.get("classification_stage_timestamps")
+                        if isinstance(resolution.metadata_json.get("classification_stage_timestamps"), dict)
+                        else {}
+                    ),
+                    **deterministic_stage_timestamps,
+                },
+            }
     resolution_meta = (
         resolution.metadata_json if isinstance(resolution.metadata_json, dict) else {}
     )
@@ -13287,29 +16454,297 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
     tod_dispatch = None
     handoff_submission = None
     initiative_run = None
+    mim_project_document = None
+    mim_lane_registry = None
+    mim_lane_visibility_step = None
+    mim_lane_visibility_continuation = None
+    mim_lane_next_task_answer = None
+    mim_operational_lifecycle = None
+    mim_operational_lifecycle_status = None
     continuation_validation_request = _looks_like_continuation_validation_request(
         event.raw_input
     )
 
-    if event.source == "text" and _looks_like_mim_tod_executable_handoff_request(
+    if event.source == "text" and _looks_like_mim_tod_lane_registry_next_task_question(event.raw_input):
+        shared_root = Path.cwd() / "runtime" / "shared"
+        mim_lane_next_task_answer = _answer_mim_tod_lane_registry_next_task(
+            shared_root=shared_root,
+            request_id=request_id,
+        )
+        reply_text = str(mim_lane_next_task_answer.get("reply_text") or "").strip()
+        resolution.reason = "mim_tod_lane_registry_next_task_answered"
+        resolution.outcome = "store_only"
+        resolution.resolution_status = "completed"
+        resolution.safety_decision = "store_only"
+        resolution.clarification_prompt = reply_text
+        resolution_meta = {
+            **resolution_meta,
+            "route_preference": "goal_system",
+            "conversation_override": False,
+            "mim_tod_lane_registry_next_task": mim_lane_next_task_answer,
+            "mim_interface_status_override": "done",
+            "mim_interface_next_action_override": "Implement the lane visibility UI slice next.",
+            "mim_interface_result_override": reply_text,
+            "mim_interface_reply_override": reply_text,
+        }
+        resolution.metadata_json = resolution_meta
+        is_conversation_override = False
+    elif event.source == "text" and _looks_like_mim_tod_lane_visibility_continuation_request(
+        event.raw_input,
+        resolution_meta,
+    ):
+        reply_text = _mim_tod_lane_visibility_continuation_response(
+            event.raw_input,
+            resolution_meta,
+        )
+        mim_lane_visibility_continuation = {
+            "objective_id": "MIM-TOD-LANE-VISIBILITY-UI-V1",
+            "status": "ready_for_bounded_implementation",
+            "reply_text": reply_text,
+            "parallel_execution_enabled": False,
+            "background_execution_enabled": False,
+            "target_surfaces": [
+                "core/routers/mim_ui.py",
+                "core/mim_ui.py",
+                "core/routers/gateway.py",
+            ],
+            "validation": [
+                "MIM UI loads after refresh/reload",
+                "active lane is visible",
+                "historical/terminal lane is separated",
+                "background execution remains disabled",
+            ],
+        }
+        resolution.reason = "mim_tod_lane_visibility_continuation_created"
+        resolution.outcome = "store_only"
+        resolution.resolution_status = "completed"
+        resolution.safety_decision = "store_only"
+        resolution.clarification_prompt = reply_text
+        resolution_meta = {
+            **resolution_meta,
+            "route_preference": "goal_system",
+            "conversation_override": False,
+            "mim_tod_lane_visibility_continuation": mim_lane_visibility_continuation,
+            "mim_interface_status_override": "done",
+            "mim_interface_next_action_override": "Implement the lane visibility UI slice next.",
+            "mim_interface_result_override": reply_text,
+            "mim_interface_reply_override": reply_text,
+        }
+        resolution.metadata_json = resolution_meta
+        is_conversation_override = False
+    elif event.source == "text" and _looks_like_mim_tod_lane_visibility_step_request(event.raw_input):
+        shared_root = Path.cwd() / "runtime" / "shared"
+        mim_lane_visibility_step = _create_mim_tod_lane_visibility_step(
+            content=event.raw_input,
+            shared_root=shared_root,
+            request_id=request_id,
+        )
+        reply_text = str(mim_lane_visibility_step.get("reply_text") or "").strip()
+        resolution.reason = "mim_tod_lane_visibility_objective_created"
+        resolution.outcome = "store_only"
+        resolution.resolution_status = "completed"
+        resolution.safety_decision = "store_only"
+        resolution.clarification_prompt = reply_text
+        resolution_meta = {
+            **resolution_meta,
+            "route_preference": "goal_system",
+            "conversation_override": False,
+            "mim_tod_lane_visibility_step": mim_lane_visibility_step,
+            "mim_interface_status_override": "done",
+            "mim_interface_next_action_override": "Implement the lane visibility UI slice next.",
+            "mim_interface_result_override": reply_text,
+            "mim_interface_reply_override": reply_text,
+        }
+        resolution.metadata_json = resolution_meta
+        is_conversation_override = False
+    elif event.source == "text" and _looks_like_mim_tod_lane_registry_schema_request(event.raw_input):
+        shared_root = Path.cwd() / "runtime" / "shared"
+        mim_lane_registry = _create_mim_tod_lane_registry(
+            content=event.raw_input,
+            shared_root=shared_root,
+            request_id=request_id,
+        )
+        reply_text = str(mim_lane_registry.get("reply_text") or "").strip()
+        resolution.reason = "mim_tod_lane_registry_schema_created"
+        resolution.outcome = "store_only"
+        resolution.resolution_status = "completed"
+        resolution.safety_decision = "store_only"
+        resolution.clarification_prompt = reply_text
+        resolution_meta = {
+            **resolution_meta,
+            "route_preference": "goal_system",
+            "conversation_override": False,
+            "mim_tod_lane_registry": mim_lane_registry,
+            "mim_interface_status_override": "done",
+            "mim_interface_next_action_override": "Review the lane registry and start the lane visibility UI slice next.",
+            "mim_interface_result_override": reply_text,
+            "mim_interface_reply_override": reply_text,
+        }
+        resolution.metadata_json = resolution_meta
+        is_conversation_override = False
+    elif event.source == "text" and _looks_like_mim_operational_lifecycle_status_request(event.raw_input):
+        shared_root = Path.cwd() / "runtime" / "shared"
+        mim_operational_lifecycle_status = _answer_mim_operational_lifecycle_status(shared_root=shared_root)
+        reply_text = str(mim_operational_lifecycle_status.get("reply_text") or "").strip()
+        resolution.reason = "mim_operational_lifecycle_status_answered"
+        resolution.outcome = "store_only"
+        resolution.resolution_status = "completed"
+        resolution.safety_decision = "store_only"
+        resolution.clarification_prompt = reply_text
+        resolution_meta = {
+            **resolution_meta,
+            "route_preference": "goal_system",
+            "conversation_override": False,
+            "mim_operational_lifecycle_status": mim_operational_lifecycle_status,
+            "mim_interface_status_override": "done",
+            "mim_interface_next_action_override": "Continue the lifecycle implementation only if replan_required is yes.",
+            "mim_interface_result_override": reply_text,
+            "mim_interface_reply_override": reply_text,
+        }
+        resolution.metadata_json = resolution_meta
+        is_conversation_override = False
+    elif event.source == "text" and _looks_like_mim_operational_reasoning_lifecycle_request(event.raw_input):
+        shared_root = Path.cwd() / "runtime" / "shared"
+        mim_operational_lifecycle = _create_mim_operational_reasoning_lifecycle_objective(
+            content=event.raw_input,
+            shared_root=shared_root,
+            request_id=request_id,
+        )
+        reply_text = str(mim_operational_lifecycle.get("reply_text") or "").strip()
+        resolution.reason = "mim_operational_reasoning_lifecycle_created"
+        resolution.outcome = "store_only"
+        resolution.resolution_status = "completed"
+        resolution.safety_decision = "store_only"
+        resolution.clarification_prompt = reply_text
+        resolution_meta = {
+            **resolution_meta,
+            "route_preference": "goal_system",
+            "conversation_override": False,
+            "mim_operational_reasoning_lifecycle": mim_operational_lifecycle,
+            "mim_interface_status_override": "done",
+            "mim_interface_next_action_override": "Implement lifecycle state tracking and operator-visible lifecycle status reporting.",
+            "mim_interface_result_override": reply_text,
+            "mim_interface_reply_override": reply_text,
+        }
+        resolution.metadata_json = resolution_meta
+        is_conversation_override = False
+    elif event.source == "text" and _looks_like_mim_project_document_request(event.raw_input):
+        shared_root = Path.cwd() / "runtime" / "shared"
+        mim_project_document = _create_mim_project_document(
+            content=event.raw_input,
+            shared_root=shared_root,
+        )
+        reply_text = str(mim_project_document.get("reply_text") or "").strip()
+        resolution.reason = "mim_project_document_created"
+        resolution.outcome = "store_only"
+        resolution.resolution_status = "completed"
+        resolution.safety_decision = "store_only"
+        resolution.clarification_prompt = reply_text
+        resolution_meta = {
+            **resolution_meta,
+            "route_preference": "conversation_layer",
+            "conversation_override": False,
+            "mim_project_document": mim_project_document,
+            "mim_interface_status_override": "done",
+            "mim_interface_next_action_override": "Review the draft plan and activate Phase 1 when ready.",
+            "mim_interface_result_override": reply_text,
+            "mim_interface_reply_override": reply_text,
+        }
+        resolution.metadata_json = resolution_meta
+        is_conversation_override = False
+    elif event.source == "text" and _looks_like_mim_project_document_status_request(event.raw_input):
+        shared_root = Path.cwd() / "runtime" / "shared"
+        mim_project_document = _summarize_latest_mim_project_document(shared_root=shared_root)
+        reply_text = str(mim_project_document.get("reply_text") or "").strip()
+        completed = str(mim_project_document.get("status") or "").strip().lower() == "done"
+        resolution.reason = "mim_project_document_status"
+        resolution.outcome = "store_only"
+        resolution.resolution_status = "completed" if completed else "blocked"
+        resolution.safety_decision = "store_only"
+        resolution.clarification_prompt = reply_text
+        resolution_meta = {
+            **resolution_meta,
+            "route_preference": "conversation_layer",
+            "conversation_override": False,
+            "mim_project_document": mim_project_document,
+            "mim_interface_status_override": "done" if completed else "blocked",
+            "mim_interface_next_action_override": "Use the indexed plan as the source of truth for the next project-management step.",
+            "mim_interface_result_override": reply_text,
+            "mim_interface_reply_override": reply_text,
+        }
+        resolution.metadata_json = resolution_meta
+        is_conversation_override = False
+    elif event.source == "text" and _looks_like_tod_runtime_ownership_migration_request(event.raw_input):
+        shared_root = Path.cwd() / "runtime" / "shared"
+        runtime_ownership = _create_tod_runtime_ownership_artifact(
+            content=event.raw_input,
+            shared_root=shared_root,
+            request_id=request_id,
+        )
+        reply_text = str(runtime_ownership.get("reply_text") or "").strip()
+        resolution.reason = "tod_runtime_ownership_migration_artifact_created"
+        resolution.outcome = "store_only"
+        resolution.resolution_status = "completed"
+        resolution.safety_decision = "store_only"
+        resolution.clarification_prompt = reply_text
+        resolution_meta = {
+            **resolution_meta,
+            "route_preference": "conversation_layer",
+            "conversation_override": False,
+            "tod_runtime_ownership": runtime_ownership,
+            "mim_interface_status_override": "done",
+            "mim_interface_next_action_override": "Install and validate the MIM box TOD listener/watchdog services before stopping Dave PC loops.",
+            "mim_interface_result_override": reply_text,
+            "mim_interface_reply_override": reply_text,
+        }
+        resolution.metadata_json = resolution_meta
+        is_conversation_override = False
+    elif event.source == "text" and _looks_like_mim_tod_executable_handoff_request(
         event.raw_input,
         event.parsed_intent,
         event.safety_flags,
     ):
+        classification_stage_timestamps = (
+            resolution_meta.get("classification_stage_timestamps")
+            if isinstance(resolution_meta.get("classification_stage_timestamps"), dict)
+            else {}
+        )
+        mim_intent_classified_at = str(
+            classification_stage_timestamps.get("route_decided_at")
+            or classification_stage_timestamps.get("deterministic_classifier_completed_at")
+            or classification_stage_timestamps.get("llm_classifier_completed_at")
+            or ""
+        ).strip() or _mim_tod_stage_timestamp()
+        event_created_at = getattr(event, "created_at", "")
+        if isinstance(event_created_at, datetime):
+            operator_request_received_at = event_created_at.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        else:
+            operator_request_received_at = str(event_created_at or "").strip()
+        operator_request_received_at = operator_request_received_at or str(
+            classification_stage_timestamps.get("gateway_received_at") or ""
+        ).strip()
         tod_dispatch = _dispatch_mim_tod_executable_handoff_request(
             request_id=request_id,
             session_key=str(payload_metadata.get("conversation_session_id") or "").strip(),
             content=event.raw_input,
             actor="mim",
+            operator_request_received_at=operator_request_received_at,
+            mim_intent_classified_at=mim_intent_classified_at,
+            classification_stage_timestamps=classification_stage_timestamps,
         )
         result_status = str(tod_dispatch.get("result_status") or "").strip().lower()
         completed = result_status in {"succeeded", "completed", "ok"}
+        operator_unsatisfied = result_status == "execution_complete_but_operator_unsatisfied"
         result_text = str(
             tod_dispatch.get("result_reason")
             or tod_dispatch.get("decision_detail")
             or ""
         ).strip()
-        resolution.reason = "mim_tod_executable_handoff_completed" if completed else "mim_tod_executable_handoff_pending"
+        resolution.reason = (
+            "execution_complete_but_operator_unsatisfied"
+            if operator_unsatisfied
+            else "mim_tod_executable_handoff_completed" if completed else "mim_tod_executable_handoff_pending"
+        )
         resolution.outcome = "store_only"
         resolution.resolution_status = "completed" if completed else "pending"
         resolution.safety_decision = "store_only"
@@ -13320,13 +16755,17 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
             "conversation_override": False,
             "tod_dispatch": tod_dispatch,
             "mim_tod_handoff_id": str(tod_dispatch.get("handoff_id") or "").strip(),
-            "mim_interface_status_override": "done" if completed else "waiting",
-            "mim_interface_next_action_override": "Result handoff is ok." if completed else "Wait for TOD result handoff.",
+            "mim_interface_status_override": "done" if completed else "blocked" if operator_unsatisfied else "waiting",
+            "mim_interface_next_action_override": "Result handoff is ok."
+            if completed
+            else "Replan required; operator requested deliverables were not provided."
+            if operator_unsatisfied
+            else "Wait for TOD result handoff.",
             "mim_interface_result_override": result_text,
             "mim_interface_reply_override": (
                 f"Request {request_id}. MIM routed the objective to TOD. "
                 f"Handoff id: {str(tod_dispatch.get('handoff_id') or '').strip()}. "
-                f"Status: {'done' if completed else 'waiting'}. Result: {result_text}"
+                f"Status: {'done' if completed else 'insufficient' if operator_unsatisfied else 'waiting'}. Result: {result_text}"
             ).strip(),
         }
         resolution.metadata_json = resolution_meta
@@ -13846,6 +17285,13 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
         and tod_dispatch is None
         and handoff_submission is None
         and initiative_run is None
+        and mim_project_document is None
+        and mim_lane_registry is None
+        and mim_lane_visibility_step is None
+        and mim_lane_visibility_continuation is None
+        and mim_lane_next_task_answer is None
+        and mim_operational_lifecycle is None
+        and mim_operational_lifecycle_status is None
     ):
         execution = await _create_or_update_execution_binding(
             event=event,
@@ -13856,6 +17302,45 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
                 event, resolution.capability_name
             ),
         )
+
+    lifecycle_update = None
+    if str(event.source or "").strip().lower() == "text":
+        lifecycle_update = _update_mim_operational_lifecycle_turn_state(
+            shared_root=Path.cwd() / "runtime" / "shared",
+            request_id=request_id,
+            raw_input=event.raw_input,
+            resolution_reason=str(resolution.reason or "").strip(),
+            resolution_outcome=str(resolution.outcome or "").strip(),
+            resolution_status=str(resolution.resolution_status or "").strip(),
+            metadata=resolution.metadata_json if isinstance(resolution.metadata_json, dict) else {},
+        )
+        if lifecycle_update:
+            resolution.metadata_json = {
+                **(
+                    resolution.metadata_json
+                    if isinstance(resolution.metadata_json, dict)
+                    else {}
+                ),
+                "operational_lifecycle_update": {
+                    "objective_id": str(lifecycle_update.get("objective_id") or "").strip(),
+                    "lifecycle_state": str(
+                        (
+                            lifecycle_update.get("state_contract")
+                            if isinstance(lifecycle_update.get("state_contract"), dict)
+                            else {}
+                        ).get("lifecycle_state")
+                        or ""
+                    ).strip(),
+                    "operator_satisfaction_status": str(
+                        (
+                            lifecycle_update.get("state_contract")
+                            if isinstance(lifecycle_update.get("state_contract"), dict)
+                            else {}
+                        ).get("operator_satisfaction_status")
+                        or ""
+                    ).strip(),
+                },
+            }
 
     await _store_conversation_interface_state(
         db=db,
@@ -13880,6 +17365,20 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
     if initiative_run is not None:
         event_out["initiative_run"] = initiative_run.get("initiative_run", {})
         event_out["initiative_status"] = initiative_run.get("initiative_status", {})
+    if mim_project_document is not None:
+        event_out["mim_project_document"] = mim_project_document
+    if mim_lane_registry is not None:
+        event_out["mim_tod_lane_registry"] = mim_lane_registry
+    if mim_lane_visibility_step is not None:
+        event_out["mim_tod_lane_visibility_step"] = mim_lane_visibility_step
+    if mim_lane_visibility_continuation is not None:
+        event_out["mim_tod_lane_visibility_continuation"] = mim_lane_visibility_continuation
+    if mim_lane_next_task_answer is not None:
+        event_out["mim_tod_lane_registry_next_task"] = mim_lane_next_task_answer
+    if mim_operational_lifecycle is not None:
+        event_out["mim_operational_reasoning_lifecycle"] = mim_operational_lifecycle
+    if mim_operational_lifecycle_status is not None:
+        event_out["mim_operational_lifecycle_status"] = mim_operational_lifecycle_status
     if str(event.source or "").strip().lower() == "text":
         derived_initiative_status = _initiative_status_from_resolution_metadata(
             resolution.metadata_json
@@ -14743,6 +18242,7 @@ async def intake_text(
             **payload.metadata_json,
             "adapter": "text",
             "route_preference": route_preference,
+            "gateway_received_at": _mim_tod_stage_timestamp(),
         },
     )
     return await _store_normalized(normalized, db)

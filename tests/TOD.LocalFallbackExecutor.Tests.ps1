@@ -174,6 +174,90 @@ Validation Pattern: NEW_SENTINEL
         Remove-Item -Path $absolutePath -Force
     }
 
+    It 'maps simple MIM workspace filenames into the tmp_remote_mim mirror safely' {
+        $mirrorPath = Join-Path $repoRoot 'tmp_remote_mim/routes.py'
+        $createdMirror = $false
+        if (-not (Test-Path -Path $mirrorPath -PathType Leaf)) {
+            New-Item -ItemType Directory -Path (Split-Path -Parent $mirrorPath) -Force | Out-Null
+            [System.IO.File]::WriteAllText($mirrorPath, "# temporary MIM routes mirror`n", (New-Object System.Text.UTF8Encoding($false)))
+            $createdMirror = $true
+        }
+
+        try {
+            [string](Convert-ToLocalExecutionRepoRelativePath -PathValue 'routes.py') | Should Be 'tmp_remote_mim/routes.py'
+            [bool](Test-LocalExecutionSafePath -RelativePath 'routes.py') | Should Be $true
+
+            $promptPath = New-LocalFallbackPromptFile -Content @"
+Update routes.py.
+Edit Mode: validation_only
+Validation Pattern: workspace
+"@
+            $context = New-LocalFallbackContext -TaskId 'TSK-LF-MIM-ROUTES' -ObjectiveId 'OBJ-LF' -Title 'Validate MIM routes mirror' -Scope 'Validate routes.py through the local MIM workspace mirror.' -PromptPath $promptPath -Metadata @{ task_category = 'validation'; local_fallback_target_file = 'routes.py' }
+            [string]@(Get-LocalExecutionTargetFiles -Context $context)[0] | Should Be 'tmp_remote_mim/routes.py'
+
+            Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+        } finally {
+            if ($createdMirror -and (Test-Path -Path $mirrorPath -PathType Leaf)) {
+                Remove-Item -Path $mirrorPath -Force
+            }
+        }
+    }
+
+    It 'validates the MIM ARM workspace safety calibration slice without moving hardware' {
+        $mirrorPath = Join-Path $repoRoot 'tmp_remote_mim/routes.py'
+        $createdMirror = $false
+        if (-not (Test-Path -Path $mirrorPath -PathType Leaf)) {
+            New-Item -ItemType Directory -Path (Split-Path -Parent $mirrorPath) -Force | Out-Null
+            $content = @"
+from flask import jsonify, request
+
+def _workspace_servo_limit_for(servo_index):
+    return {"configured": False, "min": 0, "max": 180, "source": "default"}
+
+def _workspace_clamp_servo_angle(servo_index, requested_angle):
+    limit = _workspace_servo_limit_for(servo_index)
+    clamped_angle = max(int(limit["min"]), min(int(limit["max"]), int(requested_angle)))
+    return clamped_angle, {"table_edge_guard": "servo_limit_clamp"}
+
+def move_servo():
+    data = request.get_json()
+    servo = int(data['servo'])
+    angle = int(data['angle'])
+    requested_angle = angle
+    angle, safety = _workspace_clamp_servo_angle(servo, requested_angle)
+    dry_run = bool(data.get("dry_run") or data.get("no_motion") or data.get("validate_only"))
+    if dry_run:
+        update_serial_runtime("move_dry_run_validated")
+        return jsonify({"status": "ok", "safety": safety}), 200
+"@
+            [System.IO.File]::WriteAllText($mirrorPath, $content, (New-Object System.Text.UTF8Encoding($false)))
+            $createdMirror = $true
+        }
+
+        try {
+            $promptPath = New-LocalFallbackPromptFile -Content @"
+OBJECTIVE: MIM-ARM-WORKSPACE-SAFETY-CALIBRATION-V1
+TARGET FILE: routes.py
+Validate the workspace safety calibration route, servo limit clamp, dry_run no-motion path, and table edge guard.
+"@
+            $context = New-LocalFallbackContext -TaskId 'TSK-LF-MIM-ARM-SAFETY' -ObjectiveId 'mim-arm-workspace-safety-calibration-v1' -Title 'MIM ARM workspace safety calibration' -Scope 'Validate workspace safety calibration for routes.py without moving hardware.' -PromptPath $promptPath -Metadata @{ task_category = 'implementation_repair'; local_fallback_target_file = 'routes.py' }
+
+            $result = Invoke-LocalExecutionEngine -Context $context
+
+            [string]$result.status | Should Be 'completed'
+            [bool]$result.no_change_required | Should Be $true
+            @($result.files_changed).Count | Should Be 0
+            [string]$result.diff_summary | Should Match 'without invoking hardware'
+            @($result.validation_results | Where-Object { [string]$_.name -eq 'python_compile_passed' -and [bool]$_.passed }).Count | Should Be 1
+
+            Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+        } finally {
+            if ($createdMirror -and (Test-Path -Path $mirrorPath -PathType Leaf)) {
+                Remove-Item -Path $mirrorPath -Force
+            }
+        }
+    }
+
     It 'rejects blocked traversal paths' {
         $promptText = @"
 Update scripts/../../danger.ps1.

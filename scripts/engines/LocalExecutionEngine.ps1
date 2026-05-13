@@ -61,6 +61,7 @@ function Get-LocalExecutionSafeRoots {
         'docs/',
         'scripts/',
         'tests/',
+        'tmp_remote_mim/',
         'tmp_remote_mim/core/',
         'tmp_remote_mim/tests/',
         'tod/config/',
@@ -74,6 +75,12 @@ function Convert-ToLocalExecutionRepoRelativePath {
     $normalized = ([string]$PathValue).Trim() -replace '[\\/]+', '/'
     $normalized = $normalized.TrimStart('.')
     $normalized = $normalized.TrimStart('/')
+    if ($normalized -notmatch '/' -and $normalized -match '^[A-Za-z0-9_.-]+\.(?:py|html|js|json|css)$') {
+        $mirrorCandidate = Join-Path $script:LocalEngineRepoRoot ('tmp_remote_mim/{0}' -f $normalized)
+        if (Test-Path -Path $mirrorCandidate -PathType Leaf) {
+            return ('tmp_remote_mim/{0}' -f $normalized)
+        }
+    }
     return $normalized
 }
 
@@ -135,7 +142,7 @@ function Get-LocalExecutionTargetFiles {
     }
 
     $combined = Get-LocalExecutionCombinedText -Context $Context
-    $matches = [regex]::Matches($combined, '(?im)(?<![A-Za-z0-9_./-])(README\.md|docs/[A-Za-z0-9_./-]+\.(?:md|txt)|scripts/[A-Za-z0-9_./-]+\.(?:ps1|psm1|py|json|md|txt)|tests/[A-Za-z0-9_./-]+\.(?:ps1|py|md|txt)|tmp_remote_mim/(?:core|tests)/[A-Za-z0-9_./-]+\.(?:py|json|md|txt)|tod/config/[A-Za-z0-9_./-]+\.json|tod/out/tests/[A-Za-z0-9_./-]+\.txt)(?=$|[\s''""`,:;\.\!\?\)\]])')
+    $matches = [regex]::Matches($combined, '(?im)(?<![A-Za-z0-9_./-])(README\.md|docs/[A-Za-z0-9_./-]+\.(?:md|txt)|scripts/[A-Za-z0-9_./-]+\.(?:ps1|psm1|py|json|md|txt)|tests/[A-Za-z0-9_./-]+\.(?:ps1|py|md|txt)|tmp_remote_mim/[A-Za-z0-9_./-]+\.(?:py|html|js|json|css|md|txt)|tod/config/[A-Za-z0-9_./-]+\.json|tod/out/tests/[A-Za-z0-9_./-]+\.txt)(?=$|[\s''""`,:;\.\!\?\)\]])')
     $paths = New-Object System.Collections.Generic.List[string]
     foreach ($match in $matches) {
         $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$match.Groups[1].Value)
@@ -160,6 +167,18 @@ function Test-LocalExecutionLedgerCoverageTask {
     $mentionsLedger = $normalized -match 'ledger'
     $mentionsCoverage = $normalized -match 'coverage|phase.?a|measure|observe.?only'
     return ($mentionsLedger -and $mentionsCoverage)
+}
+
+function Test-LocalExecutionMimArmWorkspaceSafetyTask {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $normalized = (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant()
+    if ($normalized -notmatch 'mim-arm-workspace-safety-calibration|workspace safety calibration|servo limit|table edge|dry_run|dry-run|no_motion') {
+        return $false
+    }
+
+    $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
+    return (@($targets | Where-Object { [string]$_ -eq 'tmp_remote_mim/routes.py' }).Count -eq 1)
 }
 
 function Invoke-LocalExecutionLedgerCoverage {
@@ -270,6 +289,128 @@ function Invoke-LocalExecutionLedgerCoverage {
     )
     $Result.raw_output = $report
 
+    return (Complete-EngineExecutionResult -Result $Result -Status 'completed')
+}
+
+function Invoke-LocalExecutionMimArmWorkspaceSafety {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)]$Spec
+    )
+
+    $targetFile = 'tmp_remote_mim/routes.py'
+    if (-not (Test-LocalExecutionSafePath -RelativePath $targetFile)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_path_not_allowed' -Reason 'LocalExecutionEngine rejected tmp_remote_mim/routes.py because it is outside the bounded safe roots.' -MissingVariable 'allowed_path')
+    }
+
+    $absoluteTargetPath = Join-Path $script:LocalEngineRepoRoot ($targetFile -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -Path $absoluteTargetPath -PathType Leaf)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine could not find the MIM workspace routes mirror at tmp_remote_mim/routes.py.' -MissingVariable 'existing_target_file')
+    }
+
+    $content = [string](Get-Content -Path $absoluteTargetPath -Raw)
+    $checksBeforeCommand = @(
+        [pscustomobject]@{ name = 'target_file_exists'; passed = $true },
+        [pscustomobject]@{ name = 'servo_limit_helper_present'; passed = $content.Contains('def _workspace_servo_limit_for') },
+        [pscustomobject]@{ name = 'servo_clamp_helper_present'; passed = $content.Contains('def _workspace_clamp_servo_angle') },
+        [pscustomobject]@{ name = 'move_route_uses_clamped_angle'; passed = $content.Contains('angle, safety = _workspace_clamp_servo_angle(servo, requested_angle)') },
+        [pscustomobject]@{ name = 'dry_run_no_motion_guard_present'; passed = ($content.Contains('dry_run = bool') -and $content.Contains('move_dry_run_validated')) },
+        [pscustomobject]@{ name = 'move_response_includes_safety_metadata'; passed = $content.Contains('"safety": safety') },
+        [pscustomobject]@{ name = 'table_edge_guard_declared'; passed = $content.Contains('"table_edge_guard": "servo_limit_clamp"') }
+    )
+
+    $venvPython = Join-Path $script:LocalEngineRepoRoot '.venv\Scripts\python.exe'
+    $pythonCommand = if (Test-Path -Path $venvPython) {
+        "& '$venvPython'"
+    }
+    else {
+        'python'
+    }
+    $validationCommand = $pythonCommand + ' -m py_compile tmp_remote_mim/routes.py'
+    $commandCapture = Invoke-LocalShellCapture -Command $validationCommand -WorkingDirectory $script:LocalEngineRepoRoot
+    $validationChecks = @($checksBeforeCommand + [pscustomobject]@{ name = 'python_compile_passed'; passed = ([int]$commandCapture.exit_code -eq 0) })
+    $allPassed = (@($validationChecks | Where-Object { -not [bool]$_.passed }).Count -eq 0)
+
+    if (-not $allPassed) {
+        $failedNames = @($validationChecks | Where-Object { -not [bool]$_.passed } | ForEach-Object { [string]$_.name })
+        $reason = ('MIM ARM workspace safety calibration could not be validated; missing or failing checks: {0}.' -f (@($failedNames) -join ', '))
+        $Result.summary = $reason
+        $Result.files_changed = @()
+        $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+        $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+        $Result.failures = @($reason)
+        $Result.recommendations = @('Keep the hardware path blocked until the workspace /move safety clamp, dry-run mode, and safety metadata are all present and py_compile passes.')
+        $Result.needs_escalation = $false
+        $Result.structured_findings = @(
+            [pscustomobject]@{ type = 'validation'; checks = $validationChecks },
+            [pscustomobject]@{ type = 'command'; capture = $commandCapture },
+            [pscustomobject]@{ type = 'blocker'; reason_code = 'mim_arm_workspace_safety_validation_failed'; file = 'tmp_remote_mim/routes.py'; function = 'move_servo'; reason = $reason }
+        )
+        $Result.raw_output = [pscustomobject]@{
+            engine = $Spec
+            task_context = $Context
+            action = 'mim_arm_workspace_safety_validation_failed'
+            target_file = $targetFile
+            validation_checks = $validationChecks
+            command_capture = $commandCapture
+            hardware_motion_invoked = $false
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        $Result | Add-Member -NotePropertyName reason_code -NotePropertyValue 'mim_arm_workspace_safety_validation_failed' -Force
+        $Result | Add-Member -NotePropertyName recovery_state -NotePropertyValue 'blocked_with_reason' -Force
+        $Result | Add-Member -NotePropertyName commands_run -NotePropertyValue @([string]$commandCapture.command) -Force
+        $Result | Add-Member -NotePropertyName validation_results -NotePropertyValue @($validationChecks) -Force
+        $Result | Add-Member -NotePropertyName blockers -NotePropertyValue @($Result.structured_findings | Where-Object { $_.type -eq 'blocker' }) -Force
+        $Result | Add-Member -NotePropertyName confidence -NotePropertyValue 'medium' -Force
+        $Result | Add-Member -NotePropertyName rollback_hint -NotePropertyValue '' -Force
+        return (Complete-EngineExecutionResult -Result $Result -Status 'failed')
+    }
+
+    $diffSummary = 'Validated MIM ARM workspace /move safety clamp, dry-run/no-motion validation mode, and response safety metadata in tmp_remote_mim/routes.py without invoking hardware.'
+    $Result.summary = 'LocalExecutionEngine validated the MIM ARM workspace safety calibration route slice without moving hardware.'
+    $Result.files_changed = @()
+    $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+    $Result.test_results = @($validationChecks | ForEach-Object { 'pass' })
+    $Result.failures = @()
+    $Result.recommendations = @('Deploy the validated routes.py safety slice to the MIM ARM workspace server before testing physical shoulder recovery.')
+    $Result.needs_escalation = $false
+    $Result.structured_findings = @(
+        [pscustomobject]@{
+            type = 'result_contract'
+            understood_task = 'Validate the first MIM ARM workspace safety calibration slice for routes.py.'
+            action_taken = $diffSummary
+            changed_files = @()
+            evidence = @($diffSummary)
+            validation_result = 'passed'
+            remaining_blocker = 'Validated in local MIM mirror only; deploy to the MIM ARM workspace server before live hardware use.'
+            next_action = 'Deploy the safety route slice, then validate dry-run /move behavior before any real servo command.'
+            confidence = 'medium-high'
+            accepted = $true
+            artifact_changed = $false
+        },
+        [pscustomobject]@{ type = 'command'; capture = $commandCapture },
+        [pscustomobject]@{ type = 'validation'; checks = $validationChecks }
+    )
+    $Result.raw_output = [pscustomobject]@{
+        engine = $Spec
+        task_context = $Context
+        action = 'mim_arm_workspace_safety_validated'
+        target_file = $targetFile
+        changed = $false
+        diff_summary = $diffSummary
+        validation_checks = $validationChecks
+        command_capture = $commandCapture
+        hardware_motion_invoked = $false
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    $Result | Add-Member -NotePropertyName diff_summary -NotePropertyValue $diffSummary -Force
+    $Result | Add-Member -NotePropertyName commands_run -NotePropertyValue @([string]$commandCapture.command) -Force
+    $Result | Add-Member -NotePropertyName validation_results -NotePropertyValue @($validationChecks) -Force
+    $Result | Add-Member -NotePropertyName blockers -NotePropertyValue @() -Force
+    $Result | Add-Member -NotePropertyName confidence -NotePropertyValue 'medium-high' -Force
+    $Result | Add-Member -NotePropertyName rollback_hint -NotePropertyValue '' -Force
+    $Result | Add-Member -NotePropertyName no_change_required -NotePropertyValue $true -Force
     return (Complete-EngineExecutionResult -Result $Result -Status 'completed')
 }
 
@@ -1664,7 +1805,8 @@ function Get-LocalExecutionEngineSpec {
             "json_config_update",
             "python_source_patch",
             "focused_python_unittest",
-            "generic_bounded_fallback"
+            "generic_bounded_fallback",
+            "mim_arm_workspace_safety_validation"
         )
         mode = "bounded_local_executor"
     }
@@ -1693,16 +1835,19 @@ function Invoke-LocalExecutionEngine {
     elseif (Test-LocalExecutionLedgerCoverageTask -Context $Context) {
         $result = Invoke-LocalExecutionLedgerCoverage -Context $Context -Result $result -Spec $spec
     }
+    elseif (Test-LocalExecutionMimArmWorkspaceSafetyTask -Context $Context) {
+        $result = Invoke-LocalExecutionMimArmWorkspaceSafety -Context $Context -Result $result -Spec $spec
+    }
     elseif (Test-LocalExecutionGenericBoundedTask -Context $Context) {
         $result = Invoke-LocalExecutionGenericBoundedTask -Context $Context -Result $result -Spec $spec
     }
     else {
-        $result.summary = "LocalExecutionEngine is implemented for bounded execution-loop, prompt token extraction, README, and TOD config bootstrap objectives, but this task did not match a supported scope."
+        $result.summary = "LocalExecutionEngine is implemented for bounded execution-loop, prompt token extraction, MIM ARM workspace safety validation, README, and TOD config bootstrap objectives, but this task did not match a supported scope."
         $result.tests_run = @("local-engine task scope match")
         $result.test_results = @("not-supported")
         $result.failures = @("Task did not match the current bounded local engine capability.")
         $result.recommendations = @(
-            "Package a task that explicitly targets the execution loop contract, prompt token extraction in tmp_remote_mim/core/routers/tod_ui.py, README.md with the 'TOD Local Execution Mode' section, or tod-config.json local-engine activation.",
+            "Package a task that explicitly targets the execution loop contract, prompt token extraction in tmp_remote_mim/core/routers/tod_ui.py, MIM ARM workspace safety validation in tmp_remote_mim/routes.py, README.md with the 'TOD Local Execution Mode' section, or tod-config.json local-engine activation.",
             "Extend LocalExecutionEngine with the next bounded action capability before retrying broader tasks."
         )
         $result.needs_escalation = $true

@@ -441,6 +441,107 @@ class MimTodStateConsumerTest(unittest.TestCase):
         ]
         self.assertEqual(messages_with_next_move, [])
 
+    def test_console_freshness_fast_path_survives_non_handoff_latest_overwrite(self) -> None:
+        consumed_at = "2026-05-08T02:40:11Z"
+        newer_at = "2026-05-08T02:41:00Z"
+        artifacts = {
+            "MIM_TOD_CONSOLE_FRESHNESS.latest.json": {
+                "generated_at": consumed_at,
+                "consumed_at": consumed_at,
+                "dispatch_kind": "mim_tod_executable_handoff",
+                "handoff_id": "mim-tod-handoff-mim-request-440bf459",
+                "objective_id": "mim-tod-handoff-smoke-001",
+                "task_id": "mim-tod-handoff-smoke-001-validation",
+                "request_id": "mim-request-440bf459",
+                "result_status": "succeeded",
+                "reply_status": "done",
+                "result_reason": "TOD completed validation-only handoff; result handoff is ok.",
+            },
+            "TOD_MIM_TASK_RESULT.latest.json": {
+                "generated_at": newer_at,
+                "objective_id": "2913",
+                "task_id": "objective-2913-task-1778250166",
+                "status": "pending",
+                "result_status": "pending",
+            },
+            "MIM_TOD_CONSUME_EVIDENCE.latest.json": {
+                "generated_at": newer_at,
+                "current": {
+                    "task_result": {
+                        "objective_id": "2913",
+                        "task_id": "objective-2913-task-1778250166",
+                        "status": "pending",
+                    }
+                },
+            },
+        }
+
+        with patch.object(self.mim_ui, "_load_json_artifact", side_effect=self._artifact_loader(artifacts)):
+            freshness = self.mim_ui._mim_tod_handoff_console_freshness()
+
+        self.assertEqual(freshness["console_freshness_status"], "fresh_done")
+        self.assertEqual(freshness["console_freshness_source"], "consumed_handoff_fast_path")
+        self.assertEqual(freshness["last_handoff_id"], "mim-tod-handoff-mim-request-440bf459")
+        self.assertEqual(freshness["last_tod_task_id"], "mim-tod-handoff-smoke-001-validation")
+        self.assertEqual(freshness["last_consumed_at"], consumed_at)
+
+    def test_console_freshness_fast_path_does_not_mask_newer_different_handoff(self) -> None:
+        artifacts = {
+            "MIM_TOD_CONSOLE_FRESHNESS.latest.json": {
+                "generated_at": "2026-05-08T02:40:11Z",
+                "consumed_at": "2026-05-08T02:40:11Z",
+                "dispatch_kind": "mim_tod_executable_handoff",
+                "handoff_id": "mim-tod-handoff-mim-request-old",
+                "objective_id": "mim-tod-old",
+                "task_id": "mim-tod-old-validation",
+                "request_id": "mim-request-old",
+                "result_status": "succeeded",
+                "reply_status": "done",
+            },
+            "MIM_TOD_HANDOFF_RESULT.latest.json": {
+                "generated_at": "2026-05-08T02:41:00Z",
+                "dispatch_kind": "mim_tod_executable_handoff",
+                "handoff_id": "mim-tod-handoff-mim-request-new",
+                "objective_id": "mim-tod-new",
+                "task_id": "mim-tod-new-validation",
+                "request_id": "mim-request-new",
+                "status": "pending",
+                "result_status": "pending",
+            },
+        }
+
+        with patch.object(self.mim_ui, "_load_json_artifact", side_effect=self._artifact_loader(artifacts)):
+            freshness = self.mim_ui._mim_tod_handoff_console_freshness()
+
+        self.assertEqual(freshness["console_freshness_status"], "no_handoff_result")
+        self.assertEqual(freshness["console_freshness_source"], "")
+        self.assertEqual(freshness["last_handoff_id"], "")
+
+    def test_console_freshness_state_exposes_done_without_full_ui_recompute(self) -> None:
+        now = "2026-05-08T02:40:11Z"
+        artifacts = {
+            "MIM_TOD_CONSOLE_FRESHNESS.latest.json": {
+                "generated_at": now,
+                "consumed_at": now,
+                "dispatch_kind": "mim_tod_executable_handoff",
+                "handoff_id": "mim-tod-handoff-mim-request-440bf459",
+                "objective_id": "mim-tod-handoff-smoke-001",
+                "task_id": "mim-tod-handoff-smoke-001-validation",
+                "request_id": "mim-request-440bf459",
+                "result_status": "succeeded",
+                "reply_status": "done",
+                "result_reason": "TOD completed validation-only handoff; result handoff is ok.",
+            },
+        }
+
+        with patch.object(self.mim_ui, "_load_json_artifact", side_effect=self._artifact_loader(artifacts)):
+            state = self.mim_ui._build_mim_tod_console_freshness_state()
+
+        self.assertEqual(state["console_freshness_status"], "fresh_done")
+        self.assertEqual(state["system_activity"]["status_label"], "DONE")
+        self.assertEqual(state["last_handoff_id"], "mim-tod-handoff-mim-request-440bf459")
+        self.assertEqual(state["last_tod_task_id"], "mim-tod-handoff-smoke-001-validation")
+
     def test_fresh_done_worklog_suppresses_stale_next_move_recommendation(self) -> None:
         now = "2026-05-08T02:45:00Z"
         messages = self.mim_ui._build_mim_live_worklog_messages(
@@ -784,6 +885,32 @@ class MimTodStateConsumerTest(unittest.TestCase):
         self.assertIn('id="operatorActionStatusMim"', source)
         self.assertIn("fetch('/operator/actions'", source)
         self.assertIn("renderOperatorActionsMim", source)
+
+    def test_mim_ui_source_uses_lightweight_freshness_visibility_poll(self) -> None:
+        source = Path(self.mim_ui.__file__).read_text(encoding="utf-8")
+        self.assertIn("async function pollFreshnessVisibility()", source)
+        self.assertIn("setInterval(pollFreshnessVisibility, 1000)", source)
+        self.assertIn("if (document.hidden) return false;", source)
+
+    def test_mim_ui_source_exposes_execution_lane_visibility(self) -> None:
+        source = Path(self.mim_ui.__file__).read_text(encoding="utf-8")
+        self.assertIn("Execution Lanes", source)
+        self.assertIn("id=\"activeLaneText\"", source)
+        self.assertIn("id=\"terminalLaneText\"", source)
+        self.assertIn("id=\"backgroundLaneText\"", source)
+        self.assertIn("function renderLaneVisibility", source)
+        self.assertIn("execution_lanes", source)
+        self.assertIn("active_execution_lane", source)
+
+    def test_mim_ui_source_exposes_operational_lifecycle_visibility(self) -> None:
+        source = Path(self.mim_ui.__file__).read_text(encoding="utf-8")
+        self.assertIn("Operational Lifecycle", source)
+        self.assertIn("id=\"lifecycleStateText\"", source)
+        self.assertIn("id=\"lifecycleSatisfactionText\"", source)
+        self.assertIn("id=\"lifecycleReplanText\"", source)
+        self.assertIn("function renderOperationalLifecycle", source)
+        self.assertIn("operational_lifecycle", source)
+        self.assertIn("MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json", source)
 
 
 if __name__ == "__main__":

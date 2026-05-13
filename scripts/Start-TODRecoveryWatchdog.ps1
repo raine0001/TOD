@@ -1118,6 +1118,62 @@ function Invoke-PublicationSurfaceSelfHeal {
         $sftpSession = New-SFTPSession -ComputerName $resolvedHost -Port $port -Credential $credential -AcceptKey -ConnectionTimeout 15000
 
         try {
+            $handoffCheckCommand = @"
+bash -lc 'python3 - <<'"'"'PY'"'"'
+import json, pathlib, re, time
+p = pathlib.Path("/home/testpilot/mim/runtime/shared/MIM_TOD_HANDOFF_RESULT.latest.json")
+if not p.exists():
+    print("{}")
+    raise SystemExit(0)
+try:
+    data = json.loads(p.read_text())
+except Exception:
+    print("{}")
+    raise SystemExit(0)
+task = str(data.get("task_id") or data.get("request_id") or "")
+status = str(data.get("result_status") or data.get("status") or "").lower()
+age = time.time() - p.stat().st_mtime
+fresh_pending = status in {"pending", "waiting", "in_progress"} and age < 1800
+noncanonical = bool(task) and not re.match(r"^objective-\d+-task-\d+$", task)
+print(json.dumps({
+    "fresh_pending": bool(fresh_pending),
+    "noncanonical": bool(noncanonical),
+    "task_id": task,
+    "objective_id": str(data.get("objective_id") or ""),
+    "handoff_id": str(data.get("handoff_id") or ""),
+    "result_status": status,
+    "age_seconds": age,
+}))
+PY'
+"@
+            $handoffCheckResult = Invoke-SSHCommand -SessionId ([int]$session.SessionId) -Command $handoffCheckCommand -TimeOut 30
+            $handoffCheckOutput = [string]($handoffCheckResult.Output | Out-String)
+            $handoffCheck = $null
+            if (-not [string]::IsNullOrWhiteSpace($handoffCheckOutput)) {
+                try {
+                    $handoffCheck = ($handoffCheckOutput | ConvertFrom-Json)
+                }
+                catch {
+                    $handoffCheck = $null
+                }
+            }
+            if ($handoffCheck -and [bool]$handoffCheck.fresh_pending -and [bool]$handoffCheck.noncanonical) {
+                return [pscustomobject]@{
+                    attempted = $true
+                    repaired = $true
+                    suppressed = $true
+                    method = 'watchdog_restore_suppressed_fresh_mim_tod_handoff'
+                    canonical_objective = $canonicalObjective
+                    request_id = [string]$handoffCheck.task_id
+                    reason = 'fresh_noncanonical_mim_tod_handoff_pending'
+                    remote_host = $resolvedHost
+                    handoff_id = [string]$handoffCheck.handoff_id
+                    objective_id = [string]$handoffCheck.objective_id
+                    result_status = [string]$handoffCheck.result_status
+                    recommended_repair = 'Preserved fresh MIM-to-TOD handoff; do not republish stale canonical objective over the bridge latest surface.'
+                }
+            }
+
             $remoteCommand = @"
 bash -lc 'if [ -x /home/testpilot/mim/scripts/continuous_task_dispatch.sh ]; then cd /home/testpilot/mim && ALLOW_LOCAL_ONLY_CANONICAL_WRITE=1 OBJECTIVE_ID=$normalizedObjective COUNT=1 ./scripts/continuous_task_dispatch.sh; printf "\\n__TOD_EXIT__0\\n"; else printf "\\n__TOD_EXIT__127\\n"; fi'
 "@

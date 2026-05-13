@@ -1,0 +1,121 @@
+{
+    "id":  "MEM-11B0B9E1",
+    "title":  "engine performance update",
+    "note":  "engine=local category=mim_synced decision=revise",
+    "tags":  [
+                 "engine-performance",
+                 "engine:local",
+                 "category:mim_synced",
+                 "decision:revise"
+             ],
+    "record":  {
+                   "id":  "ENGPERF-F1B499AF",
+                   "task_id":  "objective-2914-local-executor-binding-repair-1778196745785",
+                   "engine":  "local",
+                   "task_type":  "programming",
+                   "task_category":  "mim_synced",
+                   "fallback_applied":  false,
+                   "attempted_engines":  [
+
+                                         ],
+                   "attempts_count":  0,
+                   "retry_inflated":  false,
+                   "result_status":  "failed",
+                   "needs_escalation":  false,
+                   "failure_category":  "materialization_blocked",
+                   "review_decision":  "revise",
+                   "success":  false,
+                   "recovered_on_retry":  false,
+                   "recovered_on_fallback":  false,
+                   "unrecovered_failure":  false,
+                   "degraded_success":  false,
+                   "manual_intervention_required":  true,
+                   "review_score":  0.5,
+                   "latency_ms":  null,
+                   "files_involved":  [
+
+                                      ],
+                   "modules_involved":  [
+
+                                        ],
+                   "wrapper_only_engines":  [
+
+                                            ],
+                   "wrapper_only_codex_seen":  false,
+                   "created_at":  "2026-05-07T23:37:52.0036587Z"
+               },
+    "aggregate":  [
+                      {
+                          "engine":  "local",
+                          "total_runs":  34,
+                          "pass_rate":  73.53,
+                          "revise_rate":  26.47,
+                          "fallback_frequency":  38.24,
+                          "escalation_rate":  0,
+                          "average_review_outcome":  0.868,
+                          "average_latency_ms":  1360.27,
+                          "task_types":  [
+                                             {
+                                                 "task_type":  "implementation",
+                                                 "count":  31
+                                             },
+                                             {
+                                                 "task_type":  "programming",
+                                                 "count":  3
+                                             }
+                                         ],
+                          "category_breakdown":  [
+                                                     {
+                                                         "task_category":  "code_change",
+                                                         "runs":  8,
+                                                         "success_rate":  87.5
+                                                     },
+                                                     {
+                                                         "task_category":  "chat_execution",
+                                                         "runs":  6,
+                                                         "success_rate":  83.33
+                                                     },
+                                                     {
+                                                         "task_category":  "docs_change",
+                                                         "runs":  11,
+                                                         "success_rate":  100
+                                                     },
+                                                     {
+                                                         "task_category":  "bridge_runtime",
+                                                         "runs":  6,
+                                                         "success_rate":  33.33
+                                                     },
+                                                     {
+                                                         "task_category":  "initiative_training",
+                                                         "runs":  2,
+                                                         "success_rate":  0
+                                                     },
+                                                     {
+                                                         "task_category":  "mim_synced",
+                                                         "runs":  1,
+                                                         "success_rate":  0
+                                                     }
+                                                 ],
+                          "modules_involved":  [
+                                                   {
+                                                       "module":  "tod",
+                                                       "count":  7
+                                                   },
+                                                   {
+                                                       "module":  "docs",
+                                                       "count":  4
+                                                   },
+                                                   {
+                                                       "module":  "scripts",
+                                                       "count":  1
+                                                   }
+                                               ],
+                          "recent_trend":  {
+                                               "direction":  "down",
+                                               "recent_success_rate":  0,
+                                               "prior_success_rate":  40
+                                           }
+                      }
+                  ],
+    "created_at":  "2026-05-07T23:37:52.2845648Z"
+}

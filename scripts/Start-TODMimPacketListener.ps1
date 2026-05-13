@@ -550,9 +550,31 @@ function Get-RequestExecutorRole {
         return 'codex'
     }
 
+    $activeEngine = if ($Request.PSObject.Properties['active_engine']) { ([string]$Request.active_engine).Trim().ToLowerInvariant() } else { '' }
+    $selectedExecutor = if ($Request.PSObject.Properties['selected_executor']) { ([string]$Request.selected_executor).Trim().ToLowerInvariant() } else { '' }
+    $executorBinding = if ($Request.PSObject.Properties['executor_binding']) { ([string]$Request.executor_binding).Trim() } else { '' }
+    $metadata = if ($Request.PSObject.Properties['metadata_json']) { $Request.metadata_json } else { $null }
+    if ($metadata) {
+        if ([string]::IsNullOrWhiteSpace($activeEngine) -and $metadata.PSObject.Properties['active_engine']) {
+            $activeEngine = ([string]$metadata.active_engine).Trim().ToLowerInvariant()
+        }
+        if ([string]::IsNullOrWhiteSpace($selectedExecutor) -and $metadata.PSObject.Properties['selected_executor']) {
+            $selectedExecutor = ([string]$metadata.selected_executor).Trim().ToLowerInvariant()
+        }
+        if ([string]::IsNullOrWhiteSpace($executorBinding) -and $metadata.PSObject.Properties['executor_binding']) {
+            $executorBinding = ([string]$metadata.executor_binding).Trim()
+        }
+    }
+
     foreach ($propertyName in @('assigned_executor', 'assigned_to', 'executor_role')) {
         if ($Request.PSObject.Properties[$propertyName] -and -not [string]::IsNullOrWhiteSpace([string]$Request.$propertyName)) {
-            return ([string]$Request.$propertyName).Trim()
+            $role = ([string]$Request.$propertyName).Trim()
+            if ([string]::Equals($role, 'local', [System.StringComparison]::OrdinalIgnoreCase) -and
+                (@('local', 'tod_local', 'localexecutionengine') -contains $activeEngine -or @('local', 'tod_local', 'localexecutionengine') -contains $selectedExecutor) -and
+                $executorBinding -match 'scripts[/\\]engines[/\\]LocalExecutionEngine\.ps1::Invoke-LocalExecutionEngine') {
+                return 'tod'
+            }
+            return $role
         }
     }
 
@@ -4919,6 +4941,23 @@ function Invoke-RequestExecution {
     }
     if ($Request.PSObject.Properties["task_category"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_category)) {
         $todArgs["TaskCategory"] = [string]$Request.task_category
+    }
+    $metadata = if ($Request.PSObject.Properties["metadata_json"]) { $Request.metadata_json } else { $null }
+    $targetFile = ""
+    if ($Request.PSObject.Properties["target_file"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.target_file)) {
+        $targetFile = [string]$Request.target_file
+    }
+    elseif ($metadata -and $metadata.PSObject.Properties["target_file"] -and -not [string]::IsNullOrWhiteSpace([string]$metadata.target_file)) {
+        $targetFile = [string]$metadata.target_file
+    }
+    elseif ($Request.PSObject.Properties["target_files"] -and $null -ne $Request.target_files -and @($Request.target_files).Count -eq 1) {
+        $targetFile = [string]@($Request.target_files)[0]
+    }
+    elseif ($metadata -and $metadata.PSObject.Properties["target_files"] -and $null -ne $metadata.target_files -and @($metadata.target_files).Count -eq 1) {
+        $targetFile = [string]@($metadata.target_files)[0]
+    }
+    if (-not [string]::IsNullOrWhiteSpace($targetFile)) {
+        $todArgs["TargetFile"] = $targetFile
     }
     if ($Request.PSObject.Properties["apply_plan"] -and [bool]$Request.apply_plan) {
         $todArgs["ApplyPlan"] = $true

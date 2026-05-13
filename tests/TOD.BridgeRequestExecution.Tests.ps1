@@ -8,6 +8,10 @@ $listenerDir = Join-Path $repoRoot 'tod/out/context-sync/listener'
 $requestPath = Join-Path $listenerDir 'MIM_TOD_TASK_REQUEST.latest.json'
 $ackPath = Join-Path $listenerDir 'TOD_MIM_TASK_ACK.latest.json'
 $resultPath = Join-Path $listenerDir 'TOD_MIM_TASK_RESULT.latest.json'
+$runtimeSharedDir = Join-Path $repoRoot 'runtime/shared'
+$activeLanePath = Join-Path $runtimeSharedDir 'TOD_ACTIVE_EXECUTION_LANE.latest.json'
+$intakeQueuePath = Join-Path $runtimeSharedDir 'TOD_INTAKE_QUEUE.latest.json'
+$intakeArbitrationPath = Join-Path $runtimeSharedDir 'TOD_INTAKE_ARBITRATION.latest.json'
 
 function Write-JsonNoBom {
     param(
@@ -26,7 +30,7 @@ function Write-JsonNoBom {
 }
 
 function Backup-BridgeLaneFiles {
-    $paths = @($requestPath, $ackPath, $resultPath)
+    $paths = @($requestPath, $ackPath, $resultPath, $activeLanePath, $intakeQueuePath, $intakeArbitrationPath)
     $backups = @()
     foreach ($pathValue in $paths) {
         $backups += [pscustomobject]@{

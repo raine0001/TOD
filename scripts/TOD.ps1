@@ -1671,6 +1671,32 @@ function Test-ActionRequiresState {
     }
 }
 
+function Test-TodEphemeralStateAccess {
+    $stateAccessVar = Get-Variable -Name stateAccess -ErrorAction SilentlyContinue
+    if ($null -eq $stateAccessVar -or $null -eq $stateAccessVar.Value) {
+        return $false
+    }
+
+    $mode = if ($stateAccessVar.Value.PSObject.Properties['mode']) { [string]$stateAccessVar.Value.mode } else { '' }
+    return [string]::Equals($mode, 'remote_ephemeral', [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-TodEphemeralState {
+    $stateVar = Get-Variable -Name state -ErrorAction SilentlyContinue
+    if ($null -eq $stateVar -or $null -eq $stateVar.Value) {
+        $script:state = New-MinimalTodState
+    }
+
+    if (-not $script:state.PSObject.Properties['objectives']) {
+        $script:state | Add-Member -NotePropertyName objectives -NotePropertyValue @() -Force
+    }
+    if (-not $script:state.PSObject.Properties['tasks']) {
+        $script:state | Add-Member -NotePropertyName tasks -NotePropertyValue @() -Force
+    }
+
+    return $script:state
+}
+
 function Start-TodTrainingRunbookProcess {
     param(
         [string]$ResolvedConfigPath
@@ -10162,6 +10188,146 @@ function Convert-RemoteTaskToTodTask {
     }
 }
 
+function Convert-BridgeRequestToTodTask {
+    param([Parameter(Mandatory = $true)]$Request)
+
+    $resolvedTaskId = if ($Request.PSObject.Properties["task_id"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_id)) {
+        [string]$Request.task_id
+    }
+    elseif ($Request.PSObject.Properties["request_id"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.request_id)) {
+        [string]$Request.request_id
+    }
+    else {
+        ""
+    }
+
+    $metadata = if ($Request.PSObject.Properties["metadata_json"] -and $null -ne $Request.metadata_json) { $Request.metadata_json } else { [pscustomobject]@{} }
+    $scopeText = if ($Request.PSObject.Properties["scope"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.scope)) {
+        [string]$Request.scope
+    }
+    elseif ($Request.PSObject.Properties["summary"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.summary)) {
+        [string]$Request.summary
+    }
+    elseif ($Request.PSObject.Properties["content"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.content)) {
+        [string]$Request.content
+    }
+    else {
+        "Synchronized from live bridge request."
+    }
+
+    $acceptanceCriteria = @()
+    if ($metadata.PSObject.Properties["task_acceptance_criteria"] -and -not [string]::IsNullOrWhiteSpace([string]$metadata.task_acceptance_criteria)) {
+        $acceptanceCriteria = [string[]](Split-List -Value ([string]$metadata.task_acceptance_criteria))
+    }
+    elseif ($Request.PSObject.Properties["requested_outcome"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.requested_outcome)) {
+        $acceptanceCriteria = [string[]](Split-List -Value ([string]$Request.requested_outcome))
+    }
+
+    $taskCategory = if ($metadata.PSObject.Properties["task_category"] -and -not [string]::IsNullOrWhiteSpace([string]$metadata.task_category)) {
+        [string]$metadata.task_category
+    }
+    elseif ($Request.PSObject.Properties["task_category"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_category)) {
+        [string]$Request.task_category
+    }
+    else {
+        "chat_execution"
+    }
+
+    $assignedExecutor = if ($metadata.PSObject.Properties["assigned_executor"] -and -not [string]::IsNullOrWhiteSpace([string]$metadata.assigned_executor)) {
+        [string]$metadata.assigned_executor
+    }
+    elseif ($Request.PSObject.Properties["assigned_executor"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.assigned_executor)) {
+        [string]$Request.assigned_executor
+    }
+    elseif ($Request.PSObject.Properties["selected_executor"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.selected_executor)) {
+        [string]$Request.selected_executor
+    }
+    else {
+        "local"
+    }
+
+    $targetFiles = @()
+    foreach ($propertyName in @("target_file", "target_files", "allowed_files", "files_involved")) {
+        if ($Request.PSObject.Properties[$propertyName] -and $null -ne $Request.$propertyName) {
+            $targetFiles += @($Request.$propertyName | ForEach-Object { ([string]$_) -replace '[\\/]+', '/' })
+        }
+        if ($metadata.PSObject.Properties[$propertyName] -and $null -ne $metadata.$propertyName) {
+            $targetFiles += @($metadata.$propertyName | ForEach-Object { ([string]$_) -replace '[\\/]+', '/' })
+        }
+    }
+    $targetFiles = @($targetFiles | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+
+    $task = [pscustomobject]@{
+        id = $resolvedTaskId
+        remote_task_id = $resolvedTaskId
+        request_id = if ($Request.PSObject.Properties["request_id"]) { [string]$Request.request_id } else { $resolvedTaskId }
+        objective_id = if ($Request.PSObject.Properties["objective_id"]) { [string]$Request.objective_id } else { "" }
+        title = if ($Request.PSObject.Properties["title"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.title)) { [string]$Request.title } else { "Bridge task $resolvedTaskId" }
+        scope = $scopeText
+        description = if ($Request.PSObject.Properties["summary"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.summary)) { [string]$Request.summary } else { $scopeText }
+        content = if ($Request.PSObject.Properties["content"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.content)) { [string]$Request.content } else { $scopeText }
+        type = "implementation"
+        task_category = $taskCategory
+        assigned_executor = $assignedExecutor
+        status = "in_progress"
+        source = "bridge_runtime_sync"
+        dependencies = @()
+        acceptance_criteria = @($acceptanceCriteria)
+        allowed_files = @($targetFiles)
+        files_involved = @($targetFiles)
+        metadata_json = $metadata
+        correlation_id = if ($Request.PSObject.Properties["correlation_id"]) { [string]$Request.correlation_id } else { $resolvedTaskId }
+        updated_at = Get-UtcNow
+    }
+
+    if (@($targetFiles).Count -eq 1) {
+        $task | Add-Member -NotePropertyName target_file -NotePropertyValue ([string]$targetFiles[0]) -Force
+    }
+    if (@($targetFiles).Count -gt 0) {
+        $task | Add-Member -NotePropertyName target_files -NotePropertyValue ([string[]]@($targetFiles)) -Force
+    }
+    if ($Request.PSObject.Properties["bounded_edit_mode"]) {
+        $task | Add-Member -NotePropertyName bounded_edit_mode -NotePropertyValue $Request.bounded_edit_mode -Force
+    }
+    elseif ($metadata.PSObject.Properties["bounded_edit_mode"]) {
+        $task | Add-Member -NotePropertyName bounded_edit_mode -NotePropertyValue $metadata.bounded_edit_mode -Force
+    }
+    if ($Request.PSObject.Properties["validation_only"]) {
+        $task | Add-Member -NotePropertyName validation_only -NotePropertyValue $Request.validation_only -Force
+    }
+    elseif ($metadata.PSObject.Properties["validation_only"]) {
+        $task | Add-Member -NotePropertyName validation_only -NotePropertyValue $metadata.validation_only -Force
+    }
+    if ($metadata.PSObject.Properties["materialization"] -and $null -ne $metadata.materialization) {
+        $task | Add-Member -NotePropertyName materialization -NotePropertyValue $metadata.materialization -Force
+    }
+
+    return $task
+}
+
+function Resolve-ListenerRequestTask {
+    param([Parameter(Mandatory = $true)][string]$TaskId)
+
+    if (-not (Test-Path -Path $bridgeRequestPacketPath -PathType Leaf)) {
+        return $null
+    }
+
+    try {
+        $request = ConvertFrom-JsonCaseInsensitiveSafe -Text (Get-Content -Path $bridgeRequestPacketPath -Raw)
+    }
+    catch {
+        return $null
+    }
+
+    $candidateTaskId = if ($request.PSObject.Properties["task_id"]) { [string]$request.task_id } else { "" }
+    $candidateRequestId = if ($request.PSObject.Properties["request_id"]) { [string]$request.request_id } else { "" }
+    if (([string]$candidateTaskId -ne [string]$TaskId) -and ([string]$candidateRequestId -ne [string]$TaskId)) {
+        return $null
+    }
+
+    return (Convert-BridgeRequestToTodTask -Request $request)
+}
+
 function Resolve-RemoteExecutionTask {
     param(
         [Parameter(Mandatory = $true)][string]$TaskId,
@@ -10358,6 +10524,16 @@ function Sync-CodexHandoffTaskMirror {
         ''
     }
 
+    if (Test-TodEphemeralStateAccess) {
+        return [pscustomobject]@{
+            changed = $false
+            created = $false
+            task_id = $resolvedTaskId
+            objective_id = $resolvedObjectiveId
+            reason = 'task_mirror_ephemeral_state'
+        }
+    }
+
     $resolvedTitle = ''
     if ($Request.PSObject.Properties['title'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.title)) {
         $resolvedTitle = [string]$Request.title
@@ -10534,7 +10710,8 @@ function Ensure-ChatTaskObjectiveRecord {
         [string]$SuccessCriteria
     )
 
-    $state = Load-State
+    $useEphemeralState = Test-TodEphemeralStateAccess
+    $state = if ($useEphemeralState) { Get-TodEphemeralState } else { Load-State }
     if (-not $state.PSObject.Properties['objectives']) {
         $state | Add-Member -NotePropertyName objectives -NotePropertyValue @() -Force
     }
@@ -10559,8 +10736,10 @@ function Ensure-ChatTaskObjectiveRecord {
     }
 
     $state.objectives += $createdObjective
-    Add-Journal -State $state -Actor 'tod' -ActionName 'add_objective_chat_dispatch' -EntityType 'objective' -EntityId $resolvedObjectiveId -Payload $createdObjective
-    Save-State -State $state
+    if (-not $useEphemeralState) {
+        Add-Journal -State $state -Actor 'tod' -ActionName 'add_objective_chat_dispatch' -EntityType 'objective' -EntityId $resolvedObjectiveId -Payload $createdObjective
+        Save-State -State $state
+    }
     return $createdObjective
 }
 
@@ -10796,28 +10975,30 @@ function Supersede-ActiveDirectChatLane {
         }
     }
 
-    $state = Load-State
-    $journalAdded = $false
-    $supersededTask = @($state.tasks | Where-Object { [string]$_.id -eq $existingTaskId } | Select-Object -First 1)
-    if (@($supersededTask).Count -gt 0) {
-        $supersededTask[0].status = 'superseded'
-        $supersededTask[0] | Add-Member -NotePropertyName supersession_reason -NotePropertyValue $reason -Force
-        $supersededTask[0] | Add-Member -NotePropertyName superseded_by_task_id -NotePropertyValue $NewTaskId -Force
-        $supersededTask[0] | Add-Member -NotePropertyName superseded_by_request_id -NotePropertyValue $NewRequestId -Force
-        $supersededTask[0] | Add-Member -NotePropertyName superseded_by_objective_id -NotePropertyValue $NewObjectiveId -Force
-        $supersededTask[0] | Add-Member -NotePropertyName superseded_at -NotePropertyValue (Get-UtcNow) -Force
-        $supersededTask[0].updated_at = Get-UtcNow
-        Add-Journal -State $state -Actor 'tod' -ActionName 'supersede_direct_chat_task' -EntityType 'task' -EntityId $existingTaskId -Payload ([pscustomobject]@{
-                reason = $reason
-                superseded_by_task_id = $NewTaskId
-                superseded_by_request_id = $NewRequestId
-                superseded_by_objective_id = $NewObjectiveId
-            })
-        $journalAdded = $true
-    }
+    if (-not (Test-TodEphemeralStateAccess)) {
+        $state = Load-State
+        $journalAdded = $false
+        $supersededTask = @($state.tasks | Where-Object { [string]$_.id -eq $existingTaskId } | Select-Object -First 1)
+        if (@($supersededTask).Count -gt 0) {
+            $supersededTask[0].status = 'superseded'
+            $supersededTask[0] | Add-Member -NotePropertyName supersession_reason -NotePropertyValue $reason -Force
+            $supersededTask[0] | Add-Member -NotePropertyName superseded_by_task_id -NotePropertyValue $NewTaskId -Force
+            $supersededTask[0] | Add-Member -NotePropertyName superseded_by_request_id -NotePropertyValue $NewRequestId -Force
+            $supersededTask[0] | Add-Member -NotePropertyName superseded_by_objective_id -NotePropertyValue $NewObjectiveId -Force
+            $supersededTask[0] | Add-Member -NotePropertyName superseded_at -NotePropertyValue (Get-UtcNow) -Force
+            $supersededTask[0].updated_at = Get-UtcNow
+            Add-Journal -State $state -Actor 'tod' -ActionName 'supersede_direct_chat_task' -EntityType 'task' -EntityId $existingTaskId -Payload ([pscustomobject]@{
+                    reason = $reason
+                    superseded_by_task_id = $NewTaskId
+                    superseded_by_request_id = $NewRequestId
+                    superseded_by_objective_id = $NewObjectiveId
+                })
+            $journalAdded = $true
+        }
 
-    if ($journalAdded) {
-        Save-State -State $state
+        if ($journalAdded) {
+            Save-State -State $state
+        }
     }
 
     return [pscustomobject]@{
@@ -10871,12 +11052,22 @@ function Invoke-ExecuteChatTaskRequest {
         scope = [string]$Scope
         summary = $resolvedDescription
         requested_outcome = if (-not [string]::IsNullOrWhiteSpace($SuccessCriteria)) { [string]$SuccessCriteria } else { $resolvedAcceptance }
+        target_file = if (-not [string]::IsNullOrWhiteSpace($TargetFile)) { ([string]$TargetFile) -replace '[\\/]+', '/' } else { '' }
+        target_files = if (-not [string]::IsNullOrWhiteSpace($TargetFile)) { [string[]]@((([string]$TargetFile) -replace '[\\/]+', '/')) } else { [string[]]@() }
+        bounded_edit_mode = $true
+        validation_only = $false
         metadata_json = [pscustomobject]@{
             objective_title = [string]$objective.title
             task_title = if (-not [string]::IsNullOrWhiteSpace($Title)) { [string]$Title } else { "Chat task $TaskId" }
             task_acceptance_criteria = $resolvedAcceptance
             task_category = if (-not [string]::IsNullOrWhiteSpace($TaskCategory)) { [string]$TaskCategory } else { 'chat_execution' }
             assigned_executor = if (-not [string]::IsNullOrWhiteSpace($AssignedExecutor)) { [string]$AssignedExecutor } else { 'local' }
+            target_file = if (-not [string]::IsNullOrWhiteSpace($TargetFile)) { ([string]$TargetFile) -replace '[\\/]+', '/' } else { '' }
+            target_files = if (-not [string]::IsNullOrWhiteSpace($TargetFile)) { [string[]]@((([string]$TargetFile) -replace '[\\/]+', '/')) } else { [string[]]@() }
+            local_fallback_target_file = if (-not [string]::IsNullOrWhiteSpace($TargetFile)) { ([string]$TargetFile) -replace '[\\/]+', '/' } else { '' }
+            local_fallback_target_files = if (-not [string]::IsNullOrWhiteSpace($TargetFile)) { [string[]]@((([string]$TargetFile) -replace '[\\/]+', '/')) } else { [string[]]@() }
+            bounded_edit_mode = $true
+            validation_only = $false
             source = 'direct_chat'
         }
     }
@@ -10976,8 +11167,17 @@ function Invoke-ExecuteChatTaskRequest {
     [void]$activityEvents.Add($taskCreatedEvent)
 
     $mirror = Sync-CodexHandoffTaskMirror -Request $request
-    $state = Load-State
-    $task = @($state.tasks | Where-Object { [string]$_.id -eq [string]$TaskId } | Select-Object -First 1)
+    $useEphemeralState = Test-TodEphemeralStateAccess
+    if ($useEphemeralState) {
+        $state = Get-TodEphemeralState
+        $taskFromRequest = Convert-BridgeRequestToTodTask -Request $request
+        $state.tasks = @($state.tasks | Where-Object { [string]$_.id -ne [string]$TaskId -and [string]$_.remote_task_id -ne [string]$TaskId }) + @($taskFromRequest)
+        $task = @($taskFromRequest)
+    }
+    else {
+        $state = Load-State
+        $task = @($state.tasks | Where-Object { [string]$_.id -eq [string]$TaskId } | Select-Object -First 1)
+    }
     if (@($task).Count -eq 0) {
         throw "Unable to locate chat task '$TaskId' after mirroring it into local state."
     }
@@ -11012,7 +11212,13 @@ function Invoke-ExecuteChatTaskRequest {
     $request.metadata_json | Add-Member -NotePropertyName materialization -NotePropertyValue $materialization -Force
     $request.metadata_json | Add-Member -NotePropertyName task_source -NotePropertyValue 'direct_chat' -Force
     $task[0].updated_at = Get-UtcNow
-    Save-State -State $state
+    foreach ($requestArtifactPath in @($requestArtifactPaths)) {
+        Write-TodExecutionJsonAtomically -Path ([string]$requestArtifactPath) -Payload $request
+    }
+    Write-TodExecutionJsonAtomically -Path $bridgeRequestPacketPath -Payload $request
+    if (-not $useEphemeralState) {
+        Save-State -State $state
+    }
 
     if ($applyBlockedStateBypass) {
         foreach ($bypassEventType in @('blocked_state_bypass_applied', 'fresh_repair_task_created', 'repair_task_materialization_started', 'stale_blocker_ignored_for_new_objective')) {
@@ -11052,7 +11258,9 @@ function Invoke-ExecuteChatTaskRequest {
                     launched_at = [string]$queuedProcess.launched_at
                     command_preview = [string]$queuedProcess.command_preview
                 }) -Force
-            Save-State -State $state
+            if (-not $useEphemeralState) {
+                Save-State -State $state
+            }
             $queuedEvent = Publish-TodActivityEvent -EventType 'execution_queued' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$task[0].title) -Status 'queued' -Message 'Queued background TOD execution for the chat task.' -Details ([ordered]@{
                     assigned_executor = $resolvedAssignedExecutor
                     package_path = $packagePath
@@ -11090,7 +11298,9 @@ function Invoke-ExecuteChatTaskRequest {
                     error = [string]$_.Exception.Message
                     package_path = $packagePath
                 }) -TaskStatus 'blocked'
-            Save-State -State $state
+            if (-not $useEphemeralState) {
+                Save-State -State $state
+            }
             $blockedEvent = Publish-TodActivityEvent -EventType 'blocked' -ObjectiveId ([string]$objective.id) -TaskId ([string]$TaskId) -RequestId $resolvedRequestId -CorrelationId $resolvedCorrelationId -Title ([string]$task[0].title) -Status 'blocked' -Message 'Background chat task execution could not be queued.' -Details ([ordered]@{
                     reason_code = 'worker_startup_failure'
                     error = [string]$_.Exception.Message
@@ -11705,6 +11915,9 @@ function Get-TodTaskStatusFromState {
     param([AllowEmptyString()][string]$TaskId)
 
     if ([string]::IsNullOrWhiteSpace($TaskId) -or -not (Test-Path -Path $statePath)) {
+        return ''
+    }
+    if (Test-TodEphemeralStateAccess) {
         return ''
     }
 
@@ -13610,7 +13823,7 @@ if (Test-ActionRequiresState -ActionName $Action) {
         $stateAccess.local_cache_enabled = $false
         $state = New-MinimalTodState
     }
-    elseif ([bool]$stateLoadGuard.oversized -and @("run-task", "add-result", "review-task") -contains $Action -and (Use-Remote -Config $config)) {
+    elseif ([bool]$stateLoadGuard.oversized -and (@("execute-chat-task", "run-task") -contains $Action -or ((@("add-result", "review-task") -contains $Action) -and (Use-Remote -Config $config)))) {
         $stateAccess.mode = "remote_ephemeral"
         $stateAccess.local_cache_enabled = $false
         $state = New-MinimalTodState
@@ -14236,7 +14449,14 @@ switch ($Action) {
 
         $task = Get-TaskFromState -State $state -TaskId $TaskId
         if ((-not $task) -and [string]$stateAccess.mode -eq "remote_ephemeral") {
-            $task = Resolve-RemoteExecutionTask -TaskId $TaskId -ObjectiveId $ObjectiveId -Config $config
+            $bridgeHint = Get-ListenerRequestBridgeHint -TaskId $TaskId
+            if ($bridgeHint -and -not [string]::Equals([string]$bridgeHint.tod_action, 'execute-chat-task', [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw (Get-RemoteTaskResolutionFailureMessage -TaskId $TaskId -BridgeHint $bridgeHint)
+            }
+            $task = Resolve-ListenerRequestTask -TaskId $TaskId
+            if (-not $task) {
+                $task = Resolve-RemoteExecutionTask -TaskId $TaskId -ObjectiveId $ObjectiveId -Config $config
+            }
             if ($task) {
                 $state.tasks += $task
             }
@@ -14809,6 +15029,10 @@ switch ($Action) {
         $bridgeObjectiveId = if ($bridgeRequest.PSObject.Properties['objective_id']) { [string]$bridgeRequest.objective_id } else { '' }
         $bridgeTitle = if ($bridgeRequest.PSObject.Properties['title']) { [string]$bridgeRequest.title } else { 'MIM task request ' + [string]$RequestId }
         $bridgeSummary = if ($bridgeRequest.PSObject.Properties['summary']) { [string]$bridgeRequest.summary } elseif ($bridgeRequest.PSObject.Properties['scope']) { [string]$bridgeRequest.scope } else { $bridgeTitle }
+        $bridgeAction = Resolve-BridgeRequestAction -Request $bridgeRequest
+        if (-not (Test-BridgeRequestSupportedAction -ActionName $bridgeAction)) {
+            throw "Bridge request '$RequestId' resolves to TOD action '$bridgeAction', which is not supported by run-bridge-request. Supported bridge actions: get-capabilities, get-execution-readiness, get-state-bus, get-version, ping-mim, safe_home, scan_pose, capture_frame."
+        }
         $bridgeIntakeItem = New-TodIntakeItem -RequestId ([string]$RequestId) -TaskId $bridgeTaskId -ObjectiveId $bridgeObjectiveId -Source 'mim_request' -Priority (Resolve-TodIntakePriority -Source 'mim_request' -TaskCategory '' -Text $bridgeSummary) -InterruptPolicy 'no_interrupt' -RelationToActiveTask 'new' -Title $bridgeTitle -Summary $bridgeSummary -TaskCategory 'mim_request'
         $bridgeArbitration = Register-TodIntakeItem -Item $bridgeIntakeItem
         if ([string]$bridgeArbitration.decision -in @('queue', 'defer', 'reject_duplicate', 'merge_with_active', 'blocked_needs_operator')) {

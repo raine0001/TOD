@@ -6,6 +6,7 @@ import json
 import logging
 import mimetypes
 import os
+import time
 from datetime import datetime, timezone
 from hashlib import sha256
 import ipaddress
@@ -107,6 +108,9 @@ from core.ui_health_service import (
 router = APIRouter(tags=["mim-ui"])
 logger = logging.getLogger(__name__)
 SHARED_RUNTIME_ROOT = Path("runtime/shared")
+MIM_TRAINING_STATUS_ARTIFACT = Path("runtime/reports/mim_evolution_continuous_training.latest.json")
+MIM_TRAINING_SUMMARY_ARTIFACT = Path("runtime/reports/mim_evolution_training_summary.json")
+MIM_TRAINING_CONVERSATION_REPORT_ARTIFACT = Path("runtime/reports/mim_evolution_conversation_report.json")
 runtime_recovery_service = RuntimeRecoveryService(SHARED_RUNTIME_ROOT)
 MIM_PRIMARY_THREAD_KEY = "primary_operator"
 MIM_UI_MEDIA_ROOT = SHARED_RUNTIME_ROOT / "mim_ui_media"
@@ -116,7 +120,7 @@ MIM_UI_ALLOWED_IMAGE_TYPES = {
   "image/webp": ".webp",
 }
 MIM_UI_MAX_IMAGE_BYTES = 8 * 1024 * 1024
-UI_BUILD_ID = "unified-console-recovery-v1"
+UI_BUILD_ID = "unified-console-recovery-v1-state-auth-fix"
 
 MIC_PROMPT_MIN_CONFIDENCE = 0.66
 MIC_PROMPT_MAX_AGE_SECONDS = 25.0
@@ -806,6 +810,10 @@ def _serialize_execution_payload(
 def _serialize_chat_message(message: dict[str, object]) -> dict[str, object]:
   metadata = message.get("metadata_json") if isinstance(message.get("metadata_json"), dict) else {}
   content = str(message.get("content") or "").strip()
+  content_truncated = False
+  if len(content) > 12000:
+    content = f"{content[:12000].rstrip()}\n\n[truncated for console responsiveness]"
+    content_truncated = True
   normalized_type = _infer_mim_ui_message_type(
     message=message,
     metadata=metadata,
@@ -843,7 +851,13 @@ def _serialize_chat_message(message: dict[str, object]) -> dict[str, object]:
     "execution_text": execution_payload["execution_text"],
     "execution_preview": execution_payload["execution_preview"],
     "execution_truncated": bool(execution_payload["execution_truncated"]),
+    "content_truncated": content_truncated,
     "structured_output": execution_payload["structured_output"],
+    "accountability_view": (
+      metadata.get("accountability_view")
+      if isinstance(metadata.get("accountability_view"), dict)
+      else {}
+    ),
     "execution_id": int(metadata.get("execution_id") or 0),
   }
 
@@ -853,7 +867,7 @@ async def _load_mim_ui_chat_thread(*, db: AsyncSession) -> dict[str, object]:
   try:
     session, rows = await list_interface_messages(
       session_key=session_key,
-      limit=200,
+      limit=80,
       db=db,
     )
     session_out = to_interface_session_out(session)
@@ -1022,6 +1036,19 @@ def _build_mim_ui_degraded_state(*, db_error_text: str = "") -> dict[str, object
     operator_reasoning=operator_reasoning,
     generated_at=now.isoformat(),
   )
+  lane_registry = _load_json_artifact(SHARED_RUNTIME_ROOT / "TOD_EXECUTION_LANES.latest.json")
+  lifecycle_state = _load_json_artifact(SHARED_RUNTIME_ROOT / "MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json")
+  training_activity = _mim_training_activity_snapshot()
+  lane_rows = lane_registry.get("lanes") if isinstance(lane_registry.get("lanes"), list) else []
+  active_execution_lane = next(
+    (
+      lane
+      for lane in lane_rows
+      if isinstance(lane, dict)
+      and str(lane.get("lane_id") or "").strip() == str(lane_registry.get("active_lane_id") or "").strip()
+    ),
+    lane_rows[0] if lane_rows and isinstance(lane_rows[0], dict) else {},
+  )
   return {
     "speaking": False,
     "camera_last_label": "",
@@ -1035,11 +1062,16 @@ def _build_mim_ui_degraded_state(*, db_error_text: str = "") -> dict[str, object
       "chat_first_operator_surface",
       "runtime_artifact_fallback",
       "database_connectivity_degraded_mode",
+      "mim_evolution_training_visibility",
     ],
     "inquiry_prompt": "MIM storage is temporarily offline. Use this thread for status, coordination, and bounded next steps while runtime state recovers.",
     "operator_reasoning": operator_reasoning,
     "system_activity": system_activity,
     "tod_truth_reconciliation": system_activity.get("tod_truth_reconciliation") if isinstance(system_activity.get("tod_truth_reconciliation"), dict) else tod_truth_reconciliation,
+    "execution_lanes": lane_registry if isinstance(lane_registry, dict) else {},
+    "active_execution_lane": active_execution_lane if isinstance(active_execution_lane, dict) else {},
+    "operational_lifecycle": lifecycle_state if isinstance(lifecycle_state, dict) else {},
+    "training_activity": training_activity if isinstance(training_activity, dict) else {},
     "console_freshness": system_activity.get("console_freshness") if isinstance(system_activity.get("console_freshness"), dict) else {},
     "last_handoff_id": str(system_activity.get("last_handoff_id") or "").strip(),
     "last_tod_task_id": str(system_activity.get("last_tod_task_id") or "").strip(),
@@ -3351,6 +3383,100 @@ def _load_json_artifact(path: Path) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
+def _artifact_mtime_iso(path: Path) -> str:
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+    except Exception:
+        return ""
+
+
+def _mim_training_activity_snapshot() -> dict:
+    status = _load_json_artifact(MIM_TRAINING_STATUS_ARTIFACT)
+    summary = _load_json_artifact(MIM_TRAINING_SUMMARY_ARTIFACT)
+    conversation_report = _load_json_artifact(MIM_TRAINING_CONVERSATION_REPORT_ARTIFACT)
+    conversation_summary = {}
+    if isinstance(summary.get("conversation"), dict):
+        conversation_summary = summary.get("conversation", {})
+    elif isinstance(conversation_report.get("summary"), dict):
+        conversation_summary = conversation_report.get("summary", {})
+
+    status_value = str(status.get("status") or "").strip().lower()
+    phase = str(status.get("phase") or "").strip().lower()
+    active = status_value == "running" or phase in {"simulation_running", "cycle_preparing", "waiting_for_runtime"}
+    target = int(status.get("target_conversations") or 0)
+    elapsed_seconds = float(status.get("elapsed_seconds") or 0.0)
+    max_runtime_seconds = float(status.get("max_runtime_seconds") or 0.0)
+    score = conversation_summary.get("overall")
+    try:
+        score_value = round(float(score), 4)
+    except (TypeError, ValueError):
+        score_value = None
+    top_failures = []
+    for item in conversation_summary.get("top_failures", []) if isinstance(conversation_summary.get("top_failures"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        tag = str(item.get("tag") or "").strip()
+        count = item.get("count")
+        if tag:
+            top_failures.append({"tag": tag, "count": count})
+    percent_runtime = 0
+    if max_runtime_seconds > 0 and elapsed_seconds >= 0:
+        percent_runtime = max(0, min(100, int(round((elapsed_seconds / max_runtime_seconds) * 100.0))))
+
+    if not status:
+        return {
+            "available": False,
+            "active": False,
+            "status": "unavailable",
+            "phase": "unavailable",
+            "headline": "Training status unavailable",
+            "summary": "No MIM evolution training status artifact is available yet.",
+            "tone": "warn",
+            "artifacts": [],
+        }
+
+    headline = "Training running" if active else "Training idle"
+    cycle = status.get("cycle")
+    target_text = f"{target} conversation run" if target else "conversation run"
+    summary_text = (
+        f"Cycle {cycle}; {target_text}; phase {phase or status_value or 'unknown'}."
+        if cycle
+        else f"{target_text}; phase {phase or status_value or 'unknown'}."
+    )
+    if score_value is not None:
+        summary_text = f"{summary_text} Last completed score {score_value}."
+    if top_failures:
+        summary_text = f"{summary_text} Top issue: {top_failures[0]['tag']}."
+
+    return {
+        "available": True,
+        "active": active,
+        "status": status_value or "unknown",
+        "phase": phase or "unknown",
+        "headline": headline,
+        "summary": summary_text,
+        "tone": "active" if active else "ready",
+        "cycle": cycle,
+        "active_slice_id": str(status.get("active_slice_id") or "").strip(),
+        "target_conversations": target,
+        "elapsed_seconds": elapsed_seconds,
+        "max_runtime_seconds": max_runtime_seconds,
+        "runtime_percent": percent_runtime,
+        "process_id": status.get("process_id"),
+        "updated_at": str(status.get("updated_at") or "").strip(),
+        "last_report_updated_at": _artifact_mtime_iso(MIM_TRAINING_CONVERSATION_REPORT_ARTIFACT),
+        "last_score": score_value,
+        "scenario_count": conversation_summary.get("scenario_count"),
+        "failure_count": conversation_summary.get("failure_count"),
+        "top_failures": top_failures[:6],
+        "artifacts": [
+            str(MIM_TRAINING_STATUS_ARTIFACT),
+            str(MIM_TRAINING_SUMMARY_ARTIFACT),
+            str(MIM_TRAINING_CONVERSATION_REPORT_ARTIFACT),
+        ],
+    }
+
+
 def _resolve_execution_identity(payload: dict) -> dict:
   task_id = str(payload.get("task_id") or payload.get("registry_task_id") or "").strip()
   request_id = str(payload.get("request_id") or payload.get("bridge_request_id") or "").strip()
@@ -3720,21 +3846,93 @@ def _completed_mim_tod_handoff_identity(*payloads: dict) -> dict:
   return {}
 
 
+def _mim_tod_handoff_artifact_identity(payload: dict) -> dict:
+  if not isinstance(payload, dict):
+    return {}
+  current_payload = payload.get("current") if isinstance(payload.get("current"), dict) else {}
+  task_result = current_payload.get("task_result") if isinstance(current_payload.get("task_result"), dict) else {}
+  dispatch_kind = str(payload.get("dispatch_kind") or task_result.get("dispatch_kind") or "").strip().lower()
+  handoff_id = str(payload.get("handoff_id") or task_result.get("handoff_id") or "").strip()
+  task_id = str(payload.get("task_id") or task_result.get("task_id") or "").strip()
+  objective_id = str(payload.get("objective_id") or task_result.get("objective_id") or "").strip()
+  request_id = str(payload.get("request_id") or task_result.get("request_id") or "").strip()
+  looks_like_handoff = bool(
+    dispatch_kind == "mim_tod_executable_handoff"
+    or handoff_id.startswith("mim-tod-handoff-")
+  )
+  if not looks_like_handoff:
+    return {}
+  return {
+    "request_id": request_id,
+    "handoff_id": handoff_id,
+    "task_id": task_id,
+    "objective_id": objective_id,
+    "timestamp": _artifact_latest_timestamp(payload),
+  }
+
+
+def _newer_different_mim_tod_handoff_exists(
+    fast_freshness: dict,
+    *payloads: dict,
+) -> bool:
+  fast_identity = _mim_tod_handoff_artifact_identity(fast_freshness)
+  fast_timestamp = _artifact_latest_timestamp(fast_freshness)
+  if not fast_identity or fast_timestamp is None:
+    return True
+  fast_handoff_id = str(fast_identity.get("handoff_id") or "").strip()
+  fast_task_id = str(fast_identity.get("task_id") or "").strip()
+  fast_request_id = str(fast_identity.get("request_id") or "").strip()
+  for payload in payloads:
+    candidate = _mim_tod_handoff_artifact_identity(payload)
+    candidate_timestamp = candidate.get("timestamp")
+    if not candidate or candidate_timestamp is None or candidate_timestamp <= fast_timestamp:
+      continue
+    candidate_handoff_id = str(candidate.get("handoff_id") or "").strip()
+    candidate_task_id = str(candidate.get("task_id") or "").strip()
+    candidate_request_id = str(candidate.get("request_id") or "").strip()
+    handoff_differs = bool(candidate_handoff_id and fast_handoff_id and candidate_handoff_id != fast_handoff_id)
+    task_differs = bool(candidate_task_id and fast_task_id and candidate_task_id != fast_task_id)
+    request_differs = bool(candidate_request_id and fast_request_id and candidate_request_id != fast_request_id)
+    if handoff_differs or task_differs or request_differs:
+      return True
+  return False
+
+
 def _mim_tod_handoff_console_freshness(*, shared_root: Path = SHARED_RUNTIME_ROOT) -> dict:
+  fast_freshness = _load_json_artifact(shared_root / "MIM_TOD_CONSOLE_FRESHNESS.latest.json")
   durable_handoff = _load_json_artifact(shared_root / "MIM_TOD_HANDOFF_RESULT.latest.json")
   task_result = _load_json_artifact(shared_root / "TOD_MIM_TASK_RESULT.latest.json")
   consume_evidence = _load_json_artifact(shared_root / "MIM_TOD_CONSUME_EVIDENCE.latest.json")
   identity = _completed_mim_tod_handoff_identity(durable_handoff, consume_evidence, task_result)
+  freshness_source = "latest_artifacts" if identity else ""
+  if not identity:
+    fast_identity = _completed_mim_tod_handoff_identity(fast_freshness)
+    if fast_identity and not _newer_different_mim_tod_handoff_exists(
+        fast_freshness,
+        durable_handoff,
+        task_result,
+        consume_evidence,
+    ):
+      identity = fast_identity
+      freshness_source = "consumed_handoff_fast_path"
   result_status = str(identity.get("result_status") or "").strip().lower()
   current_payload = consume_evidence.get("current") if isinstance(consume_evidence.get("current"), dict) else {}
-  consumed_at = str(
-    consume_evidence.get("consumed_at")
-    or consume_evidence.get("generated_at")
-    or durable_handoff.get("consumed_at")
-    or durable_handoff.get("generated_at")
-    or identity.get("consumed_at")
-    or ""
-  ).strip()
+  if freshness_source == "consumed_handoff_fast_path":
+    consumed_at = str(
+      fast_freshness.get("consumed_at")
+      or fast_freshness.get("generated_at")
+      or identity.get("consumed_at")
+      or ""
+    ).strip()
+  else:
+    consumed_at = str(
+      consume_evidence.get("consumed_at")
+      or consume_evidence.get("generated_at")
+      or durable_handoff.get("consumed_at")
+      or durable_handoff.get("generated_at")
+      or identity.get("consumed_at")
+      or ""
+    ).strip()
   reply_status = "done" if result_status in {"succeeded", "done", "complete", "completed", "resolved", "closed", "ok"} else ""
   console_status = "no_handoff_result"
   if identity and reply_status == "done" and consumed_at:
@@ -3759,6 +3957,208 @@ def _mim_tod_handoff_console_freshness(*, shared_root: Path = SHARED_RUNTIME_ROO
     ).strip(),
     "result_reason": str(identity.get("result_reason") or "").strip(),
     "console_freshness_status": console_status,
+    "console_freshness_source": freshness_source,
+  }
+
+
+def _build_mim_tod_console_freshness_state(*, shared_root: Path = SHARED_RUNTIME_ROOT) -> dict:
+  freshness = _mim_tod_handoff_console_freshness(shared_root=shared_root)
+  status = str(freshness.get("console_freshness_status") or "").strip()
+  result_reason = str(freshness.get("result_reason") or "").strip()
+  is_fresh_done = status == "fresh_done" and str(freshness.get("reply_status") or "").strip() == "done"
+  headline = (
+    "DONE - latest TOD handoff result consumed"
+    if is_fresh_done
+    else "MIM TOD handoff freshness pending"
+  )
+  summary = result_reason if result_reason else "No completed MIM to TOD handoff result is currently visible."
+  system_activity = {
+    "status_label": "DONE" if is_fresh_done else "PENDING",
+    "status_code": "done" if is_fresh_done else "pending",
+    "headline": headline,
+    "summary": summary,
+    "console_freshness": freshness,
+    "console_freshness_status": status,
+    "last_handoff_id": str(freshness.get("last_handoff_id") or "").strip(),
+    "last_tod_task_id": str(freshness.get("last_tod_task_id") or "").strip(),
+    "last_tod_result_status": str(freshness.get("last_tod_result_status") or "").strip(),
+    "last_consumed_at": str(freshness.get("last_consumed_at") or "").strip(),
+    "reply_status": str(freshness.get("reply_status") or "").strip(),
+  }
+  return {
+    "runtime_build": globals().get("UI_BUILD_ID", "unified-console-recovery-v1"),
+    "system_activity": system_activity,
+    "console_freshness": freshness,
+    "console_freshness_status": status,
+    "last_handoff_id": system_activity["last_handoff_id"],
+    "last_tod_task_id": system_activity["last_tod_task_id"],
+    "last_tod_result_status": system_activity["last_tod_result_status"],
+    "last_consumed_at": system_activity["last_consumed_at"],
+    "reply_status": system_activity["reply_status"],
+  }
+
+
+def _build_mim_ui_fast_state(*, reason: str = "artifact fast path") -> dict[str, object]:
+  now = datetime.now(timezone.utc)
+  freshness_state = _build_mim_tod_console_freshness_state(shared_root=SHARED_RUNTIME_ROOT)
+  lane_registry = _load_json_artifact(SHARED_RUNTIME_ROOT / "TOD_EXECUTION_LANES.latest.json")
+  lifecycle_state = _load_json_artifact(SHARED_RUNTIME_ROOT / "MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json")
+  training_activity = _mim_training_activity_snapshot()
+  lane_rows = lane_registry.get("lanes") if isinstance(lane_registry.get("lanes"), list) else []
+  active_lane = next(
+    (
+      lane
+      for lane in lane_rows
+      if isinstance(lane, dict)
+      and str(lane.get("lane_id") or "").strip() == str(lane_registry.get("active_lane_id") or "").strip()
+    ),
+    lane_rows[0] if lane_rows and isinstance(lane_rows[0], dict) else {},
+  )
+  freshness = freshness_state.get("console_freshness") if isinstance(freshness_state.get("console_freshness"), dict) else {}
+  system_activity = freshness_state.get("system_activity") if isinstance(freshness_state.get("system_activity"), dict) else {}
+  result_summary = _compact_multiline_text(str(system_activity.get("summary") or ""), max_len=360)
+  if result_summary:
+    system_activity = {**system_activity, "summary": result_summary}
+  status_code = str(system_activity.get("status_code") or "idle").strip().lower()
+  runtime_health = {
+    "status": "healthy" if status_code == "done" else "degraded",
+    "summary": "MIM console is using the fast artifact-backed state path. Full dashboard panels will refresh separately.",
+    "database": {
+      "available": True,
+      "mode": "not_required_for_fast_state",
+      "captured_at": now.isoformat(),
+    },
+  }
+  active_title = result_summary or "Latest MIM/TOD state from bridge artifacts"
+  initiative_driver = {
+    "status": str(system_activity.get("status_label") or "READY").strip(),
+    "summary": active_title,
+    "active_objective": {
+      "id": str(freshness.get("last_tod_objective_id") or "").strip(),
+      "title": active_title,
+      "display_title": active_title,
+    },
+    "active_task": {
+      "id": str(active_lane.get("task_id") or freshness.get("last_tod_task_id") or "").strip(),
+      "title": str(active_lane.get("task_id") or freshness.get("last_tod_task_id") or "No active TOD task").strip(),
+      "display_title": str(active_lane.get("task_id") or freshness.get("last_tod_task_id") or "No active TOD task").strip(),
+    },
+    "next_task": {
+      "id": "",
+      "title": "Use the next bounded objective when ready.",
+      "display_title": "Use the next bounded objective when ready.",
+    },
+    "activity": {
+      "state": status_code,
+      "label": str(system_activity.get("status_label") or "READY").strip(),
+      "summary": active_title,
+      "stale_seconds": 0,
+    },
+    "progress": {
+      "percent": 100 if status_code == "done" else 0,
+      "movement_percent": 100 if status_code == "done" else 0,
+      "completed_task_count": 1 if status_code == "done" else 0,
+      "task_count": 1 if status_code == "done" else 0,
+      "summary": "Latest MIM/TOD handoff state loaded from runtime artifacts.",
+      "movement_summary": "Fast state avoids the heavy dashboard rebuild during initial console load.",
+    },
+    "blockers": [],
+    "program_status": {
+      "summary": "Program queue is deferred from the fast initial state.",
+      "projects": [],
+    },
+    "active_project": {},
+  }
+  operator_reasoning = {
+    "summary": active_title,
+    "runtime_health": runtime_health,
+    "runtime_recovery": runtime_recovery_service.get_summary(),
+    "active_work": {"summary": active_title},
+    "current_recommendation": {
+      "summary": "MIM/TOD bridge truth is visible. Heavy project dashboard data is deferred from the initial state."
+    },
+    "execution_readiness": {
+      "execution_allowed": True,
+      "gate_state": "artifact_fast_path",
+      "summary": active_title,
+    },
+    "system_activity": system_activity,
+  }
+  chat_thread = _append_mim_live_worklog(
+    {
+      "session": {
+        "session_key": _mim_ui_primary_thread_key(),
+        "channel": "chat",
+        "status": "active",
+        "context_json": {"primary_thread": True, "fast_state": True},
+        "metadata_json": {"state_mode": "artifact_fast_path"},
+      },
+      "messages": [],
+      "primary_thread": _mim_ui_primary_thread_key(),
+    },
+    system_activity=system_activity,
+    initiative_driver=initiative_driver,
+    operator_reasoning=operator_reasoning,
+    generated_at=now.isoformat(),
+  )
+  return {
+    "speaking": False,
+    "camera_last_label": "",
+    "camera_last_confidence": 0.0,
+    "camera_scene_summary": "",
+    "camera_source_count": 0,
+    "voice_listen_hint": "Voice can stay local while fast state is active.",
+    "conversation_policy_profile": "tightened_v1",
+    "runtime_build": UI_BUILD_ID,
+    "state_mode": "artifact_fast_path",
+    "state_mode_reason": reason,
+    "runtime_features": [
+      "artifact_fast_state",
+      "mim_tod_freshness_visibility",
+      "deferred_heavy_dashboard",
+      "mim_evolution_training_visibility",
+    ],
+    "inquiry_prompt": "",
+    "operator_reasoning": operator_reasoning,
+    "system_activity": system_activity,
+    "tod_truth_reconciliation": {},
+    "execution_lanes": lane_registry if isinstance(lane_registry, dict) else {},
+    "active_execution_lane": active_lane if isinstance(active_lane, dict) else {},
+    "operational_lifecycle": lifecycle_state if isinstance(lifecycle_state, dict) else {},
+    "training_activity": training_activity if isinstance(training_activity, dict) else {},
+    "console_freshness": freshness,
+    "console_freshness_status": str(freshness_state.get("console_freshness_status") or "").strip(),
+    "last_handoff_id": str(freshness_state.get("last_handoff_id") or "").strip(),
+    "last_tod_task_id": str(freshness_state.get("last_tod_task_id") or "").strip(),
+    "last_tod_result_status": str(freshness_state.get("last_tod_result_status") or "").strip(),
+    "last_consumed_at": str(freshness_state.get("last_consumed_at") or "").strip(),
+    "reply_status": str(freshness_state.get("reply_status") or "").strip(),
+    "session_message_id": "",
+    "initiative_driver": initiative_driver,
+    "collaboration_progress": {},
+    "dispatch_telemetry": {},
+    "mim_arm_dispatch_telemetry": {},
+    "primitive_request": load_authoritative_request_status(shared_root=SHARED_RUNTIME_ROOT),
+    "chat_thread": chat_thread,
+    "frontend_media": _frontend_media_snapshot(now),
+    "conversation_context": {
+      "environment_now": "Fast artifact-backed console state is active.",
+      "program_status_summary": "Program queue deferred from initial state.",
+      "program_status": {},
+      "active_goal": active_title,
+      "initiative_active_objective": active_title,
+      "initiative_active_task": str(freshness.get("last_tod_task_id") or "").strip(),
+      "initiative_next_task": "Use the next bounded objective when ready.",
+      "initiative_activity_state": status_code,
+      "initiative_activity_label": str(system_activity.get("status_label") or "").strip(),
+      "initiative_activity_summary": active_title,
+      "operator_reasoning_summary": active_title,
+      "runtime_health_summary": runtime_health["summary"],
+      "recent_user_input": "",
+    },
+    "latest_output_action_id": 0,
+    "latest_output_text": active_title,
+    "latest_output_allowed": False,
   }
 
 
@@ -5191,6 +5591,9 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 <head>
   <meta charset=\"utf-8\" />
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <meta http-equiv=\"Cache-Control\" content=\"no-store, no-cache, must-revalidate, max-age=0\" />
+  <meta http-equiv=\"Pragma\" content=\"no-cache\" />
+  <meta http-equiv=\"Expires\" content=\"0\" />
   <title>MIM</title>
   <style>
     :root {
@@ -5722,6 +6125,75 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       overflow-wrap: anywhere;
       word-break: break-word;
     }
+    .system-training-inline {
+      display: none;
+      width: fit-content;
+      max-width: 100%;
+      border: 1px solid rgba(88, 214, 255, 0.28);
+      border-radius: 999px;
+      background: rgba(88, 214, 255, 0.10);
+      color: #c9f4ff;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+      padding: 4px 9px;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .system-training-inline[data-tone="active"] {
+      display: inline-block;
+      border-color: rgba(53, 245, 185, 0.42);
+      background: rgba(53, 245, 185, 0.12);
+      color: #d9fff5;
+    }
+    .system-training-inline[data-tone="ready"] {
+      display: inline-block;
+      border-color: rgba(88, 214, 255, 0.34);
+    }
+    .operator-report-view {
+      display: grid;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .operator-report-lead {
+      color: #f3fbff;
+      font-weight: 650;
+    }
+    .operator-report-section {
+      display: grid;
+      gap: 4px;
+      padding-top: 2px;
+    }
+    .operator-report-section-title {
+      color: #7ee3ff;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    .operator-report-line {
+      color: var(--muted);
+    }
+    .operator-report-line.subtle {
+      color: rgba(178, 222, 241, 0.72);
+      font-style: italic;
+    }
+    .operator-report-more {
+      border-top: 1px solid rgba(93, 202, 255, 0.16);
+      margin-top: 2px;
+      padding-top: 6px;
+    }
+    .operator-report-more summary {
+      color: #7ee3ff;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0;
+    }
     .system-activity-banner-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -5731,6 +6203,65 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 12px;
+    }
+    .lane-visibility-panel {
+      display: grid;
+      gap: 12px;
+      border-top: 1px solid rgba(93, 202, 255, 0.2);
+      padding-top: 12px;
+    }
+    .lane-visibility-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      min-width: 0;
+    }
+    .lane-visibility-head strong {
+      color: #f3fbff;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+    .lane-visibility-summary {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .lane-visibility-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .lane-evidence-list {
+      display: grid;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .lane-evidence-item {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .lifecycle-state-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .lifecycle-state-pill {
+      border: 1px solid rgba(93, 202, 255, 0.28);
+      border-radius: 999px;
+      padding: 4px 8px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.2;
+      background: rgba(8, 27, 39, 0.72);
+    }
+    .lifecycle-state-pill.active {
+      border-color: rgba(99, 255, 190, 0.7);
+      color: #b8ffe2;
+      background: rgba(36, 121, 91, 0.28);
     }
     .voice-primary-row,
     .composer-meta,
@@ -6997,6 +7528,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
           <div class="surface-kicker">Agent Communication Status</div>
           <strong id="systemActivityHeadlineText">Loading communication timeline…</strong>
           <div id="systemActivitySummaryText" class="system-activity-banner-summary">Checking request, acknowledgement, execution, and result consumption across TOD and MIM…</div>
+          <div id="systemTrainingInlineText" class="system-training-inline" data-tone="hidden">Training status loading…</div>
         </div>
         <div id="systemActivityBadge" class="status-chip subtle" data-tone="warn">Syncing…</div>
       </div>
@@ -7080,6 +7612,97 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
           <span>Result Consumption</span>
           <strong id="relationFeedbackText">Loading…</strong>
           <div id="relationFeedbackDetailText" class="status-subtext">Checking last TOD feedback or completion…</div>
+        </div>
+      </div>
+      <div class="lane-visibility-panel" aria-label="MIM TOD execution lane visibility">
+        <div class="lane-visibility-head">
+          <div>
+            <div class="surface-kicker">Execution Lanes</div>
+            <strong id="laneVisibilityHeadlineText">Loading lane registry…</strong>
+            <div id="laneVisibilitySummaryText" class="lane-visibility-summary">Checking active, historical, and disabled background lanes…</div>
+          </div>
+          <div id="laneVisibilityBadge" class="status-chip subtle" data-tone="warn">Lane sync…</div>
+        </div>
+        <div class="lane-visibility-grid">
+          <div class="status-tile">
+            <span>Active Lane</span>
+            <strong id="activeLaneText">Loading…</strong>
+            <div id="activeLaneDetailText" class="status-subtext">Checking lane owner and task identity…</div>
+          </div>
+          <div class="status-tile">
+            <span>Historical / Terminal</span>
+            <strong id="terminalLaneText">Loading…</strong>
+            <div id="terminalLaneDetailText" class="status-subtext">Checking completed, suspended, or terminal lanes…</div>
+          </div>
+          <div class="status-tile">
+            <span>Background Execution</span>
+            <strong id="backgroundLaneText">Disabled</strong>
+            <div id="backgroundLaneDetailText" class="status-subtext">Parallel/background execution remains off.</div>
+          </div>
+        </div>
+        <div class="activity-truth-note">
+          <strong>Lane Evidence</strong>
+          <div id="laneEvidenceList" class="lane-evidence-list">
+            <div class="lane-evidence-item">Checking lane evidence files…</div>
+          </div>
+        </div>
+      </div>
+      <div class="lane-visibility-panel" aria-label="MIM operational reasoning lifecycle">
+        <div class="lane-visibility-head">
+          <div>
+            <div class="surface-kicker">Operational Lifecycle</div>
+            <strong id="lifecycleHeadlineText">Loading lifecycle state…</strong>
+            <div id="lifecycleSummaryText" class="lane-visibility-summary">Checking understanding, continuity, execution, proof, satisfaction, and finish…</div>
+          </div>
+          <div id="lifecycleBadge" class="status-chip subtle" data-tone="warn">Lifecycle sync…</div>
+        </div>
+        <div id="lifecycleStateList" class="lifecycle-state-list" aria-label="Lifecycle stages"></div>
+        <div class="lane-visibility-grid">
+          <div class="status-tile">
+            <span>Lifecycle State</span>
+            <strong id="lifecycleStateText">Loading…</strong>
+            <div id="lifecycleStateDetailText" class="status-subtext">Checking current lifecycle phase…</div>
+          </div>
+          <div class="status-tile">
+            <span>Operator Satisfaction</span>
+            <strong id="lifecycleSatisfactionText">Loading…</strong>
+            <div id="lifecycleSatisfactionDetailText" class="status-subtext">Checking requested versus delivered outputs…</div>
+          </div>
+          <div class="status-tile">
+            <span>Replan Required</span>
+            <strong id="lifecycleReplanText">Loading…</strong>
+            <div id="lifecycleReplanDetailText" class="status-subtext">Checking missing outputs and next action…</div>
+          </div>
+        </div>
+      </div>
+      <div class="lane-visibility-panel" aria-label="MIM natural-language training activity">
+        <div class="lane-visibility-head">
+          <div>
+            <div class="surface-kicker">Training / Simulation</div>
+            <strong id="trainingActivityHeadlineText">Checking training activity...</strong>
+            <div id="trainingActivitySummaryText" class="lane-visibility-summary">Checking MIM evolution simulations and latest score...</div>
+          </div>
+          <div id="trainingActivityBadge" class="status-chip subtle" data-tone="warn">Training sync...</div>
+        </div>
+        <div class="progress-meter activity-truth-meter" aria-hidden="true">
+          <div id="trainingActivityFill" class="progress-meter-fill"></div>
+        </div>
+        <div class="lane-visibility-grid">
+          <div class="status-tile">
+            <span>Run State</span>
+            <strong id="trainingRunStateText">Loading...</strong>
+            <div id="trainingRunStateDetailText" class="status-subtext">Checking active cycle and process owner...</div>
+          </div>
+          <div class="status-tile">
+            <span>Last Score</span>
+            <strong id="trainingScoreText">Loading...</strong>
+            <div id="trainingScoreDetailText" class="status-subtext">Checking latest completed simulation report...</div>
+          </div>
+          <div class="status-tile">
+            <span>Top Issues</span>
+            <strong id="trainingIssuesText">Loading...</strong>
+            <div id="trainingIssuesDetailText" class="status-subtext">Checking evaluator failure tags...</div>
+          </div>
         </div>
       </div>
       <div class="activity-truth-note">
@@ -7394,6 +8017,26 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     const relationHandoffDetailText = document.getElementById('relationHandoffDetailText');
     const relationFeedbackText = document.getElementById('relationFeedbackText');
     const relationFeedbackDetailText = document.getElementById('relationFeedbackDetailText');
+    const laneVisibilityHeadlineText = document.getElementById('laneVisibilityHeadlineText');
+    const laneVisibilitySummaryText = document.getElementById('laneVisibilitySummaryText');
+    const laneVisibilityBadge = document.getElementById('laneVisibilityBadge');
+    const activeLaneText = document.getElementById('activeLaneText');
+    const activeLaneDetailText = document.getElementById('activeLaneDetailText');
+    const terminalLaneText = document.getElementById('terminalLaneText');
+    const terminalLaneDetailText = document.getElementById('terminalLaneDetailText');
+    const backgroundLaneText = document.getElementById('backgroundLaneText');
+    const backgroundLaneDetailText = document.getElementById('backgroundLaneDetailText');
+    const laneEvidenceList = document.getElementById('laneEvidenceList');
+    const lifecycleHeadlineText = document.getElementById('lifecycleHeadlineText');
+    const lifecycleSummaryText = document.getElementById('lifecycleSummaryText');
+    const lifecycleBadge = document.getElementById('lifecycleBadge');
+    const lifecycleStateList = document.getElementById('lifecycleStateList');
+    const lifecycleStateText = document.getElementById('lifecycleStateText');
+    const lifecycleStateDetailText = document.getElementById('lifecycleStateDetailText');
+    const lifecycleSatisfactionText = document.getElementById('lifecycleSatisfactionText');
+    const lifecycleSatisfactionDetailText = document.getElementById('lifecycleSatisfactionDetailText');
+    const lifecycleReplanText = document.getElementById('lifecycleReplanText');
+    const lifecycleReplanDetailText = document.getElementById('lifecycleReplanDetailText');
     const systemStallReasonText = document.getElementById('systemStallReasonText');
     const mimWorkStateCard = document.getElementById('mimWorkStateCard');
     const mimWorkStateText = document.getElementById('mimWorkStateText');
@@ -7547,6 +8190,131 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       return 'warn';
     }
 
+    function normalizeOperatorReportText(text) {
+      const headingPattern = [
+        'Evidence used',
+        'Proposed lane architecture',
+        'Risks and safeguards',
+        'State ownership model',
+        'Reconciliation strategy',
+        'Lane visibility strategy',
+        'Suggested phased implementation order',
+        'Validation strategy',
+        'Examples of safe future use cases',
+        'What not to do yet',
+        'Files changed',
+        'Status',
+        'What happened',
+        'What changed',
+        'Evidence',
+        'Operator-facing report',
+        'Top remaining weaknesses',
+        'Recommended priority order',
+        'Why each priority matters',
+        'Suggested objectives/tasks',
+        'Dependencies between tasks',
+        'Tasks that unlock the most capability',
+        'Tasks that reduce the most risk',
+        'UI-only versus architecture-level',
+        'Tasks requiring careful validation',
+        'What should NOT be worked on yet',
+        'Complexity / confidence / operator impact',
+        'Suggested validation strategy',
+      ].join('|');
+      return safeText(text)
+        .replace(new RegExp(`\\s+(\\d+\\.\\s*(?:${headingPattern}):)`, 'gi'), '\\n$1')
+        .replace(new RegExp(`\\s+((?:${headingPattern}):)`, 'gi'), '\\n$1')
+        .replace(/\s+(-\s+(?:Risk:|Safeguard:|Phase\s+\d+:|active lane:|background lane:|monitoring lane:|recovery lane:|suspended lane:))/gi, '\\n$1')
+        .replace(/\s+(-\s+)/g, '\\n$1')
+        .trim();
+    }
+
+    function isOperatorReportHeading(line) {
+      return /^(?:\d+\.\s*)?(Evidence used|Proposed lane architecture|Risks and safeguards|State ownership model|Reconciliation strategy|Lane visibility strategy|Suggested phased implementation order|Validation strategy|Examples of safe future use cases|What not to do yet|Files changed|Status|What happened|What changed|Evidence|Operator-facing report|Top remaining weaknesses|Recommended priority order|Why each priority matters|Suggested objectives\/tasks|Dependencies between tasks|Tasks that unlock the most capability|Tasks that reduce the most risk|UI-only versus architecture-level|Tasks requiring careful validation|What should NOT be worked on yet|Complexity \/ confidence \/ operator impact|Suggested validation strategy):$/i.test(line);
+    }
+
+    function buildOperatorReportView(text, options = {}) {
+      const normalized = normalizeOperatorReportText(text);
+      if (!normalized || !/(What happened:|What changed:|Files changed:|Evidence:|Status:|Operator-facing report:|Proposed lane architecture:|State ownership model:|Reconciliation strategy:|Lane visibility strategy:|Suggested phased implementation order:|Validation strategy:|Examples of safe future use cases:|Top remaining weaknesses:|Recommended priority order:)/i.test(normalized)) {
+        return null;
+      }
+      const wrap = document.createElement('div');
+      wrap.className = 'operator-report-view';
+      const compact = Boolean(options.compact);
+      const sections = [];
+      let leadText = '';
+      let currentSection = null;
+      normalized.split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean).forEach((line, index) => {
+        const isHeading = isOperatorReportHeading(line);
+        if (index === 0 && !isHeading) {
+          leadText = line;
+          return;
+        }
+        if (isHeading) {
+          currentSection = { title: line.replace(/:$/, '').replace(/^\d+\.\s*/, ''), lines: [] };
+          sections.push(currentSection);
+          return;
+        }
+        if (!currentSection) {
+          currentSection = { title: 'Summary', lines: [] };
+          sections.push(currentSection);
+        }
+        currentSection.lines.push(line);
+      });
+      if (leadText) {
+        const lead = document.createElement('div');
+        lead.className = 'operator-report-lead';
+        lead.textContent = leadText;
+        wrap.appendChild(lead);
+      }
+      const visibleCount = compact ? Math.min(4, sections.length) : sections.length;
+      const appendSection = (section, parent) => {
+        const sectionEl = document.createElement('div');
+        sectionEl.className = 'operator-report-section';
+        const title = document.createElement('div');
+        title.className = 'operator-report-section-title';
+        title.textContent = section.title;
+        sectionEl.appendChild(title);
+        section.lines.slice(0, compact ? 6 : 40).forEach((line) => {
+          const row = document.createElement('div');
+          row.className = 'operator-report-line';
+          row.textContent = line;
+          sectionEl.appendChild(row);
+        });
+        if (compact && section.lines.length > 6) {
+          const row = document.createElement('div');
+          row.className = 'operator-report-line subtle';
+          row.textContent = `+ ${section.lines.length - 6} more item${section.lines.length - 6 === 1 ? '' : 's'}`;
+          sectionEl.appendChild(row);
+        }
+        parent.appendChild(sectionEl);
+      };
+      sections.slice(0, visibleCount).forEach((section) => appendSection(section, wrap));
+      if (compact && sections.length > visibleCount) {
+        const details = document.createElement('details');
+        details.className = 'operator-report-more';
+        const summary = document.createElement('summary');
+        summary.textContent = `Show full report (${sections.length - visibleCount} more section${sections.length - visibleCount === 1 ? '' : 's'})`;
+        details.appendChild(summary);
+        sections.slice(visibleCount).forEach((section) => appendSection(section, details));
+        wrap.appendChild(details);
+      }
+      return wrap;
+    }
+
+    function setFormattedReportOrText(element, text, fallback = '', options = {}) {
+      if (!element) return;
+      const value = safeText(text, fallback);
+      element.innerHTML = '';
+      const report = buildOperatorReportView(value, options);
+      if (report) {
+        element.appendChild(report);
+      } else {
+        element.textContent = value;
+      }
+      element.title = value;
+    }
+
     function renderSystemActivityTruth(systemActivity = {}) {
       const state = safeText(systemActivity.status_code || systemActivity.state, 'idle').toLowerCase();
       const headline = safeText(systemActivity.headline || systemActivity.label, 'IDLE - healthy, no live task right now');
@@ -7582,8 +8350,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         systemActivityBadge.setAttribute('data-tone', tone);
       }
       if (systemActivitySummaryText) {
-        systemActivitySummaryText.textContent = summary;
-        systemActivitySummaryText.title = summary;
+        setFormattedReportOrText(systemActivitySummaryText, summary, '', { compact: true });
       }
       if (systemActivityFill) {
         systemActivityFill.style.width = `${meterPercent}%`;
@@ -7608,14 +8375,12 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 
       setTextWithTitle(systemExecutionAllowedText, executionAllowedLabel, 'No');
       if (systemExecutionAllowedDetailText) {
-        systemExecutionAllowedDetailText.textContent = executionAllowedDetail;
-        systemExecutionAllowedDetailText.title = executionAllowedDetail;
+        setFormattedReportOrText(systemExecutionAllowedDetailText, executionAllowedDetail);
       }
 
       setTextWithTitle(systemStalenessText, stalenessLabel, 'FRESH');
       if (systemStalenessDetailText) {
-        systemStalenessDetailText.textContent = stalenessDetail;
-        systemStalenessDetailText.title = stalenessDetail;
+        setFormattedReportOrText(systemStalenessDetailText, stalenessDetail);
       }
 
       setTextWithTitle(relationObjectiveText, relationObjective, 'Aligned');
@@ -7691,8 +8456,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       if (mimWorkStateIndicator) mimWorkStateIndicator.setAttribute('data-tone', tone);
       setTextWithTitle(mimWorkStateText, mimStateLabel, 'Idle');
       if (mimWorkStateDetailText) {
-        mimWorkStateDetailText.textContent = mimStateDetail;
-        mimWorkStateDetailText.title = mimStateDetail;
+        setFormattedReportOrText(mimWorkStateDetailText, mimStateDetail, '', { compact: true });
       }
 
       const coordinationTone = relation.summary
@@ -7704,15 +8468,245 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       setTextWithTitle(coordinationStateText, `${flow} · ${bridgeHealth}`, 'Checking…');
       if (coordinationStateDetailText) {
         const detail = safeText(relation.summary, 'Watching MIM to TOD coordination and bridge health.');
-        coordinationStateDetailText.textContent = detail;
-        coordinationStateDetailText.title = detail;
+        setFormattedReportOrText(coordinationStateDetailText, detail, '', { compact: true });
       }
 
       if (operatorGuidanceCard) operatorGuidanceCard.setAttribute('data-tone', guidanceTone);
       setTextWithTitle(operatorGuidanceText, guidanceTitle, 'Checking…');
       if (operatorGuidanceDetailText) {
-        operatorGuidanceDetailText.textContent = guidanceDetail;
-        operatorGuidanceDetailText.title = guidanceDetail;
+        setFormattedReportOrText(operatorGuidanceDetailText, guidanceDetail, '', { compact: true });
+      }
+    }
+
+    function renderLaneVisibility(state = {}) {
+      const registry = state && typeof state.execution_lanes === 'object' ? state.execution_lanes : {};
+      const lanes = Array.isArray(registry.lanes) ? registry.lanes.filter((lane) => lane && typeof lane === 'object') : [];
+      const activeLaneId = safeText(registry.active_lane_id || registry.activeLaneId);
+      const activeLane = (state && typeof state.active_execution_lane === 'object' && Object.keys(state.active_execution_lane).length)
+        ? state.active_execution_lane
+        : lanes.find((lane) => safeText(lane.lane_id) === activeLaneId)
+          || lanes.find((lane) => safeText(lane.lane_type).toLowerCase() === 'active')
+          || {};
+      const activeId = safeText(activeLane.lane_id || activeLaneId, 'No active lane recorded');
+      const owner = safeText(activeLane.owner, 'unknown owner');
+      const laneType = safeText(activeLane.lane_type, 'active');
+      const status = safeText(activeLane.status, 'unknown');
+      const taskId = safeText(activeLane.task_id, 'no task_id');
+      const objectiveId = safeText(activeLane.objective_id, 'no objective_id');
+      const blocker = safeText(activeLane.blocked_reason, 'No blocker recorded.');
+      const backgroundEnabled = Boolean(registry.background_execution_enabled || registry.parallel_execution_enabled);
+      const terminalLanes = lanes.filter((lane) => {
+        const id = safeText(lane.lane_id);
+        const type = safeText(lane.lane_type).toLowerCase();
+        const laneStatus = safeText(lane.status).toLowerCase();
+        return id && id !== activeId && (
+          type === 'suspended'
+          || type === 'historical'
+          || type === 'terminal'
+          || ['completed', 'complete', 'failed', 'cancelled', 'rejected', 'superseded', 'suspended'].includes(laneStatus)
+        );
+      });
+      const evidence = Array.isArray(activeLane.evidence_files)
+        ? activeLane.evidence_files.map((item) => safeText(item)).filter(Boolean)
+        : [];
+      const changedFiles = Array.isArray(activeLane.changed_files)
+        ? activeLane.changed_files.map((item) => safeText(item)).filter(Boolean)
+        : [];
+      const summary = lanes.length
+        ? `Registry loaded with ${lanes.length} lane${lanes.length === 1 ? '' : 's'}; active lane identity is ${activeId}.`
+        : 'Lane registry is not published yet.';
+
+      setTextWithTitle(laneVisibilityHeadlineText, lanes.length ? 'Lane registry visible' : 'Lane registry unavailable', 'Lane registry unavailable');
+      if (laneVisibilitySummaryText) {
+        laneVisibilitySummaryText.textContent = summary;
+        laneVisibilitySummaryText.title = summary;
+      }
+      if (laneVisibilityBadge) {
+        laneVisibilityBadge.textContent = backgroundEnabled ? 'Background enabled' : 'Background disabled';
+        laneVisibilityBadge.setAttribute('data-tone', backgroundEnabled ? 'warn' : 'ready');
+        laneVisibilityBadge.title = backgroundEnabled
+          ? 'Background or parallel execution is enabled in the registry.'
+          : 'Background and parallel execution remain disabled.';
+      }
+
+      setTextWithTitle(activeLaneText, activeId, 'No active lane recorded');
+      if (activeLaneDetailText) {
+        const detail = `${owner} owns ${taskId}; objective ${objectiveId}; type ${laneType}; status ${status}; blocker: ${blocker}`;
+        activeLaneDetailText.textContent = detail;
+        activeLaneDetailText.title = detail;
+      }
+      setTextWithTitle(terminalLaneText, `${terminalLanes.length} lane${terminalLanes.length === 1 ? '' : 's'}`, '0 lanes');
+      if (terminalLaneDetailText) {
+        const detail = terminalLanes.length
+          ? terminalLanes.slice(0, 3).map((lane) => `${safeText(lane.lane_id, 'lane')} (${safeText(lane.status, safeText(lane.lane_type, 'terminal'))})`).join(', ')
+          : 'No terminal or historical lanes are currently published.';
+        terminalLaneDetailText.textContent = detail;
+        terminalLaneDetailText.title = detail;
+      }
+      setTextWithTitle(backgroundLaneText, backgroundEnabled ? 'Enabled' : 'Disabled', 'Disabled');
+      if (backgroundLaneDetailText) {
+        const detail = backgroundEnabled
+          ? 'Registry indicates background or parallel execution is enabled. Verify this before continuing.'
+          : 'Parallel/background execution remains disabled; lane visibility is read-only.';
+        backgroundLaneDetailText.textContent = detail;
+        backgroundLaneDetailText.title = detail;
+      }
+      if (laneEvidenceList) {
+        laneEvidenceList.innerHTML = '';
+        const items = [...evidence, ...changedFiles].filter((item, index, array) => item && array.indexOf(item) === index);
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'lane-evidence-item';
+          empty.textContent = 'No lane evidence files are published for the active lane yet.';
+          laneEvidenceList.appendChild(empty);
+        } else {
+          items.slice(0, 6).forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'lane-evidence-item';
+            row.textContent = `- ${item}`;
+            row.title = item;
+            laneEvidenceList.appendChild(row);
+          });
+        }
+      }
+    }
+
+    function renderOperationalLifecycle(state = {}) {
+      const lifecycle = state && typeof state.operational_lifecycle === 'object' ? state.operational_lifecycle : {};
+      const objectiveId = safeText(lifecycle.objective_id, 'No lifecycle objective published');
+      const currentState = safeText(
+        (lifecycle.state_contract && lifecycle.state_contract.lifecycle_state) || lifecycle.lifecycle_state,
+        objectiveId === 'No lifecycle objective published' ? 'unavailable' : 'interpreted',
+      );
+      const process = Array.isArray(lifecycle.process)
+        ? lifecycle.process.map((item) => safeText(item)).filter(Boolean)
+        : ['interpret', 'continue', 'execute', 'validate', 'resume', 'revisit', 'reconcile', 'finish'];
+      const contract = lifecycle.state_contract && typeof lifecycle.state_contract === 'object' ? lifecycle.state_contract : {};
+      const satisfaction = safeText(
+        contract.operator_satisfaction_status || lifecycle.operator_satisfaction_status,
+        objectiveId === 'No lifecycle objective published' ? 'unavailable' : 'not_evaluated',
+      );
+      const missingOutputs = Array.isArray(contract.missing_outputs) ? contract.missing_outputs.filter(Boolean) : [];
+      const deliveredOutputs = Array.isArray(contract.delivered_outputs) ? contract.delivered_outputs.filter(Boolean) : [];
+      const replanRequired = Boolean(contract.replan_required ?? lifecycle.replan_required ?? (satisfaction !== 'satisfied'));
+      const reason = safeText(contract.reason || lifecycle.reason, 'Lifecycle state is available for operator status reporting.');
+      const headline = objectiveId === 'No lifecycle objective published'
+        ? 'Lifecycle not published'
+        : objectiveId;
+      const summary = objectiveId === 'No lifecycle objective published'
+        ? 'No operational lifecycle artifact is available yet.'
+        : `Lifecycle ${currentState}; satisfaction ${satisfaction}; ${missingOutputs.length} missing output${missingOutputs.length === 1 ? '' : 's'}.`;
+
+      setTextWithTitle(lifecycleHeadlineText, headline, 'Lifecycle not published');
+      if (lifecycleSummaryText) {
+        lifecycleSummaryText.textContent = summary;
+        lifecycleSummaryText.title = summary;
+      }
+      if (lifecycleBadge) {
+        lifecycleBadge.textContent = satisfaction === 'satisfied' ? 'Satisfied' : replanRequired ? 'Replan needed' : 'Tracking';
+        lifecycleBadge.setAttribute('data-tone', satisfaction === 'satisfied' ? 'ready' : replanRequired ? 'warn' : 'active');
+        lifecycleBadge.title = summary;
+      }
+      if (lifecycleStateList) {
+        lifecycleStateList.innerHTML = '';
+        process.forEach((step) => {
+          const pill = document.createElement('span');
+          pill.className = `lifecycle-state-pill${step === currentState ? ' active' : ''}`;
+          pill.textContent = step;
+          pill.title = step === currentState ? 'Current lifecycle state' : 'Lifecycle stage';
+          lifecycleStateList.appendChild(pill);
+        });
+      }
+      setTextWithTitle(lifecycleStateText, currentState, 'unavailable');
+      if (lifecycleStateDetailText) {
+        lifecycleStateDetailText.textContent = reason;
+        lifecycleStateDetailText.title = reason;
+      }
+      setTextWithTitle(lifecycleSatisfactionText, satisfaction, 'not_evaluated');
+      if (lifecycleSatisfactionDetailText) {
+        const detail = deliveredOutputs.length || missingOutputs.length
+          ? `delivered=${deliveredOutputs.length}; missing=${missingOutputs.length}`
+          : 'No delivered/missing output comparison has been recorded yet.';
+        lifecycleSatisfactionDetailText.textContent = detail;
+        lifecycleSatisfactionDetailText.title = detail;
+      }
+      setTextWithTitle(lifecycleReplanText, replanRequired ? 'Yes' : 'No', 'Yes');
+      if (lifecycleReplanDetailText) {
+        const detail = missingOutputs.length
+          ? `Missing: ${missingOutputs.slice(0, 4).join(', ')}`
+          : replanRequired
+            ? 'Replan is required until proof and operator satisfaction are recorded.'
+            : 'No replan required by the current lifecycle contract.';
+        lifecycleReplanDetailText.textContent = detail;
+        lifecycleReplanDetailText.title = detail;
+      }
+    }
+
+    function renderTrainingActivity(state = {}) {
+      const training = state && typeof state.training_activity === 'object' ? state.training_activity : {};
+      const available = Boolean(training.available);
+      const active = Boolean(training.active);
+      const headline = safeText(training.headline, available ? 'Training idle' : 'Training status unavailable');
+      const summary = safeText(training.summary, available ? 'Training status loaded.' : 'No training status artifact is available yet.');
+      const tone = safeText(training.tone, active ? 'active' : available ? 'ready' : 'warn');
+      const status = safeText(training.status, 'unknown');
+      const phase = safeText(training.phase, 'unknown');
+      const cycle = safeText(training.cycle, 'unknown');
+      const target = Number(training.target_conversations || 0);
+      const elapsed = Number(training.elapsed_seconds || 0);
+      const maxRuntime = Number(training.max_runtime_seconds || 0);
+      const runtimePercent = Math.max(0, Math.min(100, Number(training.runtime_percent || 0)));
+      const score = training.last_score === null || training.last_score === undefined ? '' : safeText(training.last_score);
+      const failureCount = safeText(training.failure_count, 'unknown');
+      const scenarioCount = safeText(training.scenario_count, 'unknown');
+      const topFailures = Array.isArray(training.top_failures) ? training.top_failures.filter((item) => item && typeof item === 'object') : [];
+      const topIssueText = topFailures.length
+        ? topFailures.slice(0, 3).map((item) => `${safeText(item.tag, 'issue')} (${safeText(item.count, '0')})`).join(', ')
+        : 'No top issues reported yet.';
+
+      setTextWithTitle(trainingActivityHeadlineText, headline, 'Training status unavailable');
+      if (trainingActivitySummaryText) {
+        trainingActivitySummaryText.textContent = summary;
+        trainingActivitySummaryText.title = summary;
+      }
+      if (trainingActivityBadge) {
+        trainingActivityBadge.textContent = active ? 'Training running' : available ? 'Training idle' : 'No telemetry';
+        trainingActivityBadge.setAttribute('data-tone', tone);
+        trainingActivityBadge.title = summary;
+      }
+      if (systemTrainingInlineText) {
+        const inlineText = active
+          ? `Training running: ${safeText(training.target_conversations, 'unknown')} conversations; score ${score || 'pending'}; top issue ${topFailures.length ? safeText(topFailures[0].tag, 'unknown') : 'pending'}.`
+          : available
+            ? `Training idle: last score ${score || 'pending'}.`
+            : '';
+        systemTrainingInlineText.textContent = inlineText;
+        systemTrainingInlineText.title = summary;
+        systemTrainingInlineText.setAttribute('data-tone', active ? 'active' : available ? 'ready' : 'hidden');
+      }
+      if (trainingActivityFill) {
+        trainingActivityFill.style.width = `${runtimePercent}%`;
+      }
+      setTextWithTitle(trainingRunStateText, active ? 'Running' : available ? 'Idle' : 'Unavailable', 'Unavailable');
+      if (trainingRunStateDetailText) {
+        const detail = available
+          ? `cycle=${cycle}; phase=${phase}; status=${status}; target=${target || 'unknown'}; elapsed=${formatAgeSummary(elapsed)}${maxRuntime ? ` of ${formatAgeSummary(maxRuntime)} max` : ''}; pid=${safeText(training.process_id, 'unknown')}`
+          : 'MIM evolution training has not published a status artifact.';
+        trainingRunStateDetailText.textContent = detail;
+        trainingRunStateDetailText.title = detail;
+      }
+      setTextWithTitle(trainingScoreText, score ? score : 'No score yet', 'No score yet');
+      if (trainingScoreDetailText) {
+        const detail = score
+          ? `${failureCount} failures across ${scenarioCount} simulated conversations in the latest completed report.`
+          : 'Waiting for the next completed conversation report.';
+        trainingScoreDetailText.textContent = detail;
+        trainingScoreDetailText.title = detail;
+      }
+      setTextWithTitle(trainingIssuesText, topFailures.length ? `${topFailures.length} tags` : 'None yet', 'None yet');
+      if (trainingIssuesDetailText) {
+        trainingIssuesDetailText.textContent = topIssueText;
+        trainingIssuesDetailText.title = topIssueText;
       }
     }
 
@@ -7960,6 +8954,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     }
 
     function normalizeMessageType(message = {}) {
+      if (!message || typeof message !== 'object') return 'system_summary';
       const explicit = safeText(message.message_type).toLowerCase();
       if (['user', 'mim_reply', 'system_execution', 'system_summary', 'thinking'].includes(explicit)) {
         return explicit;
@@ -8065,11 +9060,12 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     }
 
     function extractMessageText(message = {}) {
+      if (!message || typeof message !== 'object') return '';
       return safeText(message.inline_text || message.summary_text || message.content || message.execution_text);
     }
 
     function buildChatRenderSignature(messages = []) {
-      const normalized = Array.isArray(messages) ? messages : [];
+      const normalized = Array.isArray(messages) ? messages.filter((message) => message && typeof message === 'object') : [];
       return JSON.stringify(normalized.map((message) => ({
         created_at: safeText(message.created_at),
         role: safeText(message.role || message.direction),
@@ -8205,8 +9201,59 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         preview,
         truncated: Boolean(message.execution_truncated) || lines.length > 24,
         steps,
+        accountabilityView: message.accountability_view && typeof message.accountability_view === 'object'
+          ? message.accountability_view
+          : {},
         lineCount: Number(providedStructured.line_count || lines.length || 0),
       };
+    }
+
+    function formatAccountabilityList(value) {
+      if (Array.isArray(value)) {
+        return value.map((item) => safeText(item)).filter(Boolean).join(', ') || 'None';
+      }
+      return safeText(value) || 'None';
+    }
+
+    function buildAccountabilityView(view = {}) {
+      if (!view || typeof view !== 'object' || !safeText(view.summary)) return null;
+      const wrap = document.createElement('section');
+      wrap.className = 'execution-step';
+
+      const header = document.createElement('div');
+      header.className = 'execution-step-header';
+      header.textContent = 'Operator accountability view';
+      wrap.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'execution-step-grid';
+      const rows = [
+        ['Summary', safeText(view.summary)],
+        ['Requested deliverables', formatAccountabilityList(view.requested_deliverables)],
+        ['Delivered outputs', formatAccountabilityList(view.delivered_outputs)],
+        ['Missing outputs', formatAccountabilityList(view.missing_outputs)],
+        ['Evidence files', formatAccountabilityList(view.evidence_files)],
+        ['Changed files', formatAccountabilityList(view.changed_files)],
+        ['Satisfaction status', safeText(view.satisfaction_status || view.operator_satisfaction_status)],
+        ['Replan required', view.replan_required ? 'yes' : 'no'],
+        ['Linked artifact path', safeText(view.artifact_path || view.fulfillment_artifact)],
+      ].filter(([, value]) => safeText(value));
+
+      rows.forEach(([label, value]) => {
+        const row = document.createElement('div');
+        row.className = 'execution-row';
+        const rowLabel = document.createElement('div');
+        rowLabel.className = 'execution-row-label';
+        rowLabel.textContent = label;
+        row.appendChild(rowLabel);
+        const rowValue = document.createElement('div');
+        rowValue.className = 'execution-row-value';
+        rowValue.textContent = value;
+        row.appendChild(rowValue);
+        grid.appendChild(row);
+      });
+      wrap.appendChild(grid);
+      return wrap;
     }
 
     function buildExecutionStep(step = {}, index = 0) {
@@ -8276,6 +9323,11 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 
       const scroll = document.createElement('div');
       scroll.className = 'execution-scroll';
+
+      const accountabilityView = buildAccountabilityView(execution.accountabilityView);
+      if (accountabilityView) {
+        scroll.appendChild(accountabilityView);
+      }
 
       if (execution.steps.length) {
         const stepsWrap = document.createElement('div');
@@ -8460,7 +9512,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 
     function renderChatThread(messages = [], { force = false } = {}) {
       if (!chatLog) return;
-      const visibleMessages = visibleChatThreadMessages(messages);
+      const visibleMessages = visibleChatThreadMessages(messages).filter((message) => message && typeof message === 'object');
       const signature = buildChatRenderSignature(visibleMessages);
       if (!force && signature === lastRenderedChatSignature) {
         renderMediaGrid(visibleMessages);
@@ -8541,6 +9593,11 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       });
       for (let attempt = 0; attempt < 8; attempt += 1) {
         await delay(attempt < 2 ? 2500 : 5000);
+        const quickFresh = await refreshFreshnessState();
+        if (quickFresh) {
+          removeChatMessageByClientId(thinkingMessageId);
+          return true;
+        }
         await refreshState();
         const freshness = latestUiState && typeof latestUiState === 'object'
           ? safeText(latestUiState.console_freshness_status)
@@ -8693,6 +9750,17 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
           }),
         });
         if (!response.ok) {
+          if (response.status === 401) {
+            removeChatMessageByClientId(thinkingMessageId);
+            appendChatMessage(
+              'mim',
+              'Your MIM operator session is no longer authenticated in this browser. Log back in, then send the request again.'
+            );
+            window.setTimeout(() => {
+              window.location.href = '/mim/login?next=/mim';
+            }, 1200);
+            return;
+          }
           if (response.status === 524) {
             const recovered = await pollStateAfterGatewayTimeout(thinkingMessageId);
             if (!recovered) {
@@ -8708,10 +9776,9 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 
         const result = await response.json();
         removeChatMessageByClientId(thinkingMessageId);
-        await refreshState();
-        if (!latestUiState?.chat_thread) {
-          appendChatMessage('mim', summarizeTextResolution(result));
-        }
+        appendChatMessage('mim', summarizeTextResolution(result));
+        await refreshFreshnessState();
+        refreshState().catch(() => {});
       } catch (error) {
         removeChatMessageByClientId(thinkingMessageId);
         const detail = error && error.message ? String(error.message) : 'request_failed';
@@ -12633,6 +13700,9 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       setTextWithTitle(memoryHintText, memoryHint, 'None');
       setTextWithTitle(runtimeHealthText, healthSummary, 'Runtime summary unavailable');
       renderSystemActivityTruth(systemActivity);
+      renderLaneVisibility(data);
+      renderOperationalLifecycle(data);
+      renderTrainingActivity(data);
       renderProgramQueue(initiative);
     }
 
@@ -12730,9 +13800,34 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 
       refreshInFlight = true;
       try {
-        const res = await fetch('/mim/ui/state');
+        const res = await fetch('/mim/ui/state', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: {
+            Accept: 'application/json',
+          },
+        });
         if (!res.ok) {
           markBackendReachability(false);
+          renderSystemActivityTruth({
+            status_code: res.status === 401 ? 'auth_required' : 'state_unavailable',
+            status_label: res.status === 401 ? 'Sign-in required' : 'State unavailable',
+            headline: res.status === 401
+              ? 'MIM state needs operator sign-in'
+              : 'MIM state did not load',
+            summary: res.status === 401
+              ? 'The console shell loaded, but /mim/ui/state rejected the browser session. Refresh or sign in again to restore the live timeline.'
+              : `The console shell loaded, but /mim/ui/state returned HTTP ${res.status}. Retrying automatically.`,
+            tone: 'warn',
+            should_be_working: false,
+            execution_allowed: false,
+            execution_allowed_label: 'Unknown',
+            execution_allowed_reason: 'MIM UI state is unavailable to this browser session.',
+            staleness_label: 'UNKNOWN',
+            staleness_detail: 'State polling has not produced an authenticated payload yet.',
+            meter_percent: 8,
+            stall_reason: res.status === 401 ? 'Browser state poll is unauthenticated.' : `State endpoint returned HTTP ${res.status}.`,
+          });
           updateIconGlow();
           return;
         }
@@ -12755,11 +13850,25 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         const operatorReasoning = (data && typeof data.operator_reasoning === 'object') ? data.operator_reasoning : {};
         const chatThread = data && typeof data.chat_thread === 'object' ? data.chat_thread : {};
         const threadMessages = Array.isArray(chatThread.messages) ? chatThread.messages : [];
-        chatThreadMessages = threadMessages;
+        const syntheticFastThread = safeText(data.state_mode) === 'artifact_fast_path'
+          && threadMessages.length <= 3
+          && threadMessages.every((message) => safeText(message && message.message_type) === 'system_summary');
+        const hasLocalPendingMessages = Array.isArray(chatThreadMessages)
+          && chatThreadMessages.some((message) => {
+            const clientMessageId = safeText(message && message.client_message_id);
+            const messageType = safeText(message && message.message_type);
+            return clientMessageId.startsWith('client-') || messageType === 'thinking';
+          });
+        const preserveLocalThread = Array.isArray(chatThreadMessages)
+          && chatThreadMessages.length > threadMessages.length
+          && (textChatInFlight || hasLocalPendingMessages || syntheticFastThread);
+        if (!preserveLocalThread) {
+          chatThreadMessages = threadMessages;
+        }
         if (threadStatusChip) {
           threadStatusChip.textContent = `Primary thread: ${safeText(chatThread.primary_thread, textChatSessionId)}`;
         }
-        renderChatThread(threadMessages);
+        renderChatThread(preserveLocalThread ? chatThreadMessages : threadMessages);
         renderPrimaryStatus(data);
         renderObjectMemoryPanel(conversationContext);
         renderSystemReasoningPanel(operatorReasoning);
@@ -12791,6 +13900,21 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         updateIconGlow();
       } catch (_) {
         markBackendReachability(false);
+        renderSystemActivityTruth({
+          status_code: 'state_error',
+          status_label: 'State error',
+          headline: 'MIM state did not load',
+          summary: 'The console shell loaded, but the browser could not parse or reach /mim/ui/state. Retrying automatically.',
+          tone: 'warn',
+          should_be_working: false,
+          execution_allowed: false,
+          execution_allowed_label: 'Unknown',
+          execution_allowed_reason: 'MIM UI state polling failed in the browser.',
+          staleness_label: 'UNKNOWN',
+          staleness_detail: 'State polling has not produced a usable payload yet.',
+          meter_percent: 8,
+          stall_reason: 'Browser state poll failed before rendering the live timeline.',
+        });
         updateConnectionChrome();
         updateIconGlow();
       } finally {
@@ -12802,6 +13926,47 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
           }, 0);
         }
       }
+    }
+
+    async function refreshFreshnessState() {
+      if (document.hidden) return false;
+      try {
+        const res = await fetch('/mim/ui/state/freshness', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: {
+            Accept: 'application/json',
+          },
+        });
+        if (!res.ok) return false;
+        const data = await res.json();
+        const currentSystemActivity = latestUiState && typeof latestUiState.system_activity === 'object'
+          ? latestUiState.system_activity
+          : {};
+        latestUiState = {
+          ...(latestUiState || {}),
+          ...data,
+          system_activity: {
+            ...currentSystemActivity,
+            ...(data && typeof data.system_activity === 'object' ? data.system_activity : {}),
+          },
+        };
+        renderPrimaryStatus(latestUiState);
+        markBackendReachability(true);
+        updateConnectionChrome();
+        updateIconGlow();
+        return safeText(data.console_freshness_status) === 'fresh_done';
+      } catch (_) {
+        return false;
+      }
+    }
+
+    async function pollFreshnessVisibility() {
+      const currentFreshness = latestUiState && typeof latestUiState === 'object'
+        ? safeText(latestUiState.console_freshness_status)
+        : '';
+      if (currentFreshness === 'fresh_done') return;
+      await refreshFreshnessState();
     }
 
     async function speakNow() {
@@ -13797,6 +14962,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       ensureMicPermission().then(() => enumerateMicDevices());
     }
     startCameraWatcher();
+    setInterval(pollFreshnessVisibility, 1000);
     setInterval(refreshState, 2000);
   </script>
 </body>
@@ -13936,6 +15102,18 @@ async def mim_ui_upload_image(
 async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
     ensure_authenticated_mimtod_api_request(request)
     now = datetime.now(timezone.utc)
+    profile_enabled = str(request.query_params.get("profile") or request.query_params.get("full") or "").strip() == "1"
+    profile_started = time.perf_counter()
+    profile_marks: list[dict[str, object]] = []
+
+    def mark_profile(stage: str) -> None:
+      if profile_enabled:
+        profile_marks.append(
+          {
+            "stage": stage,
+            "elapsed_ms": int(round((time.perf_counter() - profile_started) * 1000)),
+          }
+        )
 
     speech_row = (
         (
@@ -14053,6 +15231,7 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
         for observation in fresh_camera_observations
         if str(observation.get("zone") or "").strip()
     }
+    mark_profile("initial_rows_and_camera_summary")
 
     recent_actors = (
         (await db.execute(select(Actor).order_by(Actor.id.desc()).limit(20)))
@@ -14082,6 +15261,7 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
                 active_perception_session_id,
             )
         ]
+    mark_profile("actors_and_object_memory")
 
     known_people = set(_known_people())
     for actor in recent_actors:
@@ -14465,6 +15645,7 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
       if fallback_preference:
         learned_preferences = [fallback_preference]
         preference_conflict_items = preference_conflicts(learned_preferences)
+    mark_profile("operator_profiles_and_preferences")
 
     recovery_execution_rows = (
       (
@@ -14520,6 +15701,7 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
         db=db,
         managed_scope=operator_reasoning_scope,
       )
+    mark_profile("execution_recovery_and_strategy")
 
     latest_memory = (
         (await db.execute(select(MemoryEntry).order_by(MemoryEntry.id.desc()).limit(1)))
@@ -14617,6 +15799,7 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
         learned_name = str(meta.get("preference_value") or "").strip().lower()
         if learned_name:
             known_people.add(learned_name)
+    mark_profile("memory_and_learning")
 
     recognized_people: list[str] = []
     observed_non_person_labels: list[str] = []
@@ -14986,6 +16169,7 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
       db=db,
       managed_scope=operator_reasoning_scope,
     )
+    mark_profile("gateway_governance")
     runtime_health = build_mim_ui_health_snapshot_from_rows(
         now=now,
         speech_row=speech_row,
@@ -15019,9 +16203,12 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
       if isinstance(self_evolution_briefing, dict)
       else {}
     )
+    mark_profile("self_evolution_briefing")
     runtime_recovery = runtime_recovery_service.get_summary()
     initiative_driver = await build_initiative_status(db=db)
+    mark_profile("initiative_status")
     chat_thread = await _load_mim_ui_chat_thread(db=db)
+    mark_profile("chat_thread")
 
     operator_reasoning = _build_operator_reasoning_payload(
         goal_row=latest_goal,
@@ -15089,8 +16276,22 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
       operator_reasoning=operator_reasoning,
       generated_at=now.isoformat(),
     )
+    mark_profile("operator_reasoning_and_system_activity")
+    lane_registry = _load_json_artifact(SHARED_RUNTIME_ROOT / "TOD_EXECUTION_LANES.latest.json")
+    lifecycle_state = _load_json_artifact(SHARED_RUNTIME_ROOT / "MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json")
+    training_activity = _mim_training_activity_snapshot()
+    lane_rows = lane_registry.get("lanes") if isinstance(lane_registry.get("lanes"), list) else []
+    active_execution_lane = next(
+      (
+        lane
+        for lane in lane_rows
+        if isinstance(lane, dict)
+        and str(lane.get("lane_id") or "").strip() == str(lane_registry.get("active_lane_id") or "").strip()
+      ),
+      lane_rows[0] if lane_rows and isinstance(lane_rows[0], dict) else {},
+    )
 
-    return {
+    response = {
         "speaking": speaking,
         "camera_last_label": label_raw,
         "camera_last_confidence": confidence,
@@ -15128,11 +16329,16 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
             "runtime_health_visibility",
             "initiative_driver_visibility",
             "activity_truth_visibility",
+            "mim_evolution_training_visibility",
         ],
         "inquiry_prompt": inquiry_prompt,
         "operator_reasoning": operator_reasoning,
         "system_activity": system_activity,
         "tod_truth_reconciliation": system_activity.get("tod_truth_reconciliation") if isinstance(system_activity.get("tod_truth_reconciliation"), dict) else tod_truth_reconciliation,
+        "execution_lanes": lane_registry if isinstance(lane_registry, dict) else {},
+        "active_execution_lane": active_execution_lane if isinstance(active_execution_lane, dict) else {},
+        "operational_lifecycle": lifecycle_state if isinstance(lifecycle_state, dict) else {},
+        "training_activity": training_activity if isinstance(training_activity, dict) else {},
         "console_freshness": system_activity.get("console_freshness") if isinstance(system_activity.get("console_freshness"), dict) else {},
         "last_handoff_id": str(system_activity.get("last_handoff_id") or "").strip(),
         "last_tod_task_id": str(system_activity.get("last_tod_task_id") or "").strip(),
@@ -15375,13 +16581,23 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
         if speech_row
         else False,
     }
+    mark_profile("response_assembled")
+    if profile_enabled:
+      response["state_profile_ms"] = profile_marks
+    return response
 
 
 @router.get("/mim/ui/state")
 async def mim_ui_state(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
   ensure_authenticated_mimtod_api_request(request)
+  query_params = getattr(request, "query_params", {}) or {}
+  if str(query_params.get("full") or "").strip() != "1":
+    return _build_mim_ui_fast_state(reason="initial_state_poll")
   try:
-    return await _build_live_mim_ui_state(request, db)
+    return await asyncio.wait_for(_build_live_mim_ui_state(request, db), timeout=8.0)
+  except asyncio.TimeoutError:
+    logger.warning("MIM UI state degraded because live state build exceeded 8 seconds")
+    return _build_mim_ui_degraded_state(db_error_text="live state build exceeded 8 seconds")
   except Exception as exc:  # noqa: BLE001
     db_unavailable = _is_mim_ui_db_unavailable(exc)
     logger.warning(
@@ -15391,6 +16607,12 @@ async def mim_ui_state(request: Request, db: AsyncSession = Depends(get_db)) -> 
       exc,
     )
     return _build_mim_ui_degraded_state(db_error_text=str(exc))
+
+
+@router.get("/mim/ui/state/freshness")
+async def mim_ui_state_freshness(request: Request) -> dict:
+  ensure_authenticated_mimtod_api_request(request)
+  return _build_mim_tod_console_freshness_state(shared_root=SHARED_RUNTIME_ROOT)
 
 
 @router.get("/mim/ui/runtime-recovery")

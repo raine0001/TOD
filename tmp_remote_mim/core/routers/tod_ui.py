@@ -4325,7 +4325,10 @@ def _extract_path_token(value: str) -> str:
         return ""
     match = re.search(r"(?:[A-Za-z]:[\\/])?[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+", text)
     if not match:
-        return ""
+        simple_match = re.search(r"\b[A-Za-z0-9_.-]+\.(?:py|ps1|js|ts|tsx|jsx|html|css|json|md|yaml|yml)\b", text)
+        if not simple_match:
+            return ""
+        return simple_match.group(0).rstrip(".,;:)]}>")
     return match.group(0).replace("\\", "/").rstrip(".,;:)]}>")
 
 
@@ -8207,6 +8210,44 @@ async def tod_ui_chat_state(
     return _build_or_get_chat_state_payload(session_key, surface="tod")
 
 
+@router.post("/tod/ui/bridge/ack")
+async def tod_ui_bridge_ack(payload: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
+    request_id = str(payload.get("request_id") or "").strip()
+    handoff_id = str(payload.get("handoff_id") or "").strip()
+    task_id = str(payload.get("task_id") or "").strip()
+    objective_id = str(payload.get("objective_id") or "").strip()
+    request_path = SHARED_RUNTIME_ROOT / "MIM_TOD_TASK_REQUEST.latest.json"
+    request_payload = _load_json(request_path)
+    artifact_request_id = str(request_payload.get("request_id") or "").strip()
+    artifact_handoff_id = str(request_payload.get("handoff_id") or "").strip()
+    artifact_task_id = str(request_payload.get("task_id") or "").strip()
+    artifact_objective_id = str(request_payload.get("objective_id") or "").strip()
+    acknowledged = bool(
+        request_payload
+        and (not request_id or artifact_request_id == request_id)
+        and (not handoff_id or artifact_handoff_id == handoff_id)
+        and (not task_id or artifact_task_id == task_id)
+        and (not objective_id or artifact_objective_id == objective_id)
+    )
+    now = _utc_now_iso()
+    response = {
+        "ok": acknowledged,
+        "acknowledged": acknowledged,
+        "generated_at": now,
+        "acknowledged_at": now if acknowledged else "",
+        "ack_source": "tod_bridge_artifact_probe",
+        "artifact": str(request_path),
+        "artifact_generated_at": str(request_payload.get("generated_at") or "").strip(),
+        "request_id": artifact_request_id or request_id,
+        "handoff_id": artifact_handoff_id or handoff_id,
+        "task_id": artifact_task_id or task_id,
+        "objective_id": artifact_objective_id or objective_id,
+        "reason": "fresh_handoff_artifact_seen" if acknowledged else "handoff_artifact_not_matched",
+    }
+    _write_shared_json(SHARED_RUNTIME_ROOT / "TOD_MIM_HANDOFF_ACK.latest.json", response)
+    return response
+
+
 @router.post("/tod/ui/chat/message")
 async def tod_ui_chat_message(payload: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
     session_key = str(payload.get("session_key") or "tod-console-public").strip() or "tod-console-public"
@@ -8467,6 +8508,61 @@ async def operator_actions(payload: dict[str, Any] = Body(default_factory=dict))
 @router.get("/tod/ui/state")
 async def tod_ui_state() -> dict[str, Any]:
     return _build_tod_console_state()
+
+
+def _build_tod_execution_probe_state() -> dict[str, Any]:
+    active_task = _load_json(SHARED_RUNTIME_ROOT / "TOD_ACTIVE_TASK.latest.json")
+    execution_result = _load_json(SHARED_RUNTIME_ROOT / "TOD_EXECUTION_RESULT.latest.json")
+    active_lane = _load_json(SHARED_RUNTIME_ROOT / TOD_ACTIVE_EXECUTION_LANE_ARTIFACT)
+    candidates = [
+        payload for payload in (execution_result, active_task, active_lane)
+        if isinstance(payload, dict) and payload
+    ]
+    selected = candidates[0] if candidates else {}
+    for payload in candidates[1:]:
+        selected_ts = _parse_timestamp(
+            _pick_latest_timestamp(selected.get("updated_at"), selected.get("generated_at"), selected.get("started_at"))
+        )
+        payload_ts = _parse_timestamp(
+            _pick_latest_timestamp(payload.get("updated_at"), payload.get("generated_at"), payload.get("started_at"))
+        )
+        if payload_ts and (selected_ts is None or payload_ts > selected_ts):
+            selected = payload
+    status = str(
+        selected.get("status")
+        or selected.get("execution_status")
+        or selected.get("execution_state")
+        or selected.get("request_status")
+        or ""
+    ).strip()
+    task_id = _pick_first_text(selected.get("task_id"), selected.get("request_id"))
+    objective_id = _pick_first_text(selected.get("objective_id"), selected.get("normalized_objective_id"))
+    started_at = _pick_first_text(
+        selected.get("started_at"),
+        selected.get("generated_at"),
+        selected.get("updated_at"),
+    )
+    return {
+        "generated_at": _utc_now_iso(),
+        "source": "tod_execution_probe",
+        "execution": {
+            "task_id": task_id,
+            "request_id": str(selected.get("request_id") or task_id or "").strip(),
+            "objective_id": objective_id,
+            "status": status,
+            "activity_state": status,
+            "started_at": started_at,
+            "updated_at": _pick_first_text(selected.get("updated_at"), selected.get("generated_at"), started_at),
+            "active_engine": str(selected.get("active_engine") or "").strip(),
+            "executor_binding": str(selected.get("executor_binding") or "").strip(),
+            "source_artifact": str(selected.get("source_artifact") or "").strip(),
+        },
+    }
+
+
+@router.get("/tod/ui/state/execution")
+async def tod_ui_execution_state() -> dict[str, Any]:
+    return _build_tod_execution_probe_state()
 
 
 @router.get("/tod", response_class=HTMLResponse)

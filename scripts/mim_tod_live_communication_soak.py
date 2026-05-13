@@ -32,6 +32,59 @@ def _monotonic_ms() -> int:
     return int(time.monotonic() * 1000)
 
 
+def _parse_timestamp(raw_value: str) -> datetime | None:
+    candidate = str(raw_value or "").strip()
+    if not candidate:
+        return None
+    try:
+        parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _duration_ms(start: str, end: str) -> int | None:
+    start_dt = _parse_timestamp(start)
+    end_dt = _parse_timestamp(end)
+    if start_dt is None or end_dt is None:
+        return None
+    return max(0, int(round((end_dt - start_dt).total_seconds() * 1000.0)))
+
+
+def _stage_durations(stage_timestamps: dict) -> dict[str, int]:
+    pairs = (
+        ("gateway_to_deterministic_classifier_ms", "gateway_received_at", "deterministic_classifier_started_at"),
+        ("deterministic_classifier_ms", "deterministic_classifier_started_at", "deterministic_classifier_completed_at"),
+        ("llm_classifier_ms", "llm_classifier_started_at", "llm_classifier_completed_at"),
+        ("gateway_to_route_decided_ms", "gateway_received_at", "route_decided_at"),
+        ("operator_to_intent_ms", "operator_request_received_at", "mim_intent_classified_at"),
+        ("intent_to_handoff_publish_ms", "mim_intent_classified_at", "tod_handoff_published_at"),
+        ("handoff_publish_to_ack_ms", "tod_handoff_published_at", "tod_ack_seen_at"),
+        ("ack_to_execution_start_ms", "tod_ack_seen_at", "tod_execution_started_at"),
+        ("execution_start_to_completed_ms", "tod_execution_started_at", "tod_execution_completed_at"),
+        ("completed_to_result_consumed_ms", "tod_execution_completed_at", "tod_result_consumed_at"),
+        ("result_consumed_to_console_fresh_done_ms", "tod_result_consumed_at", "mim_console_fresh_done_at"),
+    )
+    durations: dict[str, int] = {}
+    for key, start_key, end_key in pairs:
+        duration = _duration_ms(
+            str(stage_timestamps.get(start_key) or "").strip(),
+            str(stage_timestamps.get(end_key) or "").strip(),
+        )
+        if duration is not None:
+            durations[key] = duration
+    return durations
+
+
+def _p95(values: list[int]) -> int:
+    if not values:
+        return 0
+    sorted_values = sorted(values)
+    return sorted_values[max(0, min(len(sorted_values) - 1, int(round(len(sorted_values) * 0.95)) - 1))]
+
+
 def _headers(username: str, password: str, *, json_content: bool = False) -> dict[str, str]:
     token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
     headers = {
@@ -240,6 +293,42 @@ def _grade_response(*, expected_route: str, response_status: int, resolution: di
     }
 
 
+def _poll_ui_until_matching_fresh_done(
+    *,
+    base_url: str,
+    username: str,
+    password: str,
+    handoff_id: str,
+    task_id: str,
+    timeout_seconds: float = 8.0,
+    interval_seconds: float = 0.5,
+) -> tuple[int, dict, str, int]:
+    deadline = time.monotonic() + max(0.1, timeout_seconds)
+    last_status = 0
+    last_state: dict = {}
+    poll_start = _monotonic_ms()
+    while True:
+        last_status, last_state = _http_json(
+            method="GET",
+            url=f"{base_url.rstrip('/')}/mim/ui/state/freshness",
+            username=username,
+            password=password,
+            timeout_seconds=max(5, int(timeout_seconds) + 5),
+        )
+        freshness = str(last_state.get("console_freshness_status") or "").strip()
+        state_handoff_id = str(last_state.get("last_handoff_id") or "").strip()
+        state_task_id = str(last_state.get("last_tod_task_id") or "").strip()
+        if (
+            freshness == "fresh_done"
+            and (not handoff_id or state_handoff_id == handoff_id)
+            and (not task_id or state_task_id == task_id)
+        ):
+            return last_status, last_state, _utc_now(), _monotonic_ms() - poll_start
+        if time.monotonic() >= deadline:
+            return last_status, last_state, "", _monotonic_ms() - poll_start
+        time.sleep(interval_seconds)
+
+
 def run_live_soak(
     *,
     base_url: str,
@@ -279,22 +368,44 @@ def run_live_soak(
         )
         intake_ms = _monotonic_ms() - intake_start
         resolution = _extract_resolution(response_payload)
-        ui_start = _monotonic_ms()
-        ui_status, ui_state = _http_json(
-            method="GET",
-            url=f"{base_url.rstrip('/')}/mim/ui/state",
-            username=username,
-            password=password,
-            timeout_seconds=timeout_seconds,
-        )
-        ui_ms = _monotonic_ms() - ui_start
+        tod_dispatch = resolution["tod_dispatch"]
+        dispatch_stage_timestamps = tod_dispatch.get("stage_timestamps") if isinstance(tod_dispatch.get("stage_timestamps"), dict) else {}
+        consumed_at = str(dispatch_stage_timestamps.get("tod_result_consumed_at") or "").strip()
+        dispatch_result_status = str(
+            tod_dispatch.get("result_status")
+            or tod_dispatch.get("status")
+            or tod_dispatch.get("tod_status")
+            or ""
+        ).strip().lower()
+        if consumed_at and dispatch_result_status in {"succeeded", "done", "complete", "completed", "ok"}:
+            ui_status, ui_state, fresh_done_at, ui_ms = _poll_ui_until_matching_fresh_done(
+                base_url=base_url,
+                username=username,
+                password=password,
+                handoff_id=str(tod_dispatch.get("handoff_id") or "").strip(),
+                task_id=str(tod_dispatch.get("task_id") or "").strip(),
+            )
+        else:
+            ui_start = _monotonic_ms()
+            ui_status, ui_state = _http_json(
+                method="GET",
+                url=f"{base_url.rstrip('/')}/mim/ui/state/freshness",
+                username=username,
+                password=password,
+                timeout_seconds=timeout_seconds,
+            )
+            fresh_done_at = ""
+            ui_ms = _monotonic_ms() - ui_start
         grade = _grade_response(
             expected_route=case["expected_route"],
             response_status=response_status,
             resolution=resolution,
             ui_state=ui_state,
         )
-        tod_dispatch = resolution["tod_dispatch"]
+        stage_timestamps = dict(tod_dispatch.get("stage_timestamps") if isinstance(tod_dispatch.get("stage_timestamps"), dict) else {})
+        if grade["ui_freshness"] == "fresh_done":
+            stage_timestamps["mim_console_fresh_done_at"] = fresh_done_at or _utc_now()
+        stage_durations_ms = _stage_durations(stage_timestamps)
         row = {
             "timestamp": timestamp,
             "local_case_id": case["local_case_id"],
@@ -316,12 +427,14 @@ def run_live_soak(
             "ui_http_status": ui_status,
             "latency_ms": {
                 "mim_intake": intake_ms,
-                "tod_handoff_publish": int(tod_dispatch.get("handoff_publish_latency_ms") or intake_ms),
-                "tod_completion": int(tod_dispatch.get("tod_completion_latency_ms") or intake_ms),
-                "mim_consume": int(tod_dispatch.get("mim_consume_latency_ms") or intake_ms),
-                "ui_fresh_done": ui_ms,
+                "tod_handoff_publish": stage_durations_ms.get("intent_to_handoff_publish_ms", 0),
+                "tod_completion": stage_durations_ms.get("execution_start_to_completed_ms", 0),
+                "mim_consume": stage_durations_ms.get("completed_to_result_consumed_ms", 0),
+                "ui_fresh_done": stage_durations_ms.get("result_consumed_to_console_fresh_done_ms", ui_ms),
                 "total_observed": intake_ms + ui_ms,
             },
+            "stage_timestamps": stage_timestamps,
+            "stage_durations_ms": stage_durations_ms,
             "reply": resolution["reply"],
         }
         rows.append(row)
@@ -329,9 +442,23 @@ def run_live_soak(
             time.sleep(delay_seconds)
     duration_ms = _monotonic_ms() - start_ms
     latencies = [row["latency_ms"]["total_observed"] for row in rows]
-    p95 = 0
-    if latencies:
-        p95 = sorted(latencies)[max(0, min(len(latencies) - 1, int(round(len(latencies) * 0.95)) - 1))]
+    p95 = _p95(latencies)
+    stage_latency_values: dict[str, list[int]] = {}
+    for row in rows:
+        for key, value in row.get("stage_durations_ms", {}).items():
+            if isinstance(value, int):
+                stage_latency_values.setdefault(key, []).append(value)
+    stage_latency_summary = {
+        key: {
+            "average_ms": round(statistics.mean(values), 2) if values else 0,
+            "p95_ms": _p95(values),
+            "count": len(values),
+        }
+        for key, values in sorted(stage_latency_values.items())
+    }
+    p95_bottleneck_stage = ""
+    if stage_latency_summary:
+        p95_bottleneck_stage = max(stage_latency_summary.items(), key=lambda item: item[1]["p95_ms"])[0]
     status_counts = Counter(row["TOD_status"] or row["actual_route"] for row in rows)
     failed_rows = [row for row in rows if not row["passed"]]
     return {
@@ -345,6 +472,8 @@ def run_live_soak(
         "failed": len(failed_rows),
         "average_latency_ms": round(statistics.mean(latencies), 2) if latencies else 0,
         "p95_latency_ms": p95,
+        "stage_latency_summary": stage_latency_summary,
+        "p95_bottleneck_stage": p95_bottleneck_stage,
         "status_counts": dict(sorted(status_counts.items())),
         "bugs_found": len(failed_rows) + len(FIXED_BUGS),
         "bugs_fixed": len(FIXED_BUGS),
@@ -352,7 +481,7 @@ def run_live_soak(
         "remaining_risks": [
             "Live soak uses HTTP gateway/UI state, but does not drive a browser DOM or physical hardware.",
             "Bounded concurrency is not enabled unless a separate run starts parallel workers.",
-            "Some TOD task completion latency is inferred from synchronous MIM response time when artifacts do not expose per-stage timestamps.",
+            "Gateway or Cloudflare 524 responses can still hide request ids unless the UI poll recovers a matching fresh handoff.",
         ],
         "results": rows,
     }
@@ -376,6 +505,7 @@ def write_artifacts(payload: dict, json_path: Path = DEFAULT_JSON_PATH, report_p
         f"- Failed: {payload['failed']}",
         f"- Average latency ms: {payload['average_latency_ms']}",
         f"- P95 latency ms: {payload['p95_latency_ms']}",
+        f"- P95 bottleneck stage: {payload.get('p95_bottleneck_stage') or 'n/a'}",
         f"- Bugs found: {payload['bugs_found']}",
         f"- Bugs fixed during run: {payload['bugs_fixed']}",
         "",
@@ -383,6 +513,11 @@ def write_artifacts(payload: dict, json_path: Path = DEFAULT_JSON_PATH, report_p
         "",
     ]
     lines.extend(f"- {key}: {value}" for key, value in payload["status_counts"].items())
+    lines.extend(["", "## Stage Latency Summary", ""])
+    lines.append("| stage | count | average ms | p95 ms |")
+    lines.append("|---|---:|---:|---:|")
+    for stage, summary in payload.get("stage_latency_summary", {}).items():
+        lines.append(f"| {stage} | {summary.get('count', 0)} | {summary.get('average_ms', 0)} | {summary.get('p95_ms', 0)} |")
     lines.extend(["", "## Bugs Fixed", ""])
     for bug in payload.get("bugs_fixed_detail", []):
         lines.extend(
@@ -397,12 +532,12 @@ def write_artifacts(payload: dict, json_path: Path = DEFAULT_JSON_PATH, report_p
     lines.extend(["", "## Remaining Risks", ""])
     lines.extend(f"- {risk}" for risk in payload["remaining_risks"])
     lines.extend(["", "## Summary Table", ""])
-    lines.append("| timestamp | prompt | expected route | actual route | request_id | handoff_id | TOD task id | TOD status | MIM console status | UI freshness | response quality grade | failure reason | fix applied |")
-    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("| timestamp | prompt | expected route | actual route | request_id | handoff_id | TOD task id | TOD status | MIM console status | UI freshness | response quality grade | stage durations ms | failure reason | fix applied |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for row in payload["results"]:
         safe = {key: str(value).replace("|", "\\|").replace("\n", " ") for key, value in row.items()}
         lines.append(
-            "| {timestamp} | {prompt} | {expected_route} | {actual_route} | {request_id} | {handoff_id} | {TOD_task_id} | {TOD_status} | {MIM_console_status} | {UI_freshness} | {response_quality_grade} | {failure_reason} | {fix_applied} |".format(**safe)
+            "| {timestamp} | {prompt} | {expected_route} | {actual_route} | {request_id} | {handoff_id} | {TOD_task_id} | {TOD_status} | {MIM_console_status} | {UI_freshness} | {response_quality_grade} | {stage_durations_ms} | {failure_reason} | {fix_applied} |".format(**safe)
         )
     lines.extend(["", "## Recommended Next 10 Challenges", ""])
     next_challenges = [
@@ -412,7 +547,7 @@ def write_artifacts(payload: dict, json_path: Path = DEFAULT_JSON_PATH, report_p
         "Add live result-overwrite race injection on sandbox shared artifacts.",
         "Add Cloudflare 524 replay using a controlled delayed TOD response.",
         "Grade operator response quality with a deterministic rubric per category.",
-        "Track true TOD stage timestamps inside handoff result artifacts.",
+        "Add browser-visible per-stage timing badges to the MIM console.",
         "Exercise cross-session reload by alternating session ids and UI state polling.",
         "Separate project-management prompts from execution prompts in final UI summaries.",
         "Promote a nightly 20-request safe live smoke with alert-only reporting.",
@@ -439,7 +574,7 @@ def main() -> None:
         timeout_seconds=args.timeout_seconds,
     )
     write_artifacts(payload)
-    print(json.dumps({key: payload[key] for key in ("duration_seconds", "total_requests", "passed", "failed", "average_latency_ms", "p95_latency_ms", "bugs_found")}, indent=2))
+    print(json.dumps({key: payload[key] for key in ("duration_seconds", "total_requests", "passed", "failed", "average_latency_ms", "p95_latency_ms", "p95_bottleneck_stage", "bugs_found")}, indent=2))
 
 
 if __name__ == "__main__":

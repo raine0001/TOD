@@ -73,6 +73,7 @@ param(
         [string]$SuccessCriteria,
         [string]$AssignedExecutor,
         [string]$TaskCategory,
+        [string]$TargetFile,
         [string]$Content,
     [int]$Top = 0
 )
@@ -127,6 +128,7 @@ if ($Action -eq 'execute-chat-task') {
         success_criteria = $SuccessCriteria
         assigned_executor = $AssignedExecutor
         task_category = $TaskCategory
+        target_file = $TargetFile
         content = $Content
     } | ConvertTo-Json -Depth 8
     return
@@ -364,6 +366,98 @@ Describe 'TOD packet listener ordering hardening' {
         }
     }
 
+    It 'accepts local executor requests when TOD LocalExecutionEngine binding is present' {
+        $mockTodScript = New-MockTodScript
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'mim-arm-workspace-safety-calibration-v1-routes-safety'
+                task_id = 'mim-arm-workspace-safety-calibration-v1-routes-safety'
+                objective_id = 'mim-arm-workspace-safety-calibration-v1'
+                assigned_executor = 'local'
+                selected_executor = 'local'
+                active_engine = 'local'
+                executor_binding = 'scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine'
+                tod_action = 'execute-chat-task'
+            }
+            $integrationStatus = [pscustomobject]@{
+                objective_authority_reset = [pscustomobject]@{
+                    active = $false
+                }
+                objective_alignment = [pscustomobject]@{
+                    tod_current_objective = 'mim-arm-workspace-safety-calibration-v1'
+                }
+                live_task_request = [pscustomobject]@{
+                    request_id = 'mim-arm-workspace-safety-calibration-v1-routes-safety'
+                    normalized_objective_id = 'mim-arm-workspace-safety-calibration-v1'
+                    promotion_applied = $true
+                }
+                bridge_canonical_evidence = [pscustomobject]@{
+                    failure_signals = @()
+                }
+                bridge_operator_guidance = [pscustomobject]@{
+                    recommendation = 'continue_bounded_execution'
+                }
+            }
+
+            [string](Get-RequestExecutorRole -Request $request) | Should Be 'tod'
+            $decision = Get-MimRequestDecision -Request $request -GoOrder $null -IntegrationStatus $integrationStatus -ReviewDecision $null -TodScriptAbs $mockTodScript
+
+            [string]$decision.decision_outcome | Should Be 'execute'
+            [string]$decision.reason_code | Should Be 'authorized_routine_request'
+            [string]$decision.requested_executor | Should Be 'tod'
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
+                Remove-Item -Path $mockTodScript -Force
+            }
+        }
+    }
+
+    It 'still rejects local executor requests without TOD LocalExecutionEngine binding' {
+        $mockTodScript = New-MockTodScript
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'mim-arm-workspace-safety-calibration-v1-routes-safety'
+                task_id = 'mim-arm-workspace-safety-calibration-v1-routes-safety'
+                objective_id = 'mim-arm-workspace-safety-calibration-v1'
+                assigned_executor = 'local'
+                selected_executor = 'local'
+                active_engine = 'local'
+                tod_action = 'execute-chat-task'
+            }
+            $integrationStatus = [pscustomobject]@{
+                objective_authority_reset = [pscustomobject]@{
+                    active = $false
+                }
+                objective_alignment = [pscustomobject]@{
+                    tod_current_objective = 'mim-arm-workspace-safety-calibration-v1'
+                }
+                live_task_request = [pscustomobject]@{
+                    request_id = 'mim-arm-workspace-safety-calibration-v1-routes-safety'
+                    normalized_objective_id = 'mim-arm-workspace-safety-calibration-v1'
+                    promotion_applied = $true
+                }
+                bridge_canonical_evidence = [pscustomobject]@{
+                    failure_signals = @()
+                }
+                bridge_operator_guidance = [pscustomobject]@{
+                    recommendation = 'continue_bounded_execution'
+                }
+            }
+
+            [string](Get-RequestExecutorRole -Request $request) | Should Be 'local'
+            $decision = Get-MimRequestDecision -Request $request -GoOrder $null -IntegrationStatus $integrationStatus -ReviewDecision $null -TodScriptAbs $mockTodScript
+
+            [string]$decision.decision_outcome | Should Be 'reject_with_specific_policy_reason'
+            [string]$decision.reason_code | Should Be 'executor_role_mismatch'
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
+                Remove-Item -Path $mockTodScript -Force
+            }
+        }
+    }
+
     It 'forwards execute-chat-task metadata when dispatching bounded listener work' {
         $mockTodScript = New-MockTodScript
         try {
@@ -380,6 +474,7 @@ Describe 'TOD packet listener ordering hardening' {
                 success_criteria = 'Execution loop contract is published and validated.'
                 assigned_executor = 'codex'
                 task_category = 'chat_execution'
+                target_file = 'routes.py'
                 content = 'OBJECTIVE_ID: objective-111`nTITLE: Build TOD execution loop contract'
             }
 
@@ -395,6 +490,7 @@ Describe 'TOD packet listener ordering hardening' {
             [string]$execution.payload.acceptance_criteria | Should Be 'Execution loop contract is published and validated.'
             [string]$execution.payload.task_category | Should Be 'chat_execution'
             [string]$execution.payload.assigned_executor | Should Be 'codex'
+            [string]$execution.payload.target_file | Should Be 'routes.py'
         }
         finally {
             if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
