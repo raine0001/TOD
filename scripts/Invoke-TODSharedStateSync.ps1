@@ -1032,6 +1032,34 @@ function Publish-TodStatusToMimArm {
         if (-not [string]::IsNullOrWhiteSpace($LocalTrainingStatusPath) -and (Test-Path -Path $LocalTrainingStatusPath)) {
             $trainingPayload = Get-Content -Path $LocalTrainingStatusPath -Raw
             $status.local_training_status_sha256 = Get-FileSha256 -Path $LocalTrainingStatusPath
+            $trainingPayloadCurrent = $false
+            $trainingPayloadTimestampText = ""
+            $trainingPayloadSource = ""
+            try {
+                $trainingPayloadDoc = $trainingPayload | ConvertFrom-Json
+                $trainingPayloadSource = [string]$trainingPayloadDoc.source
+                $trainingPayloadTimestampText = [string]$trainingPayloadDoc.updated_at
+                if ([string]::IsNullOrWhiteSpace($trainingPayloadTimestampText)) {
+                    $trainingPayloadTimestampText = [string]$trainingPayloadDoc.generated_at
+                }
+                $trainingPayloadTimestamp = [DateTimeOffset]::MinValue
+                if ([DateTimeOffset]::TryParse($trainingPayloadTimestampText, [ref]$trainingPayloadTimestamp)) {
+                    $trainingPayloadAgeSeconds = ([DateTimeOffset]::UtcNow - $trainingPayloadTimestamp.ToUniversalTime()).TotalSeconds
+                    $status.local_training_status_embedded_age_seconds = [math]::Round($trainingPayloadAgeSeconds, 1)
+                    if ($trainingPayloadAgeSeconds -le 21600) {
+                        $trainingPayloadCurrent = $true
+                    }
+                }
+            }
+            catch {
+                $status.local_training_status_parse_error = $_.Exception.Message
+            }
+            if (-not $trainingPayloadCurrent) {
+                $status.training_payload_suppressed = "stale_embedded_timestamp"
+                $status.training_payload_suppressed_source = $trainingPayloadSource
+                $status.training_payload_suppressed_timestamp = $trainingPayloadTimestampText
+                $trainingPayload = ""
+            }
         }
         $payloadDoc.tod_status_publish = [pscustomobject]$status
         $payload = $payloadDoc | ConvertTo-Json -Depth 8

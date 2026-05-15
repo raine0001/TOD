@@ -111,6 +111,7 @@ SHARED_RUNTIME_ROOT = Path("runtime/shared")
 MIM_TRAINING_STATUS_ARTIFACT = Path("runtime/reports/mim_evolution_continuous_training.latest.json")
 MIM_TRAINING_SUMMARY_ARTIFACT = Path("runtime/reports/mim_evolution_training_summary.json")
 MIM_TRAINING_CONVERSATION_REPORT_ARTIFACT = Path("runtime/reports/mim_evolution_conversation_report.json")
+MIM_TRAINING_FOCUS_ARTIFACT = Path("runtime/shared/MIM_EVOLUTION_TRAINING_FOCUS.latest.json")
 runtime_recovery_service = RuntimeRecoveryService(SHARED_RUNTIME_ROOT)
 MIM_PRIMARY_THREAD_KEY = "primary_operator"
 MIM_UI_MEDIA_ROOT = SHARED_RUNTIME_ROOT / "mim_ui_media"
@@ -3394,6 +3395,7 @@ def _mim_training_activity_snapshot() -> dict:
     status = _load_json_artifact(MIM_TRAINING_STATUS_ARTIFACT)
     summary = _load_json_artifact(MIM_TRAINING_SUMMARY_ARTIFACT)
     conversation_report = _load_json_artifact(MIM_TRAINING_CONVERSATION_REPORT_ARTIFACT)
+    focus = _load_json_artifact(MIM_TRAINING_FOCUS_ARTIFACT)
     conversation_summary = {}
     if isinstance(summary.get("conversation"), dict):
         conversation_summary = summary.get("conversation", {})
@@ -3436,6 +3438,10 @@ def _mim_training_activity_snapshot() -> dict:
         }
 
     headline = "Training running" if active else "Training idle"
+    focus_objective = str(focus.get("objective_id") or "").strip()
+    focus_goal = str(focus.get("goal") or "").strip()
+    profile = status.get("profile") if isinstance(status.get("profile"), dict) else {}
+    profile_label = str(profile.get("label") or "").strip()
     cycle = status.get("cycle")
     target_text = f"{target} conversation run" if target else "conversation run"
     summary_text = (
@@ -3443,6 +3449,10 @@ def _mim_training_activity_snapshot() -> dict:
         if cycle
         else f"{target_text}; phase {phase or status_value or 'unknown'}."
     )
+    if focus_objective:
+        summary_text = f"{summary_text} Focus: {focus_objective}."
+    elif profile_label:
+        summary_text = f"{summary_text} Focus: {profile_label}."
     if score_value is not None:
         summary_text = f"{summary_text} Last completed score {score_value}."
     if top_failures:
@@ -3458,6 +3468,9 @@ def _mim_training_activity_snapshot() -> dict:
         "tone": "active" if active else "ready",
         "cycle": cycle,
         "active_slice_id": str(status.get("active_slice_id") or "").strip(),
+        "focus_objective": focus_objective,
+        "focus_goal": focus_goal,
+        "profile_label": profile_label,
         "target_conversations": target,
         "elapsed_seconds": elapsed_seconds,
         "max_runtime_seconds": max_runtime_seconds,
@@ -3473,6 +3486,7 @@ def _mim_training_activity_snapshot() -> dict:
             str(MIM_TRAINING_STATUS_ARTIFACT),
             str(MIM_TRAINING_SUMMARY_ARTIFACT),
             str(MIM_TRAINING_CONVERSATION_REPORT_ARTIFACT),
+            str(MIM_TRAINING_FOCUS_ARTIFACT),
         ],
     }
 
@@ -7085,6 +7099,28 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     }
     body.operator-mode .debug-only {
       display: none !important;
+    }
+    body.operator-mode .mim-hero > .surface-kicker,
+    body.operator-mode .hero-copy .summary,
+    body.operator-mode #buildTag,
+    body.operator-mode #threadStatusChip,
+    body.operator-mode #voiceHintChip,
+    body.operator-mode .voice-primary-row,
+    body.operator-mode .media-self-test-card,
+    body.operator-mode .secondary-shell {
+      display: none !important;
+    }
+    body.operator-mode .hero {
+      padding-bottom: 12px;
+    }
+    body.operator-mode .hero-row {
+      align-items: center;
+    }
+    body.operator-mode .chat-hero {
+      padding: 10px;
+    }
+    body.operator-mode .chat-summary-row {
+      margin-bottom: 0;
     }
     body.debug-mode .operator-mode-note {
       display: none !important;
