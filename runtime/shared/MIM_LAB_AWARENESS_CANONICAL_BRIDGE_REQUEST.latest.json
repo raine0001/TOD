@@ -1,0 +1,55 @@
+{
+  "packet_type": "mim-tod-task-request-v1",
+  "generated_at": "2026-05-21T17:19:30Z",
+  "request_generated_at": "2026-05-21T17:19:30Z",
+  "fresh_envelope_id": "objective-1-lab-awareness-runtime-status-20260521T171930Z",
+  "actor": "operator-via-tod-supervision",
+  "target": "MIM",
+  "target_executor": "mim",
+  "objective_id": "objective-1",
+  "task_id": "objective-1-lab-awareness-runtime-status-20260521T171930Z",
+  "request_id": "objective-1-lab-awareness-runtime-status-20260521T171930Z",
+  "source_request_id": "operator-lab-awareness-canonical-bridge-20260521T171930Z",
+  "request_status": "published",
+  "status": "pending",
+  "result_status": "pending",
+  "completion_status": "pending",
+  "dispatch_kind": "mim_owned_runtime_status_request",
+  "request_type_classification": "operator_live_lab_awareness",
+  "task_class": "mim_runtime_status_and_sensor_inventory",
+  "action_name": "mim-publish-lab-awareness-status",
+  "allowed_to_proceed_without_confirmation": true,
+  "confirmation_required": false,
+  "content": "Canonical bridge request for objective-1, carrying external operator objective MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1. MIM must not route this as a TOD/Codex implementation patch. MIM must publish MIM_LAB_AWARENESS_STATUS.latest.json and then MIM_LAB_SENSOR_INVENTORY.latest.json or blocked_with_inspection.",
+  "task": "MIM-owned runtime action: publish lab-awareness status, reconcile bridge objective alias, and begin sensor inventory. TOD/Codex monitor only.",
+  "next_action": "mim_publish_lab_awareness_status",
+  "bounded_change": "No code patch requested. This is a MIM runtime status/sensor task.",
+  "bounded_edit_mode": false,
+  "validation_only": false,
+  "completion_gate": {
+    "operator_satisfaction_until_evidence": "blocked_until_lab_status_and_sensor_inventory_or_blocker_exist",
+    "reject_artifact_readback_only": true,
+    "reject_service_status_only": true,
+    "reject_state_bus_only": true,
+    "reject_bridge_alignment_only": true,
+    "reject_growth_or_idle_completion_as_lab_success": true,
+    "changed_files_required_for_success": false,
+    "allow_blocked_with_inspection": true
+  },
+  "required_evidence": [
+    "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+    "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json"
+  ],
+  "expected_evidence": [
+    "MIM_LAB_AWARENESS_STATUS.latest.json with objective alias, current phase, percent_complete, blocker, next MIM-owned runtime action, and required artifact checklist",
+    "MIM_LAB_SENSOR_INVENTORY.latest.json with camera/microphone/arm-camera resource list, openability, and failure reason per resource, or blocked_with_inspection"
+  ],
+  "metadata_json": {
+    "external_operator_objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "mim_api_objective_id": 3312,
+    "mim_api_first_task_id": 7945,
+    "operator": "Dave",
+    "tod_role": "monitor_only",
+    "codex_role": "do_not_implement_camera_tts_or_hardware"
+  }
+}

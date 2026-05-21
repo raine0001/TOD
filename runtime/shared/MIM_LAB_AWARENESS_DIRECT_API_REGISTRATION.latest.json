@@ -1,0 +1,26 @@
+{
+  "packet_type": "mim-lab-awareness-direct-api-registration-v1",
+  "generated_at": "2026-05-21T17:17:35Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "mim_api_registration": {
+    "api_base": "http://127.0.0.1:18021",
+    "objective_api_id": 3312,
+    "first_task_api_id": 7945,
+    "first_task_title": "Inventory lab sensors and publish first live-readiness map",
+    "assigned_to": "mim",
+    "start_now": true,
+    "execution_scope": "mim-owned-runtime"
+  },
+  "why_used": "The MIM_TOD_TASK_REQUEST bridge kept routing the lab-awareness objective into TOD/Codex implementation validation. The objective and first task were therefore registered directly in MIM's own objective/task API store.",
+  "expected_next_outputs": [
+    "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+    "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json"
+  ],
+  "guardrails": [
+    "TOD/Codex continue monitoring and prompting only.",
+    "MIM owns camera/microphone/TTS/human/object runtime execution.",
+    "No completion is valid without fresh lab evidence artifacts."
+  ]
+}

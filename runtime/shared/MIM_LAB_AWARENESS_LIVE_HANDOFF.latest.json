@@ -1,0 +1,78 @@
+{
+  "packet_type": "mim-tod-task-request-v1",
+  "generated_at": "2026-05-21T17:10:09Z",
+  "request_generated_at": "2026-05-21T17:10:09Z",
+  "fresh_envelope_id": "mim-lab-awareness-human-interaction-v1-live-handoff-20260521T171009Z",
+  "actor": "operator-via-tod-supervision",
+  "target": "MIM",
+  "target_executor": "mim",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "task_id": "mim-lab-awareness-human-interaction-v1-live-handoff-20260521T171009Z",
+  "request_id": "mim-lab-awareness-human-interaction-v1-live-handoff-20260521T171009Z",
+  "source_request_id": "operator-lab-awareness-resume-20260521T171009Z",
+  "request_status": "published",
+  "status": "pending",
+  "result_status": "pending",
+  "completion_status": "pending",
+  "dispatch_kind": "mim_owned_direct_execution",
+  "request_type_classification": "operator_live_lab_awareness",
+  "task_class": "mim_hardware_runtime_objective",
+  "action_name": "execute-mim-lab-awareness-until-100-percent",
+  "allowed_to_proceed_without_confirmation": true,
+  "confirmation_required": false,
+  "confirmation_policy_reason": "operator explicitly instructed steady monitor and continue until objective is 100 percent complete",
+  "content": "OBJECTIVE: MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1\n\nMIM, resume the operator's active lab-awareness objective now. A completed growth/self-health or idle objective is not success for this operator objective.\n\nRequired behavior:\n- detect humans/activity in the lab using current sensor evidence\n- initiate voice TTS interaction when Dave or another human is present\n- remember interactions and human names; Dave is primary operator when identified\n- identify visible lab objects and ask about unknown objects without fabricating labels\n- cycle all available cameras, including the arm camera, using safe existing routines only\n- continue by creating MIM-owned next objectives until every success criterion is proven\n\nTOD role: monitor and evaluate only. TOD converts stalls, drift, or false completion into learning objectives and guidance. TOD/Codex must not implement the camera/TTS/hardware work for MIM.",
+  "task": "MIM-owned execution: resume lab awareness, human interaction, object inquiry, memory, and all-camera cycling until every success criterion is proven with fresh artifacts.",
+  "next_action": "mim_execute_sensor_inventory_and_publish_evidence",
+  "bounded_change": "No code patch requested from TOD/Codex. MIM should use its own runtime capabilities to inventory sensors, cycle cameras, detect humans/objects, initiate TTS, and record memory evidence.",
+  "bounded_edit_mode": false,
+  "validation_only": false,
+  "completion_gate": {
+    "operator_satisfaction_until_evidence": "blocked_until_all_required_evidence_exists",
+    "reject_artifact_readback_only": true,
+    "reject_service_status_only": true,
+    "reject_growth_or_idle_completion_as_lab_success": true,
+    "changed_files_required_for_success": false,
+    "allow_blocked_with_inspection": true
+  },
+  "required_evidence": [
+    "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+    "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+    "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+    "runtime/shared/MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+    "runtime/shared/MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
+    "runtime/shared/MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json"
+  ],
+  "expected_evidence": [
+    "fresh per-device camera and microphone inventory with openability and failure reasons",
+    "fresh per-camera cycle evidence including arm camera status",
+    "fresh human presence event and TTS action record",
+    "fresh interaction memory record with human name handling and Dave primary-operator binding",
+    "fresh object inventory plus unknown-object inquiry evidence",
+    "explicit all-success-criteria checklist with every item passed before completion"
+  ],
+  "acceptance_criteria": [
+    "MIM detects Dave or another human in the lab and records current sensor evidence.",
+    "MIM initiates a voice TTS interaction with the human without waiting for typed input.",
+    "MIM records the interaction for future reference and stores/reuses known human names.",
+    "MIM records Dave as primary operator when Dave is identified.",
+    "MIM identifies visible known objects and asks about unknown objects.",
+    "MIM cycles all available cameras, including the arm camera, and records current evidence for each camera.",
+    "MIM publishes a completion artifact only after all criteria are true."
+  ],
+  "failure_policy": {
+    "if_blocked": "publish blocked_with_inspection evidence naming exact missing device/API/permission/safety blocker and create the next MIM-owned repair objective",
+    "if_drift_to_growth_or_idle": "return to this operator objective before doing idle growth work",
+    "if_false_completion": "create learning objective MIM-FALSE-COMPLETION-LAB-AWARENESS-V1"
+  },
+  "supervision_contract": {
+    "tod_role": "monitor_evaluate_prompt_for_resolution",
+    "codex_role": "supervisor_and_artifact_publisher_only",
+    "do_not_do_for_mim": [
+      "do not implement camera stack",
+      "do not implement TTS stack",
+      "do not fake sensor evidence",
+      "do not claim success from service health alone"
+    ]
+  }
+}

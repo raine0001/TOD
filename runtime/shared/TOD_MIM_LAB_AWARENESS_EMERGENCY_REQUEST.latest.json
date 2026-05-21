@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-05-21T17:14:10Z",
+  "source": "tod-mim-lab-awareness-emergency-request-v1",
+  "status": "active",
+  "priority": "critical",
+  "escalation_level": 4,
+  "request_id": "tod-lab-awareness-emergency-20260521T171410Z",
+  "parent_request_id": "mim-lab-awareness-human-interaction-v1-live-handoff-20260521T171009Z-replan-1",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "task_id": "mim-lab-awareness-human-interaction-v1-live-handoff-20260521T171009Z-replan-1",
+  "issue_code": "lab_awareness_false_completion_and_tod_silence",
+  "issue_summary": "The lab-awareness lane is active but has no lab evidence artifacts. MIM/TOD validated shared-state alignment and then entered TOD silence/emergency instead of MIM-owned runtime execution.",
+  "emergency_reason": "The operator objective requires 100 percent completion. Current state has zero required lab evidence artifacts and MIM status still reports blocked implementation routing.",
+  "requested_action": "MIM must stop treating this as a TOD implementation patch. Publish MIM_LAB_AWARENESS_STATUS.latest.json immediately with current phase, blocker, next MIM-owned runtime action, and required evidence checklist. Then publish MIM_LAB_SENSOR_INVENTORY.latest.json or blocked_with_inspection naming exact missing resource access.",
+  "required_ack": {
+    "ack_file": "MIM_TOD_EMERGENCY_ACK.latest.json",
+    "ack_fields": [
+      "acknowledged",
+      "acknowledged_at",
+      "request_id",
+      "decision",
+      "reason",
+      "next_update_at",
+      "lab_awareness_next_artifact"
+    ],
+    "timeout_seconds": 30
+  },
+  "evidence": {
+    "missing_lab_artifacts": [
+      "MIM_LAB_AWARENESS_STATUS.latest.json",
+      "MIM_LAB_SENSOR_INVENTORY.latest.json",
+      "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+      "MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+      "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
+      "MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json"
+    ],
+    "current_mim_task_state": "dispatch_blocked",
+    "current_mim_task_reason": "tod_silence_emergency",
+    "current_operator_status_phase": "blocked",
+    "false_completion_artifact": "runtime/shared/MIM_LAB_AWARENESS_FALSE_COMPLETION.latest.json",
+    "routing_correction_artifact": "runtime/shared/MIM_LAB_AWARENESS_ROUTING_CORRECTION.latest.json"
+  },
+  "guardrail": "Bridge repair is useful but cannot count as lab-awareness progress. Completion remains false until live lab artifacts exist."
+}

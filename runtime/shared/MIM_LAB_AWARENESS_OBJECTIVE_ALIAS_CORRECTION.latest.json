@@ -1,0 +1,24 @@
+{
+  "packet_type": "mim-lab-awareness-objective-alias-correction-v1",
+  "generated_at": "2026-05-21T17:19:30Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "canonical_bridge_objective_id": "objective-1",
+  "external_operator_objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "mim_api_objective_id": 3312,
+  "mim_api_first_task_id": 7945,
+  "off_course_signal": "publication_surface_divergence_from_objective_id_alias_mismatch",
+  "evidence": {
+    "watchdog_issue_code": "publication_surface_divergence_emergency",
+    "canonical_expected_objective_id": "objective-1",
+    "stale_live_task_request_objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "task_id": "mim-lab-awareness-human-interaction-v1-live-handoff-20260521T171009Z-replan-1"
+  },
+  "correction": {
+    "bridge_rule": "Use objective-1 on MIM/TOD bridge surfaces when the bridge requires the canonical current objective id.",
+    "operator_goal_rule": "Do not lose the operator goal. Carry MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1 as external_operator_objective_id and enforce its lab evidence success criteria.",
+    "mim_api_rule": "MIM objective 3312 and task 7945 are the direct MIM-owned runtime registration for the same operator goal."
+  },
+  "required_next_step": "MIM should reconcile the alias, stop classifying the lab objective as publication divergence, and publish MIM_LAB_AWARENESS_STATUS.latest.json or blocked_with_inspection for the first sensor inventory task.",
+  "success_gate": "Neither bridge alias reconciliation nor TOD liveness counts as lab-awareness completion."
+}

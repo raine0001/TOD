@@ -1,0 +1,64 @@
+{
+  "packet_type": "mim-lab-awareness-false-completion-v1",
+  "generated_at": "2026-05-21T17:12:45Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "parent_objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "off_course_signal": "alignment_validation_mistaken_for_lab_execution_success",
+  "observed_result": {
+    "task_id": "mim-lab-awareness-human-interaction-v1-live-handoff-20260521T171009Z-replan-1",
+    "mim_task_status_state": "completed",
+    "tod_result_status": "succeeded",
+    "tod_action": "get-state-bus",
+    "tod_validator_checks": [
+      "compatible",
+      "objective_alignment",
+      "tod_current_objective",
+      "mim_objective_active",
+      "mim_refresh_failure_reason_empty"
+    ]
+  },
+  "why_this_is_not_success": [
+    "The result proves shared-state alignment only.",
+    "The result does not prove sensor inventory.",
+    "The result does not prove camera cycling.",
+    "The result does not prove human detection.",
+    "The result does not prove TTS interaction.",
+    "The result does not prove human memory or Dave primary-operator binding.",
+    "The result does not prove object identification or unknown-object inquiry."
+  ],
+  "missing_required_artifacts": [
+    "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+    "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+    "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+    "runtime/shared/MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+    "runtime/shared/MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
+    "runtime/shared/MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json"
+  ],
+  "learning_objective": {
+    "id": "MIM-LAB-AWARENESS-FALSE-COMPLETION-GUARD-V1",
+    "title": "Do not treat state-bus or alignment validation as lab-awareness execution",
+    "lesson": "For physical/lab objectives, success must be grounded in fresh world-facing evidence. Shared-state alignment and bridge health are prerequisites, not completion.",
+    "validation": "Completion is forbidden until every required lab-awareness artifact exists and has timestamps after this correction."
+  },
+  "required_resolution": {
+    "immediate_next_artifact": "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+    "status_artifact_must_include": [
+      "objective_id",
+      "phase",
+      "percent_complete",
+      "currently_blocked",
+      "blocker_if_any",
+      "next_mim_owned_action",
+      "required_artifact_checklist",
+      "evidence_created_after"
+    ],
+    "first_runtime_action": "MIM inventories available lab cameras and microphones and publishes MIM_LAB_SENSOR_INVENTORY.latest.json, or publishes blocked_with_inspection naming the exact resource access blocker."
+  },
+  "tod_supervision": {
+    "continue_monitoring": true,
+    "prompt_for_resolution_when_needed": true,
+    "do_not_stop_until_100_percent": true,
+    "do_not_implement_for_mim": true
+  }
+}
