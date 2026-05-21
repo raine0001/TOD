@@ -1,0 +1,46 @@
+{
+  "packet_type": "mim-lab-sensor-inventory-stale-source-learning-v1",
+  "generated_at": "2026-05-21T19:02:20Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "parent_task_id": 7948,
+  "barrier": "sensor_inventory_runner_not_connected_to_existing_perception_sources",
+  "current_state": {
+    "lab_awareness_status_artifact": "present",
+    "lab_sensor_inventory_artifact": "present_blocked_with_inspection",
+    "growth_guard": "holding",
+    "growth_status_reason": "active_operator_objective_not_idle",
+    "inventory_status": "blocked_with_inspection",
+    "inventory_devices": []
+  },
+  "observed_existing_substrate": {
+    "endpoint": "/gateway/perception/sources",
+    "source_table": "workspace_perception_sources",
+    "known_source_types": [
+      "camera",
+      "microphone"
+    ],
+    "notable_staleness": "Latest observed perception sources in the endpoint response are from 2026-04-09 or earlier, so they cannot be counted as current live lab openability evidence.",
+    "related_endpoints": [
+      "/gateway/perception/camera/events",
+      "/gateway/perception/mic/events",
+      "/gateway/perception/status",
+      "/gateway/vision-policy",
+      "/gateway/voice-policy"
+    ]
+  },
+  "lesson": {
+    "id": "MIM-LAB-SENSOR-INVENTORY-STALE-SOURCES-ARE-NOT-LIVE-EVIDENCE-V1",
+    "title": "Use existing perception source records as a starting map, not live lab inventory success",
+    "rule": "Registered perception sources with stale last_seen_at timestamps prove prior capability, not current camera/microphone/arm-camera readiness.",
+    "resolution_pattern": [
+      "Read current perception sources to seed the inventory candidate list.",
+      "For each candidate camera/microphone/arm-camera path, run a current openability/freshness probe or record a precise blocker.",
+      "Republish MIM_LAB_SENSOR_INVENTORY.latest.json with per-resource status, last_seen_at, freshness, openability, and failure reason.",
+      "Only advance to camera cycling when at least the available cameras have fresh current evidence or explicit blockers."
+    ]
+  },
+  "required_next_mim_action": "Connect the lab sensor inventory task to the existing perception source/event endpoints and republish current per-device evidence or exact blockers.",
+  "tod_codex_boundary": "monitor and guide only; do not implement camera, microphone, TTS, human memory, or object recognition work for MIM"
+}

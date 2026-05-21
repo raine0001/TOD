@@ -18,6 +18,7 @@ $RequiredArtifacts = @(
     "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
     "MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json"
 )
+$SensorInventoryArtifact = "MIM_LAB_SENSOR_INVENTORY.latest.json"
 
 function Get-UtcNow {
     return (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -50,6 +51,18 @@ function Write-JsonFile {
     Move-Item -LiteralPath $tmp -Destination $fullPath -Force
 }
 
+function Get-JsonFieldText {
+    param(
+        $Payload,
+        [string]$Name
+    )
+    if ($null -eq $Payload) { return "" }
+    if ($Payload.PSObject.Properties.Name -contains $Name) {
+        return [string]$Payload.$Name
+    }
+    return ""
+}
+
 function Publish-MonitorPrompt {
     param([Parameter(Mandatory = $true)]$Prompt)
     $json = $Prompt | ConvertTo-Json -Depth 20 -Compress
@@ -78,6 +91,25 @@ while ($true) {
         $missing = @($RequiredArtifacts | Where-Object { $artifactStates[$_] -ne "present" })
         $complete = $missing.Count -eq 0
 
+        $inventoryPayload = $null
+        if ($artifactStates[$SensorInventoryArtifact] -eq "present") {
+            $inventoryLines = Invoke-MimCommand -Command "cat $RemoteSharedDir/$SensorInventoryArtifact 2>/dev/null || printf '{}'"
+            $inventoryPayload = ConvertFrom-MimJsonOutput -Lines $inventoryLines
+        }
+        $inventoryStatus = Get-JsonFieldText -Payload $inventoryPayload -Name "status"
+        $inventoryGeneratedAt = Get-JsonFieldText -Payload $inventoryPayload -Name "generated_at"
+        $inventoryBlocked = $inventoryStatus -eq "blocked_with_inspection"
+        $inventoryStale = $false
+        if ($inventoryGeneratedAt) {
+            try {
+                $inventoryTime = [datetimeoffset]::Parse($inventoryGeneratedAt.Replace("Z", "+00:00"))
+                $inventoryStale = ((Get-Date).ToUniversalTime() - $inventoryTime.UtcDateTime).TotalSeconds -gt 600
+            }
+            catch {
+                $inventoryStale = $true
+            }
+        }
+
         $currentObjective = ""
         if ($operatorStatus.PSObject.Properties.Name -contains "current_objective_id") {
             $currentObjective = [string]$operatorStatus.current_objective_id
@@ -99,11 +131,21 @@ while ($true) {
             missing_required_artifacts = $missing
             drifted_to_growth = $driftedToGrowth
             false_completion = $falseCompletion
+            sensor_inventory_status = $inventoryStatus
+            sensor_inventory_generated_at = $inventoryGeneratedAt
+            sensor_inventory_stale_blocker = ($inventoryBlocked -and $inventoryStale)
             next_monitor_action = "continue_monitoring"
         }
         Write-JsonFile -Path $LocalStatusPath -Payload $monitorStatus
 
-        if (-not $complete -and ($driftedToGrowth -or $falseCompletion)) {
+        if (-not $complete -and ($driftedToGrowth -or $falseCompletion -or ($inventoryBlocked -and $inventoryStale))) {
+            $offCourseSignal = "sensor_inventory_blocker_stale_after_mim_task"
+            if ($driftedToGrowth) {
+                $offCourseSignal = "growth_or_idle_preempted_unfinished_lab_objective"
+            }
+            elseif ($falseCompletion) {
+                $offCourseSignal = "completion_claim_without_lab_evidence"
+            }
             $prompt = [ordered]@{
                 packet_type = "mim-lab-awareness-monitor-prompt-v1"
                 generated_at = $now
@@ -112,9 +154,11 @@ while ($true) {
                 objective_id = "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1"
                 current_mim_objective = $currentObjective
                 current_mim_phase = $currentPhase
-                off_course_signal = if ($driftedToGrowth) { "growth_or_idle_preempted_unfinished_lab_objective" } else { "completion_claim_without_lab_evidence" }
+                off_course_signal = $offCourseSignal
                 missing_required_artifacts = $missing
-                required_resolution = "Return to the lab-awareness objective and publish MIM_LAB_AWARENESS_STATUS.latest.json plus MIM_LAB_SENSOR_INVENTORY.latest.json or blocked_with_inspection. Do not count growth, bridge health, or state-bus validation as lab success."
+                sensor_inventory_status = $inventoryStatus
+                sensor_inventory_generated_at = $inventoryGeneratedAt
+                required_resolution = "Continue the lab-awareness objective. If sensor inventory is blocked/stale, connect the existing perception source/event path and republish MIM_LAB_SENSOR_INVENTORY.latest.json with current per-resource openability/freshness/failure evidence. Do not count growth, bridge health, stale perception records, or state-bus validation as lab success."
                 tod_codex_boundary = "Monitor and guide only; do not implement camera, microphone, TTS, human memory, or object recognition work for MIM."
             }
             Publish-MonitorPrompt -Prompt $prompt
