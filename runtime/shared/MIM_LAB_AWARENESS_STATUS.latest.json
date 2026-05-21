@@ -1,0 +1,39 @@
+{
+  "blocker_if_any": "",
+  "currently_blocked": false,
+  "generated_at": "2026-05-21T23:24:04Z",
+  "next_mim_owned_action": "",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "packet_type": "mim-lab-awareness-status-v1",
+  "percent_complete": 100,
+  "phase": "complete_with_evidence",
+  "required_artifact_checklist": {
+    "MIM_HUMAN_INTERACTION_MEMORY.latest.json": {
+      "present": true,
+      "required_for_completion": true
+    },
+    "MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json": {
+      "present": true,
+      "required_for_completion": true
+    },
+    "MIM_LAB_AWARENESS_STATUS.latest.json": {
+      "present": true,
+      "required_for_completion": true
+    },
+    "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json": {
+      "present": true,
+      "required_for_completion": true
+    },
+    "MIM_LAB_SENSOR_INVENTORY.latest.json": {
+      "present": true,
+      "required_for_completion": true
+    },
+    "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json": {
+      "present": true,
+      "required_for_completion": true
+    }
+  },
+  "source": "mim_ready_task_dispatcher",
+  "success": true,
+  "tod_codex_boundary": "monitor_only; MIM-owned dispatcher executed final evidence validation"
+}

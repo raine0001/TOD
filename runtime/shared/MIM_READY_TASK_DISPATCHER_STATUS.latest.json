@@ -1,0 +1,8 @@
+{
+  "generated_at": "2026-05-21T23:24:19Z",
+  "last_action": "no_ready_mim_start_now_task",
+  "last_processed_dispatch_status": "completed_with_evidence",
+  "last_processed_task_id": 7964,
+  "packet_type": "mim-ready-task-dispatcher-status-v1",
+  "status": "idle"
+}

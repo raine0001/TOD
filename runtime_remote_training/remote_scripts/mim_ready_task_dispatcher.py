@@ -80,6 +80,13 @@ def load_json_url(url: str, *, timeout: int = 8) -> dict[str, Any]:
         }
 
 
+def load_json_file(path: Path) -> dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
 def discover_v4l2_capture_sources() -> dict[str, dict[str, Any]]:
     monitor = run_command(["gst-device-monitor-1.0", "Video/Source"], timeout=15)
     sources: dict[str, dict[str, Any]] = {}
@@ -227,16 +234,31 @@ def probe_arm_camera_bridge() -> dict[str, Any]:
     capture_proposal = load_json_url("http://127.0.0.1:18001/mim/arm/proposals/capture-frame")
     state_payload = camera_state.get("payload") if isinstance(camera_state.get("payload"), dict) else {}
     proposal_payload = capture_proposal.get("payload") if isinstance(capture_proposal.get("payload"), dict) else {}
+    dispatch_telemetry = load_json_file(SHARED / "MIM_ARM_DISPATCH_TELEMETRY.latest.json")
     camera_online = bool(state_payload.get("camera_online"))
     live_dispatch_allowed = bool(proposal_payload.get("live_dispatch_allowed"))
+    capture_completed = (
+        str(dispatch_telemetry.get("command_name") or "").strip() == "capture_frame"
+        and str(dispatch_telemetry.get("completion_status") or "").strip() == "completed"
+        and str(dispatch_telemetry.get("result_reason") or "").strip() in {"succeeded", "success", "completed"}
+    )
     payload: dict[str, Any] = {
         "device_id": "arm-camera-bridge",
         "source_type": "arm_camera",
         "exists": bool(existing) or camera_online,
         "openable": camera_online,
-        "last_frame_or_sample_time": None,
+        "last_frame_or_sample_time": dispatch_telemetry.get("host_completed_timestamp") if capture_completed else None,
         "probe_method": "arm camera-state/proposal endpoints plus bridge artifact inspection; no arm movement",
         "inspected_paths": inspected,
+        "dispatch_telemetry": {
+            "execution_id": dispatch_telemetry.get("execution_id"),
+            "dispatch_status": dispatch_telemetry.get("dispatch_status"),
+            "completion_status": dispatch_telemetry.get("completion_status"),
+            "host_received_timestamp": dispatch_telemetry.get("host_received_timestamp"),
+            "host_completed_timestamp": dispatch_telemetry.get("host_completed_timestamp"),
+            "result_reason": dispatch_telemetry.get("result_reason"),
+            "request_id": dispatch_telemetry.get("request_id"),
+        },
         "camera_state": state_payload,
         "capture_frame_proposal": {
             "ok": capture_proposal.get("ok"),
@@ -246,7 +268,7 @@ def probe_arm_camera_bridge() -> dict[str, Any]:
             "safety_posture": proposal_payload.get("safety_posture"),
         },
         "error": "" if camera_online else "arm_camera_state_not_online",
-        "cycle_error": "" if live_dispatch_allowed else "capture_frame_live_dispatch_not_allowed_or_not_bound",
+        "cycle_error": "" if capture_completed or live_dispatch_allowed else "capture_frame_live_dispatch_not_allowed_or_not_bound",
     }
     if existing:
         payload["bridge_artifacts_present"] = [str(path.relative_to(ROOT)) for path in existing]
@@ -440,6 +462,374 @@ def run_lab_camera_cycle(task: Task) -> dict[str, Any]:
     return payload
 
 
+def run_lab_human_interaction(task: Task) -> dict[str, Any]:
+    generated_at = now_iso()
+    message = "Hello Dave. I recognize you as my primary operator in the lab."
+    tts_probe = run_command(["spd-say", message], timeout=8)
+    status = "completed_with_evidence" if tts_probe["ok"] else "blocked_with_evidence"
+    memory = {
+        "packet_type": "mim-human-interaction-memory-v1",
+        "generated_at": generated_at,
+        "source": "mim_ready_task_dispatcher",
+        "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+        "mim_api_task_id": task.id,
+        "status": status,
+        "success": tts_probe["ok"],
+        "interaction": {
+            "human_name": "Dave",
+            "human_role": "primary_operator",
+            "presence_trigger_source": "operator_context_present",
+            "presence_trigger_evidence": "operator stated they are in the lab during the active objective",
+            "interaction_mode": "voice_tts",
+            "tts_message": message,
+            "tts_command": tts_probe["command"],
+            "tts_dispatch_mode": "speech-dispatcher async queue; command success means utterance accepted",
+            "tts_returncode": tts_probe["returncode"],
+            "tts_error": "" if tts_probe["ok"] else (tts_probe.get("stderr") or tts_probe.get("stdout") or "tts_failed"),
+            "last_interaction_time": generated_at if tts_probe["ok"] else None,
+        },
+        "memory_records": [
+            {
+                "human_name": "Dave",
+                "remembered_fact": "Dave is MIM's primary operator.",
+                "source": "operator-provided objective context",
+                "confidence": "operator_asserted",
+                "updated_at": generated_at,
+            }
+        ],
+        "next_recovery_action": (
+            "Proceed to object memory/inquiry executor."
+            if tts_probe["ok"]
+            else "Repair speech-dispatcher or default audio output, then rerun human interaction executor."
+        ),
+    }
+    write_json(SHARED / "MIM_HUMAN_INTERACTION_MEMORY.latest.json", memory)
+
+    camera_cycle = load_json_file(SHARED / "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json")
+    arm_blocked = bool(camera_cycle.get("blocked_devices"))
+    write_json(
+        SHARED / "MIM_LAB_AWARENESS_STATUS.latest.json",
+        {
+            "packet_type": "mim-lab-awareness-status-v1",
+            "generated_at": generated_at,
+            "source": "mim_ready_task_dispatcher",
+            "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+            "phase": "human_interaction_memory_complete" if tts_probe["ok"] else "human_interaction_memory_blocked",
+            "percent_complete": 45 if tts_probe["ok"] else 35,
+            "currently_blocked": (not tts_probe["ok"]) or arm_blocked,
+            "blocker_if_any": "" if tts_probe["ok"] and not arm_blocked else "TTS or arm-camera evidence remains incomplete.",
+            "next_mim_owned_action": memory["next_recovery_action"],
+            "required_artifact_checklist": {
+                "MIM_LAB_AWARENESS_STATUS.latest.json": {"present": True, "required_for_completion": True},
+                "MIM_LAB_SENSOR_INVENTORY.latest.json": {"present": (SHARED / "MIM_LAB_SENSOR_INVENTORY.latest.json").exists(), "required_for_completion": True},
+                "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json": {"present": (SHARED / "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json").exists(), "required_for_completion": True},
+                "MIM_HUMAN_INTERACTION_MEMORY.latest.json": {"present": True, "required_for_completion": True},
+                "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json": {"present": (SHARED / "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json").exists(), "required_for_completion": True},
+                "MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json": {"present": False, "required_for_completion": True},
+            },
+            "success": False,
+            "tod_codex_boundary": "monitor_only; MIM-owned dispatcher executed human interaction/TTS evidence",
+        },
+    )
+    write_json(
+        SHARED / "MIM_OPERATOR_STATUS.latest.json",
+        {
+            "packet_type": "mim-operator-status-v1",
+            "generated_at": generated_at,
+            "current_operator_request": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1 human interaction executor",
+            "current_objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+            "request_type": "mim_lab_runtime",
+            "classification": "mim_ready_task_dispatcher",
+            "owner": "MIM",
+            "current_phase": "human_interaction_memory_complete" if tts_probe["ok"] else "human_interaction_memory_blocked",
+            "what_mim_is_doing": "MIM produced a voice TTS interaction and recorded Dave as primary operator." if tts_probe["ok"] else "MIM attempted voice TTS interaction and recorded the exact blocker.",
+            "what_tod_is_doing": "TOD is monitoring and guiding; MIM owns TTS, memory, object inquiry, and remaining arm-camera work.",
+            "waiting_on": "MIM object memory/inquiry executor" if tts_probe["ok"] else "MIM TTS/audio output recovery",
+            "last_fresh_event": "MIM produced human interaction memory evidence",
+            "last_fresh_event_at": generated_at,
+            "stale_state_detected": False,
+            "stale_panels": [],
+            "active_artifacts": [
+                "runtime/shared/MIM_OPERATOR_STATUS.latest.json",
+                "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+                "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+                "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+                "runtime/shared/MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+            ],
+            "blocking_issue": "" if tts_probe["ok"] else "Voice TTS did not complete; see MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+            "next_safe_action": memory["next_recovery_action"],
+            "operator_guidance": "monitor",
+            "debug_artifacts_available": True,
+        },
+    )
+    return memory
+
+
+def run_lab_object_inquiry(task: Task) -> dict[str, Any]:
+    generated_at = now_iso()
+    camera_cycle = load_json_file(SHARED / "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json")
+    sensor_inventory = load_json_file(SHARED / "MIM_LAB_SENSOR_INVENTORY.latest.json")
+    cycled_cameras = [
+        entry.get("device_id")
+        for entry in camera_cycle.get("cycle_entries", [])
+        if entry.get("source_type") == "camera" and entry.get("cycled")
+    ]
+    known_objects = []
+    for device in sensor_inventory.get("devices", []):
+        device_id = str(device.get("device_id") or "").strip()
+        source_type = str(device.get("source_type") or "").strip()
+        if not device_id or source_type not in {"camera", "microphone", "arm_camera"}:
+            continue
+        label = str(device.get("label") or device.get("short_label") or device_id).strip()
+        known_objects.append(
+            {
+                "object_id": device_id,
+                "object_type": source_type,
+                "name": label,
+                "evidence_source": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+                "exists": bool(device.get("exists")),
+                "openable": bool(device.get("openable")),
+                "last_seen_or_sampled_at": device.get("last_frame_or_sample_time"),
+            }
+        )
+    for entry in camera_cycle.get("cycle_entries", []):
+        device_id = str(entry.get("device_id") or "").strip()
+        if not device_id or not bool(entry.get("cycled")):
+            continue
+        if not any(item.get("object_id") == device_id for item in known_objects):
+            known_objects.append(
+                {
+                    "object_id": device_id,
+                    "object_type": str(entry.get("source_type") or "camera").strip(),
+                    "name": device_id,
+                    "evidence_source": "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+                    "exists": bool(entry.get("exists", True)),
+                    "openable": bool(entry.get("openable", True)),
+                    "last_seen_or_sampled_at": entry.get("last_frame_or_sample_time"),
+                }
+            )
+    message = "Dave, my lab cameras are available. Please name any important objects I should remember."
+    tts_probe = run_command(["spd-say", message], timeout=8)
+    has_camera_evidence = bool(cycled_cameras)
+    status = "completed_with_evidence" if has_camera_evidence and tts_probe["ok"] and known_objects else "blocked_with_evidence"
+    payload = {
+        "packet_type": "mim-object-memory-and-inquiry-v1",
+        "generated_at": generated_at,
+        "source": "mim_ready_task_dispatcher",
+        "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+        "mim_api_task_id": task.id,
+        "status": status,
+        "success": status == "completed_with_evidence",
+        "known_objects": known_objects,
+        "unknown_object_inquiry": {
+            "inquiry_mode": "voice_tts",
+            "prompt": message,
+            "reason": "Object-recognition labels are not yet bound; MIM is asking the primary operator for names before storing object memory.",
+            "tts_command": tts_probe["command"],
+            "tts_dispatch_mode": "speech-dispatcher async queue; command success means utterance accepted",
+            "tts_returncode": tts_probe["returncode"],
+            "tts_error": "" if tts_probe["ok"] else (tts_probe.get("stderr") or tts_probe.get("stdout") or "tts_failed"),
+        },
+        "available_visual_evidence": {
+            "cycled_cameras": cycled_cameras,
+            "camera_cycle_artifact": "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+            "arm_camera_cycle_blocked": bool(camera_cycle.get("blocked_devices")),
+        },
+        "blockers": [
+            blocker
+            for blocker in [
+                None if has_camera_evidence else {"reason_code": "no_camera_cycle_evidence", "recovery": "Rerun camera cycle executor."},
+                None if tts_probe["ok"] else {"reason_code": "object_inquiry_tts_failed", "recovery": "Repair speech output and rerun object inquiry executor."},
+                None if known_objects else {"reason_code": "no_known_lab_objects_derived", "recovery": "Rerun sensor inventory and camera cycle before object memory."},
+            ]
+            if blocker
+        ],
+        "open_learning_need": {
+            "reason_code": "general_object_recognition_model_not_bound",
+            "impact": "MIM can remember known lab devices and ask about unknown objects, but arbitrary visual object labels still require operator labels or a local vision-labeling executor.",
+            "next_training_objective": "Bind operator-label capture or local vision labeling for non-device lab objects.",
+        },
+        "next_recovery_action": "Proceed to final lab-awareness evidence validation." if status == "completed_with_evidence" else "Recover camera evidence, TTS, or sensor-derived object memory.",
+    }
+    write_json(SHARED / "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json", payload)
+    write_json(
+        SHARED / "MIM_LAB_AWARENESS_STATUS.latest.json",
+        {
+            "packet_type": "mim-lab-awareness-status-v1",
+            "generated_at": generated_at,
+            "source": "mim_ready_task_dispatcher",
+            "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+            "phase": "object_memory_and_inquiry_complete" if payload["success"] else "object_inquiry_blocked",
+            "percent_complete": 75 if payload["success"] else 50,
+            "currently_blocked": not payload["success"],
+            "blocker_if_any": "" if payload["success"] else "Object inquiry exists, but object memory evidence remains incomplete.",
+            "next_mim_owned_action": payload["next_recovery_action"],
+            "required_artifact_checklist": {
+                "MIM_LAB_AWARENESS_STATUS.latest.json": {"present": True, "required_for_completion": True},
+                "MIM_LAB_SENSOR_INVENTORY.latest.json": {"present": (SHARED / "MIM_LAB_SENSOR_INVENTORY.latest.json").exists(), "required_for_completion": True},
+                "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json": {"present": (SHARED / "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json").exists(), "required_for_completion": True},
+                "MIM_HUMAN_INTERACTION_MEMORY.latest.json": {"present": (SHARED / "MIM_HUMAN_INTERACTION_MEMORY.latest.json").exists(), "required_for_completion": True},
+                "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json": {"present": True, "required_for_completion": True},
+                "MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json": {"present": False, "required_for_completion": True},
+            },
+            "success": False,
+            "tod_codex_boundary": "monitor_only; MIM-owned dispatcher executed object inquiry evidence",
+        },
+    )
+    write_json(
+        SHARED / "MIM_OPERATOR_STATUS.latest.json",
+        {
+            "packet_type": "mim-operator-status-v1",
+            "generated_at": generated_at,
+            "current_operator_request": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1 object memory/inquiry executor",
+            "current_objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+            "request_type": "mim_lab_runtime",
+            "classification": "mim_ready_task_dispatcher",
+            "owner": "MIM",
+            "current_phase": "object_memory_and_inquiry_complete" if payload["success"] else "object_inquiry_blocked_on_label_binding",
+            "what_mim_is_doing": "MIM stored known lab device objects from sensor evidence and asked Dave to name important unknown objects.",
+            "what_tod_is_doing": "TOD is monitoring and guiding; MIM owns final evidence validation and future free-form object label training.",
+            "waiting_on": "MIM final lab-awareness evidence validation" if payload["success"] else "MIM object label binding",
+            "last_fresh_event": "MIM produced object inquiry evidence",
+            "last_fresh_event_at": generated_at,
+            "stale_state_detected": False,
+            "stale_panels": [],
+            "active_artifacts": [
+                "runtime/shared/MIM_OPERATOR_STATUS.latest.json",
+                "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+                "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+                "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+                "runtime/shared/MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+                "runtime/shared/MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
+            ],
+            "blocking_issue": "" if payload["success"] else "Object memory/inquiry evidence is incomplete.",
+            "next_safe_action": payload["next_recovery_action"],
+            "operator_guidance": "monitor",
+            "debug_artifacts_available": True,
+        },
+    )
+    return payload
+
+
+def run_lab_awareness_final_evidence(task: Task) -> dict[str, Any]:
+    generated_at = now_iso()
+    sensor = load_json_file(SHARED / "MIM_LAB_SENSOR_INVENTORY.latest.json")
+    camera = load_json_file(SHARED / "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json")
+    human = load_json_file(SHARED / "MIM_HUMAN_INTERACTION_MEMORY.latest.json")
+    objects = load_json_file(SHARED / "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json")
+    checks = {
+        "sensor_inventory": bool(sensor) and str(sensor.get("status") or "") == "completed_with_evidence",
+        "camera_cycle_all_required": bool(camera) and bool(camera.get("success")) and not bool(camera.get("blocked_devices")),
+        "human_tts_memory": bool(human) and bool(human.get("success")),
+        "dave_primary_operator_memory": any(
+            record.get("human_name") == "Dave" and "primary operator" in str(record.get("remembered_fact") or "").lower()
+            for record in human.get("memory_records", [])
+        ),
+        "object_memory_and_unknown_inquiry": bool(objects) and bool(objects.get("success")) and bool(objects.get("known_objects")),
+    }
+    success = all(checks.values())
+    blockers = [
+        {"reason_code": key, "recovery": "Rerun or repair the corresponding MIM-owned executor."}
+        for key, passed in checks.items()
+        if not passed
+    ]
+    payload = {
+        "packet_type": "mim-lab-awareness-execution-evidence-v1",
+        "generated_at": generated_at,
+        "source": "mim_ready_task_dispatcher",
+        "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+        "mim_api_task_id": task.id,
+        "status": "completed_with_evidence" if success else "blocked_with_evidence",
+        "success": success,
+        "checks": checks,
+        "blockers": blockers,
+        "evidence_artifacts": {
+            "sensor_inventory": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+            "camera_cycle": "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+            "human_interaction_memory": "runtime/shared/MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+            "object_memory_and_inquiry": "runtime/shared/MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
+        },
+        "known_humans": [
+            {
+                "name": "Dave",
+                "role": "primary_operator",
+                "evidence_artifact": "runtime/shared/MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+            }
+        ],
+        "known_lab_objects_count": len(objects.get("known_objects", [])) if isinstance(objects.get("known_objects"), list) else 0,
+        "camera_cycle_summary": {
+            "capture_nodes": camera.get("capture_nodes"),
+            "blocked_devices": camera.get("blocked_devices"),
+        },
+        "next_recovery_action": "" if success else "Repair failed checks, then rerun final evidence validation.",
+        "future_learning_objectives": [
+            {
+                "objective": "Bind free-form lab object label capture or local vision labeling.",
+                "reason": "The current object memory covers known devices and asks about unknowns; arbitrary non-device object naming still needs labels.",
+            }
+        ],
+    }
+    write_json(SHARED / "MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json", payload)
+    write_json(
+        SHARED / "MIM_LAB_AWARENESS_STATUS.latest.json",
+        {
+            "packet_type": "mim-lab-awareness-status-v1",
+            "generated_at": generated_at,
+            "source": "mim_ready_task_dispatcher",
+            "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+            "phase": "complete_with_evidence" if success else "final_validation_blocked",
+            "percent_complete": 100 if success else 85,
+            "currently_blocked": not success,
+            "blocker_if_any": "" if success else "Final validation failed one or more required evidence checks.",
+            "next_mim_owned_action": "" if success else payload["next_recovery_action"],
+            "required_artifact_checklist": {
+                "MIM_LAB_AWARENESS_STATUS.latest.json": {"present": True, "required_for_completion": True},
+                "MIM_LAB_SENSOR_INVENTORY.latest.json": {"present": bool(sensor), "required_for_completion": True},
+                "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json": {"present": bool(camera), "required_for_completion": True},
+                "MIM_HUMAN_INTERACTION_MEMORY.latest.json": {"present": bool(human), "required_for_completion": True},
+                "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json": {"present": bool(objects), "required_for_completion": True},
+                "MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json": {"present": True, "required_for_completion": True},
+            },
+            "success": success,
+            "tod_codex_boundary": "monitor_only; MIM-owned dispatcher executed final evidence validation",
+        },
+    )
+    write_json(
+        SHARED / "MIM_OPERATOR_STATUS.latest.json",
+        {
+            "packet_type": "mim-operator-status-v1",
+            "generated_at": generated_at,
+            "current_operator_request": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1 final evidence validation",
+            "current_objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+            "request_type": "mim_lab_runtime",
+            "classification": "mim_ready_task_dispatcher",
+            "owner": "MIM",
+            "current_phase": "complete_with_evidence" if success else "final_validation_blocked",
+            "what_mim_is_doing": "MIM validated lab sensor, camera, arm-camera, TTS, human memory, and object inquiry evidence.",
+            "what_tod_is_doing": "TOD is monitoring and preserving evidence.",
+            "waiting_on": "" if success else "MIM evidence repair",
+            "last_fresh_event": "MIM produced final lab-awareness execution evidence",
+            "last_fresh_event_at": generated_at,
+            "stale_state_detected": False,
+            "stale_panels": [],
+            "active_artifacts": [
+                "runtime/shared/MIM_OPERATOR_STATUS.latest.json",
+                "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+                "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+                "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+                "runtime/shared/MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+                "runtime/shared/MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
+                "runtime/shared/MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json",
+            ],
+            "blocking_issue": "" if success else "Final validation blockers listed in MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json",
+            "next_safe_action": "" if success else payload["next_recovery_action"],
+            "operator_guidance": "monitor",
+            "debug_artifacts_available": True,
+        },
+    )
+    return payload
+
+
 def run_lab_sensor_inventory(task: Task) -> dict[str, Any]:
     generated_at = now_iso()
     devices: list[dict[str, Any]] = []
@@ -573,6 +963,21 @@ def has_lab_camera_cycle_executor(task: Task) -> bool:
     return "camera_cycle" in text or "camera cycle" in text
 
 
+def has_lab_human_interaction_executor(task: Task) -> bool:
+    text = " ".join([task.execution_scope or "", task.title or "", task.details or ""]).lower()
+    return "human_interaction" in text or "human interaction" in text or "tts" in text
+
+
+def has_lab_object_inquiry_executor(task: Task) -> bool:
+    text = " ".join([task.execution_scope or "", task.title or "", task.details or ""]).lower()
+    return "object_inquiry" in text or "object inquiry" in text or "object_memory" in text
+
+
+def has_lab_awareness_final_executor(task: Task) -> bool:
+    text = " ".join([task.execution_scope or "", task.title or "", task.details or ""]).lower()
+    return "lab_awareness_final" in text or "final evidence" in text or "final_validation" in text
+
+
 async def process_once() -> bool:
     async with SessionLocal() as db:
         task = (
@@ -625,6 +1030,21 @@ async def process_once() -> bool:
             await db.commit()
             result_payload = run_lab_camera_cycle(task)
             result_status = str(result_payload.get("status") or "blocked_with_evidence")
+        elif has_lab_human_interaction_executor(task):
+            task.dispatch_status = "running"
+            await db.commit()
+            result_payload = run_lab_human_interaction(task)
+            result_status = str(result_payload.get("status") or "blocked_with_evidence")
+        elif has_lab_object_inquiry_executor(task):
+            task.dispatch_status = "running"
+            await db.commit()
+            result_payload = run_lab_object_inquiry(task)
+            result_status = str(result_payload.get("status") or "blocked_with_evidence")
+        elif has_lab_awareness_final_executor(task):
+            task.dispatch_status = "running"
+            await db.commit()
+            result_payload = run_lab_awareness_final_evidence(task)
+            result_status = str(result_payload.get("status") or "blocked_with_evidence")
         elif has_lab_sensor_inventory_executor(task):
             task.dispatch_status = "running"
             await db.commit()
@@ -645,6 +1065,21 @@ async def process_once() -> bool:
                     "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
                 ]
                 if has_lab_sensor_inventory_executor(task)
+                else [
+                    "runtime/shared/MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+                    "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+                ]
+                if has_lab_human_interaction_executor(task)
+                else [
+                    "runtime/shared/MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
+                    "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+                ]
+                if has_lab_object_inquiry_executor(task)
+                else [
+                    "runtime/shared/MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json",
+                    "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+                ]
+                if has_lab_awareness_final_executor(task)
                 else [
                     "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
                     "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
@@ -669,6 +1104,12 @@ async def process_once() -> bool:
                 "dispatch_status": result_status,
                 "result_artifact": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json"
                 if has_lab_sensor_inventory_executor(task)
+                else "runtime/shared/MIM_HUMAN_INTERACTION_MEMORY.latest.json"
+                if has_lab_human_interaction_executor(task)
+                else "runtime/shared/MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json"
+                if has_lab_object_inquiry_executor(task)
+                else "runtime/shared/MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json"
+                if has_lab_awareness_final_executor(task)
                 else "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json"
                 if has_lab_camera_cycle_executor(task)
                 else f"runtime/shared/MIM_READY_TASK_DISPATCHER_RESULT.task-{task.id}.latest.json",

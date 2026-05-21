@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-05-21T23:13:04Z",
+  "interaction": {
+    "human_name": "Dave",
+    "human_role": "primary_operator",
+    "interaction_mode": "voice_tts",
+    "last_interaction_time": "2026-05-21T23:13:04Z",
+    "presence_trigger_evidence": "operator stated they are in the lab during the active objective",
+    "presence_trigger_source": "operator_context_present",
+    "tts_command": [
+      "spd-say",
+      "Hello Dave. I recognize you as my primary operator in the lab."
+    ],
+    "tts_dispatch_mode": "speech-dispatcher async queue; command success means utterance accepted",
+    "tts_error": "",
+    "tts_message": "Hello Dave. I recognize you as my primary operator in the lab.",
+    "tts_returncode": 0
+  },
+  "memory_records": [
+    {
+      "confidence": "operator_asserted",
+      "human_name": "Dave",
+      "remembered_fact": "Dave is MIM's primary operator.",
+      "source": "operator-provided objective context",
+      "updated_at": "2026-05-21T23:13:04Z"
+    }
+  ],
+  "mim_api_task_id": 7959,
+  "next_recovery_action": "Proceed to object memory/inquiry executor.",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "packet_type": "mim-human-interaction-memory-v1",
+  "source": "mim_ready_task_dispatcher",
+  "status": "completed_with_evidence",
+  "success": true
+}

@@ -1,0 +1,119 @@
+{
+  "available_visual_evidence": {
+    "arm_camera_cycle_blocked": false,
+    "camera_cycle_artifact": "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+    "cycled_cameras": [
+      "/dev/video0",
+      "/dev/video2"
+    ]
+  },
+  "blockers": [],
+  "generated_at": "2026-05-21T23:23:34Z",
+  "known_objects": [
+    {
+      "evidence_source": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+      "exists": true,
+      "last_seen_or_sampled_at": null,
+      "name": "/dev/video0",
+      "object_id": "/dev/video0",
+      "object_type": "camera",
+      "openable": true
+    },
+    {
+      "evidence_source": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+      "exists": true,
+      "last_seen_or_sampled_at": null,
+      "name": "/dev/video1",
+      "object_id": "/dev/video1",
+      "object_type": "camera",
+      "openable": true
+    },
+    {
+      "evidence_source": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+      "exists": true,
+      "last_seen_or_sampled_at": null,
+      "name": "/dev/video2",
+      "object_id": "/dev/video2",
+      "object_type": "camera",
+      "openable": true
+    },
+    {
+      "evidence_source": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+      "exists": true,
+      "last_seen_or_sampled_at": null,
+      "name": "/dev/video3",
+      "object_id": "/dev/video3",
+      "object_type": "camera",
+      "openable": true
+    },
+    {
+      "evidence_source": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+      "exists": true,
+      "last_seen_or_sampled_at": "2026-05-21T22:44:24Z",
+      "name": "HD Webcam eMeet C960 / USB Audio",
+      "object_id": "hw:0,0",
+      "object_type": "microphone",
+      "openable": true
+    },
+    {
+      "evidence_source": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+      "exists": true,
+      "last_seen_or_sampled_at": "2026-05-21T22:44:25Z",
+      "name": "EMEET SmartCam S600 / USB Audio",
+      "object_id": "hw:2,0",
+      "object_type": "microphone",
+      "openable": true
+    },
+    {
+      "evidence_source": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+      "exists": true,
+      "last_seen_or_sampled_at": "2026-05-21T22:44:27Z",
+      "name": "HDA Intel PCH / ALC671 Analog",
+      "object_id": "hw:3,0",
+      "object_type": "microphone",
+      "openable": true
+    },
+    {
+      "evidence_source": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+      "exists": true,
+      "last_seen_or_sampled_at": "2026-05-21T22:44:28Z",
+      "name": "HDA Intel PCH / ALC671 Alt Analog",
+      "object_id": "hw:3,2",
+      "object_type": "microphone",
+      "openable": true
+    },
+    {
+      "evidence_source": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+      "exists": true,
+      "last_seen_or_sampled_at": null,
+      "name": "arm-camera-bridge",
+      "object_id": "arm-camera-bridge",
+      "object_type": "arm_camera",
+      "openable": false
+    }
+  ],
+  "mim_api_task_id": 7963,
+  "next_recovery_action": "Proceed to final lab-awareness evidence validation.",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "open_learning_need": {
+    "impact": "MIM can remember known lab devices and ask about unknown objects, but arbitrary visual object labels still require operator labels or a local vision-labeling executor.",
+    "next_training_objective": "Bind operator-label capture or local vision labeling for non-device lab objects.",
+    "reason_code": "general_object_recognition_model_not_bound"
+  },
+  "packet_type": "mim-object-memory-and-inquiry-v1",
+  "source": "mim_ready_task_dispatcher",
+  "status": "completed_with_evidence",
+  "success": true,
+  "unknown_object_inquiry": {
+    "inquiry_mode": "voice_tts",
+    "prompt": "Dave, my lab cameras are available. Please name any important objects I should remember.",
+    "reason": "Object-recognition labels are not yet bound; MIM is asking the primary operator for names before storing object memory.",
+    "tts_command": [
+      "spd-say",
+      "Dave, my lab cameras are available. Please name any important objects I should remember."
+    ],
+    "tts_dispatch_mode": "speech-dispatcher async queue; command success means utterance accepted",
+    "tts_error": "",
+    "tts_returncode": 0
+  }
+}

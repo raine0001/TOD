@@ -1,0 +1,105 @@
+{
+  "capability_name": "mim_arm.execute_capture_frame",
+  "command_name": "capture_frame",
+  "completion_status": "completed",
+  "contract": "mim_arm_dispatch_telemetry_v1",
+  "correlation_id": "obj1-mim-arm-capture-frame-20260521231829",
+  "dispatch_status": "completed",
+  "dispatch_timestamp": "2026-05-21T23:18:29Z",
+  "evidence_sources": [
+    {
+      "kind": "request_artifact",
+      "observed_at": "2026-05-21T23:18:29Z",
+      "path": "/home/testpilot/mim/runtime/shared/MIM_TOD_TASK_REQUEST.latest.json",
+      "role": "dispatch_request"
+    },
+    {
+      "kind": "trigger_artifact",
+      "observed_at": "2026-05-21T23:18:29Z",
+      "path": "/home/testpilot/mim/runtime/shared/MIM_TO_TOD_TRIGGER.latest.json",
+      "role": "dispatch_trigger"
+    },
+    {
+      "endpoint": "/gateway/capabilities/executions/209859/feedback",
+      "kind": "feedback_endpoint",
+      "observed_at": "2026-05-21T23:18:29Z",
+      "role": "executor_feedback"
+    },
+    {
+      "endpoint": "/gateway/capabilities/executions/209859/handoff",
+      "kind": "handoff_endpoint",
+      "observed_at": "2026-05-21T23:18:29Z",
+      "role": "executor_handoff"
+    },
+    {
+      "kind": "remote_publish",
+      "matched": true,
+      "observed_at": "2026-05-21T23:18:29Z",
+      "returncode": 0,
+      "role": "remote_dispatch_sync",
+      "stderr": "",
+      "stdout": "{\n  \"remote_root\": \"/home/testpilot/mim/runtime/shared\",\n  \"request_task_id\": \"objective-1-task-mim-arm-capture-frame-20260521231829\",\n  \"request_request_id\": \"objective-1-task-mim-arm-capture-frame-20260521231829\",\n  \"trigger_task_id\": \"objective-1-task-mim-arm-capture-frame-20260521231829\",\n  \"trigger_request_id\": \"objective-1-task-mim-arm-capture-frame-20260521231829\",\n  \"request_generated_at\": \"2026-05-21T23:18:29Z\",\n  \"trigger_generated_at\": \"2026-05-21T23:18:30Z\",\n  \"request_sha256\": \"74c8e9e520036dab7e7457a5d8739a8088d078c3c5e4b0ce12e0b82d0eadf6ba\",\n  \"trigger_sha256\": \"b6741bd22b16f894cd84d04e3acfc3646543b074070a8e2fdf5844e5d3e0ad86\",\n  \"publication_mode\": \"canonical_local_root\"\n}"
+    },
+    {
+      "authoritative_host": "192.168.1.120",
+      "authoritative_root": "/home/testpilot/mim/runtime/shared",
+      "kind": "publication_boundary",
+      "matched": true,
+      "observed_at": "2026-05-21T23:18:29Z",
+      "path": "/home/testpilot/mim/runtime/shared/MIM_TOD_PUBLICATION_BOUNDARY.latest.json",
+      "request_alignment": {
+        "request_id_match": true,
+        "sha256_match": true,
+        "task_id_match": true
+      },
+      "role": "communication_authority",
+      "trigger_alignment": {
+        "request_id_match": true,
+        "sha256_match": true,
+        "task_id_match": true
+      }
+    },
+    {
+      "kind": "task_ack_artifact",
+      "matched": true,
+      "matched_fields": [
+        "request_id",
+        "task_id",
+        "correlation_id",
+        "task",
+        "bridge_runtime.current_processing.task_id",
+        "bridge_runtime.current_processing.correlation_id"
+      ],
+      "observed_at": "2026-05-21T23:19:25.1878974Z",
+      "path": "/home/testpilot/mim/runtime/shared/TOD_MIM_TASK_ACK.latest.json",
+      "role": "host_received"
+    },
+    {
+      "ack_inferred": true,
+      "kind": "task_result_artifact",
+      "matched": true,
+      "matched_fields": [
+        "request_id",
+        "task_id",
+        "correlation_id",
+        "task",
+        "bridge_runtime.current_processing.task_id",
+        "bridge_runtime.current_processing.correlation_id"
+      ],
+      "observed_at": "2026-05-21T23:19:35.5882471Z",
+      "path": "/home/testpilot/mim/runtime/shared/TOD_MIM_TASK_RESULT.latest.json",
+      "received_timestamp_inferred": true,
+      "role": "host_completed"
+    }
+  ],
+  "execution_id": 209859,
+  "execution_lane": "tod",
+  "host_completed_timestamp": "2026-05-21T23:19:35.5882471Z",
+  "host_received_timestamp": "2026-05-21T23:19:59Z",
+  "record_path": "/home/testpilot/mim/runtime/shared/mim_arm_dispatch_telemetry/objective-1-task-mim-arm-capture-frame-20260521231829.json",
+  "recorded_at": "2026-05-21T23:18:29Z",
+  "request_id": "objective-1-task-mim-arm-capture-frame-20260521231829",
+  "result_reason": "succeeded",
+  "surface": "dispatch_authority",
+  "task_id": "objective-1-task-mim-arm-capture-frame-20260521231829"
+}

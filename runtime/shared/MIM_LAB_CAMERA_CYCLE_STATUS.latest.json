@@ -1,0 +1,159 @@
+{
+  "blocked_devices": [],
+  "capture_nodes": [
+    "/dev/video0",
+    "/dev/video2"
+  ],
+  "cycle_entries": [
+    {
+      "cycled": true,
+      "device_id": "/dev/video0",
+      "device_metadata": {
+        "media_class": "Video/Source",
+        "path": "/dev/video0"
+      },
+      "error": "",
+      "exists": true,
+      "frame_probe_attempts": [
+        {
+          "command": "timeout 10 gst-launch-1.0 -q v4l2src device=/dev/video0 num-buffers=1 ! videoconvert ! fakesink",
+          "error": "",
+          "ok": true,
+          "returncode": 0
+        }
+      ],
+      "frame_probe_command": "timeout 10 gst-launch-1.0 -q v4l2src device=/dev/video0 num-buffers=1 ! videoconvert ! fakesink",
+      "frame_probe_method": "gst-launch-1.0 v4l2src num-buffers=1 ! videoconvert ! fakesink; no media retained",
+      "last_frame_or_sample_time": "2026-05-21T23:22:02Z",
+      "open_probe_time": "2026-05-21T23:22:01Z",
+      "openable": true,
+      "probe_method": "os.open(O_RDONLY|O_NONBLOCK); no media retained",
+      "probe_returncode": 0,
+      "source_type": "camera"
+    },
+    {
+      "cycled": true,
+      "device_id": "/dev/video2",
+      "device_metadata": {
+        "media_class": "Video/Source",
+        "name": "EMEET SmartCam S600 (V4L2)",
+        "path": "/dev/video2"
+      },
+      "error": "",
+      "exists": true,
+      "frame_probe_attempts": [
+        {
+          "command": "timeout 10 gst-launch-1.0 -q v4l2src device=/dev/video2 num-buffers=1 ! videoconvert ! fakesink",
+          "error": "",
+          "ok": true,
+          "returncode": 0
+        }
+      ],
+      "frame_probe_command": "timeout 10 gst-launch-1.0 -q v4l2src device=/dev/video2 num-buffers=1 ! videoconvert ! fakesink",
+      "frame_probe_method": "gst-launch-1.0 v4l2src num-buffers=1 ! videoconvert ! fakesink; no media retained",
+      "last_frame_or_sample_time": "2026-05-21T23:22:02Z",
+      "open_probe_time": "2026-05-21T23:22:02Z",
+      "openable": true,
+      "probe_method": "os.open(O_RDONLY|O_NONBLOCK); no media retained",
+      "probe_returncode": 0,
+      "source_type": "camera"
+    },
+    {
+      "device_id": "/dev/video1",
+      "exists": true,
+      "reason": "gst-device-monitor did not classify this node as media.class=Video/Source",
+      "required_for_camera_cycle": false,
+      "source_type": "camera_metadata_or_non_capture_node"
+    },
+    {
+      "device_id": "/dev/video3",
+      "exists": true,
+      "reason": "gst-device-monitor did not classify this node as media.class=Video/Source",
+      "required_for_camera_cycle": false,
+      "source_type": "camera_metadata_or_non_capture_node"
+    },
+    {
+      "bridge_artifacts_present": [
+        "runtime/shared/MIM_ARM_DISPATCH_TELEMETRY.latest.json",
+        "runtime/shared/MIM_ARM_COMPOSED_TASK.latest.json",
+        "runtime/reports/mim_arm_first_live_wrist_claw_micro_step.latest.json"
+      ],
+      "camera_state": {
+        "arm_online": true,
+        "camera_online": true,
+        "camera_status": "online"
+      },
+      "capture_frame_proposal": {
+        "live_dispatch_allowed": false,
+        "ok": true,
+        "operator_approval_required": true,
+        "reasoning": "Proposal for 'capture_frame': review the posture below and approve the lowest-risk first live motion before live dispatch is enabled.  arm_online=True, estop_ok=True, tod_execution_allowed=False.",
+        "safety_posture": {
+          "arm_online": true,
+          "camera_online": true,
+          "estop_ok": true,
+          "motion_allowed": false,
+          "serial_ready": true,
+          "tod_execution_allowed": false
+        }
+      },
+      "cycle_error": "",
+      "cycled": true,
+      "device_id": "arm-camera-bridge",
+      "dispatch_telemetry": {
+        "completion_status": "completed",
+        "dispatch_status": "completed",
+        "execution_id": 209859,
+        "host_completed_timestamp": "2026-05-21T23:19:35.5882471Z",
+        "host_received_timestamp": "2026-05-21T23:19:59Z",
+        "request_id": "objective-1-task-mim-arm-capture-frame-20260521231829",
+        "result_reason": "succeeded"
+      },
+      "error": "",
+      "exists": true,
+      "inspected_paths": [
+        "runtime/shared/MIM_ARM_DISPATCH_TELEMETRY.latest.json",
+        "runtime/shared/MIM_ARM_COMPOSED_TASK.latest.json",
+        "runtime/reports/mim_arm_first_live_wrist_claw_micro_step.latest.json"
+      ],
+      "last_frame_or_sample_time": "2026-05-21T23:19:35.5882471Z",
+      "openable": true,
+      "probe_method": "arm camera-state/proposal endpoints plus bridge artifact inspection; no arm movement",
+      "source_type": "arm_camera"
+    }
+  ],
+  "generated_at": "2026-05-21T23:22:01Z",
+  "inspected_paths": [
+    "/dev/video0",
+    "/dev/video1",
+    "/dev/video2",
+    "/dev/video3",
+    "runtime/shared/MIM_ARM_DISPATCH_TELEMETRY.latest.json",
+    "runtime/shared/MIM_ARM_COMPOSED_TASK.latest.json",
+    "runtime/reports/mim_arm_first_live_wrist_claw_micro_step.latest.json"
+  ],
+  "mim_api_task_id": 7962,
+  "next_recovery_action": "Proceed to human presence/TTS interaction evidence.",
+  "no_media_retained": true,
+  "non_capture_nodes": [
+    {
+      "device_id": "/dev/video1",
+      "exists": true,
+      "reason": "gst-device-monitor did not classify this node as media.class=Video/Source",
+      "required_for_camera_cycle": false,
+      "source_type": "camera_metadata_or_non_capture_node"
+    },
+    {
+      "device_id": "/dev/video3",
+      "exists": true,
+      "reason": "gst-device-monitor did not classify this node as media.class=Video/Source",
+      "required_for_camera_cycle": false,
+      "source_type": "camera_metadata_or_non_capture_node"
+    }
+  ],
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "packet_type": "mim-lab-camera-cycle-status-v1",
+  "source": "mim_ready_task_dispatcher",
+  "status": "completed_with_evidence",
+  "success": true
+}
