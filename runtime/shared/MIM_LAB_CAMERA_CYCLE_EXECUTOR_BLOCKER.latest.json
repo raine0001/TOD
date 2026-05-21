@@ -1,0 +1,16 @@
+{
+  "packet_type": "mim-lab-camera-cycle-executor-blocker-v1",
+  "generated_at": "2026-05-21T22:47:22Z",
+  "owner": "MIM",
+  "observed_by": "TOD",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "mim_api_task_id": 7952,
+  "task_title": "Bind lab camera cycle executor including arm camera",
+  "status": "blocked_with_evidence",
+  "reason_code": "no_executor_bound",
+  "inspected_queue": true,
+  "inspected_dispatcher": true,
+  "missing_artifact": "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+  "next_recovery_action": "Bind an executor for execution_scope=mim_lab_camera_cycle_executor before marking camera cycling complete.",
+  "context": "Ready-task dispatcher is working. The next off-course point is that no camera-cycle executor is bound for /dev/video0-/dev/video3 plus arm-camera bridge."
+}
