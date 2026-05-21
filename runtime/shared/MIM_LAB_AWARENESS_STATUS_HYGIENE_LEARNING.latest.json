@@ -1,0 +1,37 @@
+{
+  "packet_type": "mim-lab-awareness-status-hygiene-learning-v1",
+  "generated_at": "2026-05-21T19:13:20Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "barrier": "downstream_tod_packet_listener_overwrote_lab_runtime_operator_status",
+  "observed_failure": {
+    "symptom": "MIM_OPERATOR_STATUS.latest.json kept current_objective_id=MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1 but stale classification/request_type/what_mim_is_doing fields claimed TOD implementation replan.",
+    "cause": "The lab-awareness gateway route wrote correct lab artifacts, but the TOD packet listener later reconciled a stale TOD request and rewrote operator status using implementation wording.",
+    "risk": "Operator and monitor surfaces can appear to be on the right objective while still reporting the wrong owner and next action."
+  },
+  "correction_applied": {
+    "gateway_route": "Lab-awareness route now writes a complete MIM_OPERATOR_STATUS.latest.json for request_type=mim_lab_runtime.",
+    "tod_packet_listener": "Listener now classifies MIM-LAB-AWARENESS objectives as mim_lab_runtime and preserves MIM ownership/status wording instead of TOD implementation wording.",
+    "validated_status": {
+      "request_type": "mim_lab_runtime",
+      "classification": "mim_lab_awareness_runtime_route_v1",
+      "owner": "MIM",
+      "waiting_on": "MIM lab sensor inventory runner",
+      "next_safe_action": "run/connect MIM lab sensor inventory and publish per-device evidence"
+    }
+  },
+  "lesson": {
+    "id": "MIM-LAB-AWARENESS-STATUS-HYGIENE-AFTER-ROUTE-CORRECTION-V1",
+    "title": "A corrected route must also protect downstream status reconciliation",
+    "rule": "When a runtime objective is corrected away from TOD implementation routing, every later status writer must preserve the corrected owner, request type, blocker, and next action.",
+    "resolution_pattern": [
+      "Verify the gateway response route.",
+      "Verify the lab artifacts.",
+      "Verify MIM_OPERATOR_STATUS.latest.json after downstream listeners have had time to run.",
+      "If the operator status regresses, patch the downstream status reconciler rather than treating the lab objective as complete."
+    ]
+  },
+  "required_next_mim_action": "Continue the lab-awareness objective by running or binding the MIM-owned lab sensor inventory runner.",
+  "tod_codex_boundary": "monitor and guide only; do not implement camera, microphone, TTS, human memory, or object recognition work for MIM"
+}

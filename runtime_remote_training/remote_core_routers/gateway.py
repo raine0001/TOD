@@ -10149,6 +10149,38 @@ def _write_mim_lab_awareness_runtime_status_request(
         json.dumps(inventory_payload, indent=2, sort_keys=True),
         encoding="utf-8",
     )
+    _write_mim_operator_status(
+        shared_root=shared_root,
+        current_operator_request=raw_input,
+        current_objective_id=objective_id,
+        request_type="mim_lab_runtime",
+        classification="mim_lab_awareness_runtime_route_v1",
+        owner="MIM",
+        current_phase="blocked",
+        what_mim_is_doing=(
+            "MIM accepted the lab-awareness runtime objective and published current "
+            "blocked-with-inspection lab status artifacts."
+        ),
+        what_tod_is_doing=(
+            "TOD is monitoring and guiding only; TOD is not implementing camera, "
+            "microphone, TTS, human memory, or object recognition work."
+        ),
+        waiting_on="MIM lab sensor inventory runner",
+        last_fresh_event="MIM published lab-awareness runtime status",
+        last_fresh_event_at=now,
+        stale_panels=[
+            "old TOD implementation, diagnostic, or lifecycle panels are debug-only unless their objective matches the current lab-awareness request"
+        ],
+        active_artifacts=[
+            "runtime/shared/MIM_OPERATOR_STATUS.latest.json",
+            "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+            "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+        ],
+        blocking_issue=inventory_payload["blocker"],
+        next_safe_action="run/connect MIM lab sensor inventory and publish per-device evidence",
+        operator_guidance="monitor",
+        debug_artifacts_available=True,
+    )
     return {
         "status": "blocked_with_inspection",
         "reply_text": (

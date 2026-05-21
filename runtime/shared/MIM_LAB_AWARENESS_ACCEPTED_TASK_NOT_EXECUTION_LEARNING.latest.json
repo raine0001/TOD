@@ -1,0 +1,36 @@
+{
+  "packet_type": "mim-lab-awareness-accepted-task-not-execution-learning-v1",
+  "generated_at": "2026-05-21T19:06:22Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "barrier": "task_records_and_gateway_acceptance_are_not_runtime_execution",
+  "observed_state": {
+    "lab_awareness_status": "blocked",
+    "lab_sensor_inventory_status": "blocked_with_inspection",
+    "active_perception_adapters": [],
+    "latest_camera_event_seen_by_gateway": "2026-04-09T15:59:16.971700Z",
+    "latest_microphone_event_seen_by_gateway": "2026-03-31T00:38:51.810044Z",
+    "missing_required_artifacts": [
+      "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+      "MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+      "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
+      "MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json"
+    ]
+  },
+  "lesson": {
+    "id": "MIM-LAB-AWARENESS-ACCEPTED-TASK-IS-NOT-EXECUTION-V1",
+    "title": "Do not treat accepted task records as objective progress",
+    "rule": "A task id, bridge acceptance, gateway classification, or stale perception row is not completion evidence. Runtime progress begins only when MIM publishes fresh artifacts created by an active runner or an exact blocker from attempting the runner.",
+    "resolution_pattern": [
+      "Find the MIM-owned executor path that consumes lab-awareness tasks.",
+      "If no executor consumes the task, publish that as the blocker and bind the executor before advancing.",
+      "Run the sensor inventory probe against camera, microphone, and arm-camera resource paths.",
+      "Republish MIM_LAB_SENSOR_INVENTORY.latest.json with current per-device status, freshness, openability, and failure reason.",
+      "Only after fresh inventory exists, proceed to camera cycling, human greeting/TTS, human memory, and object inquiry evidence."
+    ]
+  },
+  "required_next_mim_action": "Convert the accepted lab-awareness task into active execution. Publish fresh sensor-inventory evidence or a precise executor-binding blocker within MIM_LAB_SENSOR_INVENTORY.latest.json.",
+  "completion_gate": "This lesson is resolved only when MIM_LAB_SENSOR_INVENTORY.latest.json contains current per-resource evidence from an active MIM-owned runner, not stale source records.",
+  "tod_codex_boundary": "monitor and guide only; do not implement camera, microphone, TTS, human memory, or object recognition work for MIM"
+}

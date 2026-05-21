@@ -1,0 +1,39 @@
+{
+  "packet_type": "mim-lab-awareness-prompt-shape-routing-learning-v1",
+  "generated_at": "2026-05-21T19:07:52Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "barrier": "guidance_prompt_misrouted_as_tod_status_or_conversation_handoff",
+  "observed_failure": {
+    "failed_request_id": "mim-request-6516fa89-59d2-4046-82eb-f4b540bc8e7f",
+    "failed_internal_intent": "observe_workspace",
+    "failed_reason": "tod_status_dispatch",
+    "failure_effect": "MIM_OPERATOR_STATUS.latest.json drifted to mim-tod-status-dispatch implementation/replan language instead of the lab-awareness runtime objective."
+  },
+  "observed_recovery": {
+    "recovery_request_id": "mim-request-ebe0f2a0-0f34-44fd-967f-0f3a8bc08edb",
+    "successful_internal_intent": "mim_lab_awareness_runtime_objective",
+    "successful_reason": "mim_lab_awareness_runtime_status_published",
+    "successful_prompt_shape": [
+      "Objective: MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+      "Goal:",
+      "Required behavior:",
+      "Validation:"
+    ]
+  },
+  "lesson": {
+    "id": "MIM-LAB-AWARENESS-PROMPT-SHAPE-MUST-TRIGGER-RUNTIME-ROUTE-V1",
+    "title": "Use objective-shaped runtime prompts for lab-awareness guidance",
+    "rule": "When TOD is guiding an active MIM lab-awareness runtime objective, the prompt must use the deterministic objective shape so MIM routes it to mim_lab_awareness_runtime_objective instead of TOD status dispatch, conversation, or bounded implementation replan.",
+    "resolution_pattern": [
+      "Start with 'Objective: MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1'.",
+      "Include 'Goal:', 'Required behavior:', and 'Validation:' lines.",
+      "Include MIM_LAB_AWARENESS_STATUS or MIM_LAB_SENSOR_INVENTORY artifact names.",
+      "Avoid status-check phrasing that asks TOD to inspect or diagnose unless the intended owner is TOD.",
+      "After publishing, verify the gateway response has internal_intent=mim_lab_awareness_runtime_objective."
+    ]
+  },
+  "required_next_mim_action": "Continue from the recovered lab-awareness route and run/connect the MIM-owned lab sensor inventory executor.",
+  "tod_codex_boundary": "monitor and guide only; do not implement camera, microphone, TTS, human memory, or object recognition work for MIM"
+}
