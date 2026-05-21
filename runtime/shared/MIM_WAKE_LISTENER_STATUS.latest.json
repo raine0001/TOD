@@ -1,0 +1,23 @@
+{
+  "audio_device": "plughw:0,0",
+  "device_selection": {
+    "attempts": [
+      {
+        "device": "plughw:0,0",
+        "error": "",
+        "ok": true
+      }
+    ]
+  },
+  "generated_at": "2026-05-21T23:38:20Z",
+  "interaction_artifact": "",
+  "last_transcript": "",
+  "no_audio_retained": true,
+  "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
+  "packet_type": "mim-wake-listener-status-v1",
+  "status": "listening",
+  "stt_error": "",
+  "success": true,
+  "tts_ok": null,
+  "wake_phrase_detected": false
+}

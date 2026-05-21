@@ -1,0 +1,17 @@
+[Unit]
+Description=MIM Wake Listener
+After=default.target speech-dispatcher.service pipewire-pulse.service
+Wants=speech-dispatcher.service pipewire-pulse.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/testpilot/mim
+Environment=MIM_WAKE_AUDIO_DEVICE=plughw:0,0;plughw:2,0;plughw:3,0;plughw:3,2;default
+Environment=MIM_WAKE_CHUNK_SECONDS=4
+Environment=MIM_WAKE_IDLE_SECONDS=0.5
+ExecStart=/home/testpilot/mim/.venv/bin/python /home/testpilot/mim/scripts/mim_wake_listen_loop.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
