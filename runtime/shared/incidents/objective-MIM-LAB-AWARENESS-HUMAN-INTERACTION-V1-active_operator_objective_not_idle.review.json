@@ -1,0 +1,18 @@
+﻿{
+    "packet_type":  "mim-operator-incident-review-v1",
+    "generated_at":  "2026-05-21T18:41:01Z",
+    "active":  true,
+    "objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "state":  "active_operator_objective_not_idle",
+    "state_reason":  "lab_awareness_missing_required_evidence",
+    "blocking_reason_codes":  [
+                                  "operator_objective_active",
+                                  "lab_awareness_evidence_missing",
+                                  "growth_idle_preemption"
+                              ],
+    "task":  {
+                 "active_task_id":  "mim-lab-awareness-human-interaction-v1",
+                 "objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+                 "result_status":  "incomplete"
+             }
+}

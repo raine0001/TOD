@@ -1,0 +1,24 @@
+﻿{
+    "packet_type":  "mim-operator-incident-v1",
+    "generated_at":  "2026-05-21T18:41:01Z",
+    "active":  true,
+    "objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "canonical_bridge_objective_id":  "objective-1",
+    "subtype":  "active_operator_objective_not_idle",
+    "severity":  "critical",
+    "state":  "active",
+    "state_reason":  "growth_and_idle_preempted_unfinished_operator_objective",
+    "summary":  "The lab-awareness operator objective is active and incomplete. MIM/TOD must not run growth or idle maintenance as if the system is idle.",
+    "missing_required_artifacts":  [
+                                       "MIM_LAB_AWARENESS_STATUS.latest.json",
+                                       "MIM_LAB_SENSOR_INVENTORY.latest.json",
+                                       "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+                                       "MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+                                       "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
+                                       "MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json"
+                                   ],
+    "review_path":  "/home/testpilot/mim/runtime/shared/incidents/objective-MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1-active_operator_objective_not_idle.review.json",
+    "next_action_path":  "/home/testpilot/mim/runtime/shared/incidents/objective-MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1-active_operator_objective_not_idle.next_action.json",
+    "decision_task_path":  "/home/testpilot/mim/runtime/shared/incidents/objective-MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1-active_operator_objective_not_idle.decision_task.json",
+    "recurrence_guard":  "Growth/idle/proactive autonomy must skip while this incident is active."
+}

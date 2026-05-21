@@ -1,0 +1,25 @@
+{
+  "packet_type": "mim-lab-awareness-growth-guard-applied-v1",
+  "generated_at": "2026-05-21T18:43:05Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "parent_objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "change_scope": "growth launcher guard only",
+  "remote_file": "/home/testpilot/mim/scripts/mim_tod_growth_autonomy_launcher.py",
+  "remote_backup": "/home/testpilot/mim/runtime/rollback_saves/mim_tod_growth_autonomy_launcher.py.lab-awareness-guard-20260521T184300Z",
+  "validation": {
+    "py_compile": "passed",
+    "manual_launcher_run": "passed",
+    "observed_growth_status_state": "skipped",
+    "observed_growth_status_reason": "active_operator_objective_not_idle",
+    "blocked_by_objective": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1"
+  },
+  "why": "MIM/TOD repeatedly launched MIM-GROWTH-* while the lab-awareness operator objective had no required evidence artifacts. This guard enforces the existing idle-priority rule that growth only runs when no active operator objective is running.",
+  "not_done": [
+    "No camera work was implemented.",
+    "No microphone work was implemented.",
+    "No TTS work was implemented.",
+    "Lab-awareness success remains false until MIM publishes the required live evidence artifacts."
+  ],
+  "next_required_mim_action": "Publish MIM_LAB_AWARENESS_STATUS.latest.json and MIM_LAB_SENSOR_INVENTORY.latest.json or blocked_with_inspection."
+}

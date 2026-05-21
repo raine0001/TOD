@@ -1,0 +1,32 @@
+{
+  "packet_type": "mim-lab-awareness-runtime-route-applied-v1",
+  "generated_at": "2026-05-21T18:48:10Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "remote_changes": [
+    {
+      "file": "/home/testpilot/mim/scripts/mim_tod_growth_autonomy_launcher.py",
+      "backup": "/home/testpilot/mim/runtime/rollback_saves/mim_tod_growth_autonomy_launcher.py.lab-awareness-guard-20260521T184300Z",
+      "change": "Skip growth launch with reason active_operator_objective_not_idle when the active lab-awareness operator incident exists and required lab artifacts are missing."
+    },
+    {
+      "file": "/home/testpilot/mim/core/routers/gateway.py",
+      "backup": "/home/testpilot/mim/runtime/rollback_saves/gateway.py.lab-awareness-runtime-route-20260521T184600Z",
+      "change": "Route MIM-LAB-AWARENESS requests as MIM-owned lab runtime work and publish blocked-with-inspection lab status/sensor inventory artifacts instead of dispatching to TOD implementation."
+    }
+  ],
+  "validation": {
+    "growth_launcher_py_compile": "passed",
+    "growth_launcher_manual_run": "state=skipped reason=active_operator_objective_not_idle",
+    "gateway_py_compile": "passed",
+    "gateway_health_after_restart": "ok",
+    "gateway_lab_route_test": "internal_intent=mim_lab_awareness_runtime_objective reason=mim_lab_awareness_runtime_status_published"
+  },
+  "current_lab_artifacts": [
+    "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+    "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json"
+  ],
+  "current_status": "blocked_with_inspection",
+  "next_required_mim_action": "Connect/run the MIM lab sensor inventory routine and republish MIM_LAB_SENSOR_INVENTORY.latest.json with per-device openability/freshness/failure reasons."
+}

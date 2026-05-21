@@ -1,0 +1,9 @@
+﻿{
+    "packet_type":  "mim-operator-incident-next-action-v1",
+    "generated_at":  "2026-05-21T18:41:01Z",
+    "objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "selected_action":  {
+                            "code":  "return_to_operator_lab_awareness_objective",
+                            "detail":  "Pause growth/idle maintenance, publish MIM_LAB_AWARENESS_STATUS.latest.json, then publish MIM_LAB_SENSOR_INVENTORY.latest.json or blocked_with_inspection."
+                        }
+}

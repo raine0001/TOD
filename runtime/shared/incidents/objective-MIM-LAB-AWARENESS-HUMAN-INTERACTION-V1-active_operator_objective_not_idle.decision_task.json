@@ -1,0 +1,11 @@
+﻿{
+    "packet_type":  "mim-operator-incident-decision-task-v1",
+    "generated_at":  "2026-05-21T18:41:01Z",
+    "objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "decision":  {
+                     "code":  "operator_objective_preempts_idle_growth",
+                     "execution_required":  true,
+                     "decision_owner":  "MIM",
+                     "detail":  "Do not launch MIM-GROWTH-* or IDLE-PROACTIVE-AUTONOMY while lab-awareness artifacts are missing."
+                 }
+}
