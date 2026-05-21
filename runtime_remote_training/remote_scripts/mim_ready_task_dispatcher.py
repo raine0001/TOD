@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -58,6 +59,47 @@ def run_command(args: list[str], *, timeout: int = 10) -> dict[str, Any]:
             "stderr": f"{type(exc).__name__}: {exc}",
             "ok": False,
         }
+
+
+def load_json_url(url: str, *, timeout: int = 8) -> dict[str, Any]:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            data = response.read(100_000)
+        return {
+            "ok": True,
+            "status": getattr(response, "status", None),
+            "payload": json.loads(data.decode("utf-8")),
+            "error": "",
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": None,
+            "payload": {},
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def discover_v4l2_capture_sources() -> dict[str, dict[str, Any]]:
+    monitor = run_command(["gst-device-monitor-1.0", "Video/Source"], timeout=15)
+    sources: dict[str, dict[str, Any]] = {}
+    if not monitor["ok"] and not monitor.get("stdout"):
+        return sources
+    current: dict[str, Any] = {}
+    for line in str(monitor.get("stdout") or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("name  :"):
+            current = {"name": stripped.split(":", 1)[1].strip()}
+        elif "api.v4l2.path =" in stripped:
+            current["path"] = stripped.split("=", 1)[1].strip()
+        elif stripped.startswith("object.id ="):
+            current["pipewire_object_id"] = stripped.split("=", 1)[1].strip()
+        elif stripped.startswith("media.class ="):
+            current["media_class"] = stripped.split("=", 1)[1].strip()
+        if current.get("path") and current.get("media_class") == "Video/Source":
+            sources[str(current["path"])] = dict(current)
+            current = {}
+    return sources
 
 
 def probe_video_device(device: str) -> dict[str, Any]:
@@ -181,18 +223,220 @@ def probe_arm_camera_bridge() -> dict[str, Any]:
     ]
     inspected = [str(path.relative_to(ROOT)) for path in candidates]
     existing = [path for path in candidates if path.exists()]
+    camera_state = load_json_url("http://127.0.0.1:18001/mim/arm/camera-state")
+    capture_proposal = load_json_url("http://127.0.0.1:18001/mim/arm/proposals/capture-frame")
+    state_payload = camera_state.get("payload") if isinstance(camera_state.get("payload"), dict) else {}
+    proposal_payload = capture_proposal.get("payload") if isinstance(capture_proposal.get("payload"), dict) else {}
+    camera_online = bool(state_payload.get("camera_online"))
+    live_dispatch_allowed = bool(proposal_payload.get("live_dispatch_allowed"))
     payload: dict[str, Any] = {
         "device_id": "arm-camera-bridge",
         "source_type": "arm_camera",
-        "exists": bool(existing),
-        "openable": False,
+        "exists": bool(existing) or camera_online,
+        "openable": camera_online,
         "last_frame_or_sample_time": None,
-        "probe_method": "bridge artifact inspection; no arm movement",
+        "probe_method": "arm camera-state/proposal endpoints plus bridge artifact inspection; no arm movement",
         "inspected_paths": inspected,
-        "error": "no_current_arm_camera_bridge_probe_bound",
+        "camera_state": state_payload,
+        "capture_frame_proposal": {
+            "ok": capture_proposal.get("ok"),
+            "live_dispatch_allowed": live_dispatch_allowed,
+            "operator_approval_required": proposal_payload.get("operator_approval_required"),
+            "reasoning": proposal_payload.get("reasoning"),
+            "safety_posture": proposal_payload.get("safety_posture"),
+        },
+        "error": "" if camera_online else "arm_camera_state_not_online",
+        "cycle_error": "" if live_dispatch_allowed else "capture_frame_live_dispatch_not_allowed_or_not_bound",
     }
     if existing:
         payload["bridge_artifacts_present"] = [str(path.relative_to(ROOT)) for path in existing]
+    return payload
+
+
+def probe_camera_frame(device: str) -> dict[str, Any]:
+    base = probe_video_device(device)
+    if not base.get("exists") or not base.get("openable"):
+        return {
+            **base,
+            "cycled": False,
+            "frame_probe_method": "gst-launch not attempted because device is not openable",
+        }
+    commands = [
+        [
+            "timeout",
+            "10",
+            "gst-launch-1.0",
+            "-q",
+            "v4l2src",
+            f"device={device}",
+            "num-buffers=1",
+            "!",
+            "videoconvert",
+            "!",
+            "fakesink",
+        ],
+        [
+            "timeout",
+            "10",
+            "gst-launch-1.0",
+            "-q",
+            "v4l2src",
+            f"device={device}",
+            "num-buffers=1",
+            "!",
+            "image/jpeg,width=640,height=480,framerate=30/1",
+            "!",
+            "jpegdec",
+            "!",
+            "videoconvert",
+            "!",
+            "fakesink",
+        ],
+    ]
+    attempts = []
+    probe = {"ok": False, "stderr": "no_probe_attempted", "stdout": "", "returncode": None}
+    for command in commands:
+        probe = run_command(command, timeout=15)
+        attempts.append(
+            {
+                "command": " ".join(command),
+                "ok": probe["ok"],
+                "returncode": probe.get("returncode"),
+                "error": "" if probe["ok"] else (probe.get("stderr") or probe.get("stdout") or "gstreamer_frame_probe_failed"),
+            }
+        )
+        if probe["ok"]:
+            break
+    ok = bool(probe.get("ok"))
+    return {
+        **base,
+        "cycled": ok,
+        "last_frame_or_sample_time": now_iso() if ok else None,
+        "frame_probe_method": "gst-launch-1.0 v4l2src num-buffers=1 ! videoconvert ! fakesink; no media retained",
+        "frame_probe_command": attempts[-1]["command"] if attempts else "",
+        "frame_probe_attempts": attempts,
+        "error": "" if ok else (probe.get("stderr") or probe.get("stdout") or "gstreamer_frame_probe_failed"),
+        "probe_returncode": probe.get("returncode"),
+    }
+
+
+def run_lab_camera_cycle(task: Task) -> dict[str, Any]:
+    generated_at = now_iso()
+    capture_sources = discover_v4l2_capture_sources()
+    all_video_nodes = [f"/dev/video{i}" for i in range(4)]
+    capture_nodes = [node for node in all_video_nodes if node in capture_sources]
+    non_capture_nodes = [
+        {
+            "device_id": node,
+            "source_type": "camera_metadata_or_non_capture_node",
+            "exists": Path(node).exists(),
+            "required_for_camera_cycle": False,
+            "reason": "gst-device-monitor did not classify this node as media.class=Video/Source",
+        }
+        for node in all_video_nodes
+        if node not in capture_nodes
+    ]
+    cameras = []
+    for node in capture_nodes:
+        entry = probe_camera_frame(node)
+        entry["device_metadata"] = capture_sources.get(node, {})
+        cameras.append(entry)
+    arm = probe_arm_camera_bridge()
+    arm["cycled"] = bool(arm.get("openable")) and not bool(arm.get("cycle_error"))
+    entries = [*cameras, *non_capture_nodes, arm]
+    blockers = [
+        {
+            "device_id": entry.get("device_id"),
+            "source_type": entry.get("source_type"),
+            "error": entry.get("error") or entry.get("cycle_error") or "cycle_failed",
+        }
+        for entry in entries
+        if entry.get("required_for_camera_cycle", True) and not bool(entry.get("cycled"))
+    ]
+    status = "completed_with_evidence" if not blockers else "blocked_with_evidence"
+    payload = {
+        "packet_type": "mim-lab-camera-cycle-status-v1",
+        "generated_at": generated_at,
+        "source": "mim_ready_task_dispatcher",
+        "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+        "mim_api_task_id": task.id,
+        "status": status,
+        "success": not blockers,
+        "no_media_retained": True,
+        "cycle_entries": entries,
+        "capture_nodes": capture_nodes,
+        "non_capture_nodes": non_capture_nodes,
+        "blocked_devices": blockers,
+        "inspected_paths": [
+            "/dev/video0",
+            "/dev/video1",
+            "/dev/video2",
+            "/dev/video3",
+            "runtime/shared/MIM_ARM_DISPATCH_TELEMETRY.latest.json",
+            "runtime/shared/MIM_ARM_COMPOSED_TASK.latest.json",
+            "runtime/reports/mim_arm_first_live_wrist_claw_micro_step.latest.json",
+        ],
+        "next_recovery_action": (
+            "Bind current arm-camera bridge probe before camera-cycle success can be complete."
+            if blockers
+            else "Proceed to human presence/TTS interaction evidence."
+        ),
+    }
+    write_json(SHARED / "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json", payload)
+    write_json(
+        SHARED / "MIM_LAB_AWARENESS_STATUS.latest.json",
+        {
+            "packet_type": "mim-lab-awareness-status-v1",
+            "generated_at": generated_at,
+            "source": "mim_ready_task_dispatcher",
+            "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+            "phase": "camera_cycle_blocked" if blockers else "camera_cycle_complete",
+            "percent_complete": 30 if blockers else 40,
+            "currently_blocked": bool(blockers),
+            "blocker_if_any": "" if not blockers else "Local camera cycling has evidence, but arm-camera bridge cycle remains blocked.",
+            "next_mim_owned_action": payload["next_recovery_action"],
+            "required_artifact_checklist": {
+                "MIM_LAB_AWARENESS_STATUS.latest.json": {"present": True, "required_for_completion": True},
+                "MIM_LAB_SENSOR_INVENTORY.latest.json": {"present": True, "required_for_completion": True},
+                "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json": {"present": True, "required_for_completion": True},
+                "MIM_HUMAN_INTERACTION_MEMORY.latest.json": {"present": False, "required_for_completion": True},
+                "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json": {"present": False, "required_for_completion": True},
+                "MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json": {"present": False, "required_for_completion": True},
+            },
+            "success": False,
+            "tod_codex_boundary": "monitor_only; MIM-owned dispatcher executed camera cycle probe",
+        },
+    )
+    write_json(
+        SHARED / "MIM_OPERATOR_STATUS.latest.json",
+        {
+            "packet_type": "mim-operator-status-v1",
+            "generated_at": generated_at,
+            "current_operator_request": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1 camera cycle executor",
+            "current_objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+            "request_type": "mim_lab_runtime",
+            "classification": "mim_ready_task_dispatcher",
+            "owner": "MIM",
+            "current_phase": "camera_cycle_blocked" if blockers else "camera_cycle_complete",
+            "what_mim_is_doing": "MIM executed the camera cycle executor and produced current per-camera cycle evidence.",
+            "what_tod_is_doing": "TOD is monitoring and guiding; MIM owns the camera, audio, TTS, memory, and object work.",
+            "waiting_on": "MIM arm-camera bridge probe" if blockers else "MIM human interaction/TTS executor",
+            "last_fresh_event": "MIM produced camera cycle evidence",
+            "last_fresh_event_at": generated_at,
+            "stale_state_detected": False,
+            "stale_panels": ["older no-executor camera-cycle blocker is debug-only after this evidence"],
+            "active_artifacts": [
+                "runtime/shared/MIM_OPERATOR_STATUS.latest.json",
+                "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+                "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+                "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+            ],
+            "blocking_issue": "" if not blockers else "Arm-camera bridge cycle remains blocked in MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+            "next_safe_action": payload["next_recovery_action"],
+            "operator_guidance": "monitor",
+            "debug_artifacts_available": True,
+        },
+    )
     return payload
 
 
@@ -324,6 +568,11 @@ def has_lab_sensor_inventory_executor(task: Task) -> bool:
     return "sensor_inventory" in text or "lab sensor" in text
 
 
+def has_lab_camera_cycle_executor(task: Task) -> bool:
+    text = " ".join([task.execution_scope or "", task.title or "", task.details or ""]).lower()
+    return "camera_cycle" in text or "camera cycle" in text
+
+
 async def process_once() -> bool:
     async with SessionLocal() as db:
         task = (
@@ -371,7 +620,12 @@ async def process_once() -> bool:
         await db.commit()
         await db.refresh(task)
 
-        if has_lab_sensor_inventory_executor(task):
+        if has_lab_camera_cycle_executor(task):
+            task.dispatch_status = "running"
+            await db.commit()
+            result_payload = run_lab_camera_cycle(task)
+            result_status = str(result_payload.get("status") or "blocked_with_evidence")
+        elif has_lab_sensor_inventory_executor(task):
             task.dispatch_status = "running"
             await db.commit()
             result_payload = run_lab_sensor_inventory(task)
@@ -391,6 +645,11 @@ async def process_once() -> bool:
                     "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
                 ]
                 if has_lab_sensor_inventory_executor(task)
+                else [
+                    "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+                    "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+                ]
+                if has_lab_camera_cycle_executor(task)
                 else [f"runtime/shared/MIM_READY_TASK_DISPATCHER_RESULT.task-{task.id}.latest.json"],
                 tests_run=["mim_ready_task_dispatcher_process_once"],
                 test_results=result_status,
@@ -410,6 +669,8 @@ async def process_once() -> bool:
                 "dispatch_status": result_status,
                 "result_artifact": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json"
                 if has_lab_sensor_inventory_executor(task)
+                else "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json"
+                if has_lab_camera_cycle_executor(task)
                 else f"runtime/shared/MIM_READY_TASK_DISPATCHER_RESULT.task-{task.id}.latest.json",
             },
         )

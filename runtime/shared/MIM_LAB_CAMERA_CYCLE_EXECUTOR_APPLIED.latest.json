@@ -1,0 +1,29 @@
+{
+  "packet_type": "mim-lab-camera-cycle-executor-applied-v1",
+  "generated_at": "2026-05-21T23:07:07Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "mim_api_task_id": 7957,
+  "result_artifact": "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+  "evidence_summary": {
+    "capture_nodes": [
+      "/dev/video0",
+      "/dev/video2"
+    ],
+    "local_camera_cycle": "both actual V4L2 capture nodes produced current no-retention frame-cycle evidence after releasing the Firefox holder on /dev/video2",
+    "non_capture_nodes": [
+      "/dev/video1 classified as non-capture companion node",
+      "/dev/video3 classified as non-capture companion node"
+    ],
+    "arm_camera_bridge": "camera state is online, but capture-frame live dispatch remains blocked by arm execution policy/readiness"
+  },
+  "remaining_blockers": [
+    "arm-camera capture-frame dispatch blocked by policy/readiness",
+    "human interaction memory artifact missing",
+    "object memory/inquiry artifact missing",
+    "final execution evidence artifact missing"
+  ],
+  "success": false,
+  "next_required_mim_action": "Resolve arm capture-frame dispatch readiness or continue with local-camera human interaction evidence while preserving arm blocker as incomplete."
+}

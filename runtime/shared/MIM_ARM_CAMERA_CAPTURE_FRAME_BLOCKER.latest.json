@@ -1,0 +1,23 @@
+{
+  "packet_type": "mim-arm-camera-capture-frame-blocker-v1",
+  "generated_at": "2026-05-21T23:08:32Z",
+  "owner": "MIM",
+  "observed_by": "TOD",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "capability_name": "mim_arm.execute_capture_frame",
+  "execution_id": 209856,
+  "status": "blocked",
+  "reason_code": "execution_readiness_blocked",
+  "attempt": {
+    "explicit_operator_approval": true,
+    "no_arm_motion_requested": true,
+    "shared_workspace_active": false
+  },
+  "current_arm_camera_state": {
+    "arm_online": true,
+    "camera_online": true,
+    "camera_status": "online"
+  },
+  "blocker": "Capture-frame dispatch did not run because arm execution remains policy/readiness gated.",
+  "next_recovery_action": "Repair or satisfy the mim_arm.execute_capture_frame readiness/approval lane, then rerun camera cycle so arm-camera has current capture-frame evidence."
+}
