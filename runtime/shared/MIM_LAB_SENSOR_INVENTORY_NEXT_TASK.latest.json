@@ -1,0 +1,16 @@
+{
+  "packet_type": "mim-lab-sensor-inventory-next-task-v1",
+  "generated_at": "2026-05-21T18:48:55Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "mim_api_objective_id": 3312,
+  "mim_api_task_id": 7948,
+  "task_title": "Connect lab sensor inventory routine and publish per-device evidence",
+  "expected_outputs": [
+    "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+    "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json"
+  ],
+  "acceptance": "MIM_LAB_SENSOR_INVENTORY.latest.json contains devices or explicit per-resource blockers for lab cameras, microphones, and arm camera; generated_at is after 2026-05-21T18:48:10Z.",
+  "tod_codex_boundary": "monitor only; do not implement camera, microphone, TTS, human memory, or object recognition work for MIM"
+}
