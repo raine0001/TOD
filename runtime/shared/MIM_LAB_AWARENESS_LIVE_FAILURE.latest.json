@@ -1,0 +1,30 @@
+﻿{
+    "packet_type":  "mim-lab-awareness-live-failure-v1",
+    "generated_at":  "2026-05-21T16:38:51Z",
+    "parent_objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "learning_objective_id":  "MIM-HUMAN-PRESENCE-TTS-NOT-ACKNOWLEDGED-V1",
+    "observed_failure":  "Dave is physically in the lab, but MIM did not acknowledge him or initiate voice TTS interaction.",
+    "success_condition_not_met":  [
+                                      "No MIM_LAB_SENSOR_INVENTORY.latest.json exists.",
+                                      "No MIM_LAB_AWARENESS_STATUS.latest.json exists.",
+                                      "No MIM_LAB_CAMERA_CYCLE_STATUS.latest.json exists.",
+                                      "No MIM_HUMAN_INTERACTION_MEMORY.latest.json exists.",
+                                      "No MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json exists.",
+                                      "No observed TTS acknowledgement artifact was found."
+                                  ],
+    "corrected_runtime_evidence":  [
+                                       "MIM FastAPI service is listening on 127.0.0.1:18021 and /health returns 200 OK.",
+                                       "Earlier 8000-port failure was not sufficient to conclude runtime down; service port appears to be 18021.",
+                                       "The objective publication succeeded, but no execution/acknowledgement evidence followed."
+                                   ],
+    "bounded_fix_objective":  "Wire the lab-awareness objective into a running MIM watcher/execution loop on the active service port, then publish sensor inventory and trigger TTS when Dave/human presence is detected.",
+    "validation_plan":  [
+                            "MIM publishes MIM_LAB_AWARENESS_STATUS.latest.json acknowledging this failure and next repair action.",
+                            "MIM publishes MIM_LAB_SENSOR_INVENTORY.latest.json from actual device/camera/mic enumeration.",
+                            "When Dave is in the lab, MIM emits a TTS action record and stores the interaction in MIM_HUMAN_INTERACTION_MEMORY.latest.json.",
+                            "MIM records Dave as primary_operator in the human memory artifact."
+                        ],
+    "recurrence_guard":  "Objective publication is not success. Success requires live detection plus TTS acknowledgement plus memory artifact evidence.",
+    "owner":  "MIM",
+    "status":  "published"
+}
