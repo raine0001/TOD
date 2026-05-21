@@ -1,0 +1,54 @@
+{
+  "packet_type": "mim-lab-sensor-executor-discovery-learning-v1",
+  "generated_at": "2026-05-21T19:25:20Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "barrier": "sensor_inventory_blocker_repeated_without_executor_discovery",
+  "observed_state": {
+    "operator_status_owner": "MIM",
+    "operator_status_request_type": "mim_lab_runtime",
+    "lab_awareness_phase": "sensor_inventory",
+    "sensor_inventory_status": "blocked_with_inspection",
+    "sensor_inventory_devices": [],
+    "active_perception_adapters": [],
+    "latest_camera_event": "2026-04-09T15:59:16.971700Z",
+    "latest_microphone_event": "2026-03-31T00:38:51.810044Z"
+  },
+  "known_context_for_mim": {
+    "live_perception_docs": [
+      "docs/objective-61-live-perception-adapters.md",
+      "docs/objective-82-live-perception-governance-grounding.md"
+    ],
+    "gateway_endpoints": [
+      "GET /gateway/perception/sources",
+      "GET /gateway/perception/status",
+      "POST /gateway/perception/camera/events",
+      "POST /gateway/perception/mic/events"
+    ],
+    "authorized_sensor_surfaces_from_existing_artifacts": [
+      "/dev/video0",
+      "/dev/video1",
+      "/dev/video2",
+      "/dev/video3",
+      "HD Webcam eMeet C960 USB Audio",
+      "EMEET SmartCam S600 USB Audio",
+      "HDA Intel PCH analog inputs",
+      "arm camera requires bridge/live probe"
+    ]
+  },
+  "lesson": {
+    "id": "MIM-LAB-SENSOR-INVENTORY-MUST-DISCOVER-EXECUTOR-PATH-V1",
+    "title": "A repeated generic blocker must become executor discovery",
+    "rule": "After MIM has already published blocked_with_inspection for missing sensor inventory, repeating the same generic blocker is not progress. The next artifact must name the executor path that will run the inventory or the exact missing binding that prevents execution.",
+    "resolution_pattern": [
+      "Inspect the live perception adapter docs and current runtime endpoints.",
+      "Find the MIM-owned process, script, service, or route that can verify camera/microphone/arm-camera openability.",
+      "If it exists, run or bind it and republish MIM_LAB_SENSOR_INVENTORY.latest.json with per-resource evidence.",
+      "If it does not exist, republish MIM_LAB_SENSOR_INVENTORY.latest.json with executor_discovery status, inspected paths, missing binding, and the next smallest MIM-owned task.",
+      "Do not advance to camera cycling, TTS greeting, memory, or object inquiry until the inventory artifact contains fresh per-resource evidence or exact per-resource blockers."
+    ]
+  },
+  "required_next_mim_action": "Publish a non-generic sensor inventory update: either fresh per-device openability evidence or executor_discovery evidence naming inspected files/services/endpoints and the exact missing binding.",
+  "tod_codex_boundary": "monitor and guide only; do not implement camera, microphone, TTS, human memory, or object recognition work for MIM"
+}

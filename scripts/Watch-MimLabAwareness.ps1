@@ -98,7 +98,7 @@ while ($true) {
         }
         $inventoryStatus = Get-JsonFieldText -Payload $inventoryPayload -Name "status"
         $inventoryGeneratedAt = Get-JsonFieldText -Payload $inventoryPayload -Name "generated_at"
-        $inventoryBlocked = $inventoryStatus -eq "blocked_with_inspection"
+        $inventoryBlocked = $inventoryStatus -in @("blocked_with_inspection", "executor_discovery_required")
         $inventoryStale = $false
         if ($inventoryGeneratedAt) {
             try {
@@ -158,7 +158,7 @@ while ($true) {
                 missing_required_artifacts = $missing
                 sensor_inventory_status = $inventoryStatus
                 sensor_inventory_generated_at = $inventoryGeneratedAt
-                required_resolution = "Continue the lab-awareness objective. If sensor inventory is blocked/stale, connect the existing perception source/event path and republish MIM_LAB_SENSOR_INVENTORY.latest.json with current per-resource openability/freshness/failure evidence. Do not count growth, bridge health, stale perception records, or state-bus validation as lab success."
+                required_resolution = "Continue the lab-awareness objective. If sensor inventory is blocked/stale, connect the existing perception source/event path or publish executor_discovery evidence naming inspected files/services/endpoints and the exact missing binding. Republish MIM_LAB_SENSOR_INVENTORY.latest.json with current per-resource openability/freshness/failure evidence or exact per-resource blockers. Do not count growth, bridge health, stale perception records, repeated generic blockers, or state-bus validation as lab success."
                 tod_codex_boundary = "Monitor and guide only; do not implement camera, microphone, TTS, human memory, or object recognition work for MIM."
             }
             Publish-MonitorPrompt -Prompt $prompt

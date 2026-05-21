@@ -10091,6 +10091,13 @@ def _write_mim_lab_awareness_runtime_status_request(
     shared_root.mkdir(parents=True, exist_ok=True)
     now = _mim_tod_stage_timestamp()
     objective_id = _mim_implementation_dispatch_objective_id(raw_input) or "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1"
+    raw_upper = str(raw_input or "").upper()
+    executor_discovery_required = (
+        "EXECUTOR_DISCOVERY" in raw_upper
+        or "DISCOVERING OR RUNNING" in raw_upper
+        or "DISCOVER THE MIM-OWNED SENSOR INVENTORY EXECUTOR" in raw_upper
+        or "REPEATING \"NO MIM-OWNED LAB SENSOR INVENTORY RUNNER" in raw_upper
+    )
     required_artifacts = [
         "MIM_LAB_AWARENESS_STATUS.latest.json",
         "MIM_LAB_SENSOR_INVENTORY.latest.json",
@@ -10130,17 +10137,52 @@ def _write_mim_lab_awareness_runtime_status_request(
         "source": "mim_gateway_lab_awareness_runtime_route",
         "request_id": request_id,
         "objective_id": objective_id,
-        "status": "blocked_with_inspection",
+        "status": "executor_discovery_required" if executor_discovery_required else "blocked_with_inspection",
         "inspection_scope": [
             "lab cameras",
             "lab microphones",
             "arm camera",
         ],
         "devices": [],
-        "blocker": "No MIM-owned lab sensor inventory runner has provided current device enumeration/openability evidence to this gateway route.",
-        "next_mim_owned_action": "Bind the existing camera/microphone/arm-camera resource access path to this objective and republish with per-device openability, freshness, and failure reasons.",
+        "blocker": (
+            "Repeated generic sensor-inventory blocker is no longer sufficient; MIM must discover the executor path or name the exact missing binding."
+            if executor_discovery_required
+            else "No MIM-owned lab sensor inventory runner has provided current device enumeration/openability evidence to this gateway route."
+        ),
+        "next_mim_owned_action": (
+            "Publish fresh per-device evidence or executor_discovery evidence naming inspected files/services/endpoints and the precise missing binding."
+            if executor_discovery_required
+            else "Bind the existing camera/microphone/arm-camera resource access path to this objective and republish with per-device openability, freshness, and failure reasons."
+        ),
         "success": False,
     }
+    if executor_discovery_required:
+        inventory_payload["executor_discovery_required"] = True
+        inventory_payload["minimum_next_evidence"] = [
+            "inspected files/services/endpoints",
+            "candidate executor path or exact missing binding",
+            "per-resource camera/microphone/arm-camera evidence or blocker",
+        ]
+        inventory_payload["starting_context"] = {
+            "docs": [
+                "docs/objective-61-live-perception-adapters.md",
+                "docs/objective-82-live-perception-governance-grounding.md",
+            ],
+            "endpoints": [
+                "GET /gateway/perception/status",
+                "GET /gateway/perception/sources",
+                "POST /gateway/perception/camera/events",
+                "POST /gateway/perception/mic/events",
+            ],
+            "authorized_surfaces": [
+                "/dev/video0",
+                "/dev/video1",
+                "/dev/video2",
+                "/dev/video3",
+                "local audio capture devices",
+                "arm camera bridge/live probe",
+            ],
+        }
     (shared_root / "MIM_LAB_AWARENESS_STATUS.latest.json").write_text(
         json.dumps(status_payload, indent=2, sort_keys=True),
         encoding="utf-8",
