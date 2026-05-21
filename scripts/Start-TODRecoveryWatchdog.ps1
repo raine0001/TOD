@@ -1121,29 +1121,36 @@ function Invoke-PublicationSurfaceSelfHeal {
             $handoffCheckCommand = @"
 bash -lc 'python3 - <<'"'"'PY'"'"'
 import json, pathlib, re, time
-p = pathlib.Path("/home/testpilot/mim/runtime/shared/MIM_TOD_HANDOFF_RESULT.latest.json")
-if not p.exists():
-    print("{}")
-    raise SystemExit(0)
-try:
-    data = json.loads(p.read_text())
-except Exception:
-    print("{}")
-    raise SystemExit(0)
-task = str(data.get("task_id") or data.get("request_id") or "")
-status = str(data.get("result_status") or data.get("status") or "").lower()
-age = time.time() - p.stat().st_mtime
-fresh_pending = status in {"pending", "waiting", "in_progress"} and age < 1800
-noncanonical = bool(task) and not re.match(r"^objective-\d+-task-\d+$", task)
-print(json.dumps({
-    "fresh_pending": bool(fresh_pending),
-    "noncanonical": bool(noncanonical),
-    "task_id": task,
-    "objective_id": str(data.get("objective_id") or ""),
-    "handoff_id": str(data.get("handoff_id") or ""),
-    "result_status": status,
-    "age_seconds": age,
-}))
+root = pathlib.Path("/home/testpilot/mim/runtime/shared")
+for artifact in ("MIM_TOD_IMPLEMENTATION_DISPATCH.latest.json", "MIM_TOD_HANDOFF_RESULT.latest.json"):
+    p = root / artifact
+    if not p.exists():
+        continue
+    try:
+        data = json.loads(p.read_text())
+    except Exception:
+        continue
+    task = str(data.get("task_id") or data.get("request_id") or "")
+    status = str(data.get("result_status") or data.get("status") or "").lower()
+    completion = str(data.get("completion_status") or "").lower()
+    task_class = str(data.get("task_class") or "").lower()
+    age = time.time() - p.stat().st_mtime
+    fresh_pending = status in {"pending", "waiting", "in_progress"} and completion not in {"completed", "completed_with_evidence"} and age < 1800
+    implementation_dispatch = artifact == "MIM_TOD_IMPLEMENTATION_DISPATCH.latest.json" and task_class == "implementation"
+    noncanonical = bool(task) and not re.match(r"^objective-\d+-task-\d+$", task)
+    if fresh_pending and noncanonical and (implementation_dispatch or artifact == "MIM_TOD_HANDOFF_RESULT.latest.json"):
+        print(json.dumps({
+            "fresh_pending": True,
+            "noncanonical": True,
+            "artifact": artifact,
+            "task_id": task,
+            "objective_id": str(data.get("objective_id") or ""),
+            "handoff_id": str(data.get("handoff_id") or ""),
+            "result_status": status,
+            "age_seconds": age,
+        }))
+        raise SystemExit(0)
+print("{}")
 PY'
 "@
             $handoffCheckResult = Invoke-SSHCommand -SessionId ([int]$session.SessionId) -Command $handoffCheckCommand -TimeOut 30

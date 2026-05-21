@@ -1067,6 +1067,7 @@ def _build_mim_ui_degraded_state(*, db_error_text: str = "") -> dict[str, object
     ],
     "inquiry_prompt": "MIM storage is temporarily offline. Use this thread for status, coordination, and bounded next steps while runtime state recovers.",
     "operator_reasoning": operator_reasoning,
+    "operator_status": operator_status,
     "system_activity": system_activity,
     "tod_truth_reconciliation": system_activity.get("tod_truth_reconciliation") if isinstance(system_activity.get("tod_truth_reconciliation"), dict) else tod_truth_reconciliation,
     "execution_lanes": lane_registry if isinstance(lane_registry, dict) else {},
@@ -3391,6 +3392,33 @@ def _artifact_mtime_iso(path: Path) -> str:
         return ""
 
 
+def _load_mim_operator_status(*, shared_root: Path = SHARED_RUNTIME_ROOT) -> dict[str, object]:
+    status = _load_json_artifact(shared_root / "MIM_OPERATOR_STATUS.latest.json")
+    if not status:
+        return {
+            "packet_type": "mim-operator-status-v1",
+            "current_operator_request": "",
+            "current_objective_id": "",
+            "request_type": "unknown",
+            "classification": "missing_canonical_status",
+            "owner": "MIM",
+            "current_phase": "waiting",
+            "what_mim_is_doing": "MIM has not published canonical operator status yet.",
+            "what_tod_is_doing": "TOD state is available in debug panels only until canonical status is published.",
+            "waiting_on": "MIM",
+            "last_fresh_event": "canonical status missing",
+            "last_fresh_event_at": "",
+            "stale_state_detected": True,
+            "stale_panels": ["raw bridge/lifecycle panels may be stale until canonical status is published"],
+            "active_artifacts": [],
+            "blocking_issue": "MIM_OPERATOR_STATUS.latest.json missing",
+            "next_safe_action": "publish canonical operator status",
+            "operator_guidance": "ask status",
+            "debug_artifacts_available": True,
+        }
+    return status
+
+
 def _mim_training_activity_snapshot() -> dict:
     status = _load_json_artifact(MIM_TRAINING_STATUS_ARTIFACT)
     summary = _load_json_artifact(MIM_TRAINING_SUMMARY_ARTIFACT)
@@ -4017,6 +4045,7 @@ def _build_mim_ui_fast_state(*, reason: str = "artifact fast path") -> dict[str,
   freshness_state = _build_mim_tod_console_freshness_state(shared_root=SHARED_RUNTIME_ROOT)
   lane_registry = _load_json_artifact(SHARED_RUNTIME_ROOT / "TOD_EXECUTION_LANES.latest.json")
   lifecycle_state = _load_json_artifact(SHARED_RUNTIME_ROOT / "MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json")
+  operator_status = _load_mim_operator_status(shared_root=SHARED_RUNTIME_ROOT)
   training_activity = _mim_training_activity_snapshot()
   lane_rows = lane_registry.get("lanes") if isinstance(lane_registry.get("lanes"), list) else []
   active_lane = next(
@@ -4134,6 +4163,7 @@ def _build_mim_ui_fast_state(*, reason: str = "artifact fast path") -> dict[str,
     ],
     "inquiry_prompt": "",
     "operator_reasoning": operator_reasoning,
+    "operator_status": operator_status,
     "system_activity": system_activity,
     "tod_truth_reconciliation": {},
     "execution_lanes": lane_registry if isinstance(lane_registry, dict) else {},
@@ -7515,6 +7545,53 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       </div>
     </header>
 
+    <section id="operatorStatusCard" class="system-activity-banner operator-status-card">
+      <div class="system-activity-banner-head">
+        <div class="system-activity-banner-copy">
+          <div class="surface-kicker">Current Work</div>
+          <strong id="operatorStatusObjectiveText">Loading current work...</strong>
+          <div id="operatorStatusRequestText" class="system-activity-banner-summary">Checking canonical operator status...</div>
+        </div>
+        <div id="operatorStatusBadge" class="status-chip subtle" data-tone="warn">Syncing...</div>
+      </div>
+      <div class="system-activity-banner-grid">
+        <div class="status-tile">
+          <span>Type</span>
+          <strong id="operatorStatusTypeText">Loading...</strong>
+          <div id="operatorStatusClassificationText" class="status-subtext">Checking classification...</div>
+        </div>
+        <div class="status-tile">
+          <span>Owner</span>
+          <strong id="operatorStatusOwnerText">Loading...</strong>
+          <div id="operatorStatusWaitingText" class="status-subtext">Checking waiting state...</div>
+        </div>
+        <div class="status-tile">
+          <span>Status</span>
+          <strong id="operatorStatusPhaseText">Loading...</strong>
+          <div id="operatorStatusFreshEventText" class="status-subtext">Checking last fresh event...</div>
+        </div>
+        <div class="status-tile">
+          <span>Next Safe Action</span>
+          <strong id="operatorStatusGuidanceText">Loading...</strong>
+          <div id="operatorStatusNextActionText" class="status-subtext">Checking next action...</div>
+        </div>
+      </div>
+      <div class="activity-feed-strip">
+        <div class="activity-feed-card" data-tone="ready">
+          <div class="activity-feed-label">MIM</div>
+          <div id="operatorStatusMimText" class="activity-feed-detail">Checking what MIM is doing...</div>
+        </div>
+        <div class="activity-feed-card" data-tone="ready">
+          <div class="activity-feed-label">TOD</div>
+          <div id="operatorStatusTodText" class="activity-feed-detail">Checking what TOD is doing...</div>
+        </div>
+        <div class="activity-feed-card" data-tone="warn">
+          <div class="activity-feed-label">Stale Panels</div>
+          <div id="operatorStatusStaleText" class="activity-feed-detail">Checking stale debug panels...</div>
+        </div>
+      </div>
+    </section>
+
     <div id="textChatPanel" class="primary-chat-panel">
       <section class="panel">
         <div class="chat-shell thread-card mim-chat-shell">
@@ -7558,7 +7635,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       </section>
     </div>
 
-    <div class="system-activity-banner">
+    <div class="system-activity-banner debug-only">
       <div class="system-activity-banner-head">
         <div class="system-activity-banner-copy">
           <div class="surface-kicker">Agent Communication Status</div>
@@ -8146,6 +8223,20 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     const systemReasoningPanel = document.getElementById('systemReasoningPanel');
     const systemReasoningSummary = document.getElementById('systemReasoningSummary');
     const systemReasoningList = document.getElementById('systemReasoningList');
+    const operatorStatusObjectiveText = document.getElementById('operatorStatusObjectiveText');
+    const operatorStatusRequestText = document.getElementById('operatorStatusRequestText');
+    const operatorStatusBadge = document.getElementById('operatorStatusBadge');
+    const operatorStatusTypeText = document.getElementById('operatorStatusTypeText');
+    const operatorStatusClassificationText = document.getElementById('operatorStatusClassificationText');
+    const operatorStatusOwnerText = document.getElementById('operatorStatusOwnerText');
+    const operatorStatusWaitingText = document.getElementById('operatorStatusWaitingText');
+    const operatorStatusPhaseText = document.getElementById('operatorStatusPhaseText');
+    const operatorStatusFreshEventText = document.getElementById('operatorStatusFreshEventText');
+    const operatorStatusGuidanceText = document.getElementById('operatorStatusGuidanceText');
+    const operatorStatusNextActionText = document.getElementById('operatorStatusNextActionText');
+    const operatorStatusMimText = document.getElementById('operatorStatusMimText');
+    const operatorStatusTodText = document.getElementById('operatorStatusTodText');
+    const operatorStatusStaleText = document.getElementById('operatorStatusStaleText');
 
     window.addEventListener('error', (event) => {
       const msg = String(event?.message || 'unknown_js_error');
@@ -8349,6 +8440,57 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         element.textContent = value;
       }
       element.title = value;
+    }
+
+    function renderOperatorStatus(operatorStatus = {}) {
+      const objective = safeText(operatorStatus.current_objective_id, 'No current objective recorded');
+      const request = safeText(operatorStatus.current_operator_request, 'No current operator request recorded.');
+      const requestType = safeText(operatorStatus.request_type, 'unknown');
+      const classification = safeText(operatorStatus.classification, 'unclassified');
+      const owner = safeText(operatorStatus.owner, 'MIM');
+      const phase = safeText(operatorStatus.current_phase, 'waiting');
+      const waitingOn = safeText(operatorStatus.waiting_on, owner);
+      const lastFreshEvent = safeText(operatorStatus.last_fresh_event, 'No fresh event recorded');
+      const lastFreshEventAt = safeText(operatorStatus.last_fresh_event_at);
+      const guidance = safeText(operatorStatus.operator_guidance, 'ask status');
+      const nextSafeAction = safeText(operatorStatus.next_safe_action, 'ask for current status');
+      const mimDoing = safeText(operatorStatus.what_mim_is_doing, 'MIM has not published current work detail.');
+      const todDoing = safeText(operatorStatus.what_tod_is_doing, 'TOD has not published current work detail.');
+      const stalePanels = Array.isArray(operatorStatus.stale_panels) ? operatorStatus.stale_panels.filter(Boolean) : [];
+      const staleDetected = Boolean(operatorStatus.stale_state_detected || stalePanels.length);
+      const blockingIssue = safeText(operatorStatus.blocking_issue);
+      const tone = blockingIssue || phase.toLowerCase().includes('block')
+        ? 'error'
+        : phase.toLowerCase().includes('complete')
+          ? 'ready'
+          : staleDetected
+            ? 'warn'
+            : 'ready';
+
+      setTextWithTitle(operatorStatusObjectiveText, objective);
+      setFormattedReportOrText(operatorStatusRequestText, request, 'No current operator request recorded.', { compact: true });
+      if (operatorStatusBadge) {
+        operatorStatusBadge.textContent = phase;
+        operatorStatusBadge.title = blockingIssue || nextSafeAction;
+        operatorStatusBadge.setAttribute('data-tone', tone);
+      }
+      setTextWithTitle(operatorStatusTypeText, requestType, 'unknown');
+      setTextWithTitle(operatorStatusClassificationText, classification, 'unclassified');
+      setTextWithTitle(operatorStatusOwnerText, owner, 'MIM');
+      setTextWithTitle(operatorStatusWaitingText, waitingOn ? `Waiting on ${waitingOn}` : 'Not waiting');
+      setTextWithTitle(operatorStatusPhaseText, phase, 'waiting');
+      setTextWithTitle(
+        operatorStatusFreshEventText,
+        `${lastFreshEvent}${lastFreshEventAt ? ` at ${formatActivityTimestamp(lastFreshEventAt)}` : ''}`,
+      );
+      setTextWithTitle(operatorStatusGuidanceText, guidance, 'ask status');
+      setFormattedReportOrText(operatorStatusNextActionText, nextSafeAction, 'ask for current status');
+      setFormattedReportOrText(operatorStatusMimText, mimDoing);
+      setFormattedReportOrText(operatorStatusTodText, todDoing);
+      setFormattedReportOrText(
+        operatorStatusStaleText,
+        stalePanels.length ? stalePanels.join('\\n') : 'No stale panels are promoted above canonical status.',
+      );
     }
 
     function renderSystemActivityTruth(systemActivity = {}) {
@@ -13735,6 +13877,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       setTextWithTitle(openQuestionText, openQuestion, 'None');
       setTextWithTitle(memoryHintText, memoryHint, 'None');
       setTextWithTitle(runtimeHealthText, healthSummary, 'Runtime summary unavailable');
+      renderOperatorStatus(data && typeof data.operator_status === 'object' ? data.operator_status : {});
       renderSystemActivityTruth(systemActivity);
       renderLaneVisibility(data);
       renderOperationalLifecycle(data);
@@ -16315,6 +16458,7 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
     mark_profile("operator_reasoning_and_system_activity")
     lane_registry = _load_json_artifact(SHARED_RUNTIME_ROOT / "TOD_EXECUTION_LANES.latest.json")
     lifecycle_state = _load_json_artifact(SHARED_RUNTIME_ROOT / "MIM_OPERATIONAL_REASONING_LIFECYCLE.latest.json")
+    operator_status = _load_mim_operator_status(shared_root=SHARED_RUNTIME_ROOT)
     training_activity = _mim_training_activity_snapshot()
     lane_rows = lane_registry.get("lanes") if isinstance(lane_registry.get("lanes"), list) else []
     active_execution_lane = next(
@@ -16369,6 +16513,7 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
         ],
         "inquiry_prompt": inquiry_prompt,
         "operator_reasoning": operator_reasoning,
+        "operator_status": operator_status,
         "system_activity": system_activity,
         "tod_truth_reconciliation": system_activity.get("tod_truth_reconciliation") if isinstance(system_activity.get("tod_truth_reconciliation"), dict) else tod_truth_reconciliation,
         "execution_lanes": lane_registry if isinstance(lane_registry, dict) else {},
