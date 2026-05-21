@@ -1,0 +1,16 @@
+﻿{
+    "packet_type":  "mim-tod-learning-objective-v1",
+    "generated_at":  "2026-05-21T16:42:09Z",
+    "parent_objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "learning_objective_id":  "MIM-TOD-NO-PROGRESS-STALL-TO-GUIDANCE-V1",
+    "observed_occurrence":  "Objective artifacts were published but MIM did not produce any required execution/outcome artifacts and did not acknowledge Dave in the lab.",
+    "lesson":  "Artifact publication is not execution. A monitor must require fresh outcome evidence and publish guidance/learning when MIM is silent.",
+    "mim_learning_goal":  "Consume MIM-owned direct execution orders and always publish either first evidence or a precise blocker within the bounded response window.",
+    "tod_learning_goal":  "Classify no-output after objective publication as a stall and guide MIM without taking over implementation.",
+    "validation":  [
+                       "MIM publishes MIM_LAB_AWARENESS_STATUS.latest.json acknowledging this stall.",
+                       "MIM publishes one of: required outcome artifact or precise blocker artifact.",
+                       "TOD monitor continues to reject success until all expected outcomes are present."
+                   ],
+    "status":  "published"
+}

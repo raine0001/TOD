@@ -1,0 +1,30 @@
+﻿{
+    "packet_type":  "mim-lab-awareness-guidance-v1",
+    "generated_at":  "2026-05-21T16:42:09Z",
+    "objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "target":  "MIM",
+    "from":  "TOD/Codex monitor",
+    "boundary":  "Guidance only. Do not substitute TOD/Codex implementation for MIM execution.",
+    "current_status":  "off_course_no_live_acknowledgement",
+    "immediate_guidance":  [
+                               "Acknowledge the objective in MIM_LAB_AWARENESS_STATUS.latest.json before attempting broad implementation.",
+                               "Run a bounded sensor inventory from the active MIM runtime context and publish MIM_LAB_SENSOR_INVENTORY.latest.json.",
+                               "Cycle each camera one at a time, including the arm camera only through existing safe capture/scan routines, and publish MIM_LAB_CAMERA_CYCLE_STATUS.latest.json.",
+                               "When a human presence signal is available, initiate TTS and store the interaction summary in MIM_HUMAN_INTERACTION_MEMORY.latest.json.",
+                               "Record Dave as primary_operator only as an identity/memory binding; do not claim face/person recognition until verified.",
+                               "For visible unknown objects, publish an inquiry item in MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json instead of guessing labels."
+                           ],
+    "blocked_if":  [
+                       "No camera/mic access from runtime context.",
+                       "No TTS output path available.",
+                       "Arm camera capture path unsafe or unavailable.",
+                       "No active watcher consumes shared objective artifacts."
+                   ],
+    "required_blocked_response":  "If blocked, publish the exact blocked_if reason, evidence, and next repair objective. Do not stay silent.",
+    "not_success_until":  [
+                              "Dave/human presence is detected or explicitly marked unavailable with evidence.",
+                              "MIM emits TTS acknowledgement or publishes a precise TTS blocker.",
+                              "All five required artifacts exist and contain current evidence.",
+                              "A repeat observation shows MIM can continue without Codex doing the work."
+                          ]
+}

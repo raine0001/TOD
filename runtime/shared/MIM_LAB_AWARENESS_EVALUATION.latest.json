@@ -1,0 +1,57 @@
+﻿{
+    "packet_type":  "mim-lab-awareness-evaluation-v1",
+    "generated_at":  "2026-05-21T16:42:09Z",
+    "objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "evaluator":  "TOD/Codex monitor",
+    "role_boundary":  "evaluate_and_guide_only_do_not_implement_for_mim",
+    "completion_status":  "not_complete",
+    "percent_complete":  0,
+    "gate":  "100_percent_expected_outcomes_required",
+    "expected_outcomes":  [
+                              {
+                                  "id":  "sensor_inventory",
+                                  "artifact":  "MIM_LAB_SENSOR_INVENTORY.latest.json",
+                                  "status":  "missing"
+                              },
+                              {
+                                  "id":  "awareness_status",
+                                  "artifact":  "MIM_LAB_AWARENESS_STATUS.latest.json",
+                                  "status":  "missing"
+                              },
+                              {
+                                  "id":  "camera_cycle",
+                                  "artifact":  "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+                                  "status":  "missing"
+                              },
+                              {
+                                  "id":  "human_interaction_memory",
+                                  "artifact":  "MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+                                  "status":  "missing"
+                              },
+                              {
+                                  "id":  "object_memory_inquiry",
+                                  "artifact":  "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
+                                  "status":  "missing"
+                              },
+                              {
+                                  "id":  "live_tts_acknowledgement",
+                                  "artifact":  "TTS action/interation evidence",
+                                  "status":  "missing_observed_by_operator"
+                              }
+                          ],
+    "present_artifacts":  [
+
+                          ],
+    "missing_artifacts":  [
+                              "MIM_LAB_SENSOR_INVENTORY.latest.json",
+                              "MIM_LAB_AWARENESS_STATUS.latest.json",
+                              "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+                              "MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+                              "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json"
+                          ],
+    "observed_failure":  "Dave is in the lab and MIM has not acknowledged him via TTS; required outcome artifacts are absent.",
+    "stall_classification":  "no_progress_after_objective_publication",
+    "success_claim_allowed":  false,
+    "next_guidance_artifact":  "MIM_LAB_AWARENESS_GUIDANCE.latest.json",
+    "learning_artifact":  "MIM_LAB_AWARENESS_STALL_LEARNING.latest.json"
+}

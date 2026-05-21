@@ -1,0 +1,19 @@
+﻿{
+    "packet_type":  "mim-lab-awareness-repeated-stall-v1",
+    "generated_at":  "2026-05-21T16:43:49Z",
+    "parent_objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "learning_objective_id":  "MIM-DIRECT-ORDER-CONSUMER-MISSING-OR-IDLE-V1",
+    "observed_occurrence":  "After evaluation and guidance artifacts were published, MIM still produced none of the required outcome artifacts.",
+    "missing_after_guidance":  [
+                                   "MIM_LAB_SENSOR_INVENTORY.latest.json",
+                                   "MIM_LAB_AWARENESS_STATUS.latest.json",
+                                   "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+                                   "MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+                                   "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json"
+                               ],
+    "likely_failure_class":  "no_active_mim_consumer_for_direct_execution_order",
+    "guidance":  "MIM should not attempt the full lab-awareness behavior first. The next correct MIM-owned step is to publish MIM_LAB_AWARENESS_STATUS.latest.json acknowledging the objective, naming the active executor/watcher, and either starting sensor inventory or publishing a precise blocker.",
+    "tod_codex_boundary":  "Do not implement the camera/TTS stack for MIM. Continue monitoring; convert missing acknowledgement into learning/repair objectives.",
+    "success_gate":  "Still 0 percent complete. No success claim allowed until all expected outcomes are present and current.",
+    "status":  "published"
+}
