@@ -1,0 +1,19 @@
+{
+  "packet_type": "mim-operator-status-sync-note-v1",
+  "generated_at": "2026-05-21T16:56:04Z",
+  "owner": "TOD",
+  "action": "synced_local_operator_status_from_remote_mim_runtime",
+  "reason": "Local runtime/shared/MIM_OPERATOR_STATUS.latest.json was stale and incorrectly preserved an old blocker saying the MIM API was not listening on port 8000.",
+  "authoritative_source": {
+    "host": "testpilot@192.168.1.120",
+    "path": "/home/testpilot/mim/runtime/shared/MIM_OPERATOR_STATUS.latest.json",
+    "remote_generated_at": "2026-05-21T16:50:15Z"
+  },
+  "cleanup_result": {
+    "local_status_blocking_issue": null,
+    "local_status_current_objective_id": "MIM-GROWTH-SELF-HEALTH-MAINTENANCE-NEXT-V1",
+    "local_status_current_phase": "completed",
+    "stale_port_8000_blocker_removed": true
+  },
+  "operator_note": "Recent MIM/TOD files from 2026-05-20 and 2026-05-21 remain relevant for objective/training context. Lab-awareness success is still evaluated separately from this completed growth self-health handoff."
+}
