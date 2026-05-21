@@ -1,0 +1,35 @@
+{
+  "packet_type": "mim-lab-sensor-inventory-executor-applied-v1",
+  "generated_at": "2026-05-21T22:44:28Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-LAB-SENSOR-INVENTORY-EXECUTOR",
+  "parent_lab_objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "mim_api_task_id": 7951,
+  "result_artifact": "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+  "evidence_summary": {
+    "camera_nodes": {
+      "/dev/video0": "exists and openable; frame capture dependency not yet bound",
+      "/dev/video1": "exists and openable; frame capture dependency not yet bound",
+      "/dev/video2": "exists and openable; frame capture dependency not yet bound",
+      "/dev/video3": "exists and openable; frame capture dependency not yet bound"
+    },
+    "microphones": {
+      "HD Webcam eMeet C960 / USB Audio": "openable with plughw mono probe; no media retained",
+      "EMEET SmartCam S600 / USB Audio": "openable with stereo probe; no media retained",
+      "HDA Intel PCH / ALC671 Analog": "openable with stereo probe; no media retained",
+      "HDA Intel PCH / ALC671 Alt Analog": "openable with stereo probe; no media retained"
+    },
+    "arm_camera_bridge": "bridge artifacts present but no current arm-camera bridge probe bound"
+  },
+  "remaining_blockers": [
+    "camera frame capture dependency not bound",
+    "arm-camera bridge live probe not bound",
+    "camera cycling artifact missing",
+    "human interaction memory artifact missing",
+    "object memory/inquiry artifact missing",
+    "final execution evidence artifact missing"
+  ],
+  "success": true,
+  "next_required_mim_action": "Create/bind a camera frame capture and arm-camera bridge probe executor, then publish MIM_LAB_CAMERA_CYCLE_STATUS.latest.json."
+}

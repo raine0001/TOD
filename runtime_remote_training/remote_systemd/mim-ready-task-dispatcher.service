@@ -1,0 +1,15 @@
+[Unit]
+Description=MIM Ready Task Dispatcher
+After=mim-training-web.service
+Wants=mim-training-web.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/testpilot/mim
+Environment=PYTHONPATH=/home/testpilot/mim
+ExecStart=/home/testpilot/mim/.venv/bin/python /home/testpilot/mim/scripts/mim_ready_task_dispatcher.py --interval-seconds 15
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,27 @@
+{
+  "packet_type": "mim-ready-task-dispatcher-binding-applied-v1",
+  "generated_at": "2026-05-21T22:45:21Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-READY-TASK-DISPATCHER-BINDING",
+  "parent_lab_objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "remote_changes": [
+    {
+      "file": "/home/testpilot/mim/scripts/mim_ready_task_dispatcher.py",
+      "change": "Added MIM-owned ready-task dispatcher that claims start_now=true/readiness=ready/dispatch_status=pending tasks assigned to mim."
+    },
+    {
+      "file": "/home/testpilot/.config/systemd/user/mim-ready-task-dispatcher.service",
+      "change": "Installed and enabled persistent user service polling every 15 seconds."
+    }
+  ],
+  "validation": {
+    "dispatcher_service": "active",
+    "task_7950_dispatch_status": "completed_with_evidence",
+    "task_7951_dispatch_status": "completed_with_evidence",
+    "last_processed_task_id": 7951,
+    "status_artifact": "runtime/shared/MIM_READY_TASK_DISPATCHER_STATUS.latest.json"
+  },
+  "success": true,
+  "next_required_mim_action": "Bind camera frame capture and arm-camera bridge probes before camera cycling."
+}
