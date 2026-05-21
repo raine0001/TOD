@@ -1,0 +1,45 @@
+{
+  "packet_type": "mim-lab-awareness-return-to-objective-v1",
+  "generated_at": "2026-05-21T17:04:30Z",
+  "owner": "TOD",
+  "target_owner": "MIM",
+  "objective_id": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+  "trigger": "operator_requested_mim_progress_update",
+  "off_course_observation": {
+    "current_mim_operator_status_objective": "MIM-GROWTH-SELF-HEALTH-MAINTENANCE-NEXT-V1",
+    "current_mim_operator_status_phase": "completed",
+    "latest_growth_checkin_state": "healthy",
+    "latest_growth_next_action": "continue_observation",
+    "lab_awareness_artifacts_have_no_success_evidence_after": "2026-05-21T16:43:00Z"
+  },
+  "evaluation": {
+    "mim_runtime_alive": true,
+    "mim_api_health_endpoint": "http://127.0.0.1:18021/health",
+    "lab_awareness_objective_complete": false,
+    "reason_not_complete": [
+      "No fresh artifact proves human presence detection in the lab.",
+      "No fresh artifact proves voice TTS acknowledgement to Dave or another human.",
+      "No fresh artifact proves human-name memory update.",
+      "No fresh artifact proves object inventory or unknown-object inquiry.",
+      "No fresh artifact proves all-camera cycling including the arm camera."
+    ]
+  },
+  "instruction_to_mim": {
+    "resume_objective": "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "do_not_mark_satisfied_until": [
+      "MIM detects a human entering or present in the lab and records sensor evidence.",
+      "MIM initiates a TTS interaction with that human.",
+      "MIM records the interaction in memory with the human name when known.",
+      "MIM records Dave as primary operator when Dave is identified.",
+      "MIM inventories visible lab objects and asks about unknown objects.",
+      "MIM cycles every available camera, including the arm camera, and records per-camera evidence."
+    ],
+    "tod_role": "monitor and evaluate only; convert stalls or failures into learning objectives; do not implement the hardware/camera/TTS work for MIM."
+  },
+  "learning_objective_created": {
+    "id": "MIM-OBJECTIVE-RESUME-AFTER-GROWTH-IDLE-V1",
+    "title": "Resume the operator's active objective after completing an unrelated growth or idle check",
+    "lesson": "A healthy completed growth objective is not success for the operator's active lab-awareness objective. MIM must return to the active operator objective and produce evidence for each required outcome."
+  },
+  "next_expected_artifact_from_mim": "runtime/shared/MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json"
+}
