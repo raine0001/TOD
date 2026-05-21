@@ -1,0 +1,119 @@
+﻿{
+    "packet_type":  "mim-formal-objective-v1",
+    "generated_at":  "2026-05-21T16:30:39Z",
+    "source":  "operator_directive_via_codex",
+    "owner":  "MIM",
+    "objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "title":  "Lab awareness, human interaction, and camera cycling",
+    "priority":  "high",
+    "execution_posture":  {
+                              "primary_executor":  "MIM",
+                              "tod_role":  "observe_and_evaluate_only",
+                              "codex_role":  "last_resort_after_off_course_evidence",
+                              "operator_interaction_policy":  "Do not ask the operator for next steps unless MIM/TOD go off course, safety is uncertain, or credentials/physical access are missing.",
+                              "next_objective_policy":  "Drop follow-on objectives directly into MIM for execution. TOD/Codex may create learning objectives only from observed off-course moments."
+                          },
+    "goal":  "MIM becomes aware of activity, humans, and objects in its private lab/space, initiates voice interaction with humans, remembers interactions and names, recognizes Dave as primary operator, asks about unknown objects, and cycles all cameras including the arm camera.",
+    "success_criteria":  [
+                             "When Dave or any human enters the lab, MIM detects the presence and initiates interaction via voice TTS without waiting for typed input.",
+                             "MIM records each human interaction with timestamp, modality, confidence, summary, and follow-up commitments for future reference.",
+                             "MIM remembers humans by name when they identify themselves or when a verified recognition binding exists.",
+                             "MIM knows Dave is the primary operator and treats Dave as the default trusted operator identity unless evidence shows a different identified human.",
+                             "MIM identifies visible objects in the lab, stores known-object memory, and asks the operator about unknown objects instead of fabricating labels.",
+                             "MIM cycles all available cameras, including the arm camera, and publishes per-camera reachability/openability/freshness evidence.",
+                             "MIM distinguishes permission/authority from live sensor truth: it may say the lab resources are authorized, but only claims live seeing/hearing after current capture/openability evidence.",
+                             "TOD/Codex only intervene when MIM/TOD go off course; each intervention creates or updates a learning objective that prevents recurrence."
+                         ],
+    "constraints":  [
+                        "No unsafe hardware movement. Arm camera cycling may use existing safe scan/capture routines only.",
+                        "No fake recognition. Unknown humans or objects remain unknown until identified with evidence.",
+                        "No always-on private data leakage. Store summaries and identity bindings needed for continuity, not unnecessary raw transcripts/video.",
+                        "Respect resource budgets: cycle cameras at bounded intervals and back off when devices are busy or unavailable.",
+                        "If a camera/microphone is unavailable, publish a setup/repair task instead of treating it as a permission failure."
+                    ],
+    "execution_phases":  [
+                             {
+                                 "phase":  1,
+                                 "id":  "sensor_inventory",
+                                 "objective":  "Inventory all cameras/microphones, including browser, local runtime, and arm camera surfaces.",
+                                 "evidence":  [
+                                                  "device list",
+                                                  "openability probe",
+                                                  "failure reason per device"
+                                              ]
+                             },
+                             {
+                                 "phase":  2,
+                                 "id":  "camera_cycle",
+                                 "objective":  "Cycle cameras and publish latest frame/observation freshness without unsafe movement.",
+                                 "evidence":  [
+                                                  "per-camera status",
+                                                  "last capture timestamp",
+                                                  "arm camera safe routine result"
+                                              ]
+                             },
+                             {
+                                 "phase":  3,
+                                 "id":  "human_presence_voice_initiation",
+                                 "objective":  "Detect human presence and initiate TTS greeting/interaction.",
+                                 "evidence":  [
+                                                  "presence event",
+                                                  "TTS action record",
+                                                  "interaction transcript/summary"
+                                              ]
+                             },
+                             {
+                                 "phase":  4,
+                                 "id":  "human_memory",
+                                 "objective":  "Store and recall human names and interactions, with Dave as primary operator.",
+                                 "evidence":  [
+                                                  "human memory record",
+                                                  "Dave primary operator binding",
+                                                  "recall probe"
+                                              ]
+                             },
+                             {
+                                 "phase":  5,
+                                 "id":  "object_memory_and_inquiry",
+                                 "objective":  "Identify known objects, ask about unknown objects, and store answers.",
+                                 "evidence":  [
+                                                  "object memory record",
+                                                  "unknown-object inquiry",
+                                                  "operator answer binding"
+                                              ]
+                             },
+                             {
+                                 "phase":  6,
+                                 "id":  "autonomous_continuation",
+                                 "objective":  "Continue with direct MIM objectives until success; create learning objectives from off-course events only.",
+                                 "evidence":  [
+                                                  "objective queue",
+                                                  "off-course event log",
+                                                  "learning objective created when needed"
+                                              ]
+                             }
+                         ],
+    "first_task":  {
+                       "task_id":  "mim-lab-awareness-human-interaction-v1-task-001",
+                       "title":  "Inventory lab sensors and publish first live-readiness map",
+                       "executor":  "MIM",
+                       "acceptance_criteria":  [
+                                                   "Publish MIM_LAB_SENSOR_INVENTORY.latest.json with all detected cameras/microphones and arm camera status.",
+                                                   "Publish MIM_LAB_AWARENESS_STATUS.latest.json with current phase, blockers, next MIM-owned action, and evidence links.",
+                                                   "Do not claim a human/object/camera is live unless current evidence exists.",
+                                                   "If MIM runtime API is down, record service-down as the first off-course event and create a learning/repair objective."
+                                               ]
+                   },
+    "off_course_learning_policy":  {
+                                       "off_course_signals":  [
+                                                                  "MIM API down",
+                                                                  "camera/mic permission confused with live readiness",
+                                                                  "stale artifact presented as current truth",
+                                                                  "unsafe arm movement requested",
+                                                                  "fake human/object recognition",
+                                                                  "TOD/Codex tries to take primary execution without evidence"
+                                                              ],
+                                       "required_response":  "Create a bounded learning objective directly in MIM that names the off-course signal, evidence, fix hypothesis, validation, and recurrence guard.",
+                                       "operator_contact":  "Only contact Dave when safety, identity, credential, or physical access cannot be resolved autonomously."
+                                   }
+}

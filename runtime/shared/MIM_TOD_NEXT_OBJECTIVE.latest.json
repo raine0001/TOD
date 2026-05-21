@@ -1,0 +1,14 @@
+﻿{
+    "packet_type":  "mim-next-objective-v1",
+    "generated_at":  "2026-05-21T16:30:39Z",
+    "objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "task_id":  "mim-lab-awareness-human-interaction-v1-task-001",
+    "status":  "published",
+    "goal":  "MIM becomes aware of activity, humans, and objects in its private lab/space, initiates voice interaction with humans, remembers interactions and names, recognizes Dave as primary operator, asks about unknown objects, and cycles all cameras including the arm camera.",
+    "owner":  "MIM",
+    "next_action":  "Execute sensor inventory, camera cycle readiness, and first lab-awareness status publication.",
+    "evidence_files":  [
+                           "runtime/shared/MIM_LAB_AWARENESS_OBJECTIVE.latest.json",
+                           "runtime/shared/MIM_DIRECT_EXECUTION_ORDER.latest.json"
+                       ]
+}

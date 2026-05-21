@@ -1,0 +1,19 @@
+﻿{
+    "packet_type":  "tod-mim-supervision-contract-v1",
+    "generated_at":  "2026-05-21T16:30:39Z",
+    "objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "tod_role":  "evaluate_only",
+    "codex_role":  "standby_last_resort",
+    "interaction_policy":  "Do not steer normal MIM progress. Interact only when MIM/TOD go off course, then write a learning objective and evidence packet.",
+    "off_course_to_learning_objective":  {
+                                             "artifact":  "MIM_LAB_AWARENESS_OFF_COURSE_LEARNING.latest.json",
+                                             "required_fields":  [
+                                                                     "observed_failure",
+                                                                     "evidence",
+                                                                     "root_cause_hypothesis",
+                                                                     "bounded_fix_objective",
+                                                                     "validation_plan",
+                                                                     "recurrence_guard"
+                                                                 ]
+                                         }
+}

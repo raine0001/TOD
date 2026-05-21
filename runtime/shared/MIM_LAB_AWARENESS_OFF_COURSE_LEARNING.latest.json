@@ -1,0 +1,25 @@
+﻿{
+    "packet_type":  "mim-off-course-learning-objective-v1",
+    "generated_at":  "2026-05-21T16:31:37Z",
+    "parent_objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "learning_objective_id":  "MIM-RUNTIME-API-RESTORE-FOR-LAB-AWARENESS-V1",
+    "observed_failure":  "MIM HTTP API was unreachable externally at http://192.168.1.120:8000 and locally on the MIM host at http://127.0.0.1:8000.",
+    "evidence":  [
+                     "TOD remote-mode ping-mim returned: Unable to connect to the remote server.",
+                     "SSH-local urllib checks on MIM host returned connection refused for 127.0.0.1:8000/health and /status.",
+                     "SSH and SFTP to /home/testpilot/mim/runtime/shared succeeded, so the host is reachable but the API service is not listening."
+                 ],
+    "root_cause_hypothesis":  "The MIM API/runtime service is stopped, crashed, bound to a different port, or blocked by service startup failure.",
+    "bounded_fix_objective":  "Restore or restart the MIM API/runtime service, then consume MIM_LAB_AWARENESS_OBJECTIVE.latest.json and execute the first sensor inventory task.",
+    "validation_plan":  [
+                            "From MIM host, curl or urllib http://127.0.0.1:8000/health returns HTTP 200 or structured health JSON.",
+                            "From TOD host, ping-mim in remote mode succeeds against http://192.168.1.120:8000.",
+                            "MIM publishes MIM_LAB_AWARENESS_STATUS.latest.json acknowledging the lab-awareness objective.",
+                            "MIM publishes the first sensor inventory artifact or a precise blocked reason."
+                        ],
+    "recurrence_guard":  "When a MIM-owned objective is published but the API is down, MIM must create a service-restore learning objective and avoid pretending the objective is executing until service health is proven.",
+    "owner":  "MIM",
+    "tod_role":  "observe_and_verify_only",
+    "codex_role":  "do_not_take_over_without_new_off_course_evidence",
+    "status":  "published"
+}

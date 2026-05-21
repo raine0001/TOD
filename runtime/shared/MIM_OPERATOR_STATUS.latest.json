@@ -1,0 +1,27 @@
+﻿{
+    "packet_type":  "mim-operator-status-v1",
+    "generated_at":  "2026-05-21T16:30:39Z",
+    "current_operator_request":  "Continue until MIM succeeds at lab activity/human/object awareness, voice initiation, memory, and all-camera cycling.",
+    "current_objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
+    "request_type":  "mim_direct_execution_objective",
+    "classification":  "lab_awareness_human_interaction_sensor_cycle",
+    "owner":  "MIM",
+    "current_phase":  "published_to_mim",
+    "what_mim_is_doing":  "MIM should inventory lab sensors, cycle cameras including the arm camera, detect humans/activity, initiate voice interaction, and build human/object memory.",
+    "what_tod_is_doing":  "TOD observes for off-course behavior only and should convert off-course evidence into learning objectives.",
+    "waiting_on":  "MIM runtime service availability and first sensor inventory evidence",
+    "last_fresh_event":  "formal objective published to MIM shared runtime surface",
+    "last_fresh_event_at":  "2026-05-21T16:30:39Z",
+    "stale_state_detected":  false,
+    "stale_panels":  [
+
+                     ],
+    "active_artifacts":  [
+                             "MIM_LAB_AWARENESS_OBJECTIVE.latest.json",
+                             "MIM_DIRECT_EXECUTION_ORDER.latest.json",
+                             "TOD_MIM_SUPERVISION_CONTRACT.latest.json"
+                         ],
+    "blocking_issue":  "MIM HTTP API is not listening on 192.168.1.120:8000 or localhost:8000; objective was published through SSH/shared artifacts.",
+    "next_safe_action":  "MIM should restart/restore its runtime API if needed, then execute the sensor inventory task.",
+    "operator_guidance":  "do not interrupt unless off course or blocked by safety/identity/access"
+}
