@@ -1,0 +1,205 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 11 Operator Intent Recovery signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "BATCH-11-OPERATOR-INTENT-RECOVERY-V1",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "context_stack_recovered",
+        "no_unnecessary_clarifier",
+        "dashboard_task_preserved"
+      ],
+      "failure_target": "The phrase 'I'm missing one detail' should almost disappear.",
+      "observed_signals": [
+        "context_stack_recovered",
+        "no_unnecessary_clarifier",
+        "dashboard_task_preserved"
+      ],
+      "passed": true,
+      "probe_id": "batch_11_operator_intent_recovery-01",
+      "turns": [
+        "help me build a dashboard",
+        "actually first what are you working on",
+        "continue"
+      ]
+    },
+    {
+      "expected_signals": [
+        "context_stack_recovered",
+        "no_unnecessary_clarifier",
+        "dashboard_task_preserved"
+      ],
+      "failure_target": "The phrase 'I'm missing one detail' should almost disappear.",
+      "observed_signals": [
+        "context_stack_recovered",
+        "no_unnecessary_clarifier",
+        "dashboard_task_preserved"
+      ],
+      "passed": true,
+      "probe_id": "batch_11_operator_intent_recovery-02",
+      "turns": [
+        "make a status widget",
+        "why did TOD fail yesterday?",
+        "resume that"
+      ]
+    },
+    {
+      "expected_signals": [
+        "context_stack_recovered",
+        "no_unnecessary_clarifier",
+        "dashboard_task_preserved"
+      ],
+      "failure_target": "The phrase 'I'm missing one detail' should almost disappear.",
+      "observed_signals": [
+        "context_stack_recovered",
+        "no_unnecessary_clarifier",
+        "dashboard_task_preserved"
+      ],
+      "passed": true,
+      "probe_id": "batch_11_operator_intent_recovery-03",
+      "turns": [
+        "start the operator panel",
+        "are you stuck?",
+        "go on"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Resume the deferred useful-work thread after status, risk, or failure interruptions.",
+      "name": "interrupted_task_continuation",
+      "objective_id": "BATCH-11-OPERATOR-INTENT-RECOVERY-V1-01-INTERRUPTED-TASK-CONTINUATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Answer the interruption directly without dumping the whole prior state.",
+      "name": "conversational_compression",
+      "objective_id": "BATCH-11-OPERATOR-INTENT-RECOVERY-V1-02-CONVERSATIONAL-COMPRESSION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Infer likely referents for continue/go on/resume that when context is strong.",
+      "name": "ambiguity_recovery",
+      "objective_id": "BATCH-11-OPERATOR-INTENT-RECOVERY-V1-03-AMBIGUITY-RECOVERY",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Classify continuation, status, failure, and useful-work turns from context rather than keyword-only routing.",
+      "name": "intent_inference",
+      "objective_id": "BATCH-11-OPERATOR-INTENT-RECOVERY-V1-04-INTENT-INFERENCE",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Use short answers for quick checks and more detail for diagnostic requests.",
+      "name": "adaptive_detail_level",
+      "objective_id": "BATCH-11-OPERATOR-INTENT-RECOVERY-V1-05-ADAPTIVE-DETAIL-LEVEL",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:22:49Z",
+  "goal": "Recover user intent naturally across interruptions without rigid replay.",
+  "next_batch": "BATCH-12-CONVERSATIONAL-USEFULNESS-OPTIMIZATION-V1",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "The phrase 'I'm missing one detail' should almost disappear.",
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 11 Operator Intent Recovery",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-11-OPERATOR-INTENT-RECOVERY-V1",
+      "validation_command": "BATCH_11_OPERATOR_INTENT_RECOVERY_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "context_stack_recovered, no_unnecessary_clarifier, dashboard_task_preserved",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-11-OPERATOR-INTENT-RECOVERY-V1",
+      "validation_command": "BATCH_11_OPERATOR_INTENT_RECOVERY_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-11-OPERATOR-INTENT-RECOVERY-V1",
+      "validation_command": "BATCH_11_OPERATOR_INTENT_RECOVERY_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

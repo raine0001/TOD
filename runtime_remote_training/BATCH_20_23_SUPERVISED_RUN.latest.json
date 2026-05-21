@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-05-21T02:40:31Z",
+  "batches": [
+    {
+      "objective_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20",
+      "slug": "BATCH_20_AUTONOMOUS_DEBUGGING",
+      "mim_response": {
+        "reason": "authorized_initiative_auto_execute",
+        "reply": "Created one bounded goal for: OBJECTIVE: MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20 MIM/TOD, execute this expanded batch using the TOD autonomy training batch lane. Expand each objective with..."
+      },
+      "artifact_found": true,
+      "completion_status": "completed_with_evidence",
+      "errors": [],
+      "tod_errors": [],
+      "next_batch_allowed": true,
+      "validation_statuses": [
+        "passed",
+        "passed",
+        "passed"
+      ],
+      "standing_rules": [
+        "Codex may only be consulted after MIM/TOD generate a local hypothesis, run a bounded probe, find insufficient/conflicting evidence, fail to select a rollback-safe local repair, and include what was already tried."
+      ],
+      "passed": true
+    },
+    {
+      "objective_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21",
+      "slug": "BATCH_21_CONVERSATIONAL_COMPRESSION",
+      "mim_response": {
+        "reason": "authorized_initiative_auto_execute",
+        "reply": "Created one bounded goal for: OBJECTIVE: MIM-CONVERSATIONAL-COMPRESSION-BATCH-21 MIM/TOD, execute this expanded batch using the TOD autonomy training batch lane. Expand each objective wit..."
+      },
+      "artifact_found": true,
+      "completion_status": "completed_with_evidence",
+      "errors": [],
+      "tod_errors": [],
+      "next_batch_allowed": true,
+      "validation_statuses": [
+        "passed",
+        "passed",
+        "passed"
+      ],
+      "standing_rules": [
+        "Normal operator replies must use first person: 'I'm working...', 'I found...', 'I'm blocked because...', 'My next automatic action is...'.",
+        "Third-person self-reference is allowed only in technical artifacts, logs, schema fields, or when explicitly distinguishing MIM from TOD."
+      ],
+      "passed": true
+    },
+    {
+      "objective_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22",
+      "slug": "BATCH_22_LONG_RUN_ENTROPY_REDUCTION",
+      "mim_response": {
+        "reason": "authorized_initiative_auto_execute",
+        "reply": "Created one bounded goal for: OBJECTIVE: MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22 MIM/TOD, execute this expanded batch using the TOD autonomy training batch lane. Expand each objective..."
+      },
+      "artifact_found": true,
+      "completion_status": "completed_with_evidence",
+      "errors": [],
+      "tod_errors": [],
+      "next_batch_allowed": true,
+      "validation_statuses": [
+        "passed",
+        "passed",
+        "passed"
+      ],
+      "standing_rules": [],
+      "passed": true
+    },
+    {
+      "objective_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23",
+      "slug": "BATCH_23_AUTONOMOUS_SELF_IMPROVEMENT_ENFORCEMENT",
+      "mim_response": {
+        "reason": "authorized_initiative_auto_execute",
+        "reply": "Created one bounded goal for: OBJECTIVE: MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23 MIM/TOD, execute this expanded batch using the TOD autonomy training batch lane. Expand each..."
+      },
+      "artifact_found": true,
+      "completion_status": "completed_with_evidence",
+      "errors": [],
+      "tod_errors": [],
+      "next_batch_allowed": true,
+      "validation_statuses": [
+        "passed",
+        "passed",
+        "passed"
+      ],
+      "standing_rules": [
+        "The next self-improvement objective must be selected from evidence scores, not vibes, stale templates, or Codex direction."
+      ],
+      "passed": true
+    }
+  ],
+  "stopped_at": null,
+  "all_passed": true
+}

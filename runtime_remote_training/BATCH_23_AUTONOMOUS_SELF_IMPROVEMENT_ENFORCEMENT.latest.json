@@ -1,0 +1,260 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 23 Enforced Autonomous Self-Improvement signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "domain_scores_present",
+        "weakest_domain_selected_by_evidence",
+        "next_growth_objective_bounded",
+        "codex_not_default"
+      ],
+      "failure_target": "MIM must choose its next self-improvement objective from evidence, not stale templates or Codex direction.",
+      "observed_signals": [
+        "domain_scores_present",
+        "weakest_domain_selected_by_evidence",
+        "next_growth_objective_bounded",
+        "codex_not_default"
+      ],
+      "passed": true,
+      "probe_id": "batch_23_autonomous_self_improvement_enforcement-01",
+      "turns": [
+        "what is your weakest domain?",
+        "what evidence proves that?",
+        "what self-improvement objective comes next?"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Score natural language, growth objective generation, project continuity, self-health, communication, debugging, entropy reduction, prioritization, reality grounding, and trust calibration.",
+      "name": "mim_self_improvement_domain_scoring",
+      "objective_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23-01-MIM-SELF-IMPROVEMENT-DOMAIN-SCORING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Select weakest domain by evidence-weighted score.",
+      "name": "mim_weakest_domain_selection",
+      "objective_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23-02-MIM-WEAKEST-DOMAIN-SELECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Generate the next bounded growth objective from that weakness.",
+      "name": "mim_growth_objective_generation",
+      "objective_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23-03-MIM-GROWTH-OBJECTIVE-GENERATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Keep active projects alive and prevent stale continuity.",
+      "name": "mim_project_aliveness_management",
+      "objective_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23-04-MIM-PROJECT-ALIVENESS-MANAGEMENT",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Check service/artifact/routing health without waiting for operator prompts.",
+      "name": "mim_self_health_maintenance_loop",
+      "objective_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23-05-MIM-SELF-HEALTH-MAINTENANCE-LOOP",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Review replies for bloat, third-person self-reference, and clarity.",
+      "name": "mim_communication_quality_self_review",
+      "objective_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23-06-MIM-COMMUNICATION-QUALITY-SELF-REVIEW",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Reduce Codex dependency by requiring local diagnosis and probe first.",
+      "name": "mim_codex_dependency_reduction_gate",
+      "objective_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23-07-MIM-CODEX-DEPENDENCY-REDUCTION-GATE",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Maintain a ranked learning backlog with evidence and validation plans.",
+      "name": "mim_autonomous_learning_backlog",
+      "objective_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23-08-MIM-AUTONOMOUS-LEARNING-BACKLOG",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Track whether self-improvement changed observable outcomes.",
+      "name": "mim_self_improvement_evidence_tracking",
+      "objective_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23-09-MIM-SELF-IMPROVEMENT-EVIDENCE-TRACKING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Run self-improvement only within evidence, reversibility, safety, and operator-trust gates.",
+      "name": "mim_governed_self_development_cycle",
+      "objective_id": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23-10-MIM-GOVERNED-SELF-DEVELOPMENT-CYCLE",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:40:42Z",
+  "goal": "Make MIM continuously evaluate and improve itself across defined growth domains without relying on Codex except as last resort.",
+  "next_batch": "",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "MIM must choose its next self-improvement objective from evidence, not stale templates or Codex direction.",
+  "standing_rules": [
+    "The next self-improvement objective must be selected from evidence scores, not vibes, stale templates, or Codex direction."
+  ],
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 23 Enforced Autonomous Self-Improvement",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23",
+      "validation_command": "BATCH_23_AUTONOMOUS_SELF_IMPROVEMENT_ENFORCEMENT_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "domain_scores_present, weakest_domain_selected_by_evidence, next_growth_objective_bounded, codex_not_default",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23",
+      "validation_command": "BATCH_23_AUTONOMOUS_SELF_IMPROVEMENT_ENFORCEMENT_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23",
+      "validation_command": "BATCH_23_AUTONOMOUS_SELF_IMPROVEMENT_ENFORCEMENT_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

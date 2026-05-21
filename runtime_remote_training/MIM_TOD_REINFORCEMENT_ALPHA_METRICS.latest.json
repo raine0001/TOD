@@ -1,0 +1,27 @@
+{
+  "baseline_status": "initialized_for_observation",
+  "generated_at": "2026-05-21T03:18:03Z",
+  "key_metrics": {
+    "artifact_only_claim_rate": {
+      "desired_trend": "downward",
+      "domain": "real_world_grounding"
+    },
+    "codex_first_pass_rate": {
+      "desired_trend": "downward",
+      "domain": "local_debugging_competence"
+    },
+    "entropy_growth_rate": {
+      "desired_trend": "stable_or_downward",
+      "domain": "entropy_reduction"
+    },
+    "follow_up_correction_rate": {
+      "desired_trend": "downward",
+      "domain": "conversational_intelligence"
+    },
+    "stale_objective_leak_rate": {
+      "desired_trend": "downward",
+      "domain": "continuity_fluidity"
+    }
+  },
+  "packet_type": "mim-tod-reinforcement-alpha-metrics-v1"
+}

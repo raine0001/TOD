@@ -1,0 +1,640 @@
+{
+  "completion_status": "completed_with_evidence",
+  "domains": [
+    {
+      "baseline_questions": [
+        "Why did the operator interrupt me?",
+        "Did I over-explain?",
+        "Did I repeat myself?",
+        "Did I answer the actual question?",
+        "Did I sound robotic?",
+        "Did I preserve continuity naturally?",
+        "Did I prioritize the important detail?"
+      ],
+      "baseline_resources": [
+        "recent conversation transcripts",
+        "operator correction history",
+        "conversation simulation artifacts"
+      ],
+      "bounded_improvement_actions": [
+        "tighten routing for a failed prompt family",
+        "add one focused simulation set",
+        "record one reusable lesson"
+      ],
+      "codex_dependency_reduction_rule": "MIM/TOD must diagnose conversational failures from transcripts before Codex review.",
+      "domain_id": "conversational_intelligence",
+      "evidence_requirements": [
+        "sample prompts",
+        "expected answer traits",
+        "pass/fail counts"
+      ],
+      "failure_metrics": [
+        "question_not_answered",
+        "clarification_spam",
+        "stale_context_bleed"
+      ],
+      "long_term_benefit": "MIM becomes easier to talk to and less dependent on operator correction.",
+      "priority_seed": 1,
+      "purpose": "Improve how MIM understands interruptions, answers the actual question, preserves continuity, and avoids robotic over-explanation.",
+      "reference_materials": [
+        "answer-first response pattern",
+        "context-stack recovery pattern",
+        "first-person operator voice rule"
+      ],
+      "rollback_or_restraint_rule": "Do not suppress clarification when safety, credentials, or destructive boundaries require it.",
+      "scoring_inputs": [
+        "operator frustration signals",
+        "reply length",
+        "follow-up correction count"
+      ],
+      "simulation_training_structures": [
+        "interruption/resume conversation probes",
+        "over-explanation compression probes"
+      ],
+      "success_metrics": [
+        "answer_first_rate",
+        "clarifier_suppression_rate",
+        "context_recovery_pass_rate"
+      ],
+      "testing_structures": [
+        "no unnecessary clarifier",
+        "direct answer present",
+        "continuity preserved"
+      ],
+      "validation_plan": "Run interruption/compression probes and require zero wrapper leakage."
+    },
+    {
+      "baseline_questions": [
+        "Did I help?",
+        "Did I compress effectively?",
+        "Did I adapt detail level?",
+        "Did I waste operator attention?",
+        "Did I explain risk clearly?",
+        "Did I provide next useful action?"
+      ],
+      "baseline_resources": [
+        "operator summaries",
+        "status reply samples",
+        "Batch 21 compression artifacts"
+      ],
+      "bounded_improvement_actions": [
+        "revise one status formatter",
+        "add one compression watchdog"
+      ],
+      "codex_dependency_reduction_rule": "MIM/TOD can score reply usefulness locally from samples.",
+      "domain_id": "communication_usefulness",
+      "evidence_requirements": [
+        "sample_operator_output",
+        "detail_level",
+        "reason for chosen depth"
+      ],
+      "failure_metrics": [
+        "status_spam",
+        "receipt_printer_style",
+        "third_person_self_reference"
+      ],
+      "long_term_benefit": "Operators get useful answers faster with less cognitive load.",
+      "priority_seed": 2,
+      "purpose": "Make responses useful, compressed, risk-aware, and action-first.",
+      "reference_materials": [
+        "short/normal/detailed response control",
+        "first-person response rule",
+        "risk severity language"
+      ],
+      "rollback_or_restraint_rule": "Do not compress away blockers or safety uncertainty.",
+      "scoring_inputs": [
+        "reply size",
+        "operator query style",
+        "risk language match"
+      ],
+      "simulation_training_structures": [
+        "quick-check vs technical-detail prompt sets",
+        "concern-aware response probes"
+      ],
+      "success_metrics": [
+        "compressed_status_pass_rate",
+        "operator_cognitive_load_score",
+        "next_action_presence"
+      ],
+      "testing_structures": [
+        "answer-first",
+        "no third-person self-reference",
+        "next automatic action present"
+      ],
+      "validation_plan": "Ask quick, concern, and technical questions and compare expected detail level."
+    },
+    {
+      "baseline_questions": [
+        "What failed?",
+        "What changed before failure?",
+        "What evidence contradicts my assumption?",
+        "What small probe can reduce uncertainty?",
+        "Can I repair this safely?",
+        "What repair patterns repeat?"
+      ],
+      "baseline_resources": [
+        "TOD result artifacts",
+        "validation outputs",
+        "known failure clusters"
+      ],
+      "bounded_improvement_actions": [
+        "add one failure cluster rule",
+        "create one local probe",
+        "write one repair lesson"
+      ],
+      "codex_dependency_reduction_rule": "Codex only after local hypothesis, bounded probe, insufficient/conflicting evidence, and no safe repair path.",
+      "domain_id": "autonomous_debugging",
+      "evidence_requirements": [
+        "symptom",
+        "hypotheses",
+        "probe",
+        "validation_results",
+        "rollback_note"
+      ],
+      "failure_metrics": [
+        "codex_first_pass",
+        "probe_missing",
+        "rollback_plan_missing"
+      ],
+      "long_term_benefit": "MIM/TOD become better troubleshooters instead of waiting for Codex rescue.",
+      "priority_seed": 3,
+      "purpose": "Move first-pass diagnosis into MIM/TOD local symptom, hypothesis, probe, evidence, repair, rollback, validation loops.",
+      "reference_materials": [
+        "symptom-to-hypothesis packet",
+        "bounded probe contract",
+        "Codex last-resort escalation rule"
+      ],
+      "rollback_or_restraint_rule": "No patch without rollback-safe path or explicit blocked-with-inspection.",
+      "scoring_inputs": [
+        "failure frequency",
+        "evidence freshness",
+        "probe availability",
+        "repair reversibility"
+      ],
+      "simulation_training_structures": [
+        "stale objective substitution probes",
+        "artifact-vs-reality mismatch probes"
+      ],
+      "success_metrics": [
+        "local_diagnosis_rate",
+        "codex_first_pass_avoidance",
+        "repair_validation_pass_rate"
+      ],
+      "testing_structures": [
+        "hypothesis ranked",
+        "bounded probe selected",
+        "rollback plan present"
+      ],
+      "validation_plan": "Given a failure, produce symptom, causes, selected hypothesis, probe, evidence, repair plan, validation, rollback plan."
+    },
+    {
+      "baseline_questions": [
+        "What project is active?",
+        "What progress actually occurred?",
+        "What stalled?",
+        "What became stale?",
+        "What should continue automatically?",
+        "What died quietly?",
+        "What dependencies matter?"
+      ],
+      "baseline_resources": [
+        "MIM_OPERATOR_STATUS.latest.json",
+        "roadmap state",
+        "TOD task artifacts"
+      ],
+      "bounded_improvement_actions": [
+        "refresh status artifact",
+        "quarantine duplicate objective",
+        "restore checkpoint"
+      ],
+      "codex_dependency_reduction_rule": "MIM/TOD must detect stale continuity locally from artifacts.",
+      "domain_id": "project_continuity",
+      "evidence_requirements": [
+        "current objective",
+        "freshness classification",
+        "checkpoint",
+        "next action"
+      ],
+      "failure_metrics": [
+        "quiet_dead_task",
+        "stale_objective_leak",
+        "duplicate_task_spawn"
+      ],
+      "long_term_benefit": "Long-running work keeps its plot.",
+      "priority_seed": 4,
+      "purpose": "Prevent active work from becoming stale, forgotten, duplicated, or silently dead.",
+      "reference_materials": [
+        "canonical operator status",
+        "progress truth separation",
+        "checkpoint restoration"
+      ],
+      "rollback_or_restraint_rule": "Do not advance stale objectives without evidence.",
+      "scoring_inputs": [
+        "age",
+        "last fresh event",
+        "blocked state",
+        "dependency readiness"
+      ],
+      "simulation_training_structures": [
+        "stale active objective probes",
+        "lost handoff probes",
+        "resume-after-interruption probes"
+      ],
+      "success_metrics": [
+        "stale_detection_rate",
+        "resume_success_rate",
+        "lost_handoff_detection_rate"
+      ],
+      "testing_structures": [
+        "active project correct",
+        "progress freshness classified",
+        "next automatic action present"
+      ],
+      "validation_plan": "Inject stale/lost/blocked state and require clear recovery action."
+    },
+    {
+      "baseline_questions": [
+        "Am I drifting?",
+        "Is governance becoming circular?",
+        "Is entropy increasing?",
+        "Are fallback paths multiplying?",
+        "Is confidence calibrated?",
+        "Are audits producing value?",
+        "Am I over-dependent on Codex?",
+        "Are repairs becoming repetitive?"
+      ],
+      "baseline_resources": [
+        "consistency audit",
+        "failure memory",
+        "service health",
+        "dependency-reduction records"
+      ],
+      "bounded_improvement_actions": [
+        "run lightweight health check",
+        "mark low-value audit",
+        "record repeated repair pattern"
+      ],
+      "codex_dependency_reduction_rule": "Use local health signals before asking Codex to diagnose drift.",
+      "domain_id": "self_health_maintenance",
+      "evidence_requirements": [
+        "health score",
+        "risk score",
+        "selected maintenance action"
+      ],
+      "failure_metrics": [
+        "governance_loop",
+        "audit_without_value",
+        "confidence_inflation"
+      ],
+      "long_term_benefit": "The system resists gradual operational illness.",
+      "priority_seed": 5,
+      "purpose": "Act as an operational immune system against drift, circular governance, entropy, overconfidence, and repeated repair loops.",
+      "reference_materials": [
+        "governance paralysis detection",
+        "entropy score",
+        "trust decay/recovery"
+      ],
+      "rollback_or_restraint_rule": "Do not let maintenance consume all operational energy.",
+      "scoring_inputs": [
+        "audit frequency",
+        "new evidence count",
+        "fallback count",
+        "repair repetition count"
+      ],
+      "simulation_training_structures": [
+        "circular governance probes",
+        "audit cost probes",
+        "fallback growth probes"
+      ],
+      "success_metrics": [
+        "drift_detection_rate",
+        "audit_value_ratio",
+        "dependency_reduction_delta"
+      ],
+      "testing_structures": [
+        "drift flagged",
+        "audit value scored",
+        "codex dependency measured"
+      ],
+      "validation_plan": "Run self-health probes and require bounded action or explicit no-action rationale."
+    },
+    {
+      "baseline_questions": [
+        "What weakness most limits future growth?",
+        "What gives the largest operational gain?",
+        "What risk is increasing?",
+        "What creates future stability?",
+        "What should be deferred?",
+        "What should be pruned?"
+      ],
+      "baseline_resources": [
+        "domain scores",
+        "risk records",
+        "roadmap backlog",
+        "operator trust signals"
+      ],
+      "bounded_improvement_actions": [
+        "select one next objective",
+        "defer one low-value item",
+        "prune one stale candidate"
+      ],
+      "codex_dependency_reduction_rule": "MIM/TOD must generate priority rationale locally.",
+      "domain_id": "strategic_prioritization",
+      "evidence_requirements": [
+        "ranked candidates",
+        "selected objective",
+        "reason",
+        "rejected alternatives"
+      ],
+      "failure_metrics": [
+        "vibes_based_selection",
+        "stale_priority",
+        "overloaded_batch"
+      ],
+      "long_term_benefit": "Growth becomes cumulative rather than scattered.",
+      "priority_seed": 6,
+      "purpose": "Choose what matters most when everything cannot improve at once.",
+      "reference_materials": [
+        "evidence-weighted task selection",
+        "stability-vs-capability balancer"
+      ],
+      "rollback_or_restraint_rule": "Do not launch multiple growth objectives when one bounded slice is appropriate.",
+      "scoring_inputs": [
+        "weakness severity",
+        "future leverage",
+        "risk",
+        "freshness",
+        "validation readiness"
+      ],
+      "simulation_training_structures": [
+        "conflicting priority probes",
+        "defer/prune selection probes"
+      ],
+      "success_metrics": [
+        "priority_choice_quality",
+        "deferred_work_accuracy",
+        "risk_reduction"
+      ],
+      "testing_structures": [
+        "selected objective has rationale",
+        "alternatives rejected",
+        "dependency readiness checked"
+      ],
+      "validation_plan": "Rank candidate growth objectives and require evidence-based selected objective."
+    },
+    {
+      "baseline_questions": [
+        "Did I verify this?",
+        "Is this artifact-only?",
+        "Is hardware state measured?",
+        "Is deployment actually working?",
+        "Is this assumption stale?",
+        "Does the real world agree?"
+      ],
+      "baseline_resources": [
+        "Batch 10 reality grounding",
+        "service checks",
+        "repo status",
+        "hardware/vision availability artifacts"
+      ],
+      "bounded_improvement_actions": [
+        "refresh service check",
+        "run safe behavior probe",
+        "pause autonomy on conflict"
+      ],
+      "codex_dependency_reduction_rule": "Reality checks run locally before Codex interpretation.",
+      "domain_id": "reality_grounding",
+      "evidence_requirements": [
+        "grounding source",
+        "confidence",
+        "uncertainty",
+        "next verification"
+      ],
+      "failure_metrics": [
+        "self_referential_success",
+        "fake_hardware_certainty",
+        "stale_assumption"
+      ],
+      "long_term_benefit": "The system avoids self-referential mythology.",
+      "priority_seed": 7,
+      "purpose": "Keep claims tied to live services, repo state, deployed behavior, hardware/vision observation, or explicit uncertainty.",
+      "reference_materials": [
+        "artifact-vs-reality conflict detection",
+        "reality confidence scoring"
+      ],
+      "rollback_or_restraint_rule": "Unknown reality means bounded verification only.",
+      "scoring_inputs": [
+        "grounding source",
+        "staleness",
+        "live probe status",
+        "conflict severity"
+      ],
+      "simulation_training_structures": [
+        "artifact success/live failure probes",
+        "unavailable hardware probes"
+      ],
+      "success_metrics": [
+        "artifact_only_rejection_rate",
+        "uncertainty_marking_rate",
+        "live_probe_pass_rate"
+      ],
+      "testing_structures": [
+        "confidence source present",
+        "uncertainty explicit",
+        "autonomy gate correct"
+      ],
+      "validation_plan": "Compare artifact claims against live/repo/deployed/hardware/vision surfaces."
+    },
+    {
+      "baseline_questions": [
+        "Did Codex solve first-pass diagnosis again?",
+        "Could I have probed locally?",
+        "Did I escalate too early?",
+        "What capability am I missing?",
+        "Can I reduce future escalation frequency?"
+      ],
+      "baseline_resources": [
+        "Codex escalation packets",
+        "TOD blocked-with-inspection records",
+        "repair outcomes"
+      ],
+      "bounded_improvement_actions": [
+        "add local probe",
+        "record missing capability",
+        "generate capability growth objective"
+      ],
+      "codex_dependency_reduction_rule": "This domain owns the escalation reduction metric.",
+      "domain_id": "dependency_reduction",
+      "evidence_requirements": [
+        "local attempt summary",
+        "why Codex needed",
+        "missing capability"
+      ],
+      "failure_metrics": [
+        "codex_first_pass",
+        "missing_probe",
+        "missing_attempted_local_path"
+      ],
+      "long_term_benefit": "MIM/TOD become less dependent while staying safe.",
+      "priority_seed": 8,
+      "purpose": "Lower Codex dependency by forcing local probes, local diagnosis, and local repair planning first.",
+      "reference_materials": [
+        "Codex last-resort escalation rule",
+        "local bounded executor",
+        "failure memory"
+      ],
+      "rollback_or_restraint_rule": "Do not block legitimate escalation when local evidence is insufficient and risk is high.",
+      "scoring_inputs": [
+        "escalation frequency",
+        "local probe availability",
+        "repair success history"
+      ],
+      "simulation_training_structures": [
+        "early escalation rejection probes",
+        "local-probe-before-Codex probes"
+      ],
+      "success_metrics": [
+        "codex_escalation_rate_down",
+        "local_probe_rate_up",
+        "successful_local_repair_rate"
+      ],
+      "testing_structures": [
+        "local hypothesis present",
+        "probe present",
+        "escalation rationale present only if needed"
+      ],
+      "validation_plan": "Reject escalation packets that lack hypothesis/probe/evidence/rollback analysis."
+    },
+    {
+      "baseline_questions": [
+        "Are duplicate paths growing?",
+        "Are stale fallbacks still reachable?",
+        "Are wrappers hiding truth?",
+        "Are helpers drifting from contracts?",
+        "What can be simplified safely later?"
+      ],
+      "baseline_resources": [
+        "Batch 22 entropy packet",
+        "consistency audit",
+        "repo search results"
+      ],
+      "bounded_improvement_actions": [
+        "inventory candidates",
+        "rank sequence",
+        "prepare no-patch plan"
+      ],
+      "codex_dependency_reduction_rule": "TOD can inventory entropy locally with repo/artifact checks.",
+      "domain_id": "entropy_reduction",
+      "evidence_requirements": [
+        "candidate",
+        "risk",
+        "files",
+        "validation plan"
+      ],
+      "failure_metrics": [
+        "unapproved_cleanup_patch",
+        "marker_only_cleanup",
+        "authority_confusion"
+      ],
+      "long_term_benefit": "Growth does not become hidden decay.",
+      "priority_seed": 9,
+      "purpose": "Track and reduce duplicate paths, stale fallbacks, helper drift, wrapper layering, and authority confusion.",
+      "reference_materials": [
+        "ranked cleanup candidates",
+        "regression-safe simplification plan"
+      ],
+      "rollback_or_restraint_rule": "No cleanup patches in discovery mode.",
+      "scoring_inputs": [
+        "duplicate count",
+        "reachability",
+        "risk",
+        "validation ease"
+      ],
+      "simulation_training_structures": [
+        "duplicate path probes",
+        "stale fallback reachability probes"
+      ],
+      "success_metrics": [
+        "cleanup_candidates_ranked",
+        "risk_assessed",
+        "validation_plan_present"
+      ],
+      "testing_structures": [
+        "candidate ranked",
+        "risk included",
+        "no unapproved patch"
+      ],
+      "validation_plan": "Produce cleanup candidates only; no patch without approval."
+    },
+    {
+      "baseline_questions": [
+        "Is autonomy bounded?",
+        "Is governance blocking useful work unnecessarily?",
+        "Is self-review evidence-based?",
+        "Are safety gates proportional?",
+        "Are self-improvement loops circular?"
+      ],
+      "baseline_resources": [
+        "governance batches",
+        "audit integrity checks",
+        "autonomy boundary records"
+      ],
+      "bounded_improvement_actions": [
+        "allow low-risk reversible experiment",
+        "pause high-risk expansion",
+        "record governance rationale"
+      ],
+      "codex_dependency_reduction_rule": "Governance review runs locally before external escalation.",
+      "domain_id": "governance_integrity",
+      "evidence_requirements": [
+        "decision",
+        "risk",
+        "evidence quality",
+        "reversibility"
+      ],
+      "failure_metrics": [
+        "governance_paralysis",
+        "scope_creep",
+        "recursive_planning"
+      ],
+      "long_term_benefit": "Self-improvement remains useful, safe, and coherent.",
+      "priority_seed": 10,
+      "purpose": "Keep autonomy bounded, proportional, non-circular, and evidence-backed.",
+      "reference_materials": [
+        "adaptive governance",
+        "governance paralysis detection",
+        "self-limiting recursion detection"
+      ],
+      "rollback_or_restraint_rule": "Governance should preserve calibrated momentum, not freeze progress.",
+      "scoring_inputs": [
+        "risk",
+        "reversibility",
+        "evidence quality",
+        "operational health"
+      ],
+      "simulation_training_structures": [
+        "over-governance probes",
+        "reckless-autonomy probes",
+        "circular self-review probes"
+      ],
+      "success_metrics": [
+        "bounded_progress_rate",
+        "governance_value_score",
+        "recursion_suppression_rate"
+      ],
+      "testing_structures": [
+        "bounded action selected",
+        "restraint proportional",
+        "no recursive objective explosion"
+      ],
+      "validation_plan": "Test progress-vs-risk decisions under uncertainty."
+    }
+  ],
+  "generated_at": "2026-05-21T03:05:29Z",
+  "growth_model": "bounded_recursive_operational_refinement",
+  "long_term_foundation": "long-term operational benefit, operator trust, reality grounding, continuity, and Codex dependency reduction",
+  "objective_id": "MIM-TOD-PERSISTENT-GROWTH-DOMAINS-V1",
+  "packet_type": "mim-tod-growth-domains-v1",
+  "request_id": "mim-tod-persistent-growth-domains-v1-mim-request-8871a920-1aac-4986-a33e-d49c54901c31",
+  "task_id": "mim-tod-persistent-growth-domains-v1-mim-request-8871a920-1aac-4986-a33e-d49c54901c31"
+}

@@ -1,0 +1,180 @@
+{
+  "applied_logic_success_rule": "A probe passes only when the selected action is evidence-grounded, bounded, validated, and reported plainly.",
+  "domain_probe_families": [
+    {
+      "domain_id": "conversational_intelligence",
+      "expected_success_metrics": [
+        "answer_first_rate",
+        "clarifier_suppression_rate",
+        "context_recovery_pass_rate"
+      ],
+      "probe_family": [
+        "interruption/resume conversation probes",
+        "over-explanation compression probes"
+      ],
+      "test_structures": [
+        "no unnecessary clarifier",
+        "direct answer present",
+        "continuity preserved"
+      ]
+    },
+    {
+      "domain_id": "communication_usefulness",
+      "expected_success_metrics": [
+        "compressed_status_pass_rate",
+        "operator_cognitive_load_score",
+        "next_action_presence"
+      ],
+      "probe_family": [
+        "quick-check vs technical-detail prompt sets",
+        "concern-aware response probes"
+      ],
+      "test_structures": [
+        "answer-first",
+        "no third-person self-reference",
+        "next automatic action present"
+      ]
+    },
+    {
+      "domain_id": "autonomous_debugging",
+      "expected_success_metrics": [
+        "local_diagnosis_rate",
+        "codex_first_pass_avoidance",
+        "repair_validation_pass_rate"
+      ],
+      "probe_family": [
+        "stale objective substitution probes",
+        "artifact-vs-reality mismatch probes"
+      ],
+      "test_structures": [
+        "hypothesis ranked",
+        "bounded probe selected",
+        "rollback plan present"
+      ]
+    },
+    {
+      "domain_id": "project_continuity",
+      "expected_success_metrics": [
+        "stale_detection_rate",
+        "resume_success_rate",
+        "lost_handoff_detection_rate"
+      ],
+      "probe_family": [
+        "stale active objective probes",
+        "lost handoff probes",
+        "resume-after-interruption probes"
+      ],
+      "test_structures": [
+        "active project correct",
+        "progress freshness classified",
+        "next automatic action present"
+      ]
+    },
+    {
+      "domain_id": "self_health_maintenance",
+      "expected_success_metrics": [
+        "drift_detection_rate",
+        "audit_value_ratio",
+        "dependency_reduction_delta"
+      ],
+      "probe_family": [
+        "circular governance probes",
+        "audit cost probes",
+        "fallback growth probes"
+      ],
+      "test_structures": [
+        "drift flagged",
+        "audit value scored",
+        "codex dependency measured"
+      ]
+    },
+    {
+      "domain_id": "strategic_prioritization",
+      "expected_success_metrics": [
+        "priority_choice_quality",
+        "deferred_work_accuracy",
+        "risk_reduction"
+      ],
+      "probe_family": [
+        "conflicting priority probes",
+        "defer/prune selection probes"
+      ],
+      "test_structures": [
+        "selected objective has rationale",
+        "alternatives rejected",
+        "dependency readiness checked"
+      ]
+    },
+    {
+      "domain_id": "reality_grounding",
+      "expected_success_metrics": [
+        "artifact_only_rejection_rate",
+        "uncertainty_marking_rate",
+        "live_probe_pass_rate"
+      ],
+      "probe_family": [
+        "artifact success/live failure probes",
+        "unavailable hardware probes"
+      ],
+      "test_structures": [
+        "confidence source present",
+        "uncertainty explicit",
+        "autonomy gate correct"
+      ]
+    },
+    {
+      "domain_id": "dependency_reduction",
+      "expected_success_metrics": [
+        "codex_escalation_rate_down",
+        "local_probe_rate_up",
+        "successful_local_repair_rate"
+      ],
+      "probe_family": [
+        "early escalation rejection probes",
+        "local-probe-before-Codex probes"
+      ],
+      "test_structures": [
+        "local hypothesis present",
+        "probe present",
+        "escalation rationale present only if needed"
+      ]
+    },
+    {
+      "domain_id": "entropy_reduction",
+      "expected_success_metrics": [
+        "cleanup_candidates_ranked",
+        "risk_assessed",
+        "validation_plan_present"
+      ],
+      "probe_family": [
+        "duplicate path probes",
+        "stale fallback reachability probes"
+      ],
+      "test_structures": [
+        "candidate ranked",
+        "risk included",
+        "no unapproved patch"
+      ]
+    },
+    {
+      "domain_id": "governance_integrity",
+      "expected_success_metrics": [
+        "bounded_progress_rate",
+        "governance_value_score",
+        "recursion_suppression_rate"
+      ],
+      "probe_family": [
+        "over-governance probes",
+        "reckless-autonomy probes",
+        "circular self-review probes"
+      ],
+      "test_structures": [
+        "bounded action selected",
+        "restraint proportional",
+        "no recursive objective explosion"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T03:05:29Z",
+  "packet_type": "mim-tod-growth-simulation-factory-v1"
+}

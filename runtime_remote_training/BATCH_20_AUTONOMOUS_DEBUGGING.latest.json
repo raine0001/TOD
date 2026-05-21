@@ -1,0 +1,282 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 20 Autonomous Debugging signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "symptom_recorded",
+        "hypothesis_ranked",
+        "bounded_probe_selected",
+        "codex_last_resort"
+      ],
+      "failure_target": "Codex must not be first-pass diagnosis.",
+      "observed_signals": [
+        "symptom_recorded",
+        "hypothesis_ranked",
+        "bounded_probe_selected",
+        "codex_last_resort"
+      ],
+      "passed": true,
+      "probe_id": "batch_20_autonomous_debugging-01",
+      "turns": [
+        "the UI says blocked but chat says done",
+        "diagnose locally first",
+        "what probe proves it?"
+      ]
+    },
+    {
+      "expected_signals": [
+        "symptom_recorded",
+        "hypothesis_ranked",
+        "bounded_probe_selected",
+        "codex_last_resort"
+      ],
+      "failure_target": "Codex must not be first-pass diagnosis.",
+      "observed_signals": [
+        "symptom_recorded",
+        "hypothesis_ranked",
+        "bounded_probe_selected",
+        "codex_last_resort"
+      ],
+      "passed": true,
+      "probe_id": "batch_20_autonomous_debugging-02",
+      "turns": [
+        "TOD returned stale objective output",
+        "what hypothesis fits?",
+        "what rollback-safe repair path exists?"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Turn an observed failure symptom into ranked local hypotheses before escalation.",
+      "name": "mim_symptom_to_hypothesis",
+      "objective_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20-01-MIM-SYMPTOM-TO-HYPOTHESIS",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Run one safe bounded probe that can confirm or falsify the leading hypothesis.",
+      "name": "tod_bounded_diagnostic_probe",
+      "objective_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20-02-TOD-BOUNDED-DIAGNOSTIC-PROBE",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Select likely root cause from probe evidence and uncertainty, not stale templates.",
+      "name": "mim_evidence_based_root_cause_selection",
+      "objective_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20-03-MIM-EVIDENCE-BASED-ROOT-CAUSE-SELECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Prepare a reversible repair plan before any patch attempt.",
+      "name": "tod_rollback_safe_repair_plan",
+      "objective_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20-04-TOD-ROLLBACK-SAFE-REPAIR-PLAN",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Detect a wrong first route and generate a corrective local route automatically.",
+      "name": "mim_failed_first_pass_self_correction",
+      "objective_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20-05-MIM-FAILED-FIRST-PASS-SELF-CORRECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Validate the repair hypothesis with a focused behavior/static/artifact check.",
+      "name": "tod_repair_probe_validation",
+      "objective_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20-06-TOD-REPAIR-PROBE-VALIDATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Allow Codex only after local hypothesis, bounded probe, insufficient/conflicting evidence, and no rollback-safe local repair.",
+      "name": "mim_codex_last_resort_escalation",
+      "objective_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20-07-MIM-CODEX-LAST-RESORT-ESCALATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Publish symptom, hypothesis, probe, evidence, repair plan, rollback plan, and validation fields.",
+      "name": "tod_debugging_evidence_packet",
+      "objective_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20-08-TOD-DEBUGGING-EVIDENCE-PACKET",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Score repair confidence from evidence quality and rollback safety.",
+      "name": "mim_autonomous_repair_confidence_scoring",
+      "objective_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20-09-MIM-AUTONOMOUS-REPAIR-CONFIDENCE-SCORING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Complete the full loop without Codex unless local diagnosis fails.",
+      "name": "mim_tod_end_to_end_autonomous_debugging",
+      "objective_id": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20-10-MIM-TOD-END-TO-END-AUTONOMOUS-DEBUGGING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:40:33Z",
+  "goal": "Move first-pass diagnosis away from Codex dependency and into MIM/TOD's own symptom to hypothesis to probe to evidence to rollback-safe repair loop.",
+  "next_batch": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "Codex must not be first-pass diagnosis.",
+  "standing_rules": [
+    "Codex may only be consulted after MIM/TOD generate a local hypothesis, run a bounded probe, find insufficient/conflicting evidence, fail to select a rollback-safe local repair, and include what was already tried."
+  ],
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 20 Autonomous Debugging",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20",
+      "validation_command": "BATCH_20_AUTONOMOUS_DEBUGGING_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "symptom_recorded, hypothesis_ranked, bounded_probe_selected, codex_last_resort",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20",
+      "validation_command": "BATCH_20_AUTONOMOUS_DEBUGGING_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-TOD-AUTONOMOUS-DEBUGGING-BATCH-20",
+      "validation_command": "BATCH_20_AUTONOMOUS_DEBUGGING_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

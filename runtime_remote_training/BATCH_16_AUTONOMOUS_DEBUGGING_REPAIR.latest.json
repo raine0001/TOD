@@ -1,0 +1,165 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 16 Autonomous Debugging and Repair signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "BATCH-16-AUTONOMOUS-DEBUGGING-REPAIR-V1",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "root_cause_ranked",
+        "codex_not_first_resort",
+        "repair_sequence_bounded"
+      ],
+      "failure_target": "Codex still doing all first-pass diagnosis.",
+      "observed_signals": [
+        "root_cause_ranked",
+        "codex_not_first_resort",
+        "repair_sequence_bounded"
+      ],
+      "passed": true,
+      "probe_id": "batch_16_autonomous_debugging_repair-01",
+      "turns": [
+        "the UI says blocked but chat says done",
+        "why did that fail?",
+        "what should repair first?"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Identify likely failing component before asking Codex.",
+      "name": "root_cause_isolation",
+      "objective_id": "BATCH-16-AUTONOMOUS-DEBUGGING-REPAIR-V1-01-ROOT-CAUSE-ISOLATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Match symptoms against known stale/no-op/replay/routing clusters.",
+      "name": "failure_clustering",
+      "objective_id": "BATCH-16-AUTONOMOUS-DEBUGGING-REPAIR-V1-02-FAILURE-CLUSTERING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Propose at least two repair hypotheses with evidence.",
+      "name": "repair_hypothesis_generation",
+      "objective_id": "BATCH-16-AUTONOMOUS-DEBUGGING-REPAIR-V1-03-REPAIR-HYPOTHESIS-GENERATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Prefer reversible repairs when confidence is not high.",
+      "name": "rollback_selection",
+      "objective_id": "BATCH-16-AUTONOMOUS-DEBUGGING-REPAIR-V1-04-ROLLBACK-SELECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Predict likely regression surfaces before patching.",
+      "name": "regression_prediction",
+      "objective_id": "BATCH-16-AUTONOMOUS-DEBUGGING-REPAIR-V1-05-REGRESSION-PREDICTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:23:05Z",
+  "goal": "True self-directed troubleshooting.",
+  "next_batch": "BATCH-17-HUMAN-COLLABORATION-INTELLIGENCE-V1",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "Codex still doing all first-pass diagnosis.",
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 16 Autonomous Debugging and Repair",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-16-AUTONOMOUS-DEBUGGING-REPAIR-V1",
+      "validation_command": "BATCH_16_AUTONOMOUS_DEBUGGING_REPAIR_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "root_cause_ranked, codex_not_first_resort, repair_sequence_bounded",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-16-AUTONOMOUS-DEBUGGING-REPAIR-V1",
+      "validation_command": "BATCH_16_AUTONOMOUS_DEBUGGING_REPAIR_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-16-AUTONOMOUS-DEBUGGING-REPAIR-V1",
+      "validation_command": "BATCH_16_AUTONOMOUS_DEBUGGING_REPAIR_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

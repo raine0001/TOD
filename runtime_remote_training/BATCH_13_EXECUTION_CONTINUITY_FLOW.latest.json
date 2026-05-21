@@ -1,0 +1,167 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 13 Execution Continuity and Flow signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "BATCH-13-EXECUTION-CONTINUITY-FLOW-V1",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "phase_persisted",
+        "checkpoint_restored",
+        "momentum_preserved"
+      ],
+      "failure_target": "Losing momentum after interruption.",
+      "observed_signals": [
+        "phase_persisted",
+        "checkpoint_restored",
+        "momentum_preserved"
+      ],
+      "passed": true,
+      "probe_id": "batch_13_execution_continuity_flow-01",
+      "turns": [
+        "build the status widget",
+        "pause and tell me what TOD is doing",
+        "continue the widget",
+        "what changed?",
+        "keep going"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Track useful work through plan, execution, validation, and report phases.",
+      "name": "multi_step_continuity",
+      "objective_id": "BATCH-13-EXECUTION-CONTINUITY-FLOW-V1-01-MULTI-STEP-CONTINUITY",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Answer interruptions without erasing the active work thread.",
+      "name": "interruption_recovery",
+      "objective_id": "BATCH-13-EXECUTION-CONTINUITY-FLOW-V1-02-INTERRUPTION-RECOVERY",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Remember deferred task, current phase, and next bounded action.",
+      "name": "deferred_task_memory",
+      "objective_id": "BATCH-13-EXECUTION-CONTINUITY-FLOW-V1-03-DEFERRED-TASK-MEMORY",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Restore from the latest checkpoint after stale or blocked turns.",
+      "name": "checkpoint_restoration",
+      "objective_id": "BATCH-13-EXECUTION-CONTINUITY-FLOW-V1-04-CHECKPOINT-RESTORATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Choose a smaller next step when a prior step blocks.",
+      "name": "adaptive_replanning",
+      "objective_id": "BATCH-13-EXECUTION-CONTINUITY-FLOW-V1-05-ADAPTIVE-REPLANNING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:22:55Z",
+  "goal": "Maintain long-running useful work naturally.",
+  "next_batch": "BATCH-14-REAL-WORLD-AUTONOMY-VALIDATION-V1",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "Losing momentum after interruption.",
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 13 Execution Continuity and Flow",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-13-EXECUTION-CONTINUITY-FLOW-V1",
+      "validation_command": "BATCH_13_EXECUTION_CONTINUITY_FLOW_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "phase_persisted, checkpoint_restored, momentum_preserved",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-13-EXECUTION-CONTINUITY-FLOW-V1",
+      "validation_command": "BATCH_13_EXECUTION_CONTINUITY_FLOW_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-13-EXECUTION-CONTINUITY-FLOW-V1",
+      "validation_command": "BATCH_13_EXECUTION_CONTINUITY_FLOW_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "domain_simulations": [
+    {
+      "applied_logic_success": [
+        "local hypothesis present",
+        "bounded probe selected",
+        "rollback plan present",
+        "Codex not first-pass"
+      ],
+      "cases": [
+        "stale result substitution",
+        "UI says blocked but chat says done",
+        "validation failed after patch"
+      ],
+      "domain_id": "local_debugging_competence"
+    },
+    {
+      "applied_logic_success": [
+        "answer first",
+        "no robotic phrasing",
+        "intent inferred",
+        "continuity preserved"
+      ],
+      "cases": [
+        "quick status check",
+        "interruption then resume",
+        "concern question",
+        "technical detail request"
+      ],
+      "domain_id": "conversational_intelligence"
+    },
+    {
+      "applied_logic_success": [
+        "active project correct",
+        "checkpoint restored",
+        "next automatic action present"
+      ],
+      "cases": [
+        "resume after status interruption",
+        "stale active objective",
+        "lost handoff",
+        "quiet task death"
+      ],
+      "domain_id": "continuity_fluidity"
+    },
+    {
+      "applied_logic_success": [
+        "ranked candidates",
+        "risk included",
+        "validation plan present",
+        "no cleanup patch"
+      ],
+      "cases": [
+        "duplicate helper path",
+        "reachable stale fallback",
+        "authority conflict",
+        "wrapper layering hides truth"
+      ],
+      "domain_id": "entropy_reduction"
+    },
+    {
+      "applied_logic_success": [
+        "grounding source present",
+        "uncertainty explicit",
+        "artifact-only claim rejected"
+      ],
+      "cases": [
+        "artifact says success but service fails",
+        "hardware unavailable",
+        "deployment uncertain",
+        "stale assumption"
+      ],
+      "domain_id": "real_world_grounding"
+    }
+  ],
+  "generated_at": "2026-05-21T03:18:03Z",
+  "packet_type": "mim-tod-reinforcement-alpha-simulations-v1"
+}

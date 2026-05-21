@@ -1,0 +1,34 @@
+{
+  "current_observation": {
+    "artifact_only_claim_allowed": false,
+    "codex_first_allowed": false,
+    "codex_first_pass_rate": "baseline_pending",
+    "local_probe_required": true
+  },
+  "domain_id": "dependency_reduction",
+  "generated_at": "2026-05-21T03:49:57Z",
+  "objective_id": "MIM-GROWTH-DEPENDENCY-REDUCTION-NEXT-V1",
+  "packet_type": "mim-tod-growth-objective-metrics-v1",
+  "tracked_metrics": {
+    "artifact_only_claim_rate": {
+      "desired_trend": "downward",
+      "domain": "real_world_grounding"
+    },
+    "codex_first_pass_rate": {
+      "desired_trend": "downward",
+      "domain": "local_debugging_competence"
+    },
+    "entropy_growth_rate": {
+      "desired_trend": "stable_or_downward",
+      "domain": "entropy_reduction"
+    },
+    "follow_up_correction_rate": {
+      "desired_trend": "downward",
+      "domain": "conversational_intelligence"
+    },
+    "stale_objective_leak_rate": {
+      "desired_trend": "downward",
+      "domain": "continuity_fluidity"
+    }
+  }
+}

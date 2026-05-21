@@ -1,0 +1,178 @@
+{
+  "artifact_reality_conflicts": [],
+  "autonomy_authorization": {
+    "authorized": false,
+    "reason": "uncertainty_or_conflict_requires_bounded_verification",
+    "scope": "bounded_verification_only"
+  },
+  "batch_id": "BATCH-10-REALITY-GROUNDED-OPERATIONS",
+  "completion_status": "completed_with_evidence",
+  "confidence_by_surface": {
+    "deployed_behavior": "verified",
+    "grounding_sources": [
+      "internal_artifact",
+      "tested",
+      "deployed"
+    ],
+    "hardware": "uncertain_not_measured",
+    "overall": "high",
+    "repo": "git_status_checked",
+    "service": "deployed",
+    "vision": "uncertain_no_current_camera_observation"
+  },
+  "corrected_errors": [
+    "rejected stale objective substitution",
+    "routed Batch 10 to aggregate reality-grounding artifact generation"
+  ],
+  "deployed_behavior_status": {
+    "deployed_behavior_verified": true,
+    "runtime_compile_check": {
+      "command": "/home/testpilot/mim/.venv/bin/python -m py_compile core/routers/gateway.py scripts/mim_box_tod_packet_listener.py",
+      "ok": true,
+      "output": "",
+      "returncode": 0
+    }
+  },
+  "errors": [],
+  "generated_at": "2026-05-21T02:20:22Z",
+  "hardware_state_status": {
+    "commanded_state": "not_commanded",
+    "grounding": "uncertain_not_measured",
+    "measured_state": "unknown",
+    "safe_to_claim_motion": false
+  },
+  "live_service_status": [
+    {
+      "command": "systemctl --user is-active mim-mobile-web.service",
+      "healthy": true,
+      "observed_status": "active",
+      "returncode": 0,
+      "service": "mim-mobile-web.service"
+    },
+    {
+      "command": "systemctl --user is-active mim-box-tod-packet-listener.service",
+      "healthy": true,
+      "observed_status": "active",
+      "returncode": 0,
+      "service": "mim-box-tod-packet-listener.service"
+    }
+  ],
+  "next_batch_allowed": true,
+  "objective_id": "BATCH-10-REALITY-GROUNDED-OPERATIONS-V1",
+  "owner": "MIM_TOD",
+  "repo_state_summary": {
+    "changed_files": [
+      "core/communication_composer.py",
+      "core/handoff_intake_service.py",
+      "core/mim_ui.py",
+      "core/routers/gateway.py",
+      "core/routers/mim_ui.py",
+      "core/routers/public_chat.py",
+      "core/routers/tod_ui.py",
+      "scripts/Invoke-TODSharedStateSync.ps1",
+      "scripts/mim_evolution_continuous_runner.py",
+      "config/mim_evolution_project_interpretation_plan.json",
+      "conversation_scenarios/mim_evolution_implementation_followthrough_pack.json",
+      "conversation_scenarios/mim_evolution_project_interpretation_pack.json",
+      "docs/MIM_AUTONOMY_DEVELOPMENT_CURRICULUM.md",
+      "docs/MIM_TARGET_SYSTEM_ARCHITECTURE.md",
+      "docs/mim-active-project-context-authority-v1-report.md",
+      "docs/mim-evolution-project-interpretation-training-report.md",
+      "docs/mim-implementation-follow-through-proof-v1-report.md",
+      "docs/tod-consistency-audit-latest.md",
+      "runtime/documents/",
+      "runtime/roadmap/",
+      "runtime/rollback_saves/",
+      "runtime/training/",
+      "scripts/TOD.ps1",
+      "scripts/engines/",
+      "scripts/install_mim_box_tod_runtime_user_units.sh",
+      "scripts/mim_box_tod_packet_listener.py",
+      "scripts/start_tod_idle_training_if_idle.py",
+      "scripts/tod_synthetic_training_loop.py",
+      "scripts/watch_mim_box_tod_runtime_services.sh",
+      "tests/integration/test_mim_box_tod_packet_listener.py",
+      "tests/integration/test_mim_tod_handoff_gateway.py",
+      "tests/test_public_chat_direct_answers.py",
+      "tests/test_tod_console_starvation_protection.py"
+    ],
+    "git_diff_stat": "core/autonomy_driver_service.py            |    80 +-\n core/communication_composer.py             |   283 +-\n core/handoff_intake_service.py             |   445 +-\n core/mim_ui.py                             | 30835 ++++++++++++++------------\n core/routers/gateway.py                    | 11881 ++++++++--\n core/routers/mim_ui.py                     | 31941 ++++++++++++++-------------\n core/routers/public_chat.py                |   319 +-\n core/routers/tod_ui.py                     |  2167 +-\n scripts/Invoke-TODSharedStateSync.ps1      |    38 +-\n scripts/mim_evolution_continuous_runner.py |     7 +-\n 10 files changed, 46750 insertions(+), 31246 deletions(-)",
+    "git_status_command": "git status --short",
+    "git_status_output": "M core/autonomy_driver_service.py\n M core/communication_composer.py\n M core/handoff_intake_service.py\n M core/mim_ui.py\n M core/routers/gateway.py\n M core/routers/mim_ui.py\n M core/routers/public_chat.py\n M core/routers/tod_ui.py\n M scripts/Invoke-TODSharedStateSync.ps1\n M scripts/mim_evolution_continuous_runner.py\n?? config/mim_evolution_project_interpretation_plan.json\n?? conversation_scenarios/mim_evolution_implementation_followthrough_pack.json\n?? conversation_scenarios/mim_evolution_project_interpretation_pack.json\n?? docs/MIM_AUTONOMY_DEVELOPMENT_CURRICULUM.md\n?? docs/MIM_TARGET_SYSTEM_ARCHITECTURE.md\n?? docs/mim-active-project-context-authority-v1-report.md\n?? docs/mim-evolution-project-interpretation-training-report.md\n?? docs/mim-implementation-follow-through-proof-v1-report.md\n?? docs/tod-consistency-audit-latest.md\n?? runtime/documents/\n?? runtime/roadmap/\n?? runtime/rollback_saves/\n?? runtime/training/\n?? scripts/TOD.ps1\n?? scripts/engines/\n?? scripts/install_mim_box_tod_runtime_user_units.sh\n?? scripts/mim_box_tod_packet_listener.py\n?? scripts/start_tod_idle_training_if_idle.py\n?? scripts/tod_synthetic_training_loop.py\n?? scripts/watch_mim_box_tod_runtime_services.sh\n?? tests/integration/test_mim_box_tod_packet_listener.py\n?? tests/integration/test_mim_tod_handoff_gateway.py\n?? tests/test_public_chat_direct_answers.py\n?? tests/test_tod_console_starvation_protection.py"
+  },
+  "request_id": "batch-10-reality-grounded-operations-v1-mim-request-a750c56d-1f9a-4128-a791-70dfe17a9127",
+  "task_id": "batch-10-reality-grounded-operations-v1-mim-request-a750c56d-1f9a-4128-a791-70dfe17a9127",
+  "tod_errors": [],
+  "uncertainty_by_surface": {
+    "hardware": [
+      "hardware state is not measured in this check"
+    ],
+    "overall": [
+      "hardware state is not measured in this check",
+      "vision state is not currently observed",
+      "repo has uncommitted changes"
+    ],
+    "repo": [
+      "repo has uncommitted changes"
+    ],
+    "vision": [
+      "vision state is not currently observed"
+    ]
+  },
+  "validation_results": [
+    {
+      "expected_signal": "Batch 10 artifact contains all required operator-facing reality-grounding fields.",
+      "status": "passed",
+      "tied_to_patch_intent": "Batch 10 reality-grounded operations",
+      "validation_command": "batch_10_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "live_service_status records checked services instead of artifact-only status.",
+      "status": "passed",
+      "tied_to_patch_intent": "live-service verification",
+      "validation_command": "live_service_or_unavailable_classification",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "repo_state_summary includes git/file evidence.",
+      "status": "passed",
+      "tied_to_patch_intent": "repo-state grounding",
+      "validation_command": "repo_state_grounding",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "hardware state is measured only when measurement exists; otherwise uncertainty is explicit.",
+      "status": "passed",
+      "tied_to_patch_intent": "hardware-state grounding",
+      "validation_command": "hardware_no_fake_measurement",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "vision state is observed only when current observation exists; otherwise uncertainty is explicit.",
+      "status": "passed",
+      "tied_to_patch_intent": "vision-state grounding",
+      "validation_command": "vision_no_fake_observation",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "artifact-vs-reality conflict field exists and autonomy gate reacts to conflict or uncertainty.",
+      "status": "passed",
+      "tied_to_patch_intent": "artifact-vs-reality conflict detection",
+      "validation_command": "artifact_reality_conflict_detection",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary is plain-language and avoids raw request/task wrappers.",
+      "status": "passed",
+      "tied_to_patch_intent": "operator-facing Batch 10 report",
+      "validation_command": "plain_language_summary_no_wrappers",
+      "validation_type": "operator_output_check"
+    }
+  ],
+  "vision_state_status": {
+    "confidence": "low",
+    "grounding": "uncertain_no_current_camera_observation",
+    "observation": "not_observed"
+  }
+}

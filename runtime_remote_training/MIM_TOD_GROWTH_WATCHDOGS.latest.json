@@ -1,0 +1,200 @@
+{
+  "generated_at": "2026-05-21T03:05:29Z",
+  "global_fail_gates": [
+    "codex_first_pass_without_local_probe",
+    "artifact_only_success_claim",
+    "third_person_normal_operator_reply",
+    "stale_template_selection",
+    "unbounded_self_improvement"
+  ],
+  "packet_type": "mim-tod-growth-watchdogs-v1",
+  "watchdogs": [
+    {
+      "domain_id": "conversational_intelligence",
+      "evidence_required": [
+        "sample prompts",
+        "expected answer traits",
+        "pass/fail counts"
+      ],
+      "fail_gates": [
+        "question_not_answered",
+        "clarification_spam",
+        "stale_context_bleed"
+      ],
+      "pass_gates": [
+        "answer_first_rate",
+        "clarifier_suppression_rate",
+        "context_recovery_pass_rate"
+      ]
+    },
+    {
+      "domain_id": "communication_usefulness",
+      "evidence_required": [
+        "sample_operator_output",
+        "detail_level",
+        "reason for chosen depth"
+      ],
+      "fail_gates": [
+        "status_spam",
+        "receipt_printer_style",
+        "third_person_self_reference"
+      ],
+      "pass_gates": [
+        "compressed_status_pass_rate",
+        "operator_cognitive_load_score",
+        "next_action_presence"
+      ]
+    },
+    {
+      "domain_id": "autonomous_debugging",
+      "evidence_required": [
+        "symptom",
+        "hypotheses",
+        "probe",
+        "validation_results",
+        "rollback_note"
+      ],
+      "fail_gates": [
+        "codex_first_pass",
+        "probe_missing",
+        "rollback_plan_missing"
+      ],
+      "pass_gates": [
+        "local_diagnosis_rate",
+        "codex_first_pass_avoidance",
+        "repair_validation_pass_rate"
+      ]
+    },
+    {
+      "domain_id": "project_continuity",
+      "evidence_required": [
+        "current objective",
+        "freshness classification",
+        "checkpoint",
+        "next action"
+      ],
+      "fail_gates": [
+        "quiet_dead_task",
+        "stale_objective_leak",
+        "duplicate_task_spawn"
+      ],
+      "pass_gates": [
+        "stale_detection_rate",
+        "resume_success_rate",
+        "lost_handoff_detection_rate"
+      ]
+    },
+    {
+      "domain_id": "self_health_maintenance",
+      "evidence_required": [
+        "health score",
+        "risk score",
+        "selected maintenance action"
+      ],
+      "fail_gates": [
+        "governance_loop",
+        "audit_without_value",
+        "confidence_inflation"
+      ],
+      "pass_gates": [
+        "drift_detection_rate",
+        "audit_value_ratio",
+        "dependency_reduction_delta"
+      ]
+    },
+    {
+      "domain_id": "strategic_prioritization",
+      "evidence_required": [
+        "ranked candidates",
+        "selected objective",
+        "reason",
+        "rejected alternatives"
+      ],
+      "fail_gates": [
+        "vibes_based_selection",
+        "stale_priority",
+        "overloaded_batch"
+      ],
+      "pass_gates": [
+        "priority_choice_quality",
+        "deferred_work_accuracy",
+        "risk_reduction"
+      ]
+    },
+    {
+      "domain_id": "reality_grounding",
+      "evidence_required": [
+        "grounding source",
+        "confidence",
+        "uncertainty",
+        "next verification"
+      ],
+      "fail_gates": [
+        "self_referential_success",
+        "fake_hardware_certainty",
+        "stale_assumption"
+      ],
+      "pass_gates": [
+        "artifact_only_rejection_rate",
+        "uncertainty_marking_rate",
+        "live_probe_pass_rate"
+      ]
+    },
+    {
+      "domain_id": "dependency_reduction",
+      "evidence_required": [
+        "local attempt summary",
+        "why Codex needed",
+        "missing capability"
+      ],
+      "fail_gates": [
+        "codex_first_pass",
+        "missing_probe",
+        "missing_attempted_local_path"
+      ],
+      "pass_gates": [
+        "codex_escalation_rate_down",
+        "local_probe_rate_up",
+        "successful_local_repair_rate"
+      ]
+    },
+    {
+      "domain_id": "entropy_reduction",
+      "evidence_required": [
+        "candidate",
+        "risk",
+        "files",
+        "validation plan"
+      ],
+      "fail_gates": [
+        "unapproved_cleanup_patch",
+        "marker_only_cleanup",
+        "authority_confusion"
+      ],
+      "pass_gates": [
+        "cleanup_candidates_ranked",
+        "risk_assessed",
+        "validation_plan_present"
+      ]
+    },
+    {
+      "domain_id": "governance_integrity",
+      "evidence_required": [
+        "decision",
+        "risk",
+        "evidence quality",
+        "reversibility"
+      ],
+      "fail_gates": [
+        "governance_paralysis",
+        "scope_creep",
+        "recursive_planning"
+      ],
+      "pass_gates": [
+        "bounded_progress_rate",
+        "governance_value_score",
+        "recursion_suppression_rate"
+      ]
+    }
+  ]
+}

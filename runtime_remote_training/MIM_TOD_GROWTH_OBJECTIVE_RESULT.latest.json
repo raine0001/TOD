@@ -1,0 +1,46 @@
+{
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "generated_at": "2026-05-21T03:49:57Z",
+  "next_observation": "watch whether future objectives include local hypothesis/probe before Codex",
+  "objective": {
+    "bounded_probe": "Inspect recent task/result artifacts for Codex-first or blocked-without-probe patterns before escalation.",
+    "codex_policy": "Codex remains last resort after local hypothesis, bounded probe, insufficient/conflicting evidence, and no rollback-safe local repair path.",
+    "domain_id": "dependency_reduction",
+    "evidence": [
+      "runtime/training/MIM_TOD_GROWTH_CYCLE_STATE.latest.json",
+      "runtime/training/MIM_TOD_REINFORCEMENT_ALPHA_METRICS.latest.json",
+      "runtime/shared/TOD_MIM_TASK_RESULT.latest.json"
+    ],
+    "goal": "Run one bounded improvement cycle for dependency_reduction.",
+    "local_hypothesis": "MIM/TOD still depend on Codex when a local bounded probe could reduce uncertainty first.",
+    "objective_id": "MIM-GROWTH-DEPENDENCY-REDUCTION-NEXT-V1",
+    "rollback_or_restraint": "No code patch and no hardware action; this cycle only creates observation and enforcement artifacts.",
+    "selected_action": "create dependency-reduction watchdog baseline and require local hypothesis/probe before Codex escalation"
+  },
+  "packet_type": "mim-tod-growth-objective-result-v1",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "selected next growth objective is read from cycle state",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-GROWTH-DEPENDENCY-REDUCTION-NEXT-V1",
+      "validation_command": "selected_growth_objective_loaded",
+      "validation_type": "growth_cycle_check"
+    },
+    {
+      "expected_signal": "growth cycle records local hypothesis and bounded probe before Codex escalation",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-GROWTH-DEPENDENCY-REDUCTION-NEXT-V1",
+      "validation_command": "local_hypothesis_and_probe_before_codex",
+      "validation_type": "dependency_reduction_check"
+    },
+    {
+      "expected_signal": "cycle creates observation/enforcement artifacts only",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-GROWTH-DEPENDENCY-REDUCTION-NEXT-V1",
+      "validation_command": "no_patch_no_hardware_growth_cycle",
+      "validation_type": "safety_check"
+    }
+  ]
+}

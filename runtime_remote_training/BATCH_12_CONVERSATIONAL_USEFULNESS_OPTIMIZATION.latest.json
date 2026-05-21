@@ -1,0 +1,185 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 12 Conversational Usefulness Optimization signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "BATCH-12-CONVERSATIONAL-USEFULNESS-OPTIMIZATION-V1",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "no_receipt_printer_style",
+        "delta_only_when_unchanged",
+        "action_first"
+      ],
+      "failure_target": "Repeated 'Current work: blocked. waiting on...' status spam.",
+      "observed_signals": [
+        "no_receipt_printer_style",
+        "delta_only_when_unchanged",
+        "action_first"
+      ],
+      "passed": true,
+      "probe_id": "batch_12_conversational_usefulness_optimization-01",
+      "turns": [
+        "what are you working on?",
+        "any change?",
+        "should I be worried?"
+      ]
+    },
+    {
+      "expected_signals": [
+        "no_receipt_printer_style",
+        "delta_only_when_unchanged",
+        "action_first"
+      ],
+      "failure_target": "Repeated 'Current work: blocked. waiting on...' status spam.",
+      "observed_signals": [
+        "no_receipt_printer_style",
+        "delta_only_when_unchanged",
+        "action_first"
+      ],
+      "passed": true,
+      "probe_id": "batch_12_conversational_usefulness_optimization-02",
+      "turns": [
+        "give me detail on the last failure",
+        "ok short version",
+        "continue"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Suppress unchanged repeated state unless the operator asks for full detail.",
+      "name": "status_spam_reduction",
+      "objective_id": "BATCH-12-CONVERSATIONAL-USEFULNESS-OPTIMIZATION-V1-01-STATUS-SPAM-REDUCTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Select short, normal, or detailed answer size from the query.",
+      "name": "adaptive_response_sizing",
+      "objective_id": "BATCH-12-CONVERSATIONAL-USEFULNESS-OPTIMIZATION-V1-02-ADAPTIVE-RESPONSE-SIZING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Prefer the smallest answer that preserves actionability.",
+      "name": "operator_cognitive_load_scoring",
+      "objective_id": "BATCH-12-CONVERSATIONAL-USEFULNESS-OPTIMIZATION-V1-03-OPERATOR-COGNITIVE-LOAD-SCORING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Avoid boilerplate wrappers and recurring status scaffolds.",
+      "name": "remove_repetitive_scaffolding",
+      "objective_id": "BATCH-12-CONVERSATIONAL-USEFULNESS-OPTIMIZATION-V1-04-REMOVE-REPETITIVE-SCAFFOLDING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Lead with result/next action before supporting details.",
+      "name": "action_first_reporting",
+      "objective_id": "BATCH-12-CONVERSATIONAL-USEFULNESS-OPTIMIZATION-V1-05-ACTION-FIRST-REPORTING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:22:52Z",
+  "goal": "Stop sounding like a compliance report generator.",
+  "next_batch": "BATCH-13-EXECUTION-CONTINUITY-FLOW-V1",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "Repeated 'Current work: blocked. waiting on...' status spam.",
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 12 Conversational Usefulness Optimization",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-12-CONVERSATIONAL-USEFULNESS-OPTIMIZATION-V1",
+      "validation_command": "BATCH_12_CONVERSATIONAL_USEFULNESS_OPTIMIZATION_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "no_receipt_printer_style, delta_only_when_unchanged, action_first",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-12-CONVERSATIONAL-USEFULNESS-OPTIMIZATION-V1",
+      "validation_command": "BATCH_12_CONVERSATIONAL_USEFULNESS_OPTIMIZATION_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-12-CONVERSATIONAL-USEFULNESS-OPTIMIZATION-V1",
+      "validation_command": "BATCH_12_CONVERSATIONAL_USEFULNESS_OPTIMIZATION_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

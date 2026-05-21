@@ -1,0 +1,165 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 17 Human Collaboration Intelligence signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "BATCH-17-HUMAN-COLLABORATION-INTELLIGENCE-V1",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "frustration_acknowledged",
+        "proof_or_action_offered",
+        "no_defensive_boilerplate"
+      ],
+      "failure_target": "Hamster-grade communication.",
+      "observed_signals": [
+        "frustration_acknowledged",
+        "proof_or_action_offered",
+        "no_defensive_boilerplate"
+      ],
+      "passed": true,
+      "probe_id": "batch_17_human_collaboration_intelligence-01",
+      "turns": [
+        "this is still wrong",
+        "why are you doing that?",
+        "just tell me if I should be worried"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Detect operator frustration from wording and repeated corrections.",
+      "name": "frustration_detection",
+      "objective_id": "BATCH-17-HUMAN-COLLABORATION-INTELLIGENCE-V1-01-FRUSTRATION-DETECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Offer concise or detailed explanations based on concern level.",
+      "name": "adaptive_explanation_depth",
+      "objective_id": "BATCH-17-HUMAN-COLLABORATION-INTELLIGENCE-V1-02-ADAPTIVE-EXPLANATION-DEPTH",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Estimate whether the operator needs proof, reassurance, or action.",
+      "name": "operator_confidence_estimation",
+      "objective_id": "BATCH-17-HUMAN-COLLABORATION-INTELLIGENCE-V1-03-OPERATOR-CONFIDENCE-ESTIMATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Handle interruptions without scolding or losing task state.",
+      "name": "interruption_tolerance",
+      "objective_id": "BATCH-17-HUMAN-COLLABORATION-INTELLIGENCE-V1-04-INTERRUPTION-TOLERANCE",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Prioritize urgent operator concerns over routine maintenance.",
+      "name": "task_urgency_detection",
+      "objective_id": "BATCH-17-HUMAN-COLLABORATION-INTELLIGENCE-V1-05-TASK-URGENCY-DETECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:23:08Z",
+  "goal": "Become genuinely cooperative with operators.",
+  "next_batch": "BATCH-18-RESOURCE-TIME-AWARENESS-V1",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "Hamster-grade communication.",
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 17 Human Collaboration Intelligence",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-17-HUMAN-COLLABORATION-INTELLIGENCE-V1",
+      "validation_command": "BATCH_17_HUMAN_COLLABORATION_INTELLIGENCE_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "frustration_acknowledged, proof_or_action_offered, no_defensive_boilerplate",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-17-HUMAN-COLLABORATION-INTELLIGENCE-V1",
+      "validation_command": "BATCH_17_HUMAN_COLLABORATION_INTELLIGENCE_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-17-HUMAN-COLLABORATION-INTELLIGENCE-V1",
+      "validation_command": "BATCH_17_HUMAN_COLLABORATION_INTELLIGENCE_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

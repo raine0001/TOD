@@ -1,0 +1,7 @@
+{
+  "action_items": [],
+  "generated_at": "2026-05-21T00:47:55Z",
+  "next_scale": "1000 interrupted conversations after one clean 200-conversation/1000-turn run",
+  "objective_id": "TOD-USEFUL-WORK-INTERRUPTION-ROUNDTRIP-SIMULATION-V1",
+  "watchdog_decision": "passed_continue"
+}

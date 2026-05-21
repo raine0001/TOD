@@ -1,0 +1,13 @@
+{
+  "action_items": [
+    {
+      "item": "keep reality-grounding gate available before future autonomy scaling",
+      "reason": "hardware and vision may remain unavailable and must not be overclaimed",
+      "status": "open_watch_item"
+    }
+  ],
+  "batch_id": "BATCH-10-REALITY-GROUNDED-OPERATIONS",
+  "generated_at": "2026-05-21T02:20:22Z",
+  "next_batch": "BATCH-11-OPERATOR-INTENT-RECOVERY-V1",
+  "watchdog_decision": "passed_continue"
+}

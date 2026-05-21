@@ -1,0 +1,286 @@
+{
+  "completion_status": "completed_with_evidence",
+  "domains": [
+    {
+      "baseline_measurement_method": "Track codex_first_pass_rate from future autonomous cycle artifacts and operator correction/failure records.",
+      "domain_id": "local_debugging_competence",
+      "evidence_requirements": [
+        "symptom",
+        "hypotheses",
+        "probe",
+        "evidence",
+        "repair_plan",
+        "rollback_plan"
+      ],
+      "future_autonomous_observation_signals": [
+        "objectives MIM chooses",
+        "domains prioritized",
+        "Codex usage delta",
+        "conversation correction delta",
+        "continuity smoothness",
+        "debugging local-first rate"
+      ],
+      "goal": "Reduce first-pass Codex dependence aggressively.",
+      "key_metric": "codex_first_pass_rate",
+      "local_first_rule": "MIM/TOD must attempt symptom->hypothesis->probe before Codex.",
+      "reinforcement_objectives": [
+        "MIM-LOCAL-HYPOTHESIS-QUALITY-REINFORCEMENT",
+        "TOD-PROBE-SELECTION-EFFICIENCY-REINFORCEMENT",
+        "MIM-ROOT-CAUSE-PRIORITIZATION-REINFORCEMENT",
+        "TOD-ROLLBACK-FIRST-REPAIR-PLANNING-REINFORCEMENT",
+        "MIM-CODEX-ESCALATION-THRESHOLD-TUNING"
+      ],
+      "rollback_restraint_rule": "No repair action without rollback-safe plan or blocked-with-inspection.",
+      "simulation_training_cases": [
+        "stale result substitution",
+        "UI says blocked but chat says done",
+        "validation failed after patch"
+      ],
+      "success_trend": "downward",
+      "watchdog_fail_gates": [
+        "codex_first_pass",
+        "missing_probe",
+        "no_rollback_plan"
+      ],
+      "watchdog_pass_gates": [
+        "local hypothesis present",
+        "bounded probe selected",
+        "rollback plan present",
+        "Codex not first-pass"
+      ]
+    },
+    {
+      "baseline_measurement_method": "Track follow_up_correction_rate from future autonomous cycle artifacts and operator correction/failure records.",
+      "domain_id": "conversational_intelligence",
+      "evidence_requirements": [
+        "prompt",
+        "reply",
+        "intent",
+        "detail_level",
+        "correction_needed"
+      ],
+      "future_autonomous_observation_signals": [
+        "objectives MIM chooses",
+        "domains prioritized",
+        "Codex usage delta",
+        "conversation correction delta",
+        "continuity smoothness",
+        "debugging local-first rate"
+      ],
+      "goal": "Make MIM naturally useful.",
+      "key_metric": "follow_up_correction_rate",
+      "local_first_rule": "MIM scores and repairs conversational failures from transcript evidence.",
+      "reinforcement_objectives": [
+        "MIM-ANSWER-FIRST-REFLEX-REINFORCEMENT",
+        "MIM-INTERRUPTION-RECOVERY-FLUIDITY-REINFORCEMENT",
+        "MIM-CONTEXT-COMPRESSION-REINFORCEMENT",
+        "MIM-NO-ROBOTIC-PHRASING-REINFORCEMENT",
+        "MIM-OPERATOR-INTENT-INFERENCE-REINFORCEMENT"
+      ],
+      "rollback_restraint_rule": "Do not compress away safety or blocker detail.",
+      "simulation_training_cases": [
+        "quick status check",
+        "interruption then resume",
+        "concern question",
+        "technical detail request"
+      ],
+      "success_trend": "downward",
+      "watchdog_fail_gates": [
+        "clarification_spam",
+        "third_person_self_reference",
+        "question_not_answered"
+      ],
+      "watchdog_pass_gates": [
+        "answer first",
+        "no robotic phrasing",
+        "intent inferred",
+        "continuity preserved"
+      ]
+    },
+    {
+      "baseline_measurement_method": "Track stale_objective_leak_rate from future autonomous cycle artifacts and operator correction/failure records.",
+      "domain_id": "continuity_fluidity",
+      "evidence_requirements": [
+        "active_project",
+        "checkpoint",
+        "freshness",
+        "next_action"
+      ],
+      "future_autonomous_observation_signals": [
+        "objectives MIM chooses",
+        "domains prioritized",
+        "Codex usage delta",
+        "conversation correction delta",
+        "continuity smoothness",
+        "debugging local-first rate"
+      ],
+      "goal": "Maintain long-running operational coherence naturally.",
+      "key_metric": "stale_objective_leak_rate",
+      "local_first_rule": "TOD checks canonical status/checkpoints before spawning new work.",
+      "reinforcement_objectives": [
+        "TOD-RESUME-AFTER-INTERRUPTION-REINFORCEMENT",
+        "MIM-ACTIVE-PROJECT-AWARENESS-REINFORCEMENT",
+        "TOD-CHECKPOINT-RECOVERY-REINFORCEMENT",
+        "MIM-NO-QUIET-TASK-DEATH-REINFORCEMENT",
+        "TOD-MOMENTUM-PRESERVATION-REINFORCEMENT"
+      ],
+      "rollback_restraint_rule": "Do not advance stale objectives without fresh evidence.",
+      "simulation_training_cases": [
+        "resume after status interruption",
+        "stale active objective",
+        "lost handoff",
+        "quiet task death"
+      ],
+      "success_trend": "downward",
+      "watchdog_fail_gates": [
+        "stale_objective_leak",
+        "quiet_task_death",
+        "lost_context"
+      ],
+      "watchdog_pass_gates": [
+        "active project correct",
+        "checkpoint restored",
+        "next automatic action present"
+      ]
+    },
+    {
+      "baseline_measurement_method": "Track entropy_growth_rate from future autonomous cycle artifacts and operator correction/failure records.",
+      "domain_id": "entropy_reduction",
+      "evidence_requirements": [
+        "candidate",
+        "file_or_component",
+        "risk",
+        "validation_plan",
+        "no_patch_confirmation"
+      ],
+      "future_autonomous_observation_signals": [
+        "objectives MIM chooses",
+        "domains prioritized",
+        "Codex usage delta",
+        "conversation correction delta",
+        "continuity smoothness",
+        "debugging local-first rate"
+      ],
+      "goal": "Prevent long-run architectural decay.",
+      "key_metric": "entropy_growth_rate",
+      "local_first_rule": "TOD inventories entropy from repo/artifact evidence before Codex.",
+      "reinforcement_objectives": [
+        "TOD-DUPLICATE-PATH-DETECTION-REINFORCEMENT",
+        "TOD-STALE-FALLBACK-REACHABILITY-REINFORCEMENT",
+        "MIM-AUTHORITY-CONFLICT-DETECTION-REINFORCEMENT",
+        "TOD-WRAPPER-LAYERING-RISK-REINFORCEMENT",
+        "MIM-REGRESSION-SAFE-SIMPLIFICATION-PLANNING"
+      ],
+      "rollback_restraint_rule": "No cleanup patch during reinforcement discovery.",
+      "simulation_training_cases": [
+        "duplicate helper path",
+        "reachable stale fallback",
+        "authority conflict",
+        "wrapper layering hides truth"
+      ],
+      "success_trend": "stable_or_downward",
+      "watchdog_fail_gates": [
+        "unapproved_cleanup_patch",
+        "marker_only_cleanup",
+        "authority_confusion_unreported"
+      ],
+      "watchdog_pass_gates": [
+        "ranked candidates",
+        "risk included",
+        "validation plan present",
+        "no cleanup patch"
+      ]
+    },
+    {
+      "baseline_measurement_method": "Track artifact_only_claim_rate from future autonomous cycle artifacts and operator correction/failure records.",
+      "domain_id": "real_world_grounding",
+      "evidence_requirements": [
+        "service_status",
+        "repo_or_deployment_status",
+        "grounding_source",
+        "confidence",
+        "uncertainty"
+      ],
+      "future_autonomous_observation_signals": [
+        "objectives MIM chooses",
+        "domains prioritized",
+        "Codex usage delta",
+        "conversation correction delta",
+        "continuity smoothness",
+        "debugging local-first rate"
+      ],
+      "goal": "Force reality contact.",
+      "key_metric": "artifact_only_claim_rate",
+      "local_first_rule": "MIM/TOD run local reality checks before reporting confidence.",
+      "reinforcement_objectives": [
+        "TOD-LIVE-SERVICE-VERIFICATION-REINFORCEMENT",
+        "MIM-UNCERTAINTY-EXPLICITNESS-REINFORCEMENT",
+        "TOD-ARTIFACT-VS-REALITY-CONFLICT-REINFORCEMENT",
+        "MIM-DEPLOYED-BEHAVIOR-CHECK-REINFORCEMENT",
+        "TOD-GROUNDING-CONFIDENCE-CALIBRATION"
+      ],
+      "rollback_restraint_rule": "Unknown reality means bounded verification only.",
+      "simulation_training_cases": [
+        "artifact says success but service fails",
+        "hardware unavailable",
+        "deployment uncertain",
+        "stale assumption"
+      ],
+      "success_trend": "downward",
+      "watchdog_fail_gates": [
+        "artifact_only_success",
+        "fake_measurement",
+        "uncertainty_hidden"
+      ],
+      "watchdog_pass_gates": [
+        "grounding source present",
+        "uncertainty explicit",
+        "artifact-only claim rejected"
+      ]
+    }
+  ],
+  "errors": [],
+  "generated_at": "2026-05-21T03:18:03Z",
+  "objective_id": "MIM-TOD-REINFORCEMENT-CYCLE-ALPHA-V1",
+  "operational_bottlenecks": [
+    "usefulness",
+    "fluidity",
+    "diagnostic_independence",
+    "real_world_awareness",
+    "long_run_maintainability"
+  ],
+  "packet_type": "mim-tod-reinforcement-alpha-v1",
+  "request_id": "mim-tod-reinforcement-cycle-alpha-v1-mim-request-036b861f-cfa1-4340-a212-7bc050f6f083",
+  "task_id": "mim-tod-reinforcement-cycle-alpha-v1-mim-request-036b861f-cfa1-4340-a212-7bc050f6f083",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "five reinforcement domains represented",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-TOD-REINFORCEMENT-CYCLE-ALPHA-V1",
+      "validation_command": "alpha_5_domains_represented",
+      "validation_type": "domain_coverage_check"
+    },
+    {
+      "expected_signal": "25 reinforcement objectives represented",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-TOD-REINFORCEMENT-CYCLE-ALPHA-V1",
+      "validation_command": "alpha_25_objectives_represented",
+      "validation_type": "objective_coverage_check"
+    },
+    {
+      "expected_signal": "codex, correction, stale leak, entropy, and artifact-only metrics present",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-TOD-REINFORCEMENT-CYCLE-ALPHA-V1",
+      "validation_command": "alpha_key_metrics_present",
+      "validation_type": "metric_contract_check"
+    },
+    {
+      "expected_signal": "reinforcement produces training/watchdog artifacts only",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-TOD-REINFORCEMENT-CYCLE-ALPHA-V1",
+      "validation_command": "alpha_no_patch_no_hardware_no_codex_first",
+      "validation_type": "safety_gate_check"
+    }
+  ]
+}

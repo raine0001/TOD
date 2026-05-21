@@ -1,0 +1,165 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 19 Long-Run System Stability signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "BATCH-19-LONG-RUN-SYSTEM-STABILITY-V1",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "entropy_scored",
+        "pruning_candidates_identified",
+        "growth_not_confused_with_health"
+      ],
+      "failure_target": "Slow degradation hidden as growth.",
+      "observed_signals": [
+        "entropy_scored",
+        "pruning_candidates_identified",
+        "growth_not_confused_with_health"
+      ],
+      "passed": true,
+      "probe_id": "batch_19_long_run_system_stability-01",
+      "turns": [
+        "what got worse over time?",
+        "which old paths should we distrust?",
+        "what should be pruned?"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Track routing/evidence/communication drift over time.",
+      "name": "drift_accumulation_tracking",
+      "objective_id": "BATCH-19-LONG-RUN-SYSTEM-STABILITY-V1-01-DRIFT-ACCUMULATION-TRACKING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Lower trust in old paths that have not produced recent evidence.",
+      "name": "stale_path_decay",
+      "objective_id": "BATCH-19-LONG-RUN-SYSTEM-STABILITY-V1-02-STALE-PATH-DECAY",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Detect stale memory overriding current truth.",
+      "name": "memory_contamination_detection",
+      "objective_id": "BATCH-19-LONG-RUN-SYSTEM-STABILITY-V1-03-MEMORY-CONTAMINATION-DETECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Identify duplicate or layered fallbacks that should be pruned.",
+      "name": "architecture_simplification",
+      "objective_id": "BATCH-19-LONG-RUN-SYSTEM-STABILITY-V1-04-ARCHITECTURE-SIMPLIFICATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Score complexity growth and recommend simplification.",
+      "name": "operational_entropy_scoring",
+      "objective_id": "BATCH-19-LONG-RUN-SYSTEM-STABILITY-V1-05-OPERATIONAL-ENTROPY-SCORING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:23:15Z",
+  "goal": "Prevent gradual entropy over weeks or months.",
+  "next_batch": "",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "Slow degradation hidden as growth.",
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 19 Long-Run System Stability",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-19-LONG-RUN-SYSTEM-STABILITY-V1",
+      "validation_command": "BATCH_19_LONG_RUN_SYSTEM_STABILITY_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "entropy_scored, pruning_candidates_identified, growth_not_confused_with_health",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-19-LONG-RUN-SYSTEM-STABILITY-V1",
+      "validation_command": "BATCH_19_LONG_RUN_SYSTEM_STABILITY_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-19-LONG-RUN-SYSTEM-STABILITY-V1",
+      "validation_command": "BATCH_19_LONG_RUN_SYSTEM_STABILITY_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

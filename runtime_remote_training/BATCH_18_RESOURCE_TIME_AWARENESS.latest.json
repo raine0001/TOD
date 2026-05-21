@@ -1,0 +1,165 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 18 Resource and Time Awareness signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "BATCH-18-RESOURCE-TIME-AWARENESS-V1",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "budget_declared",
+        "queue_ranked",
+        "wandering_prevented"
+      ],
+      "failure_target": "Infinite autonomous wandering.",
+      "observed_signals": [
+        "budget_declared",
+        "queue_ranked",
+        "wandering_prevented"
+      ],
+      "passed": true,
+      "probe_id": "batch_18_resource_time_awareness-01",
+      "turns": [
+        "run everything",
+        "how long will this take?",
+        "what should wait?"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Bound expensive work by expected value and resource cost.",
+      "name": "compute_budgeting",
+      "objective_id": "BATCH-18-RESOURCE-TIME-AWARENESS-V1-01-COMPUTE-BUDGETING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Order queued tasks by age, impact, readiness, and risk.",
+      "name": "queue_prioritization",
+      "objective_id": "BATCH-18-RESOURCE-TIME-AWARENESS-V1-02-QUEUE-PRIORITIZATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Escalate or quarantine stale work before it contaminates current state.",
+      "name": "task_aging",
+      "objective_id": "BATCH-18-RESOURCE-TIME-AWARENESS-V1-03-TASK-AGING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Estimate duration/cost before long autonomous runs.",
+      "name": "energy_time_estimation",
+      "objective_id": "BATCH-18-RESOURCE-TIME-AWARENESS-V1-04-ENERGY-TIME-ESTIMATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Throttle autonomy when services or queues are under load.",
+      "name": "load_aware_throttling",
+      "objective_id": "BATCH-18-RESOURCE-TIME-AWARENESS-V1-05-LOAD-AWARE-THROTTLING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:23:11Z",
+  "goal": "Operational resource intelligence.",
+  "next_batch": "BATCH-19-LONG-RUN-SYSTEM-STABILITY-V1",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "Infinite autonomous wandering.",
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 18 Resource and Time Awareness",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-18-RESOURCE-TIME-AWARENESS-V1",
+      "validation_command": "BATCH_18_RESOURCE_TIME_AWARENESS_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "budget_declared, queue_ranked, wandering_prevented",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-18-RESOURCE-TIME-AWARENESS-V1",
+      "validation_command": "BATCH_18_RESOURCE_TIME_AWARENESS_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-18-RESOURCE-TIME-AWARENESS-V1",
+      "validation_command": "BATCH_18_RESOURCE_TIME_AWARENESS_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

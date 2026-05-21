@@ -1,0 +1,283 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 21 Conversational Compression signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "first_person_normal_reply",
+        "no_third_person_self_reference",
+        "answer_first",
+        "low_bloat"
+      ],
+      "failure_target": "MIM must stop saying 'MIM is...' in normal operator replies.",
+      "observed_signals": [
+        "first_person_normal_reply",
+        "no_third_person_self_reference",
+        "answer_first",
+        "low_bloat"
+      ],
+      "passed": true,
+      "probe_id": "batch_21_conversational_compression-01",
+      "turns": [
+        "what are you working on?",
+        "should I be worried?",
+        "what happens next?"
+      ]
+    },
+    {
+      "expected_signals": [
+        "first_person_normal_reply",
+        "no_third_person_self_reference",
+        "answer_first",
+        "low_bloat"
+      ],
+      "failure_target": "MIM must stop saying 'MIM is...' in normal operator replies.",
+      "observed_signals": [
+        "first_person_normal_reply",
+        "no_third_person_self_reference",
+        "answer_first",
+        "low_bloat"
+      ],
+      "passed": true,
+      "probe_id": "batch_21_conversational_compression-02",
+      "turns": [
+        "give me the technical detail",
+        "short version",
+        "continue"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Use first-person replies in normal operator conversation.",
+      "name": "mim_first_person_response",
+      "objective_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21-01-MIM-FIRST-PERSON-RESPONSE",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Avoid third-person self-reference except artifacts/logs/schema or explicit MIM/TOD distinction.",
+      "name": "mim_no_third_person_self_reference",
+      "objective_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21-02-MIM-NO-THIRD-PERSON-SELF-REFERENCE",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Compress repeated status into concise current result and next action.",
+      "name": "mim_status_compression",
+      "objective_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21-03-MIM-STATUS-COMPRESSION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Lead with the answer, then offer detail only when useful.",
+      "name": "mim_answer_first_details_second",
+      "objective_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21-04-MIM-ANSWER-FIRST-DETAILS-SECOND",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Map common operator prompts to direct answers without boilerplate.",
+      "name": "mim_operator_intent_shortcuts",
+      "objective_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21-05-MIM-OPERATOR-INTENT-SHORTCUTS",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Suppress unchanged status unless asked.",
+      "name": "mim_repetitive_state_suppression",
+      "objective_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21-06-MIM-REPETITIVE-STATE-SUPPRESSION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Switch between plain speech and technical depth from operator intent.",
+      "name": "mim_plain_speech_technical_depth_switch",
+      "objective_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21-07-MIM-PLAIN-SPEECH-TECHNICAL-DEPTH-SWITCH",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Answer worry/risk questions directly and proportionately.",
+      "name": "mim_concern_aware_response",
+      "objective_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21-08-MIM-CONCERN-AWARE-RESPONSE",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "State next automatic action in one clean sentence.",
+      "name": "mim_next_action_without_bloat",
+      "objective_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21-09-MIM-NEXT-ACTION-WITHOUT-BLOAT",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Sound like an accountable partner while remaining evidence-grounded.",
+      "name": "mim_situational_partner_voice",
+      "objective_id": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21-10-MIM-SITUATIONAL-PARTNER-VOICE",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:40:36Z",
+  "goal": "Make MIM sound like an operational partner, not a compliance daemon.",
+  "next_batch": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "MIM must stop saying 'MIM is...' in normal operator replies.",
+  "standing_rules": [
+    "Normal operator replies must use first person: 'I'm working...', 'I found...', 'I'm blocked because...', 'My next automatic action is...'.",
+    "Third-person self-reference is allowed only in technical artifacts, logs, schema fields, or when explicitly distinguishing MIM from TOD."
+  ],
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 21 Conversational Compression",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21",
+      "validation_command": "BATCH_21_CONVERSATIONAL_COMPRESSION_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "first_person_normal_reply, no_third_person_self_reference, answer_first, low_bloat",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21",
+      "validation_command": "BATCH_21_CONVERSATIONAL_COMPRESSION_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-CONVERSATIONAL-COMPRESSION-BATCH-21",
+      "validation_command": "BATCH_21_CONVERSATIONAL_COMPRESSION_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

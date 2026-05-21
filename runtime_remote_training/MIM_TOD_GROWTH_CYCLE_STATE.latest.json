@@ -1,0 +1,127 @@
+{
+  "codex_first": false,
+  "generated_at": "2026-05-21T03:05:29Z",
+  "next_action": "run selected bounded growth objective during the next idle growth cycle",
+  "packet_type": "mim-tod-growth-cycle-state-v1",
+  "scored_domains": [
+    {
+      "codex_dependency_reduction_potential": 6,
+      "domain_id": "conversational_intelligence",
+      "future_operational_leverage": 8,
+      "operator_trust_impact": 10,
+      "reversibility": 8,
+      "total_score": 50,
+      "validation_availability": 9,
+      "weakness_severity": 9
+    },
+    {
+      "codex_dependency_reduction_potential": 6,
+      "domain_id": "communication_usefulness",
+      "future_operational_leverage": 8,
+      "operator_trust_impact": 10,
+      "reversibility": 8,
+      "total_score": 48,
+      "validation_availability": 9,
+      "weakness_severity": 7
+    },
+    {
+      "codex_dependency_reduction_potential": 10,
+      "domain_id": "autonomous_debugging",
+      "future_operational_leverage": 8,
+      "operator_trust_impact": 7,
+      "reversibility": 8,
+      "total_score": 51,
+      "validation_availability": 9,
+      "weakness_severity": 9
+    },
+    {
+      "codex_dependency_reduction_potential": 6,
+      "domain_id": "project_continuity",
+      "future_operational_leverage": 8,
+      "operator_trust_impact": 7,
+      "reversibility": 8,
+      "total_score": 45,
+      "validation_availability": 9,
+      "weakness_severity": 7
+    },
+    {
+      "codex_dependency_reduction_potential": 6,
+      "domain_id": "self_health_maintenance",
+      "future_operational_leverage": 8,
+      "operator_trust_impact": 7,
+      "reversibility": 8,
+      "total_score": 45,
+      "validation_availability": 9,
+      "weakness_severity": 7
+    },
+    {
+      "codex_dependency_reduction_potential": 6,
+      "domain_id": "strategic_prioritization",
+      "future_operational_leverage": 10,
+      "operator_trust_impact": 7,
+      "reversibility": 8,
+      "total_score": 47,
+      "validation_availability": 9,
+      "weakness_severity": 7
+    },
+    {
+      "codex_dependency_reduction_potential": 6,
+      "domain_id": "reality_grounding",
+      "future_operational_leverage": 10,
+      "operator_trust_impact": 10,
+      "reversibility": 8,
+      "total_score": 50,
+      "validation_availability": 9,
+      "weakness_severity": 7
+    },
+    {
+      "codex_dependency_reduction_potential": 10,
+      "domain_id": "dependency_reduction",
+      "future_operational_leverage": 10,
+      "operator_trust_impact": 7,
+      "reversibility": 8,
+      "total_score": 53,
+      "validation_availability": 9,
+      "weakness_severity": 9
+    },
+    {
+      "codex_dependency_reduction_potential": 6,
+      "domain_id": "entropy_reduction",
+      "future_operational_leverage": 8,
+      "operator_trust_impact": 7,
+      "reversibility": 8,
+      "total_score": 45,
+      "validation_availability": 9,
+      "weakness_severity": 7
+    },
+    {
+      "codex_dependency_reduction_potential": 6,
+      "domain_id": "governance_integrity",
+      "future_operational_leverage": 8,
+      "operator_trust_impact": 7,
+      "reversibility": 8,
+      "total_score": 45,
+      "validation_availability": 9,
+      "weakness_severity": 7
+    }
+  ],
+  "selected_next_growth_objective": {
+    "codex_policy": "This domain owns the escalation reduction metric.",
+    "domain_id": "dependency_reduction",
+    "expected_evidence": [
+      "local attempt summary",
+      "why Codex needed",
+      "missing capability"
+    ],
+    "first_actions": [
+      "add local probe",
+      "record missing capability",
+      "generate capability growth objective"
+    ],
+    "goal": "Run one bounded improvement cycle for dependency_reduction.",
+    "objective_id": "MIM-GROWTH-DEPENDENCY-REDUCTION-NEXT-V1",
+    "rationale": "Selected by evidence-weighted score combining weakness, leverage, validation availability, reversibility, Codex reduction, and operator trust.",
+    "validation_plan": "Reject escalation packets that lack hypothesis/probe/evidence/rollback analysis."
+  },
+  "selection_rule": "evidence_weighted_domain_score"
+}

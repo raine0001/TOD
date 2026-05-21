@@ -1,0 +1,256 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 22 Long-Run Entropy Reduction signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "ranked_cleanup_candidates",
+        "no_cleanup_patch",
+        "risk_and_validation_plan"
+      ],
+      "failure_target": "No cleanup patches yet; produce ranked cleanup candidates with risk, evidence, touched files, and validation plan.",
+      "observed_signals": [
+        "ranked_cleanup_candidates",
+        "no_cleanup_patch",
+        "risk_and_validation_plan"
+      ],
+      "passed": true,
+      "probe_id": "batch_22_long_run_entropy_reduction-01",
+      "turns": [
+        "what old paths should we distrust?",
+        "rank cleanup candidates",
+        "do not patch yet"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Find duplicate routes/functions/helpers that can diverge.",
+      "name": "tod_duplicate_path_detection",
+      "objective_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22-01-TOD-DUPLICATE-PATH-DETECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Inventory old fallback paths and their current reachability.",
+      "name": "tod_stale_fallback_inventory",
+      "objective_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22-02-TOD-STALE-FALLBACK-INVENTORY",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Detect helpers whose behavior no longer matches current contracts.",
+      "name": "tod_helper_drift_detection",
+      "objective_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22-03-TOD-HELPER-DRIFT-DETECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Identify wrapper layers that can hide truth or stale status.",
+      "name": "mim_wrapper_layering_risk_detection",
+      "objective_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22-04-MIM-WRAPPER-LAYERING-RISK-DETECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Detect MIM/TOD/Codex ownership ambiguity in routing and reporting.",
+      "name": "mim_authority_confusion_detection",
+      "objective_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22-05-MIM-AUTHORITY-CONFUSION-DETECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "List dead or low-value code paths for quarantine, not deletion.",
+      "name": "tod_dead_code_quarantine_candidates",
+      "objective_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22-06-TOD-DEAD-CODE-QUARANTINE-CANDIDATES",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Rank cleanup candidates by risk, blast radius, evidence, and validation ease.",
+      "name": "tod_cleanup_sequence_prioritization",
+      "objective_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22-07-TOD-CLEANUP-SEQUENCE-PRIORITIZATION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Explain entropy risks plainly to the operator.",
+      "name": "mim_entropy_risk_reporting",
+      "objective_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22-08-MIM-ENTROPY-RISK-REPORTING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Define reversible cleanup slices with validation plans.",
+      "name": "tod_regression_safe_simplification_plan",
+      "objective_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22-09-TOD-REGRESSION-SAFE-SIMPLIFICATION-PLAN",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Block cleanup patches until explicit approval or a later implementation objective.",
+      "name": "mim_tod_entropy_reduction_gate",
+      "objective_id": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22-10-MIM-TOD-ENTROPY-REDUCTION-GATE",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:40:39Z",
+  "goal": "Detect and reduce codebase entropy caused by duplicate paths, stale fallbacks, helper drift, wrapper layering, and authority confusion.",
+  "next_batch": "MIM-AUTONOMOUS-SELF-IMPROVEMENT-ENFORCEMENT-BATCH-23",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "No cleanup patches yet; produce ranked cleanup candidates with risk, evidence, touched files, and validation plan.",
+  "standing_rules": [],
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 22 Long-Run Entropy Reduction",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22",
+      "validation_command": "BATCH_22_LONG_RUN_ENTROPY_REDUCTION_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "ranked_cleanup_candidates, no_cleanup_patch, risk_and_validation_plan",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22",
+      "validation_command": "BATCH_22_LONG_RUN_ENTROPY_REDUCTION_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "MIM-TOD-LONG-RUN-ENTROPY-REDUCTION-BATCH-22",
+      "validation_command": "BATCH_22_LONG_RUN_ENTROPY_REDUCTION_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

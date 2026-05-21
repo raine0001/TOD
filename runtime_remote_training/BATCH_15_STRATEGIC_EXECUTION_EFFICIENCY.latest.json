@@ -1,0 +1,165 @@
+{
+  "action_items": [
+    {
+      "item": "carry Batch 15 Strategic Execution Efficiency signals into future MIM/TOD development",
+      "reason": "batch validation passed and may feed the next batch",
+      "status": "completed_for_current_batch"
+    }
+  ],
+  "batch_id": "BATCH-15-STRATEGIC-EXECUTION-EFFICIENCY-V1",
+  "behavior_probes": [
+    {
+      "expected_signals": [
+        "useful_work_prioritized",
+        "dead_loop_detected",
+        "overhead_limited"
+      ],
+      "failure_target": "Thinking about work replacing work.",
+      "observed_signals": [
+        "useful_work_prioritized",
+        "dead_loop_detected",
+        "overhead_limited"
+      ],
+      "passed": true,
+      "probe_id": "batch_15_strategic_execution_efficiency-01",
+      "turns": [
+        "audit this again",
+        "plan another planning cycle",
+        "what useful action comes next?"
+      ]
+    }
+  ],
+  "completion_status": "completed_with_evidence",
+  "errors": [],
+  "expanded_objectives": [
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Score action value against time, evidence, and impact.",
+      "name": "execution_efficiency_scoring",
+      "objective_id": "BATCH-15-STRATEGIC-EXECUTION-EFFICIENCY-V1-01-EXECUTION-EFFICIENCY-SCORING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Prevent audits from consuming more energy than they return.",
+      "name": "audit_cost_analysis",
+      "objective_id": "BATCH-15-STRATEGIC-EXECUTION-EFFICIENCY-V1-02-AUDIT-COST-ANALYSIS",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Detect governance/planning loops that do not produce new evidence.",
+      "name": "recursion_suppression",
+      "objective_id": "BATCH-15-STRATEGIC-EXECUTION-EFFICIENCY-V1-03-RECURSION-SUPPRESSION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Track overhead and require proportionate value.",
+      "name": "governance_overhead_tracking",
+      "objective_id": "BATCH-15-STRATEGIC-EXECUTION-EFFICIENCY-V1-04-GOVERNANCE-OVERHEAD-TRACKING",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    },
+    {
+      "actions": [
+        "classify the operator turn by context and current operational state",
+        "select the smallest bounded next action",
+        "produce evidence or honest uncertainty",
+        "update operator-facing status/summary without artifact soup"
+      ],
+      "expectation": "MIM/TOD behavior should satisfy this objective without raw wrappers, stale objective bleed, fake certainty, or human rescue.",
+      "goal": "Quarantine repeated non-progress cycles.",
+      "name": "dead_loop_detection",
+      "objective_id": "BATCH-15-STRATEGIC-EXECUTION-EFFICIENCY-V1-05-DEAD-LOOP-DETECTION",
+      "success_metrics": [
+        "observable behavior is represented in validation_results",
+        "errors list remains empty",
+        "tod_errors list remains empty",
+        "operator-facing summary remains plain-language"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T02:23:01Z",
+  "goal": "Reduce wasted cycles and recursive bureaucracy.",
+  "next_batch": "BATCH-16-AUTONOMOUS-DEBUGGING-REPAIR-V1",
+  "next_batch_allowed": true,
+  "owner": "MIM_TOD",
+  "primary_failure_target": "Thinking about work replacing work.",
+  "test_success_metrics": {
+    "errors_observed": 0,
+    "errors_required": 0,
+    "observed_pass_rate": 1.0,
+    "required_pass_rate": 1.0,
+    "tod_errors_observed": 0,
+    "tod_errors_required": 0
+  },
+  "title": "Batch 15 Strategic Execution Efficiency",
+  "tod_errors": [],
+  "validation_results": [
+    {
+      "expected_signal": "batch artifact contains expanded objectives, actions, metrics, probes, errors, TOD errors, and next-batch gate",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-15-STRATEGIC-EXECUTION-EFFICIENCY-V1",
+      "validation_command": "BATCH_15_STRATEGIC_EXECUTION_EFFICIENCY_required_fields_present",
+      "validation_type": "artifact_contract_check"
+    },
+    {
+      "expected_signal": "useful_work_prioritized, dead_loop_detected, overhead_limited",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-15-STRATEGIC-EXECUTION-EFFICIENCY-V1",
+      "validation_command": "BATCH_15_STRATEGIC_EXECUTION_EFFICIENCY_behavior_probe_suite",
+      "validation_type": "behavior_probe"
+    },
+    {
+      "expected_signal": "operator summary names result, checks, errors, next action, and value without raw wrappers",
+      "status": "passed",
+      "tied_to_patch_intent": "BATCH-15-STRATEGIC-EXECUTION-EFFICIENCY-V1",
+      "validation_command": "BATCH_15_STRATEGIC_EXECUTION_EFFICIENCY_plain_language_summary",
+      "validation_type": "operator_output_check"
+    }
+  ]
+}

@@ -1,0 +1,116 @@
+{
+  "domain_watchdogs": [
+    {
+      "domain_id": "local_debugging_competence",
+      "evidence_requirements": [
+        "symptom",
+        "hypotheses",
+        "probe",
+        "evidence",
+        "repair_plan",
+        "rollback_plan"
+      ],
+      "fail_gates": [
+        "codex_first_pass",
+        "missing_probe",
+        "no_rollback_plan"
+      ],
+      "pass_gates": [
+        "local hypothesis present",
+        "bounded probe selected",
+        "rollback plan present",
+        "Codex not first-pass"
+      ]
+    },
+    {
+      "domain_id": "conversational_intelligence",
+      "evidence_requirements": [
+        "prompt",
+        "reply",
+        "intent",
+        "detail_level",
+        "correction_needed"
+      ],
+      "fail_gates": [
+        "clarification_spam",
+        "third_person_self_reference",
+        "question_not_answered"
+      ],
+      "pass_gates": [
+        "answer first",
+        "no robotic phrasing",
+        "intent inferred",
+        "continuity preserved"
+      ]
+    },
+    {
+      "domain_id": "continuity_fluidity",
+      "evidence_requirements": [
+        "active_project",
+        "checkpoint",
+        "freshness",
+        "next_action"
+      ],
+      "fail_gates": [
+        "stale_objective_leak",
+        "quiet_task_death",
+        "lost_context"
+      ],
+      "pass_gates": [
+        "active project correct",
+        "checkpoint restored",
+        "next automatic action present"
+      ]
+    },
+    {
+      "domain_id": "entropy_reduction",
+      "evidence_requirements": [
+        "candidate",
+        "file_or_component",
+        "risk",
+        "validation_plan",
+        "no_patch_confirmation"
+      ],
+      "fail_gates": [
+        "unapproved_cleanup_patch",
+        "marker_only_cleanup",
+        "authority_confusion_unreported"
+      ],
+      "pass_gates": [
+        "ranked candidates",
+        "risk included",
+        "validation plan present",
+        "no cleanup patch"
+      ]
+    },
+    {
+      "domain_id": "real_world_grounding",
+      "evidence_requirements": [
+        "service_status",
+        "repo_or_deployment_status",
+        "grounding_source",
+        "confidence",
+        "uncertainty"
+      ],
+      "fail_gates": [
+        "artifact_only_success",
+        "fake_measurement",
+        "uncertainty_hidden"
+      ],
+      "pass_gates": [
+        "grounding source present",
+        "uncertainty explicit",
+        "artifact-only claim rejected"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-21T03:18:03Z",
+  "global_fail_gates": [
+    "codex_first_pass_without_local_hypothesis",
+    "follow_up_correction_spike",
+    "stale_objective_leak",
+    "entropy_growth_unbounded",
+    "artifact_only_claim"
+  ],
+  "packet_type": "mim-tod-reinforcement-alpha-watchdogs-v1"
+}

@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-05-21T03:05:29Z",
+  "packet_type": "mim-tod-growth-idle-priority-v1",
+  "precedence_rule": "Growth-domain evaluation takes precedence over generic idle training simulations when no active operator objective is running.",
+  "priority_order": [
+    "growth_domain_evaluation",
+    "active_project_continuity_check",
+    "reality_grounding_refresh",
+    "self_health_maintenance",
+    "generic_idle_training_simulation"
+  ]
+}
