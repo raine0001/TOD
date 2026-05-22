@@ -4,7 +4,7 @@
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
   "status": "mitigated_with_evidence",
   "success": true,
-  "problem": "Wake listener repeatedly answered itself after audible playback. The last bad interaction was promoted from transcript 'oh man'.",
+  "problem": "Wake listener repeatedly answered itself after audible playback. Bad interactions were promoted from weak transcripts including 'oh man', 'we have accomplished quite a bit', and 'to a while men to'.",
   "changes": [
     {
       "file": "runtime_remote_training/remote_scripts/mim_wake_listen_loop.py",
@@ -17,6 +17,14 @@
     {
       "file": "runtime_remote_training/remote_systemd/mim-wake-listener.service",
       "change": "Set MIM_WAKE_COOLDOWN_SECONDS=45 for the user service."
+    },
+    {
+      "file": "runtime_remote_training/remote_scripts/mim_wake_listen_loop.py",
+      "change": "Removed broad probable-wake guessing and narrowed wake aliases so random transcripts like 'men' do not trigger responses."
+    },
+    {
+      "file": "runtime_remote_training/remote_scripts/mim_wake_listen_loop.py",
+      "change": "Changed acknowledgement to voice-only playback and removed the three-tone preamble from generated response WAVs."
     }
   ],
   "verification": {
@@ -24,11 +32,12 @@
     "service_active_after_restart": true,
     "latest_listener_status": "listening",
     "wake_phrase_detected_after_quiet_interval": false,
+    "quiet_interval_seconds": 55,
     "latest_status_artifact": "runtime/shared/MIM_WAKE_LISTENER_STATUS.latest.json"
   },
   "training_lesson": {
     "lesson_id": "MIM-WAKE-SELF-PLAYBACK-GUARD",
-    "rule": "Do not treat ambiguous post-playback recognition fragments as wake intent unless a strong wake phrase or operator-directed phrase is present.",
-    "future_recovery_action": "When repeated wake responses occur, inspect the last transcript, remove weak fallback matches, increase cooldown, and verify status remains listening after one quiet interval."
+    "rule": "Do not treat ambiguous recognition fragments as wake intent. Wake response must come from explicit wake language, not generic speech, volume, or weak phonetic aliases.",
+    "future_recovery_action": "When repeated wake responses occur, inspect the last transcript and wake transcript, remove weak fallback matches, disable guess-based wake promotion, and verify status remains listening after at least one cooldown interval."
   }
 }

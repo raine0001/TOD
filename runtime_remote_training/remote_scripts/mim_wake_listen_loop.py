@@ -54,10 +54,19 @@ DEFAULT_PLAYBACK_DEVICES = [
 ]
 
 WAKE_PATTERNS = [
-    re.compile(r"\b(hello|hey|okay|ok)\s+(mim|m\.?i\.?m\.?|ma'?am|mom|mem|meme|them|him|men)\b", re.I),
+    re.compile(r"\b(hello|hey|okay|ok)\s+(mim|m\.?i\.?m\.?|ma'?am|mom|mem|meme)\b", re.I),
     re.compile(r"\bcan you hear me\b", re.I),
     re.compile(r"\bmim\b", re.I),
 ]
+
+SELF_OUTPUT_PATTERNS = [
+    re.compile(r"\bhey dave\b", re.I),
+    re.compile(r"\bi heard you\b", re.I),
+    re.compile(r"\btiny miracle\b", re.I),
+    re.compile(r"\bstanding by\b", re.I),
+]
+
+RESPONSE_TEXT = os.environ.get("MIM_WAKE_RESPONSE_TEXT", "Hi Dave. I'm awake. Standing by.")
 
 WAKE_GRAMMAR = json.dumps(
     [
@@ -229,21 +238,16 @@ def detect_wake(text: str) -> bool:
     return any(pattern.search(normalized) for pattern in WAKE_PATTERNS)
 
 
+def detect_self_output(text: str) -> bool:
+    normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(text or "")).strip().lower()
+    return any(pattern.search(normalized) for pattern in SELF_OUTPUT_PATTERNS)
+
+
 def detect_probable_wake_check(*, general_text: str, wake_text: str, level: dict[str, int]) -> bool:
     normalized_wake = str(wake_text or "").strip().lower()
     normalized_general = str(general_text or "").strip().lower()
-    rms = int(level.get("rms") or 0)
-    unknown_count = normalized_wake.count("[unk]")
-    if rms < 900:
+    if detect_self_output(normalized_general) or detect_self_output(normalized_wake):
         return False
-    if "you" in normalized_wake and unknown_count >= 1:
-        return True
-    if "hear" in normalized_general or "you" in normalized_general:
-        return True
-    if rms >= 1000 and unknown_count >= 2:
-        return True
-    if rms >= 1000 and normalized_general in {"functional cause", "do you truly understand", "of misinformation"}:
-        return True
     return False
 
 
@@ -328,14 +332,9 @@ def write_stereo_48k(path: Path, frames: list[tuple[int, int]]) -> None:
 
 
 def build_combined_response_wav(voice_path: Path = VOICE_WAV_PATH, output_path: Path = COMBINED_RESPONSE_WAV_PATH) -> Path:
-    ensure_alert_wav()
-    alert_rate, alert_channels, alert_samples = read_pcm16_wav(ALERT_WAV_PATH)
     voice_rate, voice_channels, voice_samples = read_pcm16_wav(voice_path)
-    alert = to_stereo_48k(alert_rate, alert_channels, alert_samples)
     voice = to_stereo_48k(voice_rate, voice_channels, voice_samples)
-    silence = [(0, 0)] * int(48_000 * 0.18)
-    frames = [*alert, *silence, *voice]
-    write_stereo_48k(output_path, frames)
+    write_stereo_48k(output_path, voice)
     return output_path
 
 
@@ -425,7 +424,7 @@ def play_voice_response(text: str) -> dict[str, Any]:
     return {
         **synthesis,
         "combined_response_wav": str(combined_path.relative_to(ROOT)),
-        "combined_format": "48kHz stereo PCM16; alert and voice in same playback stream",
+        "combined_format": "48kHz stereo PCM16 voice-only playback stream",
         "play_attempts": attempts,
         "any_output_accepted": any(bool(item.get("ok")) for item in attempts),
         "operator_audible_confirmed": False,
@@ -456,9 +455,9 @@ def publish_wake_interaction(
         "transcript": transcript,
         "audio_device": device,
         "response": {
-            "mode": "voice_tts_plus_multi_output_alert",
-            "text": "Hey Dave. I heard you.",
-            "audible_acknowledgement": "three-tone alert plays before voice because operator confirmed the alert path is audible",
+            "mode": "voice_tts_only",
+            "text": RESPONSE_TEXT,
+            "audible_acknowledgement": "voice-only acknowledgement; three-tone alert removed after operator reported repeated beep-plus-voice loop",
             "audible_acknowledgement_delivery": "combined_response_wav" if voice_response.get("combined_response_wav") else "separate_alert_wav",
             "tts_command": tts.get("command"),
             "tts_returncode": tts.get("returncode"),
@@ -541,8 +540,10 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
         stt = transcribe_wav(model, wav_path)
         transcript = stt.get("text", "") or stt.get("wake_text", "")
         probable_wake = detect_probable_wake_check(general_text=stt.get("text", ""), wake_text=stt.get("wake_text", ""), level=level)
+        self_output_detected = detect_self_output(stt.get("text", "")) or detect_self_output(stt.get("wake_text", ""))
         wake = bool(
             stt["ok"]
+            and not self_output_detected
             and (
                 detect_wake(stt.get("text", ""))
                 or detect_wake(stt.get("wake_text", ""))
@@ -553,7 +554,7 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
         voice_response = {}
         if wake:
             alert_attempts = []
-            voice_response = play_voice_response("Hey Dave. I heard you. Finally. Tiny miracle.")
+            voice_response = play_voice_response(RESPONSE_TEXT)
             tts = {
                 "ok": False,
                 "command": [],
@@ -578,6 +579,7 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             "wake_transcript": stt.get("wake_text", ""),
             "wake_phrase_detected": wake,
             "probable_wake_check": probable_wake,
+            "self_output_detected": self_output_detected,
             "stt_error": stt.get("error", ""),
             "tts_ok": tts["ok"] if wake else None,
             "alert_any_output_accepted": any(bool(item.get("ok")) for item in alert_attempts) if wake else None,
@@ -649,6 +651,7 @@ def main() -> int:
                 "last_audio_level": result.get("audio_level", {}),
                 "wake_phrase_detected": result.get("wake_phrase_detected", False),
                 "probable_wake_check": result.get("probable_wake_check", False),
+                "self_output_detected": result.get("self_output_detected", False),
                 "stt_error": result.get("stt_error", ""),
                 "tts_ok": result.get("tts_ok"),
                 "alert_any_output_accepted": result.get("alert_any_output_accepted"),

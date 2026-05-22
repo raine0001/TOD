@@ -9,7 +9,7 @@
         "error": "",
         "max": 32036,
         "ok": true,
-        "rms": 647
+        "rms": 656
       },
       {
         "bytes": 32044,
@@ -17,7 +17,7 @@
         "error": "",
         "max": 32036,
         "ok": true,
-        "rms": 691
+        "rms": 721
       },
       {
         "bytes": 0,
@@ -46,12 +46,12 @@
     ],
     "selection_reason": "first_nonclipped_signal_in_priority_order"
   },
-  "generated_at": "2026-05-22T02:40:00Z",
+  "generated_at": "2026-05-22T02:50:13Z",
   "interaction_artifact": "runtime/shared/MIM_WAKE_WORD_INTERACTION.latest.json",
   "last_audio_level": {
     "bytes": 128044,
     "max": 32000,
-    "rms": 290
+    "rms": 280
   },
   "last_general_transcript": "",
   "last_transcript": "",
@@ -60,6 +60,7 @@
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
   "packet_type": "mim-wake-listener-status-v1",
   "probable_wake_check": false,
+  "self_output_detected": false,
   "status": "listening",
   "stt_error": "",
   "success": true,
