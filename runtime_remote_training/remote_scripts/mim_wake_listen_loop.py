@@ -10,6 +10,8 @@ import tempfile
 import time
 import wave
 import audioop
+import math
+import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,7 @@ MODEL_PATH = Path(os.environ.get("MIM_WAKE_VOSK_MODEL", ROOT / "runtime" / "mode
 STATUS_PATH = SHARED / "MIM_WAKE_LISTENER_STATUS.latest.json"
 INTERACTION_PATH = SHARED / "MIM_WAKE_WORD_INTERACTION.latest.json"
 MEMORY_PATH = SHARED / "MIM_HUMAN_INTERACTION_MEMORY.latest.json"
+ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 
 DEFAULT_DEVICES = [
     "plughw:2,0",
@@ -30,6 +33,16 @@ DEFAULT_DEVICES = [
     "plughw:0,0",
     "plughw:3,0",
     "plughw:3,2",
+]
+
+DEFAULT_PLAYBACK_DEVICES = [
+    "plughw:1,0",
+    "plughw:3,0",
+    "plughw:4,3",
+    "plughw:4,7",
+    "plughw:4,8",
+    "plughw:4,9",
+    "default",
 ]
 
 WAKE_PATTERNS = [
@@ -226,24 +239,72 @@ def speak(text: str) -> dict[str, Any]:
     return run_command(["spd-say", text], timeout=8)
 
 
-def publish_wake_interaction(*, transcript: str, device: str, tts: dict[str, Any]) -> None:
+def playback_devices() -> list[str]:
+    raw = os.environ.get("MIM_WAKE_PLAYBACK_DEVICES", "").strip()
+    if raw:
+        if ";" in raw:
+            return [item.strip() for item in raw.split(";") if item.strip()]
+        return [raw]
+    return DEFAULT_PLAYBACK_DEVICES
+
+
+def ensure_alert_wav(path: Path = ALERT_WAV_PATH) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rate = 48_000
+    duration = 0.35
+    pauses = 0.10
+    tones = [880, 1320, 1760]
+    with wave.open(str(path), "wb") as wav_file:
+        wav_file.setnchannels(2)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(rate)
+        for frequency in tones:
+            for i in range(int(rate * duration)):
+                value = int(22_000 * math.sin(2 * math.pi * frequency * i / rate))
+                wav_file.writeframesraw(struct.pack("<hh", value, value))
+            for _ in range(int(rate * pauses)):
+                wav_file.writeframesraw(struct.pack("<hh", 0, 0))
+    return path
+
+
+def play_alert() -> list[dict[str, Any]]:
+    wav_path = ensure_alert_wav()
+    attempts = []
+    for device in playback_devices():
+        probe = run_command(["timeout", "4", "aplay", "-D", device, str(wav_path)], timeout=6)
+        attempts.append(
+            {
+                "device": device,
+                "ok": probe["ok"],
+                "returncode": probe.get("returncode"),
+                "error": "" if probe["ok"] else probe.get("stderr") or probe.get("stdout") or "aplay_failed",
+            }
+        )
+    return attempts
+
+
+def publish_wake_interaction(*, transcript: str, device: str, tts: dict[str, Any], alert_attempts: list[dict[str, Any]]) -> None:
     generated_at = now_iso()
+    alert_ok = any(bool(item.get("ok")) for item in alert_attempts)
     payload = {
         "packet_type": "mim-wake-word-interaction-v1",
         "generated_at": generated_at,
         "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
         "owner": "MIM",
-        "status": "completed_with_evidence" if tts["ok"] else "blocked_with_evidence",
-        "success": bool(tts["ok"]),
+        "status": "completed_with_evidence" if tts["ok"] or alert_ok else "blocked_with_evidence",
+        "success": bool(tts["ok"] or alert_ok),
         "wake_phrase_detected": True,
         "transcript": transcript,
         "audio_device": device,
         "response": {
-            "mode": "voice_tts",
+            "mode": "voice_tts_plus_multi_output_alert",
             "text": "Hey Dave. I heard you.",
             "tts_command": tts.get("command"),
             "tts_returncode": tts.get("returncode"),
             "tts_error": "" if tts["ok"] else tts.get("stderr") or tts.get("stdout") or "tts_failed",
+            "alert_wav": str(ALERT_WAV_PATH.relative_to(ROOT)),
+            "alert_attempts": alert_attempts,
+            "alert_any_output_accepted": alert_ok,
         },
         "memory_update": {
             "human_name": "Dave",
@@ -274,7 +335,8 @@ def publish_wake_interaction(*, transcript: str, device: str, tts: dict[str, Any
                 "tts_dispatch_mode": "speech-dispatcher async queue; command success means utterance accepted",
                 "tts_returncode": tts.get("returncode"),
                 "tts_error": payload["response"]["tts_error"],
-                "last_interaction_time": generated_at if tts["ok"] else None,
+                "alert_attempts": alert_attempts,
+                "last_interaction_time": generated_at if tts["ok"] or alert_ok else None,
             },
             "memory_records": [
                 {
@@ -292,7 +354,7 @@ def publish_wake_interaction(*, transcript: str, device: str, tts: dict[str, Any
                     "updated_at": generated_at,
                 },
             ],
-            "next_recovery_action": "" if tts["ok"] else "Repair speech-dispatcher or default audio output.",
+            "next_recovery_action": "" if tts["ok"] or alert_ok else "Repair speech-dispatcher or playback output routing.",
         },
     )
 
@@ -325,8 +387,9 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
         )
         tts = {"ok": True, "command": [], "returncode": 0, "stderr": "", "stdout": ""}
         if wake:
+            alert_attempts = play_alert()
             tts = speak("Hey Dave. I heard you.")
-            publish_wake_interaction(transcript=transcript, device=device, tts=tts)
+            publish_wake_interaction(transcript=transcript, device=device, tts=tts, alert_attempts=alert_attempts)
         return {
             "status": "wake_detected" if wake else "listening",
             "success": True,
@@ -339,6 +402,7 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             "probable_wake_check": probable_wake,
             "stt_error": stt.get("error", ""),
             "tts_ok": tts["ok"] if wake else None,
+            "alert_any_output_accepted": any(bool(item.get("ok")) for item in alert_attempts) if wake else None,
             "no_audio_retained": True,
         }
     finally:
@@ -407,6 +471,7 @@ def main() -> int:
                 "probable_wake_check": result.get("probable_wake_check", False),
                 "stt_error": result.get("stt_error", ""),
                 "tts_ok": result.get("tts_ok"),
+                "alert_any_output_accepted": result.get("alert_any_output_accepted"),
                 "no_audio_retained": True,
                 "interaction_artifact": str(INTERACTION_PATH.relative_to(ROOT)) if INTERACTION_PATH.exists() else "",
             },

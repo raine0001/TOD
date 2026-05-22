@@ -1,11 +1,11 @@
 {
   "audio_device": "plughw:2,0",
-  "generated_at": "2026-05-22T02:06:51Z",
+  "generated_at": "2026-05-22T02:13:31Z",
   "memory_update": {
     "human_name": "Dave",
     "human_role": "primary_operator",
     "interaction_type": "wake_word_voice",
-    "last_interaction_time": "2026-05-22T02:06:51Z"
+    "last_interaction_time": "2026-05-22T02:13:31Z"
   },
   "no_audio_retained": true,
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
@@ -18,11 +18,11 @@
       "spd-say",
       "Hey Dave. I heard you."
     ],
-    "tts_error": "TimeoutExpired: Command '['spd-say', 'Hey Dave. I heard you.']' timed out after 8 seconds",
-    "tts_returncode": null
+    "tts_error": "",
+    "tts_returncode": 0
   },
-  "status": "blocked_with_evidence",
-  "success": false,
-  "transcript": "really awful metropolis you troubleshooting because everything",
+  "status": "completed_with_evidence",
+  "success": true,
+  "transcript": "oh man",
   "wake_phrase_detected": true
 }

@@ -1,0 +1,107 @@
+{
+  "baseline": {
+    "bytes": 64000,
+    "max": 10043,
+    "record_error": "Recording WAVE '/tmp/mim_acoustic_baseline.wav' : Signed 16 bit Little Endian, Rate 16000 Hz, Mono\n",
+    "record_returncode": 0,
+    "rms": 1272
+  },
+  "generated_at": "2026-05-22T02:17:55Z",
+  "likely_audible_outputs": [],
+  "mic_device": "plughw:2,0",
+  "next_recovery_action": "Use an output with positive acoustic loopback delta, or attach/select a known speaker if none are detected.",
+  "packet_type": "mim-audio-output-acoustic-loopback-probe-v1",
+  "results": [
+    {
+      "output_device": "plughw:1,0",
+      "play_error": "Playing WAVE '/home/testpilot/mim/runtime/shared/MIM_WAKE_ALERT.wav' : Signed 16 bit Little Endian, Rate 48000 Hz, Stereo\n",
+      "play_returncode": 0,
+      "record_error": "Recording WAVE '/tmp/mim_acoustic_plughw_1_0.wav' : Signed 16 bit Little Endian, Rate 16000 Hz, Mono\n",
+      "record_level": {
+        "bytes": 96000,
+        "max": 10432,
+        "rms": 1405
+      },
+      "record_returncode": 0,
+      "rms_delta_from_baseline": 133
+    },
+    {
+      "output_device": "plughw:3,0",
+      "play_error": "aplay: main:834: audio open error: Device or resource busy\n",
+      "play_returncode": 1,
+      "record_error": "Recording WAVE '/tmp/mim_acoustic_plughw_3_0.wav' : Signed 16 bit Little Endian, Rate 16000 Hz, Mono\n",
+      "record_level": {
+        "bytes": 96000,
+        "max": 12466,
+        "rms": 1232
+      },
+      "record_returncode": 0,
+      "rms_delta_from_baseline": -40
+    },
+    {
+      "output_device": "plughw:4,3",
+      "play_error": "Playing WAVE '/home/testpilot/mim/runtime/shared/MIM_WAKE_ALERT.wav' : Signed 16 bit Little Endian, Rate 48000 Hz, Stereo\n",
+      "play_returncode": 0,
+      "record_error": "Recording WAVE '/tmp/mim_acoustic_plughw_4_3.wav' : Signed 16 bit Little Endian, Rate 16000 Hz, Mono\n",
+      "record_level": {
+        "bytes": 96000,
+        "max": 10276,
+        "rms": 1710
+      },
+      "record_returncode": 0,
+      "rms_delta_from_baseline": 438
+    },
+    {
+      "output_device": "plughw:4,7",
+      "play_error": "Playing WAVE '/home/testpilot/mim/runtime/shared/MIM_WAKE_ALERT.wav' : Signed 16 bit Little Endian, Rate 48000 Hz, Stereo\n",
+      "play_returncode": 0,
+      "record_error": "Recording WAVE '/tmp/mim_acoustic_plughw_4_7.wav' : Signed 16 bit Little Endian, Rate 16000 Hz, Mono\n",
+      "record_level": {
+        "bytes": 96000,
+        "max": 4608,
+        "rms": 375
+      },
+      "record_returncode": 0,
+      "rms_delta_from_baseline": -897
+    },
+    {
+      "output_device": "plughw:4,8",
+      "play_error": "Playing WAVE '/home/testpilot/mim/runtime/shared/MIM_WAKE_ALERT.wav' : Signed 16 bit Little Endian, Rate 48000 Hz, Stereo\n",
+      "play_returncode": 0,
+      "record_error": "Recording WAVE '/tmp/mim_acoustic_plughw_4_8.wav' : Signed 16 bit Little Endian, Rate 16000 Hz, Mono\n",
+      "record_level": {
+        "bytes": 96000,
+        "max": 8548,
+        "rms": 1232
+      },
+      "record_returncode": 0,
+      "rms_delta_from_baseline": -40
+    },
+    {
+      "output_device": "plughw:4,9",
+      "play_error": "Playing WAVE '/home/testpilot/mim/runtime/shared/MIM_WAKE_ALERT.wav' : Signed 16 bit Little Endian, Rate 48000 Hz, Stereo\n",
+      "play_returncode": 0,
+      "record_error": "Recording WAVE '/tmp/mim_acoustic_plughw_4_9.wav' : Signed 16 bit Little Endian, Rate 16000 Hz, Mono\n",
+      "record_level": {
+        "bytes": 96000,
+        "max": 17497,
+        "rms": 1073
+      },
+      "record_returncode": 0,
+      "rms_delta_from_baseline": -199
+    },
+    {
+      "output_device": "default",
+      "play_error": "Playing WAVE '/home/testpilot/mim/runtime/shared/MIM_WAKE_ALERT.wav' : Signed 16 bit Little Endian, Rate 48000 Hz, Stereo\n",
+      "play_returncode": 0,
+      "record_error": "Recording WAVE '/tmp/mim_acoustic_default.wav' : Signed 16 bit Little Endian, Rate 16000 Hz, Mono\n",
+      "record_level": {
+        "bytes": 96000,
+        "max": 8268,
+        "rms": 494
+      },
+      "record_returncode": 0,
+      "rms_delta_from_baseline": -778
+    }
+  ]
+}

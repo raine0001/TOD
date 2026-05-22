@@ -1,0 +1,53 @@
+{
+  "alert_wav": "runtime/shared/MIM_WAKE_ALERT.wav",
+  "any_output_accepted": true,
+  "attempts": [
+    {
+      "device": "plughw:1,0",
+      "error": "",
+      "ok": true,
+      "returncode": 0
+    },
+    {
+      "device": "plughw:3,0",
+      "error": "aplay: main:834: audio open error: Device or resource busy\n",
+      "ok": false,
+      "returncode": 1
+    },
+    {
+      "device": "plughw:4,3",
+      "error": "",
+      "ok": true,
+      "returncode": 0
+    },
+    {
+      "device": "plughw:4,7",
+      "error": "",
+      "ok": true,
+      "returncode": 0
+    },
+    {
+      "device": "plughw:4,8",
+      "error": "",
+      "ok": true,
+      "returncode": 0
+    },
+    {
+      "device": "plughw:4,9",
+      "error": "",
+      "ok": true,
+      "returncode": 0
+    },
+    {
+      "device": "default",
+      "error": "",
+      "ok": true,
+      "returncode": 0
+    }
+  ],
+  "generated_at": "2026-05-22T02:15:49Z",
+  "next_recovery_action": "If no alert was audible despite accepted devices, connect/select a known speaker or test HDMI monitor audio from the OS desktop.",
+  "operator_confirmation_required": true,
+  "packet_type": "mim-audio-output-probe-v1",
+  "probe": "multi_output_alert_wav"
+}
