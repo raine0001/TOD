@@ -45,16 +45,16 @@
     ],
     "selection_reason": "first_nonclipped_signal_in_priority_order"
   },
-  "generated_at": "2026-05-22T02:01:43Z",
+  "generated_at": "2026-05-22T02:07:38Z",
   "interaction_artifact": "runtime/shared/MIM_WAKE_WORD_INTERACTION.latest.json",
   "last_audio_level": {
     "bytes": 128044,
     "max": 32000,
-    "rms": 309
+    "rms": 1651
   },
-  "last_general_transcript": "",
-  "last_transcript": "",
-  "last_wake_transcript": "",
+  "last_general_transcript": "today has no bearing on were restarting",
+  "last_transcript": "today has no bearing on were restarting",
+  "last_wake_transcript": "[unk]",
   "no_audio_retained": true,
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
   "packet_type": "mim-wake-listener-status-v1",

@@ -1,0 +1,11 @@
+{
+  "audio_alsa_device": "plughw:3,0",
+  "audio_output_method": "alsa",
+  "generated_at": "2026-05-22T02:07:19Z",
+  "known_issue": "TTS command acceptance does not prove physical audibility; operator confirmation still required.",
+  "next_recovery_action": "If operator does not hear audio on plughw:3,0, test HDMI outputs or attach/select a known lab speaker.",
+  "packet_type": "mim-audio-output-route-status-v1",
+  "status": "configured_with_evidence",
+  "test_utterance": "Dave, MIM audio route test two on the analog output.",
+  "tts_backend": "speech-dispatcher/espeak-ng"
+}
