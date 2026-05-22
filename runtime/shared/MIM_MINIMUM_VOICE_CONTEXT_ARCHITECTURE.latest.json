@@ -1,0 +1,100 @@
+{
+  "packet_type": "mim-minimum-voice-context-architecture-v1",
+  "generated_at": "2026-05-22T03:25:00Z",
+  "objective_id": "MIM-MINIMUM-VOICE-CONTEXT-LOOP-V1",
+  "owner": "MIM",
+  "status": "objective_defined",
+  "success": true,
+  "principle": "Tool sets are replaceable. The durable requirement is context flow across perception, cognition, and synthesis.",
+  "goal": "MIM continuously understands relevant activity in her lab space and responds appropriately using a layered voice context loop.",
+  "minimum_layers": [
+    {
+      "layer": "perception",
+      "component": "voice_activity_detection",
+      "responsibility": "Detect when human speech starts and stops, suppressing background hum, breath, handling noise, and non-speech events.",
+      "success_signal": "MIM can segment human utterances into precise speech windows before STT.",
+      "example_2026_options": [
+        "Silero VAD v5",
+        "DeepFilterNet"
+      ],
+      "implementation_note": "Specific VAD tool is not the point; the behavior is required."
+    },
+    {
+      "layer": "perception",
+      "component": "speech_to_text",
+      "responsibility": "Convert speech windows into low-latency text while preserving accents, phrasing, and local lab context.",
+      "success_signal": "MIM publishes transcript, confidence/error evidence, and timing for each utterance.",
+      "example_2026_options": [
+        "Parakeet TDT",
+        "Whisper"
+      ],
+      "implementation_note": "Current Vosk path is acceptable only as a proving path; it should be replaceable."
+    },
+    {
+      "layer": "cognition",
+      "component": "context_model",
+      "responsibility": "Track conversation state, lab state, operator identity, memory, current objective, and whether MIM should respond or silently observe.",
+      "success_signal": "MIM routes each utterance to one of: respond, ask clarification, remember, trigger objective/tool, or observe silently.",
+      "example_2026_options": [
+        "Qwen3-Instruct",
+        "Llama 3.3",
+        "GPT-4o"
+      ],
+      "implementation_note": "The LLM/tool choice is secondary to continuity of context and correct response policy."
+    },
+    {
+      "layer": "synthesis",
+      "component": "text_to_speech",
+      "responsibility": "Speak MIM's response with natural timing, useful affect, and consistent persona.",
+      "success_signal": "MIM's spoken response is audible, non-repeating, and appropriate to context.",
+      "example_2026_options": [
+        "Kokoro-82M",
+        "Qwen3-TTS"
+      ],
+      "implementation_note": "Current Piper voice is a placeholder; voice quality and persona remain improvement targets."
+    }
+  ],
+  "response_policy": {
+    "wake_word_required": false,
+    "mim_name_is_not_trigger": true,
+    "lab_context_default": "All conversation in the lab is contextually relevant to MIM unless classified as background/noise/self-output.",
+    "respond_when": [
+      "human asks a direct question",
+      "human issues a lab-relevant request",
+      "human provides memory-worthy context",
+      "MIM detects uncertainty and needs clarification",
+      "MIM detects safety, equipment, or objective-relevant change"
+    ],
+    "observe_silently_when": [
+      "audio is non-speech",
+      "transcript is low confidence or empty",
+      "speech is MIM's own output",
+      "conversation is background without actionable or relational relevance"
+    ]
+  },
+  "required_next_objectives": [
+    {
+      "objective_id": "MIM-VAD-SPEECH-SEGMENTATION-V1",
+      "goal": "Add explicit VAD before STT so MIM responds to complete utterances rather than fixed-length chunks."
+    },
+    {
+      "objective_id": "MIM-STT-CONTEXT-UPGRADE-V1",
+      "goal": "Evaluate and bind a stronger low-latency STT path while keeping current evidence artifacts."
+    },
+    {
+      "objective_id": "MIM-LAB-CONTEXT-ROUTER-V1",
+      "goal": "Replace keyword-only voice routing with context-aware response policy and objective dispatch."
+    },
+    {
+      "objective_id": "MIM-NATURAL-TTS-PERSONA-V1",
+      "goal": "Upgrade voice synthesis quality while preserving the established MIM persona."
+    }
+  ],
+  "current_gap_assessment": {
+    "vad": "missing_explicit_layer; current fixed 4-second capture windows are a prototype only",
+    "stt": "working_but_weak; Vosk hears lab speech but has errors and no contextual adaptation",
+    "cognition": "partial; current router is keyword-based and not yet a true context model",
+    "tts": "working_placeholder; Piper route is audible but not the desired voice quality/persona"
+  },
+  "definition_of_done": "MIM listens continuously in the lab, segments speech accurately, transcribes it with evidence, maintains conversation/lab context, decides whether to respond, speaks naturally when appropriate, and records every turn without retaining raw audio."
+}
