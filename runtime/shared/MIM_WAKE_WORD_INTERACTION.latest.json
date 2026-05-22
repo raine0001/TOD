@@ -1,11 +1,11 @@
 {
   "audio_device": "plughw:2,0",
-  "generated_at": "2026-05-22T02:28:58Z",
+  "generated_at": "2026-05-22T02:33:28Z",
   "memory_update": {
     "human_name": "Dave",
     "human_role": "primary_operator",
     "interaction_type": "wake_word_voice",
-    "last_interaction_time": "2026-05-22T02:28:58Z"
+    "last_interaction_time": "2026-05-22T02:33:28Z"
   },
   "no_audio_retained": true,
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
@@ -13,52 +13,10 @@
   "packet_type": "mim-wake-word-interaction-v1",
   "response": {
     "alert_any_output_accepted": true,
-    "alert_attempts": [
-      {
-        "device": "plughw:1,0",
-        "error": "aplay: main:834: audio open error: Device or resource busy\n",
-        "ok": false,
-        "returncode": 1
-      },
-      {
-        "device": "plughw:3,0",
-        "error": "aplay: main:834: audio open error: Device or resource busy\n",
-        "ok": false,
-        "returncode": 1
-      },
-      {
-        "device": "plughw:4,3",
-        "error": "",
-        "ok": true,
-        "returncode": 0
-      },
-      {
-        "device": "plughw:4,7",
-        "error": "aplay: main:834: audio open error: Device or resource busy\n",
-        "ok": false,
-        "returncode": 1
-      },
-      {
-        "device": "plughw:4,8",
-        "error": "",
-        "ok": true,
-        "returncode": 0
-      },
-      {
-        "device": "plughw:4,9",
-        "error": "",
-        "ok": true,
-        "returncode": 0
-      },
-      {
-        "device": "default",
-        "error": "",
-        "ok": true,
-        "returncode": 0
-      }
-    ],
+    "alert_attempts": [],
     "alert_wav": "runtime/shared/MIM_WAKE_ALERT.wav",
     "audible_acknowledgement": "three-tone alert plays before voice because operator confirmed the alert path is audible",
+    "audible_acknowledgement_delivery": "combined_response_wav",
     "mode": "voice_tts_plus_multi_output_alert",
     "text": "Hey Dave. I heard you.",
     "tts_command": [
@@ -70,12 +28,14 @@
     "tts_returncode": 0,
     "voice_response": {
       "any_output_accepted": true,
+      "combined_format": "48kHz stereo PCM16; alert and voice in same playback stream",
+      "combined_response_wav": "runtime/shared/MIM_WAKE_COMBINED_RESPONSE.wav",
       "command": [
         "/home/testpilot/mim/.venv/bin/piper",
         "-m",
         "/home/testpilot/mim/runtime/models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx",
         "-i",
-        "/tmp/mim-voice-e48xvidi.txt",
+        "/tmp/mim-voice-2x1q6hmv.txt",
         "-f",
         "/home/testpilot/mim/runtime/shared/MIM_WAKE_VOICE_RESPONSE.wav",
         "--length-scale",
@@ -94,9 +54,9 @@
       "play_attempts": [
         {
           "device": "plughw:1,0",
-          "error": "aplay: main:834: audio open error: Device or resource busy\n",
-          "ok": false,
-          "returncode": 1
+          "error": "",
+          "ok": true,
+          "returncode": 0
         },
         {
           "device": "plughw:3,0",
@@ -142,6 +102,6 @@
   },
   "status": "completed_with_evidence",
   "success": true,
-  "transcript": "payday i heard you finally",
+  "transcript": "hey dave i",
   "wake_phrase_detected": true
 }

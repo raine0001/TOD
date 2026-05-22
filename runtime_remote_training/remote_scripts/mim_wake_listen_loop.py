@@ -27,6 +27,7 @@ INTERACTION_PATH = SHARED / "MIM_WAKE_WORD_INTERACTION.latest.json"
 MEMORY_PATH = SHARED / "MIM_HUMAN_INTERACTION_MEMORY.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
+COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
 PIPER_MODEL_PATH = Path(
     os.environ.get(
         "MIM_VOICE_PIPER_MODEL",
@@ -278,15 +279,82 @@ def ensure_alert_wav(path: Path = ALERT_WAV_PATH) -> Path:
     return path
 
 
+def read_pcm16_wav(path: Path) -> tuple[int, int, list[int]]:
+    with wave.open(str(path), "rb") as wav_file:
+        channels = wav_file.getnchannels()
+        sample_width = wav_file.getsampwidth()
+        rate = wav_file.getframerate()
+        data = wav_file.readframes(wav_file.getnframes())
+    if sample_width != 2:
+        raise ValueError(f"unsupported_sample_width:{sample_width}")
+    samples = list(struct.unpack("<" + "h" * (len(data) // 2), data))
+    return rate, channels, samples
+
+
+def to_stereo_48k(rate: int, channels: int, samples: list[int]) -> list[tuple[int, int]]:
+    if channels == 1:
+        mono = samples
+    else:
+        mono = [int((samples[i] + samples[i + 1]) / 2) for i in range(0, len(samples) - 1, channels)]
+    if rate == 48_000:
+        resampled = mono
+    else:
+        target_len = max(1, int(len(mono) * 48_000 / rate))
+        resampled = []
+        for i in range(target_len):
+            src_pos = i * (len(mono) - 1) / max(1, target_len - 1)
+            left = int(src_pos)
+            right = min(left + 1, len(mono) - 1)
+            frac = src_pos - left
+            value = int(mono[left] * (1 - frac) + mono[right] * frac)
+            resampled.append(value)
+    peak = max((abs(item) for item in resampled), default=1)
+    gain = min(2.2, 28500 / peak) if peak else 1.0
+    stereo = []
+    for sample in resampled:
+        value = max(-30000, min(30000, int(sample * gain)))
+        stereo.append((value, value))
+    return stereo
+
+
+def write_stereo_48k(path: Path, frames: list[tuple[int, int]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as wav_file:
+        wav_file.setnchannels(2)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(48_000)
+        for left, right in frames:
+            wav_file.writeframesraw(struct.pack("<hh", left, right))
+
+
+def build_combined_response_wav(voice_path: Path = VOICE_WAV_PATH, output_path: Path = COMBINED_RESPONSE_WAV_PATH) -> Path:
+    ensure_alert_wav()
+    alert_rate, alert_channels, alert_samples = read_pcm16_wav(ALERT_WAV_PATH)
+    voice_rate, voice_channels, voice_samples = read_pcm16_wav(voice_path)
+    alert = to_stereo_48k(alert_rate, alert_channels, alert_samples)
+    voice = to_stereo_48k(voice_rate, voice_channels, voice_samples)
+    silence = [(0, 0)] * int(48_000 * 0.18)
+    frames = [*alert, *silence, *voice]
+    write_stereo_48k(output_path, frames)
+    return output_path
+
+
 def play_alert() -> list[dict[str, Any]]:
     wav_path = ensure_alert_wav()
     return play_wav_on_outputs(wav_path)
 
 
 def play_wav_on_outputs(wav_path: Path) -> list[dict[str, Any]]:
+    timeout_seconds = 8
+    try:
+        with wave.open(str(wav_path), "rb") as wav_file:
+            duration = wav_file.getnframes() / float(wav_file.getframerate())
+        timeout_seconds = max(8, int(duration) + 4)
+    except Exception:
+        pass
     attempts = []
     for device in playback_devices():
-        probe = run_command(["timeout", "4", "aplay", "-D", device, str(wav_path)], timeout=6)
+        probe = run_command(["timeout", str(timeout_seconds), "aplay", "-D", device, str(wav_path)], timeout=timeout_seconds + 2)
         attempts.append(
             {
                 "device": device,
@@ -350,9 +418,12 @@ def synthesize_voice_response(text: str, output_path: Path = VOICE_WAV_PATH) -> 
 
 def play_voice_response(text: str) -> dict[str, Any]:
     synthesis = synthesize_voice_response(text)
-    attempts = play_wav_on_outputs(VOICE_WAV_PATH) if synthesis["ok"] else []
+    combined_path = build_combined_response_wav() if synthesis["ok"] else COMBINED_RESPONSE_WAV_PATH
+    attempts = play_wav_on_outputs(combined_path) if synthesis["ok"] else []
     return {
         **synthesis,
+        "combined_response_wav": str(combined_path.relative_to(ROOT)),
+        "combined_format": "48kHz stereo PCM16; alert and voice in same playback stream",
         "play_attempts": attempts,
         "any_output_accepted": any(bool(item.get("ok")) for item in attempts),
         "operator_audible_confirmed": False,
@@ -368,8 +439,10 @@ def publish_wake_interaction(
     voice_response: dict[str, Any],
 ) -> None:
     generated_at = now_iso()
-    alert_ok = any(bool(item.get("ok")) for item in alert_attempts)
     voice_ok = bool(voice_response.get("ok") and voice_response.get("any_output_accepted"))
+    alert_ok = any(bool(item.get("ok")) for item in alert_attempts) or bool(
+        voice_response.get("combined_response_wav") and voice_response.get("any_output_accepted")
+    )
     payload = {
         "packet_type": "mim-wake-word-interaction-v1",
         "generated_at": generated_at,
@@ -384,6 +457,7 @@ def publish_wake_interaction(
             "mode": "voice_tts_plus_multi_output_alert",
             "text": "Hey Dave. I heard you.",
             "audible_acknowledgement": "three-tone alert plays before voice because operator confirmed the alert path is audible",
+            "audible_acknowledgement_delivery": "combined_response_wav" if voice_response.get("combined_response_wav") else "separate_alert_wav",
             "tts_command": tts.get("command"),
             "tts_returncode": tts.get("returncode"),
             "tts_error": "" if tts["ok"] else tts.get("stderr") or tts.get("stdout") or "tts_failed",
@@ -476,7 +550,7 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
         tts = {"ok": True, "command": [], "returncode": 0, "stderr": "", "stdout": ""}
         voice_response = {}
         if wake:
-            alert_attempts = play_alert()
+            alert_attempts = []
             voice_response = play_voice_response("Hey Dave. I heard you. Finally. Tiny miracle.")
             tts = speak("Hey Dave. I heard you.")
             publish_wake_interaction(
