@@ -1065,6 +1065,13 @@ def classify_interaction_feedback(transcript: str) -> dict[str, Any]:
     normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
     if not normalized:
         return {"is_feedback": False, "feedback_type": ""}
+    if re.search(r"\b(off the phone|done with (the )?(phone|call)|call is over|you can talk now|back from (the )?call)\b", normalized):
+        return {
+            "is_feedback": True,
+            "feedback_type": "phone_call_ended",
+            "lesson": "When Dave says the call is over, clear phone-call quiet mode and resume normal voice participation.",
+            "addressing_adjustment": "clear_phone_quiet_mode",
+        }
     if re.search(r"\b(i did not say anything|i didn't say anything|didn't say anything|did not say anything)\b", normalized):
         return {
             "is_feedback": True,
@@ -1141,10 +1148,18 @@ def save_interaction_feedback(transcript: str, feedback: dict[str, Any]) -> dict
     if adjustment == "suppress_active_session_until_expiry":
         active_overrides["suppress_active_session_until"] = expires_iso
         active_overrides["suppress_reason"] = feedback.get("feedback_type")
+        if feedback.get("feedback_type") == "not_for_mim_phone_call":
+            active_overrides["phone_quiet_mode"] = True
+            active_overrides["phone_quiet_started_at"] = now_iso()
     elif adjustment == "increase_mim_like_confidence":
         active_overrides["mim_like_reference_correction"] = True
     elif adjustment == "log_false_positive":
         active_overrides["last_false_speech_detection_at"] = now_iso()
+    elif adjustment == "clear_phone_quiet_mode":
+        active_overrides["phone_quiet_mode"] = False
+        active_overrides["phone_quiet_cleared_at"] = now_iso()
+        active_overrides.pop("suppress_active_session_until", None)
+        active_overrides.pop("suppress_reason", None)
     lesson = {
         "generated_at": now_iso(),
         "speaker": "Dave",
@@ -1172,6 +1187,8 @@ def save_interaction_feedback(transcript: str, feedback: dict[str, Any]) -> dict
 
 def learning_suppresses_active_session(learning: dict[str, Any]) -> tuple[bool, str, str]:
     overrides = learning.get("active_overrides") if isinstance(learning.get("active_overrides"), dict) else {}
+    if bool(overrides.get("phone_quiet_mode")):
+        return True, "phone_quiet_mode", str(overrides.get("phone_quiet_started_at") or "")
     until = parse_utc_timestamp(overrides.get("suppress_active_session_until"))
     if until and until > datetime.now(timezone.utc):
         return True, str(overrides.get("suppress_reason") or "operator_feedback"), until.replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -1240,6 +1257,11 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
         confidence = 0.99
         reason = f"operator_feedback_{feedback.get('feedback_type')}"
         action = "learn_from_feedback"
+    elif suppress_active:
+        addressed = False
+        confidence = 0.98
+        reason = f"operator_learning_suppression_{suppress_reason}"
+        action = "observe"
     elif mim_reference:
         addressed = True
         confidence = 0.995
@@ -1320,6 +1342,7 @@ def publish_conversation_control_objective() -> None:
             "policies": [
                 "Treat MIM-like words such as mom, mam, maam, mem, min, and meme as likely references to MIM.",
                 "After MIM is addressed or responds, keep a short active conversation window so follow-ups do not require repeating MIM.",
+                "When the operator says they are on a phone call, enter phone quiet mode until the operator explicitly says the call is over.",
                 "Presume assistant-shaped speech in MIM's lab is addressed to MIM unless fresh scene evidence indicates a human-to-human conversation.",
                 "Observe non-direct ambient speech without sending it to the UI chat brain.",
                 "Ask a short clarification when scene evidence indicates multiple humans and the addressee is ambiguous.",
@@ -1477,7 +1500,9 @@ def build_interaction_feedback_route(transcript: str, feedback: dict[str, Any]) 
     if feedback_type == "mim_name_correction":
         response = "Got it. If I hear mom or something close in here, I'll treat it as MIM unless you correct me."
     elif feedback_type in {"not_for_mim_phone_call", "human_to_human_conversation"}:
-        response = "Understood. I'll stay out of that conversation unless you address me."
+        response = "Understood. I'll stay quiet until you tell me the call is over."
+    elif feedback_type == "phone_call_ended":
+        response = "Got it. I'm back."
     elif feedback_type == "thinking_out_loud":
         response = "Got it. I'll treat that as thinking out loud unless you bring me in."
     elif feedback_type == "not_addressed_to_mim":
