@@ -979,6 +979,17 @@ def load_shared_json(name: str) -> dict[str, Any]:
     return {}
 
 
+def load_runtime_json(relative_path: str) -> dict[str, Any]:
+    path = ROOT / relative_path
+    try:
+        if path.exists():
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            return payload if isinstance(payload, dict) else {}
+    except Exception as exc:
+        return {"_error": f"{type(exc).__name__}: {exc}"}
+    return {}
+
+
 def compact_status(value: Any) -> str:
     text = str(value or "").strip()
     return text if text else "unknown"
@@ -1025,6 +1036,16 @@ def compact_duration(seconds: float | int | None) -> str:
 
 def transcript_words(transcript: str) -> list[str]:
     return re.findall(r"[a-zA-Z0-9']+", str(transcript or "").lower())
+
+
+def normalize_voice_transcript_for_intent(transcript: str) -> str:
+    normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
+    normalized = re.sub(r"\b(ma'?am|mam|mom|mem|men|min|mime)\b", "mim", normalized)
+    normalized = re.sub(r"\btrying\s+on\b", "training on", normalized)
+    normalized = re.sub(r"\btry\s+on\b", "training on", normalized)
+    normalized = re.sub(r"\btaught\s+would\s+be\s+on\b", "training on", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
 
 
 def has_mim_reference(transcript: str) -> bool:
@@ -1471,6 +1492,51 @@ def build_training_time_route() -> dict[str, Any]:
     }
 
 
+def build_training_topic_route() -> dict[str, Any]:
+    status = load_runtime_json("runtime/reports/mim_evolution_continuous_training.latest.json")
+    summary = load_runtime_json("runtime/reports/mim_evolution_training_summary.json")
+    conversation = summary.get("conversation") if isinstance(summary.get("conversation"), dict) else {}
+    plan = status.get("cycle_plan") if isinstance(status.get("cycle_plan"), dict) else {}
+    top_failures = conversation.get("top_failures") if isinstance(conversation.get("top_failures"), list) else []
+    top_tags = [
+        str(item.get("tag") or "").replace("_", " ")
+        for item in top_failures
+        if isinstance(item, dict) and str(item.get("tag") or "").strip()
+    ][:3]
+    profile = status.get("profile") if isinstance(status.get("profile"), dict) else {}
+    label = compact_status(plan.get("label") or profile.get("label"))
+    phase = compact_status(status.get("phase") or status.get("status"))
+    cycle = compact_status(status.get("cycle"))
+    overall = conversation.get("overall") if conversation.get("overall") is not None else plan.get("overall")
+    failures = conversation.get("failure_count") if conversation.get("failure_count") is not None else plan.get("failure_count")
+    scenario_count = conversation.get("scenario_count") if conversation.get("scenario_count") is not None else plan.get("scenario_count")
+    if status:
+        response = (
+            f"I'm training cycle {cycle}: {label}. "
+            f"Phase is {phase}; score is {compact_status(overall)} across {compact_status(scenario_count)} scenarios. "
+            f"Main fixes: {', '.join(top_tags) if top_tags else compact_status(failures) + ' failures'}."
+        )
+        return {
+            "intent": "training_topic_status",
+            "action": "summarize_current_training_topic",
+            "response_text": response[:260],
+            "artifacts": [
+                "runtime/reports/mim_evolution_continuous_training.latest.json",
+                "runtime/reports/mim_evolution_training_summary.json",
+            ],
+            "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_local_training_topic_route"},
+            "fallback_used": True,
+        }
+    return {
+        "intent": "training_topic_status",
+        "action": "training_topic_status_blocked",
+        "response_text": "I do not have a fresh training summary artifact yet. I logged that as a training visibility gap.",
+        "artifacts": ["runtime/reports/mim_evolution_continuous_training.latest.json"],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "training_artifact_missing"},
+        "fallback_used": True,
+    }
+
+
 def build_current_time_route() -> dict[str, Any]:
     now_local = datetime.now(timezone.utc).astimezone(operator_timezone())
     hour = now_local.strftime("%I").lstrip("0") or "0"
@@ -1640,7 +1706,7 @@ def save_turn_state(*, transcript: str, route: dict[str, Any], response_text: st
 
 
 def route_followup(transcript: str) -> dict[str, Any]:
-    normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
+    normalized = normalize_voice_transcript_for_intent(transcript)
     turn_state = load_turn_state()
     previous_topic = str(turn_state.get("current_topic") or "").strip()
     feedback = classify_interaction_feedback(transcript)
@@ -1648,8 +1714,10 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_interaction_feedback_route(transcript, feedback)
     if has_mim_reference(transcript) and len(transcript_words(transcript)) <= 2:
         return build_address_ack_route()
-    if re.search(r"\b(how much time|time left|time.*training|training.*time|current training|your training|what.*working on)\b", normalized):
+    if re.search(r"\b(how much time|time left|time.*training|training.*time)\b", normalized):
         return build_training_time_route()
+    if re.search(r"\b(current training|your training|what.*working on|what.*training\s+on|training.*right now|what.*training)\b", normalized):
+        return build_training_topic_route()
     if re.search(r"\b(what time is it|current time|time now)\b", normalized):
         return build_current_time_route()
     chat_bridge = call_mim_ui_chat(transcript)
