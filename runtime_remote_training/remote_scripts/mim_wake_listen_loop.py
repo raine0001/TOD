@@ -39,6 +39,7 @@ VOICE_FRAGMENT_SUPPRESSION_PATH = SHARED / "MIM_VOICE_FRAGMENT_SUPPRESSION_STATU
 VOICE_CONTROL_OBJECTIVE_PATH = SHARED / "MIM_LAB_CONVERSATION_CONTROL_LAYER_OBJECTIVE.latest.json"
 VOICE_ADDRESSING_DECISION_PATH = SHARED / "MIM_VOICE_ADDRESSING_DECISION.latest.json"
 LAB_CONVERSATION_SCENE_PATH = SHARED / "MIM_LAB_CONVERSATION_SCENE.latest.json"
+VOICE_INTERACTION_LEARNING_PATH = SHARED / "MIM_VOICE_INTERACTION_LEARNING.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -142,6 +143,8 @@ FOLLOWUP_REFERENCE_TOKENS = {
     "those",
     "too",
 }
+
+LEARNING_SUPPRESSION_SECONDS = int(os.environ.get("MIM_VOICE_LEARNING_SUPPRESSION_SECONDS", "180"))
 
 ACTIONABLE_TOKENS = {
     "answer",
@@ -1058,6 +1061,123 @@ def classify_voice_fragment(transcript: str) -> dict[str, Any]:
     return {"is_fragment": False, "reason_code": "actionable_or_contextual_transcript", "word_count": len(words), "words": words}
 
 
+def classify_interaction_feedback(transcript: str) -> dict[str, Any]:
+    normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
+    if not normalized:
+        return {"is_feedback": False, "feedback_type": ""}
+    if re.search(r"\b(i did not say anything|i didn't say anything|didn't say anything|did not say anything)\b", normalized):
+        return {
+            "is_feedback": True,
+            "feedback_type": "false_speech_detection",
+            "lesson": "If Dave reports he did not speak, mark the prior transcript as likely false STT or self/noise capture.",
+            "addressing_adjustment": "log_false_positive",
+        }
+    if re.search(r"\b(i did not say|i didn't say|not mom|didn't say mom|did not say mom).*\b(mim|m\.?i\.?m\.?)\b", normalized) or re.search(
+        r"\bi said\s+(mim|m\.?i\.?m\.?)\b", normalized
+    ):
+        return {
+            "is_feedback": True,
+            "feedback_type": "mim_name_correction",
+            "lesson": "When STT hears mom/mam/min near a direct-address phrase, treat it as likely MIM unless the speaker explicitly says otherwise.",
+            "addressing_adjustment": "increase_mim_like_confidence",
+        }
+    if re.search(r"\b(on the phone|phone call|taking a call|in a call)\b", normalized):
+        return {
+            "is_feedback": True,
+            "feedback_type": "not_for_mim_phone_call",
+            "lesson": "When Dave says he is on the phone, suppress active-session participation unless he explicitly addresses MIM.",
+            "addressing_adjustment": "suppress_active_session_until_expiry",
+        }
+    if re.search(r"\b(me and|i and|we are|we're)\s+([a-z][a-z]+).*\b(talking|having a conversation)\b", normalized) or re.search(
+        r"\b(talking to|talking with)\s+([a-z][a-z]+)\b", normalized
+    ):
+        return {
+            "is_feedback": True,
+            "feedback_type": "human_to_human_conversation",
+            "lesson": "When Dave identifies a human-to-human conversation, observe unless MIM is explicitly addressed.",
+            "addressing_adjustment": "suppress_active_session_until_expiry",
+        }
+    if re.search(r"\b(thinking out loud|thinking outloud|just thinking|talking to myself)\b", normalized):
+        return {
+            "is_feedback": True,
+            "feedback_type": "thinking_out_loud",
+            "lesson": "Thinking-out-loud speech should be observed, not answered, unless MIM is explicitly addressed.",
+            "addressing_adjustment": "suppress_active_session_until_expiry",
+        }
+    if re.search(r"\b(that was not|that wasn't|was not|wasn't).*\b(question|for you|intended for you)\b", normalized):
+        return {
+            "is_feedback": True,
+            "feedback_type": "not_addressed_to_mim",
+            "lesson": "If Dave says the prior utterance was not for MIM or not a question, reduce follow-up confidence for similar ambient statements.",
+            "addressing_adjustment": "suppress_active_session_until_expiry",
+        }
+    return {"is_feedback": False, "feedback_type": ""}
+
+
+def load_interaction_learning() -> dict[str, Any]:
+    data = load_shared_json("MIM_VOICE_INTERACTION_LEARNING.latest.json")
+    if isinstance(data, dict) and data:
+        return data
+    return {
+        "packet_type": "mim-voice-interaction-learning-v1",
+        "generated_at": now_iso(),
+        "objective_id": "MIM-LAB-CONVERSATION-CONTROL-LAYER-V1",
+        "status": "active",
+        "success": True,
+        "lessons": [],
+        "active_overrides": {},
+        "no_audio_retained": True,
+    }
+
+
+def save_interaction_feedback(transcript: str, feedback: dict[str, Any]) -> dict[str, Any]:
+    learning = load_interaction_learning()
+    previous_lessons = learning.get("lessons") if isinstance(learning.get("lessons"), list) else []
+    now_dt = datetime.now(timezone.utc)
+    expires_at = now_dt.timestamp() + max(30, LEARNING_SUPPRESSION_SECONDS)
+    expires_iso = datetime.fromtimestamp(expires_at, timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    active_overrides = learning.get("active_overrides") if isinstance(learning.get("active_overrides"), dict) else {}
+    adjustment = str(feedback.get("addressing_adjustment") or "")
+    if adjustment == "suppress_active_session_until_expiry":
+        active_overrides["suppress_active_session_until"] = expires_iso
+        active_overrides["suppress_reason"] = feedback.get("feedback_type")
+    elif adjustment == "increase_mim_like_confidence":
+        active_overrides["mim_like_reference_correction"] = True
+    elif adjustment == "log_false_positive":
+        active_overrides["last_false_speech_detection_at"] = now_iso()
+    lesson = {
+        "generated_at": now_iso(),
+        "speaker": "Dave",
+        "transcript": transcript,
+        "feedback_type": feedback.get("feedback_type"),
+        "lesson": feedback.get("lesson"),
+        "addressing_adjustment": adjustment,
+        "expires_at": expires_iso if adjustment == "suppress_active_session_until_expiry" else "",
+    }
+    payload = {
+        "packet_type": "mim-voice-interaction-learning-v1",
+        "generated_at": now_iso(),
+        "objective_id": "MIM-LAB-CONVERSATION-CONTROL-LAYER-V1",
+        "status": "updated",
+        "success": True,
+        "last_feedback": lesson,
+        "lessons": (previous_lessons + [lesson])[-50:],
+        "active_overrides": active_overrides,
+        "policy": "Operator corrections are durable learning signals for future voice addressing decisions.",
+        "no_audio_retained": True,
+    }
+    write_json(VOICE_INTERACTION_LEARNING_PATH, payload)
+    return payload
+
+
+def learning_suppresses_active_session(learning: dict[str, Any]) -> tuple[bool, str, str]:
+    overrides = learning.get("active_overrides") if isinstance(learning.get("active_overrides"), dict) else {}
+    until = parse_utc_timestamp(overrides.get("suppress_active_session_until"))
+    if until and until > datetime.now(timezone.utc):
+        return True, str(overrides.get("suppress_reason") or "operator_feedback"), until.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return False, "", ""
+
+
 def build_lab_conversation_scene(transcript: str, vad: dict[str, Any] | None = None, audio_level: dict[str, Any] | None = None) -> dict[str, Any]:
     awareness = load_shared_json("MIM_LAB_AWARENESS_STATUS.latest.json")
     camera = load_shared_json("MIM_LAB_CAMERA_CYCLE_STATUS.latest.json")
@@ -1106,13 +1226,21 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
     words = transcript_words(transcript)
     mim_reference = has_mim_reference(transcript)
     assistant_shape = is_assistant_shaped(transcript)
+    feedback = classify_interaction_feedback(transcript)
+    learning = load_interaction_learning()
+    suppress_active, suppress_reason, suppress_until = learning_suppresses_active_session(learning)
     turn_state = load_turn_state()
     previous_topic = str(turn_state.get("current_topic") or "").strip()
     active_until = parse_utc_timestamp(turn_state.get("active_conversation_until"))
-    active_session = bool(active_until and active_until > datetime.now(timezone.utc))
+    active_session = bool(active_until and active_until > datetime.now(timezone.utc) and not suppress_active)
     followup_reference = bool(set(words).intersection(FOLLOWUP_REFERENCE_TOKENS))
     short_followup = bool(previous_topic and 1 <= len(words) <= 5 and followup_reference and not mim_reference)
-    if mim_reference:
+    if feedback.get("is_feedback"):
+        addressed = True
+        confidence = 0.99
+        reason = f"operator_feedback_{feedback.get('feedback_type')}"
+        action = "learn_from_feedback"
+    elif mim_reference:
         addressed = True
         confidence = 0.995
         reason = "mim_or_mim_like_reference"
@@ -1156,6 +1284,11 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
         "recommended_action": action,
         "mim_reference_detected": mim_reference,
         "assistant_shaped": assistant_shape,
+        "operator_feedback": feedback,
+        "learning_suppressed_active_session": suppress_active,
+        "learning_suppression_reason": suppress_reason,
+        "learning_suppression_until": suppress_until,
+        "learning_artifact": str(VOICE_INTERACTION_LEARNING_PATH.relative_to(ROOT)),
         "active_session": active_session,
         "active_conversation_until": active_until.replace(microsecond=0).isoformat().replace("+00:00", "Z") if active_until else "",
         "short_followup": short_followup,
@@ -1181,6 +1314,7 @@ def publish_conversation_control_objective() -> None:
             "required_outputs": [
                 "MIM_VOICE_ADDRESSING_DECISION.latest.json",
                 "MIM_LAB_CONVERSATION_SCENE.latest.json",
+                "MIM_VOICE_INTERACTION_LEARNING.latest.json",
                 "MIM_WAKE_FOLLOWUP.latest.json",
             ],
             "policies": [
@@ -1189,12 +1323,14 @@ def publish_conversation_control_objective() -> None:
                 "Presume assistant-shaped speech in MIM's lab is addressed to MIM unless fresh scene evidence indicates a human-to-human conversation.",
                 "Observe non-direct ambient speech without sending it to the UI chat brain.",
                 "Ask a short clarification when scene evidence indicates multiple humans and the addressee is ambiguous.",
+                "Treat operator corrections as learning data that can suppress or adjust future addressing decisions.",
             ],
             "success_criteria": [
                 "Every heard lab utterance publishes an addressing decision.",
                 "Every heard lab utterance publishes a conversation scene snapshot.",
                 "Low-content MIM-name utterances are not suppressed as fragments.",
                 "Follow-ups inside the active conversation window are addressed to MIM without repeating her name.",
+                "Operator feedback such as phone-call, thinking-out-loud, not-for-MIM, and name-correction phrases updates the learning artifact.",
                 "Non-addressed ambient speech is logged without a spoken generic clarification.",
             ],
             "no_audio_retained": True,
@@ -1335,6 +1471,32 @@ def build_address_ack_route() -> dict[str, Any]:
     }
 
 
+def build_interaction_feedback_route(transcript: str, feedback: dict[str, Any]) -> dict[str, Any]:
+    learning = save_interaction_feedback(transcript, feedback)
+    feedback_type = str(feedback.get("feedback_type") or "")
+    if feedback_type == "mim_name_correction":
+        response = "Got it. If I hear mom or something close in here, I'll treat it as MIM unless you correct me."
+    elif feedback_type in {"not_for_mim_phone_call", "human_to_human_conversation"}:
+        response = "Understood. I'll stay out of that conversation unless you address me."
+    elif feedback_type == "thinking_out_loud":
+        response = "Got it. I'll treat that as thinking out loud unless you bring me in."
+    elif feedback_type == "not_addressed_to_mim":
+        response = "Understood. I'll log that as not for me."
+    elif feedback_type == "false_speech_detection":
+        response = "Got it. I'll mark that as a false hear."
+    else:
+        response = "Got it. I'll use that feedback for future voice decisions."
+    return {
+        "intent": "voice_interaction_learning_feedback",
+        "action": "learn_from_operator_feedback",
+        "response_text": response[:260],
+        "artifacts": ["runtime/shared/MIM_VOICE_INTERACTION_LEARNING.latest.json"],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_voice_interaction_learning"},
+        "fallback_used": True,
+        "interaction_learning": learning,
+    }
+
+
 def call_mim_ui_chat(transcript: str) -> dict[str, Any]:
     if not VOICE_UI_CHAT_BRIDGE_ENABLED:
         return {"ok": False, "skipped": True, "error": "voice_ui_chat_bridge_disabled"}
@@ -1454,6 +1616,9 @@ def route_followup(transcript: str) -> dict[str, Any]:
     normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
     turn_state = load_turn_state()
     previous_topic = str(turn_state.get("current_topic") or "").strip()
+    feedback = classify_interaction_feedback(transcript)
+    if feedback.get("is_feedback"):
+        return build_interaction_feedback_route(transcript, feedback)
     if has_mim_reference(transcript) and len(transcript_words(transcript)) <= 2:
         return build_address_ack_route()
     if re.search(r"\b(how much time|time left|time.*training|training.*time|current training|your training|what.*working on)\b", normalized):
