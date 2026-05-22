@@ -271,10 +271,18 @@ def audio_level(path: Path) -> dict[str, int]:
     try:
         data = path.read_bytes()
         if not data:
-            return {"bytes": 0, "rms": 0, "max": 0}
-        return {"bytes": len(data), "rms": int(audioop.rms(data, 2)), "max": int(audioop.max(data, 2))}
+            return {"bytes": 0, "rms": 0, "max": 0, "clipped": False}
+        rms = int(audioop.rms(data, 2))
+        max_level = int(audioop.max(data, 2))
+        return {
+            "bytes": len(data),
+            "rms": rms,
+            "max": max_level,
+            "clipped": max_level >= 32000,
+            "noise_risk": "high" if rms >= 900 else "medium" if rms >= 500 else "low",
+        }
     except Exception:
-        return {"bytes": 0, "rms": 0, "max": 0}
+        return {"bytes": 0, "rms": 0, "max": 0, "clipped": False, "noise_risk": "unknown"}
 
 
 def analyze_vad_segments(path: Path) -> dict[str, Any]:
@@ -605,16 +613,25 @@ def publish_transcript_log(result: dict[str, Any], *, device: str) -> None:
     wake_text = str(result.get("wake_transcript") or "").strip()
     vad = result.get("vad") if isinstance(result.get("vad"), dict) else {}
     level = result.get("audio_level") if isinstance(result.get("audio_level"), dict) else {}
+    normalized_transcript = normalize_voice_transcript_for_intent(transcript)
+    audio_condition = {
+        "clipped": bool(level.get("clipped")),
+        "noise_risk": str(level.get("noise_risk") or "unknown"),
+        "music_or_noise_possible": bool(level.get("clipped")) or str(level.get("noise_risk") or "") in {"medium", "high"},
+        "reason": "High RMS or clipped samples can make music/background audio look like speech to STT.",
+    }
     entry = {
         "generated_at": now_iso(),
         "packet_type": "mim-voice-transcript-log-entry-v1",
         "audio_device": device,
         "status": result.get("status"),
         "transcript": transcript,
+        "normalized_transcript": normalized_transcript,
         "general_transcript": general,
         "wake_transcript": wake_text,
         "stt_error": result.get("stt_error", ""),
         "audio_level": level,
+        "audio_condition": audio_condition,
         "vad": vad,
         "self_output_detected": result.get("self_output_detected", False),
         "wake_phrase_detected": result.get("wake_phrase_detected", False),
@@ -658,10 +675,17 @@ def publish_cooldown_log(*, device: str, result: dict[str, Any], cooldown_second
         "audio_device": device,
         "status": "cooldown_after_response",
         "transcript": "",
+        "normalized_transcript": "",
         "general_transcript": "",
         "wake_transcript": "",
         "stt_error": "",
         "audio_level": {},
+        "audio_condition": {
+            "clipped": False,
+            "noise_risk": "unknown",
+            "music_or_noise_possible": False,
+            "reason": "Cooldown entry has no captured audio window.",
+        },
         "vad": {"speech_detected": None, "segments": [], "artifact": str(VAD_STATUS_PATH.relative_to(ROOT))},
         "self_output_detected": False,
         "wake_phrase_detected": result.get("wake_phrase_detected", False),
@@ -1080,6 +1104,19 @@ def classify_voice_fragment(transcript: str) -> dict[str, Any]:
     if len(words) <= 2 and not unique.intersection(ACTIONABLE_TOKENS):
         return {"is_fragment": True, "reason_code": "short_non_actionable_transcript", "word_count": len(words), "words": words}
     return {"is_fragment": False, "reason_code": "actionable_or_contextual_transcript", "word_count": len(words), "words": words}
+
+
+def should_suppress_fragment_before_chat(transcript: str, classification: dict[str, Any], addressing: dict[str, Any]) -> bool:
+    if not classification.get("is_fragment"):
+        return False
+    if has_mim_reference(transcript):
+        return False
+    reason = str(addressing.get("reason_code") or "").strip()
+    return reason in {
+        "active_mim_conversation_window",
+        "short_followup_to_existing_voice_topic",
+        "assistant_shaped_speech_in_mim_lab",
+    }
 
 
 def classify_interaction_feedback(transcript: str) -> dict[str, Any]:
@@ -1868,7 +1905,10 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
             response_text = ""
         elif transcript:
             fragment = classify_voice_fragment(transcript)
-            if fragment.get("is_fragment") and not addressing.get("addressed_to_mim"):
+            if fragment.get("is_fragment") and (
+                not addressing.get("addressed_to_mim")
+                or should_suppress_fragment_before_chat(transcript, fragment, addressing)
+            ):
                 publish_fragment_suppression(transcript, fragment, source="followup")
                 route = {
                     "intent": "voice_fragment_suppressed",
@@ -1964,7 +2004,10 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
         write_json(FOLLOWUP_PATH, result)
         return result
     fragment = classify_voice_fragment(transcript)
-    if fragment.get("is_fragment") and not addressing.get("addressed_to_mim"):
+    if fragment.get("is_fragment") and (
+        not addressing.get("addressed_to_mim")
+        or should_suppress_fragment_before_chat(transcript, fragment, addressing)
+    ):
         publish_fragment_suppression(transcript, fragment, source="ambient_lab_conversation")
         route = {
             "intent": "voice_fragment_suppressed",
