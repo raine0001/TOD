@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import time
 import wave
+import audioop
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,17 +25,32 @@ INTERACTION_PATH = SHARED / "MIM_WAKE_WORD_INTERACTION.latest.json"
 MEMORY_PATH = SHARED / "MIM_HUMAN_INTERACTION_MEMORY.latest.json"
 
 DEFAULT_DEVICES = [
-    "plughw:0,0",
     "plughw:2,0",
+    "default",
+    "plughw:0,0",
     "plughw:3,0",
     "plughw:3,2",
-    "default",
 ]
 
 WAKE_PATTERNS = [
-    re.compile(r"\b(hello|hey|okay|ok)\s+(mim|m\.?i\.?m\.?|ma'?am|mom|mem|meme|them)\b", re.I),
+    re.compile(r"\b(hello|hey|okay|ok)\s+(mim|m\.?i\.?m\.?|ma'?am|mom|mem|meme|them|him|men)\b", re.I),
+    re.compile(r"\bcan you hear me\b", re.I),
     re.compile(r"\bmim\b", re.I),
 ]
+
+WAKE_GRAMMAR = json.dumps(
+    [
+        "hello mim",
+        "hey mim",
+        "okay mim",
+        "ok mim",
+        "hello ma'am",
+        "can you hear me",
+        "mim can you hear me",
+        "hello mim can you hear me",
+        "[unk]",
+    ]
+)
 
 
 def now_iso() -> str:
@@ -99,6 +115,16 @@ def record_wav(device: str, output_path: Path, *, seconds: int) -> dict[str, Any
     )
 
 
+def audio_level(path: Path) -> dict[str, int]:
+    try:
+        data = path.read_bytes()
+        if not data:
+            return {"bytes": 0, "rms": 0, "max": 0}
+        return {"bytes": len(data), "rms": int(audioop.rms(data, 2)), "max": int(audioop.max(data, 2))}
+    except Exception:
+        return {"bytes": 0, "rms": 0, "max": 0}
+
+
 def select_audio_device() -> tuple[str, dict[str, Any]]:
     attempts = []
     for device in configured_devices():
@@ -106,14 +132,34 @@ def select_audio_device() -> tuple[str, dict[str, Any]]:
             path = Path(tmp.name)
         try:
             probe = record_wav(device, path, seconds=1)
-            attempts.append({"device": device, "ok": probe["ok"], "error": "" if probe["ok"] else probe.get("stderr") or probe.get("stdout")})
-            if probe["ok"]:
-                return device, {"attempts": attempts}
+            level = audio_level(path)
+            attempts.append(
+                {
+                    "device": device,
+                    "ok": probe["ok"],
+                    "rms": level["rms"],
+                    "max": level["max"],
+                    "bytes": level["bytes"],
+                    "error": "" if probe["ok"] else probe.get("stderr") or probe.get("stdout"),
+                }
+            )
         finally:
             try:
                 path.unlink(missing_ok=True)
             except Exception:
                 pass
+    openable = [item for item in attempts if item.get("ok")]
+    usable = [
+        item
+        for item in openable
+        if int(item.get("rms") or 0) >= 200 and int(item.get("max") or 0) < 32760
+    ]
+    if usable:
+        selected = usable[0]
+        return str(selected["device"]), {"attempts": attempts, "selection_reason": "first_nonclipped_signal_in_priority_order"}
+    if openable:
+        selected = sorted(openable, key=lambda item: (int(item.get("rms") or 0), int(item.get("max") or 0)), reverse=True)[0]
+        return str(selected["device"]), {"attempts": attempts, "selection_reason": "highest_probe_rms"}
     return "", {"attempts": attempts}
 
 
@@ -123,23 +169,57 @@ def transcribe_wav(model: Model, wav_path: Path) -> dict[str, Any]:
             return {
                 "ok": False,
                 "text": "",
+                "wake_text": "",
                 "error": f"unsupported_wav_format channels={wav_file.getnchannels()} width={wav_file.getsampwidth()} rate={wav_file.getframerate()}",
             }
         recognizer = KaldiRecognizer(model, 16000)
         recognizer.SetWords(True)
+        accepted_texts = []
         while True:
             data = wav_file.readframes(4000)
             if len(data) == 0:
                 break
-            recognizer.AcceptWaveform(data)
+            if recognizer.AcceptWaveform(data):
+                accepted = json.loads(recognizer.Result())
+                if str(accepted.get("text") or "").strip():
+                    accepted_texts.append(str(accepted.get("text")).strip())
         result = json.loads(recognizer.FinalResult())
-    text = str(result.get("text") or "").strip()
-    return {"ok": True, "text": text, "raw_result": result, "error": ""}
+        wav_file.rewind()
+        wake_recognizer = KaldiRecognizer(model, 16000, WAKE_GRAMMAR)
+        wake_texts = []
+        while True:
+            data = wav_file.readframes(4000)
+            if len(data) == 0:
+                break
+            if wake_recognizer.AcceptWaveform(data):
+                accepted = json.loads(wake_recognizer.Result())
+                if str(accepted.get("text") or "").strip():
+                    wake_texts.append(str(accepted.get("text")).strip())
+        wake_result = json.loads(wake_recognizer.FinalResult())
+    final_text = str(result.get("text") or "").strip()
+    wake_final_text = str(wake_result.get("text") or "").strip()
+    text = " ".join([*accepted_texts, final_text]).strip()
+    wake_text = " ".join([*wake_texts, wake_final_text]).strip()
+    return {"ok": True, "text": text, "wake_text": wake_text, "raw_result": result, "wake_result": wake_result, "error": ""}
 
 
 def detect_wake(text: str) -> bool:
     normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", text).strip().lower()
     return any(pattern.search(normalized) for pattern in WAKE_PATTERNS)
+
+
+def detect_probable_wake_check(*, general_text: str, wake_text: str, level: dict[str, int]) -> bool:
+    normalized_wake = str(wake_text or "").strip().lower()
+    normalized_general = str(general_text or "").strip().lower()
+    rms = int(level.get("rms") or 0)
+    unknown_count = normalized_wake.count("[unk]")
+    if rms < 900:
+        return False
+    if "you" in normalized_wake and unknown_count >= 1:
+        return True
+    if "hear" in normalized_general or "you" in normalized_general:
+        return True
+    return False
 
 
 def speak(text: str) -> dict[str, Any]:
@@ -231,18 +311,32 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
                 "wake_phrase_detected": False,
                 "error": rec.get("stderr") or rec.get("stdout") or "arecord_failed",
             }
+        level = audio_level(wav_path)
         stt = transcribe_wav(model, wav_path)
-        wake = bool(stt["ok"] and detect_wake(stt["text"]))
+        transcript = stt.get("text", "") or stt.get("wake_text", "")
+        probable_wake = detect_probable_wake_check(general_text=stt.get("text", ""), wake_text=stt.get("wake_text", ""), level=level)
+        wake = bool(
+            stt["ok"]
+            and (
+                detect_wake(stt.get("text", ""))
+                or detect_wake(stt.get("wake_text", ""))
+                or probable_wake
+            )
+        )
         tts = {"ok": True, "command": [], "returncode": 0, "stderr": "", "stdout": ""}
         if wake:
             tts = speak("Hey Dave. I heard you.")
-            publish_wake_interaction(transcript=stt["text"], device=device, tts=tts)
+            publish_wake_interaction(transcript=transcript, device=device, tts=tts)
         return {
             "status": "wake_detected" if wake else "listening",
             "success": True,
             "audio_device": device,
-            "transcript": stt.get("text", ""),
+            "audio_level": level,
+            "transcript": transcript,
+            "general_transcript": stt.get("text", ""),
+            "wake_transcript": stt.get("wake_text", ""),
             "wake_phrase_detected": wake,
+            "probable_wake_check": probable_wake,
             "stt_error": stt.get("error", ""),
             "tts_ok": tts["ok"] if wake else None,
             "no_audio_retained": True,
@@ -306,7 +400,11 @@ def main() -> int:
                 "audio_device": device,
                 "device_selection": selection,
                 "last_transcript": result.get("transcript", ""),
+                "last_general_transcript": result.get("general_transcript", ""),
+                "last_wake_transcript": result.get("wake_transcript", ""),
+                "last_audio_level": result.get("audio_level", {}),
                 "wake_phrase_detected": result.get("wake_phrase_detected", False),
+                "probable_wake_check": result.get("probable_wake_check", False),
                 "stt_error": result.get("stt_error", ""),
                 "tts_ok": result.get("tts_ok"),
                 "no_audio_retained": True,

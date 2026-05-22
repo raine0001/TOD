@@ -1,20 +1,64 @@
 {
-  "audio_device": "plughw:0,0",
+  "audio_device": "plughw:2,0",
   "device_selection": {
     "attempts": [
       {
-        "device": "plughw:0,0",
+        "bytes": 32044,
+        "device": "plughw:2,0",
         "error": "",
-        "ok": true
+        "max": 32036,
+        "ok": true,
+        "rms": 650
+      },
+      {
+        "bytes": 32044,
+        "device": "default",
+        "error": "",
+        "max": 32036,
+        "ok": true,
+        "rms": 656
+      },
+      {
+        "bytes": 0,
+        "device": "plughw:0,0",
+        "error": "arecord: main:834: audio open error: Device or resource busy\n",
+        "max": 0,
+        "ok": false,
+        "rms": 0
+      },
+      {
+        "bytes": 32044,
+        "device": "plughw:3,0",
+        "error": "",
+        "max": 32036,
+        "ok": true,
+        "rms": 7600
+      },
+      {
+        "bytes": 32044,
+        "device": "plughw:3,2",
+        "error": "",
+        "max": 32036,
+        "ok": true,
+        "rms": 646
       }
-    ]
+    ],
+    "selection_reason": "first_nonclipped_signal_in_priority_order"
   },
-  "generated_at": "2026-05-21T23:38:20Z",
-  "interaction_artifact": "",
+  "generated_at": "2026-05-22T02:01:43Z",
+  "interaction_artifact": "runtime/shared/MIM_WAKE_WORD_INTERACTION.latest.json",
+  "last_audio_level": {
+    "bytes": 128044,
+    "max": 32000,
+    "rms": 309
+  },
+  "last_general_transcript": "",
   "last_transcript": "",
+  "last_wake_transcript": "",
   "no_audio_retained": true,
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
   "packet_type": "mim-wake-listener-status-v1",
+  "probable_wake_check": false,
   "status": "listening",
   "stt_error": "",
   "success": true,
