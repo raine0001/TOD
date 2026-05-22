@@ -72,6 +72,7 @@ RESPONSE_TEXT = os.environ.get("MIM_WAKE_RESPONSE_TEXT", "Hi Dave. I'm awake. Wh
 DIAGNOSTIC_ENABLED = os.environ.get("MIM_WAKE_DIAGNOSTIC", "1").strip().lower() not in {"0", "false", "no", "off"}
 FOLLOWUP_ENABLED = os.environ.get("MIM_WAKE_FOLLOWUP", "1").strip().lower() not in {"0", "false", "no", "off"}
 FOLLOWUP_SECONDS = int(os.environ.get("MIM_WAKE_FOLLOWUP_SECONDS", "8"))
+LAB_CONVERSATION_MODE = os.environ.get("MIM_LAB_CONVERSATION_MODE", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 WAKE_GRAMMAR = json.dumps(
     [
@@ -264,15 +265,22 @@ def classify_diagnostic(result: dict[str, Any]) -> dict[str, Any]:
     rms = int(level.get("rms") or 0)
     max_level = int(level.get("max") or 0)
     wake = bool(result.get("wake_phrase_detected"))
+    lab_response = bool(result.get("lab_conversation_response"))
     voice_ok = result.get("voice_wav_output_accepted")
+    if voice_ok is None:
+        voice_ok = result.get("lab_conversation_voice_wav_output_accepted")
     self_output = bool(result.get("self_output_detected"))
     stt_error = str(result.get("stt_error") or "").strip()
     if not result.get("success"):
         reason_code = "capture_or_stt_blocked"
         summary = "MIM could not complete the microphone/STT cycle."
         next_action = "Inspect error, microphone device, and Vosk model path."
+    elif lab_response and voice_ok:
+        reason_code = "lab_conversation_responded"
+        summary = "MIM heard ambient lab speech, routed it to an intent, and accepted voice playback."
+        next_action = "If the operator did not hear MIM, inspect playback route and speaker volume."
     elif wake and voice_ok:
-        reason_code = "responded"
+        reason_code = "wake_responded"
         summary = "MIM detected explicit wake language and accepted voice playback."
         next_action = "If the operator did not hear MIM, inspect playback route and speaker volume."
     elif wake and not voice_ok:
@@ -310,6 +318,8 @@ def classify_diagnostic(result: dict[str, Any]) -> dict[str, Any]:
             "rms": rms,
             "max": max_level,
             "wake_phrase_detected": wake,
+            "lab_conversation_response": lab_response,
+            "lab_conversation_intent": result.get("lab_conversation_intent"),
             "probable_wake_check": bool(result.get("probable_wake_check")),
             "self_output_detected": self_output,
             "voice_wav_output_accepted": voice_ok,
@@ -636,7 +646,12 @@ def route_followup(transcript: str) -> dict[str, Any]:
     action = "clarify"
     response = "I heard you, but I don't know how to act on that yet. Try cameras, sensors, lab status, objects, or remember this."
 
-    if re.search(r"\b(how are you|how you doing|how's it going|status|are you ok|are you okay)\b", normalized):
+    if re.search(r"\b(what can you do|what do you do|help|commands|options)\b", normalized):
+        intent = "capability_help"
+        action = "explain_voice_routes"
+        artifacts = ["runtime/shared/MIM_WAKE_FOLLOWUP.latest.json"]
+        response = "I can report lab status, cameras, sensors, object memory, and remember notes. Ask naturally; you do not need to say my name."
+    elif re.search(r"\b(how are you|how you doing|how's it going|status|are you ok|are you okay)\b", normalized):
         intent = "status_check"
         action = "summarize_listener_status"
         status = load_shared_json("MIM_WAKE_LISTENER_STATUS.latest.json")
@@ -707,6 +722,13 @@ def route_followup(transcript: str) -> dict[str, Any]:
     }
 
 
+def should_clarify_unknown(transcript: str) -> bool:
+    normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
+    return bool(
+        re.search(r"\b(what|how|why|when|where|who|can you|could you|would you|should i|do you|are you|tell me|help)\b", normalized)
+    )
+
+
 def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
     with tempfile.NamedTemporaryFile(prefix="mim-wake-followup-", suffix=".wav", delete=False) as tmp:
         wav_path = Path(tmp.name)
@@ -774,6 +796,32 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
             pass
 
 
+def handle_lab_conversation(transcript: str) -> dict[str, Any]:
+    route = route_followup(transcript)
+    should_respond = route["intent"] != "unknown" or should_clarify_unknown(transcript)
+    response_text = route["response_text"] if should_respond else ""
+    voice_response = play_voice_response(response_text) if response_text else {}
+    result = {
+        "packet_type": "mim-lab-conversation-turn-v1",
+        "generated_at": now_iso(),
+        "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
+        "status": "responded" if response_text else "observed_no_response",
+        "success": True,
+        "mode": "ambient_lab_conversation",
+        "transcript": transcript,
+        "intent": route.get("intent"),
+        "action": route.get("action"),
+        "artifacts": route.get("artifacts", []),
+        "response_text": response_text,
+        "voice_response": voice_response,
+        "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if response_text else None,
+        "no_audio_retained": True,
+        "policy": "MIM listens to lab audio continuously and responds to routed intents or direct questions; MIM is not triggered by her name.",
+    }
+    write_json(FOLLOWUP_PATH, result)
+    return result
+
+
 def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
     with tempfile.NamedTemporaryFile(prefix="mim-wake-listen-", suffix=".wav", delete=False) as tmp:
         wav_path = Path(tmp.name)
@@ -795,6 +843,7 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
         self_output_detected = detect_self_output(stt.get("text", "")) or detect_self_output(stt.get("wake_text", ""))
         wake = bool(
             stt["ok"]
+            and not LAB_CONVERSATION_MODE
             and not self_output_detected
             and (
                 detect_wake(stt.get("text", ""))
@@ -804,6 +853,7 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
         )
         tts = {"ok": True, "command": [], "returncode": 0, "stderr": "", "stdout": ""}
         voice_response = {}
+        lab_turn = {}
         if wake:
             alert_attempts = []
             voice_response = play_voice_response(RESPONSE_TEXT)
@@ -828,8 +878,10 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             )
         else:
             followup = {}
+            if LAB_CONVERSATION_MODE and stt["ok"] and transcript and not self_output_detected:
+                lab_turn = handle_lab_conversation(transcript)
         return {
-            "status": "wake_detected" if wake else "listening",
+            "status": "lab_conversation_responded" if lab_turn.get("response_text") else ("wake_detected" if wake else "listening"),
             "success": True,
             "audio_device": device,
             "audio_level": level,
@@ -846,6 +898,11 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             "followup_status": followup.get("status") if wake else None,
             "followup_transcript": followup.get("transcript") if wake else "",
             "followup_voice_wav_output_accepted": followup.get("voice_wav_output_accepted") if wake else None,
+            "lab_conversation_mode": LAB_CONVERSATION_MODE,
+            "lab_conversation_response": bool(lab_turn.get("response_text")),
+            "lab_conversation_intent": lab_turn.get("intent"),
+            "lab_conversation_action": lab_turn.get("action"),
+            "lab_conversation_voice_wav_output_accepted": lab_turn.get("voice_wav_output_accepted"),
             "no_audio_retained": True,
         }
     finally:
@@ -922,6 +979,11 @@ def main() -> int:
                 "followup_status": result.get("followup_status"),
                 "followup_transcript": result.get("followup_transcript", ""),
                 "followup_voice_wav_output_accepted": result.get("followup_voice_wav_output_accepted"),
+                "lab_conversation_mode": result.get("lab_conversation_mode"),
+                "lab_conversation_response": result.get("lab_conversation_response"),
+                "lab_conversation_intent": result.get("lab_conversation_intent"),
+                "lab_conversation_action": result.get("lab_conversation_action"),
+                "lab_conversation_voice_wav_output_accepted": result.get("lab_conversation_voice_wav_output_accepted"),
                 "no_audio_retained": True,
                 "interaction_artifact": str(INTERACTION_PATH.relative_to(ROOT)) if INTERACTION_PATH.exists() else "",
                 "followup_artifact": str(FOLLOWUP_PATH.relative_to(ROOT)) if FOLLOWUP_PATH.exists() else "",
@@ -929,7 +991,7 @@ def main() -> int:
         )
         if args.once:
             return 0
-        if result.get("wake_phrase_detected"):
+        if result.get("wake_phrase_detected") or result.get("lab_conversation_response"):
             cooldown_until = now_iso()
             write_json(
                 STATUS_PATH,
@@ -943,11 +1005,16 @@ def main() -> int:
                     "cooldown_seconds": max(1, args.cooldown_seconds),
                     "reason": "Prevent repeated playback and self-triggering after audible response.",
                     "last_transcript": result.get("transcript", ""),
-                    "wake_phrase_detected": True,
+                    "wake_phrase_detected": result.get("wake_phrase_detected", False),
                     "voice_wav_output_accepted": result.get("voice_wav_output_accepted"),
                     "followup_status": result.get("followup_status"),
                     "followup_transcript": result.get("followup_transcript", ""),
                     "followup_voice_wav_output_accepted": result.get("followup_voice_wav_output_accepted"),
+                    "lab_conversation_mode": result.get("lab_conversation_mode"),
+                    "lab_conversation_response": result.get("lab_conversation_response"),
+                    "lab_conversation_intent": result.get("lab_conversation_intent"),
+                    "lab_conversation_action": result.get("lab_conversation_action"),
+                    "lab_conversation_voice_wav_output_accepted": result.get("lab_conversation_voice_wav_output_accepted"),
                     "interaction_artifact": str(INTERACTION_PATH.relative_to(ROOT)) if INTERACTION_PATH.exists() else "",
                     "followup_artifact": str(FOLLOWUP_PATH.relative_to(ROOT)) if FOLLOWUP_PATH.exists() else "",
                 },

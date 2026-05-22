@@ -8,7 +8,7 @@
         "error": "",
         "max": 32036,
         "ok": true,
-        "rms": 647
+        "rms": 648
       },
       {
         "bytes": 32044,
@@ -16,7 +16,7 @@
         "error": "",
         "max": 32036,
         "ok": true,
-        "rms": 716
+        "rms": 660
       },
       {
         "bytes": 0,
@@ -46,23 +46,25 @@
     "selection_reason": "first_nonclipped_signal_in_priority_order"
   },
   "diagnosis": {
-    "next_action": "If the operator did not hear MIM, inspect playback route and speaker volume.",
+    "next_action": "Tune microphone gain/noise, try a clearer phrase, or test a different microphone.",
     "observed": {
-      "general_transcript": "hello bill",
+      "general_transcript": "",
+      "lab_conversation_intent": null,
+      "lab_conversation_response": false,
       "max": 32000,
       "probable_wake_check": false,
-      "rms": 1026,
+      "rms": 290,
       "self_output_detected": false,
       "stt_error": "",
-      "transcript": "hello bill",
-      "voice_wav_output_accepted": true,
-      "wake_phrase_detected": true,
-      "wake_transcript": "hello mim"
+      "transcript": "",
+      "voice_wav_output_accepted": null,
+      "wake_phrase_detected": false,
+      "wake_transcript": ""
     },
-    "reason_code": "responded",
-    "summary": "MIM detected explicit wake language and accepted voice playback."
+    "reason_code": "audio_without_transcript",
+    "summary": "MIM saw audio energy but Vosk did not produce text."
   },
-  "generated_at": "2026-05-22T03:07:40Z",
+  "generated_at": "2026-05-22T03:19:30Z",
   "no_audio_retained": true,
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
   "operator_test_instruction": "Say 'hello MIM' or 'MIM can you hear me' while this artifact is being monitored.",
