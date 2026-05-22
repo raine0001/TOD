@@ -269,13 +269,15 @@ def record_wav(device: str, output_path: Path, *, seconds: int) -> dict[str, Any
 
 def audio_level(path: Path) -> dict[str, int]:
     try:
-        data = path.read_bytes()
-        if not data:
+        with wave.open(str(path), "rb") as wav_file:
+            width = wav_file.getsampwidth()
+            frames = wav_file.readframes(wav_file.getnframes())
+        if not frames:
             return {"bytes": 0, "rms": 0, "max": 0, "clipped": False}
-        rms = int(audioop.rms(data, 2))
-        max_level = int(audioop.max(data, 2))
+        rms = int(audioop.rms(frames, width))
+        max_level = int(audioop.max(frames, width))
         return {
-            "bytes": len(data),
+            "bytes": len(frames),
             "rms": rms,
             "max": max_level,
             "clipped": max_level >= 32000,
