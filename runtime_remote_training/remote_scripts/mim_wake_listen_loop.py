@@ -34,6 +34,7 @@ FAUX_PAUSE_STATUS_PATH = SHARED / "MIM_FAUX_PAUSE_HANDLING_STATUS.latest.json"
 VOICE_CHAT_BRIDGE_PATH = SHARED / "MIM_VOICE_UI_CHAT_BRIDGE.latest.json"
 VOICE_TRANSCRIPT_LOG_PATH = SHARED / "MIM_VOICE_TRANSCRIPT_LOG.latest.jsonl"
 VOICE_TRANSCRIPT_SUMMARY_PATH = SHARED / "MIM_VOICE_TRANSCRIPT_LOG_STATUS.latest.json"
+VOICE_FRAGMENT_SUPPRESSION_PATH = SHARED / "MIM_VOICE_FRAGMENT_SUPPRESSION_STATUS.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -85,6 +86,56 @@ VOICE_UI_CHAT_SESSION_ID = os.environ.get("MIM_VOICE_UI_CHAT_SESSION_ID", "mim-a
 VOICE_UI_CHAT_ENDPOINT = os.environ.get("MIM_VOICE_UI_CHAT_ENDPOINT", "http://127.0.0.1:18001/gateway/intake/text")
 VOICE_TRANSCRIPT_LOG_ENABLED = os.environ.get("MIM_VOICE_TRANSCRIPT_LOG", "1").strip().lower() not in {"0", "false", "no", "off"}
 VOICE_TRANSCRIPT_LOG_MAX_LINES = int(os.environ.get("MIM_VOICE_TRANSCRIPT_LOG_MAX_LINES", "500"))
+VOICE_FRAGMENT_SUPPRESSION_ENABLED = (
+    os.environ.get("MIM_VOICE_FRAGMENT_SUPPRESSION", "1").strip().lower() not in {"0", "false", "no", "off"}
+)
+
+LOW_CONTENT_TOKENS = {
+    "a",
+    "an",
+    "and",
+    "but",
+    "hmm",
+    "mim",
+    "no",
+    "oh",
+    "ok",
+    "okay",
+    "the",
+    "uh",
+    "um",
+    "yeah",
+    "yes",
+}
+
+ACTIONABLE_TOKENS = {
+    "answer",
+    "camera",
+    "cameras",
+    "can",
+    "check",
+    "could",
+    "details",
+    "do",
+    "help",
+    "how",
+    "lab",
+    "listen",
+    "remember",
+    "sensor",
+    "sensors",
+    "should",
+    "status",
+    "tell",
+    "training",
+    "what",
+    "when",
+    "where",
+    "who",
+    "why",
+    "working",
+    "would",
+}
 
 WAKE_GRAMMAR = json.dumps(
     [
@@ -533,6 +584,7 @@ def publish_transcript_log(result: dict[str, Any], *, device: str) -> None:
         "lab_conversation_response": result.get("lab_conversation_response"),
         "lab_conversation_intent": result.get("lab_conversation_intent"),
         "lab_conversation_action": result.get("lab_conversation_action"),
+        "lab_conversation_fragment_classification": result.get("lab_conversation_fragment_classification", {}),
         "voice_wav_output_accepted": result.get("voice_wav_output_accepted"),
         "lab_conversation_voice_wav_output_accepted": result.get("lab_conversation_voice_wav_output_accepted"),
         "no_audio_retained": True,
@@ -886,6 +938,42 @@ def compact_status(value: Any) -> str:
     return text if text else "unknown"
 
 
+def transcript_words(transcript: str) -> list[str]:
+    return re.findall(r"[a-zA-Z0-9']+", str(transcript or "").lower())
+
+
+def classify_voice_fragment(transcript: str) -> dict[str, Any]:
+    words = transcript_words(transcript)
+    if not words:
+        return {"is_fragment": True, "reason_code": "empty_transcript", "word_count": 0, "words": []}
+    unique = set(words)
+    if len(words) == 1 and words[0] in LOW_CONTENT_TOKENS:
+        return {"is_fragment": True, "reason_code": "single_low_content_token", "word_count": 1, "words": words}
+    if len(words) <= 2 and not unique.intersection(ACTIONABLE_TOKENS):
+        return {"is_fragment": True, "reason_code": "short_non_actionable_transcript", "word_count": len(words), "words": words}
+    return {"is_fragment": False, "reason_code": "actionable_or_contextual_transcript", "word_count": len(words), "words": words}
+
+
+def publish_fragment_suppression(transcript: str, classification: dict[str, Any], *, source: str) -> None:
+    if not VOICE_FRAGMENT_SUPPRESSION_ENABLED:
+        return
+    write_json(
+        VOICE_FRAGMENT_SUPPRESSION_PATH,
+        {
+            "packet_type": "mim-voice-fragment-suppression-status-v1",
+            "generated_at": now_iso(),
+            "status": "suppressed_with_evidence",
+            "success": True,
+            "source": source,
+            "transcript": transcript,
+            "classification": classification,
+            "policy": "Low-content STT fragments are logged but not forwarded to UI chat or spoken back as a full MIM turn.",
+            "next_recovery_action": "Improve microphone placement/gain or STT segmentation when repeated suppression coincides with operator speech.",
+            "no_audio_retained": True,
+        },
+    )
+
+
 def concise_voice_text(text: str, *, max_chars: int = 260) -> str:
     cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
     if not cleaned:
@@ -1149,14 +1237,26 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
             status = "ignored_self_output"
             response_text = ""
         elif transcript:
-            route = route_followup(transcript)
-            status = "operator_followup_routed" if route["intent"] != "unknown" else "operator_followup_needs_clarification"
-            response_text = route["response_text"]
+            fragment = classify_voice_fragment(transcript)
+            if fragment.get("is_fragment"):
+                publish_fragment_suppression(transcript, fragment, source="followup")
+                route = {
+                    "intent": "voice_fragment_suppressed",
+                    "action": "observe_without_response",
+                    "artifacts": ["runtime/shared/MIM_VOICE_FRAGMENT_SUPPRESSION_STATUS.latest.json"],
+                    "fragment_classification": fragment,
+                }
+                status = "operator_followup_fragment_suppressed"
+                response_text = ""
+            else:
+                route = route_followup(transcript)
+                status = "operator_followup_routed" if route["intent"] != "unknown" else "operator_followup_needs_clarification"
+                response_text = route["response_text"]
         else:
             status = "no_followup_heard"
             response_text = ""
         voice_response = play_voice_response(response_text) if response_text else {}
-        if transcript and not self_output_detected:
+        if transcript and not self_output_detected and route.get("intent") != "voice_fragment_suppressed":
             save_turn_state(transcript=transcript, route=route, response_text=response_text)
         result = {
             "packet_type": "mim-wake-followup-v1",
@@ -1178,6 +1278,7 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
             "artifacts": route.get("artifacts", []),
             "chat_bridge": route.get("chat_bridge", {}),
             "fallback_used": route.get("fallback_used"),
+            "fragment_classification": route.get("fragment_classification", {}),
             "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
             "voice_response": voice_response,
             "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if response_text else None,
@@ -1196,6 +1297,39 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
 
 
 def handle_lab_conversation(transcript: str) -> dict[str, Any]:
+    fragment = classify_voice_fragment(transcript)
+    if fragment.get("is_fragment"):
+        publish_fragment_suppression(transcript, fragment, source="ambient_lab_conversation")
+        route = {
+            "intent": "voice_fragment_suppressed",
+            "action": "observe_without_response",
+            "artifacts": ["runtime/shared/MIM_VOICE_FRAGMENT_SUPPRESSION_STATUS.latest.json"],
+            "fragment_classification": fragment,
+            "fallback_used": False,
+        }
+        result = {
+            "packet_type": "mim-lab-conversation-turn-v1",
+            "generated_at": now_iso(),
+            "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
+            "status": "voice_fragment_suppressed",
+            "success": True,
+            "mode": "ambient_lab_conversation",
+            "transcript": transcript,
+            "intent": route.get("intent"),
+            "action": route.get("action"),
+            "artifacts": route.get("artifacts", []),
+            "chat_bridge": {},
+            "fallback_used": route.get("fallback_used"),
+            "fragment_classification": fragment,
+            "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
+            "response_text": "",
+            "voice_response": {},
+            "voice_wav_output_accepted": None,
+            "no_audio_retained": True,
+            "policy": "MIM listens continuously, but low-content STT fragments are evidence only and do not trigger a spoken clarification.",
+        }
+        write_json(FOLLOWUP_PATH, result)
+        return result
     route = route_followup(transcript)
     should_respond = route["intent"] != "unknown" or should_clarify_unknown(transcript)
     response_text = route["response_text"] if should_respond else ""
@@ -1213,6 +1347,7 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
         "artifacts": route.get("artifacts", []),
         "chat_bridge": route.get("chat_bridge", {}),
         "fallback_used": route.get("fallback_used"),
+        "fragment_classification": route.get("fragment_classification", {}),
         "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
         "response_text": response_text,
         "voice_response": voice_response,
@@ -1286,7 +1421,9 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             if LAB_CONVERSATION_MODE and stt["ok"] and transcript and not self_output_detected:
                 lab_turn = handle_lab_conversation(transcript)
         return {
-            "status": "lab_conversation_responded" if lab_turn.get("response_text") else ("wake_detected" if wake else "listening"),
+            "status": lab_turn.get("status")
+            if lab_turn
+            else ("wake_detected" if wake else "listening"),
             "success": True,
             "audio_device": device,
             "audio_level": level,
@@ -1312,6 +1449,7 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             "lab_conversation_response": bool(lab_turn.get("response_text")),
             "lab_conversation_intent": lab_turn.get("intent"),
             "lab_conversation_action": lab_turn.get("action"),
+            "lab_conversation_fragment_classification": lab_turn.get("fragment_classification", {}),
             "lab_conversation_voice_wav_output_accepted": lab_turn.get("voice_wav_output_accepted"),
             "no_audio_retained": True,
         }
