@@ -18,16 +18,16 @@
     },
     "MIM_VOICE_TURN_STATE.latest.json": {
       "artifact": "runtime/shared/MIM_VOICE_TURN_STATE.latest.json",
-      "exists": false,
-      "generated_at": null,
-      "recent": false,
-      "status": null,
-      "success": null
+      "exists": true,
+      "generated_at": "2026-05-22T03:31:49Z",
+      "recent": true,
+      "status": "simulated_context_turn_validated",
+      "success": true
     },
     "MIM_WAKE_DIAGNOSTIC.latest.json": {
       "artifact": "runtime/shared/MIM_WAKE_DIAGNOSTIC.latest.json",
       "exists": true,
-      "generated_at": "2026-05-22T03:30:24Z",
+      "generated_at": "2026-05-22T03:31:56Z",
       "recent": true,
       "status": "observed",
       "success": true
@@ -43,7 +43,7 @@
     "MIM_WAKE_LISTENER_STATUS.latest.json": {
       "artifact": "runtime/shared/MIM_WAKE_LISTENER_STATUS.latest.json",
       "exists": true,
-      "generated_at": "2026-05-22T03:30:24Z",
+      "generated_at": "2026-05-22T03:31:56Z",
       "recent": true,
       "status": "listening",
       "success": true
@@ -51,31 +51,31 @@
   },
   "checks": {
     "ambient_lab_conversation_active": true,
-    "background_obligation_tracker_present": false,
+    "background_obligation_tracker_present": true,
     "barge_in_evidence_present": false,
     "concise_response_policy_present": true,
     "context_router_present": true,
     "faux_pause_policy_evidence_present": true,
     "natural_tts_persona_evidence_present": false,
     "stt_diagnostic_evidence_recent": true,
-    "turn_state_memory_present": false,
+    "turn_state_memory_present": true,
     "vad_segmentation_evidence_present": true,
     "value_added_standard_defined": true,
     "voice_context_architecture_defined": true
   },
   "current_objective": {
-    "capability": "turn_state_memory_present",
-    "goal": "Persist short-term conversation state, topic, referents, and recent turns for voice context.",
-    "objective_id": "MIM-TURN-STATE-MEMORY-V1",
-    "success": "Publish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context."
+    "capability": "barge_in_evidence_present",
+    "goal": "Detect operator interruption while MIM is speaking and stop current playback before pivoting.",
+    "objective_id": "MIM-BARGE-IN-RECOVERY-V1",
+    "success": "Publish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence."
   },
-  "deadline_at": "2026-05-22T15:30:28Z",
-  "generated_at": "2026-05-22T03:30:37Z",
+  "deadline_at": "2026-05-22T15:31:56Z",
+  "generated_at": "2026-05-22T03:32:01Z",
   "last_dispatch": {
     "ok": true,
     "payload": {
       "confidence": 0.8,
-      "created_at": "2026-05-22T03:30:28.715192Z",
+      "created_at": "2026-05-22T03:31:56.201253Z",
       "initiative_status": {
         "program_status": {
           "completion_rule": "",
@@ -489,63 +489,63 @@
         },
         "summary": "Active objective: Lab awareness, human interaction, and camera cycling. Active task: Discover or run lab sensor inventory executor. Blocked items: Inventory lab sensors and publish first live-readiness map, Publish lab-awareness status after growth guard activation."
       },
-      "input_id": 5756915,
+      "input_id": 5756917,
       "metadata_json": {
         "adapter": "text",
-        "conversation_session_id": "voice-context-12h-5f60d032-1d04-4826-a763-c542587a71ab",
-        "gateway_received_at": "2026-05-22T03:30:28Z",
+        "conversation_session_id": "voice-context-12h-3b1fae67-152c-455c-8353-cb01e71011e2",
+        "gateway_received_at": "2026-05-22T03:31:56Z",
         "interaction_mode": "autonomous_objective",
         "message_type": "user",
-        "request_id": "mim-request-900f47ba-c883-44ce-acec-29a8bb31d139",
+        "request_id": "mim-request-8a2b548e-832b-41a8-8fe1-72dfc2b39dd3",
         "route_preference": "conversation_layer",
         "source": "mim_voice_context_12h_runner"
       },
       "mim_interface": {
         "blocker": "",
         "internal_envelope": {
-          "detail": "giving some extra context, I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources. Technical framing: Treat this as an open technical problem. I should not promise a solved result unless the research shows the problem is already resolved. For an unsolved problem, the reasonable product path is usually an exploratory or educational application, not a promise of resolution. Plan of action: 1) Establish the verified baseline 2) Research approaches and opinions 3) Choose a feasible build path 4) Define the first bounded experiment. Budget check: This can become an endless loop, so tell me whether you want a 15-minute survey, a 60-minute design pass, or a deeper investigation.",
+          "detail": "giving some extra context, I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.",
           "detail_label": "Result",
           "next_action": "reply directly in this session",
-          "request_id": "mim-request-900f47ba-c883-44ce-acec-29a8bb31d139",
+          "request_id": "mim-request-8a2b548e-832b-41a8-8fe1-72dfc2b39dd3",
           "status": "done",
-          "understood": "OBJECTIVE: MIM-TURN-STATE-MEMORY-V1 GOAL: Persist short-term conversation state, topic, referents, and recent turns for voice context. SUCCESS: Publish MIM_VOICE_TURN_STATE.late..."
+          "understood": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1 GOAL: Detect operator interruption while MIM is speaking and stop current playback before pivoting. SUCCESS: Publish MIM_BARGE_IN_RECOVERY_ST..."
         },
         "next_action": "reply directly in this session",
-        "reply_text": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources. Technical framing: Treat this as an open technical problem. I should not promise a solved result unless the research shows the problem is already resolved. For an unsolved problem, the reasonable product path is usually an exploratory or educational application, not a promise of resolution. Plan of action: 1) Establish the verified baseline 2) Research approaches and opinions 3) Choose a feasible build path 4) Define the first bounded experiment. Budget check: This can become an endless loop, so tell me whether you want a 15-minute survey, a 60-minute design pass, or a deeper investigation.",
-        "request_id": "mim-request-900f47ba-c883-44ce-acec-29a8bb31d139",
-        "result": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources. Technical framing: Treat this as an open technical problem. I should not promise a solved result unle...\n\nStatus note: MIM-VAD-SPEECH-SEGMENTATION-V1 is blocked. Blocker: No safe bounded edit was applied by the packet listener executor. The executor inspected target/discovery files and produced blocked_with_inspection evidence; Codex escalation is allowed only with this inspection evidence.. Next: reclassify or replay through the correct bounded lane",
+        "reply_text": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.",
+        "request_id": "mim-request-8a2b548e-832b-41a8-8fe1-72dfc2b39dd3",
+        "result": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.\n\nStatus note: MIM-BARGE-IN-RECOVERY-V1 is blocked. Blocker: No safe bounded edit was applied by the packet listener executor. The executor inspected target/discovery files and produced blocked_with_inspection evidence; Codex escalation is allowed only with this inspection evidence.. Next: reclassify or replay through the correct bounded lane",
         "status": "done",
-        "understood": "OBJECTIVE: MIM-TURN-STATE-MEMORY-V1 GOAL: Persist short-term conversation state, topic, referents, and recent turns for voice context. SUCCESS: Publish MIM_VOICE_TURN_STATE.late..."
+        "understood": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1 GOAL: Detect operator interruption while MIM is speaking and stop current playback before pivoting. SUCCESS: Publish MIM_BARGE_IN_RECOVERY_ST..."
       },
       "normalized": true,
       "parsed_intent": "conversation",
-      "raw_input": "OBJECTIVE: MIM-TURN-STATE-MEMORY-V1\n\nGOAL:\nPersist short-term conversation state, topic, referents, and recent turns for voice context.\n\nSUCCESS:\nPublish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.\n",
-      "request_id": "mim-request-900f47ba-c883-44ce-acec-29a8bb31d139",
+      "raw_input": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1\n\nGOAL:\nDetect operator interruption while MIM is speaking and stop current playback before pivoting.\n\nSUCCESS:\nPublish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.\n",
+      "request_id": "mim-request-8a2b548e-832b-41a8-8fe1-72dfc2b39dd3",
       "requested_goal": "",
       "resolution": {
         "capability_enabled": false,
         "capability_name": "",
         "capability_registered": false,
-        "clarification_prompt": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources. Technical framing: Treat this as an open technical problem. I should not promise a solved result unless the research shows the problem is already resolved. For an unsolved problem, the reasonable product path is usually an exploratory or educational application, not a promise of resolution. Plan of action: 1) Establish the verified baseline 2) Research approaches and opinions 3) Choose a feasible build path 4) Define the first bounded experiment. Budget check: This can become an endless loop, so tell me whether you want a 15-minute survey, a 60-minute design pass, or a deeper investigation.",
+        "clarification_prompt": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.",
         "confidence_tier": "conversation",
-        "created_at": "2026-05-22T03:30:28.715192Z",
+        "created_at": "2026-05-22T03:31:56.201253Z",
         "escalation_reasons": [],
         "goal_id": null,
-        "input_event_id": 5756915,
+        "input_event_id": 5756917,
         "internal_intent": "speak_response",
         "metadata_json": {
           "active_goal": "Workspace state indicates zone uncertainty should be stabilized before downstream physical decisions. Retry and fallback pressure lower confidence in aggressive execution strate...",
-          "clarification_prompt_key": "i tried to research that on the web, but the upstream search providers were unavailable before i could collect reliable public sources. technical framing: treat this as an open technical problem. i should not promise a solved result unless the research shows the problem is already resolved. for an unsolved problem, the reasonable product path is usually an exploratory or educational application, not a promise of resolution. plan of action: 1) establish the verified baseline 2) research approaches and opinions 3) choose a feasible build path 4) define the first bounded experiment. budget check: this can become an endless loop, so tell me whether you want a 15-minute survey, a 60-minute design pass, or a deeper investigation.",
+          "clarification_prompt_key": "i tried to research that on the web, but the upstream search providers were unavailable before i could collect reliable public sources.",
           "classification_stage_timestamps": {
-            "gateway_received_at": "2026-05-22T03:30:28Z",
-            "llm_classifier_completed_at": "2026-05-22T03:30:37Z",
-            "llm_classifier_started_at": "2026-05-22T03:30:28Z",
-            "route_decided_at": "2026-05-22T03:30:37Z"
+            "gateway_received_at": "2026-05-22T03:31:56Z",
+            "llm_classifier_completed_at": "2026-05-22T03:32:01Z",
+            "llm_classifier_started_at": "2026-05-22T03:31:56Z",
+            "route_decided_at": "2026-05-22T03:32:01Z"
           },
           "communication_reply_contract": {},
           "confidence": 0.8,
           "conversation_override": true,
-          "conversation_topic": "technical_research",
+          "conversation_topic": "general",
           "current_recommendation_summary": "Active objective: Lab awareness, human interaction, and camera cycling. Active task: Discover or run lab sensor inventory executor. Blocked items: Inventory lab sensors and publish first live-readiness map, Publish lab-awareness status after growth guard activation.",
           "governance": {
             "applied_outcome": "store_only",
@@ -560,7 +560,7 @@
             "signal_codes": [],
             "signals": [],
             "summary": "conversation override",
-            "system_health_status": "healthy"
+            "system_health_status": "suboptimal"
           },
           "initiative_auto_execute": false,
           "initiative_boundary_mode": "",
@@ -568,67 +568,15 @@
           "intent_understanding": {
             "canonical_intent": "",
             "confidence": 0.62,
-            "literal_input": "OBJECTIVE: MIM-TURN-STATE-MEMORY-V1\n\nGOAL:\nPersist short-term conversation state, topic, referents, and recent turns for voice context.\n\nSUCCESS:\nPublish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
+            "literal_input": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1\n\nGOAL:\nDetect operator interruption while MIM is speaking and stop current playback before pivoting.\n\nSUCCESS:\nPublish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
             "rationale": "literal_intent",
-            "semantic_goal": "speak_response: OBJECTIVE: MIM-TURN-STATE-MEMORY-V1\n\nGOAL:\nPersist short-term conversation state, topic, referents, and recent turns for voice context.\n\nSUCCESS:\nPublish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
+            "semantic_goal": "speak_response: OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1\n\nGOAL:\nDetect operator interruption while MIM is speaking and stop current playback before pivoting.\n\nSUCCESS:\nPublish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
             "suggested_domains": [
               "decision"
             ],
             "suggested_steps": []
           },
-          "last_technical_research": {
-            "asks_to_build": true,
-            "assumed_budget_minutes": 60,
-            "budget_prompt": "This can become an endless loop, so tell me whether you want a 15-minute survey, a 60-minute design pass, or a deeper investigation.",
-            "followup_rounds_completed": 0,
-            "is_open_problem": true,
-            "last_researched_step_index": 0,
-            "last_round_had_evidence": false,
-            "max_followup_rounds": 4,
-            "max_live_rounds": 2,
-            "next_steps": [
-              "set a time budget for this investigation",
-              "execute step 1: establish the verified baseline",
-              "separate the exploratory application from any claim of a full solution",
-              "turn the chosen path into an implementation checklist"
-            ],
-            "problem_frame": "Treat this as an open technical problem. I should not promise a solved result unless the research shows the problem is already resolved. For an unsolved problem, the reasonable product path is usually an exploratory or educational application, not a promise of resolution.",
-            "query": "OBJECTIVE: MIM-TURN-STATE-MEMORY-V1 GOAL: Persist short-term conversation state, topic, referents, and recent turns for voice context. SUCCESS: Publish MIM_VOICE_TURN_STATE.late...",
-            "reasoning_mode": "technical_investigation",
-            "researched_step_indexes": [],
-            "step_findings": [],
-            "steps": [
-              {
-                "purpose": "Identify what is already known, proven, or ruled out.",
-                "research_query": "objective mim turn state memory goal known results current status",
-                "step_index": 1,
-                "step_key": "baseline",
-                "title": "Establish the verified baseline"
-              },
-              {
-                "purpose": "Compare approaches, expert opinions, and recurring disagreements.",
-                "research_query": "objective mim turn state memory goal approaches opinions expert discussion",
-                "step_index": 2,
-                "step_key": "opinions",
-                "title": "Research approaches and opinions"
-              },
-              {
-                "purpose": "Turn the research into an implementation path that is realistic now.",
-                "research_query": "objective mim turn state memory goal application architecture prototype",
-                "step_index": 3,
-                "step_key": "path",
-                "title": "Choose a feasible build path"
-              },
-              {
-                "purpose": "Choose the first experiment or prototype that can be validated quickly.",
-                "research_query": "objective mim turn state memory goal validation experiment benchmark",
-                "step_index": 4,
-                "step_key": "validate",
-                "title": "Define the first bounded experiment"
-              }
-            ],
-            "stop_condition": "stop when the next round stops improving the answer or the budget is exhausted"
-          },
+          "last_technical_research": {},
           "memory_signal": {
             "best_effective_confidence": 0.0,
             "dominant_label": "",
@@ -645,7 +593,7 @@
             "zone": ""
           },
           "mim_interface_next_action_override": "",
-          "mim_interface_reply_override": "giving some extra context, I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources. Technical framing: Treat this as an open technical problem. I should not promise a solved result unless the research shows the problem is already resolved. For an unsolved problem, the reasonable product path is usually an exploratory or educational application, not a promise of resolution. Plan of action: 1) Establish the verified baseline 2) Research approaches and opinions 3) Choose a feasible build path 4) Define the first bounded experiment. Budget check: This can become an endless loop, so tell me whether you want a 15-minute survey, a 60-minute design pass, or a deeper investigation.",
+          "mim_interface_reply_override": "giving some extra context, I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.",
           "mim_interface_result_override": "",
           "object_inquiry": {},
           "operational_lifecycle_update": {
@@ -1066,7 +1014,7 @@
             "updated_at": "2026-05-07T19:53:37Z"
           },
           "program_status_summary": "Program MIM-12-AUTONOMOUS-EVOLUTION status (14 registered projects): MIM-DAY-01-EXECUTION-BOUND-COMPLETION=ready (Enforce completion only after execution evidence INITIATIVE_ID: MIM-DAY-01-EX...); MIM-DAY-02-INITIATIVE-ISOLATION=ready (Prevent new initiatives from being overwritten, contaminated, or auto-reroute...)...",
-          "request_id": "mim-request-900f47ba-c883-44ce-acec-29a8bb31d139",
+          "request_id": "mim-request-8a2b548e-832b-41a8-8fe1-72dfc2b39dd3",
           "requested_domains": [
             "data",
             "decision"
@@ -1079,10 +1027,10 @@
           "skip_conversation_memory": false,
           "source": "text",
           "target_system": "mim",
-          "tod_collaboration_summary": "request mim-vad-speech-segmentation-v1-mim-request-3eb66230-ff1a-4c08-a6b4-e1c2caea20d6-replan-1 | rejected_lineage_mismatch | rejected_lineage_mismatch",
+          "tod_collaboration_summary": "request mim-barge-in-recovery-v1-mim-request-46faa0cc-2383-4ad6-ad22-265c62e7742c | rejected_lineage_mismatch | rejected_lineage_mismatch",
           "user_action_safety": {},
           "web_research": {
-            "answer": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources. Technical framing: Treat this as an open technical problem. I should not promise a solved result unless the research shows the problem is already resolved. For an unsolved problem, the reasonable product path is usually an exploratory or educational application, not a promise of resolution. Plan of action: 1) Establish the verified baseline 2) Research approaches and opinions 3) Choose a feasible build path 4) Define the first bounded experiment. Budget check: This can become an endless loop, so tell me whether you want a 15-minute survey, a 60-minute design pass, or a deeper investigation.",
+            "answer": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.",
             "budget_seconds": 10.0,
             "diagnostics": {
               "gathered_source_count": 0,
@@ -1092,7 +1040,7 @@
                     "configured": true,
                     "error": "HTTPError:HTTP Error 403: Forbidden",
                     "provider": "google_cse",
-                    "query": "OBJECTIVE: MIM-TURN-STATE-MEMORY-V1 GOAL: Persist short-term conversation state, topic, referents, and recent turns for voice context. SUCCESS: Publish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
+                    "query": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1 GOAL: Detect operator interruption while MIM is speaking and stop current playback before pivoting. SUCCESS: Publish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
                     "requested_results": 5,
                     "result_count": 0
                   },
@@ -1101,7 +1049,7 @@
                     "error": "empty_results",
                     "model": "gemini-2.5-flash",
                     "provider": "gemini_google_search",
-                    "query": "OBJECTIVE: MIM-TURN-STATE-MEMORY-V1 GOAL: Persist short-term conversation state, topic, referents, and recent turns for voice context. SUCCESS: Publish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
+                    "query": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1 GOAL: Detect operator interruption while MIM is speaking and stop current playback before pivoting. SUCCESS: Publish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
                     "requested_results": 5,
                     "result_count": 0
                   },
@@ -1109,12 +1057,12 @@
                     "configured": true,
                     "error": "empty_results",
                     "provider": "duckduckgo_html",
-                    "query": "OBJECTIVE: MIM-TURN-STATE-MEMORY-V1 GOAL: Persist short-term conversation state, topic, referents, and recent turns for voice context. SUCCESS: Publish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
+                    "query": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1 GOAL: Detect operator interruption while MIM is speaking and stop current playback before pivoting. SUCCESS: Publish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
                     "requested_results": 5,
                     "result_count": 0
                   }
                 ],
-                "query": "OBJECTIVE: MIM-TURN-STATE-MEMORY-V1 GOAL: Persist short-term conversation state, topic, referents, and recent turns for voice context. SUCCESS: Publish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
+                "query": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1 GOAL: Detect operator interruption while MIM is speaking and stop current playback before pivoting. SUCCESS: Publish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
                 "selected_provider": "none",
                 "selected_result_count": 0
               },
@@ -1122,61 +1070,9 @@
             },
             "error": "web_research_upstream_unavailable",
             "ok": false,
-            "query": "OBJECTIVE: MIM-TURN-STATE-MEMORY-V1 GOAL: Persist short-term conversation state, topic, referents, and recent turns for voice context. SUCCESS: Publish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
+            "query": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1 GOAL: Detect operator interruption while MIM is speaking and stop current playback before pivoting. SUCCESS: Publish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
             "sources": [],
-            "technical_plan": {
-              "ask_budget": true,
-              "asks_to_build": true,
-              "asks_to_solve": true,
-              "assumed_budget_minutes": 60,
-              "budget_prompt": "This can become an endless loop, so tell me whether you want a 15-minute survey, a 60-minute design pass, or a deeper investigation.",
-              "follow_up_suggestions": [
-                "set a time budget for this investigation",
-                "execute step 1: establish the verified baseline",
-                "separate the exploratory application from any claim of a full solution",
-                "turn the chosen path into an implementation checklist"
-              ],
-              "is_open_problem": true,
-              "max_live_rounds": 2,
-              "problem_frame": "Treat this as an open technical problem. I should not promise a solved result unless the research shows the problem is already resolved. For an unsolved problem, the reasonable product path is usually an exploratory or educational application, not a promise of resolution.",
-              "reasoning_mode": "technical_investigation",
-              "requested_budget_minutes": null,
-              "steps": [
-                {
-                  "purpose": "Identify what is already known, proven, or ruled out.",
-                  "research_query": "objective mim turn state memory goal known results current status",
-                  "status": "planned",
-                  "step_index": 1,
-                  "step_key": "baseline",
-                  "title": "Establish the verified baseline"
-                },
-                {
-                  "purpose": "Compare approaches, expert opinions, and recurring disagreements.",
-                  "research_query": "objective mim turn state memory goal approaches opinions expert discussion",
-                  "status": "planned",
-                  "step_index": 2,
-                  "step_key": "opinions",
-                  "title": "Research approaches and opinions"
-                },
-                {
-                  "purpose": "Turn the research into an implementation path that is realistic now.",
-                  "research_query": "objective mim turn state memory goal application architecture prototype",
-                  "status": "planned",
-                  "step_index": 3,
-                  "step_key": "path",
-                  "title": "Choose a feasible build path"
-                },
-                {
-                  "purpose": "Choose the first experiment or prototype that can be validated quickly.",
-                  "research_query": "objective mim turn state memory goal validation experiment benchmark",
-                  "status": "planned",
-                  "step_index": 4,
-                  "step_key": "validate",
-                  "title": "Define the first bounded experiment"
-                }
-              ],
-              "stop_condition": "stop when the next round stops improving the answer or the budget is exhausted"
-            },
+            "technical_plan": {},
             "technical_step_findings": [],
             "timed_out": false
           }
@@ -1185,13 +1081,13 @@
         "proposed_actions": [
           {
             "action_type": "speak_response",
-            "details": "speak_response: OBJECTIVE: MIM-TURN-STATE-MEMORY-V1\n\nGOAL:\nPersist short-term conversation state, topic, referents, and recent turns for voice context.\n\nSUCCESS:\nPublish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
+            "details": "speak_response: OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1\n\nGOAL:\nDetect operator interruption while MIM is speaking and stop current playback before pivoting.\n\nSUCCESS:\nPublish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
             "step": 1
           }
         ],
-        "proposed_goal_description": "speak_response: OBJECTIVE: MIM-TURN-STATE-MEMORY-V1\n\nGOAL:\nPersist short-term conversation state, topic, referents, and recent turns for voice context.\n\nSUCCESS:\nPublish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
+        "proposed_goal_description": "speak_response: OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1\n\nGOAL:\nDetect operator interruption while MIM is speaking and stop current playback before pivoting.\n\nSUCCESS:\nPublish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
         "reason": "conversation_override",
-        "resolution_id": 5740070,
+        "resolution_id": 5740072,
         "resolution_status": "store_only",
         "safety_decision": "store_only"
       },
@@ -1209,9 +1105,7 @@
     "status": "listening"
   },
   "missing": [
-    "turn_state_memory_present",
     "barge_in_evidence_present",
-    "background_obligation_tracker_present",
     "natural_tts_persona_evidence_present"
   ],
   "no_audio_retained": true,
@@ -1222,13 +1116,15 @@
     "value_added_standard_defined",
     "ambient_lab_conversation_active",
     "stt_diagnostic_evidence_recent",
+    "turn_state_memory_present",
     "concise_response_policy_present",
     "context_router_present",
     "vad_segmentation_evidence_present",
-    "faux_pause_policy_evidence_present"
+    "faux_pause_policy_evidence_present",
+    "background_obligation_tracker_present"
   ],
-  "percent_complete": 66.7,
-  "started_at": "2026-05-22T03:30:28Z",
+  "percent_complete": 83.3,
+  "started_at": "2026-05-22T03:31:56Z",
   "status": "running",
   "success": false
 }

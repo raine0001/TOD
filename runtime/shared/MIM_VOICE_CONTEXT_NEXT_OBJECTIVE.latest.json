@@ -1,8 +1,8 @@
 {
-  "capability": "turn_state_memory_present",
-  "generated_at": "2026-05-22T03:30:37Z",
-  "goal": "Persist short-term conversation state, topic, referents, and recent turns for voice context.",
-  "objective_id": "MIM-TURN-STATE-MEMORY-V1",
+  "capability": "barge_in_evidence_present",
+  "generated_at": "2026-05-22T03:32:01Z",
+  "goal": "Detect operator interruption while MIM is speaking and stop current playback before pivoting.",
+  "objective_id": "MIM-BARGE-IN-RECOVERY-V1",
   "packet_type": "mim-voice-context-next-objective-v1",
-  "success": "Publish MIM_VOICE_TURN_STATE.latest.json and prove a follow-up can resolve implied context."
+  "success": "Publish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence."
 }

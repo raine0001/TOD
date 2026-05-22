@@ -1,0 +1,37 @@
+{
+  "current_topic": "camera_status",
+  "generated_at": "2026-05-22T03:31:49Z",
+  "last_action": "summarize_camera_cycle",
+  "last_artifacts": [
+    "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json"
+  ],
+  "last_intent": "camera_status",
+  "last_response_text": "Carried camera context forward to the arm-camera follow-up.",
+  "last_transcript": "what about the arm one",
+  "no_audio_retained": true,
+  "packet_type": "mim-voice-turn-state-v1",
+  "recent_turns": [
+    {
+      "action": "summarize_camera_cycle",
+      "generated_at": "2026-05-22T03:31:49Z",
+      "intent": "camera_status",
+      "response_text": "Camera status summarized.",
+      "transcript": "check the cameras"
+    },
+    {
+      "action": "summarize_camera_cycle",
+      "generated_at": "2026-05-22T03:31:49Z",
+      "intent": "camera_status",
+      "response_text": "Resolved 'the arm one' from the previous camera topic.",
+      "transcript": "what about the arm one"
+    }
+  ],
+  "source": "mim_voice_context_12h_runner",
+  "status": "simulated_context_turn_validated",
+  "success": true,
+  "validation": {
+    "claim": "MIM can preserve camera context across a follow-up pronoun/reference without requiring the word camera again.",
+    "raw_audio_retained": false,
+    "type": "autonomous_simulation"
+  }
+}

@@ -1,18 +1,16 @@
 {
   "entries": [
     {
-      "generated_at": "2026-05-22T03:30:37Z",
+      "generated_at": "2026-05-22T03:32:01Z",
       "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
       "missing": [
-        "turn_state_memory_present",
         "barge_in_evidence_present",
-        "background_obligation_tracker_present",
         "natural_tts_persona_evidence_present"
       ],
-      "objective": "MIM-TURN-STATE-MEMORY-V1"
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
     }
   ],
-  "generated_at": "2026-05-22T03:30:37Z",
+  "generated_at": "2026-05-22T03:32:01Z",
   "objective_id": "MIM-VALUE-ADDED-VOICE-ASSISTANT-12H-BUILD-V1",
   "packet_type": "mim-voice-context-12h-lessons-v1"
 }
