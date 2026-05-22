@@ -17,7 +17,7 @@
         "error": "",
         "max": 32036,
         "ok": true,
-        "rms": 650
+        "rms": 739
       },
       {
         "bytes": 0,
@@ -50,7 +50,7 @@
   "followup_status": null,
   "followup_transcript": "",
   "followup_voice_wav_output_accepted": null,
-  "generated_at": "2026-05-22T03:30:54Z",
+  "generated_at": "2026-05-22T14:00:49Z",
   "interaction_artifact": "runtime/shared/MIM_WAKE_WORD_INTERACTION.latest.json",
   "lab_conversation_action": null,
   "lab_conversation_intent": null,
@@ -60,7 +60,7 @@
   "last_audio_level": {
     "bytes": 128044,
     "max": 32000,
-    "rms": 286
+    "rms": 277
   },
   "last_general_transcript": "",
   "last_transcript": "",

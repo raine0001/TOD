@@ -12,6 +12,7 @@ import wave
 import audioop
 import math
 import struct
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,7 @@ FOLLOWUP_PATH = SHARED / "MIM_WAKE_FOLLOWUP.latest.json"
 TURN_STATE_PATH = SHARED / "MIM_VOICE_TURN_STATE.latest.json"
 VAD_STATUS_PATH = SHARED / "MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json"
 FAUX_PAUSE_STATUS_PATH = SHARED / "MIM_FAUX_PAUSE_HANDLING_STATUS.latest.json"
+VOICE_CHAT_BRIDGE_PATH = SHARED / "MIM_VOICE_UI_CHAT_BRIDGE.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -76,6 +78,9 @@ DIAGNOSTIC_ENABLED = os.environ.get("MIM_WAKE_DIAGNOSTIC", "1").strip().lower() 
 FOLLOWUP_ENABLED = os.environ.get("MIM_WAKE_FOLLOWUP", "1").strip().lower() not in {"0", "false", "no", "off"}
 FOLLOWUP_SECONDS = int(os.environ.get("MIM_WAKE_FOLLOWUP_SECONDS", "8"))
 LAB_CONVERSATION_MODE = os.environ.get("MIM_LAB_CONVERSATION_MODE", "1").strip().lower() not in {"0", "false", "no", "off"}
+VOICE_UI_CHAT_BRIDGE_ENABLED = os.environ.get("MIM_VOICE_UI_CHAT_BRIDGE", "1").strip().lower() not in {"0", "false", "no", "off"}
+VOICE_UI_CHAT_SESSION_ID = os.environ.get("MIM_VOICE_UI_CHAT_SESSION_ID", "mim-ambient-lab-voice-ui-chat")
+VOICE_UI_CHAT_ENDPOINT = os.environ.get("MIM_VOICE_UI_CHAT_ENDPOINT", "http://127.0.0.1:18001/gateway/intake/text")
 
 WAKE_GRAMMAR = json.dumps(
     [
@@ -770,6 +775,96 @@ def compact_status(value: Any) -> str:
     return text if text else "unknown"
 
 
+def concise_voice_text(text: str, *, max_chars: int = 260) -> str:
+    cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not cleaned:
+        return ""
+    # UI chat sometimes prefixes the session display name; voice should not.
+    cleaned = re.sub(r"^(giving some extra context|dave|operator)\s*,\s*", "", cleaned, flags=re.I)
+    sentences = re.split(r"(?<=[.!?])\s+", cleaned)
+    short = " ".join([item for item in sentences if item][:3]).strip()
+    if len(short) > max_chars:
+        short = short[: max_chars - 1].rstrip() + "."
+    return short
+
+
+def extract_mim_chat_reply(payload: dict[str, Any]) -> str:
+    resolution = payload.get("resolution") if isinstance(payload.get("resolution"), dict) else {}
+    metadata = resolution.get("metadata_json") if isinstance(resolution.get("metadata_json"), dict) else {}
+    candidates = [
+        metadata.get("mim_interface_reply_override"),
+        metadata.get("reply_text"),
+        resolution.get("clarification_prompt"),
+        payload.get("reply_text"),
+    ]
+    for candidate in candidates:
+        text = concise_voice_text(str(candidate or ""))
+        if text:
+            return text
+    return ""
+
+
+def call_mim_ui_chat(transcript: str) -> dict[str, Any]:
+    if not VOICE_UI_CHAT_BRIDGE_ENABLED:
+        return {"ok": False, "skipped": True, "error": "voice_ui_chat_bridge_disabled"}
+    payload = {
+        "text": transcript,
+        "parsed_intent": "conversation",
+        "safety_flags": [],
+        "metadata_json": {
+            "source": "mim_ambient_voice",
+            "interaction_mode": "voice",
+            "message_type": "user",
+            "conversation_session_id": VOICE_UI_CHAT_SESSION_ID,
+            "route_preference": "conversation_layer",
+            "voice_bridge": True,
+            "response_style": "voice_concise",
+        },
+    }
+    request = urllib.request.Request(
+        VOICE_UI_CHAT_ENDPOINT,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+        reply = extract_mim_chat_reply(response_payload)
+        result = {
+            "ok": bool(reply),
+            "endpoint": VOICE_UI_CHAT_ENDPOINT,
+            "status": response_payload.get("resolution", {}).get("resolution_status"),
+            "outcome": response_payload.get("resolution", {}).get("outcome"),
+            "request_id": response_payload.get("request_id"),
+            "input_id": response_payload.get("input_id"),
+            "reply_text": reply,
+            "raw_reply_available": bool(reply),
+            "error": "" if reply else "no_reply_text_extracted",
+        }
+    except Exception as exc:
+        result = {
+            "ok": False,
+            "endpoint": VOICE_UI_CHAT_ENDPOINT,
+            "reply_text": "",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    write_json(
+        VOICE_CHAT_BRIDGE_PATH,
+        {
+            "packet_type": "mim-voice-ui-chat-bridge-v1",
+            "generated_at": now_iso(),
+            "status": "completed_with_evidence" if result.get("ok") else "blocked_with_evidence",
+            "success": bool(result.get("ok")),
+            "transcript": transcript,
+            "bridge": result,
+            "policy": "Voice uses the same MIM conversation path as UI chat; local lab routing is fallback only.",
+            "no_audio_retained": True,
+        },
+    )
+    return result
+
+
 def load_turn_state() -> dict[str, Any]:
     state = load_shared_json("MIM_VOICE_TURN_STATE.latest.json")
     return state if isinstance(state, dict) else {}
@@ -814,6 +909,16 @@ def route_followup(transcript: str) -> dict[str, Any]:
     normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
     turn_state = load_turn_state()
     previous_topic = str(turn_state.get("current_topic") or "").strip()
+    chat_bridge = call_mim_ui_chat(transcript)
+    if chat_bridge.get("ok"):
+        return {
+            "intent": "mim_ui_chat",
+            "action": "voice_to_ui_chat_bridge",
+            "response_text": str(chat_bridge.get("reply_text") or "")[:260],
+            "artifacts": ["runtime/shared/MIM_VOICE_UI_CHAT_BRIDGE.latest.json"],
+            "chat_bridge": chat_bridge,
+            "fallback_used": False,
+        }
     artifacts: list[str] = []
     intent = "unknown"
     action = "clarify"
@@ -894,6 +999,8 @@ def route_followup(transcript: str) -> dict[str, Any]:
         "action": action,
         "response_text": response[:240],
         "artifacts": artifacts,
+        "chat_bridge": chat_bridge,
+        "fallback_used": True,
     }
 
 
@@ -958,6 +1065,8 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
             "intent": route.get("intent"),
             "action": route.get("action"),
             "artifacts": route.get("artifacts", []),
+            "chat_bridge": route.get("chat_bridge", {}),
+            "fallback_used": route.get("fallback_used"),
             "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
             "voice_response": voice_response,
             "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if response_text else None,
@@ -991,6 +1100,8 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
         "intent": route.get("intent"),
         "action": route.get("action"),
         "artifacts": route.get("artifacts", []),
+        "chat_bridge": route.get("chat_bridge", {}),
+        "fallback_used": route.get("fallback_used"),
         "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
         "response_text": response_text,
         "voice_response": voice_response,

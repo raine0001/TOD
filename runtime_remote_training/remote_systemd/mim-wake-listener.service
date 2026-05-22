@@ -14,6 +14,8 @@ Environment=MIM_WAKE_DIAGNOSTIC=1
 Environment=MIM_WAKE_FOLLOWUP=1
 Environment=MIM_WAKE_FOLLOWUP_SECONDS=8
 Environment=MIM_LAB_CONVERSATION_MODE=1
+Environment=MIM_VOICE_UI_CHAT_BRIDGE=1
+Environment=MIM_VOICE_UI_CHAT_SESSION_ID=mim-ambient-lab-voice-ui-chat
 ExecStart=/home/testpilot/mim/.venv/bin/python /home/testpilot/mim/scripts/mim_wake_listen_loop.py
 Restart=always
 RestartSec=3

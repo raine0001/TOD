@@ -1,37 +1,99 @@
 {
   "current_topic": "camera_status",
-  "generated_at": "2026-05-22T03:31:49Z",
-  "last_action": "summarize_camera_cycle",
-  "last_artifacts": [
-    "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json"
-  ],
-  "last_intent": "camera_status",
-  "last_response_text": "Carried camera context forward to the arm-camera follow-up.",
-  "last_transcript": "what about the arm one",
+  "generated_at": "2026-05-22T13:56:01Z",
+  "last_action": "clarify",
+  "last_artifacts": [],
+  "last_intent": "unknown",
+  "last_response_text": "I heard you, but I don't know how to act on that yet. Try cameras, sensors, lab status, objects, or remember this.",
+  "last_transcript": "men can you provide",
   "no_audio_retained": true,
   "packet_type": "mim-voice-turn-state-v1",
   "recent_turns": [
     {
-      "action": "summarize_camera_cycle",
-      "generated_at": "2026-05-22T03:31:49Z",
-      "intent": "camera_status",
-      "response_text": "Camera status summarized.",
-      "transcript": "check the cameras"
+      "action": "clarify",
+      "generated_at": "2026-05-22T09:40:53Z",
+      "intent": "unknown",
+      "response_text": "",
+      "transcript": "the"
     },
     {
       "action": "summarize_camera_cycle",
-      "generated_at": "2026-05-22T03:31:49Z",
+      "generated_at": "2026-05-22T09:57:18Z",
       "intent": "camera_status",
-      "response_text": "Resolved 'the arm one' from the previous camera topic.",
-      "transcript": "what about the arm one"
+      "response_text": "I can summarize camera evidence from the latest lab cycle. Camera cycle status is completed_with_evidence; lab awareness status is unknown.",
+      "transcript": "it"
+    },
+    {
+      "action": "clarify",
+      "generated_at": "2026-05-22T10:01:12Z",
+      "intent": "unknown",
+      "response_text": "",
+      "transcript": "she will"
+    },
+    {
+      "action": "clarify",
+      "generated_at": "2026-05-22T10:11:50Z",
+      "intent": "unknown",
+      "response_text": "",
+      "transcript": "me"
+    },
+    {
+      "action": "summarize_camera_cycle",
+      "generated_at": "2026-05-22T10:17:07Z",
+      "intent": "camera_status",
+      "response_text": "I can summarize camera evidence from the latest lab cycle. Camera cycle status is completed_with_evidence; lab awareness status is unknown.",
+      "transcript": "it"
+    },
+    {
+      "action": "clarify",
+      "generated_at": "2026-05-22T10:24:06Z",
+      "intent": "unknown",
+      "response_text": "",
+      "transcript": "the"
+    },
+    {
+      "action": "clarify",
+      "generated_at": "2026-05-22T10:32:30Z",
+      "intent": "unknown",
+      "response_text": "I heard you, but I don't know how to act on that yet. Try cameras, sensors, lab status, objects, or remember this.",
+      "transcript": "when"
+    },
+    {
+      "action": "clarify",
+      "generated_at": "2026-05-22T11:35:02Z",
+      "intent": "unknown",
+      "response_text": "",
+      "transcript": "the"
+    },
+    {
+      "action": "clarify",
+      "generated_at": "2026-05-22T12:05:28Z",
+      "intent": "unknown",
+      "response_text": "",
+      "transcript": "me"
+    },
+    {
+      "action": "clarify",
+      "generated_at": "2026-05-22T13:26:23Z",
+      "intent": "unknown",
+      "response_text": "",
+      "transcript": "hear me"
+    },
+    {
+      "action": "clarify",
+      "generated_at": "2026-05-22T13:54:26Z",
+      "intent": "unknown",
+      "response_text": "I heard you, but I don't know how to act on that yet. Try cameras, sensors, lab status, objects, or remember this.",
+      "transcript": "hello no can you hear me"
+    },
+    {
+      "action": "clarify",
+      "generated_at": "2026-05-22T13:56:01Z",
+      "intent": "unknown",
+      "response_text": "I heard you, but I don't know how to act on that yet. Try cameras, sensors, lab status, objects, or remember this.",
+      "transcript": "men can you provide"
     }
   ],
-  "source": "mim_voice_context_12h_runner",
-  "status": "simulated_context_turn_validated",
-  "success": true,
-  "validation": {
-    "claim": "MIM can preserve camera context across a follow-up pronoun/reference without requiring the word camera again.",
-    "raw_audio_retained": false,
-    "type": "autonomous_simulation"
-  }
+  "status": "updated",
+  "success": true
 }
