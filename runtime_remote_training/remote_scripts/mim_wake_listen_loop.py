@@ -950,6 +950,29 @@ def compact_status(value: Any) -> str:
     return text if text else "unknown"
 
 
+def parse_utc_timestamp(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def compact_duration(seconds: float | int | None) -> str:
+    if seconds is None:
+        return "unknown"
+    remaining = max(0, int(seconds))
+    hours, remainder = divmod(remaining, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours} hours, {minutes} minutes"
+    if minutes:
+        return f"{minutes} minutes, {secs} seconds"
+    return f"{secs} seconds"
+
+
 def transcript_words(transcript: str) -> list[str]:
     return re.findall(r"[a-zA-Z0-9']+", str(transcript or "").lower())
 
@@ -1013,6 +1036,64 @@ def extract_mim_chat_reply(payload: dict[str, Any]) -> str:
         if text:
             return text
     return ""
+
+
+def build_training_time_route() -> dict[str, Any]:
+    voice = load_shared_json("MIM_VOICE_CONTEXT_12H_BUILD_STATUS.latest.json")
+    tod = load_shared_json("TOD_TRAINING_STATUS.latest.json")
+    now = datetime.now(timezone.utc)
+    artifacts = [
+        "runtime/shared/MIM_VOICE_CONTEXT_12H_BUILD_STATUS.latest.json",
+        "runtime/shared/MIM_VOICE_CONTEXT_NEXT_OBJECTIVE.latest.json",
+        "runtime/shared/TOD_TRAINING_STATUS.latest.json",
+    ]
+    if isinstance(voice, dict) and voice:
+        deadline = parse_utc_timestamp(voice.get("deadline_at"))
+        remaining_seconds = (deadline - now).total_seconds() if deadline else None
+        current = voice.get("current_objective") if isinstance(voice.get("current_objective"), dict) else {}
+        missing = voice.get("missing") if isinstance(voice.get("missing"), list) else []
+        if deadline and remaining_seconds <= 0:
+            response = (
+                f"The 12 hour voice build window has reached its deadline. "
+                f"Last status was {compact_status(voice.get('status'))} at {compact_status(voice.get('percent_complete'))} percent. "
+                f"I'm still missing {', '.join(str(item) for item in missing) or 'no listed checks'}."
+            )
+        else:
+            response = (
+                f"About {compact_duration(remaining_seconds)} left in the 12 hour voice build. "
+                f"I'm at {compact_status(voice.get('percent_complete'))} percent, working on "
+                f"{compact_status(current.get('objective_id'))}."
+            )
+        return {
+            "intent": "training_time_status",
+            "action": "summarize_voice_context_training_time",
+            "response_text": response[:260],
+            "artifacts": artifacts,
+            "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_local_training_time_route"},
+            "fallback_used": True,
+        }
+    if isinstance(tod, dict) and tod:
+        eta = tod.get("eta_seconds")
+        response = (
+            f"TOD training is at {compact_status(tod.get('percent_complete'))} percent. "
+            f"Estimated time left is {compact_duration(eta)}."
+        )
+        return {
+            "intent": "training_time_status",
+            "action": "summarize_tod_training_time",
+            "response_text": response[:260],
+            "artifacts": ["runtime/shared/TOD_TRAINING_STATUS.latest.json"],
+            "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_local_training_time_route"},
+            "fallback_used": True,
+        }
+    return {
+        "intent": "training_time_status",
+        "action": "training_time_status_blocked",
+        "response_text": "I do not have a fresh training-time artifact yet. I logged that as a training status visibility gap.",
+        "artifacts": artifacts,
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "training_artifact_missing"},
+        "fallback_used": True,
+    }
 
 
 def call_mim_ui_chat(transcript: str) -> dict[str, Any]:
@@ -1120,6 +1201,8 @@ def route_followup(transcript: str) -> dict[str, Any]:
     normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
     turn_state = load_turn_state()
     previous_topic = str(turn_state.get("current_topic") or "").strip()
+    if re.search(r"\b(how much time|time left|time.*training|training.*time|current training|your training|what.*working on)\b", normalized):
+        return build_training_time_route()
     chat_bridge = call_mim_ui_chat(transcript)
     if chat_bridge.get("ok"):
         return {
