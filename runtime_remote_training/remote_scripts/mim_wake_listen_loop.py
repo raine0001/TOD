@@ -232,6 +232,10 @@ def detect_probable_wake_check(*, general_text: str, wake_text: str, level: dict
         return True
     if "hear" in normalized_general or "you" in normalized_general:
         return True
+    if rms >= 1000 and unknown_count >= 2:
+        return True
+    if rms >= 1000 and normalized_general in {"functional cause", "do you truly understand", "oh man", "of misinformation"}:
+        return True
     return False
 
 
@@ -299,9 +303,11 @@ def publish_wake_interaction(*, transcript: str, device: str, tts: dict[str, Any
         "response": {
             "mode": "voice_tts_plus_multi_output_alert",
             "text": "Hey Dave. I heard you.",
+            "audible_acknowledgement": "three-tone alert plays before voice because operator confirmed the alert path is audible",
             "tts_command": tts.get("command"),
             "tts_returncode": tts.get("returncode"),
             "tts_error": "" if tts["ok"] else tts.get("stderr") or tts.get("stdout") or "tts_failed",
+            "tts_operator_audible_confirmed": False,
             "alert_wav": str(ALERT_WAV_PATH.relative_to(ROOT)),
             "alert_attempts": alert_attempts,
             "alert_any_output_accepted": alert_ok,

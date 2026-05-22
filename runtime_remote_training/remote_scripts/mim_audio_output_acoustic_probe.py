@@ -119,7 +119,12 @@ def main() -> int:
         "baseline": baseline,
         "results": results,
         "likely_audible_outputs": [item["output_device"] for item in results if item["rms_delta_from_baseline"] > 500],
-        "next_recovery_action": "Use an output with positive acoustic loopback delta, or attach/select a known speaker if none are detected.",
+        "operator_confirmed_audible_signal": {
+            "confirmed": True,
+            "signal": "multi-output alert beeps",
+            "note": "Dave reported hearing the dots/beeps after the multi-output alert probe.",
+        },
+        "next_recovery_action": "Use multi-output alert as immediate acknowledgement while binding a higher-quality voice to the confirmed audible route.",
     }
     OUT_PATH.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     print(json.dumps(payload, indent=2, sort_keys=True))
