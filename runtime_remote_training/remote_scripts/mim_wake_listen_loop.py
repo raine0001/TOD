@@ -16,6 +16,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from vosk import KaldiRecognizer, Model
 
@@ -94,6 +95,7 @@ VOICE_PIPER_LENGTH_SCALE = os.environ.get("MIM_VOICE_PIPER_LENGTH_SCALE", "0.82"
 VOICE_PIPER_NOISE_SCALE = os.environ.get("MIM_VOICE_PIPER_NOISE_SCALE", "0.48").strip()
 VOICE_PIPER_NOISE_W_SCALE = os.environ.get("MIM_VOICE_PIPER_NOISE_W_SCALE", "0.65").strip()
 VOICE_PIPER_VOLUME = os.environ.get("MIM_VOICE_PIPER_VOLUME", "1.18").strip()
+OPERATOR_TIMEZONE = os.environ.get("MIM_OPERATOR_TIMEZONE", "America/Los_Angeles").strip()
 
 LOW_CONTENT_TOKENS = {
     "a",
@@ -960,6 +962,22 @@ def parse_utc_timestamp(value: Any) -> datetime | None:
         return None
 
 
+def operator_timezone() -> ZoneInfo:
+    try:
+        return ZoneInfo(OPERATOR_TIMEZONE)
+    except Exception:
+        return ZoneInfo("America/Los_Angeles")
+
+
+def format_operator_time(value: datetime | None) -> str:
+    if value is None:
+        return "unknown PT"
+    local = value.astimezone(operator_timezone())
+    hour = local.strftime("%I").lstrip("0") or "0"
+    suffix = local.tzname() or "PT"
+    return f"{hour}:{local.strftime('%M %p')} {suffix}"
+
+
 def compact_duration(seconds: float | int | None) -> str:
     if seconds is None:
         return "unknown"
@@ -1054,13 +1072,14 @@ def build_training_time_route() -> dict[str, Any]:
         missing = voice.get("missing") if isinstance(voice.get("missing"), list) else []
         if deadline and remaining_seconds <= 0:
             response = (
-                f"The 12 hour voice build window has reached its deadline. "
+                f"The 12 hour voice build window hit its deadline at {format_operator_time(deadline)}. "
                 f"Last status was {compact_status(voice.get('status'))} at {compact_status(voice.get('percent_complete'))} percent. "
                 f"I'm still missing {', '.join(str(item) for item in missing) or 'no listed checks'}."
             )
         else:
             response = (
                 f"About {compact_duration(remaining_seconds)} left in the 12 hour voice build. "
+                f"Deadline is {format_operator_time(deadline)}. "
                 f"I'm at {compact_status(voice.get('percent_complete'))} percent, working on "
                 f"{compact_status(current.get('objective_id'))}."
             )
@@ -1092,6 +1111,20 @@ def build_training_time_route() -> dict[str, Any]:
         "response_text": "I do not have a fresh training-time artifact yet. I logged that as a training status visibility gap.",
         "artifacts": artifacts,
         "chat_bridge": {"ok": False, "skipped": True, "reason": "training_artifact_missing"},
+        "fallback_used": True,
+    }
+
+
+def build_current_time_route() -> dict[str, Any]:
+    now_local = datetime.now(timezone.utc).astimezone(operator_timezone())
+    hour = now_local.strftime("%I").lstrip("0") or "0"
+    response = f"It's {hour}:{now_local.strftime('%M %p')} {now_local.tzname() or 'PT'}."
+    return {
+        "intent": "current_time_status",
+        "action": "answer_current_operator_time",
+        "response_text": response,
+        "artifacts": [],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_local_operator_time_route"},
         "fallback_used": True,
     }
 
@@ -1203,6 +1236,8 @@ def route_followup(transcript: str) -> dict[str, Any]:
     previous_topic = str(turn_state.get("current_topic") or "").strip()
     if re.search(r"\b(how much time|time left|time.*training|training.*time|current training|your training|what.*working on)\b", normalized):
         return build_training_time_route()
+    if re.search(r"\b(what time is it|current time|time now)\b", normalized):
+        return build_current_time_route()
     chat_bridge = call_mim_ui_chat(transcript)
     if chat_bridge.get("ok"):
         return {

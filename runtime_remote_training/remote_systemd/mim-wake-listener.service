@@ -23,6 +23,7 @@ Environment=MIM_VOICE_PIPER_LENGTH_SCALE=0.78
 Environment=MIM_VOICE_PIPER_NOISE_SCALE=0.46
 Environment=MIM_VOICE_PIPER_NOISE_W_SCALE=0.62
 Environment=MIM_VOICE_PIPER_VOLUME=1.16
+Environment=MIM_OPERATOR_TIMEZONE=America/Los_Angeles
 ExecStart=/home/testpilot/mim/.venv/bin/python /home/testpilot/mim/scripts/mim_wake_listen_loop.py
 Restart=always
 RestartSec=3
