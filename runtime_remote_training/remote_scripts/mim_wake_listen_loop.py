@@ -45,12 +45,12 @@ DEFAULT_DEVICES = [
 
 DEFAULT_PLAYBACK_DEVICES = [
     "plughw:1,0",
-    "plughw:3,0",
     "plughw:4,3",
+    "default",
+    "plughw:3,0",
     "plughw:4,7",
     "plughw:4,8",
     "plughw:4,9",
-    "default",
 ]
 
 WAKE_PATTERNS = [
@@ -344,7 +344,7 @@ def play_alert() -> list[dict[str, Any]]:
     return play_wav_on_outputs(wav_path)
 
 
-def play_wav_on_outputs(wav_path: Path) -> list[dict[str, Any]]:
+def play_wav_on_outputs(wav_path: Path, *, stop_after_first_success: bool = True) -> list[dict[str, Any]]:
     timeout_seconds = 8
     try:
         with wave.open(str(wav_path), "rb") as wav_file:
@@ -363,6 +363,8 @@ def play_wav_on_outputs(wav_path: Path) -> list[dict[str, Any]]:
                 "error": "" if probe["ok"] else probe.get("stderr") or probe.get("stdout") or "aplay_failed",
             }
         )
+        if probe["ok"] and stop_after_first_success:
+            break
     return attempts
 
 
@@ -552,7 +554,13 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
         if wake:
             alert_attempts = []
             voice_response = play_voice_response("Hey Dave. I heard you. Finally. Tiny miracle.")
-            tts = speak("Hey Dave. I heard you.")
+            tts = {
+                "ok": False,
+                "command": [],
+                "returncode": None,
+                "stderr": "speech-dispatcher skipped; generated WAV is the primary response",
+                "stdout": "",
+            }
             publish_wake_interaction(
                 transcript=transcript,
                 device=device,
@@ -650,6 +658,26 @@ def main() -> int:
         )
         if args.once:
             return 0
+        if result.get("wake_phrase_detected"):
+            cooldown_until = now_iso()
+            write_json(
+                STATUS_PATH,
+                {
+                    "packet_type": "mim-wake-listener-status-v1",
+                    "generated_at": cooldown_until,
+                    "status": "cooldown_after_response",
+                    "success": True,
+                    "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
+                    "audio_device": device,
+                    "cooldown_seconds": 10,
+                    "reason": "Prevent repeated playback and self-triggering after audible response.",
+                    "last_transcript": result.get("transcript", ""),
+                    "wake_phrase_detected": True,
+                    "voice_wav_output_accepted": result.get("voice_wav_output_accepted"),
+                    "interaction_artifact": str(INTERACTION_PATH.relative_to(ROOT)) if INTERACTION_PATH.exists() else "",
+                },
+            )
+            time.sleep(10)
         time.sleep(max(0.1, args.idle_seconds))
 
 

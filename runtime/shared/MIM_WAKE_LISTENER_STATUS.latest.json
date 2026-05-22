@@ -1,5 +1,5 @@
 {
-  "alert_any_output_accepted": false,
+  "alert_any_output_accepted": null,
   "audio_device": "plughw:2,0",
   "device_selection": {
     "attempts": [
@@ -9,7 +9,7 @@
         "error": "",
         "max": 32036,
         "ok": true,
-        "rms": 650
+        "rms": 647
       },
       {
         "bytes": 32044,
@@ -17,7 +17,7 @@
         "error": "",
         "max": 32036,
         "ok": true,
-        "rms": 660
+        "rms": 692
       },
       {
         "bytes": 0,
@@ -46,24 +46,24 @@
     ],
     "selection_reason": "first_nonclipped_signal_in_priority_order"
   },
-  "generated_at": "2026-05-22T02:33:28Z",
+  "generated_at": "2026-05-22T02:36:02Z",
   "interaction_artifact": "runtime/shared/MIM_WAKE_WORD_INTERACTION.latest.json",
   "last_audio_level": {
     "bytes": 128044,
     "max": 32000,
-    "rms": 1298
+    "rms": 283
   },
-  "last_general_transcript": "hey dave i",
-  "last_transcript": "hey dave i",
-  "last_wake_transcript": "hey mim",
+  "last_general_transcript": "",
+  "last_transcript": "",
+  "last_wake_transcript": "",
   "no_audio_retained": true,
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
   "packet_type": "mim-wake-listener-status-v1",
   "probable_wake_check": false,
-  "status": "wake_detected",
+  "status": "listening",
   "stt_error": "",
   "success": true,
-  "tts_ok": true,
-  "voice_wav_output_accepted": true,
-  "wake_phrase_detected": true
+  "tts_ok": null,
+  "voice_wav_output_accepted": null,
+  "wake_phrase_detected": false
 }

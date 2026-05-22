@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-05-22T02:35:53Z",
+  "operator_confirmation_required": true,
+  "packet_type": "mim-voice-single-route-test-v1",
+  "voice_response": {
+    "any_output_accepted": true,
+    "combined_format": "48kHz stereo PCM16; alert and voice in same playback stream",
+    "combined_response_wav": "runtime/shared/MIM_WAKE_COMBINED_RESPONSE.wav",
+    "command": [
+      "/home/testpilot/mim/.venv/bin/piper",
+      "-m",
+      "/home/testpilot/mim/runtime/models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx",
+      "-i",
+      "/tmp/mim-voice-trv9vyln.txt",
+      "-f",
+      "/home/testpilot/mim/runtime/shared/MIM_WAKE_VOICE_RESPONSE.wav",
+      "--length-scale",
+      "0.92",
+      "--noise-scale",
+      "0.55",
+      "--noise-w-scale",
+      "0.75",
+      "--volume",
+      "1.25"
+    ],
+    "error": "",
+    "ok": true,
+    "operator_audible_confirmed": false,
+    "output_wav": "runtime/shared/MIM_WAKE_VOICE_RESPONSE.wav",
+    "play_attempts": [
+      {
+        "device": "plughw:1,0",
+        "error": "",
+        "ok": true,
+        "returncode": 0
+      }
+    ],
+    "returncode": 0,
+    "voice_engine": "piper",
+    "voice_model": "runtime/models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx"
+  }
+}
