@@ -36,6 +36,9 @@ VOICE_CHAT_BRIDGE_PATH = SHARED / "MIM_VOICE_UI_CHAT_BRIDGE.latest.json"
 VOICE_TRANSCRIPT_LOG_PATH = SHARED / "MIM_VOICE_TRANSCRIPT_LOG.latest.jsonl"
 VOICE_TRANSCRIPT_SUMMARY_PATH = SHARED / "MIM_VOICE_TRANSCRIPT_LOG_STATUS.latest.json"
 VOICE_FRAGMENT_SUPPRESSION_PATH = SHARED / "MIM_VOICE_FRAGMENT_SUPPRESSION_STATUS.latest.json"
+VOICE_CONTROL_OBJECTIVE_PATH = SHARED / "MIM_LAB_CONVERSATION_CONTROL_LAYER_OBJECTIVE.latest.json"
+VOICE_ADDRESSING_DECISION_PATH = SHARED / "MIM_VOICE_ADDRESSING_DECISION.latest.json"
+LAB_CONVERSATION_SCENE_PATH = SHARED / "MIM_LAB_CONVERSATION_SCENE.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -113,6 +116,30 @@ LOW_CONTENT_TOKENS = {
     "um",
     "yeah",
     "yes",
+}
+
+MIM_REFERENCE_TOKENS = {
+    "maam",
+    "mam",
+    "mem",
+    "men",
+    "meme",
+    "mim",
+    "min",
+    "mime",
+    "mom",
+}
+
+FOLLOWUP_REFERENCE_TOKENS = {
+    "again",
+    "also",
+    "it",
+    "one",
+    "that",
+    "there",
+    "this",
+    "those",
+    "too",
 }
 
 ACTIONABLE_TOKENS = {
@@ -592,6 +619,7 @@ def publish_transcript_log(result: dict[str, Any], *, device: str) -> None:
         "lab_conversation_intent": result.get("lab_conversation_intent"),
         "lab_conversation_action": result.get("lab_conversation_action"),
         "lab_conversation_fragment_classification": result.get("lab_conversation_fragment_classification", {}),
+        "lab_conversation_addressing_decision": result.get("lab_conversation_addressing_decision", {}),
         "voice_wav_output_accepted": result.get("voice_wav_output_accepted"),
         "lab_conversation_voice_wav_output_accepted": result.get("lab_conversation_voice_wav_output_accepted"),
         "no_audio_retained": True,
@@ -995,16 +1023,171 @@ def transcript_words(transcript: str) -> list[str]:
     return re.findall(r"[a-zA-Z0-9']+", str(transcript or "").lower())
 
 
+def has_mim_reference(transcript: str) -> bool:
+    words = set(transcript_words(str(transcript or "").replace("ma'am", "maam")))
+    if words.intersection(MIM_REFERENCE_TOKENS):
+        return True
+    normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
+    return bool(re.search(r"\bm[.\s]*i[.\s]*m\b", normalized))
+
+
+def is_assistant_shaped(transcript: str) -> bool:
+    normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
+    return bool(
+        re.search(
+            r"\b(can you|could you|would you|will you|please|what|how|why|when|where|who|"
+            r"tell me|show me|check|start|stop|pause|resume|remember|note this|status|"
+            r"look|listen|find|open|close|run|execute|turn on|turn off)\b",
+            normalized,
+        )
+    )
+
+
 def classify_voice_fragment(transcript: str) -> dict[str, Any]:
     words = transcript_words(transcript)
     if not words:
         return {"is_fragment": True, "reason_code": "empty_transcript", "word_count": 0, "words": []}
+    if has_mim_reference(transcript):
+        return {"is_fragment": False, "reason_code": "mim_reference_is_addressing_signal", "word_count": len(words), "words": words}
     unique = set(words)
     if len(words) == 1 and words[0] in LOW_CONTENT_TOKENS:
         return {"is_fragment": True, "reason_code": "single_low_content_token", "word_count": 1, "words": words}
     if len(words) <= 2 and not unique.intersection(ACTIONABLE_TOKENS):
         return {"is_fragment": True, "reason_code": "short_non_actionable_transcript", "word_count": len(words), "words": words}
     return {"is_fragment": False, "reason_code": "actionable_or_contextual_transcript", "word_count": len(words), "words": words}
+
+
+def build_lab_conversation_scene(transcript: str, vad: dict[str, Any] | None = None, audio_level: dict[str, Any] | None = None) -> dict[str, Any]:
+    awareness = load_shared_json("MIM_LAB_AWARENESS_STATUS.latest.json")
+    camera = load_shared_json("MIM_LAB_CAMERA_CYCLE_STATUS.latest.json")
+    memory = load_shared_json("MIM_HUMAN_INTERACTION_MEMORY.latest.json")
+    generated_at = now_iso()
+    awareness_at = parse_utc_timestamp(awareness.get("generated_at"))
+    camera_at = parse_utc_timestamp(camera.get("generated_at"))
+    now = datetime.now(timezone.utc)
+    camera_age_seconds = (now - camera_at).total_seconds() if camera_at else None
+    awareness_age_seconds = (now - awareness_at).total_seconds() if awareness_at else None
+    known_humans = []
+    for record in memory.get("memory_records", []) if isinstance(memory.get("memory_records"), list) else []:
+        name = str(record.get("human_name") or "").strip()
+        if name and name not in known_humans:
+            known_humans.append(name)
+    scene = {
+        "packet_type": "mim-lab-conversation-scene-v1",
+        "generated_at": generated_at,
+        "objective_id": "MIM-LAB-CONVERSATION-CONTROL-LAYER-V1",
+        "status": "observed_with_limited_scene_evidence",
+        "success": True,
+        "transcript": transcript,
+        "human_count": "unknown",
+        "known_humans": known_humans or ["Dave"],
+        "primary_operator": "Dave",
+        "conversation_mode": "single_speaker_or_unknown",
+        "camera_fresh": bool(camera_age_seconds is not None and camera_age_seconds <= 120),
+        "camera_age_seconds": camera_age_seconds,
+        "awareness_fresh": bool(awareness_age_seconds is not None and awareness_age_seconds <= 120),
+        "awareness_age_seconds": awareness_age_seconds,
+        "vad": vad or {},
+        "audio_level": audio_level or {},
+        "source_artifacts": [
+            "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+            "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+            "runtime/shared/MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+        ],
+        "next_recovery_action": "Bind fresh camera human-count evidence so MIM can distinguish direct address from humans talking to each other.",
+        "no_audio_retained": True,
+    }
+    write_json(LAB_CONVERSATION_SCENE_PATH, scene)
+    return scene
+
+
+def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: str) -> dict[str, Any]:
+    words = transcript_words(transcript)
+    mim_reference = has_mim_reference(transcript)
+    assistant_shape = is_assistant_shaped(transcript)
+    turn_state = load_turn_state()
+    previous_topic = str(turn_state.get("current_topic") or "").strip()
+    followup_reference = bool(set(words).intersection(FOLLOWUP_REFERENCE_TOKENS))
+    short_followup = bool(previous_topic and 1 <= len(words) <= 5 and followup_reference and not mim_reference)
+    if mim_reference:
+        addressed = True
+        confidence = 0.995
+        reason = "mim_or_mim_like_reference"
+        action = "respond"
+    elif assistant_shape:
+        addressed = True
+        confidence = 0.82
+        reason = "assistant_shaped_speech_in_mim_lab"
+        action = "respond"
+    elif short_followup:
+        addressed = True
+        confidence = 0.72
+        reason = "short_followup_to_existing_voice_topic"
+        action = "respond"
+    elif scene.get("conversation_mode") == "multiple_humans_uncertain":
+        addressed = False
+        confidence = 0.55
+        reason = "multiple_humans_without_mim_reference"
+        action = "ask_if_addressed"
+    else:
+        addressed = False
+        confidence = 0.35
+        reason = "ambient_non_direct_speech"
+        action = "observe"
+    decision = {
+        "packet_type": "mim-voice-addressing-decision-v1",
+        "generated_at": now_iso(),
+        "objective_id": "MIM-LAB-CONVERSATION-CONTROL-LAYER-V1",
+        "status": "addressed" if addressed else "not_addressed",
+        "success": True,
+        "source": source,
+        "transcript": transcript,
+        "addressed_to_mim": addressed,
+        "confidence": confidence,
+        "reason_code": reason,
+        "recommended_action": action,
+        "mim_reference_detected": mim_reference,
+        "assistant_shaped": assistant_shape,
+        "short_followup": short_followup,
+        "followup_reference": followup_reference,
+        "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)),
+        "policy": "MIM-like words are treated as direct address; assistant-shaped speech in the lab is presumed for MIM unless scene evidence shows humans talking to each other.",
+        "no_audio_retained": True,
+    }
+    write_json(VOICE_ADDRESSING_DECISION_PATH, decision)
+    return decision
+
+
+def publish_conversation_control_objective() -> None:
+    write_json(
+        VOICE_CONTROL_OBJECTIVE_PATH,
+        {
+            "packet_type": "mim-lab-conversation-control-layer-objective-v1",
+            "generated_at": now_iso(),
+            "objective_id": "MIM-LAB-CONVERSATION-CONTROL-LAYER-V1",
+            "status": "active",
+            "success": True,
+            "goal": "Route lab speech through a conversation control layer before response generation.",
+            "required_outputs": [
+                "MIM_VOICE_ADDRESSING_DECISION.latest.json",
+                "MIM_LAB_CONVERSATION_SCENE.latest.json",
+                "MIM_WAKE_FOLLOWUP.latest.json",
+            ],
+            "policies": [
+                "Treat MIM-like words such as mom, mam, maam, mem, min, and meme as likely references to MIM.",
+                "Presume assistant-shaped speech in MIM's lab is addressed to MIM unless fresh scene evidence indicates a human-to-human conversation.",
+                "Observe non-direct ambient speech without sending it to the UI chat brain.",
+                "Ask a short clarification when scene evidence indicates multiple humans and the addressee is ambiguous.",
+            ],
+            "success_criteria": [
+                "Every heard lab utterance publishes an addressing decision.",
+                "Every heard lab utterance publishes a conversation scene snapshot.",
+                "Low-content MIM-name utterances are not suppressed as fragments.",
+                "Non-addressed ambient speech is logged without a spoken generic clarification.",
+            ],
+            "no_audio_retained": True,
+        },
+    )
 
 
 def publish_fragment_suppression(transcript: str, classification: dict[str, Any], *, source: str) -> None:
@@ -1129,6 +1312,17 @@ def build_current_time_route() -> dict[str, Any]:
     }
 
 
+def build_address_ack_route() -> dict[str, Any]:
+    return {
+        "intent": "mim_address_acknowledgement",
+        "action": "acknowledge_direct_address",
+        "response_text": "Yeah Dave?",
+        "artifacts": ["runtime/shared/MIM_VOICE_ADDRESSING_DECISION.latest.json"],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "direct_mim_reference_acknowledged_locally"},
+        "fallback_used": True,
+    }
+
+
 def call_mim_ui_chat(transcript: str) -> dict[str, Any]:
     if not VOICE_UI_CHAT_BRIDGE_ENABLED:
         return {"ok": False, "skipped": True, "error": "voice_ui_chat_bridge_disabled"}
@@ -1234,6 +1428,8 @@ def route_followup(transcript: str) -> dict[str, Any]:
     normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
     turn_state = load_turn_state()
     previous_topic = str(turn_state.get("current_topic") or "").strip()
+    if has_mim_reference(transcript) and len(transcript_words(transcript)) <= 2:
+        return build_address_ack_route()
     if re.search(r"\b(how much time|time left|time.*training|training.*time|current training|your training|what.*working on)\b", normalized):
         return build_training_time_route()
     if re.search(r"\b(what time is it|current time|time now)\b", normalized):
@@ -1360,15 +1556,33 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
         transcript = stt.get("text", "") or stt.get("wake_text", "")
         self_output_detected = detect_self_output(stt.get("text", "")) or detect_self_output(stt.get("wake_text", ""))
         route = {"intent": "none", "action": "none", "artifacts": []}
+        scene = build_lab_conversation_scene(transcript, vad=vad, audio_level=level) if transcript and not self_output_detected else {}
+        addressing = (
+            decide_voice_addressing(transcript, scene=scene, source="followup")
+            if transcript and not self_output_detected
+            else {}
+        )
         if not stt["ok"]:
             status = "stt_blocked"
             response_text = ""
         elif self_output_detected:
             status = "ignored_self_output"
             response_text = ""
+        elif addressing and not addressing.get("addressed_to_mim"):
+            status = "operator_followup_observed_not_addressed"
+            route = {
+                "intent": "not_addressed_to_mim",
+                "action": "observe_without_response",
+                "artifacts": [
+                    "runtime/shared/MIM_VOICE_ADDRESSING_DECISION.latest.json",
+                    "runtime/shared/MIM_LAB_CONVERSATION_SCENE.latest.json",
+                ],
+                "fallback_used": False,
+            }
+            response_text = ""
         elif transcript:
             fragment = classify_voice_fragment(transcript)
-            if fragment.get("is_fragment"):
+            if fragment.get("is_fragment") and not addressing.get("addressed_to_mim"):
                 publish_fragment_suppression(transcript, fragment, source="followup")
                 route = {
                     "intent": "voice_fragment_suppressed",
@@ -1409,6 +1623,9 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
             "chat_bridge": route.get("chat_bridge", {}),
             "fallback_used": route.get("fallback_used"),
             "fragment_classification": route.get("fragment_classification", {}),
+            "addressing_decision": addressing,
+            "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)) if scene else "",
+            "addressing_artifact": str(VOICE_ADDRESSING_DECISION_PATH.relative_to(ROOT)) if addressing else "",
             "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
             "voice_response": voice_response,
             "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if response_text else None,
@@ -1427,8 +1644,41 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
 
 
 def handle_lab_conversation(transcript: str) -> dict[str, Any]:
+    publish_conversation_control_objective()
+    scene = build_lab_conversation_scene(transcript)
+    addressing = decide_voice_addressing(transcript, scene=scene, source="ambient_lab_conversation")
+    if not addressing.get("addressed_to_mim"):
+        result = {
+            "packet_type": "mim-lab-conversation-turn-v1",
+            "generated_at": now_iso(),
+            "objective_id": "MIM-LAB-CONVERSATION-CONTROL-LAYER-V1",
+            "status": "observed_not_addressed",
+            "success": True,
+            "mode": "ambient_lab_conversation",
+            "transcript": transcript,
+            "intent": "not_addressed_to_mim",
+            "action": "observe_without_response",
+            "artifacts": [
+                "runtime/shared/MIM_VOICE_ADDRESSING_DECISION.latest.json",
+                "runtime/shared/MIM_LAB_CONVERSATION_SCENE.latest.json",
+                "runtime/shared/MIM_LAB_CONVERSATION_CONTROL_LAYER_OBJECTIVE.latest.json",
+            ],
+            "chat_bridge": {},
+            "fallback_used": False,
+            "addressing_decision": addressing,
+            "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)),
+            "addressing_artifact": str(VOICE_ADDRESSING_DECISION_PATH.relative_to(ROOT)),
+            "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
+            "response_text": "",
+            "voice_response": {},
+            "voice_wav_output_accepted": None,
+            "no_audio_retained": True,
+            "policy": "MIM observes ambient lab speech that is not addressed to MIM and does not send it to UI chat.",
+        }
+        write_json(FOLLOWUP_PATH, result)
+        return result
     fragment = classify_voice_fragment(transcript)
-    if fragment.get("is_fragment"):
+    if fragment.get("is_fragment") and not addressing.get("addressed_to_mim"):
         publish_fragment_suppression(transcript, fragment, source="ambient_lab_conversation")
         route = {
             "intent": "voice_fragment_suppressed",
@@ -1451,6 +1701,9 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
             "chat_bridge": {},
             "fallback_used": route.get("fallback_used"),
             "fragment_classification": fragment,
+            "addressing_decision": addressing,
+            "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)),
+            "addressing_artifact": str(VOICE_ADDRESSING_DECISION_PATH.relative_to(ROOT)),
             "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
             "response_text": "",
             "voice_response": {},
@@ -1467,7 +1720,7 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
     result = {
         "packet_type": "mim-lab-conversation-turn-v1",
         "generated_at": now_iso(),
-        "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
+        "objective_id": "MIM-LAB-CONVERSATION-CONTROL-LAYER-V1",
         "status": "responded" if response_text else "observed_no_response",
         "success": True,
         "mode": "ambient_lab_conversation",
@@ -1478,12 +1731,15 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
         "chat_bridge": route.get("chat_bridge", {}),
         "fallback_used": route.get("fallback_used"),
         "fragment_classification": route.get("fragment_classification", {}),
+        "addressing_decision": addressing,
+        "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)),
+        "addressing_artifact": str(VOICE_ADDRESSING_DECISION_PATH.relative_to(ROOT)),
         "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
         "response_text": response_text,
         "voice_response": voice_response,
         "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if response_text else None,
         "no_audio_retained": True,
-        "policy": "MIM listens to lab audio continuously and responds to routed intents or direct questions; MIM is not triggered by her name.",
+        "policy": "MIM routes lab speech through an addressing decision before response generation; MIM-like words are direct address signals.",
     }
     if transcript:
         save_turn_state(transcript=transcript, route=route, response_text=response_text)
@@ -1580,6 +1836,7 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             "lab_conversation_intent": lab_turn.get("intent"),
             "lab_conversation_action": lab_turn.get("action"),
             "lab_conversation_fragment_classification": lab_turn.get("fragment_classification", {}),
+            "lab_conversation_addressing_decision": lab_turn.get("addressing_decision", {}),
             "lab_conversation_voice_wav_output_accepted": lab_turn.get("voice_wav_output_accepted"),
             "no_audio_retained": True,
         }
@@ -1662,6 +1919,7 @@ def main() -> int:
                 "lab_conversation_response": result.get("lab_conversation_response"),
                 "lab_conversation_intent": result.get("lab_conversation_intent"),
                 "lab_conversation_action": result.get("lab_conversation_action"),
+                "lab_conversation_addressing_decision": result.get("lab_conversation_addressing_decision", {}),
                 "lab_conversation_voice_wav_output_accepted": result.get("lab_conversation_voice_wav_output_accepted"),
                 "no_audio_retained": True,
                 "interaction_artifact": str(INTERACTION_PATH.relative_to(ROOT)) if INTERACTION_PATH.exists() else "",
