@@ -18,6 +18,7 @@ Environment=MIM_VOICE_UI_CHAT_BRIDGE=1
 Environment=MIM_VOICE_UI_CHAT_SESSION_ID=mim-ambient-lab-voice-ui-chat
 Environment=MIM_VOICE_TRANSCRIPT_LOG=1
 Environment=MIM_VOICE_TRANSCRIPT_LOG_MAX_LINES=500
+Environment=MIM_VOICE_PIPER_MODEL=/home/testpilot/mim/runtime/models/piper/en_US-amy-medium/en_US-amy-medium.onnx
 ExecStart=/home/testpilot/mim/.venv/bin/python /home/testpilot/mim/scripts/mim_wake_listen_loop.py
 Restart=always
 RestartSec=3
