@@ -1,0 +1,13 @@
+{
+  "confirmed_signal": "three beeps",
+  "evidence_artifact": "runtime/shared/MIM_WAKE_WORD_INTERACTION.latest.json",
+  "generated_at": "2026-05-22T02:24:28Z",
+  "latest_transcript": "hello ma'am",
+  "next_objective": "MIM-VOICE-GENERATED-WAV-PERSONA-V1",
+  "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
+  "operator_confirmed_audible_ack": true,
+  "packet_type": "mim-listening-and-audible-ack-status-v1",
+  "remaining_blocker": "spoken voice is not yet operator-confirmed audible or high quality",
+  "status": "wake_detection_and_audible_ack_complete",
+  "success": true
+}

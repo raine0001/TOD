@@ -1,14 +1,22 @@
 {
   "audio_device": "plughw:2,0",
-  "generated_at": "2026-05-22T02:18:29Z",
+  "generated_at": "2026-05-22T02:23:38Z",
   "memory_update": {
     "human_name": "Dave",
     "human_role": "primary_operator",
     "interaction_type": "wake_word_voice",
-    "last_interaction_time": "2026-05-22T02:18:29Z"
+    "last_interaction_time": "2026-05-22T02:23:38Z"
   },
   "no_audio_retained": true,
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
+  "operator_confirmation": {
+    "audible_acknowledgement_heard": true,
+    "confirmed_at": "2026-05-22T02:24:28Z",
+    "confirmed_by": "Dave",
+    "heard_signal": "three beeps",
+    "operator_report": "I hear three beeps multiple times when I yell hello mim can you hear me.",
+    "voice_speech_heard": false
+  },
   "owner": "MIM",
   "packet_type": "mim-wake-word-interaction-v1",
   "response": {
@@ -58,6 +66,7 @@
       }
     ],
     "alert_wav": "runtime/shared/MIM_WAKE_ALERT.wav",
+    "audible_acknowledgement": "three-tone alert plays before voice because operator confirmed the alert path is audible",
     "mode": "voice_tts_plus_multi_output_alert",
     "text": "Hey Dave. I heard you.",
     "tts_command": [
@@ -65,10 +74,11 @@
       "Hey Dave. I heard you."
     ],
     "tts_error": "",
+    "tts_operator_audible_confirmed": false,
     "tts_returncode": 0
   },
-  "status": "completed_with_evidence",
+  "status": "completed_with_operator_confirmed_audible_ack",
   "success": true,
-  "transcript": "do you truly understand",
+  "transcript": "hello ma'am",
   "wake_phrase_detected": true
 }
