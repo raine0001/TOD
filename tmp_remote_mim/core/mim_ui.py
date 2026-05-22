@@ -108,6 +108,7 @@ from core.ui_health_service import (
 router = APIRouter(tags=["mim-ui"])
 logger = logging.getLogger(__name__)
 SHARED_RUNTIME_ROOT = Path("runtime/shared")
+MIM_VOICE_INTERACTION_LEARNING_ARTIFACT = SHARED_RUNTIME_ROOT / "MIM_VOICE_INTERACTION_LEARNING.latest.json"
 MIM_TRAINING_STATUS_ARTIFACT = Path("runtime/reports/mim_evolution_continuous_training.latest.json")
 MIM_TRAINING_SUMMARY_ARTIFACT = Path("runtime/reports/mim_evolution_training_summary.json")
 MIM_TRAINING_CONVERSATION_REPORT_ARTIFACT = Path("runtime/reports/mim_evolution_conversation_report.json")
@@ -144,6 +145,11 @@ class FrontendMediaStatusRequest(BaseModel):
   permission_state: str | None = None
   selected_device_id: str | None = None
   selected_device_label: str | None = None
+
+
+class MimVoiceDoNotDisturbRequest(BaseModel):
+  enabled: bool
+  source: str | None = None
 
 
 MIM_UI_FRONTEND_MEDIA_TTL_SECONDS = 900.0
@@ -1089,6 +1095,7 @@ def _build_mim_ui_degraded_state(*, db_error_text: str = "") -> dict[str, object
     "primitive_request": authoritative_request,
     "chat_thread": chat_thread,
     "frontend_media": frontend_media,
+    "voice_do_not_disturb": _load_voice_do_not_disturb_state(),
     "conversation_context": {
       "environment_now": "Database connectivity unavailable.",
       "program_status_summary": str(initiative_driver.get("program_status", {}).get("summary") or "").strip(),
@@ -3385,6 +3392,75 @@ def _load_json_artifact(path: Path) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _write_json_artifact(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temp_path.replace(path)
+
+
+def _load_voice_do_not_disturb_state() -> dict[str, object]:
+    learning = _load_json_artifact(MIM_VOICE_INTERACTION_LEARNING_ARTIFACT)
+    overrides = learning.get("active_overrides") if isinstance(learning.get("active_overrides"), dict) else {}
+    enabled = bool(overrides.get("do_not_disturb_mode") or overrides.get("phone_quiet_mode"))
+    updated_at = str(
+        overrides.get("do_not_disturb_started_at")
+        or overrides.get("phone_quiet_started_at")
+        or overrides.get("do_not_disturb_cleared_at")
+        or overrides.get("phone_quiet_cleared_at")
+        or learning.get("updated_at")
+        or ""
+    ).strip()
+    reason = str(overrides.get("suppress_reason") or ("ui_do_not_disturb" if enabled else "")).strip()
+    return {
+        "enabled": enabled,
+        "reason": reason,
+        "source": str(overrides.get("do_not_disturb_source") or "").strip(),
+        "updated_at": updated_at,
+        "artifact": str(MIM_VOICE_INTERACTION_LEARNING_ARTIFACT),
+    }
+
+
+def _write_voice_do_not_disturb_state(*, enabled: bool, source: str = "mim_ui_button") -> dict[str, object]:
+    now = _utc_now_iso()
+    learning = _load_json_artifact(MIM_VOICE_INTERACTION_LEARNING_ARTIFACT)
+    lessons = learning.get("lessons") if isinstance(learning.get("lessons"), list) else []
+    active_overrides = learning.get("active_overrides") if isinstance(learning.get("active_overrides"), dict) else {}
+    active_overrides["do_not_disturb_mode"] = bool(enabled)
+    active_overrides["phone_quiet_mode"] = bool(enabled)
+    active_overrides["do_not_disturb_source"] = str(source or "mim_ui_button").strip() or "mim_ui_button"
+    if enabled:
+        active_overrides["do_not_disturb_started_at"] = now
+        active_overrides["phone_quiet_started_at"] = now
+        active_overrides["suppress_reason"] = "ui_do_not_disturb"
+    else:
+        active_overrides["do_not_disturb_cleared_at"] = now
+        active_overrides["phone_quiet_cleared_at"] = now
+        active_overrides.pop("suppress_reason", None)
+        active_overrides.pop("suppress_active_session_until", None)
+    lesson = {
+        "learned_at": now,
+        "feedback_type": "ui_do_not_disturb_enabled" if enabled else "ui_do_not_disturb_disabled",
+        "addressing_adjustment": "suppress_lab_voice_replies" if enabled else "resume_lab_voice_replies",
+        "source": active_overrides["do_not_disturb_source"],
+        "operator_note": "The MIM UI Do Not Disturb control is a durable lab voice suppression signal.",
+    }
+    payload = {
+        **learning,
+        "updated_at": now,
+        "active_overrides": active_overrides,
+        "lessons": (lessons + [lesson])[-50:],
+        "policy": "Operator corrections and UI quiet controls are durable learning signals for future voice addressing decisions.",
+        "no_audio_retained": True,
+    }
+    _write_json_artifact(MIM_VOICE_INTERACTION_LEARNING_ARTIFACT, payload)
+    return _load_voice_do_not_disturb_state()
+
+
 def _artifact_mtime_iso(path: Path) -> str:
     try:
         return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
@@ -4185,6 +4261,7 @@ def _build_mim_ui_fast_state(*, reason: str = "artifact fast path") -> dict[str,
     "primitive_request": load_authoritative_request_status(shared_root=SHARED_RUNTIME_ROOT),
     "chat_thread": chat_thread,
     "frontend_media": _frontend_media_snapshot(now),
+    "voice_do_not_disturb": _load_voice_do_not_disturb_state(),
     "conversation_context": {
       "environment_now": "Fast artifact-backed console state is active.",
       "program_status_summary": "Program queue deferred from initial state.",
@@ -6440,6 +6517,11 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       color: #fff2de;
       background: rgba(101, 61, 17, 0.4);
     }
+    .quick-action[data-tone="warn"] {
+      border-color: #efb261;
+      color: #fff2de;
+      background: rgba(101, 61, 17, 0.48);
+    }
     .status-chip[data-tone="error"] {
       border-color: #ef8e61;
       color: #fff0ea;
@@ -7837,6 +7919,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
               <button class="quick-action" type="button" data-quick-action="show_blockers" data-quick-message="Show current blockers and next task.">Show Blockers</button>
               <button class="quick-action" type="button" data-quick-action="check_tod_status" data-quick-message="Check TOD status and report it back.">Check TOD Status</button>
               <button class="quick-action" type="button" data-quick-action="review_latest_image" data-quick-message="Summarize the latest image or visual context in this thread.">Review Latest Image</button>
+              <button class="quick-action" id="voiceDndBtn" type="button" data-dnd-enabled="false" title="Toggle lab voice interruption suppression">Do Not Disturb</button>
             </div>
           </div>
           <div class="voice-primary-row">
@@ -8092,6 +8175,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     const autoListenToggle = document.getElementById('autoListenToggle');
     const voiceAvailabilityChip = document.getElementById('voiceAvailabilityChip');
     const voiceStateChip = document.getElementById('voiceStateChip');
+    const voiceDndBtn = document.getElementById('voiceDndBtn');
     const connectionChip = document.getElementById('connectionChip');
     const initiativeChip = document.getElementById('initiativeChip');
     const initiativeChipSecondary = document.getElementById('initiativeChipSecondary');
@@ -8278,6 +8362,54 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       const resolved = safeText(text, fallback);
       element.textContent = resolved;
       element.title = resolved;
+    }
+
+    function renderVoiceDoNotDisturb(state = {}) {
+      if (!voiceDndBtn) return;
+      const enabled = Boolean(state && state.enabled);
+      const updatedAt = safeText(state && state.updated_at);
+      voiceDndBtn.dataset.dndEnabled = enabled ? 'true' : 'false';
+      voiceDndBtn.dataset.tone = enabled ? 'warn' : '';
+      voiceDndBtn.textContent = enabled ? 'DND On' : 'Do Not Disturb';
+      voiceDndBtn.title = enabled
+        ? `MIM lab voice replies are suppressed${updatedAt ? ` since ${updatedAt}` : ''}.`
+        : 'Suppress MIM lab voice replies until you turn this off.';
+    }
+
+    async function toggleVoiceDoNotDisturb() {
+      if (!voiceDndBtn) return;
+      const enabled = voiceDndBtn.dataset.dndEnabled !== 'true';
+      const priorText = voiceDndBtn.textContent;
+      voiceDndBtn.disabled = true;
+      voiceDndBtn.textContent = enabled ? 'Quieting...' : 'Resuming...';
+      try {
+        const res = await fetch('/mim/ui/voice/do-not-disturb', {
+          method: 'POST',
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ enabled, source: 'mim_ui_button' }),
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const payload = await res.json();
+        const state = payload && typeof payload.voice_do_not_disturb === 'object'
+          ? payload.voice_do_not_disturb
+          : { enabled };
+        renderVoiceDoNotDisturb(state);
+        statusEl.textContent = enabled
+          ? 'Do Not Disturb is on. MIM will avoid interrupting lab audio.'
+          : 'Do Not Disturb is off. MIM can resume lab voice replies.';
+      } catch (error) {
+        voiceDndBtn.textContent = priorText;
+        statusEl.textContent = 'Could not update Do Not Disturb. Check MIM UI state and try again.';
+      } finally {
+        voiceDndBtn.disabled = false;
+      }
     }
 
     function resolveInitiativeLabel(entry, fallback = '') {
@@ -13754,6 +13886,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     }
 
     function renderPrimaryStatus(data = {}) {
+      renderVoiceDoNotDisturb(data && typeof data.voice_do_not_disturb === 'object' ? data.voice_do_not_disturb : {});
       const context = data && typeof data.conversation_context === 'object' ? data.conversation_context : {};
       const initiative = data && typeof data.initiative_driver === 'object' ? data.initiative_driver : {};
       const systemActivity = data && typeof data.system_activity === 'object' ? data.system_activity : {};
@@ -15072,6 +15205,14 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         }
       });
     });
+    if (voiceDndBtn) {
+      voiceDndBtn.addEventListener('click', toggleVoiceDoNotDisturb);
+      renderVoiceDoNotDisturb(
+        latestUiState && typeof latestUiState.voice_do_not_disturb === 'object'
+          ? latestUiState.voice_do_not_disturb
+          : {},
+      );
+    }
     if (selfTestToggleListenerBtn) {
       selfTestToggleListenerBtn.addEventListener('click', () => {
         listenBtn.click();
@@ -16535,6 +16676,7 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
         "primitive_request": authoritative_request,
         "chat_thread": chat_thread,
         "frontend_media": frontend_media,
+        "voice_do_not_disturb": _load_voice_do_not_disturb_state(),
         "conversation_context": {
             "environment_now": environment_now,
           "program_status_summary": str(
@@ -16800,6 +16942,28 @@ async def mim_ui_state_freshness(request: Request) -> dict:
 async def get_runtime_recovery_summary(request: Request) -> dict:
   ensure_authenticated_mimtod_api_request(request)
   return runtime_recovery_service.get_summary()
+
+
+@router.get("/mim/ui/voice/do-not-disturb")
+async def get_voice_do_not_disturb(request: Request) -> dict:
+  ensure_authenticated_mimtod_api_request(request)
+  return {
+    "status": "ok",
+    "voice_do_not_disturb": _load_voice_do_not_disturb_state(),
+  }
+
+
+@router.post("/mim/ui/voice/do-not-disturb")
+async def set_voice_do_not_disturb(http_request: Request, request: MimVoiceDoNotDisturbRequest) -> dict:
+  ensure_authenticated_mimtod_api_request(http_request)
+  state = _write_voice_do_not_disturb_state(
+    enabled=bool(request.enabled),
+    source=str(request.source or "mim_ui_button").strip() or "mim_ui_button",
+  )
+  return {
+    "status": "updated",
+    "voice_do_not_disturb": state,
+  }
 
 
 @router.post("/mim/ui/runtime-recovery-events")

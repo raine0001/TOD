@@ -1187,6 +1187,8 @@ def save_interaction_feedback(transcript: str, feedback: dict[str, Any]) -> dict
 
 def learning_suppresses_active_session(learning: dict[str, Any]) -> tuple[bool, str, str]:
     overrides = learning.get("active_overrides") if isinstance(learning.get("active_overrides"), dict) else {}
+    if bool(overrides.get("do_not_disturb_mode")):
+        return True, "do_not_disturb_mode", str(overrides.get("do_not_disturb_started_at") or "")
     if bool(overrides.get("phone_quiet_mode")):
         return True, "phone_quiet_mode", str(overrides.get("phone_quiet_started_at") or "")
     until = parse_utc_timestamp(overrides.get("suppress_active_session_until"))

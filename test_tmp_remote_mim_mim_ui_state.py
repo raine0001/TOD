@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -306,6 +307,30 @@ class MimUiWorklogTests(unittest.TestCase):
         self.assertEqual(payload["messages"][0]["content"], "Show me what MIM is doing now.")
         self.assertTrue(payload["messages"][-1]["content"].startswith("Status now:") or payload["messages"][-1]["content"].startswith("Objective now:") or payload["messages"][-1]["content"].startswith("Live MIM feed:"))
         self.assertGreater(len(payload["messages"]), 1)
+
+    def test_voice_do_not_disturb_state_updates_voice_learning_artifact(self) -> None:
+        original_path = self.mim_ui.MIM_VOICE_INTERACTION_LEARNING_ARTIFACT
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifact_path = Path(temp_dir) / "MIM_VOICE_INTERACTION_LEARNING.latest.json"
+            self.mim_ui.MIM_VOICE_INTERACTION_LEARNING_ARTIFACT = artifact_path
+            try:
+                enabled = self.mim_ui._write_voice_do_not_disturb_state(enabled=True, source="unit_test")
+                payload = self.mim_ui._load_json_artifact(artifact_path)
+                overrides = payload["active_overrides"]
+                self.assertTrue(enabled["enabled"])
+                self.assertTrue(overrides["do_not_disturb_mode"])
+                self.assertTrue(overrides["phone_quiet_mode"])
+                self.assertEqual(overrides["suppress_reason"], "ui_do_not_disturb")
+
+                disabled = self.mim_ui._write_voice_do_not_disturb_state(enabled=False, source="unit_test")
+                payload = self.mim_ui._load_json_artifact(artifact_path)
+                overrides = payload["active_overrides"]
+                self.assertFalse(disabled["enabled"])
+                self.assertFalse(overrides["do_not_disturb_mode"])
+                self.assertFalse(overrides["phone_quiet_mode"])
+                self.assertNotIn("suppress_reason", overrides)
+            finally:
+                self.mim_ui.MIM_VOICE_INTERACTION_LEARNING_ARTIFACT = original_path
 
 
 if __name__ == "__main__":
