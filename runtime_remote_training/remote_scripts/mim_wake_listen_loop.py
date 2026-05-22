@@ -26,6 +26,7 @@ STATUS_PATH = SHARED / "MIM_WAKE_LISTENER_STATUS.latest.json"
 INTERACTION_PATH = SHARED / "MIM_WAKE_WORD_INTERACTION.latest.json"
 MEMORY_PATH = SHARED / "MIM_HUMAN_INTERACTION_MEMORY.latest.json"
 DIAGNOSTIC_PATH = SHARED / "MIM_WAKE_DIAGNOSTIC.latest.json"
+FOLLOWUP_PATH = SHARED / "MIM_WAKE_FOLLOWUP.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -67,8 +68,10 @@ SELF_OUTPUT_PATTERNS = [
     re.compile(r"\bstanding by\b", re.I),
 ]
 
-RESPONSE_TEXT = os.environ.get("MIM_WAKE_RESPONSE_TEXT", "Hi Dave. I'm awake. Standing by.")
+RESPONSE_TEXT = os.environ.get("MIM_WAKE_RESPONSE_TEXT", "Hi Dave. I'm awake. What do you need?")
 DIAGNOSTIC_ENABLED = os.environ.get("MIM_WAKE_DIAGNOSTIC", "1").strip().lower() not in {"0", "false", "no", "off"}
+FOLLOWUP_ENABLED = os.environ.get("MIM_WAKE_FOLLOWUP", "1").strip().lower() not in {"0", "false", "no", "off"}
+FOLLOWUP_SECONDS = int(os.environ.get("MIM_WAKE_FOLLOWUP_SECONDS", "8"))
 
 WAKE_GRAMMAR = json.dumps(
     [
@@ -611,6 +614,69 @@ def publish_wake_interaction(
     )
 
 
+def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
+    with tempfile.NamedTemporaryFile(prefix="mim-wake-followup-", suffix=".wav", delete=False) as tmp:
+        wav_path = Path(tmp.name)
+    try:
+        rec = record_wav(device, wav_path, seconds=seconds)
+        if not rec["ok"]:
+            return {
+                "status": "blocked_with_evidence",
+                "success": False,
+                "audio_device": device,
+                "transcript": "",
+                "error": rec.get("stderr") or rec.get("stdout") or "arecord_failed",
+                "no_audio_retained": True,
+            }
+        level = audio_level(wav_path)
+        stt = transcribe_wav(model, wav_path)
+        transcript = stt.get("text", "") or stt.get("wake_text", "")
+        self_output_detected = detect_self_output(stt.get("text", "")) or detect_self_output(stt.get("wake_text", ""))
+        if not stt["ok"]:
+            status = "stt_blocked"
+            response_text = ""
+        elif self_output_detected:
+            status = "ignored_self_output"
+            response_text = ""
+        elif transcript:
+            status = "operator_followup_heard"
+            clean = transcript[:140].strip()
+            response_text = f"I heard: {clean}. I logged that for the next work step."
+        else:
+            status = "no_followup_heard"
+            response_text = ""
+        voice_response = play_voice_response(response_text) if response_text else {}
+        result = {
+            "packet_type": "mim-wake-followup-v1",
+            "generated_at": now_iso(),
+            "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
+            "status": status,
+            "success": bool(stt["ok"]),
+            "audio_device": device,
+            "listen_seconds": seconds,
+            "transcript": transcript,
+            "general_transcript": stt.get("text", ""),
+            "wake_transcript": stt.get("wake_text", ""),
+            "audio_level": level,
+            "self_output_detected": self_output_detected,
+            "stt_error": stt.get("error", ""),
+            "response_text": response_text,
+            "voice_response": voice_response,
+            "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if response_text else None,
+            "no_audio_retained": True,
+            "next_recovery_action": ""
+            if transcript
+            else "If the operator spoke after MIM's prompt, inspect microphone gain/device selection or increase followup listen seconds.",
+        }
+        write_json(FOLLOWUP_PATH, result)
+        return result
+    finally:
+        try:
+            wav_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
 def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
     with tempfile.NamedTemporaryFile(prefix="mim-wake-listen-", suffix=".wav", delete=False) as tmp:
         wav_path = Path(tmp.name)
@@ -644,6 +710,11 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
         if wake:
             alert_attempts = []
             voice_response = play_voice_response(RESPONSE_TEXT)
+            followup = (
+                listen_for_followup(model, device, seconds=max(1, FOLLOWUP_SECONDS))
+                if FOLLOWUP_ENABLED and voice_response.get("any_output_accepted")
+                else {}
+            )
             tts = {
                 "ok": False,
                 "command": [],
@@ -658,6 +729,8 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
                 alert_attempts=alert_attempts,
                 voice_response=voice_response,
             )
+        else:
+            followup = {}
         return {
             "status": "wake_detected" if wake else "listening",
             "success": True,
@@ -673,6 +746,9 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             "tts_ok": tts["ok"] if wake else None,
             "alert_any_output_accepted": any(bool(item.get("ok")) for item in alert_attempts) if wake else None,
             "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if wake else None,
+            "followup_status": followup.get("status") if wake else None,
+            "followup_transcript": followup.get("transcript") if wake else "",
+            "followup_voice_wav_output_accepted": followup.get("voice_wav_output_accepted") if wake else None,
             "no_audio_retained": True,
         }
     finally:
@@ -746,8 +822,12 @@ def main() -> int:
                 "tts_ok": result.get("tts_ok"),
                 "alert_any_output_accepted": result.get("alert_any_output_accepted"),
                 "voice_wav_output_accepted": result.get("voice_wav_output_accepted"),
+                "followup_status": result.get("followup_status"),
+                "followup_transcript": result.get("followup_transcript", ""),
+                "followup_voice_wav_output_accepted": result.get("followup_voice_wav_output_accepted"),
                 "no_audio_retained": True,
                 "interaction_artifact": str(INTERACTION_PATH.relative_to(ROOT)) if INTERACTION_PATH.exists() else "",
+                "followup_artifact": str(FOLLOWUP_PATH.relative_to(ROOT)) if FOLLOWUP_PATH.exists() else "",
             },
         )
         if args.once:
@@ -768,7 +848,11 @@ def main() -> int:
                     "last_transcript": result.get("transcript", ""),
                     "wake_phrase_detected": True,
                     "voice_wav_output_accepted": result.get("voice_wav_output_accepted"),
+                    "followup_status": result.get("followup_status"),
+                    "followup_transcript": result.get("followup_transcript", ""),
+                    "followup_voice_wav_output_accepted": result.get("followup_voice_wav_output_accepted"),
                     "interaction_artifact": str(INTERACTION_PATH.relative_to(ROOT)) if INTERACTION_PATH.exists() else "",
+                    "followup_artifact": str(FOLLOWUP_PATH.relative_to(ROOT)) if FOLLOWUP_PATH.exists() else "",
                 },
             )
             time.sleep(max(1, args.cooldown_seconds))
