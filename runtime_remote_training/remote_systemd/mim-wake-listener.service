@@ -9,6 +9,7 @@ WorkingDirectory=/home/testpilot/mim
 Environment=MIM_WAKE_AUDIO_DEVICE=plughw:2,0;default;plughw:0,0;plughw:3,0;plughw:3,2
 Environment=MIM_WAKE_CHUNK_SECONDS=4
 Environment=MIM_WAKE_IDLE_SECONDS=0.5
+Environment=MIM_WAKE_COOLDOWN_SECONDS=45
 ExecStart=/home/testpilot/mim/.venv/bin/python /home/testpilot/mim/scripts/mim_wake_listen_loop.py
 Restart=always
 RestartSec=3

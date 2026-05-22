@@ -242,7 +242,7 @@ def detect_probable_wake_check(*, general_text: str, wake_text: str, level: dict
         return True
     if rms >= 1000 and unknown_count >= 2:
         return True
-    if rms >= 1000 and normalized_general in {"functional cause", "do you truly understand", "oh man", "of misinformation"}:
+    if rms >= 1000 and normalized_general in {"functional cause", "do you truly understand", "of misinformation"}:
         return True
     return False
 
@@ -596,6 +596,7 @@ def main() -> int:
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--chunk-seconds", type=int, default=int(os.environ.get("MIM_WAKE_CHUNK_SECONDS", "4")))
     parser.add_argument("--idle-seconds", type=float, default=float(os.environ.get("MIM_WAKE_IDLE_SECONDS", "0.5")))
+    parser.add_argument("--cooldown-seconds", type=int, default=int(os.environ.get("MIM_WAKE_COOLDOWN_SECONDS", "45")))
     args = parser.parse_args()
 
     if not MODEL_PATH.exists():
@@ -669,7 +670,7 @@ def main() -> int:
                     "success": True,
                     "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
                     "audio_device": device,
-                    "cooldown_seconds": 10,
+                    "cooldown_seconds": max(1, args.cooldown_seconds),
                     "reason": "Prevent repeated playback and self-triggering after audible response.",
                     "last_transcript": result.get("transcript", ""),
                     "wake_phrase_detected": True,
@@ -677,7 +678,7 @@ def main() -> int:
                     "interaction_artifact": str(INTERACTION_PATH.relative_to(ROOT)) if INTERACTION_PATH.exists() else "",
                 },
             )
-            time.sleep(10)
+            time.sleep(max(1, args.cooldown_seconds))
         time.sleep(max(0.1, args.idle_seconds))
 
 

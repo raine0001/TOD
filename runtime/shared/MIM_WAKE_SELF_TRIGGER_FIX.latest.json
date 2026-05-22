@@ -1,0 +1,34 @@
+{
+  "packet_type": "mim-wake-self-trigger-fix-v1",
+  "generated_at": "2026-05-22T02:41:00Z",
+  "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
+  "status": "mitigated_with_evidence",
+  "success": true,
+  "problem": "Wake listener repeatedly answered itself after audible playback. The last bad interaction was promoted from transcript 'oh man'.",
+  "changes": [
+    {
+      "file": "runtime_remote_training/remote_scripts/mim_wake_listen_loop.py",
+      "change": "Removed 'oh man' from probable wake fallback transcript whitelist."
+    },
+    {
+      "file": "runtime_remote_training/remote_scripts/mim_wake_listen_loop.py",
+      "change": "Added configurable cooldown_seconds argument sourced from MIM_WAKE_COOLDOWN_SECONDS."
+    },
+    {
+      "file": "runtime_remote_training/remote_systemd/mim-wake-listener.service",
+      "change": "Set MIM_WAKE_COOLDOWN_SECONDS=45 for the user service."
+    }
+  ],
+  "verification": {
+    "remote_service": "mim-wake-listener.service",
+    "service_active_after_restart": true,
+    "latest_listener_status": "listening",
+    "wake_phrase_detected_after_quiet_interval": false,
+    "latest_status_artifact": "runtime/shared/MIM_WAKE_LISTENER_STATUS.latest.json"
+  },
+  "training_lesson": {
+    "lesson_id": "MIM-WAKE-SELF-PLAYBACK-GUARD",
+    "rule": "Do not treat ambiguous post-playback recognition fragments as wake intent unless a strong wake phrase or operator-directed phrase is present.",
+    "future_recovery_action": "When repeated wake responses occur, inspect the last transcript, remove weak fallback matches, increase cooldown, and verify status remains listening after one quiet interval."
+  }
+}
