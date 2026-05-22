@@ -1,0 +1,14 @@
+[Unit]
+Description=MIM Voice Context 12h Autonomous Build Runner
+After=default.target mim-wake-listener.service mim-ready-task-dispatcher.service
+Wants=mim-wake-listener.service mim-ready-task-dispatcher.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/testpilot/mim
+Environment=PYTHONPATH=/home/testpilot/mim
+ExecStart=/home/testpilot/mim/.venv/bin/python /home/testpilot/mim/scripts/mim_voice_context_12h_runner.py --duration-hours 12 --interval-seconds 300 --post-interval-seconds 1800
+Restart=no
+
+[Install]
+WantedBy=default.target

@@ -27,6 +27,7 @@ INTERACTION_PATH = SHARED / "MIM_WAKE_WORD_INTERACTION.latest.json"
 MEMORY_PATH = SHARED / "MIM_HUMAN_INTERACTION_MEMORY.latest.json"
 DIAGNOSTIC_PATH = SHARED / "MIM_WAKE_DIAGNOSTIC.latest.json"
 FOLLOWUP_PATH = SHARED / "MIM_WAKE_FOLLOWUP.latest.json"
+TURN_STATE_PATH = SHARED / "MIM_VOICE_TURN_STATE.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -639,8 +640,50 @@ def compact_status(value: Any) -> str:
     return text if text else "unknown"
 
 
+def load_turn_state() -> dict[str, Any]:
+    state = load_shared_json("MIM_VOICE_TURN_STATE.latest.json")
+    return state if isinstance(state, dict) else {}
+
+
+def save_turn_state(*, transcript: str, route: dict[str, Any], response_text: str) -> None:
+    previous = load_turn_state()
+    history = previous.get("recent_turns") if isinstance(previous.get("recent_turns"), list) else []
+    now = now_iso()
+    current_topic = str(route.get("intent") or "").strip()
+    if current_topic in {"unknown", "none", ""}:
+        current_topic = str(previous.get("current_topic") or "").strip()
+    payload = {
+        "packet_type": "mim-voice-turn-state-v1",
+        "generated_at": now,
+        "status": "updated",
+        "success": True,
+        "current_topic": current_topic,
+        "last_intent": route.get("intent"),
+        "last_action": route.get("action"),
+        "last_transcript": transcript,
+        "last_response_text": response_text,
+        "last_artifacts": route.get("artifacts", []),
+        "recent_turns": (
+            history
+            + [
+                {
+                    "generated_at": now,
+                    "transcript": transcript,
+                    "intent": route.get("intent"),
+                    "action": route.get("action"),
+                    "response_text": response_text,
+                }
+            ]
+        )[-12:],
+        "no_audio_retained": True,
+    }
+    write_json(TURN_STATE_PATH, payload)
+
+
 def route_followup(transcript: str) -> dict[str, Any]:
     normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
+    turn_state = load_turn_state()
+    previous_topic = str(turn_state.get("current_topic") or "").strip()
     artifacts: list[str] = []
     intent = "unknown"
     action = "clarify"
@@ -662,7 +705,9 @@ def route_followup(transcript: str) -> dict[str, Any]:
             f"Last diagnostic says {compact_status((diag.get('diagnosis') or {}).get('reason_code'))}. "
             f"My active input is {compact_status(status.get('audio_device'))}."
         )
-    elif re.search(r"\b(camera|cameras|cam|see|look|vision)\b", normalized):
+    elif re.search(r"\b(camera|cameras|cam|see|look|vision)\b", normalized) or (
+        previous_topic == "camera_status" and re.search(r"\b(arm|one|that|it|that one|arm one)\b", normalized)
+    ):
         intent = "camera_status"
         action = "summarize_camera_cycle"
         camera = load_shared_json("MIM_LAB_CAMERA_CYCLE_STATUS.latest.json")
@@ -762,6 +807,8 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
             status = "no_followup_heard"
             response_text = ""
         voice_response = play_voice_response(response_text) if response_text else {}
+        if transcript and not self_output_detected:
+            save_turn_state(transcript=transcript, route=route, response_text=response_text)
         result = {
             "packet_type": "mim-wake-followup-v1",
             "generated_at": now_iso(),
@@ -780,6 +827,7 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
             "intent": route.get("intent"),
             "action": route.get("action"),
             "artifacts": route.get("artifacts", []),
+            "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
             "voice_response": voice_response,
             "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if response_text else None,
             "no_audio_retained": True,
@@ -812,12 +860,15 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
         "intent": route.get("intent"),
         "action": route.get("action"),
         "artifacts": route.get("artifacts", []),
+        "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
         "response_text": response_text,
         "voice_response": voice_response,
         "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if response_text else None,
         "no_audio_retained": True,
         "policy": "MIM listens to lab audio continuously and responds to routed intents or direct questions; MIM is not triggered by her name.",
     }
+    if transcript:
+        save_turn_state(transcript=transcript, route=route, response_text=response_text)
     write_json(FOLLOWUP_PATH, result)
     return result
 

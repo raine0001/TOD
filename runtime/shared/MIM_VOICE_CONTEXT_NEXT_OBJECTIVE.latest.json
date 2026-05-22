@@ -1,0 +1,8 @@
+{
+  "capability": "vad_segmentation_evidence_present",
+  "generated_at": "2026-05-22T03:27:32Z",
+  "goal": "Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows.",
+  "objective_id": "MIM-VAD-SPEECH-SEGMENTATION-V1",
+  "packet_type": "mim-voice-context-next-objective-v1",
+  "success": "Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained."
+}

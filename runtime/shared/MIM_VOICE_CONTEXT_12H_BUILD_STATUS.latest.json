@@ -1,0 +1,1328 @@
+{
+  "artifacts": {
+    "MIM_MINIMUM_VOICE_CONTEXT_ARCHITECTURE.latest.json": {
+      "artifact": "runtime/shared/MIM_MINIMUM_VOICE_CONTEXT_ARCHITECTURE.latest.json",
+      "exists": true,
+      "generated_at": "2026-05-22T03:25:00Z",
+      "recent": true,
+      "status": "objective_defined",
+      "success": true
+    },
+    "MIM_VALUE_ADDED_VOICE_ASSISTANT_STANDARD.latest.json": {
+      "artifact": "runtime/shared/MIM_VALUE_ADDED_VOICE_ASSISTANT_STANDARD.latest.json",
+      "exists": true,
+      "generated_at": "2026-05-22T03:32:00Z",
+      "recent": true,
+      "status": "standard_defined",
+      "success": true
+    },
+    "MIM_VOICE_TURN_STATE.latest.json": {
+      "artifact": "runtime/shared/MIM_VOICE_TURN_STATE.latest.json",
+      "exists": false,
+      "generated_at": null,
+      "recent": false,
+      "status": null,
+      "success": null
+    },
+    "MIM_WAKE_DIAGNOSTIC.latest.json": {
+      "artifact": "runtime/shared/MIM_WAKE_DIAGNOSTIC.latest.json",
+      "exists": true,
+      "generated_at": "2026-05-22T03:27:19Z",
+      "recent": true,
+      "status": "observed",
+      "success": true
+    },
+    "MIM_WAKE_FOLLOWUP.latest.json": {
+      "artifact": "runtime/shared/MIM_WAKE_FOLLOWUP.latest.json",
+      "exists": true,
+      "generated_at": "2026-05-22T03:16:04Z",
+      "recent": true,
+      "status": "operator_followup_needs_clarification",
+      "success": true
+    },
+    "MIM_WAKE_LISTENER_STATUS.latest.json": {
+      "artifact": "runtime/shared/MIM_WAKE_LISTENER_STATUS.latest.json",
+      "exists": true,
+      "generated_at": "2026-05-22T03:27:19Z",
+      "recent": true,
+      "status": "listening",
+      "success": true
+    }
+  },
+  "checks": {
+    "ambient_lab_conversation_active": true,
+    "background_obligation_tracker_present": false,
+    "barge_in_evidence_present": false,
+    "concise_response_policy_present": true,
+    "context_router_present": true,
+    "faux_pause_policy_evidence_present": false,
+    "natural_tts_persona_evidence_present": false,
+    "stt_diagnostic_evidence_recent": true,
+    "turn_state_memory_present": false,
+    "vad_segmentation_evidence_present": false,
+    "value_added_standard_defined": true,
+    "voice_context_architecture_defined": true
+  },
+  "current_objective": {
+    "capability": "vad_segmentation_evidence_present",
+    "goal": "Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows.",
+    "objective_id": "MIM-VAD-SPEECH-SEGMENTATION-V1",
+    "success": "Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained."
+  },
+  "deadline_at": "2026-05-22T15:27:21Z",
+  "generated_at": "2026-05-22T03:27:32Z",
+  "last_dispatch": {
+    "ok": true,
+    "payload": {
+      "confidence": 0.8,
+      "created_at": "2026-05-22T03:27:21.448722Z",
+      "initiative_status": {
+        "program_status": {
+          "completion_rule": "",
+          "continuity_rule": "",
+          "execution_rules": {
+            "auto_continue": true,
+            "auto_start_next_project": true,
+            "bounded_remediation_before_escalation": true,
+            "completion_requires_validation": true,
+            "inherit_to_new_ui_projects": true,
+            "no_human_prompts": true,
+            "no_pause_for_approval": true,
+            "post_execution_day_summary": true,
+            "report_after_execution": true,
+            "tod_continue_without_if_stale": true,
+            "tod_preferred": true
+          },
+          "global_execution_authority": "",
+          "objective": "Enforce completion only after execution evidence",
+          "program_id": "MIM-12-AUTONOMOUS-EVOLUTION",
+          "projects": [
+            {
+              "display_title": "MIM-DAY-01-EXECUTION-BOUND-COMPLETION",
+              "goal": "",
+              "objective": "Enforce completion only after execution evidence INITIATIVE_ID: MIM-DAY-01-EXECUTION-BOUND-COMPLETION Create the bounded implementation plan and execute it.",
+              "project_id": "MIM-DAY-01-EXECUTION-BOUND-COMPLETION",
+              "scope": [],
+              "status": "ready",
+              "success_criteria": [],
+              "tasks": []
+            },
+            {
+              "display_title": "MIM-DAY-02-INITIATIVE-ISOLATION",
+              "goal": "Every incoming initiative stays bound to its own request, objective, task, and result lineage.",
+              "objective": "Prevent new initiatives from being overwritten, contaminated, or auto-rerouted into previously authorized initiatives.",
+              "project_id": "MIM-DAY-02-INITIATIVE-ISOLATION",
+              "scope": [],
+              "status": "ready",
+              "success_criteria": [
+                "explicit INITIATIVE_ID always wins over stale active initiative continuation"
+              ],
+              "tasks": [
+                "Trace request_id -> initiative_id -> objective_id -> task_id -> result path.",
+                "Patch precedence so explicit incoming INITIATIVE_ID wins over prior cached initiative continuation unless explicitly resumed."
+              ]
+            },
+            {
+              "display_title": "MIM-DAY-03-INITIATIVE-ID-HARDENING",
+              "goal": "Clean initiative identity across gateway, persistence, status, and reporting.",
+              "objective": "Ensure explicit initiative parsing captures only the identifier token and never absorbs objective/goal text.",
+              "project_id": "MIM-DAY-03-INITIATIVE-ID-HARDENING",
+              "scope": [
+                "text intake parsing",
+                "gateway intake",
+                "persistence model",
+                "autonomy status",
+                "shell/state output"
+              ],
+              "status": "ready",
+              "success_criteria": [
+                "initiative id is exactly the declared token",
+                "no prompt tail appears in persistence or status",
+                "downstream routing uses normalized id consistently"
+              ],
+              "tasks": [
+                "Inspect initiative parsing logic for INITIATIVE_ID, OBJECTIVE_ID, TITLE, GOAL extraction.",
+                "Patch token extraction so only the identifier value is captured.",
+                "Normalize stored IDs for whitespace/newlines/prompt-tail contamination.",
+                "Update state/status surfaces to use normalized identifier only.",
+                "Add tests for multiline initiative payloads.",
+                "Re-run live-style probes and verify clean IDs in shell state and status."
+              ]
+            },
+            {
+              "display_title": "MIM-DAY-04-CONVERSATIONAL-RESPONSE-POLICY",
+              "goal": "Remove forced uncertainty wrappers and generic dry responses for conversational intent without weakening execution safety.",
+              "objective": "Separate conversational response policy from execution verification policy.",
+              "project_id": "MIM-DAY-04-CONVERSATIONAL-RESPONSE-POLICY",
+              "scope": [
+                "response policy layer",
+                "intent routing",
+                "conversational prompts",
+                "identity/explanation answers",
+                "response formatting"
+              ],
+              "status": "ready",
+              "success_criteria": [
+                "conversational prompts no longer prepend not totally sure",
+                "responses are specific, system-aware, and confident",
+                "execution safety language remains intact where needed"
+              ],
+              "tasks": [
+                "Locate where not totally sure and similar uncertainty preambles are injected.",
+                "Add response mode routing:",
+                "conversational",
+                "execution",
+                "diagnostic",
+                "Disable forced uncertainty prefix for conversational questions:",
+                "identity",
+                "what are you",
+                "how are you different",
+                "mission/purpose",
+                "general explanation",
+                "Preserve uncertainty language only for true execution ambiguity/conflicting system state.",
+                "Add tests for before/after conversational prompts.",
+                "Validate that execution mode remains strict."
+              ]
+            },
+            {
+              "display_title": "MIM-DAY-05-AUTO-RESUME-AFTER-RECOVERY",
+              "goal": "No long idle periods after a blocked task becomes executable again.",
+              "objective": "Enable automatic resumption of execution after readiness or dependency recovery.",
+              "project_id": "MIM-DAY-05-AUTO-RESUME-AFTER-RECOVERY",
+              "scope": [
+                "TOD recovery behavior",
+                "readiness gating",
+                "blocked task memory",
+                "requeue behavior",
+                "execution resume logic"
+              ],
+              "status": "ready",
+              "success_criteria": [
+                "blocked task resumes after recovery without human input",
+                "no extended idle state after readiness becomes valid",
+                "retry happens automatically and safely"
+              ],
+              "tasks": [
+                "Identify where blocked tasks are recorded and where readiness/dependency transitions are detected.",
+                "Patch recovery path so stale/invalid -> valid triggers one bounded requeue attempt for the blocked task.",
+                "Prevent infinite retry loops with retry metadata and cooldown.",
+                "Add tests for:",
+                "blocked due to stale readiness",
+                "readiness becomes valid",
+                "task resumes automatically",
+                "Validate listener/runtime behavior under recovery."
+              ]
+            },
+            {
+              "display_title": "MIM-DAY-06-STALE-ACTION-PREVENTION",
+              "goal": "Repeated non-progressing actions trigger escalation to corrective branches.",
+              "objective": "Prevent repeated low-value status checks and summary loops from being treated as progress.",
+              "project_id": "MIM-DAY-06-STALE-ACTION-PREVENTION",
+              "scope": [
+                "action classification",
+                "repeated pattern detection",
+                "branch selection",
+                "non-progress scoring",
+                "corrective escalation"
+              ],
+              "status": "ready",
+              "success_criteria": [
+                "repeated status-check loops are detected",
+                "branch selection changes automatically",
+                "stale repeated actions are not treated as success"
+              ],
+              "tasks": [
+                "Identify current action classes and repeated status-check patterns.",
+                "Add repeated-action detection with thresholds.",
+                "Classify repeated unchanged status/warning/ack responses as stale_repeated_action.",
+                "Penalize stale action classes in branch selection.",
+                "Promote corrective branches such as:",
+                "inspect bounded step limit",
+                "inspect continuation gate",
+                "inspect response policy",
+                "create corrective implementation task",
+                "Add tests proving repeated status checks no longer persist beyond threshold."
+              ]
+            },
+            {
+              "display_title": "MIM-DAY-07-CORRECTIVE-DISPATCH",
+              "goal": "MIM must not stop at problem found or objective created. It must dispatch corrective implementation work.",
+              "objective": "Bind detected stale or structural problems to actual implementation dispatch.",
+              "project_id": "MIM-DAY-07-CORRECTIVE-DISPATCH",
+              "scope": [
+                "corrective objective creation",
+                "implementation task generation",
+                "TOD/Codex dispatch",
+                "execution tracking",
+                "result reporting"
+              ],
+              "status": "ready",
+              "success_criteria": [
+                "corrective problem detection results in actual dispatch",
+                "objective cannot complete from planning alone",
+                "result reporting shows real execution lifecycle"
+              ],
+              "tasks": [
+                "Reuse known stale-loop remediation targets such as gateway.py and autonomy_driver_service.py where appropriate.",
+                "Patch logic so corrective detection triggers:",
+                "task creation",
+                "dispatch",
+                "execution tracking",
+                "Prevent objective completion without dispatch/execution attempt.",
+                "Add reporting states:",
+                "created",
+                "dispatched",
+                "executing",
+                "completed",
+                "failed",
+                "Validate with a repeated-status-loop scenario."
+              ]
+            },
+            {
+              "display_title": "MIM-DAY-08-CODEBASE-MAP",
+              "goal": "TOD must understand the codebase well enough to execute bounded changes across MIM safely.",
+              "objective": "Create a current architecture and edit-zone map so TOD can act as engineering steward for MIM.",
+              "project_id": "MIM-DAY-08-CODEBASE-MAP",
+              "scope": [
+                "frontend",
+                "backend",
+                "state model",
+                "initiative/autonomy",
+                "media/voice/image",
+                "shell/state",
+                "deployment/runtime surfaces"
+              ],
+              "status": "ready",
+              "success_criteria": [
+                "codebase map exists",
+                "stewardship map exists",
+                "TOD can explain major MIM surfaces accurately"
+              ],
+              "tasks": [
+                "Scan and map major modules and entry points.",
+                "Produce a stewardship map:",
+                "safe edit zones",
+                "guarded edit zones",
+                "validation-required zones",
+                "high-risk coupling points",
+                "Summarize runtime surfaces and dependencies.",
+                "Store artifacts for later use in travel-mode execution."
+              ]
+            },
+            {
+              "display_title": "MIM-DAY-09-RUNTIME-HEALTH",
+              "goal": "Runtime failures should be detectable and bounded recovery should happen automatically where safe.",
+              "objective": "Keep the local MIM runtime healthy, visible, and recoverable without operator intervention.",
+              "project_id": "MIM-DAY-09-RUNTIME-HEALTH",
+              "scope": [
+                "local runtime",
+                "shell endpoints",
+                "healthz",
+                "shell/state",
+                "chat proxy",
+                "recovery scripts/playbooks"
+              ],
+              "status": "ready",
+              "success_criteria": [
+                "runtime health is observable",
+                "bounded recovery actions work",
+                "remote shell remains usable after restart scenarios"
+              ],
+              "tasks": [
+                "Validate current health endpoints and add missing checks.",
+                "Add recovery actions for:",
+                "stale shell state",
+                "dropped runtime process",
+                "shell proxy failure",
+                "local service drift",
+                "Validate remote shell access still works after restart/recovery.",
+                "Produce recovery playbook."
+              ]
+            },
+            {
+              "display_title": "MIM-DAY-10-SHELL-UX",
+              "goal": "Long responses, execution logs, and chat messages render cleanly without clipping, truncation, or layout breakage.",
+              "objective": "Fix shell readability and response presentation issues so MIM feels usable instead of half-rendered.",
+              "project_id": "MIM-DAY-10-SHELL-UX",
+              "scope": [
+                "chat bubble layout",
+                "message rendering",
+                "long text wrapping",
+                "execution block formatting",
+                "mobile layout"
+              ],
+              "status": "ready",
+              "success_criteria": [
+                "no clipped responses",
+                "execution details are readable",
+                "chat remains clean and usable"
+              ],
+              "tasks": [
+                "Fix clipped message rendering and bottom-line truncation.",
+                "Separate conversation output from execution/debug details.",
+                "Add structured rendering for execution blocks.",
+                "Improve message spacing, wrapping, and long-text containment.",
+                "Validate on mobile shell."
+              ]
+            },
+            {
+              "display_title": "MIM-DAY-11-VOICE-IMAGE",
+              "goal": "Mic behavior is reliable, tap-to-talk no longer drops immediately, and image interactions are routed correctly.",
+              "objective": "Make voice and image interaction actually usable in the shell.",
+              "project_id": "MIM-DAY-11-VOICE-IMAGE",
+              "scope": [
+                "tap-to-talk",
+                "mic state transitions",
+                "push-to-talk vs latched mode",
+                "optional open-mic toggle",
+                "image routing",
+                "multimodal handling stub/fallback"
+              ],
+              "status": "ready",
+              "success_criteria": [
+                "mic interaction is reliable",
+                "tap-to-talk bug resolved",
+                "image input handling is correctly routed and reported"
+              ],
+              "tasks": [
+                "Inspect tap-to-talk start/stop event flow.",
+                "Fix premature mic shutdown when speech begins.",
+                "Implement one selected UX:",
+                "push-and-hold",
+                "latched tap-to-talk",
+                "open-mic toggle",
+                "Improve device status reporting for mic/camera.",
+                "Route image inputs to proper handling path and produce honest actionable response if multimodal is unavailable."
+              ]
+            },
+            {
+              "display_title": "MIM-DAY-12-FULL-VALIDATION",
+              "goal": "Demonstrate stable multi-step execution with correct lifecycle, continuation, recovery, and reporting.",
+              "objective": "Run an end-to-end autonomous validation proving that MIM and TOD can execute bounded work continuously without false completion, stale loops, or routing contamination.",
+              "project_id": "MIM-DAY-12-FULL-VALIDATION",
+              "scope": [
+                "initiative binding",
+                "execution completion",
+                "continuation",
+                "recovery",
+                "shell state consistency",
+                "user-facing reporting"
+              ],
+              "status": "ready",
+              "success_criteria": [
+                "no false completion",
+                "no cross-initiative contamination",
+                "no repeated stale status loop without escalation",
+                "recovery resumes automatically",
+                "conversational mode no longer uses forced uncertainty wrappers"
+              ],
+              "tasks": [
+                "Run a planning-only initiative and confirm active/planning state.",
+                "Run an executed initiative and confirm completion only after execution evidence.",
+                "Run repeated-request scenario and confirm stale-loop escalation.",
+                "Run recovery scenario and confirm auto-resume.",
+                "Run conversational prompts and confirm response policy separation.",
+                "Summarize all pass/fail results and remaining blockers."
+              ]
+            },
+            {
+              "display_title": "exted simulation training on MIM natural language learning 1,000,000 questions / interactions in each group",
+              "goal": "Run small batches to start, check results, optimize, then complete the full run. Then go on to the next category.",
+              "objective": "Run staged simulation training across leadership, initiative, project managment, social engagment, and software development and planning.",
+              "project_id": "MIM-DAY-14-EXTED-SIMULATION-TRAINING-ON-MIM-NATURAL-LANGUAGE-LEARNING-1-000-000-QUESTIONS-INTERACTIONS-IN-EACH-GROUP",
+              "scope": [],
+              "status": "ready",
+              "success_criteria": [
+                "small batches complete before full run",
+                "the next category starts automatically"
+              ],
+              "tasks": [
+                "Run small batches to start.",
+                "Check results and optimize.",
+                "Complete the full run.",
+                "Then go on to the next category."
+              ]
+            },
+            {
+              "display_title": "MIM-DAY-15-CLASSIC-LITERATURE-INTRODUCTION",
+              "goal": "Build a clean, source-backed classical literature corpus from major free public-domain libraries so MIM can use it for reading, reference, and structured learning, with a durable catalog artifact a...",
+              "objective": "Introduce MIM to 200 classical literature books that are legally available to read for free online.",
+              "project_id": "MIM-DAY-15-CLASSIC-LITERATURE-INTRODUCTION",
+              "scope": [
+                "Project Gutenberg",
+                "Standard Ebooks",
+                "Read.gov",
+                "Archive.org",
+                "catalog normalization",
+                "author/title metadata",
+                "reading queue creation",
+                "public-domain availability validation",
+                "19th century literature",
+                "early 20th century and modernism",
+                "adventure and sci-fi",
+                "philosophy and non-fiction",
+                "classic children's literature",
+                "catalog artifact maintenance",
+                "public-domain reading corpus stewardship"
+              ],
+              "status": "ready",
+              "success_criteria": [
+                "a source-backed catalog of 200 free classic books exists",
+                "named priority classics are present in the catalog",
+                "each catalog entry includes title, author, category, candidate free-access source, and validation state",
+                "the corpus is structured for bounded future reading or ingestion work",
+                "runtime/reports/classic_literature_catalog_seed.json remains the canonical catalog artifact for Objective 15"
+              ],
+              "tasks": [
+                "Build a curated list of 200 classical literature titles that are legally available for free online from approved public-domain or equivalent free-access sources.",
+                "Normalize a catalog for each title with author, title, candidate source library, canonical link, category, and explicit validation status.",
+                "Maintain the named priority titles inside runtime/reports/classic_literature_catalog_seed.json and ensure each has a trustworthy free-access source candidate plus a clear validation state.",
+                "Create a staged reading and introduction plan so MIM can process the corpus in bounded batches rather than one unstructured dump.",
+                "Store a reusable artifact or registry entry that can be extended later with additional free classics.",
+                "Validate that the resulting catalog is source-backed, deduplicated, and usable for future automated reading or study flows."
+              ]
+            }
+          ],
+          "reporting_rule": "",
+          "summary": "Program MIM-12-AUTONOMOUS-EVOLUTION status (14 registered projects): MIM-DAY-01-EXECUTION-BOUND-COMPLETION=ready (Enforce completion only after execution evidence INITIATIVE_ID: MIM-DAY-01-EX...); MIM-DAY-02-INITIATIVE-ISOLATION=ready (Prevent new initiatives from being overwritten, contaminated, or auto-reroute...)...",
+          "updated_at": "2026-05-07T19:53:37Z"
+        },
+        "summary": "Active objective: Lab awareness, human interaction, and camera cycling. Active task: Discover or run lab sensor inventory executor. Blocked items: Inventory lab sensors and publish first live-readiness map, Publish lab-awareness status after growth guard activation."
+      },
+      "input_id": 5756914,
+      "metadata_json": {
+        "adapter": "text",
+        "conversation_session_id": "voice-context-12h-cebf7c39-60dc-4bc9-9fd1-d1fe4101e399",
+        "gateway_received_at": "2026-05-22T03:27:21Z",
+        "interaction_mode": "autonomous_objective",
+        "message_type": "user",
+        "request_id": "mim-request-3eb66230-ff1a-4c08-a6b4-e1c2caea20d6",
+        "route_preference": "conversation_layer",
+        "source": "mim_voice_context_12h_runner"
+      },
+      "mim_interface": {
+        "blocker": "",
+        "internal_envelope": {
+          "detail": "giving some extra context, I researched the web for 'OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.' and checked 3 public sources. %PDF-1.3 %\ufffd\ufffd\ufffd\ufffd 1 0 obj > endobj 2 0 obj > endobj 3 0 obj > endobj 4 0 obj > endobj 5 0 obj > endobj 6 0 obj > endobj 7 0 obj > endobj 8 0 obj > endobj 9 0 obj > endobj 10 0 obj > endobj 11 0 obj > endobj 12 0 obj > en... Page title: Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology. Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology ACL Anthology News (... Page title: [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation. [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation Skip to main content Learn... Sources: statmt.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGXivMeapWWszGPH0Y3KwJrCP_b2e4fu_h8Inv-LkAga2eO45rXERi8bsVpPzvJdNyRzv8OSID3xXY5MzL0hBN66ifigqmtQMEHea43P5zr8Dco9BQCDxGB5c1-ouaYzK7HbKOXhodbk-3SFVFF); aclanthology.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG_Xyji_Hacsaj7gTrizBbLxlG6jA8xwhkantd33CgApufhzC9rV71hrYq3GqR3hMmBFH0R3C186l_5fJgxod8rFQMmI2DobMckOpjqBCSJME1UUOOWgrNeRIuSM22rgOTTCw==); arxiv.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH4g_iAZaj4qU5mWl9gwFukFD7gVr1V_Ui1e749ciqHlY9XJB12kkmY8CoJdD_aetUTh1e622GwJdj5USAuEhKlIbpiDMMUB74waFUKbAA9S9vH9jqKScI-Sm8T). Technical framing: Separate domain research from implementation planning so the build path stays grounded in verified constraints. Plan of action: 1) Establish the verified baseline 2) Research approaches and opinions 3) Choose a feasible build path 4) Define the first bounded experiment. Step research: step 1 needs another research pass. Stop condition: stop when the next round stops improving the answer or the budget is exhausted. Next step: I can compare the strongest 2 or 3 options directly, separate stronger evidence from weaker marketing claims, or execute step 1: establish the verified baseline.",
+          "detail_label": "Result",
+          "next_action": "reply directly in this session",
+          "request_id": "mim-request-3eb66230-ff1a-4c08-a6b4-e1c2caea20d6",
+          "status": "done",
+          "understood": "OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_V..."
+        },
+        "next_action": "reply directly in this session",
+        "reply_text": "I researched the web for 'OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.' and checked 3 public sources. %PDF-1.3 %\ufffd\ufffd\ufffd\ufffd 1 0 obj > endobj 2 0 obj > endobj 3 0 obj > endobj 4 0 obj > endobj 5 0 obj > endobj 6 0 obj > endobj 7 0 obj > endobj 8 0 obj > endobj 9 0 obj > endobj 10 0 obj > endobj 11 0 obj > endobj 12 0 obj > en... Page title: Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology. Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology ACL Anthology News (... Page title: [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation. [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation Skip to main content Learn... Sources: statmt.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGXivMeapWWszGPH0Y3KwJrCP_b2e4fu_h8Inv-LkAga2eO45rXERi8bsVpPzvJdNyRzv8OSID3xXY5MzL0hBN66ifigqmtQMEHea43P5zr8Dco9BQCDxGB5c1-ouaYzK7HbKOXhodbk-3SFVFF); aclanthology.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG_Xyji_Hacsaj7gTrizBbLxlG6jA8xwhkantd33CgApufhzC9rV71hrYq3GqR3hMmBFH0R3C186l_5fJgxod8rFQMmI2DobMckOpjqBCSJME1UUOOWgrNeRIuSM22rgOTTCw==); arxiv.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH4g_iAZaj4qU5mWl9gwFukFD7gVr1V_Ui1e749ciqHlY9XJB12kkmY8CoJdD_aetUTh1e622GwJdj5USAuEhKlIbpiDMMUB74waFUKbAA9S9vH9jqKScI-Sm8T). Technical framing: Separate domain research from implementation planning so the build path stays grounded in verified constraints. Plan of action: 1) Establish the verified baseline 2) Research approaches and opinions 3) Choose a feasible build path 4) Define the first bounded experiment. Step research: step 1 needs another research pass. Stop condition: stop when the next round stops improving the answer or the budget is exhausted. Next step: I can compare the strongest 2 or 3 options directly, separate stronger evidence from weaker marketing claims, or execute step 1: establish the verified baseline.",
+        "request_id": "mim-request-3eb66230-ff1a-4c08-a6b4-e1c2caea20d6",
+        "result": "I researched the web for 'OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.late...\n\nStatus note: MIM-VAD-SPEECH-SEGMENTATION-V1 is blocked. Blocker: No safe bounded edit was applied by the packet listener executor. The executor inspected target/discovery files and produced blocked_with_inspection evidence; Codex escalation is allowed only with this inspection evidence.. Next: reclassify or replay through the correct bounded lane",
+        "status": "done",
+        "understood": "OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_V..."
+      },
+      "normalized": true,
+      "parsed_intent": "conversation",
+      "raw_input": "OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1\n\nGOAL:\nAdd explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows.\n\nSUCCESS:\nPublish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.\n",
+      "request_id": "mim-request-3eb66230-ff1a-4c08-a6b4-e1c2caea20d6",
+      "requested_goal": "",
+      "resolution": {
+        "capability_enabled": false,
+        "capability_name": "",
+        "capability_registered": false,
+        "clarification_prompt": "I researched the web for 'OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.' and checked 3 public sources. %PDF-1.3 %\ufffd\ufffd\ufffd\ufffd 1 0 obj > endobj 2 0 obj > endobj 3 0 obj > endobj 4 0 obj > endobj 5 0 obj > endobj 6 0 obj > endobj 7 0 obj > endobj 8 0 obj > endobj 9 0 obj > endobj 10 0 obj > endobj 11 0 obj > endobj 12 0 obj > en... Page title: Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology. Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology ACL Anthology News (... Page title: [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation. [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation Skip to main content Learn... Sources: statmt.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGXivMeapWWszGPH0Y3KwJrCP_b2e4fu_h8Inv-LkAga2eO45rXERi8bsVpPzvJdNyRzv8OSID3xXY5MzL0hBN66ifigqmtQMEHea43P5zr8Dco9BQCDxGB5c1-ouaYzK7HbKOXhodbk-3SFVFF); aclanthology.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG_Xyji_Hacsaj7gTrizBbLxlG6jA8xwhkantd33CgApufhzC9rV71hrYq3GqR3hMmBFH0R3C186l_5fJgxod8rFQMmI2DobMckOpjqBCSJME1UUOOWgrNeRIuSM22rgOTTCw==); arxiv.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH4g_iAZaj4qU5mWl9gwFukFD7gVr1V_Ui1e749ciqHlY9XJB12kkmY8CoJdD_aetUTh1e622GwJdj5USAuEhKlIbpiDMMUB74waFUKbAA9S9vH9jqKScI-Sm8T). Technical framing: Separate domain research from implementation planning so the build path stays grounded in verified constraints. Plan of action: 1) Establish the verified baseline 2) Research approaches and opinions 3) Choose a feasible build path 4) Define the first bounded experiment. Step research: step 1 needs another research pass. Stop condition: stop when the next round stops improving the answer or the budget is exhausted. Next step: I can compare the strongest 2 or 3 options directly, separate stronger evidence from weaker marketing claims, or execute step 1: establish the verified baseline.",
+        "confidence_tier": "conversation",
+        "created_at": "2026-05-22T03:27:21.448722Z",
+        "escalation_reasons": [],
+        "goal_id": null,
+        "input_event_id": 5756914,
+        "internal_intent": "speak_response",
+        "metadata_json": {
+          "active_goal": "Workspace state indicates zone uncertainty should be stabilized before downstream physical decisions. Retry and fallback pressure lower confidence in aggressive execution strate...",
+          "clarification_prompt_key": "i researched the web for 'objective: mim-vad-speech-segmentation-v1 goal: add explicit speech segmentation before stt so mim waits for complete utterances instead of fixed windows. success: publish mim_vad_speech_segmentation_status.latest.json with start/stop timing, no-speech filtering, and no raw audio retained. constraints: - no raw audio retention. - treat tools as replaceable; preserve context behavior. - continue without human intervention. - do not mark complete from planning alone. - publish evidence artifacts in runtime/shared.' and checked 3 public sources. %pdf-1.3 %\ufffd\ufffd\ufffd\ufffd 1 0 obj > endobj 2 0 obj > endobj 3 0 obj > endobj 4 0 obj > endobj 5 0 obj > endobj 6 0 obj > endobj 7 0 obj > endobj 8 0 obj > endobj 9 0 obj > endobj 10 0 obj > endobj 11 0 obj > endobj 12 0 obj > en... page title: don\u2019t discard fixed-window audio segmentation in speech-to-text translation - acl anthology. don\u2019t discard fixed-window audio segmentation in speech-to-text translation - acl anthology acl anthology news (... page title: [2210.13363] don't discard fixed-window audio segmentation in speech-to-text translation. [2210.13363] don't discard fixed-window audio segmentation in speech-to-text translation skip to main content learn... sources: statmt.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/auziyqgxivmeapwwszgph0y3kwjrcp_b2e4fu_h8inv-lkaga2eo45rxeri8bsvppzvjdnyrzv8osid3xxy5mzl0hbn66ifigqmtqmehea43p5zr8dco9bqcdxgb5c1-ouayzk7hbkoxhodbk-3sfvff); aclanthology.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/auziyqg_xyji_hacsaj7gtrizbblxlg6ja8xwhkantd33cgapufhzc9rv71hryq3gqr3hmmbfh0r3c186l_5fjgxod8rfqmmi2dobmckopjqbcsjme1uuoowgrneriusm22rgottcw==); arxiv.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/auziyqh4g_iazaj4qu5mwl9gwfukfd7gvr1v_ui1e749ciqhly9xjb12kkmy8cojdd_aetuth1e622gwjdj5usauehklibpidmmub74wafukbaa9s9vh9jqksci-sm8t). technical framing: separate domain research from implementation planning so the build path stays grounded in verified constraints. plan of action: 1) establish the verified baseline 2) research approaches and opinions 3) choose a feasible build path 4) define the first bounded experiment. step research: step 1 needs another research pass. stop condition: stop when the next round stops improving the answer or the budget is exhausted. next step: i can compare the strongest 2 or 3 options directly, separate stronger evidence from weaker marketing claims, or execute step 1: establish the verified baseline.",
+          "classification_stage_timestamps": {
+            "gateway_received_at": "2026-05-22T03:27:21Z",
+            "llm_classifier_completed_at": "2026-05-22T03:27:32Z",
+            "llm_classifier_started_at": "2026-05-22T03:27:21Z",
+            "route_decided_at": "2026-05-22T03:27:32Z"
+          },
+          "communication_reply_contract": {},
+          "confidence": 0.8,
+          "conversation_override": true,
+          "conversation_topic": "technical_research",
+          "current_recommendation_summary": "Active objective: Lab awareness, human interaction, and camera cycling. Active task: Discover or run lab sensor inventory executor. Blocked items: Inventory lab sensors and publish first live-readiness map, Publish lab-awareness status after growth guard activation.",
+          "governance": {
+            "applied_outcome": "store_only",
+            "applied_reason": "conversation_override",
+            "precedence_order": [
+              "explicit_operator_approval",
+              "hard_safety_escalation",
+              "degraded_health_confirmation",
+              "benign_healthy_auto_execution"
+            ],
+            "primary_signal": "",
+            "signal_codes": [],
+            "signals": [],
+            "summary": "conversation override",
+            "system_health_status": "healthy"
+          },
+          "initiative_auto_execute": false,
+          "initiative_boundary_mode": "",
+          "initiative_boundary_reason": "",
+          "intent_understanding": {
+            "canonical_intent": "",
+            "confidence": 0.62,
+            "literal_input": "OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1\n\nGOAL:\nAdd explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows.\n\nSUCCESS:\nPublish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
+            "rationale": "literal_intent",
+            "semantic_goal": "speak_response: OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1\n\nGOAL:\nAdd explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows.\n\nSUCCESS:\nPublish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
+            "suggested_domains": [
+              "decision"
+            ],
+            "suggested_steps": []
+          },
+          "last_technical_research": {
+            "asks_to_build": true,
+            "assumed_budget_minutes": 30,
+            "budget_prompt": "",
+            "followup_rounds_completed": 1,
+            "is_open_problem": false,
+            "last_researched_step_index": 0,
+            "last_round_had_evidence": false,
+            "max_followup_rounds": 4,
+            "max_live_rounds": 2,
+            "next_steps": [
+              "compare the strongest 2 or 3 options directly",
+              "separate stronger evidence from weaker marketing claims",
+              "execute step 1: establish the verified baseline",
+              "turn the chosen path into an implementation checklist"
+            ],
+            "problem_frame": "Separate domain research from implementation planning so the build path stays grounded in verified constraints.",
+            "query": "OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_V...",
+            "reasoning_mode": "technical_investigation",
+            "researched_step_indexes": [
+              1
+            ],
+            "step_findings": [
+              {
+                "evidence": [],
+                "source_domains": [],
+                "step_index": 1,
+                "title": "Establish the verified baseline"
+              }
+            ],
+            "steps": [
+              {
+                "purpose": "Identify what is already known, proven, or ruled out.",
+                "research_query": "objective mim vad speech segmentation goal known results current status",
+                "step_index": 1,
+                "step_key": "baseline",
+                "title": "Establish the verified baseline"
+              },
+              {
+                "purpose": "Compare approaches, expert opinions, and recurring disagreements.",
+                "research_query": "objective mim vad speech segmentation goal approaches opinions expert discussion",
+                "step_index": 2,
+                "step_key": "opinions",
+                "title": "Research approaches and opinions"
+              },
+              {
+                "purpose": "Turn the research into an implementation path that is realistic now.",
+                "research_query": "objective mim vad speech segmentation goal application architecture prototype",
+                "step_index": 3,
+                "step_key": "path",
+                "title": "Choose a feasible build path"
+              },
+              {
+                "purpose": "Choose the first experiment or prototype that can be validated quickly.",
+                "research_query": "objective mim vad speech segmentation goal validation experiment benchmark",
+                "step_index": 4,
+                "step_key": "validate",
+                "title": "Define the first bounded experiment"
+              }
+            ],
+            "stop_condition": "stop when the next round stops improving the answer or the budget is exhausted"
+          },
+          "memory_signal": {
+            "best_effective_confidence": 0.0,
+            "dominant_label": "",
+            "dominant_object": "",
+            "hazard_level": 0,
+            "moved_recent_count": 0,
+            "object_recent_strong_count": 0,
+            "object_stale_missing_count": 0,
+            "object_uncertain_count": 0,
+            "recent_count": 0,
+            "stale_count": 0,
+            "strongest_object_confidence": 0.0,
+            "unsafe_zone": false,
+            "zone": ""
+          },
+          "mim_interface_next_action_override": "",
+          "mim_interface_reply_override": "giving some extra context, I researched the web for 'OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.' and checked 3 public sources. %PDF-1.3 %\ufffd\ufffd\ufffd\ufffd 1 0 obj > endobj 2 0 obj > endobj 3 0 obj > endobj 4 0 obj > endobj 5 0 obj > endobj 6 0 obj > endobj 7 0 obj > endobj 8 0 obj > endobj 9 0 obj > endobj 10 0 obj > endobj 11 0 obj > endobj 12 0 obj > en... Page title: Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology. Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology ACL Anthology News (... Page title: [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation. [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation Skip to main content Learn... Sources: statmt.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGXivMeapWWszGPH0Y3KwJrCP_b2e4fu_h8Inv-LkAga2eO45rXERi8bsVpPzvJdNyRzv8OSID3xXY5MzL0hBN66ifigqmtQMEHea43P5zr8Dco9BQCDxGB5c1-ouaYzK7HbKOXhodbk-3SFVFF); aclanthology.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG_Xyji_Hacsaj7gTrizBbLxlG6jA8xwhkantd33CgApufhzC9rV71hrYq3GqR3hMmBFH0R3C186l_5fJgxod8rFQMmI2DobMckOpjqBCSJME1UUOOWgrNeRIuSM22rgOTTCw==); arxiv.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH4g_iAZaj4qU5mWl9gwFukFD7gVr1V_Ui1e749ciqHlY9XJB12kkmY8CoJdD_aetUTh1e622GwJdj5USAuEhKlIbpiDMMUB74waFUKbAA9S9vH9jqKScI-Sm8T). Technical framing: Separate domain research from implementation planning so the build path stays grounded in verified constraints. Plan of action: 1) Establish the verified baseline 2) Research approaches and opinions 3) Choose a feasible build path 4) Define the first bounded experiment. Step research: step 1 needs another research pass. Stop condition: stop when the next round stops improving the answer or the budget is exhausted. Next step: I can compare the strongest 2 or 3 options directly, separate stronger evidence from weaker marketing claims, or execute step 1: establish the verified baseline.",
+          "mim_interface_result_override": "",
+          "object_inquiry": {},
+          "operational_lifecycle_update": {
+            "lifecycle_state": "revisit",
+            "objective_id": "MIM-OPERATIONAL-REASONING-LIFECYCLE-V1",
+            "operator_satisfaction_status": "implementation_not_proven"
+          },
+          "operator_reasoning_summary": "TOD decision: TOD knows what MIM did; MIM knows what TOD did; TOD work tod published terminal failure; liveness terminal. Goal: Workspace state indicates zone uncertainty should be stabilized before downstream physical decisions. Retry and fallback pressure...",
+          "optional_escalation": "",
+          "program_status": {
+            "completion_rule": "",
+            "continuity_rule": "",
+            "execution_rules": {
+              "auto_continue": true,
+              "auto_start_next_project": true,
+              "bounded_remediation_before_escalation": true,
+              "completion_requires_validation": true,
+              "inherit_to_new_ui_projects": true,
+              "no_human_prompts": true,
+              "no_pause_for_approval": true,
+              "post_execution_day_summary": true,
+              "report_after_execution": true,
+              "tod_continue_without_if_stale": true,
+              "tod_preferred": true
+            },
+            "global_execution_authority": "",
+            "objective": "Enforce completion only after execution evidence",
+            "program_id": "MIM-12-AUTONOMOUS-EVOLUTION",
+            "projects": [
+              {
+                "display_title": "MIM-DAY-01-EXECUTION-BOUND-COMPLETION",
+                "goal": "",
+                "objective": "Enforce completion only after execution evidence INITIATIVE_ID: MIM-DAY-01-EXECUTION-BOUND-COMPLETION Create the bounded implementation plan and execute it.",
+                "project_id": "MIM-DAY-01-EXECUTION-BOUND-COMPLETION",
+                "scope": [],
+                "status": "ready",
+                "success_criteria": [],
+                "tasks": []
+              },
+              {
+                "display_title": "MIM-DAY-02-INITIATIVE-ISOLATION",
+                "goal": "Every incoming initiative stays bound to its own request, objective, task, and result lineage.",
+                "objective": "Prevent new initiatives from being overwritten, contaminated, or auto-rerouted into previously authorized initiatives.",
+                "project_id": "MIM-DAY-02-INITIATIVE-ISOLATION",
+                "scope": [],
+                "status": "ready",
+                "success_criteria": [
+                  "explicit INITIATIVE_ID always wins over stale active initiative continuation"
+                ],
+                "tasks": [
+                  "Trace request_id -> initiative_id -> objective_id -> task_id -> result path.",
+                  "Patch precedence so explicit incoming INITIATIVE_ID wins over prior cached initiative continuation unless explicitly resumed."
+                ]
+              },
+              {
+                "display_title": "MIM-DAY-03-INITIATIVE-ID-HARDENING",
+                "goal": "Clean initiative identity across gateway, persistence, status, and reporting.",
+                "objective": "Ensure explicit initiative parsing captures only the identifier token and never absorbs objective/goal text.",
+                "project_id": "MIM-DAY-03-INITIATIVE-ID-HARDENING",
+                "scope": [
+                  "text intake parsing",
+                  "gateway intake",
+                  "persistence model",
+                  "autonomy status",
+                  "shell/state output"
+                ],
+                "status": "ready",
+                "success_criteria": [
+                  "initiative id is exactly the declared token",
+                  "no prompt tail appears in persistence or status",
+                  "downstream routing uses normalized id consistently"
+                ],
+                "tasks": [
+                  "Inspect initiative parsing logic for INITIATIVE_ID, OBJECTIVE_ID, TITLE, GOAL extraction.",
+                  "Patch token extraction so only the identifier value is captured.",
+                  "Normalize stored IDs for whitespace/newlines/prompt-tail contamination.",
+                  "Update state/status surfaces to use normalized identifier only.",
+                  "Add tests for multiline initiative payloads.",
+                  "Re-run live-style probes and verify clean IDs in shell state and status."
+                ]
+              },
+              {
+                "display_title": "MIM-DAY-04-CONVERSATIONAL-RESPONSE-POLICY",
+                "goal": "Remove forced uncertainty wrappers and generic dry responses for conversational intent without weakening execution safety.",
+                "objective": "Separate conversational response policy from execution verification policy.",
+                "project_id": "MIM-DAY-04-CONVERSATIONAL-RESPONSE-POLICY",
+                "scope": [
+                  "response policy layer",
+                  "intent routing",
+                  "conversational prompts",
+                  "identity/explanation answers",
+                  "response formatting"
+                ],
+                "status": "ready",
+                "success_criteria": [
+                  "conversational prompts no longer prepend not totally sure",
+                  "responses are specific, system-aware, and confident",
+                  "execution safety language remains intact where needed"
+                ],
+                "tasks": [
+                  "Locate where not totally sure and similar uncertainty preambles are injected.",
+                  "Add response mode routing:",
+                  "conversational",
+                  "execution",
+                  "diagnostic",
+                  "Disable forced uncertainty prefix for conversational questions:",
+                  "identity",
+                  "what are you",
+                  "how are you different",
+                  "mission/purpose",
+                  "general explanation",
+                  "Preserve uncertainty language only for true execution ambiguity/conflicting system state.",
+                  "Add tests for before/after conversational prompts.",
+                  "Validate that execution mode remains strict."
+                ]
+              },
+              {
+                "display_title": "MIM-DAY-05-AUTO-RESUME-AFTER-RECOVERY",
+                "goal": "No long idle periods after a blocked task becomes executable again.",
+                "objective": "Enable automatic resumption of execution after readiness or dependency recovery.",
+                "project_id": "MIM-DAY-05-AUTO-RESUME-AFTER-RECOVERY",
+                "scope": [
+                  "TOD recovery behavior",
+                  "readiness gating",
+                  "blocked task memory",
+                  "requeue behavior",
+                  "execution resume logic"
+                ],
+                "status": "ready",
+                "success_criteria": [
+                  "blocked task resumes after recovery without human input",
+                  "no extended idle state after readiness becomes valid",
+                  "retry happens automatically and safely"
+                ],
+                "tasks": [
+                  "Identify where blocked tasks are recorded and where readiness/dependency transitions are detected.",
+                  "Patch recovery path so stale/invalid -> valid triggers one bounded requeue attempt for the blocked task.",
+                  "Prevent infinite retry loops with retry metadata and cooldown.",
+                  "Add tests for:",
+                  "blocked due to stale readiness",
+                  "readiness becomes valid",
+                  "task resumes automatically",
+                  "Validate listener/runtime behavior under recovery."
+                ]
+              },
+              {
+                "display_title": "MIM-DAY-06-STALE-ACTION-PREVENTION",
+                "goal": "Repeated non-progressing actions trigger escalation to corrective branches.",
+                "objective": "Prevent repeated low-value status checks and summary loops from being treated as progress.",
+                "project_id": "MIM-DAY-06-STALE-ACTION-PREVENTION",
+                "scope": [
+                  "action classification",
+                  "repeated pattern detection",
+                  "branch selection",
+                  "non-progress scoring",
+                  "corrective escalation"
+                ],
+                "status": "ready",
+                "success_criteria": [
+                  "repeated status-check loops are detected",
+                  "branch selection changes automatically",
+                  "stale repeated actions are not treated as success"
+                ],
+                "tasks": [
+                  "Identify current action classes and repeated status-check patterns.",
+                  "Add repeated-action detection with thresholds.",
+                  "Classify repeated unchanged status/warning/ack responses as stale_repeated_action.",
+                  "Penalize stale action classes in branch selection.",
+                  "Promote corrective branches such as:",
+                  "inspect bounded step limit",
+                  "inspect continuation gate",
+                  "inspect response policy",
+                  "create corrective implementation task",
+                  "Add tests proving repeated status checks no longer persist beyond threshold."
+                ]
+              },
+              {
+                "display_title": "MIM-DAY-07-CORRECTIVE-DISPATCH",
+                "goal": "MIM must not stop at problem found or objective created. It must dispatch corrective implementation work.",
+                "objective": "Bind detected stale or structural problems to actual implementation dispatch.",
+                "project_id": "MIM-DAY-07-CORRECTIVE-DISPATCH",
+                "scope": [
+                  "corrective objective creation",
+                  "implementation task generation",
+                  "TOD/Codex dispatch",
+                  "execution tracking",
+                  "result reporting"
+                ],
+                "status": "ready",
+                "success_criteria": [
+                  "corrective problem detection results in actual dispatch",
+                  "objective cannot complete from planning alone",
+                  "result reporting shows real execution lifecycle"
+                ],
+                "tasks": [
+                  "Reuse known stale-loop remediation targets such as gateway.py and autonomy_driver_service.py where appropriate.",
+                  "Patch logic so corrective detection triggers:",
+                  "task creation",
+                  "dispatch",
+                  "execution tracking",
+                  "Prevent objective completion without dispatch/execution attempt.",
+                  "Add reporting states:",
+                  "created",
+                  "dispatched",
+                  "executing",
+                  "completed",
+                  "failed",
+                  "Validate with a repeated-status-loop scenario."
+                ]
+              },
+              {
+                "display_title": "MIM-DAY-08-CODEBASE-MAP",
+                "goal": "TOD must understand the codebase well enough to execute bounded changes across MIM safely.",
+                "objective": "Create a current architecture and edit-zone map so TOD can act as engineering steward for MIM.",
+                "project_id": "MIM-DAY-08-CODEBASE-MAP",
+                "scope": [
+                  "frontend",
+                  "backend",
+                  "state model",
+                  "initiative/autonomy",
+                  "media/voice/image",
+                  "shell/state",
+                  "deployment/runtime surfaces"
+                ],
+                "status": "ready",
+                "success_criteria": [
+                  "codebase map exists",
+                  "stewardship map exists",
+                  "TOD can explain major MIM surfaces accurately"
+                ],
+                "tasks": [
+                  "Scan and map major modules and entry points.",
+                  "Produce a stewardship map:",
+                  "safe edit zones",
+                  "guarded edit zones",
+                  "validation-required zones",
+                  "high-risk coupling points",
+                  "Summarize runtime surfaces and dependencies.",
+                  "Store artifacts for later use in travel-mode execution."
+                ]
+              },
+              {
+                "display_title": "MIM-DAY-09-RUNTIME-HEALTH",
+                "goal": "Runtime failures should be detectable and bounded recovery should happen automatically where safe.",
+                "objective": "Keep the local MIM runtime healthy, visible, and recoverable without operator intervention.",
+                "project_id": "MIM-DAY-09-RUNTIME-HEALTH",
+                "scope": [
+                  "local runtime",
+                  "shell endpoints",
+                  "healthz",
+                  "shell/state",
+                  "chat proxy",
+                  "recovery scripts/playbooks"
+                ],
+                "status": "ready",
+                "success_criteria": [
+                  "runtime health is observable",
+                  "bounded recovery actions work",
+                  "remote shell remains usable after restart scenarios"
+                ],
+                "tasks": [
+                  "Validate current health endpoints and add missing checks.",
+                  "Add recovery actions for:",
+                  "stale shell state",
+                  "dropped runtime process",
+                  "shell proxy failure",
+                  "local service drift",
+                  "Validate remote shell access still works after restart/recovery.",
+                  "Produce recovery playbook."
+                ]
+              },
+              {
+                "display_title": "MIM-DAY-10-SHELL-UX",
+                "goal": "Long responses, execution logs, and chat messages render cleanly without clipping, truncation, or layout breakage.",
+                "objective": "Fix shell readability and response presentation issues so MIM feels usable instead of half-rendered.",
+                "project_id": "MIM-DAY-10-SHELL-UX",
+                "scope": [
+                  "chat bubble layout",
+                  "message rendering",
+                  "long text wrapping",
+                  "execution block formatting",
+                  "mobile layout"
+                ],
+                "status": "ready",
+                "success_criteria": [
+                  "no clipped responses",
+                  "execution details are readable",
+                  "chat remains clean and usable"
+                ],
+                "tasks": [
+                  "Fix clipped message rendering and bottom-line truncation.",
+                  "Separate conversation output from execution/debug details.",
+                  "Add structured rendering for execution blocks.",
+                  "Improve message spacing, wrapping, and long-text containment.",
+                  "Validate on mobile shell."
+                ]
+              },
+              {
+                "display_title": "MIM-DAY-11-VOICE-IMAGE",
+                "goal": "Mic behavior is reliable, tap-to-talk no longer drops immediately, and image interactions are routed correctly.",
+                "objective": "Make voice and image interaction actually usable in the shell.",
+                "project_id": "MIM-DAY-11-VOICE-IMAGE",
+                "scope": [
+                  "tap-to-talk",
+                  "mic state transitions",
+                  "push-to-talk vs latched mode",
+                  "optional open-mic toggle",
+                  "image routing",
+                  "multimodal handling stub/fallback"
+                ],
+                "status": "ready",
+                "success_criteria": [
+                  "mic interaction is reliable",
+                  "tap-to-talk bug resolved",
+                  "image input handling is correctly routed and reported"
+                ],
+                "tasks": [
+                  "Inspect tap-to-talk start/stop event flow.",
+                  "Fix premature mic shutdown when speech begins.",
+                  "Implement one selected UX:",
+                  "push-and-hold",
+                  "latched tap-to-talk",
+                  "open-mic toggle",
+                  "Improve device status reporting for mic/camera.",
+                  "Route image inputs to proper handling path and produce honest actionable response if multimodal is unavailable."
+                ]
+              },
+              {
+                "display_title": "MIM-DAY-12-FULL-VALIDATION",
+                "goal": "Demonstrate stable multi-step execution with correct lifecycle, continuation, recovery, and reporting.",
+                "objective": "Run an end-to-end autonomous validation proving that MIM and TOD can execute bounded work continuously without false completion, stale loops, or routing contamination.",
+                "project_id": "MIM-DAY-12-FULL-VALIDATION",
+                "scope": [
+                  "initiative binding",
+                  "execution completion",
+                  "continuation",
+                  "recovery",
+                  "shell state consistency",
+                  "user-facing reporting"
+                ],
+                "status": "ready",
+                "success_criteria": [
+                  "no false completion",
+                  "no cross-initiative contamination",
+                  "no repeated stale status loop without escalation",
+                  "recovery resumes automatically",
+                  "conversational mode no longer uses forced uncertainty wrappers"
+                ],
+                "tasks": [
+                  "Run a planning-only initiative and confirm active/planning state.",
+                  "Run an executed initiative and confirm completion only after execution evidence.",
+                  "Run repeated-request scenario and confirm stale-loop escalation.",
+                  "Run recovery scenario and confirm auto-resume.",
+                  "Run conversational prompts and confirm response policy separation.",
+                  "Summarize all pass/fail results and remaining blockers."
+                ]
+              },
+              {
+                "display_title": "exted simulation training on MIM natural language learning 1,000,000 questions / interactions in each group",
+                "goal": "Run small batches to start, check results, optimize, then complete the full run. Then go on to the next category.",
+                "objective": "Run staged simulation training across leadership, initiative, project managment, social engagment, and software development and planning.",
+                "project_id": "MIM-DAY-14-EXTED-SIMULATION-TRAINING-ON-MIM-NATURAL-LANGUAGE-LEARNING-1-000-000-QUESTIONS-INTERACTIONS-IN-EACH-GROUP",
+                "scope": [],
+                "status": "ready",
+                "success_criteria": [
+                  "small batches complete before full run",
+                  "the next category starts automatically"
+                ],
+                "tasks": [
+                  "Run small batches to start.",
+                  "Check results and optimize.",
+                  "Complete the full run.",
+                  "Then go on to the next category."
+                ]
+              },
+              {
+                "display_title": "MIM-DAY-15-CLASSIC-LITERATURE-INTRODUCTION",
+                "goal": "Build a clean, source-backed classical literature corpus from major free public-domain libraries so MIM can use it for reading, reference, and structured learning, with a durable catalog artifact a...",
+                "objective": "Introduce MIM to 200 classical literature books that are legally available to read for free online.",
+                "project_id": "MIM-DAY-15-CLASSIC-LITERATURE-INTRODUCTION",
+                "scope": [
+                  "Project Gutenberg",
+                  "Standard Ebooks",
+                  "Read.gov",
+                  "Archive.org",
+                  "catalog normalization",
+                  "author/title metadata",
+                  "reading queue creation",
+                  "public-domain availability validation",
+                  "19th century literature",
+                  "early 20th century and modernism",
+                  "adventure and sci-fi",
+                  "philosophy and non-fiction",
+                  "classic children's literature",
+                  "catalog artifact maintenance",
+                  "public-domain reading corpus stewardship"
+                ],
+                "status": "ready",
+                "success_criteria": [
+                  "a source-backed catalog of 200 free classic books exists",
+                  "named priority classics are present in the catalog",
+                  "each catalog entry includes title, author, category, candidate free-access source, and validation state",
+                  "the corpus is structured for bounded future reading or ingestion work",
+                  "runtime/reports/classic_literature_catalog_seed.json remains the canonical catalog artifact for Objective 15"
+                ],
+                "tasks": [
+                  "Build a curated list of 200 classical literature titles that are legally available for free online from approved public-domain or equivalent free-access sources.",
+                  "Normalize a catalog for each title with author, title, candidate source library, canonical link, category, and explicit validation status.",
+                  "Maintain the named priority titles inside runtime/reports/classic_literature_catalog_seed.json and ensure each has a trustworthy free-access source candidate plus a clear validation state.",
+                  "Create a staged reading and introduction plan so MIM can process the corpus in bounded batches rather than one unstructured dump.",
+                  "Store a reusable artifact or registry entry that can be extended later with additional free classics.",
+                  "Validate that the resulting catalog is source-backed, deduplicated, and usable for future automated reading or study flows."
+                ]
+              }
+            ],
+            "reporting_rule": "",
+            "summary": "Program MIM-12-AUTONOMOUS-EVOLUTION status (14 registered projects): MIM-DAY-01-EXECUTION-BOUND-COMPLETION=ready (Enforce completion only after execution evidence INITIATIVE_ID: MIM-DAY-01-EX...); MIM-DAY-02-INITIATIVE-ISOLATION=ready (Prevent new initiatives from being overwritten, contaminated, or auto-reroute...)...",
+            "updated_at": "2026-05-07T19:53:37Z"
+          },
+          "program_status_summary": "Program MIM-12-AUTONOMOUS-EVOLUTION status (14 registered projects): MIM-DAY-01-EXECUTION-BOUND-COMPLETION=ready (Enforce completion only after execution evidence INITIATIVE_ID: MIM-DAY-01-EX...); MIM-DAY-02-INITIATIVE-ISOLATION=ready (Prevent new initiatives from being overwritten, contaminated, or auto-reroute...)...",
+          "request_id": "mim-request-3eb66230-ff1a-4c08-a6b4-e1c2caea20d6",
+          "requested_domains": [
+            "data",
+            "decision"
+          ],
+          "route_preference": "conversation_layer",
+          "runtime_health_summary": "Runtime health is stable; camera idle, microphone idle.",
+          "runtime_recovery_summary": "No recent runtime recovery activity.",
+          "safety_flags": [],
+          "session_display_name": "giving some extra context",
+          "skip_conversation_memory": false,
+          "source": "text",
+          "target_system": "mim",
+          "tod_collaboration_summary": "request mim-vad-speech-segmentation-v1-mim-request-0b578bc6-f4be-4809-a3d1-ce50ee986ee7-replan-1 | rejected_lineage_mismatch | rejected_lineage_mismatch",
+          "user_action_safety": {},
+          "web_research": {
+            "answer": "I researched the web for 'OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.' and checked 3 public sources. %PDF-1.3 %\ufffd\ufffd\ufffd\ufffd 1 0 obj > endobj 2 0 obj > endobj 3 0 obj > endobj 4 0 obj > endobj 5 0 obj > endobj 6 0 obj > endobj 7 0 obj > endobj 8 0 obj > endobj 9 0 obj > endobj 10 0 obj > endobj 11 0 obj > endobj 12 0 obj > en... Page title: Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology. Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology ACL Anthology News (... Page title: [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation. [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation Skip to main content Learn... Sources: statmt.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGXivMeapWWszGPH0Y3KwJrCP_b2e4fu_h8Inv-LkAga2eO45rXERi8bsVpPzvJdNyRzv8OSID3xXY5MzL0hBN66ifigqmtQMEHea43P5zr8Dco9BQCDxGB5c1-ouaYzK7HbKOXhodbk-3SFVFF); aclanthology.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG_Xyji_Hacsaj7gTrizBbLxlG6jA8xwhkantd33CgApufhzC9rV71hrYq3GqR3hMmBFH0R3C186l_5fJgxod8rFQMmI2DobMckOpjqBCSJME1UUOOWgrNeRIuSM22rgOTTCw==); arxiv.org (https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH4g_iAZaj4qU5mWl9gwFukFD7gVr1V_Ui1e749ciqHlY9XJB12kkmY8CoJdD_aetUTh1e622GwJdj5USAuEhKlIbpiDMMUB74waFUKbAA9S9vH9jqKScI-Sm8T). Technical framing: Separate domain research from implementation planning so the build path stays grounded in verified constraints. Plan of action: 1) Establish the verified baseline 2) Research approaches and opinions 3) Choose a feasible build path 4) Define the first bounded experiment. Step research: step 1 needs another research pass. Stop condition: stop when the next round stops improving the answer or the budget is exhausted. Next step: I can compare the strongest 2 or 3 options directly, separate stronger evidence from weaker marketing claims, or execute step 1: establish the verified baseline.",
+            "budget_seconds": 10.0,
+            "diagnostics": {
+              "gathered_source_count": 3,
+              "search": {
+                "providers": [
+                  {
+                    "configured": true,
+                    "error": "HTTPError:HTTP Error 403: Forbidden",
+                    "provider": "google_cse",
+                    "query": "OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
+                    "requested_results": 5,
+                    "result_count": 0
+                  },
+                  {
+                    "configured": true,
+                    "error": "",
+                    "model": "gemini-2.5-flash",
+                    "provider": "gemini_google_search",
+                    "query": "OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
+                    "requested_results": 5,
+                    "result_count": 5
+                  }
+                ],
+                "query": "OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
+                "selected_provider": "gemini_google_search",
+                "selected_result_count": 5
+              },
+              "search_result_count": 5
+            },
+            "learned_claims": [
+              "%PDF-1.3 %\ufffd\ufffd\ufffd\ufffd 1 0 obj > endobj 2 0 obj > endobj 3 0 obj > endobj 4 0 obj > endobj 5 0 obj > endobj 6 0 obj > endobj 7 0 obj > endobj 8 0 obj > endobj 9 0 obj > endobj 10 0 obj...",
+              "Page title: Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology.",
+              "Page title: [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation."
+            ],
+            "memory_id": 674779,
+            "next_steps": [
+              "compare the strongest 2 or 3 options directly",
+              "separate stronger evidence from weaker marketing claims",
+              "execute step 1: establish the verified baseline",
+              "turn the chosen path into an implementation checklist"
+            ],
+            "ok": true,
+            "plausibility": {
+              "authority_count": 0,
+              "authority_domains": [],
+              "extraordinary_claim": false,
+              "notes": [],
+              "skepticism_level": "low",
+              "source_domains": [
+                "vertexaisearch.cloud.google.com"
+              ],
+              "topics": []
+            },
+            "prior_knowledge": {
+              "claims": [],
+              "count": 0,
+              "direct_evidence_count": 0,
+              "memory_ids": [],
+              "related_queries": [],
+              "skeptical_prior_count": 0,
+              "summary_line": ""
+            },
+            "query": "OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1 GOAL: Add explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows. SUCCESS: Publish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
+            "sources": [
+              {
+                "content_type": "application/pdf",
+                "search_source": "gemini_google_search",
+                "snippet": "The goal of adding explicit speech segmentation before STT is to allow the STT system to process complete utterances rather than fixed windows, which can improve performance in real-life applications",
+                "status_code": 200,
+                "summary": "%PDF-1.3 %\ufffd\ufffd\ufffd\ufffd 1 0 obj > endobj 2 0 obj > endobj 3 0 obj > endobj 4 0 obj > endobj 5 0 obj > endobj 6 0 obj > endobj 7 0 obj > endobj 8 0 obj > endobj 9 0 obj > endobj 10 0 obj > endobj 11 0 obj > endobj 12 0 obj > endobj 13 0 obj > endobj 14 0 obj > stream /pdfrw_0 Do endstream endobj 15 0 obj > stream x\ufffd\ufffd\ufffdOk\ufffd0\u0014\u0000\ufffd\"\ufffdx0K\ufffd\u00125;\ufffd\ufffd\ufffdc\ufffd\ufffdy\u001b;\ufffd5Z\ufffd?L\ufffd\ufffd\ufffd\ufffd\ufffd1\ufffd\ufffd\ufffd2\u0004\u0013\ufffd\ufffd{\ufffd\ufffd\ufffd\ufffd@\u0014=\u0006t\ufffd\ufffd\ufffdM\u0011C \ufffd\u0014\u0012I\ufffd\ufffdTJ\ufffdY\u0007_\u0001\ufffd\ufffd\ufffd\ufffd?\ufffd\u0184/\ufffd\u0002w\u06da \ufffdj\ufffd\ufffd\ufffdY6\ufffd\ufffd\ufffd\u046c\ufffdC\u0016\ufffdm\ufffdP\ufffd\ufffd\ufffdy\ufffd\ufffd Q\ufffd\u0014L% %i #\ufffd(\ufffd\\\ufffd\ufffdF\ufffdxS\u0016\ufffd\u0384\u0011\ufffd 3q F\ufffd8^\ufffdJ\ufffd\ufffd\ufffdw\ufffd%\ufffd!\ufffd\ufffd\ufffd\ufffd.\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdT\ufffd+\ufffd\ufffd\ufffdt\ufffd\ufffd\ufffd\u0010\u00fd \ufffd\ufffdE=\u0004\ufffd-\ufffd\ufffd \ufffdm\ufffd\ufffd\u02d4\ufffd\ufffdnv\ufffd\ufffd\ufffd9T g.Z\ufffd;S\ufffd.\ufffdO\ufffdVW\ufffdn\"\ufffdF\ub9a8\ufffd~\ufffd\u000eZ\ufffd\ufffdi\ufffd\ufffd$\ufffd\u021e.\\\ufffd\ufffd\u0396D,\ufffd$\ufffd\ufffd\ufffd\ufffd\ufffdM\ufffdY\ufffd\ufffdDi\ufffd\u015c\bH\ufffdD\ufffd\ufffd \ufffd\u0119H \ufffdb\ufffd\ufffd\u000fx \ufffd\ufffd\u0017\\\ufffd\ufffdU \ufffd\ufffd\u0003\ufffd\u0007F p>0\ufffd\u0011\ufffdW\ufffd\u6f74\ufffd=\u0014\ufffd\u0007\ufffd\u0005\u00118\ufffd\u0001\u0006\ufffd\u014d%%\"\u0005w\ufffdz3\ufffd_\u053f\ufffd\ufffd endstream endobj 16 0 obj > endobj 17 0 obj > /Pattern 21 0 R /ProcSet [/PDF /Text] /XObject >>> endobj 18 0 obj endobj 19 0 obj > endobj 20 0 obj > endobj 21 0 obj > endobj 22 0 obj > /A2 > /A3 >>> /Font > /Pattern > /ProcSet [/PDF /Text /ImageB /ImageC /ImageI] /Shading > /XObject >>> /Subtype /Form /Type /XObject>> stream x\ufffd\ufffd[Mo\ufffd\ufffd\u0011\ufffd\u0013\ufffd#x\ufffd\u000f\ufffd\ueaae\ufffd\ufffd>\ufffd\ufffd\ufffd\ufffd\ufffdv# \ufffdE\u000e\ufffd\ufffd\ufffdm\ufffd\ufffdDvb\ufffd\ufffd\ufffd5\ufffd#6) \ufffd=\u0003\ufffdA\u0180\u0000\ufffd|S\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u053f\uba3f\ufffdc\ufffd\u000e\u007f_z\ufffd_\ufffd\uf98b\ufffdz\ufffdQ,%p\ufffd\u0014\u0013\ufffdw\ufffdk\ufffd D\ufffd%\ufffd\ufffd8\ufffd|\ufffdu\ufffdw\ufffd\u007f\u0002\ufffd'\ufffd\ufffd\ufffd\ufffd \\\ufffd\ufffdv\ufffd+\u04be\ufffd{\ufffd\u007f\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdo\u0015OBe\ufffd\ufffd% \ufffdS\u0011]tt\u0013\ufffd\ufffd \u0019-\ufffd\u0004|\ufffd\ufffd\ufffd\ufffd\ufffd^t\ufffd\ufffd\ufffdSM\ufffd(\u0019\ufffd9/d\ufffd\u0007 \ufffd\ufffd2\ufffdR\u0016\ufffd\ufffdpQ\ufffd2Hw-\ufffd\ufffd0\b\u001b*Q\ufffd'\ufffd\u0019\ufffdY\ufffd\u0019?\ufffd\ufffdtQ|2\u0019LX\u0006\ufffd\ufffd1\ufffd\u000e&\u0018\ufffdW\ufffd\u0013M oU5\ufffd,\u0001\ufffd9\ufffdY\ufffd6\u061e\ufffd\u0017\ufffd=\ufffd :\ufffd\u000e\ufffdXf\ufffdfU{ \ufffd2\ufffd\u0083\ufffd\u0017fr\ufffd\ufffd\u07f58\ufffda \ufffdXk\ufffd6 \ufffd\ufffd\ufffd\ufffd\ufffd.\ufffd \ufffd\ufffd\ufffd\ufffd E\ufffd\ufffdb\ufffd\ufffd\ufffdH\ufffd\u0004d_L\ufffd\ufffdi\ufffdoU9\ufffdd\u0004\ufffd\u5b32Jw N\ufffd \ufffd\ufffdn\ufffd\ufffd\u0011Z\ufffd\ufffd-0\ufffd\ufffd\u001bc\ufffdX\ufffdc\ufffd\ufffd \ufffdC+UcNq\ufffd\ufffds\ufffd\ufffd\u001b\ufffd\ufffdo \ufffd\ufffd\u0012=\ufffd\ufffd\ufffd\ufffd|Y\ufffd\ufffd\ufffd\ufffd\ufffd\ufffde\u0015*\u0016b\u0012A\ufffd\u03d6Uf\ufffdfu\u007f\ufffd\ufffd G$\ufffdg\ufffd (\u0005 B5\ufffdb\ufffd\ufffd\u0177\ufffd\ufffd\ufffd\ufffd\ufffd\b\ufffd\ufffd\ufffd o\ufffd>Z|\ufffd\ufffd\ufffd\u007f\ufffd\ufffdV\u0002\u0018\ufffd\ufffd\ufffd|\ufffdc\ufffdoT\ufffd\ufffd\ufffdp\ufffd\ufffd \ufffd@A2\ufffdz(\ufffd\ufffd\ufffd\u0006\u07ac\ufffd#\ufffd'`+;\ufffd\u000f\ufffd\ufffd\ufffd\ufffd\u0016\u07ea\ufffd\ufffd^\ufffd\u0000C \ufffd\ufffdy\ufffd@1\ufffd7\ufffdz\ufffd \ufffdi\ufffdZE >5GN\ufffdU\ufffd\u0016\u07ea\ufffdcV\u0011\ufffd\ufffd\ufffd]E\ufffd \ufffdG\ufffd[E\ufffd\b'`\u0012i\ufffdE\ufffd\u0016\u07a8\ue8d3\ufffd\ufffd\ufffd{\u000ey\ufffdW\ufffd\u05bf\ufffd\ufffd\ufffd\ufffd_o\ufffd\ufffd\u007f}\ufffd\ufffd\ufffd\ufffd4\ufffdw\u007f>\ufffd\ufffd\ufffd\ufffd\ufffdg\ufffd3\ufffd\ufffd\ufffd\ufffd~f?\ufffd\ufffd\ufffd\ufffd\ufffdg\ufffd3\ufffd\u007f\ufffd\ufffd\ufffd\ufffd0q \ufffdxa\ufffd\u4dde\ufffd\u0002g\ufffd|\u000f \ufffd\u001a\ufffdZqO%\u0014V\ufffdH\ufffd\ufffdz \ufffd\ufffd 9\ufffd'\ufffdTwy1&\u0410*\ufffd$ \ufffd\u0014\u05232\ufffd\ufffd \u000f\ufffd\ufffdj\ufffd \ufffd\ufffdJq 6l&\ufffd$\ufffd\ufffd\ufffdCY#\u0019\ufffd*J\u0761#x\ufffdO\ufffd ~8 \ufffd\u0004_\ufffd}/>_\u007f\ufffd \u05ac. \ufffd\ufffd~4\ufffd4\ufffd\u001b\ufffd\ufffd\ufffd\ufffdn\u0001U\ufffd\u0002;\u0000\ufffds\ufffd\ufffd&\u0003\u0907\ufffd^\ufffd \ufffdk\ufffdZ\ufffd>\b\u000f2\ufffd1\ufffd\ufffd\ufffdz\ufffdP\u01c3\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\b\ufffd\ufffd>\ufffd?\ufffd\ufffd\ufffdO\ufffd\u00cf\ufffd\ufffdv2T C\ufffd\ufffd\ufffdoo_}\ufffd\ufffdz\ufffd\ufffd\u00006\u0004=\ufffdZW\ufffd\ufffd\ufffd\ufffdW\ufffd\u0011\ufffd\ufffd>\ufffd]\ufffd\ufffd\u000f\ufffd\ufffd\"\ufffd\ufffd\ufffd:\ufffd\ufffd>}\ufffdz\ufffd\u0011x}\ufffd9\ufffd(C\ufffdA@\ufffd]\ufffd\u666ba\ufffd}x\ufffd\u00adO\u001b\ufffd\ufffd] \u07ccdT\ufffd\ufffd>\ufffd\ufffd\ufffd\ufffd\u000f~\ufffd\u000e~\ufffd\ufffd\ufffd\u000f\u0011F\ufffd\ufffd endstream endobj 23 0 obj > /Length 2285 /PTEX.FileName (./pt_en_delay.pdf) /PTEX.InfoDict 32 0 R /PTEX.PageNumber 1 /Resources > /A2 > /A3 >>> /Font > /Pattern > /ProcSet [/PDF /Text /ImageB /ImageC /ImageI] /Shading > /XObject >>> /Subtype /Form /Type /XObject>> stream x\ufffd\ufffd[\ufffdn \ufffd\u0011\ufffd7\ufffd#\ufffd( \ufffdf\u0015\ufffdU\ufffd\ufffd\u001aI\u0004\ufffdm7\u0002rX\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdN\ufffd\ufffd} {z\ufffd\uc584\ufffd4\u0003\ufffd\ufffd\ufffd \u0001\ufffd\ufffd\ufffd\ufffd|EV\u0015\ufffd&\ufffd\u007f\ufffdQ\u007f\ufffd\ufffd\ufffd=\ufffd\ufffd\ufffd\u051f\ufffd\ufe8b\ufffd\ufffd\ufffdQ,%p1\ufffd \u05db\u0675\ufffd\u0005\ufffd\ufffdIp#\ufffd/\ufffdv\ufffd \ufffd\u02df@\ufffd\u0019\ufffd\u03bb\ufffd-\ufffd\u0018i q\ufffd\ufffd\ufffd\ufffd!\u07b9\ufffd\ufffd\ufffdH.\ufffd\ufffdxc\"\ufffd\ufffd\ufffd yxa\ufffd E\u0004E\u0004E\ufffd\ufffd\ufffd\ufffdv\ufffd.\ufffd\ufffd\u007f\ufffd\ufffd%\ufffd\ufffd\u001a#K\ufffd\ufffd\ufffd\u000f\b\ufffd\ufffdGBe\ufffdcHY\ufffd\ufffdjF\ufffd\ufffd\ufffde\ufffd\ufffd\ufffd]\ufffd\ufffd\u000f\ufffde.\ufffdtg\u05df6o^\ufffd\u0017\ufffd?_ \ufffdYU\ufffdX\ufffd\ufffd\ufffd\ufffdc\ufffd\ufffd\"\u0005\ufffd\ufffd\ufffd\ufffd\ufffd\u0271\ufffdjY\ufffd\u0011\ufffd\ufffd%2 \u02ee \ufffd\u0007,\ufffd\u0002cj9\ufffd] \ufffd\ufffd\"\u0015\ufffd\ufffdU\ufffdeWt\ufffd@\ufffd\ufffdZq\ufffdc\u0655P\ufffd\u0010\u0659\ufffd[>Z \ufffdh\ufffd\u00050\ufffd'\ufffd\ufffd\ufffd\ufffd\ufffdD\ufffd\u0010\ufffd\ufffdD\u0012\ufffd6\u000f\u0007PN\ufffd \ufffdD\ufffds\ufffdc7\ufffd\ufffd]\ufffd!\ufffd\ufffd?{s\ufffdy\ufffd\ufffdG\ufffd#F\ufffd\u0014D&\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdmF \ufffd&\ufffd$ \ufffdJ\ufffd\u0012\u0004\ufffd\u0012 \ufffd\ufffd\ufffdU\ufffd\ufffd\ufffdcM\u0005E4V%\ufffd\ufffd \ufffdt\ufffd\ufffd \u0019w4\ufffd\u000fW\ufffd\ufffd\ufffdfE\ufffd&\ufffd\ufffd\u0012\ufffd\ufffd%\ufffd\ufffd\ufffdC\ufffd*\ufffd\ufffd\ufffd\"\u04e5 \ufffdR\ufffd\ufffdHt\u0013\ufffd\u0019!\ufffdK\ufffd\u019b\ufffdf\u0006#\u03fd\ufffd~\ufffdW\ufffd\ufffd$#dh6[\ufffdv\u000fx\ufffdn~\ufffdp\ufffd\ufffd\\d\ufffd+>\ufffd\ufffd\ufffd\ufffd\ufffd.",
+                "text": "%PDF-1.3 %\ufffd\ufffd\ufffd\ufffd 1 0 obj > endobj 2 0 obj > endobj 3 0 obj > endobj 4 0 obj > endobj 5 0 obj > endobj 6 0 obj > endobj 7 0 obj > endobj 8 0 obj > endobj 9 0 obj > endobj 10 0 obj > endobj 11 0 obj > endobj 12 0 obj > endobj 13 0 obj > endobj 14 0 obj > stream /pdfrw_0 Do endstream endobj 15 0 obj > stream x\ufffd\ufffd\ufffdOk\ufffd0\u0014\u0000\ufffd\"\ufffdx0K\ufffd\u00125;\ufffd\ufffd\ufffdc\ufffd\ufffdy\u001b;\ufffd5Z\ufffd?L\ufffd\ufffd\ufffd\ufffd\ufffd1\ufffd\ufffd\ufffd2\u0004\u0013\ufffd\ufffd{\ufffd\ufffd\ufffd\ufffd@\u0014=\u0006t\ufffd\ufffd\ufffdM\u0011C \ufffd\u0014\u0012I\ufffd\ufffdTJ\ufffdY\u0007_\u0001\ufffd\ufffd\ufffd\ufffd?\ufffd\u0184/\ufffd\u0002w\u06da \ufffdj\ufffd\ufffd\ufffdY6\ufffd\ufffd\ufffd\u046c\ufffdC\u0016\ufffdm\ufffdP\ufffd\ufffd\ufffdy\ufffd\ufffd Q\ufffd\u0014L% %i #\ufffd(\ufffd\\\ufffd\ufffdF\ufffdxS\u0016\ufffd\u0384\u0011\ufffd 3q F\ufffd8^\ufffdJ\ufffd\ufffd\ufffdw\ufffd%\ufffd!\ufffd\ufffd\ufffd\ufffd.\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdT\ufffd+\ufffd\ufffd\ufffdt\ufffd\ufffd\ufffd\u0010\u00fd \ufffd\ufffdE=\u0004\ufffd-\ufffd\ufffd \ufffdm\ufffd\ufffd\u02d4\ufffd\ufffdnv\ufffd\ufffd\ufffd9T g.Z\ufffd;S\ufffd.\ufffdO\ufffdVW\ufffdn\"\ufffdF\ub9a8\ufffd~\ufffd\u000eZ\ufffd\ufffdi\ufffd\ufffd$\ufffd\u021e.\\\ufffd\ufffd\u0396D,\ufffd$\ufffd\ufffd\ufffd\ufffd\ufffdM\ufffdY\ufffd\ufffdDi\ufffd\u015c\bH\ufffdD\ufffd\ufffd \ufffd\u0119H \ufffdb\ufffd\ufffd\u000fx \ufffd\ufffd\u0017\\\ufffd\ufffdU \ufffd\ufffd\u0003\ufffd\u0007F p>0\ufffd\u0011\ufffdW\ufffd\u6f74\ufffd=\u0014\ufffd\u0007\ufffd\u0005\u00118\ufffd\u0001\u0006\ufffd\u014d%%\"\u0005w\ufffdz3\ufffd_\u053f\ufffd\ufffd endstream endobj 16 0 obj > endobj 17 0 obj > /Pattern 21 0 R /ProcSet [/PDF /Text] /XObject >>> endobj 18 0 obj endobj 19 0 obj > endobj 20 0 obj > endobj 21 0 obj > endobj 22 0 obj > /A2 > /A3 >>> /Font > /Pattern > /ProcSet [/PDF /Text /ImageB /ImageC /ImageI] /Shading > /XObject >>> /Subtype /Form /Type /XObject>> stream x\ufffd\ufffd[Mo\ufffd\ufffd\u0011\ufffd\u0013\ufffd#x\ufffd\u000f\ufffd\ueaae\ufffd\ufffd>\ufffd\ufffd\ufffd\ufffd\ufffdv# \ufffdE\u000e\ufffd\ufffd\ufffdm\ufffd\ufffdDvb\ufffd\ufffd\ufffd5\ufffd#6) \ufffd=\u0003\ufffdA\u0180\u0000\ufffd|S\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u053f\uba3f\ufffdc\ufffd\u000e\u007f_z\ufffd_\ufffd\uf98b\ufffdz\ufffdQ,%p\ufffd\u0014\u0013\ufffdw\ufffdk\ufffd D\ufffd%\ufffd\ufffd8\ufffd|\ufffdu\ufffdw\ufffd\u007f\u0002\ufffd'\ufffd\ufffd\ufffd\ufffd \\\ufffd\ufffdv\ufffd+\u04be\ufffd{\ufffd\u007f\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdo\u0015OBe\ufffd\ufffd% \ufffdS\u0011]tt\u0013\ufffd\ufffd \u0019-\ufffd\u0004|\ufffd\ufffd\ufffd\ufffd\ufffd^t\ufffd\ufffd\ufffdSM\ufffd(\u0019\ufffd9/d\ufffd\u0007 \ufffd\ufffd2\ufffdR\u0016\ufffd\ufffdpQ\ufffd2Hw-\ufffd\ufffd0\b\u001b*Q\ufffd'\ufffd\u0019\ufffdY\ufffd\u0019?\ufffd\ufffdtQ|2\u0019LX\u0006\ufffd\ufffd1\ufffd\u000e&\u0018\ufffdW\ufffd\u0013M oU5\ufffd,\u0001\ufffd9\ufffdY\ufffd6\u061e\ufffd\u0017\ufffd=\ufffd :\ufffd\u000e\ufffdXf\ufffdfU{ \ufffd2\ufffd\u0083\ufffd\u0017fr\ufffd\ufffd\u07f58\ufffda \ufffdXk\ufffd6 \ufffd\ufffd\ufffd\ufffd\ufffd.\ufffd \ufffd\ufffd\ufffd\ufffd E\ufffd\ufffdb\ufffd\ufffd\ufffdH\ufffd\u0004d_L\ufffd\ufffdi\ufffdoU9\ufffdd\u0004\ufffd\u5b32Jw N\ufffd \ufffd\ufffdn\ufffd\ufffd\u0011Z\ufffd\ufffd-0\ufffd\ufffd\u001bc\ufffdX\ufffdc\ufffd\ufffd \ufffdC+UcNq\ufffd\ufffds\ufffd\ufffd\u001b\ufffd\ufffdo \ufffd\ufffd\u0012=\ufffd\ufffd\ufffd\ufffd|Y\ufffd\ufffd\ufffd\ufffd\ufffd\ufffde\u0015*\u0016b\u0012A\ufffd\u03d6Uf\ufffdfu\u007f\ufffd\ufffd G$\ufffdg\ufffd (\u0005 B5\ufffdb\ufffd\ufffd\u0177\ufffd\ufffd\ufffd\ufffd\ufffd\b\ufffd\ufffd\ufffd o\ufffd>Z|\ufffd\ufffd\ufffd\u007f\ufffd\ufffdV\u0002\u0018\ufffd\ufffd\ufffd|\ufffdc\ufffdoT\ufffd\ufffd\ufffdp\ufffd\ufffd \ufffd@A2\ufffdz(\ufffd\ufffd\ufffd\u0006\u07ac\ufffd#\ufffd'`+;\ufffd\u000f\ufffd\ufffd\ufffd\ufffd\u0016\u07ea\ufffd\ufffd^\ufffd\u0000C \ufffd\ufffdy\ufffd@1\ufffd7\ufffdz\ufffd \ufffdi\ufffdZE >5GN\ufffdU\ufffd\u0016\u07ea\ufffdcV\u0011\ufffd\ufffd\ufffd]E\ufffd \ufffdG\ufffd[E\ufffd\b'`\u0012i\ufffdE\ufffd\u0016\u07a8\ue8d3\ufffd\ufffd\ufffd{\u000ey\ufffdW\ufffd\u05bf\ufffd\ufffd\ufffd\ufffd_o\ufffd\ufffd\u007f}\ufffd\ufffd\ufffd\ufffd4\ufffdw\u007f>\ufffd\ufffd\ufffd\ufffd\ufffdg\ufffd3\ufffd\ufffd\ufffd\ufffd~f?\ufffd\ufffd\ufffd\ufffd\ufffdg\ufffd3\ufffd\u007f\ufffd\ufffd\ufffd\ufffd0q \ufffdxa\ufffd\u4dde\ufffd\u0002g\ufffd|\u000f \ufffd\u001a\ufffdZqO%\u0014V\ufffdH\ufffd\ufffdz \ufffd\ufffd 9\ufffd'\ufffdTwy1&\u0410*\ufffd$ \ufffd\u0014\u05232\ufffd\ufffd \u000f\ufffd\ufffdj\ufffd \ufffd\ufffdJq 6l&\ufffd$\ufffd\ufffd\ufffdCY#\u0019\ufffd*J\u0761#x\ufffdO\ufffd ~8 \ufffd\u0004_\ufffd}/>_\u007f\ufffd \u05ac. \ufffd\ufffd~4\ufffd4\ufffd\u001b\ufffd\ufffd\ufffd\ufffdn\u0001U\ufffd\u0002;\u0000\ufffds\ufffd\ufffd&\u0003\u0907\ufffd^\ufffd \ufffdk\ufffdZ\ufffd>\b\u000f2\ufffd1\ufffd\ufffd\ufffdz\ufffdP\u01c3\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\b\ufffd\ufffd>\ufffd?\ufffd\ufffd\ufffdO\ufffd\u00cf\ufffd\ufffdv2T C\ufffd\ufffd\ufffdoo_}\ufffd\ufffdz\ufffd\ufffd\u00006\u0004=\ufffdZW\ufffd\ufffd\ufffd\ufffdW\ufffd\u0011\ufffd\ufffd>\ufffd]\ufffd\ufffd\u000f\ufffd\ufffd\"\ufffd\ufffd\ufffd:\ufffd\ufffd>}\ufffdz\ufffd\u0011x}\ufffd9\ufffd(C\ufffdA@\ufffd]\ufffd\u666ba\ufffd}x\ufffd\u00adO\u001b\ufffd\ufffd] \u07ccdT\ufffd\ufffd>\ufffd\ufffd\ufffd\ufffd\u000f~\ufffd\u000e~\ufffd\ufffd\ufffd\u000f\u0011F\ufffd\ufffd endstream endobj 23 0 obj > /Length 2285 /PTEX.FileName (./pt_en_delay.pdf) /PTEX.InfoDict 32 0 R /PTEX.PageNumber 1 /Resources > /A2 > /A3 >>> /Font > /Pattern > /ProcSet [/PDF /Text /ImageB /ImageC /ImageI] /Shading > /XObject >>> /Subtype /Form /Type /XObject>> stream x\ufffd\ufffd[\ufffdn \ufffd\u0011\ufffd7\ufffd#\ufffd( \ufffdf\u0015\ufffdU\ufffd\ufffd\u001aI\u0004\ufffdm7\u0002rX\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdN\ufffd\ufffd} {z\ufffd\uc584\ufffd4\u0003\ufffd\ufffd\ufffd \u0001\ufffd\ufffd\ufffd\ufffd|EV\u0015\ufffd&\ufffd\u007f\ufffdQ\u007f\ufffd\ufffd\ufffd=\ufffd\ufffd\ufffd\u051f\ufffd\ufe8b\ufffd\ufffd\ufffdQ,%p1\ufffd \u05db\u0675\ufffd\u0005\ufffd\ufffdIp#\ufffd/\ufffdv\ufffd \ufffd\u02df@\ufffd\u0019\ufffd\u03bb\ufffd-\ufffd\u0018i q\ufffd\ufffd\ufffd\ufffd!\u07b9\ufffd\ufffd\ufffdH.\ufffd\ufffdxc\"\ufffd\ufffd\ufffd yxa\ufffd E\u0004E\u0004E\ufffd\ufffd\ufffd\ufffdv\ufffd.\ufffd\ufffd\u007f\ufffd\ufffd%\ufffd\ufffd\u001a#K\ufffd\ufffd\ufffd\u000f\b\ufffd\ufffdGBe\ufffdcHY\ufffd\ufffdjF\ufffd\ufffd\ufffde\ufffd\ufffd\ufffd]\ufffd\ufffd\u000f\ufffde.\ufffdtg\u05df6o^\ufffd\u0017\ufffd?_ \ufffdYU\ufffdX\ufffd\ufffd\ufffd\ufffdc\ufffd\ufffd\"\u0005\ufffd\ufffd\ufffd\ufffd\ufffd\u0271\ufffdjY\ufffd\u0011\ufffd\ufffd%2 \u02ee \ufffd\u0007,\ufffd\u0002cj9\ufffd] \ufffd\ufffd\"\u0015\ufffd\ufffdU\ufffdeWt\ufffd@\ufffd\ufffdZq\ufffdc\u0655P\ufffd\u0010\u0659\ufffd[>Z \ufffdh\ufffd\u00050\ufffd'\ufffd\ufffd\ufffd\ufffd\ufffdD\ufffd\u0010\ufffd\ufffdD\u0012\ufffd6\u000f\u0007PN\ufffd \ufffdD\ufffds\ufffdc7\ufffd\ufffd]\ufffd!\ufffd\ufffd?{s\ufffdy\ufffd\ufffdG\ufffd#F\ufffd\u0014D&\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdmF \ufffd&\ufffd$ \ufffdJ\ufffd\u0012\u0004\ufffd\u0012 \ufffd\ufffd\ufffdU\ufffd\ufffd\ufffdcM\u0005E4V%\ufffd\ufffd \ufffdt\ufffd\ufffd \u0019w4\ufffd\u000fW\ufffd\ufffd\ufffdfE\ufffd&\ufffd\ufffd\u0012\ufffd\ufffd%\ufffd\ufffd\ufffdC\ufffd*\ufffd\ufffd\ufffd\"\u04e5 \ufffdR\ufffd\ufffdHt\u0013\ufffd\u0019!\ufffdK\ufffd\u019b\ufffdf\u0006#\u03fd\ufffd~\ufffdW\ufffd\ufffd$#dh6[\ufffdv\u000fx\ufffdn~\ufffdp\ufffd\ufffd\\d\ufffd+>\ufffd\ufffd\ufffd\ufffd\ufffd. \u3514\ufffdk\ufffd#\ufffdJi\ufffd\ufffd\ufffd\u0013\ufffd\u01ac\ufffd\ufffd\ufffd'\ufffd\u0019\ufffdV\u075c a\ufffd\ufffd,\u0006t\\\u0012|~\ufffd\ufffd7->\u0014-H\u0001V\ufffdg\ufffd\ufffdT\ufffdvT\ufffd\ufffd\ufffdu)\u001b\u0006\ufffd\ufffd1\ufffdFI\u0018\ufffdg_v\ufffdM\ufffd3F\ufffd\ufffd\ufffdt\ufffd'\ufffd\u0019\ufffdV\ufffdBxX9\ufffd\ufffduKf\ufffd[v\ufffdM\ufffd\ufffd\bpK\ufffd\ufffd\u001a\ufffd\u0016^\ufffd\ufffdZ\u0001\u0399e\ufffd:\ufffd \u0012!~,BO\ufffd\ufffd\ufffd\ufffd\ufffd2s\ufffd=\ufffd\ufffd\ufffd\ufffd\u0384\u0014\ufffd\ufffd \ufffd\u0019)\u0156\ufffd\u007f\ufffd\ufffdT\ufffd\ufffd|\u000f)v\u0761G\ufffd*%)e\u0011z\u0014\u0017%.;\ufffd\ufffdk\ufffdg\ufffdd\ufffd\ufffd\ufffd\ufffdg\ufffd\ufffdV\ufffd\ufffd\ufffde\u0016\ufffd\ufffdHQ\ufffde'\u07748#\u03e7\\\u0010q\ufffd\ufffdg\ufffd\ufffdU7\ufffd,\u0001\ufffd \ufffdY\ufffd\u0582G\ufffd\u0017\ufffd=\ufffd B\ufffd\u0016\ufffdXf\ufffdjU{ 1\ufffdZ\ufffd \u033d0\ufffd[\ufffd\ufffdM\ufffd#\ufffd\ufffd=\ufffdFU\ufffd\ufffd3\ufffdW\ufffd{\u0761\ufffd=\ufffd\ufffd\ufffd\ufffdb\ufffdQ\ufffd\u0011\u0517]t\ufffd\ufffd5\ue8f8\ufffd\b\ufffd\u0434\ufffdZU\ufffd\ufffd CY\ufffd'\ufffd\u001a\ufffd\ufffd\ufffd\ufffd.\ufffdi\ufffd:\ufffdK\ufffd \ufffd*>\ufffd\ufffd\ufffd\ufffd\ufffd.H\u0010\ufffd\ufffd\ufffd\u410c\"\ufffd\ufffd\ufffdy\ufffd7\u0012\ufffd\ufffd\ufffd\u0016\ufffd\u3e86i\ufffd\ufffdU9!`\ufffd\ufffd\ufffd9e\ufffd\ufffd\u001a\ufffd\ufffd \ufffd\ufffd\ufffd@\u001a\ufffd\ufffdb\ufffd\ufffd\u001b\u0013\ufffd\ufffd\ufffdA\ufffd\ufffd\u0255Mr\u054e\ufffdf*\ufffd|V\ufffdFKq\ufffd\ufffd\ufffd\ufffd\ufffdD\ufffd`\ufffdC\u0017U\ufffd\ufffdQoa\ufffd/\ufffd\ufffd\ufffdZU \ufffd\ufffdB\ufffd\ufffdw\ufffd\ufffd\ufffd\ufffd\ufffdW\ufffd\ufffd\ufffd\ufffd*\ufffd)\ufffd\ufffdD\ufffd\ufffd\ufffd\ufffd _\ufffd\ufffd#\ufffd\ufffd\ufffd\ufffd\ufffd \ufffd\ufffdY\u007f.*\\\u0016+ -\ufffdV\u0747\ufffd|D\ufffd\u0019\ufffdi\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u000f\ufffdmH1\ufffd\ufffd|\ufffdc\ufffd\ufffdT\ufffd\ufffd\ufffdp\u0555;h\ufffd\ufffd\b\ufffd\"\ufffd/\ufffd'\u001ax\ufffd\ufffd\ufffd\ufffd 9d\u0015\ufffd \ufffd\ufffdy;\ufffdnxZ|\ufffd\ufffd\u000fYE\ufffd\u0011PD\ufffd|\ufffd\ufffd0\ufffdW\ufffd\ufffd`7\ufffd\ufffd\u7783 \ufffd\ufffd0y>\ufffd^\ufffd\ufffd\ufffd\ufffd\ufffd.\ufffd~=\u007f\ufffd_~ \ufffd\ufffd\ufffd\ufffd\ufffdO\ufffd'\ufffd\u0013\ufffd\ufffd\ufffd\ufffd~b?\ufffd\ufffd\ufffdO\ufffd'\ufffd\u0013\ufffd\ufffd\ufffd\u007f\ufffd\ufffdxv\ufffd8\u0006\ufffd(0\u007f\ufffd\ufffd\ufffd\u0019+\ufffd=G\ufffd\u01b3Vu\ufffd \u0014\ufffd\ufffd\u0011\u0013\ufffdT\ufffd\u0001\u0014 b\ufffd \ufffd\ufffds=A\ufffdwz\ufffdql\ufffd^\ufffdOR$9\u000f\ufffd\ufffd \u0016! \ufffd\ufffd\ufffdT\ufffdak\ufffd\ufffd\u0001\ufffd\ufffd\ufffd~k\ufffd\ufffdu\u0011\ufffd\ufffd \ufffd\ufffd\ufffd ]\ufffd\u0081zP\u0676\ufffd\ufffd\ufffd\ufffdHr=Gg.\ufffd\ufffd\u015e\ufffd\ufffdZO~\u013a\ufffdT\ufffd\ufffdR\ufffdJ\ufffd\ufffd4\ufffd\ufffd^\ufffdh=\u04a6u h\ufffd\ufffd\ufffdXJ\ufffd$V\ufffd\u10b2\ufffd-\ufffdcA\ufffd\u0004Ou7\ufffdD\u0018\u0013\ufffd\u0002\ufffdNj\ufffdQG\ufffd\ufffd\ufffd g\ufffd \\\u0011\ufffd\ufffd\ufffdTw \ufffd\u0010-\ufffd(\ufffdk!\ufffd[\u0017/1\b\ufffd\ufffd\u0013p\ufffd2\u0018\u0017\u0006\ufffd1\ufffd v\ufffd\ufffd\ufffd\ufffds\ufffdg\ufffd 2\ufffd\u0010\ufffd &\ufffdO7\ufffd\ufffd}|\ufffdY\ufffd5\\\ufffd\bcP! \ufffd\ufffd\ufffd\ufffd.\ufffd?n\ufffd~\ufffd\ufffd\ufffd\u0004\ufffd%d\ufffd\ufffdZ \ufffd%\ufffd\ufffd?\ufffd\ufffd\ufffdqw\ufffd0'\ufffd\u0002\ufffd{\ufffd\ufffd\ufffd\u06d7\ufffd\u0010\ufffdC\ufffde\ufffdX\ufffdb\u0019\ufffd\ufffdr\u007f}\ufffd\ufffd\u0367;\ufffd_'\ufffd?\ufffdz&\ufffd\ufffd\ufffd}\ufffd1ju\ufffd\ufffd\ufffd\ufffdC* \\w\u0011S\ufffd\ufffd\ufffd0a\u0003\ufffd\u0001\ufffd0 QR\u0019\u0000\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd{\ufffdO\ufffd\ufffd\ufffd\ufffde\ufffd \u0250[\ufffd\u0015\ufffd\ufffd\u0011\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd>\ufffdTb\u0002/\ufffd\ufffdN\ufffd\u00060\ufffdJ\ufffd\ufffd\ufffd\u0006N\ufffd\u01e0\ufffd\ufffd\ufffd\ufffdU-d \ufffd\u0004\u000f\ufffd\u07f4\u022d\ufffd\ufffd%\ufffd \ufffd]n\ufffdfLg\ufffd\ub1cf\ufffd-\ufffdn\ufffd\u0014 \u007f \u0017\u00163\\!ex\ufffd\ufffd\ufffd\ufffdOv\ufffd'\u007f=\u007f >>> /Subtype /Form /Type /XObject>> stream /FullPage Do endstream endobj 25 0 obj > stream x\ufffd3PHW0Pp\ufffd2@\ufffd\ufffdB\ufffd\ufffd\u074c\ufffd\u0014 \ufffd, , \u0015B\ufffd\u0014\ufffd, \ufffdL-\u0015L\ufffd\ufffdL\ufffd\u0015BR\u0014\ufffd5\ufffd -5cC\ufffd\ufffd\\C\ufffd\u0000\ufffd4\u0010L endstream endobj 26 0 obj > /ProcSet [/PDF /Text]>> endobj 27 0 obj > endobj 28 0 obj > endobj 29 0 obj > endobj 30 0 obj [250 333 250 278 500 500 500 500 500 500 500 500 500 500 278 278 564 564 564 444 921 722 667 667 722 611 556 722 722 333 389 722 611 889 722 722 556 722 667 556 611 722 722 944 722 722 611 333 278 333 469 500 333 444 500 444 500 444 333 500 500 278 278 500 278 778 500 500 500 500 333 389 278 500 500 722 500 500 444 480 200 480 541 0 0 0 333 500 444 1000 500 500 333 1000 556 333 889 0 0 0 0 0 0 444 444 350 500 1000 333 980 389 333 722 0 0 722 0 333 500 500 500 500 200 500 333 760] endobj 31 0 obj > stream x\u06adteT\ufffd\ufffdv6\ufffd\u001a\\3\ufffd\ufffd\ufffdK\b\u000e\ufffd\ufffd\ufffd\ufffd 6Xpww\ufffd@p\ufffd\ufffd$x\ufffd\ufffd.\ufffd\ufffd\ufffd\ufffdx\ufffd\ufffd\ufffdt\ufffd\ufffd\ufffd\ufffd\ufffd\u01f3\u05b3\ufffd\ufffdr\ufffd{\ufffdP\ufffdj\ufffdH\u0000\ufffdMA\ufffd\ufffd`\b \u0007+\ufffd @\ufffd\ufffd\ufffd\ufffd\ufffdY\ufffd\ufffdN\ufffd^@\ufffdE d\ufffd\u0002x\ufffd\ufffd\ufffd\ufffdH9\ufffdL V\ufffd`i\u0013\bH\u0010\ufffd \u0002\u0002\ufffdAf\u0000NN\u0000\ufffd\ufffd\ufffd\u0000 @\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u0012\u0002\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdO\ufffd_.\u0000S\ufffd\u007f\ufffd\ufffdE:[Y\ufffd\u0001\ufffdo?\ufffd [{\u0007;\u0010\u0018\ufffd\u0006\ufffd?\u000e\ufffd\u0000\ufffd\u0000\u0010K\u0010\ufffd\ufffd\ufffd\u0016\u0004\ufffdRQ\ufffd\ufffd\ufffd,\u0007\ufffd\ufffdS\ufffd\u0004\ufffd\u0003\ufffdAN&\ufffd\u0000U\u0017S[+3\ufffd\ufffd\ufffd\u0019\b\ufffd b\u0000\ufffd\ufffd;\u0001l\ufffd!\u0000\ufffd\ufffd\ufffd@\ufffd\ufffdZsf}\u00d2p\u0006\ufffd\u0000\ufffd @fVoa w3\ufffd\ufffd_&f\ufffd\u0003\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd `\ufffd \ufffdp2\u0001C\ufffdf\u0000\ufffd\u0007X\ufffd\ufffdl]\ufffd\u007f\u0015\ufffd7\ufffd\ufffd\ufffd \u0007'\ufffd7\u000f\ufffd7\ufffd\u001b\ufffd\ufffd\ufffd3\ufffd\ufffd\ufffd\ufffd\ufffd\u0001\u0002x\u02ea*-\ufffd\ufffd:!\ufffd&\ufffd\ufffdr;[\ufffd\ufffd\u0001\ufffd\ufffdo\ufffd@{3\ufffd\ufffdZ\ufffd\ufffd\ufffd\u0006\ufffdf\ufffd\ufffdX\ufffd\ufffd\u0001\u0010\ufffd;\ufffd\\\ufffd \u0000\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd-\ufffd\u001b\ufffd\ufffd\ufffd\ufffd\ufffde\ufffd8[\ufffd-\ufffdY\u00013\ufffd da\ufffd\u0004\ufffd\u00059;\ufffd\ufffd\ufffda\ufffd5\ufffd\u007f\ufffd \ufffdO\u075b88\ufffdz\ufffd m\ufffd\ufffd\ufffd\u007f\ufffd`\u0005q\u0006\u065a\ufffd\ufffdpp\ufffd\ufffd4\ufffd\ufffd\u5db0\u0002\ufffd\ufffd\ufffd\ufffd+ \ufffd\ufffd\ufffd\u0000\u000e\ufffd\u007f\ufffd.\u000e\ufffdns\u00059\ufffd= \ufffd\ufffdv\ufffd\ufffd\b\u0013\ufffd=\ufffd\ufffd\u0003\u0000\u0004\ufffd\ufffd\ufffd)\ufffdC\ufffdR\u0002\ufffd\ufffdg,\ufffd\ufffd\u07d1\ufffd\u007f@\ufffd\ufffd \ufffd\ufffd'\ufffd\ufffd\ufffd\ufffd\ufffdW\ufffd\ufffd\ufffd#\ufffd\u07fe\ufffd\u007f\ufffd\ufffdu\ufffd\ufffdU6\ufffd{[\ufffd\u007f\ufffd\u0018\ufffd\u06d11\u0001\u0003\ufffd\ufffd @\u0011\ufffd\u05e1\ufffd5q\ufffd\ufffdbL\ufffdl=\ufffd\ufffd\ufffd\u007f\ufffd\ufffd\u0006\ufffd\ufffd\ufffd\ufffd\u0006\ufffd\u0003\ufffd\ufffdm,\u0012`\ufffd7j\ufffdY\ufffd\ufffd\ufffd\ufffdr\ufffd\ufffdr\u0007\u0001U\ufffd f\ufffd\u0000s\u0013\u06f7\ufffd\ufffd\ufffd\ufffd\u0004\u0006\ufffd\ufffdl\ufffd\ufffd\ufffd7n\ufffd +\ufffd\ufffd\ufffd\ufffd\ufffd_l\ufffd\ufffdVf6\ufffdH\ufffd\ufffd\ufffd \u0004\u0006\ufffdk\u0007ot\ufffd]?\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u0007\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\b\u0010M\u000f\ufffd\ufffd\ufffd\ufffd\ufffd\u001b%{\ufffd\u007f\b\u007f\ufffdHJ\u06bb\u0003 Te\ufffd\u0017\ufffd\ufffde\ufffd\ufffd\ufffdq\ufffd\ufffdr\u0014f\u0017\u0017\u05f5\u000ea \ufffd.#J=\ufffdh\ufffd\ufffd$\ufffd\ufffd-\ufffd8D\ufffd\ufffd8l\"{\ufffd\ufffdf\ufffd\ufffd\ufffd\ufffdV\ufffdQmv\ufffd\ufffd \u000e\ufffd\u0003\ufffd_\ufffd\ufffdW\ufffdk [\ufffd w\ufffd\ufffdD\ufffd\ufffd\ufffdSjW\ufffd\u0007\ufffdx(\ufffd\ufffd\u0018\ufffd\ufffd\u0019\ufffd\ufffd\ufffd2m\ufffd\u02e70\u0007)\ufffd7wN\ufffd\ufffd\ufffdM\ufffdi\ufffdi \ufffd\ufffdb\u076d\ufffd\ufffd~\u04ef\ufffd\ufffd\ufffd>_i\ufffd(]&ZM\ufffd6x\ufffdh\u0011\ufffd\ufffdr\ufffd4\ufffd\ufffdl\u0000'KX\ufffd\u0015=\ufffd\ufffd\ufffd@\ufffdH_\ufffd\ufffd\u00181\ufffd\ufffd\ufffdk9\u064f,\ufffd}\ufffd\ufffd\ufffd\ufffd\u012a\ufffdHJ\ufffd\ufffd\ufffdJ\ufffd}\ufffd\ufffdmQD\ufffd\u00037G*\ufffd9\ufffd4\ufffdR\u0003pBC\ufffd\ufffd\u0007B\ufffd\u0001\ufffd\ufffd \ufffd\ufffd\u001b\ufffdo\ufffd\ufffd\ufffd\u001a.R\ufffd\ufffd\u0019\ufffdMR\u063a\ufffd\u0017'\ufffd>'\ufffd\ufffdH\u7a50\ufffd\u0018\u00ad\ufffd\u0004\ufffdI^\ufffd%q\ufffd]\ud9a0\udf69\ufffdLV \u03a5p9\u0019\ufffd\ufffd T3Tcw\ufffd(\ufffd ?\ufffd6\ufffd\u0015\ufffd\ufffd\ufffd\ufffdH; 2Q\ufffd\ufffd\ufffd\u0002\ufffd^\u0565\ufffd\u001b}~%\ufffdW\ufffd\ufffd $\ufffd\u0005\ufffd\ufffd\ufffd\ufffd' \ufffd\u0018\u0002\ufffd#X\ufffd\ufffd\u0016\ufffd\ufffd9\ufffd\ufffd\ufffd+\u0013\ufffd?\ufffd\ufffd#>\ufffd\ufffd\ufffdq\u0015: \ufffd]\u0004\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdI\u0002r\ufffd\ufffd^O\ufffd\u0010\u5109\ufffd\ufffdv\u0010\u0200#N\ufffd\ufffd\u00149\ufffd\ufffdEo\ufffd\ufffd\ufffd\ufffdG}\ufffdq\ufffdM\ufffd\ufffd4\ufffdC*\ufffdz\ufffd\ufffd1~\u0018( \ufffd.z.\ufffds\ufffd\ufffdh\ufffd\u000f9\ufffd\ufffd\ufffdz\ufffd\ufffd\ufffd~\ufffd*\ufffd\ufffd'\ufffd*\ufffd \u0013\ufffd\ufffd\ufffd\ufffd @ 7\ufffdc\u00037$QT\ufffd\u001b\ufffd#f\u06c0:\ufffd \u0004\ufffd\u00187\u0195\ufffd\ufffd\ufffd\ufffd\u0010 +p_\ufffd\ufffd;\ufffd\u000e\ufffd`O\ufffd\ufffd\ufffd\u0014\ufffd\ufffdjy\ufffd\u001a\ufffd\ufffd\ufffdzQ\ufffd\u0007\ufffd\ufffd\ufffd!l\ufffd\ufffd\u0013:\\%\ufffd\ufffd\ufffd\u001a\ufffd\ufffd?*'Q \ufffd;\ufffd\ufffd} A\ufffd\ufffdF\ufffd\ufffd\ufffdyZ\ufffd\ufffd\ufffd\ufffdd\ufffd\ufffd\ufffd\ufffd\u0017\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u000fAK8\u019b\ufffd\u00106\ufffd5\ufffd`\u0004\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdMG\ufffdN\ufffd\u0019pS\bR\ufffd[I\ufffd\u04c8\ufffd\ufffd\ufffd6*$\ufffdS\ufffd\ufffd\ufffd\ufffdq\u00041\ufffd\ufffd4}\ufffdr\ufffd\u001a\u0007r\u001b %\ufffd\u000e1B sG\ufffd\ufffd\b|g\ufffd nC\u0013\u001b\ufffd&\ufffd\\\ufffd7\ufffd%\ufffd\ufffd\ufffdI\ufffdj\ufffd\ufffd\ufffd\ufffd\ufffdy\ufffd\ufffd\ufffd2j\ufffdh\u0019\u1a86\ufffdk\ufffd\ufffd\ufffd\ufffd\ufffd\u0015#\ufffd\\8\ufffd\ufffd[\ufffd\ufffds\ufffd\ufffd\u040f\ufffd\ufffdE\ufffd\ufffd\ufffd\"\ufffd~\ufffd\ufffd\ufffd\ufffd\u0012\ufffdn4\ufffd\ufffdU\ufffdW\ufffd\ufffd?\ufffdz\ufffd\ufffd\ufffd%\ufffdp\u0017\ufffdm\u000eQ'|\ufffd\u0002\ufffd:\u0004\u001b|\ufffd|\ufffd\ufffd(\ufffd\ufffdJ\ufffd\ufffdAyP\ufffdB\u0642 >\ufffd#\ufffd\ufffd:^\ufffd \u0011\ufffd0\\n{5\ufffd\ufffd\ufffd\u0018R\u05e7o\ufffdI\ufffd\ufffd\ufffd`q9z6\ufffdN \ufffd\ufffd6\ufffd\ufffd\ufffd\u0006\ufffd\ufffdrO\ufffdj\ufffd\ufffd\u0000\u0013\u0017\u0587\ufffd\u0016V\ufffd\ufffdX\ufffd!e\ufffd\ufffdJ\ufffdNA\ufffd`\u0013\ufffdb\ufffd\ufffd\u065d\ufffd\ufffdoN\ufffd*F\ufffd};Rz\ufffd\ufffd\ufffd@\ufffd^\u01541\u0015'Iu\u0003e\u03bc\ufffd\u0013\b\ufffd;\ufffd\ufffd\ufffd\u0007g`\ufffd\ubdce\ufffd\ufffd\ufffd\ufffd\ufffdK\ufffd2\ufffd2\ufffd\ufffd\u0007\u0018\u0014\ufffd\ufffdUgR{\ufffd\u0013A=X\ufffd\ufffdz\ufffd\ufffd\u0514$\ufffdE\ufffdA\ufffdJ\ufffd~\ufffd\u0014\ufffd\ufffd\ufffd' E\ufffdaTi *I\ufffd\\\ufffd\u0016\\\ufffd\ufffd \ufffdq\ufffd\ufffd\u053cv\ufffd\u0541\ufffd\ufffd\ufffd6\ufffdf|\ufffd#(c\ufffd\\\ufffd\ufffd\u0010.k\u0005i\ufffd \ufffd\ufffd\ufffd\u0628g\ufffd3\ufffdN`\ufffdK\ufffd\u0011b\ufffd\u0777\ufffd\ufffd\u05daN\ufffd\ufffd\ufffdp\ufffd\u0005\ufffd\ufffdPr \ufffd@F.\ufffda\u0007\ufffd\u0019\u0011\ufffd~\u0134\ufffd\u00c4{ d\ufffdK#!\ufffd3\u0004\\\ufffd\ufffd+|\ufffd\ufffd\u0588 W\ufffd\ufffd\ufffd\ufffdYl\ufffd\ufffd \ufffd\u0000\u0002\ufffdW\ufffd\ufffd\ufffdo\u0015l\ufffdt\ufffd\ufffdJ\ufffd\u007f(BR\ufffd\u0004\u0012:\ufffd\ufffd\ufffd p\ufffdC\ufffd\ufffd^|8\u0015\ufffd\ufffd$'\ufffd\ufffd\ufffd0\ufffd>\ufffdu& \ufffd\ufffd\ufffd*=\ufffdE\u000f{iD@'\u0489X\ufffd\ufffd\ufffd'\b\ufffd\ufffdCv \ufffd=eTm\ufffd-?=\ufffd{L\ufffd\ufffd\u0000\ufffd\u0003\u0010Vp\ufffd*'\ufffdt #;\ufffd|\ufffd\ufffdx\ufffd+%\ufffd]h\ufffd\ufffd\u0004\ufffd\ufffd9\ufffdm\ufffd\u8ed9\ufffdO\ufffd\ufffd\u0019\ufffdm\u000f\ufffdn\ufffdKl\ufffd\u0000\ufffd\u0210\u0013[* \ufffdd\ufffd\ufffd\ufffd\ufffd\ufffdy\ufffd\ufffd \ufffdz\u07b8\u0019}\ufffd\ufffd\ufffd p]>6 )\ufffd;\ufffd\\\ufffd\ufffd\ufffdSZn@\ufffd`\ufffd\ufffd\u000e\ufffd\ufffdW~\ufffd\ufffdx\ufffdq\ufffd\ufffd\ufffd\ufffd G\ufffd\u0013\ufffd \ufffd\ufffd\u06da \ufffd\ufffd\ufffdM :|E\ufffdY\ufffd\ufffd\ufffd=\ufffdD\ufffd\\\ufffda\ufffdj\ufffd5\u000e|\u05a7 \ufffd\u079cC'\u0453C\ufffd\ufffd\u0012\ufffdn2\u6a59\u0007\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u011d\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u0006\ufffd[y\ufffd\ufffdi\ufffdF\ufffd8\ufffd\u0131\ufffd8 I\u0001>*\u0010\ufffd\ufffdi\ufffdmzU\ufffd\ufffd6z\ufffd\u0011q\ufffd\ufffdN\ufffd\ufffd\ufffd\u0015\ufffd\ufffd\u0006\u0007#\ufffd\ufffd\ufffd#Fa\ufffdr\ufffd\ufffdcz\ufffd \ufffd\ufffdYm:g\ufffd\ufffd\u0001\ufffd\ufffd\ufffd\ufffd\u001a\ufffde\ufffd\ufffd\ufffd\ufffd\u0503@B\u0005Q\ufffd\ufffd-\ufffdJ\ufffd\ufffd\ufffdj\ufffd\ufffd\u0006\ufffdE\ufffdy\ufffdPS\ufffd\u3098E\ufffd\ufffd\ufffdv \ufffd \u0016\ufffd\ufffdM\ufffdBn 12\ufffdG\ufffd:\u0624\u0007\u0003\u0011\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdGX\ufffd\ufffd\ufffdRY@\u0724fE\ufffdO \ufffd0\ufffd}\ufffd=\ufffde\u0017\ufffdhZ|\ufffd\ufffd\ufffd\ufffdQ\u000f\ufffdux\ufffd\ufffd\u0003\u0004x \ufffd\ufffdc \ufffd\ufffd\ufffd\ufffd}YH\ufffd\u0017\ufffd\ufffd\u0011\ufffd\ufffd\u0013KG\ufffd@\ufffd\ufffd\ufffd\ufffd\u068c\ufffd.\ufffd ?K/N\ufffd\ufffd4\ufffd\u0019x\ufffd\ufffdB\ufffd NXx\ufffd\u0000F\ufffd9 \ufffd \u0019\ufffd\ufffd?\ufffd`\u001b\ufffd\ufffd\u0006\ufffd\ufffd\ufffd\u0006\ufffd2[\u07e4\ufffd\ufffdS\ufffd\ufffd5w\ufffd1nR\ufffd\ufffdd@\ufffd\u07f2^n|\ufffd\ufffd+3.\u00102 \ufffd\u00184\ufffd\ufffd\ufffdj\ufffd-4r\ufffd\ufffd\ufffd\u0011\ufffd\ufffd\u0015K\ufffdB\u078e2\ufffd\"\ufffd\ufffd\u0014G>(\ufffd\ufffd@@\ufffd\ufffdw/l\u0219|hN\ufffd\ufffd94 K \ufffd\ufffd\ufffdyc\ufffd@}\ufffdo \u0004yJ\ufffd\u0011\ufffd\ufffdL\u0212R\ufffd\ufffdIEm \u0588\u0001\ufffd21\ufffdH\ufffd\u0003\ufffd\ufffdL\u001b\ufffd\u0007\ufffd\u0015\ucab6g\ufffd\ufffd\u0014n/\u0015\ufffd\ufffd^6\ufffd\ufffd#\ufffd\ufffdZ iT\ufffd\ufffd0\u0010\ufffd \ufffdg\ufffd\u0018\ufffd\ufffd\ufffd \ufffd\ufffd\ufffdI\ufffd&\ufffd\ufffd\ufffd \ufffd\ufffd\ufffd\ufffd`\ufffd i\ufffdl{\ufffdh\ufffd\ufffd\ufffdV(\ufffd e7S3\ufffd\u01ca\u0002 \ufffd\ufffd\ufffd\ufffdK7\u00022\ufffd\ufffd\u40ff\ufffd^\u0010\ufffd\ufffdkN\u0014\ufffd\u001a)r'\u05ae\ufffd\ufffdq\ufffd\u0012\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u0013\ufffd5Z\ufffd\ufffd\ufffd\u000f\ufffd\ufffdXB\ufffd.\ufffd\ufffd\u87d7\ufffd\u0004_\ufffd\ufffd6\ufffd7\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdF\u05ef\ufffd\u001aK\ufffdk\ufffdz\\d_1\ufffd p\ufffdww\u0002\u064a\ufffd\ufffdy\ufffd\ufffd{\ufffdp{\u0016\ufffd\ufffd\ufffd \ufffd\u0004w\ufffd\ufffdYl\ufffdR\ufffd\ufffd\ufffd\u0014\ufffd\ufffd\ufffd HM\ufffdo_K\ufffd\ufffd\ufffdx=\ufffd\ufffd\ufffd+3\u0001\ufffd6E{G\ufffdq\ufffd:\ufffdB \ufffdN\ufffd\ufffd\ufffd\ufffdn\u02f0\ufffd\ufffd\u0006 \ufffdrYjy X\ufffd\u0005 \ufffd\u0019\ufffd*\ufffdy 9\ufffdl\ufffdbh`\ufffd \ufffd\ufffd\ufffdB\ufffd\ufffd\ufffdM>Y\ufffdF\ufffdA\ufffd\ufffdr\ufffd4\ufffdiyW\u001b\ufffd\ufffd-\ufffd0\ufffd\ufffd ~\ufffdV\ufffd\u0015\ufffdn}\ufffd4\ufffd\ufffdOk\ufffd)\ufffdb\ufffd6\ufffdK&6{\ufffd\u0012\ufffd'P\ufffd\u0015L7\ufffd\ufffd\ufffdfVI/\"\ufffd\ufffd \ufffd\ufffd+\ufffd \ufffd\ufffd\"\u0011\ufffdY\ufffdx\ufffds \ufffdq\ufffdqqq\ufffd[\ufffdq\ufffd\ufffd\ufffd'\ufffd\ufffdg\ufffd\u0007\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd J\ufffd\ufffd_=\ufffd#;\ufffdk\ufffd ~i\ufffd{,\u0013\u001a50\ufffda\ufffd\ufffd\ufffd,\ufffd\ufffd4\ufffd\u0240M\u0003\ufffd\ufffd\u000f\ufffdJ\ufffd\u6d09\u00120Z\ufffd\ufffdb\ufffd\u0010\ufffd\ufffd\ufffd^\u000e\u0012\ufffd\ufffdb\u0002IO\ufffd\ufffd^\ufffd\u0010\ufffd2\ufffdH\ufffd\ufffd\u000f>S\ufffdS\ufffdx\ufffd\ufffd\ufffd>\ufffd ,\ufffdW\ufffdU QJ\ufffd$%\ufffd\u001af\ufffdT]\ufffd\u0017d]Dc\ufffd;L\ufffdXR\ufffd#5\ufffd\ufffd \ufffd\u034b _\ufffd\ufffd \ufffd2\ufffd5\u02ff\ufffd\ufffd\ufffdc\ufffd\ufffd\u23da\".\ufffd\ufffd\ufffd\ufffd\ufffdt\ufffd\ufffd\ufffd\u0000 \ufffd\ufffde \u0125\u0015\ufffd \ufffd\u0010\ufffd%\ufffd\ufffd \ufffdq6\ufffd\u0007\ufffdq\ufffds7\u0012\u0007\ufffdr_\u05ef\ufffd {\ufffd\ufffd\ufffd\ufffd\ufffd\u0015\ufffd\ufffd QU\u001b\u000f\ufffdX/\ufffdME\ufffd\ufffd\ufffd\ufffd~3jP\ufffd\ufffd\ufffd\ufffd \ufffd\u0016\ufffd1\ufffd\ufffd A\ufffd`\ufffd\ufffd\u0013\ufffd\u04b1\ufffdQ\u0002\u001b\ufffdQ|p0F;\ufffd\ufffdL\ufffd\ufffd\ufffda \ufffdG\ufffd\ufffd@eI ,\u0003\ufffd\u05af\u0014 -n;\u0001\ufffd99\u0015\ufffdP\ufffd\ufffd\u000e\ufffd\u0007\ufffd\ufffdht,\ufffd\ufffd+4\ufffd\ufffd\u0018yQ\ufffd~\ufffdC\ufffdTA\ufffd>/u\ufffd\ufffd}\ufffd\u0703\ufffdT\ufffd\ufffdyO\ufffdC_\u0007: \ufffd]\ufffd\u063e\ufffd|N?\ufffd6T\ufffdp\ufffdM\ufffd\ufffd=o\ufffdm, \u0013\ufffd\ufffd\ufffd\ufffd\ufffdG\ufffd\ufffd\ufffdd+\u05a0\u0011j\ufffd\ufffd\ufffd\u0310\ufffd\u07701\u0019\ufffd98\u0671);\ufffd\ufffd\ufffd\ufffd\ufffd\u0005\ufffd\ufffd\u020d+\ufffd)\ufffd\ufffd\ufffd\ufffdJ\ufffd\ufffd$[\u06e6P\ufffdO\ufffd\u05dc\ufffd\ufffd\ufffd\ufffdr\ufffd^BP\ufffd\ufffdG\ufffdac\ufffdA6.\u000e$yB\ufffdpl\ufffd\ufffd\ufffd\ufffd\ufffd`\ufffd'\ufffd\ufffdM' \ufffd\u001b \ufffdg\ufffd\ufffd\\\ufffd\ufffd\ufffdV\"s\ufffd\ufffd\u000eJ\u0015 \ufffd{j\ufffd\ufffd77s \ufffd\u0019\\T\u0001\ufffd#\ufffd 9AC\u0006H \ufffd\ufffd\ufffd\ufffdk$\ufffd|)\ufffd\u0019MGi\ufffd\ufffd\ufffd\u04c5\ufffde\ufffd8\ufffd#T\u0006#F\ufffd\ufffd*\ufffdCz\ufffd\ufffd-\ufffd\u0574\ufffd\u0011\u0010s*\ufffd\ufffd\ufffd\u0010\ufffdw\ufffd\ufffdC\ufffd\ufffdf\ufffd$\ufffd-\u06e7\ufffd'\ufffdZZ=\\[\ufffd\u078e\u0016\ufffd\u0016\ufffd\ufffdU*\ufffd\u030b\ufffd\ufffd\ufffd { \ufffd\u0014\u007f2G\ufffd75\ufffd\ufffdI\ufffdg |$\u0015\ufffd\u02f0+\u0002H\u007f\ufffd \ufffd\ufffd ;\ufffd!J&a\ufffd\ufffd*\ufffd|O\ufffd \ufffd\u0010e\ufffde-E \ufffd\ufffd\u0013 12%3\ufffd\ufffd.\u0010H\ufffd\ufffdZ&w\ufffd \ufffdt?f\ufffd5\ufffd\u0011\\\u0003_ \ufffdol\ufffdo\ufffd\u0004m\ufffd:\ufffd\ufffd\ufffdXq\u01a7\u0013\ufffd\ufffd;\ufffd{\ufffd \ufffdg83\ufffd\u0019\u0014+9\ufffd\ufffd\u0018\ufffdHU\ufffd~\u0012_\u0006\ufffd1j\u000fg3\ufffd ^9\u0014^\ufffd,\ufffdf\ufffd\ufffd\ufffd\ufffd\ufffd\u52a8:zr\ufffd\u0001L\ufffdi\ufffd5\ufffd\u0579\u05ceu \ufffd\ufffdP8\ufffd\u0003\ufffdx v\ufffdJ\ufffd \ufffd\ufffdj\u0007U\ufffdK\u0007lN\u05d8\u0012\ufffd\ufffd\ufffd \ufffdj\ufffd\ufffd \ufffd\ufffd\u0002\ufffdN\ufffd9\ufffdx\u0011' 2\u0000u\ufffdQ\ufffd\ufffdm...",
+                "title": "statmt.org",
+                "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGXivMeapWWszGPH0Y3KwJrCP_b2e4fu_h8Inv-LkAga2eO45rXERi8bsVpPzvJdNyRzv8OSID3xXY5MzL0hBN66ifigqmtQMEHea43P5zr8Dco9BQCDxGB5c1-ouaYzK7HbKOXhodbk-3SFVFF"
+              },
+              {
+                "content_type": "text/html; charset=utf-8",
+                "search_source": "gemini_google_search",
+                "snippet": "The goal of adding explicit speech segmentation before STT is to allow the STT system to process complete utterances rather than fixed windows, which can improve performance in real-life applications",
+                "status_code": 200,
+                "summary": "Page title: Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology. Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology ACL Anthology News (current) FAQ (current) Corrections (current) Submissions (current) GitHub Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation Chantal Amrhein , Barry Haddow Correct Metadata for Use this form to create a GitHub issue with structured data describing the correction. You will need a GitHub account.",
+                "text": "Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation - ACL Anthology ACL Anthology News (current) FAQ (current) Corrections (current) Submissions (current) GitHub Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation Chantal Amrhein , Barry Haddow Correct Metadata for Use this form to create a GitHub issue with structured data describing the correction. You will need a GitHub account. Once you create that issue, the correction will be reviewed by a staff member. \u26a0\ufe0f Mobile Users: Submitting this form to create a new issue will only work with github.com, not the GitHub Mobile app. Important : The Anthology treat PDFs as authoritative. Please use this form only to correct data that is out of line with the PDF. See our corrections guidelines if you need to change the PDF. Title Adjust the title. Retain tags such as . Authors Adjust author names and order to match the PDF. Add Author Abstract Correct abstract if needed. Retain XML formatting tags such as . You may use ... for bold , ... for italic , and ... for URLs. Verification against PDF Ensure that the new title/authors match the snapshot below. (If there is no snapshot or it is too small, consult the PDF .) Authors concatenated from the text boxes above: ALL author names match the snapshot above\u2014including middle initials, hyphens, and accents. Create GitHub issue for staff review Abstract For real-life applications, it is crucial that end-to-end spoken language translation models perform well on continuous audio, without relying on human-supplied segmentation. For online spoken language translation, where models need to start translating before the full utterance is spoken,most previous work has ignored the segmentation problem. In this paper, we compare various methods for improving models\u2019 robustness towards segmentation errors and different segmentation strategies in both offline and online settings and report results on translation quality, flicker and delay. Our findings on five different language pairs show that a simple fixed-window audio segmentation can perform surprisingly well given the right conditions. Anthology ID: 2022.wmt-1.13 Volume: Proceedings of the Seventh Conference on Machine Translation (WMT) Month: December Year: 2022 Address: Abu Dhabi, United Arab Emirates (Hybrid) Editors: Philipp Koehn , Lo\u00efc Barrault , Ond\u0159ej Bojar , Fethi Bougares , Rajen Chatterjee , Marta R. Costa-juss\u00e0 , Christian Federmann , Mark Fishel , Alexander Fraser , Markus Freitag , Yvette Graham , Roman Grundkiewicz , Paco Guzman , Barry Haddow , Matthias Huck , Antonio Jimeno Yepes , Tom Kocmi , Andr\u00e9 Martins , Makoto Morishita , Christof Monz , Masaaki Nagata , Toshiaki Nakazawa , Matteo Negri , Aur\u00e9lie N\u00e9v\u00e9ol , Mariana Neves , Martin Popel , Marco Turchi , Marcos Zampieri Venue: WMT SIG: SIGMT Publisher: Association for Computational Linguistics Note: Pages: 203\u2013219 Language: URL: https://aclanthology.org/2022.wmt-1.13/ DOI: 10.18653/v1/2022.wmt-1.13 Bibkey: amrhein-haddow-2022-dont Cite (ACL): Chantal Amrhein and Barry Haddow. 2022. Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation . In Proceedings of the Seventh Conference on Machine Translation (WMT) , pages 203\u2013219, Abu Dhabi, United Arab Emirates (Hybrid). Association for Computational Linguistics. Cite (Informal): Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation (Amrhein & Haddow, WMT 2022) Copy Citation: BibTeX Markdown MODS XML Endnote More options\u2026 PDF: https://aclanthology.org/2022.wmt-1.13.pdf Video: https://aclanthology.org/2022.wmt-1.13.mp4 PDF Cite Search Video Fix data Export citation BibTeX MODS XML Endnote Preformatted @inproceedings{amrhein-haddow-2022-dont, title = \"Don{'}t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation\", author = \"Amrhein, Chantal and Haddow, Barry\", editor = {Koehn, Philipp and Barrault, Lo{\\\"i}c and Bojar, Ond{\\v{r}}ej and Bougares, Fethi and Chatterjee, Rajen and Costa-juss{\\`a}, Marta R. and Federmann, Christian and Fishel, Mark and Fraser, Alexander and Freitag, Markus and Graham, Yvette and Grundkiewicz, Roman and Guzman, Paco and Haddow, Barry and Huck, Matthias and Jimeno Yepes, Antonio and Kocmi, Tom and Martins, Andr{\\'e} and Morishita, Makoto and Monz, Christof and Nagata, Masaaki and Nakazawa, Toshiaki and Negri, Matteo and N{\\'e}v{\\'e}ol, Aur{\\'e}lie and Neves, Mariana and Popel, Martin and Turchi, Marco and Zampieri, Marcos}, booktitle = \"Proceedings of the Seventh Conference on Machine Translation (WMT)\", month = dec, year = \"2022\", address = \"Abu Dhabi, United Arab Emirates (Hybrid)\", publisher = \"Association for Computational Linguistics\", url = \"https://aclanthology.org/2022.wmt-1.13/\", doi = \"10.18653/v1/2022.wmt-1.13\", pages = \"203--219\", abstract = \"For real-life applications, it is crucial that end-to-end spoken language translation models perform well on continuous audio, without relying on human-supplied segmentation. For online spoken language translation, where models need to start translating before the full utterance is spoken,most previous work has ignored the segmentation problem. In this paper, we compare various methods for improving models' robustness towards segmentation errors and different segmentation strategies in both offline and online settings and report results on translation quality, flicker and delay. Our findings on five different language pairs show that a simple fixed-window audio segmentation can perform surprisingly well given the right conditions.\" } Download as File Copy to Clipboard Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation Chantal Amrhein author Barry Haddow author 2022-12 text Proceedings of the Seventh Conference on Machine Translation (WMT) Philipp Koehn editor Lo\u00efc Barrault editor Ond\u0159ej Bojar editor Fethi Bougares editor Rajen Chatterjee editor Marta R Costa-juss\u00e0 editor Christian Federmann editor Mark Fishel editor Alexander Fraser editor Markus Freitag editor Yvette Graham editor Roman Grundkiewicz editor Paco Guzman editor Barry Haddow editor Matthias Huck editor Antonio Jimeno Yepes editor Tom Kocmi editor Andr\u00e9 Martins editor Makoto Morishita editor Christof Monz editor Masaaki Nagata editor Toshiaki Nakazawa editor Matteo Negri editor Aur\u00e9lie N\u00e9v\u00e9ol editor Mariana Neves editor Martin Popel editor Marco Turchi editor Marcos Zampieri editor Association for Computational Linguistics Abu Dhabi, United Arab Emirates (Hybrid) conference publication For real-life applications, it is crucial that end-to-end spoken language translation models perform well on continuous audio, without relying on human-supplied segmentation. For online spoken language translation, where models need to start translating before the full utterance is spoken,most previous work has ignored the segmentation problem. In this paper, we compare various methods for improving models\u2019 robustness towards segmentation errors and different segmentation strategies in both offline and online settings and report results on translation quality, flicker and delay. Our findings on five different language pairs show that a simple fixed-window audio segmentation can perform surprisingly well given the right conditions. amrhein-haddow-2022-dont 10.18653/v1/2022.wmt-1.13 https://aclanthology.org/2022.wmt-1.13/ 2022-12 203 219 Download as File Copy to Clipboard %0 Conference Proceedings %T Don\u2019t Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation %A Amrhein, Chantal %A Haddow, Barry %Y Koehn, Philipp %Y Barrault, Lo\u00efc %Y Bojar, Ond\u0159ej %Y Bougares, Fethi %Y Chatterjee, Rajen %Y Costa-juss\u00e0, Marta R. %Y Federmann, Christian %Y Fishel, Mark %Y Fraser, Alexander %Y Freitag, Markus %Y Graham, Yvette %Y Grundkiewicz, Roman %Y Guzman, Paco %Y Haddow, Barry %Y Huck, Matthias %Y Jimeno Yepes, Antonio %Y Kocmi, Tom %Y Martins, Andr\u00e9 %Y Morishita, Makoto %Y Monz, Christof %Y Nagata, Masaaki %Y Nakazawa, Toshiaki %Y Negri, Matteo %Y N\u00e9v\u00e9ol, Aur\u00e9li...",
+                "title": "aclanthology.org",
+                "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG_Xyji_Hacsaj7gTrizBbLxlG6jA8xwhkantd33CgApufhzC9rV71hrYq3GqR3hMmBFH0R3C186l_5fJgxod8rFQMmI2DobMckOpjqBCSJME1UUOOWgrNeRIuSM22rgOTTCw=="
+              },
+              {
+                "content_type": "text/html; charset=utf-8",
+                "search_source": "gemini_google_search",
+                "snippet": "The goal of adding explicit speech segmentation before STT is to allow the STT system to process complete utterances rather than fixed windows, which can improve performance in real-life applications",
+                "status_code": 200,
+                "summary": "Page title: [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation. [2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation Skip to main content Learn about arXiv becoming an independent nonprofit. We gratefully acknowledge support from the Simons Foundation, member institutions , and all contributors.",
+                "text": "[2210.13363] Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation Skip to main content Learn about arXiv becoming an independent nonprofit. We gratefully acknowledge support from the Simons Foundation, member institutions , and all contributors. Donate > cs > arXiv:2210.13363 Help | Advanced Search All fields Title Author Abstract Comments Journal reference ACM classification MSC classification Report number arXiv identifier DOI ORCID arXiv author ID Help pages Full text Search GO quick links Login Help Pages About --> Computer Science > Computation and Language arXiv:2210.13363 (cs) [Submitted on 24 Oct 2022] Title: Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation Authors: Chantal Amrhein , Barry Haddow View a PDF of the paper titled Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation, by Chantal Amrhein and Barry Haddow View PDF Abstract: For real-life applications, it is crucial that end-to-end spoken language translation models perform well on continuous audio, without relying on human-supplied segmentation. For online spoken language translation, where models need to start translating before the full utterance is spoken, most previous work has ignored the segmentation problem. In this paper, we compare various methods for improving models' robustness towards segmentation errors and different segmentation strategies in both offline and online settings and report results on translation quality, flicker and delay. Our findings on five different language pairs show that a simple fixed-window audio segmentation can perform surprisingly well given the right conditions. Comments: accepted to WMT22 Subjects: Computation and Language (cs.CL) ACM classes: I.2.7 Cite as: arXiv:2210.13363 [cs.CL] (or arXiv:2210.13363v1 [cs.CL] for this version) https://doi.org/10.48550/arXiv.2210.13363 Focus to learn more arXiv-issued DOI via DataCite Submission history From: Chantal Amrhein [ view email ] [v1] Mon, 24 Oct 2022 16:06:33 UTC (7,615 KB) Full-text links: Access Paper: View a PDF of the paper titled Don't Discard Fixed-Window Audio Segmentation in Speech-to-Text Translation, by Chantal Amrhein and Barry Haddow View PDF TeX Source view license Current browse context: cs.CL new | recent | 2022-10 Change to browse by: cs References & Citations NASA ADS Google Scholar Semantic Scholar export BibTeX citation Loading... BibTeX formatted citation \u00d7 loading... Data provided by: Bookmark Bibliographic Tools Bibliographic and Citation Tools Bibliographic Explorer Toggle Bibliographic Explorer ( What is the Explorer? ) Connected Papers Toggle Connected Papers ( What is Connected Papers? ) Litmaps Toggle Litmaps ( What is Litmaps? ) scite.ai Toggle scite Smart Citations ( What are Smart Citations? ) Code, Data, Media Code, Data and Media Associated with this Article alphaXiv Toggle alphaXiv ( What is alphaXiv? ) Links to Code Toggle CatalyzeX Code Finder for Papers ( What is CatalyzeX? ) DagsHub Toggle DagsHub ( What is DagsHub? ) GotitPub Toggle Gotit.pub ( What is GotitPub? ) Huggingface Toggle Hugging Face ( What is Huggingface? ) ScienceCast Toggle ScienceCast ( What is ScienceCast? ) Demos Demos Replicate Toggle Replicate ( What is Replicate? ) Spaces Toggle Hugging Face Spaces ( What is Spaces? ) Spaces Toggle TXYZ.AI ( What is TXYZ.AI? ) Related Papers Recommenders and Search Tools Link to Influence Flower Influence Flower ( What are Influence Flowers? ) Core recommender toggle CORE Recommender ( What is CORE? ) Author Venue Institution Topic About arXivLabs arXivLabs: experimental projects with community collaborators arXivLabs is a framework that allows collaborators to develop and share new arXiv features directly on our website. Both individuals and organizations that work with arXivLabs have embraced and accepted our values of openness, community, excellence, and user data privacy. arXiv is committed to these values and only works with partners that adhere to them. Have an idea for a project that will add value for arXiv's community? Learn more about arXivLabs . Which authors of this paper are endorsers? | Disable MathJax ( What is MathJax? ) About Help contact arXiv Click here to contact arXiv Contact subscribe to arXiv mailings Click here to subscribe Subscribe Copyright Privacy Policy Web Accessibility Assistance arXiv Operational Status",
+                "title": "arxiv.org",
+                "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH4g_iAZaj4qU5mWl9gwFukFD7gVr1V_Ui1e749ciqHlY9XJB12kkmY8CoJdD_aetUTh1e622GwJdj5USAuEhKlIbpiDMMUB74waFUKbAA9S9vH9jqKScI-Sm8T"
+              }
+            ],
+            "technical_plan": {
+              "ask_budget": false,
+              "asks_to_build": true,
+              "asks_to_solve": false,
+              "assumed_budget_minutes": 30,
+              "budget_prompt": "",
+              "follow_up_suggestions": [
+                "execute step 1: establish the verified baseline",
+                "turn the chosen path into an implementation checklist"
+              ],
+              "is_open_problem": false,
+              "max_live_rounds": 2,
+              "problem_frame": "Separate domain research from implementation planning so the build path stays grounded in verified constraints.",
+              "reasoning_mode": "technical_investigation",
+              "requested_budget_minutes": null,
+              "steps": [
+                {
+                  "purpose": "Identify what is already known, proven, or ruled out.",
+                  "research_query": "objective mim vad speech segmentation goal known results current status",
+                  "status": "planned",
+                  "step_index": 1,
+                  "step_key": "baseline",
+                  "title": "Establish the verified baseline"
+                },
+                {
+                  "purpose": "Compare approaches, expert opinions, and recurring disagreements.",
+                  "research_query": "objective mim vad speech segmentation goal approaches opinions expert discussion",
+                  "status": "planned",
+                  "step_index": 2,
+                  "step_key": "opinions",
+                  "title": "Research approaches and opinions"
+                },
+                {
+                  "purpose": "Turn the research into an implementation path that is realistic now.",
+                  "research_query": "objective mim vad speech segmentation goal application architecture prototype",
+                  "status": "planned",
+                  "step_index": 3,
+                  "step_key": "path",
+                  "title": "Choose a feasible build path"
+                },
+                {
+                  "purpose": "Choose the first experiment or prototype that can be validated quickly.",
+                  "research_query": "objective mim vad speech segmentation goal validation experiment benchmark",
+                  "status": "planned",
+                  "step_index": 4,
+                  "step_key": "validate",
+                  "title": "Define the first bounded experiment"
+                }
+              ],
+              "stop_condition": "stop when the next round stops improving the answer or the budget is exhausted"
+            },
+            "technical_step_findings": [
+              {
+                "evidence": [],
+                "research_query": "objective mim vad speech segmentation goal known results current status",
+                "search_diagnostics": {
+                  "providers": [
+                    {
+                      "configured": true,
+                      "error": "HTTPError:HTTP Error 403: Forbidden",
+                      "provider": "google_cse",
+                      "query": "objective mim vad speech segmentation goal known results current status",
+                      "requested_results": 2,
+                      "result_count": 0
+                    },
+                    {
+                      "configured": true,
+                      "error": "TimeoutError:The read operation timed out",
+                      "model": "gemini-2.5-flash",
+                      "provider": "gemini_google_search",
+                      "query": "objective mim vad speech segmentation goal known results current status",
+                      "requested_results": 2,
+                      "result_count": 0
+                    }
+                  ],
+                  "query": "objective mim vad speech segmentation goal known results current status",
+                  "selected_provider": "timeout_before_duckduckgo",
+                  "selected_result_count": 0
+                },
+                "source_domains": [],
+                "step_index": 1,
+                "step_key": "baseline",
+                "title": "Establish the verified baseline"
+              }
+            ],
+            "timed_out": false
+          }
+        },
+        "outcome": "store_only",
+        "proposed_actions": [
+          {
+            "action_type": "speak_response",
+            "details": "speak_response: OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1\n\nGOAL:\nAdd explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows.\n\nSUCCESS:\nPublish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
+            "step": 1
+          }
+        ],
+        "proposed_goal_description": "speak_response: OBJECTIVE: MIM-VAD-SPEECH-SEGMENTATION-V1\n\nGOAL:\nAdd explicit speech segmentation before STT so MIM waits for complete utterances instead of fixed windows.\n\nSUCCESS:\nPublish MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json with start/stop timing, no-speech filtering, and no raw audio retained.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
+        "reason": "conversation_override",
+        "resolution_id": 5740069,
+        "resolution_status": "store_only",
+        "safety_decision": "store_only"
+      },
+      "safety_flags": [],
+      "source": "text",
+      "target_system": "mim"
+    },
+    "status": 200
+  },
+  "listener_status": {
+    "audio_device": "plughw:2,0",
+    "lab_conversation_intent": null,
+    "lab_conversation_mode": true,
+    "last_transcript": "",
+    "status": "listening"
+  },
+  "missing": [
+    "turn_state_memory_present",
+    "vad_segmentation_evidence_present",
+    "faux_pause_policy_evidence_present",
+    "barge_in_evidence_present",
+    "background_obligation_tracker_present",
+    "natural_tts_persona_evidence_present"
+  ],
+  "no_audio_retained": true,
+  "objective_id": "MIM-VALUE-ADDED-VOICE-ASSISTANT-12H-BUILD-V1",
+  "packet_type": "mim-voice-context-12h-build-status-v1",
+  "passed": [
+    "voice_context_architecture_defined",
+    "value_added_standard_defined",
+    "ambient_lab_conversation_active",
+    "stt_diagnostic_evidence_recent",
+    "concise_response_policy_present",
+    "context_router_present"
+  ],
+  "percent_complete": 50.0,
+  "started_at": "2026-05-22T03:27:21Z",
+  "status": "running",
+  "success": false
+}
