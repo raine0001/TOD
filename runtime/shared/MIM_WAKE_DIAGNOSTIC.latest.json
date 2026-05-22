@@ -1,5 +1,4 @@
 {
-  "alert_any_output_accepted": null,
   "audio_device": "plughw:2,0",
   "device_selection": {
     "attempts": [
@@ -46,25 +45,32 @@
     ],
     "selection_reason": "first_nonclipped_signal_in_priority_order"
   },
-  "generated_at": "2026-05-22T02:59:11Z",
-  "interaction_artifact": "runtime/shared/MIM_WAKE_WORD_INTERACTION.latest.json",
-  "last_audio_level": {
-    "bytes": 128044,
-    "max": 32000,
-    "rms": 294
+  "diagnosis": {
+    "next_action": "Tune microphone gain/noise, try a clearer phrase, or test a different microphone.",
+    "observed": {
+      "general_transcript": "",
+      "max": 32000,
+      "probable_wake_check": false,
+      "rms": 294,
+      "self_output_detected": false,
+      "stt_error": "",
+      "transcript": "",
+      "voice_wav_output_accepted": null,
+      "wake_phrase_detected": false,
+      "wake_transcript": ""
+    },
+    "reason_code": "audio_without_transcript",
+    "summary": "MIM saw audio energy but Vosk did not produce text."
   },
-  "last_general_transcript": "",
-  "last_transcript": "",
-  "last_wake_transcript": "",
+  "generated_at": "2026-05-22T02:59:11Z",
   "no_audio_retained": true,
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
-  "packet_type": "mim-wake-listener-status-v1",
-  "probable_wake_check": false,
-  "self_output_detected": false,
-  "status": "listening",
-  "stt_error": "",
-  "success": true,
-  "tts_ok": null,
-  "voice_wav_output_accepted": null,
-  "wake_phrase_detected": false
+  "operator_test_instruction": "Say 'hello MIM' or 'MIM can you hear me' while this artifact is being monitored.",
+  "packet_type": "mim-wake-diagnostic-v1",
+  "related_artifacts": {
+    "listener_status": "runtime/shared/MIM_WAKE_LISTENER_STATUS.latest.json",
+    "wake_interaction": "runtime/shared/MIM_WAKE_WORD_INTERACTION.latest.json"
+  },
+  "status": "observed",
+  "success": true
 }

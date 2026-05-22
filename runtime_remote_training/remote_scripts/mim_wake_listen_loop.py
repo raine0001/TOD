@@ -25,6 +25,7 @@ MODEL_PATH = Path(os.environ.get("MIM_WAKE_VOSK_MODEL", ROOT / "runtime" / "mode
 STATUS_PATH = SHARED / "MIM_WAKE_LISTENER_STATUS.latest.json"
 INTERACTION_PATH = SHARED / "MIM_WAKE_WORD_INTERACTION.latest.json"
 MEMORY_PATH = SHARED / "MIM_HUMAN_INTERACTION_MEMORY.latest.json"
+DIAGNOSTIC_PATH = SHARED / "MIM_WAKE_DIAGNOSTIC.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -67,6 +68,7 @@ SELF_OUTPUT_PATTERNS = [
 ]
 
 RESPONSE_TEXT = os.environ.get("MIM_WAKE_RESPONSE_TEXT", "Hi Dave. I'm awake. Standing by.")
+DIAGNOSTIC_ENABLED = os.environ.get("MIM_WAKE_DIAGNOSTIC", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 WAKE_GRAMMAR = json.dumps(
     [
@@ -249,6 +251,93 @@ def detect_probable_wake_check(*, general_text: str, wake_text: str, level: dict
     if detect_self_output(normalized_general) or detect_self_output(normalized_wake):
         return False
     return False
+
+
+def classify_diagnostic(result: dict[str, Any]) -> dict[str, Any]:
+    transcript = str(result.get("transcript") or "").strip()
+    general_transcript = str(result.get("general_transcript") or "").strip()
+    wake_transcript = str(result.get("wake_transcript") or "").strip()
+    level = result.get("audio_level") or {}
+    rms = int(level.get("rms") or 0)
+    max_level = int(level.get("max") or 0)
+    wake = bool(result.get("wake_phrase_detected"))
+    voice_ok = result.get("voice_wav_output_accepted")
+    self_output = bool(result.get("self_output_detected"))
+    stt_error = str(result.get("stt_error") or "").strip()
+    if not result.get("success"):
+        reason_code = "capture_or_stt_blocked"
+        summary = "MIM could not complete the microphone/STT cycle."
+        next_action = "Inspect error, microphone device, and Vosk model path."
+    elif wake and voice_ok:
+        reason_code = "responded"
+        summary = "MIM detected explicit wake language and accepted voice playback."
+        next_action = "If the operator did not hear MIM, inspect playback route and speaker volume."
+    elif wake and not voice_ok:
+        reason_code = "response_playback_blocked"
+        summary = "MIM detected wake language but did not prove voice playback accepted."
+        next_action = "Inspect Piper generation and aplay device attempts in the interaction artifact."
+    elif self_output:
+        reason_code = "ignored_self_output"
+        summary = "MIM heard a phrase matching her own recent output and ignored it."
+        next_action = "No action unless this was actually the operator speaking the same phrase."
+    elif stt_error:
+        reason_code = "stt_error"
+        summary = "Audio capture completed but STT reported an error."
+        next_action = "Inspect stt_error and Vosk model/runtime logs."
+    elif not transcript and rms < 180:
+        reason_code = "no_speech_or_too_quiet"
+        summary = "MIM did not see enough speech energy to transcribe operator intent."
+        next_action = "Move closer to the active mic or select a better input device."
+    elif not transcript:
+        reason_code = "audio_without_transcript"
+        summary = "MIM saw audio energy but Vosk did not produce text."
+        next_action = "Tune microphone gain/noise, try a clearer phrase, or test a different microphone."
+    else:
+        reason_code = "heard_but_no_explicit_wake"
+        summary = "MIM transcribed speech but strict wake rules did not match it."
+        next_action = "Say 'hello MIM' or 'MIM can you hear me'; if this phrase was used, add the observed transcript as a safe alias."
+    return {
+        "reason_code": reason_code,
+        "summary": summary,
+        "next_action": next_action,
+        "observed": {
+            "transcript": transcript,
+            "general_transcript": general_transcript,
+            "wake_transcript": wake_transcript,
+            "rms": rms,
+            "max": max_level,
+            "wake_phrase_detected": wake,
+            "probable_wake_check": bool(result.get("probable_wake_check")),
+            "self_output_detected": self_output,
+            "voice_wav_output_accepted": voice_ok,
+            "stt_error": stt_error,
+        },
+    }
+
+
+def publish_diagnostic(result: dict[str, Any], *, device: str, selection: dict[str, Any]) -> None:
+    if not DIAGNOSTIC_ENABLED:
+        return
+    diagnosis = classify_diagnostic(result)
+    write_json(
+        DIAGNOSTIC_PATH,
+        {
+            "packet_type": "mim-wake-diagnostic-v1",
+            "generated_at": now_iso(),
+            "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
+            "status": "observed",
+            "success": True,
+            "no_audio_retained": True,
+            "audio_device": device,
+            "device_selection": selection,
+            "diagnosis": diagnosis,
+            "operator_test_instruction": "Say 'hello MIM' or 'MIM can you hear me' while this artifact is being monitored.",
+            "related_artifacts": {
+                "listener_status": str(STATUS_PATH.relative_to(ROOT)),
+                "wake_interaction": str(INTERACTION_PATH.relative_to(ROOT)),
+            },
+        },
+    )
 
 
 def speak(text: str) -> dict[str, Any]:
@@ -635,6 +724,7 @@ def main() -> int:
     model = Model(str(MODEL_PATH))
     while True:
         result = listen_once(model, device, seconds=max(1, args.chunk_seconds))
+        publish_diagnostic(result, device=device, selection=selection)
         write_json(
             STATUS_PATH,
             {
