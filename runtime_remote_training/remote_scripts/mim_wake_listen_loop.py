@@ -1068,8 +1068,17 @@ def normalize_voice_transcript_for_intent(transcript: str) -> str:
     normalized = re.sub(r"\btrying\s+on\b", "training on", normalized)
     normalized = re.sub(r"\btry\s+on\b", "training on", normalized)
     normalized = re.sub(r"\btaught\s+would\s+be\s+on\b", "training on", normalized)
+    normalized = re.sub(r"\bthere\s+will\s+be\s+working\b", "what are you working on", normalized)
     normalized = re.sub(r"\s+", " ", normalized).strip()
     return normalized
+
+
+def select_effective_transcript(text: str, wake_text: str) -> str:
+    general = str(text or "").strip()
+    wake = str(wake_text or "").strip()
+    if general and wake and detect_wake(wake) and classify_voice_fragment(general).get("is_fragment"):
+        return wake
+    return general or wake
 
 
 def has_mim_reference(transcript: str) -> bool:
@@ -1753,7 +1762,7 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_address_ack_route()
     if re.search(r"\b(how much time|time left|time.*training|training.*time)\b", normalized):
         return build_training_time_route()
-    if re.search(r"\b(current training|your training|what.*working on|what.*training\s+on|training.*right now|what.*training)\b", normalized):
+    if re.search(r"\b(current training|your training|what.*working on|you'?re working on|you are working on|working on|what.*training\s+on|training.*right now|what.*training)\b", normalized):
         return build_training_topic_route()
     if re.search(r"\b(what time is it|current time|time now)\b", normalized):
         return build_current_time_route()
@@ -1876,7 +1885,7 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
         level = audio_level(wav_path)
         vad = analyze_vad_segments(wav_path)
         stt = transcribe_wav(model, wav_path)
-        transcript = stt.get("text", "") or stt.get("wake_text", "")
+        transcript = select_effective_transcript(stt.get("text", ""), stt.get("wake_text", ""))
         self_output_detected = detect_self_output(stt.get("text", "")) or detect_self_output(stt.get("wake_text", ""))
         route = {"intent": "none", "action": "none", "artifacts": []}
         scene = build_lab_conversation_scene(transcript, vad=vad, audio_level=level) if transcript and not self_output_detected else {}
@@ -2093,7 +2102,7 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
         level = audio_level(wav_path)
         vad = analyze_vad_segments(wav_path)
         stt = transcribe_wav(model, wav_path)
-        transcript = stt.get("text", "") or stt.get("wake_text", "")
+        transcript = select_effective_transcript(stt.get("text", ""), stt.get("wake_text", ""))
         probable_wake = detect_probable_wake_check(general_text=stt.get("text", ""), wake_text=stt.get("wake_text", ""), level=level)
         self_output_detected = detect_self_output(stt.get("text", "")) or detect_self_output(stt.get("wake_text", ""))
         wake = bool(
