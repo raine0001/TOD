@@ -1,0 +1,19 @@
+{
+  "audible_path": "same multi-output aplay path as confirmed three-beep wake acknowledgement",
+  "evidence_artifact": "runtime/shared/MIM_VOICE_GENERATED_WAV_TEST.latest.json",
+  "generated_at": "2026-05-22T02:28:55Z",
+  "next_recovery_action": "If not audible, restrict generated voice playback to the output where beeps are heard or increase generated WAV gain.",
+  "objective_id": "MIM-VOICE-GENERATED-WAV-PERSONA-V1",
+  "packet_type": "mim-voice-persona-status-v1",
+  "remaining_blocker": "Dave has not yet confirmed the generated spoken WAV was audible in the lab.",
+  "status": "generated_wav_voice_bound_pending_operator_audible_confirmation",
+  "success": false,
+  "voice_engine": "piper",
+  "voice_model": "runtime/models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx",
+  "voice_profile": {
+    "current_sample_text": "Hey Dave. I heard you. Finally. Tiny miracle.",
+    "gender_coding": "female",
+    "persona": "confident, helpful, dry, lightly snarky when appropriate",
+    "regional_style": "California lab assistant, not exaggerated"
+  }
+}

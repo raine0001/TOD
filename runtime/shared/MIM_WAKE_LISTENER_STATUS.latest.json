@@ -9,7 +9,7 @@
         "error": "",
         "max": 32036,
         "ok": true,
-        "rms": 649
+        "rms": 647
       },
       {
         "bytes": 32044,
@@ -17,7 +17,7 @@
         "error": "",
         "max": 32036,
         "ok": true,
-        "rms": 665
+        "rms": 722
       },
       {
         "bytes": 0,
@@ -46,16 +46,16 @@
     ],
     "selection_reason": "first_nonclipped_signal_in_priority_order"
   },
-  "generated_at": "2026-05-22T02:24:40Z",
+  "generated_at": "2026-05-22T02:29:03Z",
   "interaction_artifact": "runtime/shared/MIM_WAKE_WORD_INTERACTION.latest.json",
   "last_audio_level": {
     "bytes": 128044,
     "max": 32000,
-    "rms": 286
+    "rms": 1182
   },
-  "last_general_transcript": "",
-  "last_transcript": "",
-  "last_wake_transcript": "",
+  "last_general_transcript": "there is a town one",
+  "last_transcript": "there is a town one",
+  "last_wake_transcript": "[unk]",
   "no_audio_retained": true,
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
   "packet_type": "mim-wake-listener-status-v1",
@@ -64,5 +64,6 @@
   "stt_error": "",
   "success": true,
   "tts_ok": null,
+  "voice_wav_output_accepted": null,
   "wake_phrase_detected": false
 }

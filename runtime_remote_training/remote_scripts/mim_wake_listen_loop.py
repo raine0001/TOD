@@ -26,6 +26,13 @@ STATUS_PATH = SHARED / "MIM_WAKE_LISTENER_STATUS.latest.json"
 INTERACTION_PATH = SHARED / "MIM_WAKE_WORD_INTERACTION.latest.json"
 MEMORY_PATH = SHARED / "MIM_HUMAN_INTERACTION_MEMORY.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
+VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
+PIPER_MODEL_PATH = Path(
+    os.environ.get(
+        "MIM_VOICE_PIPER_MODEL",
+        ROOT / "runtime" / "models" / "piper" / "en_US-lessac-medium" / "en_US-lessac-medium.onnx",
+    )
+)
 
 DEFAULT_DEVICES = [
     "plughw:2,0",
@@ -273,6 +280,10 @@ def ensure_alert_wav(path: Path = ALERT_WAV_PATH) -> Path:
 
 def play_alert() -> list[dict[str, Any]]:
     wav_path = ensure_alert_wav()
+    return play_wav_on_outputs(wav_path)
+
+
+def play_wav_on_outputs(wav_path: Path) -> list[dict[str, Any]]:
     attempts = []
     for device in playback_devices():
         probe = run_command(["timeout", "4", "aplay", "-D", device, str(wav_path)], timeout=6)
@@ -287,16 +298,85 @@ def play_alert() -> list[dict[str, Any]]:
     return attempts
 
 
-def publish_wake_interaction(*, transcript: str, device: str, tts: dict[str, Any], alert_attempts: list[dict[str, Any]]) -> None:
+def synthesize_voice_response(text: str, output_path: Path = VOICE_WAV_PATH) -> dict[str, Any]:
+    if not PIPER_MODEL_PATH.exists():
+        return {
+            "ok": False,
+            "voice_engine": "piper",
+            "voice_model": str(PIPER_MODEL_PATH),
+            "output_wav": str(output_path.relative_to(ROOT)),
+            "error": "piper_model_missing",
+            "command": [],
+            "returncode": None,
+        }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix="mim-voice-", suffix=".txt", mode="w", encoding="utf-8", delete=False) as tmp:
+        tmp.write(text)
+        text_path = Path(tmp.name)
+    try:
+        command = [
+            str(ROOT / ".venv" / "bin" / "piper"),
+            "-m",
+            str(PIPER_MODEL_PATH),
+            "-i",
+            str(text_path),
+            "-f",
+            str(output_path),
+            "--length-scale",
+            "0.92",
+            "--noise-scale",
+            "0.55",
+            "--noise-w-scale",
+            "0.75",
+            "--volume",
+            "1.25",
+        ]
+        result = run_command(command, timeout=30)
+        return {
+            "ok": bool(result["ok"] and output_path.exists() and output_path.stat().st_size > 1000),
+            "voice_engine": "piper",
+            "voice_model": str(PIPER_MODEL_PATH.relative_to(ROOT)),
+            "output_wav": str(output_path.relative_to(ROOT)),
+            "command": result.get("command"),
+            "returncode": result.get("returncode"),
+            "error": "" if result["ok"] else result.get("stderr") or result.get("stdout") or "piper_failed",
+        }
+    finally:
+        try:
+            text_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def play_voice_response(text: str) -> dict[str, Any]:
+    synthesis = synthesize_voice_response(text)
+    attempts = play_wav_on_outputs(VOICE_WAV_PATH) if synthesis["ok"] else []
+    return {
+        **synthesis,
+        "play_attempts": attempts,
+        "any_output_accepted": any(bool(item.get("ok")) for item in attempts),
+        "operator_audible_confirmed": False,
+    }
+
+
+def publish_wake_interaction(
+    *,
+    transcript: str,
+    device: str,
+    tts: dict[str, Any],
+    alert_attempts: list[dict[str, Any]],
+    voice_response: dict[str, Any],
+) -> None:
     generated_at = now_iso()
     alert_ok = any(bool(item.get("ok")) for item in alert_attempts)
+    voice_ok = bool(voice_response.get("ok") and voice_response.get("any_output_accepted"))
     payload = {
         "packet_type": "mim-wake-word-interaction-v1",
         "generated_at": generated_at,
         "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
         "owner": "MIM",
-        "status": "completed_with_evidence" if tts["ok"] or alert_ok else "blocked_with_evidence",
-        "success": bool(tts["ok"] or alert_ok),
+        "status": "completed_with_evidence" if tts["ok"] or alert_ok or voice_ok else "blocked_with_evidence",
+        "success": bool(tts["ok"] or alert_ok or voice_ok),
         "wake_phrase_detected": True,
         "transcript": transcript,
         "audio_device": device,
@@ -311,6 +391,7 @@ def publish_wake_interaction(*, transcript: str, device: str, tts: dict[str, Any
             "alert_wav": str(ALERT_WAV_PATH.relative_to(ROOT)),
             "alert_attempts": alert_attempts,
             "alert_any_output_accepted": alert_ok,
+            "voice_response": voice_response,
         },
         "memory_update": {
             "human_name": "Dave",
@@ -342,7 +423,8 @@ def publish_wake_interaction(*, transcript: str, device: str, tts: dict[str, Any
                 "tts_returncode": tts.get("returncode"),
                 "tts_error": payload["response"]["tts_error"],
                 "alert_attempts": alert_attempts,
-                "last_interaction_time": generated_at if tts["ok"] or alert_ok else None,
+                "voice_response": voice_response,
+                "last_interaction_time": generated_at if tts["ok"] or alert_ok or voice_ok else None,
             },
             "memory_records": [
                 {
@@ -360,7 +442,7 @@ def publish_wake_interaction(*, transcript: str, device: str, tts: dict[str, Any
                     "updated_at": generated_at,
                 },
             ],
-            "next_recovery_action": "" if tts["ok"] or alert_ok else "Repair speech-dispatcher or playback output routing.",
+            "next_recovery_action": "" if tts["ok"] or alert_ok or voice_ok else "Repair speech-dispatcher or playback output routing.",
         },
     )
 
@@ -392,10 +474,18 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             )
         )
         tts = {"ok": True, "command": [], "returncode": 0, "stderr": "", "stdout": ""}
+        voice_response = {}
         if wake:
             alert_attempts = play_alert()
+            voice_response = play_voice_response("Hey Dave. I heard you. Finally. Tiny miracle.")
             tts = speak("Hey Dave. I heard you.")
-            publish_wake_interaction(transcript=transcript, device=device, tts=tts, alert_attempts=alert_attempts)
+            publish_wake_interaction(
+                transcript=transcript,
+                device=device,
+                tts=tts,
+                alert_attempts=alert_attempts,
+                voice_response=voice_response,
+            )
         return {
             "status": "wake_detected" if wake else "listening",
             "success": True,
@@ -409,6 +499,7 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             "stt_error": stt.get("error", ""),
             "tts_ok": tts["ok"] if wake else None,
             "alert_any_output_accepted": any(bool(item.get("ok")) for item in alert_attempts) if wake else None,
+            "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if wake else None,
             "no_audio_retained": True,
         }
     finally:
@@ -478,6 +569,7 @@ def main() -> int:
                 "stt_error": result.get("stt_error", ""),
                 "tts_ok": result.get("tts_ok"),
                 "alert_any_output_accepted": result.get("alert_any_output_accepted"),
+                "voice_wav_output_accepted": result.get("voice_wav_output_accepted"),
                 "no_audio_retained": True,
                 "interaction_artifact": str(INTERACTION_PATH.relative_to(ROOT)) if INTERACTION_PATH.exists() else "",
             },

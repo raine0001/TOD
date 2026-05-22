@@ -1,22 +1,14 @@
 {
   "audio_device": "plughw:2,0",
-  "generated_at": "2026-05-22T02:23:38Z",
+  "generated_at": "2026-05-22T02:28:58Z",
   "memory_update": {
     "human_name": "Dave",
     "human_role": "primary_operator",
     "interaction_type": "wake_word_voice",
-    "last_interaction_time": "2026-05-22T02:23:38Z"
+    "last_interaction_time": "2026-05-22T02:28:58Z"
   },
   "no_audio_retained": true,
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
-  "operator_confirmation": {
-    "audible_acknowledgement_heard": true,
-    "confirmed_at": "2026-05-22T02:24:28Z",
-    "confirmed_by": "Dave",
-    "heard_signal": "three beeps",
-    "operator_report": "I hear three beeps multiple times when I yell hello mim can you hear me.",
-    "voice_speech_heard": false
-  },
   "owner": "MIM",
   "packet_type": "mim-wake-word-interaction-v1",
   "response": {
@@ -24,9 +16,9 @@
     "alert_attempts": [
       {
         "device": "plughw:1,0",
-        "error": "",
-        "ok": true,
-        "returncode": 0
+        "error": "aplay: main:834: audio open error: Device or resource busy\n",
+        "ok": false,
+        "returncode": 1
       },
       {
         "device": "plughw:3,0",
@@ -42,9 +34,9 @@
       },
       {
         "device": "plughw:4,7",
-        "error": "",
-        "ok": true,
-        "returncode": 0
+        "error": "aplay: main:834: audio open error: Device or resource busy\n",
+        "ok": false,
+        "returncode": 1
       },
       {
         "device": "plughw:4,8",
@@ -75,10 +67,81 @@
     ],
     "tts_error": "",
     "tts_operator_audible_confirmed": false,
-    "tts_returncode": 0
+    "tts_returncode": 0,
+    "voice_response": {
+      "any_output_accepted": true,
+      "command": [
+        "/home/testpilot/mim/.venv/bin/piper",
+        "-m",
+        "/home/testpilot/mim/runtime/models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx",
+        "-i",
+        "/tmp/mim-voice-e48xvidi.txt",
+        "-f",
+        "/home/testpilot/mim/runtime/shared/MIM_WAKE_VOICE_RESPONSE.wav",
+        "--length-scale",
+        "0.92",
+        "--noise-scale",
+        "0.55",
+        "--noise-w-scale",
+        "0.75",
+        "--volume",
+        "1.25"
+      ],
+      "error": "",
+      "ok": true,
+      "operator_audible_confirmed": false,
+      "output_wav": "runtime/shared/MIM_WAKE_VOICE_RESPONSE.wav",
+      "play_attempts": [
+        {
+          "device": "plughw:1,0",
+          "error": "aplay: main:834: audio open error: Device or resource busy\n",
+          "ok": false,
+          "returncode": 1
+        },
+        {
+          "device": "plughw:3,0",
+          "error": "aplay: main:834: audio open error: Device or resource busy\n",
+          "ok": false,
+          "returncode": 1
+        },
+        {
+          "device": "plughw:4,3",
+          "error": "",
+          "ok": true,
+          "returncode": 0
+        },
+        {
+          "device": "plughw:4,7",
+          "error": "",
+          "ok": true,
+          "returncode": 0
+        },
+        {
+          "device": "plughw:4,8",
+          "error": "",
+          "ok": true,
+          "returncode": 0
+        },
+        {
+          "device": "plughw:4,9",
+          "error": "",
+          "ok": true,
+          "returncode": 0
+        },
+        {
+          "device": "default",
+          "error": "",
+          "ok": true,
+          "returncode": 0
+        }
+      ],
+      "returncode": 0,
+      "voice_engine": "piper",
+      "voice_model": "runtime/models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx"
+    }
   },
-  "status": "completed_with_operator_confirmed_audible_ack",
+  "status": "completed_with_evidence",
   "success": true,
-  "transcript": "hello ma'am",
+  "transcript": "payday i heard you finally",
   "wake_phrase_detected": true
 }
