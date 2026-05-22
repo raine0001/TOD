@@ -9,7 +9,7 @@ WorkingDirectory=/home/testpilot/mim
 Environment=MIM_WAKE_AUDIO_DEVICE=plughw:2,0;default;plughw:0,0;plughw:3,0;plughw:3,2
 Environment=MIM_WAKE_CHUNK_SECONDS=4
 Environment=MIM_WAKE_IDLE_SECONDS=0.5
-Environment=MIM_WAKE_COOLDOWN_SECONDS=45
+Environment=MIM_WAKE_COOLDOWN_SECONDS=12
 Environment=MIM_WAKE_DIAGNOSTIC=1
 Environment=MIM_WAKE_FOLLOWUP=1
 Environment=MIM_WAKE_FOLLOWUP_SECONDS=8

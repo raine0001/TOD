@@ -558,6 +558,48 @@ def publish_transcript_log(result: dict[str, Any], *, device: str) -> None:
     )
 
 
+def publish_cooldown_log(*, device: str, result: dict[str, Any], cooldown_seconds: int) -> None:
+    if not VOICE_TRANSCRIPT_LOG_ENABLED:
+        return
+    entry = {
+        "generated_at": now_iso(),
+        "packet_type": "mim-voice-transcript-log-entry-v1",
+        "audio_device": device,
+        "status": "cooldown_after_response",
+        "transcript": "",
+        "general_transcript": "",
+        "wake_transcript": "",
+        "stt_error": "",
+        "audio_level": {},
+        "vad": {"speech_detected": None, "segments": [], "artifact": str(VAD_STATUS_PATH.relative_to(ROOT))},
+        "self_output_detected": False,
+        "wake_phrase_detected": result.get("wake_phrase_detected", False),
+        "lab_conversation_mode": result.get("lab_conversation_mode"),
+        "lab_conversation_response": result.get("lab_conversation_response"),
+        "lab_conversation_intent": result.get("lab_conversation_intent"),
+        "lab_conversation_action": result.get("lab_conversation_action"),
+        "voice_wav_output_accepted": result.get("voice_wav_output_accepted"),
+        "lab_conversation_voice_wav_output_accepted": result.get("lab_conversation_voice_wav_output_accepted"),
+        "cooldown_seconds": cooldown_seconds,
+        "reason": "Listener is sleeping briefly after MIM speech to avoid self-triggering.",
+        "no_audio_retained": True,
+    }
+    append_jsonl(VOICE_TRANSCRIPT_LOG_PATH, entry, max_lines=VOICE_TRANSCRIPT_LOG_MAX_LINES)
+    write_json(
+        VOICE_TRANSCRIPT_SUMMARY_PATH,
+        {
+            "packet_type": "mim-voice-transcript-log-status-v1",
+            "generated_at": entry["generated_at"],
+            "status": "active",
+            "success": True,
+            "log_artifact": str(VOICE_TRANSCRIPT_LOG_PATH.relative_to(ROOT)),
+            "max_lines": VOICE_TRANSCRIPT_LOG_MAX_LINES,
+            "last_entry": entry,
+            "no_audio_retained": True,
+        },
+    )
+
+
 def speak(text: str) -> dict[str, Any]:
     return run_command(["spd-say", text], timeout=8)
 
@@ -1362,6 +1404,7 @@ def main() -> int:
             return 0
         if result.get("wake_phrase_detected") or result.get("lab_conversation_response"):
             cooldown_until = now_iso()
+            cooldown_seconds = max(1, args.cooldown_seconds)
             write_json(
                 STATUS_PATH,
                 {
@@ -1371,7 +1414,7 @@ def main() -> int:
                     "success": True,
                     "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
                     "audio_device": device,
-                    "cooldown_seconds": max(1, args.cooldown_seconds),
+                    "cooldown_seconds": cooldown_seconds,
                     "reason": "Prevent repeated playback and self-triggering after audible response.",
                     "last_transcript": result.get("transcript", ""),
                     "wake_phrase_detected": result.get("wake_phrase_detected", False),
@@ -1388,7 +1431,8 @@ def main() -> int:
                     "followup_artifact": str(FOLLOWUP_PATH.relative_to(ROOT)) if FOLLOWUP_PATH.exists() else "",
                 },
             )
-            time.sleep(max(1, args.cooldown_seconds))
+            publish_cooldown_log(device=device, result=result, cooldown_seconds=cooldown_seconds)
+            time.sleep(cooldown_seconds)
         time.sleep(max(0.1, args.idle_seconds))
 
 
