@@ -1,7 +1,898 @@
 {
   "entries": [
     {
-      "generated_at": "2026-05-22T03:32:01Z",
+      "generated_at": "2026-05-22T05:47:38Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T05:52:38Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T05:57:38Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:02:46Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:07:46Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:12:46Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:17:46Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:22:46Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:27:46Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:32:54Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:37:54Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:42:54Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:47:54Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:52:54Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T06:57:54Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:03:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:08:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:13:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:18:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:23:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:28:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:33:13Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:38:13Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:43:13Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:48:13Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:53:13Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T07:58:13Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:03:22Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:08:22Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:13:22Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:18:23Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:23:23Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:28:23Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:33:28Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:38:28Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:43:28Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:48:28Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:53:28Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T08:58:28Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:03:34Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:08:34Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:13:34Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:18:34Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:23:34Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:28:34Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:33:40Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:38:40Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:43:40Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:48:40Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:53:40Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T09:58:40Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:03:49Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:08:49Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:13:49Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:18:49Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:23:49Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:28:49Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:33:58Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:38:58Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:43:58Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:48:58Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:53:58Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T10:58:58Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:04:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:09:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:14:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:19:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:24:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:29:03Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:34:12Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:39:12Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:44:12Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:49:12Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:54:12Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T11:59:12Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:04:17Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:09:17Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:14:17Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:19:17Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:24:17Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:29:17Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:34:23Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:39:23Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:44:23Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:49:23Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:54:23Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T12:59:23Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:04:32Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:09:32Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:14:32Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:19:32Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:24:32Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:29:32Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:34:38Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:39:38Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:44:38Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:49:38Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:54:38Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T13:59:38Z",
+      "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
+      "missing": [
+        "barge_in_evidence_present",
+        "natural_tts_persona_evidence_present"
+      ],
+      "objective": "MIM-BARGE-IN-RECOVERY-V1"
+    },
+    {
+      "generated_at": "2026-05-22T14:04:48Z",
       "lesson": "Convert the first missing capability into a concrete objective with evidence, then re-evaluate.",
       "missing": [
         "barge_in_evidence_present",
@@ -10,7 +901,7 @@
       "objective": "MIM-BARGE-IN-RECOVERY-V1"
     }
   ],
-  "generated_at": "2026-05-22T03:32:01Z",
+  "generated_at": "2026-05-22T14:04:48Z",
   "objective_id": "MIM-VALUE-ADDED-VOICE-ASSISTANT-12H-BUILD-V1",
   "packet_type": "mim-voice-context-12h-lessons-v1"
 }

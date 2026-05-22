@@ -1,6 +1,6 @@
 {
   "capability": "barge_in_evidence_present",
-  "generated_at": "2026-05-22T03:32:01Z",
+  "generated_at": "2026-05-22T14:04:48Z",
   "goal": "Detect operator interruption while MIM is speaking and stop current playback before pivoting.",
   "objective_id": "MIM-BARGE-IN-RECOVERY-V1",
   "packet_type": "mim-voice-context-next-objective-v1",

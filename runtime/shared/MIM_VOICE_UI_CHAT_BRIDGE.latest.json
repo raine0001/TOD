@@ -2,19 +2,19 @@
   "bridge": {
     "endpoint": "http://127.0.0.1:18001/gateway/intake/text",
     "error": "",
-    "input_id": 5760668,
+    "input_id": 5760680,
     "ok": true,
     "outcome": "store_only",
     "raw_reply_available": true,
-    "reply_text": "To decide what to build next, let's pinpoint the biggest challenge you're facing in lab awareness or camera management. What\u2019s the top priority or gap you want to address?",
-    "request_id": "mim-request-12f3074b-83b3-4abe-90ee-48603165aa9e",
+    "reply_text": "I'm missing one detail: do you want me to answer a question, suggest a plan, or take an action?",
+    "request_id": "mim-request-83ba80e8-a875-469d-b35f-0937e60ee211",
     "status": "store_only"
   },
-  "generated_at": "2026-05-22T14:00:40Z",
+  "generated_at": "2026-05-22T14:01:11Z",
   "no_audio_retained": true,
   "packet_type": "mim-voice-ui-chat-bridge-v1",
   "policy": "Voice uses the same MIM conversation path as UI chat; local lab routing is fallback only.",
   "status": "completed_with_evidence",
   "success": true,
-  "transcript": "what should we build next"
+  "transcript": "no"
 }

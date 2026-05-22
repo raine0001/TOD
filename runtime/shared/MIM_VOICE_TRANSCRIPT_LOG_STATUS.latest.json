@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-05-22T14:47:44Z",
+  "last_entry": {
+    "audio_device": "plughw:2,0",
+    "audio_level": {
+      "bytes": 128044,
+      "max": 32000,
+      "rms": 285
+    },
+    "general_transcript": "",
+    "generated_at": "2026-05-22T14:47:44Z",
+    "lab_conversation_action": null,
+    "lab_conversation_intent": null,
+    "lab_conversation_mode": true,
+    "lab_conversation_response": false,
+    "lab_conversation_voice_wav_output_accepted": null,
+    "no_audio_retained": true,
+    "packet_type": "mim-voice-transcript-log-entry-v1",
+    "self_output_detected": false,
+    "status": "listening",
+    "stt_error": "",
+    "transcript": "",
+    "vad": {
+      "artifact": "runtime/shared/MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json",
+      "segments": [],
+      "speech_detected": false
+    },
+    "voice_wav_output_accepted": null,
+    "wake_phrase_detected": false,
+    "wake_transcript": ""
+  },
+  "line_count": 11,
+  "log_artifact": "runtime/shared/MIM_VOICE_TRANSCRIPT_LOG.latest.jsonl",
+  "max_lines": 500,
+  "no_audio_retained": true,
+  "packet_type": "mim-voice-transcript-log-status-v1",
+  "status": "active",
+  "success": true
+}

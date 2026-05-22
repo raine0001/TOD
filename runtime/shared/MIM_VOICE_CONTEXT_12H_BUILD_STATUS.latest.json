@@ -4,7 +4,7 @@
       "artifact": "runtime/shared/MIM_MINIMUM_VOICE_CONTEXT_ARCHITECTURE.latest.json",
       "exists": true,
       "generated_at": "2026-05-22T03:25:00Z",
-      "recent": true,
+      "recent": false,
       "status": "objective_defined",
       "success": true
     },
@@ -12,22 +12,22 @@
       "artifact": "runtime/shared/MIM_VALUE_ADDED_VOICE_ASSISTANT_STANDARD.latest.json",
       "exists": true,
       "generated_at": "2026-05-22T03:32:00Z",
-      "recent": true,
+      "recent": false,
       "status": "standard_defined",
       "success": true
     },
     "MIM_VOICE_TURN_STATE.latest.json": {
       "artifact": "runtime/shared/MIM_VOICE_TURN_STATE.latest.json",
       "exists": true,
-      "generated_at": "2026-05-22T03:31:49Z",
+      "generated_at": "2026-05-22T14:01:19Z",
       "recent": true,
-      "status": "simulated_context_turn_validated",
+      "status": "updated",
       "success": true
     },
     "MIM_WAKE_DIAGNOSTIC.latest.json": {
       "artifact": "runtime/shared/MIM_WAKE_DIAGNOSTIC.latest.json",
       "exists": true,
-      "generated_at": "2026-05-22T03:31:56Z",
+      "generated_at": "2026-05-22T14:04:37Z",
       "recent": true,
       "status": "observed",
       "success": true
@@ -35,15 +35,15 @@
     "MIM_WAKE_FOLLOWUP.latest.json": {
       "artifact": "runtime/shared/MIM_WAKE_FOLLOWUP.latest.json",
       "exists": true,
-      "generated_at": "2026-05-22T03:16:04Z",
+      "generated_at": "2026-05-22T14:01:19Z",
       "recent": true,
-      "status": "operator_followup_needs_clarification",
+      "status": "responded",
       "success": true
     },
     "MIM_WAKE_LISTENER_STATUS.latest.json": {
       "artifact": "runtime/shared/MIM_WAKE_LISTENER_STATUS.latest.json",
       "exists": true,
-      "generated_at": "2026-05-22T03:31:56Z",
+      "generated_at": "2026-05-22T14:04:37Z",
       "recent": true,
       "status": "listening",
       "success": true
@@ -70,12 +70,12 @@
     "success": "Publish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence."
   },
   "deadline_at": "2026-05-22T15:31:56Z",
-  "generated_at": "2026-05-22T03:32:01Z",
+  "generated_at": "2026-05-22T14:04:48Z",
   "last_dispatch": {
     "ok": true,
     "payload": {
       "confidence": 0.8,
-      "created_at": "2026-05-22T03:31:56.201253Z",
+      "created_at": "2026-05-22T14:04:38.984620Z",
       "initiative_status": {
         "program_status": {
           "completion_rule": "",
@@ -489,14 +489,14 @@
         },
         "summary": "Active objective: Lab awareness, human interaction, and camera cycling. Active task: Discover or run lab sensor inventory executor. Blocked items: Inventory lab sensors and publish first live-readiness map, Publish lab-awareness status after growth guard activation."
       },
-      "input_id": 5756917,
+      "input_id": 5760681,
       "metadata_json": {
         "adapter": "text",
-        "conversation_session_id": "voice-context-12h-3b1fae67-152c-455c-8353-cb01e71011e2",
-        "gateway_received_at": "2026-05-22T03:31:56Z",
+        "conversation_session_id": "voice-context-12h-a29bb24e-09a7-4646-81d0-dff7e0ffe864",
+        "gateway_received_at": "2026-05-22T14:04:38Z",
         "interaction_mode": "autonomous_objective",
         "message_type": "user",
-        "request_id": "mim-request-8a2b548e-832b-41a8-8fe1-72dfc2b39dd3",
+        "request_id": "mim-request-133fd675-22ce-44dc-bdd0-2b420183275f",
         "route_preference": "conversation_layer",
         "source": "mim_voice_context_12h_runner"
       },
@@ -506,21 +506,21 @@
           "detail": "giving some extra context, I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.",
           "detail_label": "Result",
           "next_action": "reply directly in this session",
-          "request_id": "mim-request-8a2b548e-832b-41a8-8fe1-72dfc2b39dd3",
+          "request_id": "mim-request-133fd675-22ce-44dc-bdd0-2b420183275f",
           "status": "done",
           "understood": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1 GOAL: Detect operator interruption while MIM is speaking and stop current playback before pivoting. SUCCESS: Publish MIM_BARGE_IN_RECOVERY_ST..."
         },
         "next_action": "reply directly in this session",
         "reply_text": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.",
-        "request_id": "mim-request-8a2b548e-832b-41a8-8fe1-72dfc2b39dd3",
-        "result": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.\n\nStatus note: MIM-BARGE-IN-RECOVERY-V1 is blocked. Blocker: No safe bounded edit was applied by the packet listener executor. The executor inspected target/discovery files and produced blocked_with_inspection evidence; Codex escalation is allowed only with this inspection evidence.. Next: reclassify or replay through the correct bounded lane",
+        "request_id": "mim-request-133fd675-22ce-44dc-bdd0-2b420183275f",
+        "result": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.",
         "status": "done",
         "understood": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1 GOAL: Detect operator interruption while MIM is speaking and stop current playback before pivoting. SUCCESS: Publish MIM_BARGE_IN_RECOVERY_ST..."
       },
       "normalized": true,
       "parsed_intent": "conversation",
       "raw_input": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1\n\nGOAL:\nDetect operator interruption while MIM is speaking and stop current playback before pivoting.\n\nSUCCESS:\nPublish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.\n",
-      "request_id": "mim-request-8a2b548e-832b-41a8-8fe1-72dfc2b39dd3",
+      "request_id": "mim-request-133fd675-22ce-44dc-bdd0-2b420183275f",
       "requested_goal": "",
       "resolution": {
         "capability_enabled": false,
@@ -528,19 +528,19 @@
         "capability_registered": false,
         "clarification_prompt": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.",
         "confidence_tier": "conversation",
-        "created_at": "2026-05-22T03:31:56.201253Z",
+        "created_at": "2026-05-22T14:04:38.984620Z",
         "escalation_reasons": [],
         "goal_id": null,
-        "input_event_id": 5756917,
+        "input_event_id": 5760681,
         "internal_intent": "speak_response",
         "metadata_json": {
           "active_goal": "Workspace state indicates zone uncertainty should be stabilized before downstream physical decisions. Retry and fallback pressure lower confidence in aggressive execution strate...",
           "clarification_prompt_key": "i tried to research that on the web, but the upstream search providers were unavailable before i could collect reliable public sources.",
           "classification_stage_timestamps": {
-            "gateway_received_at": "2026-05-22T03:31:56Z",
-            "llm_classifier_completed_at": "2026-05-22T03:32:01Z",
-            "llm_classifier_started_at": "2026-05-22T03:31:56Z",
-            "route_decided_at": "2026-05-22T03:32:01Z"
+            "gateway_received_at": "2026-05-22T14:04:38Z",
+            "llm_classifier_completed_at": "2026-05-22T14:04:48Z",
+            "llm_classifier_started_at": "2026-05-22T14:04:38Z",
+            "route_decided_at": "2026-05-22T14:04:48Z"
           },
           "communication_reply_contract": {},
           "confidence": 0.8,
@@ -560,7 +560,7 @@
             "signal_codes": [],
             "signals": [],
             "summary": "conversation override",
-            "system_health_status": "suboptimal"
+            "system_health_status": "healthy"
           },
           "initiative_auto_execute": false,
           "initiative_boundary_mode": "",
@@ -1014,7 +1014,7 @@
             "updated_at": "2026-05-07T19:53:37Z"
           },
           "program_status_summary": "Program MIM-12-AUTONOMOUS-EVOLUTION status (14 registered projects): MIM-DAY-01-EXECUTION-BOUND-COMPLETION=ready (Enforce completion only after execution evidence INITIATIVE_ID: MIM-DAY-01-EX...); MIM-DAY-02-INITIATIVE-ISOLATION=ready (Prevent new initiatives from being overwritten, contaminated, or auto-reroute...)...",
-          "request_id": "mim-request-8a2b548e-832b-41a8-8fe1-72dfc2b39dd3",
+          "request_id": "mim-request-133fd675-22ce-44dc-bdd0-2b420183275f",
           "requested_domains": [
             "data",
             "decision"
@@ -1027,7 +1027,7 @@
           "skip_conversation_memory": false,
           "source": "text",
           "target_system": "mim",
-          "tod_collaboration_summary": "request mim-barge-in-recovery-v1-mim-request-46faa0cc-2383-4ad6-ad22-265c62e7742c | rejected_lineage_mismatch | rejected_lineage_mismatch",
+          "tod_collaboration_summary": "request mim-growth-governance-integrity-next-v1-mim-request-8e005a19-041f-4418-955f-56d00752fed3 | rejected_lineage_mismatch | rejected_lineage_mismatch",
           "user_action_safety": {},
           "web_research": {
             "answer": "I tried to research that on the web, but the upstream search providers were unavailable before I could collect reliable public sources.",
@@ -1046,7 +1046,7 @@
                   },
                   {
                     "configured": true,
-                    "error": "empty_results",
+                    "error": "TimeoutError:The read operation timed out",
                     "model": "gemini-2.5-flash",
                     "provider": "gemini_google_search",
                     "query": "OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1 GOAL: Detect operator interruption while MIM is speaking and stop current playback before pivoting. SUCCESS: Publish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence. CONSTRAINTS: - No raw audio retention. - Treat tools as replaceable; preserve context behavior. - Continue without human intervention. - Do not mark complete from planning alone. - Publish evidence artifacts in runtime/shared.",
@@ -1087,7 +1087,7 @@
         ],
         "proposed_goal_description": "speak_response: OBJECTIVE: MIM-BARGE-IN-RECOVERY-V1\n\nGOAL:\nDetect operator interruption while MIM is speaking and stop current playback before pivoting.\n\nSUCCESS:\nPublish MIM_BARGE_IN_RECOVERY_STATUS.latest.json with interrupt detection and playback-stop evidence.\n\nCONSTRAINTS:\n- No raw audio retention.\n- Treat tools as replaceable; preserve context behavior.\n- Continue without human intervention.\n- Do not mark complete from planning alone.\n- Publish evidence artifacts in runtime/shared.",
         "reason": "conversation_override",
-        "resolution_id": 5740072,
+        "resolution_id": 5743836,
         "resolution_status": "store_only",
         "safety_decision": "store_only"
       },

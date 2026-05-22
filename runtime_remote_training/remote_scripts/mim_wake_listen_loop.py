@@ -32,6 +32,8 @@ TURN_STATE_PATH = SHARED / "MIM_VOICE_TURN_STATE.latest.json"
 VAD_STATUS_PATH = SHARED / "MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json"
 FAUX_PAUSE_STATUS_PATH = SHARED / "MIM_FAUX_PAUSE_HANDLING_STATUS.latest.json"
 VOICE_CHAT_BRIDGE_PATH = SHARED / "MIM_VOICE_UI_CHAT_BRIDGE.latest.json"
+VOICE_TRANSCRIPT_LOG_PATH = SHARED / "MIM_VOICE_TRANSCRIPT_LOG.latest.jsonl"
+VOICE_TRANSCRIPT_SUMMARY_PATH = SHARED / "MIM_VOICE_TRANSCRIPT_LOG_STATUS.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -81,6 +83,8 @@ LAB_CONVERSATION_MODE = os.environ.get("MIM_LAB_CONVERSATION_MODE", "1").strip()
 VOICE_UI_CHAT_BRIDGE_ENABLED = os.environ.get("MIM_VOICE_UI_CHAT_BRIDGE", "1").strip().lower() not in {"0", "false", "no", "off"}
 VOICE_UI_CHAT_SESSION_ID = os.environ.get("MIM_VOICE_UI_CHAT_SESSION_ID", "mim-ambient-lab-voice-ui-chat")
 VOICE_UI_CHAT_ENDPOINT = os.environ.get("MIM_VOICE_UI_CHAT_ENDPOINT", "http://127.0.0.1:18001/gateway/intake/text")
+VOICE_TRANSCRIPT_LOG_ENABLED = os.environ.get("MIM_VOICE_TRANSCRIPT_LOG", "1").strip().lower() not in {"0", "false", "no", "off"}
+VOICE_TRANSCRIPT_LOG_MAX_LINES = int(os.environ.get("MIM_VOICE_TRANSCRIPT_LOG_MAX_LINES", "500"))
 
 WAKE_GRAMMAR = json.dumps(
     [
@@ -105,6 +109,21 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+
+
+def append_jsonl(path: Path, payload: dict[str, Any], *, max_lines: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    existing: list[str] = []
+    try:
+        if path.exists():
+            existing = path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        existing = []
+    lines = (existing + [line])[-max(1, max_lines):]
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
     tmp.replace(path)
 
 
@@ -485,6 +504,56 @@ def publish_diagnostic(result: dict[str, Any], *, device: str, selection: dict[s
                 "listener_status": str(STATUS_PATH.relative_to(ROOT)),
                 "wake_interaction": str(INTERACTION_PATH.relative_to(ROOT)),
             },
+        },
+    )
+
+
+def publish_transcript_log(result: dict[str, Any], *, device: str) -> None:
+    if not VOICE_TRANSCRIPT_LOG_ENABLED:
+        return
+    transcript = str(result.get("transcript") or "").strip()
+    general = str(result.get("general_transcript") or "").strip()
+    wake_text = str(result.get("wake_transcript") or "").strip()
+    vad = result.get("vad") if isinstance(result.get("vad"), dict) else {}
+    level = result.get("audio_level") if isinstance(result.get("audio_level"), dict) else {}
+    entry = {
+        "generated_at": now_iso(),
+        "packet_type": "mim-voice-transcript-log-entry-v1",
+        "audio_device": device,
+        "status": result.get("status"),
+        "transcript": transcript,
+        "general_transcript": general,
+        "wake_transcript": wake_text,
+        "stt_error": result.get("stt_error", ""),
+        "audio_level": level,
+        "vad": vad,
+        "self_output_detected": result.get("self_output_detected", False),
+        "wake_phrase_detected": result.get("wake_phrase_detected", False),
+        "lab_conversation_mode": result.get("lab_conversation_mode"),
+        "lab_conversation_response": result.get("lab_conversation_response"),
+        "lab_conversation_intent": result.get("lab_conversation_intent"),
+        "lab_conversation_action": result.get("lab_conversation_action"),
+        "voice_wav_output_accepted": result.get("voice_wav_output_accepted"),
+        "lab_conversation_voice_wav_output_accepted": result.get("lab_conversation_voice_wav_output_accepted"),
+        "no_audio_retained": True,
+    }
+    append_jsonl(VOICE_TRANSCRIPT_LOG_PATH, entry, max_lines=VOICE_TRANSCRIPT_LOG_MAX_LINES)
+    try:
+        line_count = len(VOICE_TRANSCRIPT_LOG_PATH.read_text(encoding="utf-8").splitlines())
+    except Exception:
+        line_count = None
+    write_json(
+        VOICE_TRANSCRIPT_SUMMARY_PATH,
+        {
+            "packet_type": "mim-voice-transcript-log-status-v1",
+            "generated_at": entry["generated_at"],
+            "status": "active",
+            "success": True,
+            "log_artifact": str(VOICE_TRANSCRIPT_LOG_PATH.relative_to(ROOT)),
+            "max_lines": VOICE_TRANSCRIPT_LOG_MAX_LINES,
+            "line_count": line_count,
+            "last_entry": entry,
+            "no_audio_retained": True,
         },
     )
 
@@ -1253,6 +1322,7 @@ def main() -> int:
     model = Model(str(MODEL_PATH))
     while True:
         result = listen_once(model, device, seconds=max(1, args.chunk_seconds))
+        publish_transcript_log(result, device=device)
         publish_diagnostic(result, device=device, selection=selection)
         write_json(
             STATUS_PATH,
