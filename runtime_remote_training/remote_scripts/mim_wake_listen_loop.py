@@ -28,6 +28,8 @@ MEMORY_PATH = SHARED / "MIM_HUMAN_INTERACTION_MEMORY.latest.json"
 DIAGNOSTIC_PATH = SHARED / "MIM_WAKE_DIAGNOSTIC.latest.json"
 FOLLOWUP_PATH = SHARED / "MIM_WAKE_FOLLOWUP.latest.json"
 TURN_STATE_PATH = SHARED / "MIM_VOICE_TURN_STATE.latest.json"
+VAD_STATUS_PATH = SHARED / "MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json"
+FAUX_PAUSE_STATUS_PATH = SHARED / "MIM_FAUX_PAUSE_HANDLING_STATUS.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -160,6 +162,134 @@ def audio_level(path: Path) -> dict[str, int]:
         return {"bytes": len(data), "rms": int(audioop.rms(data, 2)), "max": int(audioop.max(data, 2))}
     except Exception:
         return {"bytes": 0, "rms": 0, "max": 0}
+
+
+def analyze_vad_segments(path: Path) -> dict[str, Any]:
+    generated_at = now_iso()
+    try:
+        with wave.open(str(path), "rb") as wav_file:
+            channels = wav_file.getnchannels()
+            width = wav_file.getsampwidth()
+            rate = wav_file.getframerate()
+            frames = wav_file.readframes(wav_file.getnframes())
+        if channels != 1 or width != 2 or rate <= 0:
+            result = {
+                "packet_type": "mim-vad-speech-segmentation-status-v1",
+                "generated_at": generated_at,
+                "status": "blocked_with_evidence",
+                "success": False,
+                "reason_code": "unsupported_wav_format",
+                "format": {"channels": channels, "sample_width": width, "rate": rate},
+                "no_audio_retained": True,
+            }
+            write_json(VAD_STATUS_PATH, result)
+            return result
+        frame_ms = 100
+        samples_per_frame = max(1, int(rate * frame_ms / 1000))
+        bytes_per_frame = samples_per_frame * width
+        rms_values = []
+        for offset in range(0, len(frames), bytes_per_frame):
+            chunk = frames[offset : offset + bytes_per_frame]
+            if len(chunk) >= width:
+                rms_values.append(int(audioop.rms(chunk, width)))
+        if not rms_values:
+            result = {
+                "packet_type": "mim-vad-speech-segmentation-status-v1",
+                "generated_at": generated_at,
+                "status": "blocked_with_evidence",
+                "success": False,
+                "reason_code": "empty_audio_window",
+                "no_audio_retained": True,
+            }
+            write_json(VAD_STATUS_PATH, result)
+            return result
+        sorted_rms = sorted(rms_values)
+        floor_slice = sorted_rms[: max(1, len(sorted_rms) // 3)]
+        noise_floor = int(sum(floor_slice) / len(floor_slice))
+        threshold = max(350, min(2400, int(noise_floor * 2.6)))
+        hangover_frames = 5
+        min_speech_frames = 2
+        segments = []
+        active_start: int | None = None
+        quiet_run = 0
+        speech_frames = 0
+        for index, rms in enumerate(rms_values):
+            is_speech = rms >= threshold
+            if is_speech:
+                if active_start is None:
+                    active_start = index
+                    speech_frames = 0
+                speech_frames += 1
+                quiet_run = 0
+            elif active_start is not None:
+                quiet_run += 1
+                if quiet_run >= hangover_frames:
+                    end_index = max(active_start, index - quiet_run + 1)
+                    if speech_frames >= min_speech_frames:
+                        segments.append(
+                            {
+                                "start_ms": active_start * frame_ms,
+                                "end_ms": (end_index + 1) * frame_ms,
+                                "duration_ms": (end_index - active_start + 1) * frame_ms,
+                                "speech_frames": speech_frames,
+                            }
+                        )
+                    active_start = None
+                    quiet_run = 0
+                    speech_frames = 0
+        if active_start is not None and speech_frames >= min_speech_frames:
+            end_index = len(rms_values) - 1
+            segments.append(
+                {
+                    "start_ms": active_start * frame_ms,
+                    "end_ms": (end_index + 1) * frame_ms,
+                    "duration_ms": (end_index - active_start + 1) * frame_ms,
+                    "speech_frames": speech_frames,
+                }
+            )
+        result = {
+            "packet_type": "mim-vad-speech-segmentation-status-v1",
+            "generated_at": generated_at,
+            "status": "completed_with_evidence",
+            "success": True,
+            "frame_ms": frame_ms,
+            "noise_floor_rms": noise_floor,
+            "speech_threshold_rms": threshold,
+            "hangover_ms": hangover_frames * frame_ms,
+            "min_speech_ms": min_speech_frames * frame_ms,
+            "segments": segments,
+            "speech_detected": bool(segments),
+            "window_duration_ms": len(rms_values) * frame_ms,
+            "no_audio_retained": True,
+        }
+        write_json(VAD_STATUS_PATH, result)
+        write_json(
+            FAUX_PAUSE_STATUS_PATH,
+            {
+                "packet_type": "mim-faux-pause-handling-status-v1",
+                "generated_at": generated_at,
+                "status": "completed_with_evidence",
+                "success": True,
+                "method": "energy_vad_hangover",
+                "rule": "Do not finalize an utterance until speech falls below threshold for the hangover window.",
+                "hangover_ms": hangover_frames * frame_ms,
+                "input_artifact": str(VAD_STATUS_PATH.relative_to(ROOT)),
+                "no_audio_retained": True,
+            },
+        )
+        return result
+    except Exception as exc:
+        result = {
+            "packet_type": "mim-vad-speech-segmentation-status-v1",
+            "generated_at": generated_at,
+            "status": "blocked_with_evidence",
+            "success": False,
+            "reason_code": "vad_exception",
+            "error": f"{type(exc).__name__}: {exc}",
+            "no_audio_retained": True,
+        }
+        write_json(VAD_STATUS_PATH, result)
+        return result
 
 
 def select_audio_device() -> tuple[str, dict[str, Any]]:
@@ -789,6 +919,7 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
                 "no_audio_retained": True,
             }
         level = audio_level(wav_path)
+        vad = analyze_vad_segments(wav_path)
         stt = transcribe_wav(model, wav_path)
         transcript = stt.get("text", "") or stt.get("wake_text", "")
         self_output_detected = detect_self_output(stt.get("text", "")) or detect_self_output(stt.get("wake_text", ""))
@@ -888,6 +1019,7 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
                 "error": rec.get("stderr") or rec.get("stdout") or "arecord_failed",
             }
         level = audio_level(wav_path)
+        vad = analyze_vad_segments(wav_path)
         stt = transcribe_wav(model, wav_path)
         transcript = stt.get("text", "") or stt.get("wake_text", "")
         probable_wake = detect_probable_wake_check(general_text=stt.get("text", ""), wake_text=stt.get("wake_text", ""), level=level)
@@ -936,6 +1068,11 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             "success": True,
             "audio_device": device,
             "audio_level": level,
+            "vad": {
+                "speech_detected": vad.get("speech_detected"),
+                "segments": vad.get("segments", []),
+                "artifact": str(VAD_STATUS_PATH.relative_to(ROOT)),
+            },
             "transcript": transcript,
             "general_transcript": stt.get("text", ""),
             "wake_transcript": stt.get("wake_text", ""),

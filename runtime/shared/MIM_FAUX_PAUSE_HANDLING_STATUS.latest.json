@@ -1,0 +1,11 @@
+{
+  "generated_at": "2026-05-22T03:30:54Z",
+  "hangover_ms": 500,
+  "input_artifact": "runtime/shared/MIM_VAD_SPEECH_SEGMENTATION_STATUS.latest.json",
+  "method": "energy_vad_hangover",
+  "no_audio_retained": true,
+  "packet_type": "mim-faux-pause-handling-status-v1",
+  "rule": "Do not finalize an utterance until speech falls below threshold for the hangover window.",
+  "status": "completed_with_evidence",
+  "success": true
+}

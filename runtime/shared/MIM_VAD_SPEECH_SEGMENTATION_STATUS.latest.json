@@ -1,0 +1,15 @@
+{
+  "frame_ms": 100,
+  "generated_at": "2026-05-22T03:30:54Z",
+  "hangover_ms": 500,
+  "min_speech_ms": 200,
+  "no_audio_retained": true,
+  "noise_floor_rms": 12,
+  "packet_type": "mim-vad-speech-segmentation-status-v1",
+  "segments": [],
+  "speech_detected": false,
+  "speech_threshold_rms": 350,
+  "status": "completed_with_evidence",
+  "success": true,
+  "window_duration_ms": 4000
+}
