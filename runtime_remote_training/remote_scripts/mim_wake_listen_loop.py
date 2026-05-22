@@ -614,6 +614,99 @@ def publish_wake_interaction(
     )
 
 
+def load_shared_json(name: str) -> dict[str, Any]:
+    path = SHARED / name
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"_error": f"{type(exc).__name__}: {exc}"}
+    return {}
+
+
+def compact_status(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if text else "unknown"
+
+
+def route_followup(transcript: str) -> dict[str, Any]:
+    normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
+    artifacts: list[str] = []
+    intent = "unknown"
+    action = "clarify"
+    response = "I heard you, but I don't know how to act on that yet. Try cameras, sensors, lab status, objects, or remember this."
+
+    if re.search(r"\b(how are you|how you doing|how's it going|status|are you ok|are you okay)\b", normalized):
+        intent = "status_check"
+        action = "summarize_listener_status"
+        status = load_shared_json("MIM_WAKE_LISTENER_STATUS.latest.json")
+        diag = load_shared_json("MIM_WAKE_DIAGNOSTIC.latest.json")
+        artifacts = ["runtime/shared/MIM_WAKE_LISTENER_STATUS.latest.json", "runtime/shared/MIM_WAKE_DIAGNOSTIC.latest.json"]
+        response = (
+            "I'm awake, listening, and my voice route is working. "
+            f"Last diagnostic says {compact_status((diag.get('diagnosis') or {}).get('reason_code'))}. "
+            f"My active input is {compact_status(status.get('audio_device'))}."
+        )
+    elif re.search(r"\b(camera|cameras|cam|see|look|vision)\b", normalized):
+        intent = "camera_status"
+        action = "summarize_camera_cycle"
+        camera = load_shared_json("MIM_LAB_CAMERA_CYCLE_STATUS.latest.json")
+        awareness = load_shared_json("MIM_LAB_AWARENESS_STATUS.latest.json")
+        artifacts = ["runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json", "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json"]
+        response = (
+            "I can summarize camera evidence from the latest lab cycle. "
+            f"Camera cycle status is {compact_status(camera.get('status'))}; "
+            f"lab awareness status is {compact_status(awareness.get('status'))}."
+        )
+    elif re.search(r"\b(sensor|sensors|microphone|microphones|mic|mics|audio)\b", normalized):
+        intent = "sensor_status"
+        action = "summarize_sensor_inventory"
+        inventory = load_shared_json("MIM_LAB_SENSOR_INVENTORY.latest.json")
+        listener = load_shared_json("MIM_WAKE_LISTENER_STATUS.latest.json")
+        artifacts = ["runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json", "runtime/shared/MIM_WAKE_LISTENER_STATUS.latest.json"]
+        response = (
+            "For sensors, my wake listener is using "
+            f"{compact_status(listener.get('audio_device'))}. "
+            f"The lab sensor inventory artifact status is {compact_status(inventory.get('status'))}."
+        )
+    elif re.search(r"\b(object|objects|what.*know|inventory)\b", normalized):
+        intent = "object_memory"
+        action = "summarize_object_memory"
+        objects = load_shared_json("MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json")
+        artifacts = ["runtime/shared/MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json"]
+        response = f"My object memory artifact status is {compact_status(objects.get('status'))}. I can use it to ask about unknown lab objects next."
+    elif re.search(r"\b(lab|space|room|awareness|aware)\b", normalized):
+        intent = "lab_awareness"
+        action = "summarize_lab_awareness"
+        evidence = load_shared_json("MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json")
+        status = load_shared_json("MIM_LAB_AWARENESS_STATUS.latest.json")
+        artifacts = ["runtime/shared/MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json", "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json"]
+        response = (
+            "Latest lab awareness evidence is available. "
+            f"Execution evidence status is {compact_status(evidence.get('status'))}; "
+            f"current awareness status is {compact_status(status.get('status'))}."
+        )
+    elif re.search(r"\b(remember|note this|save this)\b", normalized):
+        intent = "memory_note"
+        action = "write_operator_memory_note"
+        memory = load_shared_json("MIM_HUMAN_INTERACTION_MEMORY.latest.json")
+        notes = memory.get("voice_notes") if isinstance(memory.get("voice_notes"), list) else []
+        notes.append({"generated_at": now_iso(), "speaker": "Dave", "transcript": transcript})
+        memory["voice_notes"] = notes[-20:]
+        memory["generated_at"] = now_iso()
+        memory["status"] = "updated_from_voice_followup"
+        write_json(MEMORY_PATH, memory)
+        artifacts = ["runtime/shared/MIM_HUMAN_INTERACTION_MEMORY.latest.json"]
+        response = "Got it. I saved that as a Dave voice note in my interaction memory."
+
+    return {
+        "intent": intent,
+        "action": action,
+        "response_text": response[:240],
+        "artifacts": artifacts,
+    }
+
+
 def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
     with tempfile.NamedTemporaryFile(prefix="mim-wake-followup-", suffix=".wav", delete=False) as tmp:
         wav_path = Path(tmp.name)
@@ -632,6 +725,7 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
         stt = transcribe_wav(model, wav_path)
         transcript = stt.get("text", "") or stt.get("wake_text", "")
         self_output_detected = detect_self_output(stt.get("text", "")) or detect_self_output(stt.get("wake_text", ""))
+        route = {"intent": "none", "action": "none", "artifacts": []}
         if not stt["ok"]:
             status = "stt_blocked"
             response_text = ""
@@ -639,9 +733,9 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
             status = "ignored_self_output"
             response_text = ""
         elif transcript:
-            status = "operator_followup_heard"
-            clean = transcript[:140].strip()
-            response_text = f"I heard: {clean}. I logged that for the next work step."
+            route = route_followup(transcript)
+            status = "operator_followup_routed" if route["intent"] != "unknown" else "operator_followup_needs_clarification"
+            response_text = route["response_text"]
         else:
             status = "no_followup_heard"
             response_text = ""
@@ -661,6 +755,9 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
             "self_output_detected": self_output_detected,
             "stt_error": stt.get("error", ""),
             "response_text": response_text,
+            "intent": route.get("intent"),
+            "action": route.get("action"),
+            "artifacts": route.get("artifacts", []),
             "voice_response": voice_response,
             "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if response_text else None,
             "no_audio_retained": True,

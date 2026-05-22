@@ -1,11 +1,11 @@
 {
   "audio_device": "plughw:2,0",
-  "generated_at": "2026-05-22T02:48:31Z",
+  "generated_at": "2026-05-22T03:07:40Z",
   "memory_update": {
     "human_name": "Dave",
     "human_role": "primary_operator",
     "interaction_type": "wake_word_voice",
-    "last_interaction_time": "2026-05-22T02:48:31Z"
+    "last_interaction_time": "2026-05-22T03:07:40Z"
   },
   "no_audio_retained": true,
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
@@ -18,7 +18,7 @@
     "audible_acknowledgement": "voice-only acknowledgement; three-tone alert removed after operator reported repeated beep-plus-voice loop",
     "audible_acknowledgement_delivery": "combined_response_wav",
     "mode": "voice_tts_only",
-    "text": "Hi Dave. I'm awake. Standing by.",
+    "text": "Hi Dave. I'm awake. What do you need?",
     "tts_command": [],
     "tts_error": "speech-dispatcher skipped; generated WAV is the primary response",
     "tts_operator_audible_confirmed": false,
@@ -32,7 +32,7 @@
         "-m",
         "/home/testpilot/mim/runtime/models/piper/en_US-lessac-medium/en_US-lessac-medium.onnx",
         "-i",
-        "/tmp/mim-voice-3swuc3qc.txt",
+        "/tmp/mim-voice-enrqyj3d.txt",
         "-f",
         "/home/testpilot/mim/runtime/shared/MIM_WAKE_VOICE_RESPONSE.wav",
         "--length-scale",
@@ -63,6 +63,6 @@
   },
   "status": "completed_with_evidence",
   "success": true,
-  "transcript": "to a while men to",
+  "transcript": "hello bill",
   "wake_phrase_detected": true
 }

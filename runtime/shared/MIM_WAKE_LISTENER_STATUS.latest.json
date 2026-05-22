@@ -1,74 +1,18 @@
 {
-  "alert_any_output_accepted": null,
   "audio_device": "plughw:2,0",
-  "device_selection": {
-    "attempts": [
-      {
-        "bytes": 32044,
-        "device": "plughw:2,0",
-        "error": "",
-        "max": 32036,
-        "ok": true,
-        "rms": 647
-      },
-      {
-        "bytes": 32044,
-        "device": "default",
-        "error": "",
-        "max": 32036,
-        "ok": true,
-        "rms": 716
-      },
-      {
-        "bytes": 0,
-        "device": "plughw:0,0",
-        "error": "arecord: main:834: audio open error: Device or resource busy\n",
-        "max": 0,
-        "ok": false,
-        "rms": 0
-      },
-      {
-        "bytes": 32044,
-        "device": "plughw:3,0",
-        "error": "",
-        "max": 32036,
-        "ok": true,
-        "rms": 646
-      },
-      {
-        "bytes": 32044,
-        "device": "plughw:3,2",
-        "error": "",
-        "max": 32036,
-        "ok": true,
-        "rms": 646
-      }
-    ],
-    "selection_reason": "first_nonclipped_signal_in_priority_order"
-  },
-  "followup_artifact": "",
-  "followup_status": null,
-  "followup_transcript": "",
-  "followup_voice_wav_output_accepted": null,
-  "generated_at": "2026-05-22T03:06:38Z",
+  "cooldown_seconds": 45,
+  "followup_artifact": "runtime/shared/MIM_WAKE_FOLLOWUP.latest.json",
+  "followup_status": "operator_followup_heard",
+  "followup_transcript": "i was wondering how you're doing today",
+  "followup_voice_wav_output_accepted": true,
+  "generated_at": "2026-05-22T03:07:40Z",
   "interaction_artifact": "runtime/shared/MIM_WAKE_WORD_INTERACTION.latest.json",
-  "last_audio_level": {
-    "bytes": 128044,
-    "max": 32000,
-    "rms": 280
-  },
-  "last_general_transcript": "",
-  "last_transcript": "",
-  "last_wake_transcript": "",
-  "no_audio_retained": true,
+  "last_transcript": "hello bill",
   "objective_id": "MIM-LISTENING-AND-VOICE-PERSONA-V1",
   "packet_type": "mim-wake-listener-status-v1",
-  "probable_wake_check": false,
-  "self_output_detected": false,
-  "status": "listening",
-  "stt_error": "",
+  "reason": "Prevent repeated playback and self-triggering after audible response.",
+  "status": "cooldown_after_response",
   "success": true,
-  "tts_ok": null,
-  "voice_wav_output_accepted": null,
-  "wake_phrase_detected": false
+  "voice_wav_output_accepted": true,
+  "wake_phrase_detected": true
 }
