@@ -89,6 +89,11 @@ VOICE_TRANSCRIPT_LOG_MAX_LINES = int(os.environ.get("MIM_VOICE_TRANSCRIPT_LOG_MA
 VOICE_FRAGMENT_SUPPRESSION_ENABLED = (
     os.environ.get("MIM_VOICE_FRAGMENT_SUPPRESSION", "1").strip().lower() not in {"0", "false", "no", "off"}
 )
+VOICE_PIPER_SPEAKER = os.environ.get("MIM_VOICE_PIPER_SPEAKER", "").strip()
+VOICE_PIPER_LENGTH_SCALE = os.environ.get("MIM_VOICE_PIPER_LENGTH_SCALE", "0.82").strip()
+VOICE_PIPER_NOISE_SCALE = os.environ.get("MIM_VOICE_PIPER_NOISE_SCALE", "0.48").strip()
+VOICE_PIPER_NOISE_W_SCALE = os.environ.get("MIM_VOICE_PIPER_NOISE_W_SCALE", "0.65").strip()
+VOICE_PIPER_VOLUME = os.environ.get("MIM_VOICE_PIPER_VOLUME", "1.18").strip()
 
 LOW_CONTENT_TOKENS = {
     "a",
@@ -793,14 +798,16 @@ def synthesize_voice_response(text: str, output_path: Path = VOICE_WAV_PATH) -> 
             "-f",
             str(output_path),
             "--length-scale",
-            "0.92",
+            VOICE_PIPER_LENGTH_SCALE,
             "--noise-scale",
-            "0.55",
+            VOICE_PIPER_NOISE_SCALE,
             "--noise-w-scale",
-            "0.75",
+            VOICE_PIPER_NOISE_W_SCALE,
             "--volume",
-            "1.25",
+            VOICE_PIPER_VOLUME,
         ]
+        if VOICE_PIPER_SPEAKER:
+            command.extend(["--speaker", VOICE_PIPER_SPEAKER])
         result = run_command(command, timeout=30)
         return {
             "ok": bool(result["ok"] and output_path.exists() and output_path.stat().st_size > 1000),
@@ -809,6 +816,11 @@ def synthesize_voice_response(text: str, output_path: Path = VOICE_WAV_PATH) -> 
             "output_wav": str(output_path.relative_to(ROOT)),
             "command": result.get("command"),
             "returncode": result.get("returncode"),
+            "speaker": VOICE_PIPER_SPEAKER,
+            "length_scale": VOICE_PIPER_LENGTH_SCALE,
+            "noise_scale": VOICE_PIPER_NOISE_SCALE,
+            "noise_w_scale": VOICE_PIPER_NOISE_W_SCALE,
+            "volume": VOICE_PIPER_VOLUME,
             "error": "" if result["ok"] else result.get("stderr") or result.get("stdout") or "piper_failed",
         }
     finally:
