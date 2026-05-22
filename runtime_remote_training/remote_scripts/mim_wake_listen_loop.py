@@ -99,6 +99,7 @@ VOICE_PIPER_NOISE_SCALE = os.environ.get("MIM_VOICE_PIPER_NOISE_SCALE", "0.48").
 VOICE_PIPER_NOISE_W_SCALE = os.environ.get("MIM_VOICE_PIPER_NOISE_W_SCALE", "0.65").strip()
 VOICE_PIPER_VOLUME = os.environ.get("MIM_VOICE_PIPER_VOLUME", "1.18").strip()
 OPERATOR_TIMEZONE = os.environ.get("MIM_OPERATOR_TIMEZONE", "America/Los_Angeles").strip()
+VOICE_ACTIVE_SESSION_SECONDS = int(os.environ.get("MIM_VOICE_ACTIVE_SESSION_SECONDS", "90"))
 
 LOW_CONTENT_TOKENS = {
     "a",
@@ -1107,12 +1108,19 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
     assistant_shape = is_assistant_shaped(transcript)
     turn_state = load_turn_state()
     previous_topic = str(turn_state.get("current_topic") or "").strip()
+    active_until = parse_utc_timestamp(turn_state.get("active_conversation_until"))
+    active_session = bool(active_until and active_until > datetime.now(timezone.utc))
     followup_reference = bool(set(words).intersection(FOLLOWUP_REFERENCE_TOKENS))
     short_followup = bool(previous_topic and 1 <= len(words) <= 5 and followup_reference and not mim_reference)
     if mim_reference:
         addressed = True
         confidence = 0.995
         reason = "mim_or_mim_like_reference"
+        action = "respond"
+    elif active_session:
+        addressed = True
+        confidence = 0.9 if assistant_shape else 0.78
+        reason = "active_mim_conversation_window"
         action = "respond"
     elif assistant_shape:
         addressed = True
@@ -1148,6 +1156,8 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
         "recommended_action": action,
         "mim_reference_detected": mim_reference,
         "assistant_shaped": assistant_shape,
+        "active_session": active_session,
+        "active_conversation_until": active_until.replace(microsecond=0).isoformat().replace("+00:00", "Z") if active_until else "",
         "short_followup": short_followup,
         "followup_reference": followup_reference,
         "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)),
@@ -1175,6 +1185,7 @@ def publish_conversation_control_objective() -> None:
             ],
             "policies": [
                 "Treat MIM-like words such as mom, mam, maam, mem, min, and meme as likely references to MIM.",
+                "After MIM is addressed or responds, keep a short active conversation window so follow-ups do not require repeating MIM.",
                 "Presume assistant-shaped speech in MIM's lab is addressed to MIM unless fresh scene evidence indicates a human-to-human conversation.",
                 "Observe non-direct ambient speech without sending it to the UI chat brain.",
                 "Ask a short clarification when scene evidence indicates multiple humans and the addressee is ambiguous.",
@@ -1183,6 +1194,7 @@ def publish_conversation_control_objective() -> None:
                 "Every heard lab utterance publishes an addressing decision.",
                 "Every heard lab utterance publishes a conversation scene snapshot.",
                 "Low-content MIM-name utterances are not suppressed as fragments.",
+                "Follow-ups inside the active conversation window are addressed to MIM without repeating her name.",
                 "Non-addressed ambient speech is logged without a spoken generic clarification.",
             ],
             "no_audio_retained": True,
@@ -1393,6 +1405,16 @@ def save_turn_state(*, transcript: str, route: dict[str, Any], response_text: st
     previous = load_turn_state()
     history = previous.get("recent_turns") if isinstance(previous.get("recent_turns"), list) else []
     now = now_iso()
+    active_until = (
+        datetime.now(timezone.utc).timestamp() + max(5, VOICE_ACTIVE_SESSION_SECONDS)
+        if response_text or route.get("intent") == "mim_address_acknowledgement"
+        else None
+    )
+    active_until_iso = (
+        datetime.fromtimestamp(active_until, timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        if active_until
+        else str(previous.get("active_conversation_until") or "")
+    )
     current_topic = str(route.get("intent") or "").strip()
     if current_topic in {"unknown", "none", ""}:
         current_topic = str(previous.get("current_topic") or "").strip()
@@ -1407,6 +1429,10 @@ def save_turn_state(*, transcript: str, route: dict[str, Any], response_text: st
         "last_transcript": transcript,
         "last_response_text": response_text,
         "last_artifacts": route.get("artifacts", []),
+        "active_conversation": bool(active_until_iso),
+        "active_conversation_until": active_until_iso,
+        "active_conversation_seconds": VOICE_ACTIVE_SESSION_SECONDS,
+        "active_conversation_policy": "After MIM is addressed or responds, follow-up utterances in this window are treated as part of the same conversation.",
         "recent_turns": (
             history
             + [
