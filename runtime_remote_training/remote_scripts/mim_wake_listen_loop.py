@@ -2248,7 +2248,25 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
             }
         level = audio_level(wav_path)
         vad = analyze_vad_segments(wav_path)
-        stt = transcribe_wav(model, wav_path)
+        if not vad.get("speech_detected") and int(level.get("rms") or 0) < 250:
+            stt = {
+                "ok": True,
+                "text": "",
+                "wake_text": "",
+                "raw_result": {},
+                "wake_result": {},
+                "error": "",
+                "stt_engine": "skipped_no_speech",
+                "stt_primary": {
+                    "engine": STT_ENGINE,
+                    "ok": False,
+                    "text": "",
+                    "reason": "vad_no_speech_low_energy_window",
+                },
+                "stt_fallback": {},
+            }
+        else:
+            stt = transcribe_wav(model, wav_path)
         transcript = select_effective_transcript(stt.get("text", ""), stt.get("wake_text", ""))
         self_output_detected = detect_self_output(stt.get("text", "")) or detect_self_output(stt.get("wake_text", ""))
         route = {"intent": "none", "action": "none", "artifacts": []}
@@ -2506,7 +2524,25 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             }
         level = audio_level(wav_path)
         vad = analyze_vad_segments(wav_path)
-        stt = transcribe_wav(model, wav_path)
+        if not vad.get("speech_detected") and int(level.get("rms") or 0) < 250:
+            stt = {
+                "ok": True,
+                "text": "",
+                "wake_text": "",
+                "raw_result": {},
+                "wake_result": {},
+                "error": "",
+                "stt_engine": "skipped_no_speech",
+                "stt_primary": {
+                    "engine": STT_ENGINE,
+                    "ok": False,
+                    "text": "",
+                    "reason": "vad_no_speech_low_energy_window",
+                },
+                "stt_fallback": {},
+            }
+        else:
+            stt = transcribe_wav(model, wav_path)
         transcript = select_effective_transcript(stt.get("text", ""), stt.get("wake_text", ""))
         probable_wake = detect_probable_wake_check(general_text=stt.get("text", ""), wake_text=stt.get("wake_text", ""), level=level)
         self_output_detected = detect_self_output(stt.get("text", "")) or detect_self_output(stt.get("wake_text", ""))
