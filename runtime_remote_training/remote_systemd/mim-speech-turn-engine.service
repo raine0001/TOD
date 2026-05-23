@@ -1,0 +1,50 @@
+[Unit]
+Description=MIM Full-Time Speech Turn Engine
+After=default.target speech-dispatcher.service pipewire-pulse.service
+Wants=speech-dispatcher.service pipewire-pulse.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/testpilot/mim
+Environment=MIM_WAKE_AUDIO_DEVICE=plughw:CARD=AUDIO,DEV=0;plughw:2,0;default;plughw:0,0;plughw:3,0;plughw:3,2
+Environment=MIM_STT_ENGINE=faster-whisper
+Environment=MIM_WHISPER_MODEL_SIZE=base.en
+Environment=LD_LIBRARY_PATH=/home/testpilot/mim/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:/home/testpilot/mim/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib:/home/testpilot/mim/.venv/lib/python3.12/site-packages/nvidia/cuda_nvrtc/lib
+Environment=MIM_WHISPER_DEVICE=cuda
+Environment=MIM_WHISPER_COMPUTE_TYPE=float16
+Environment=MIM_WHISPER_VAD_FILTER=0
+Environment=MIM_WHISPER_BEAM_SIZE=1
+Environment=MIM_TURN_FRAME_MS=100
+Environment=MIM_TURN_START_FRAMES=2
+Environment=MIM_TURN_END_SILENCE_MS=1100
+Environment=MIM_TURN_MIN_MS=900
+Environment=MIM_TURN_MAX_MS=12000
+Environment=MIM_TURN_PREROLL_MS=300
+Environment=MIM_TURN_THRESHOLD_MULTIPLIER=2.4
+Environment=MIM_TURN_MIN_THRESHOLD_RMS=220
+Environment=MIM_TURN_MAX_THRESHOLD_RMS=1800
+Environment=MIM_TURN_START_MAX_LEVEL=650
+Environment=MIM_TURN_STATUS_INTERVAL_SECONDS=2.0
+Environment=MIM_TURN_MIN_STT_RMS=280
+Environment=MIM_TURN_MIN_STT_MAX=2500
+Environment=MIM_TURN_MIN_STT_SPEECH_MS=700
+Environment=MIM_TURN_FORCE_STT_MAX=8000
+Environment=MIM_LAB_CONVERSATION_MODE=1
+Environment=MIM_VOICE_UI_CHAT_BRIDGE=1
+Environment=MIM_VOICE_UI_CHAT_SESSION_ID=mim-ambient-lab-voice-ui-chat
+Environment=MIM_VOICE_TRANSCRIPT_LOG=1
+Environment=MIM_VOICE_TRANSCRIPT_LOG_MAX_LINES=500
+Environment=MIM_VOICE_ACTIVE_SESSION_SECONDS=45
+Environment=MIM_VOICE_LEARNING_SUPPRESSION_SECONDS=180
+Environment=MIM_VOICE_PIPER_MODEL=/home/testpilot/mim/runtime/models/piper/en_US-arctic-medium/en_US-arctic-medium.onnx
+Environment=MIM_VOICE_PIPER_LENGTH_SCALE=0.78
+Environment=MIM_VOICE_PIPER_NOISE_SCALE=0.46
+Environment=MIM_VOICE_PIPER_NOISE_W_SCALE=0.62
+Environment=MIM_VOICE_PIPER_VOLUME=1.16
+Environment=MIM_OPERATOR_TIMEZONE=America/Los_Angeles
+ExecStart=/home/testpilot/mim/.venv/bin/python /home/testpilot/mim/scripts/mim_speech_turn_engine.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

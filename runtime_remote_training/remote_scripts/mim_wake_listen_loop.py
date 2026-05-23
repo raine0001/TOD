@@ -99,6 +99,7 @@ WHISPER_MODEL_SIZE = os.environ.get("MIM_WHISPER_MODEL_SIZE", "small.en").strip(
 WHISPER_DEVICE = os.environ.get("MIM_WHISPER_DEVICE", "cpu").strip()
 WHISPER_COMPUTE_TYPE = os.environ.get("MIM_WHISPER_COMPUTE_TYPE", "int8").strip()
 WHISPER_VAD_FILTER = os.environ.get("MIM_WHISPER_VAD_FILTER", "1").strip().lower() not in {"0", "false", "no", "off"}
+WHISPER_BEAM_SIZE = int(os.environ.get("MIM_WHISPER_BEAM_SIZE", "5"))
 VOICE_PIPER_SPEAKER = os.environ.get("MIM_VOICE_PIPER_SPEAKER", "").strip()
 VOICE_PIPER_LENGTH_SCALE = os.environ.get("MIM_VOICE_PIPER_LENGTH_SCALE", "0.82").strip()
 VOICE_PIPER_NOISE_SCALE = os.environ.get("MIM_VOICE_PIPER_NOISE_SCALE", "0.48").strip()
@@ -516,7 +517,7 @@ def transcribe_wav_faster_whisper(wav_path: Path) -> dict[str, Any]:
             WHISPER_MODEL = WhisperModel(WHISPER_MODEL_SIZE, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE_TYPE)
         segments, info = WHISPER_MODEL.transcribe(
             str(wav_path),
-            beam_size=5,
+            beam_size=WHISPER_BEAM_SIZE,
             vad_filter=WHISPER_VAD_FILTER,
             vad_parameters={"min_silence_duration_ms": 500},
             language="en",
@@ -530,6 +531,7 @@ def transcribe_wav_faster_whisper(wav_path: Path) -> dict[str, Any]:
             "model_size": WHISPER_MODEL_SIZE,
             "device": WHISPER_DEVICE,
             "compute_type": WHISPER_COMPUTE_TYPE,
+            "beam_size": WHISPER_BEAM_SIZE,
             "vad_filter": WHISPER_VAD_FILTER,
             "language": getattr(info, "language", ""),
             "language_probability": getattr(info, "language_probability", None),
@@ -544,6 +546,7 @@ def transcribe_wav_faster_whisper(wav_path: Path) -> dict[str, Any]:
             "model_size": WHISPER_MODEL_SIZE,
             "device": WHISPER_DEVICE,
             "compute_type": WHISPER_COMPUTE_TYPE,
+            "beam_size": WHISPER_BEAM_SIZE,
             "vad_filter": WHISPER_VAD_FILTER,
             "duration_seconds": round(time.time() - started, 3),
             "error": f"{type(exc).__name__}: {exc}",
@@ -1259,6 +1262,9 @@ def classify_transcript_quality(transcript: str) -> dict[str, Any]:
         "pizza with boys",
         "okay. okay",
         "okay okay",
+        "we'll see you next week",
+        "we will see you next week",
+        "see you next week",
     ]
     reasons: list[str] = []
     if unk_count >= 2:
