@@ -125,6 +125,7 @@ MIM_REFERENCE_TOKENS = {
     "mam",
     "mem",
     "men",
+    "memoir",
     "meme",
     "mim",
     "min",
@@ -1079,10 +1080,13 @@ def transcript_words(transcript: str) -> list[str]:
 def normalize_voice_transcript_for_intent(transcript: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
     normalized = re.sub(r"\bunk\b", " ", normalized)
-    normalized = re.sub(r"\b(ma'?am|mam|mom|mem|men|min|mime)\b", "mim", normalized)
+    normalized = re.sub(r"\b(ma'?am|mam|mom|mem|men|min|mime|memoir)\b", "mim", normalized)
     normalized = re.sub(r"\btrying\s+on\b", "training on", normalized)
     normalized = re.sub(r"\btry\s+on\b", "training on", normalized)
     normalized = re.sub(r"\btaught\s+would\s+be\s+on\b", "training on", normalized)
+    normalized = re.sub(r"\bnewborn\b", "mim", normalized)
+    normalized = re.sub(r"\bmove\s+our\b", "improve", normalized)
+    normalized = re.sub(r"\bwork\s+on\s+new\s+improve\b", "what do you need to improve", normalized)
     normalized = re.sub(r"\bthere\s+will\s+be\s+working\b", "what are you working on", normalized)
     normalized = re.sub(r"\s+", " ", normalized).strip()
     return normalized
@@ -1136,6 +1140,78 @@ def classify_voice_fragment(transcript: str) -> dict[str, Any]:
     if len(words) <= 2 and not unique.intersection(ACTIONABLE_TOKENS):
         return {"is_fragment": True, "reason_code": "short_non_actionable_transcript", "word_count": len(words), "words": words}
     return {"is_fragment": False, "reason_code": "actionable_or_contextual_transcript", "word_count": len(words), "words": words}
+
+
+def classify_transcript_quality(transcript: str) -> dict[str, Any]:
+    raw = str(transcript or "").strip()
+    normalized = normalize_voice_transcript_for_intent(raw)
+    raw_words = transcript_words(raw)
+    words = transcript_words(normalized)
+    unk_count = len(re.findall(r"\[unk\]|\bunk\b", raw, flags=re.I))
+    meaningful = [
+        word
+        for word in words
+        if word not in LOW_CONTENT_TOKENS and word not in MIM_REFERENCE_TOKENS and len(word) > 1
+    ]
+    suspicious_phrases = [
+        "for you spell out no",
+        "whoa elbow",
+        "what bird roads other two",
+        "or the move our",
+        "the parents who we have",
+        "you know if the newborn is",
+    ]
+    reasons: list[str] = []
+    if unk_count >= 2:
+        reasons.append("multiple_unknown_tokens")
+    if unk_count >= 1 and len(meaningful) < 4:
+        reasons.append("unknown_token_with_low_content")
+    if any(phrase in normalized for phrase in suspicious_phrases):
+        reasons.append("known_garbled_stt_phrase")
+    if len(raw_words) >= 4 and len(meaningful) <= 1:
+        reasons.append("low_meaningful_word_count")
+    if re.search(r"\b(the|a)\s+\w+\s+(who|what|where|when|why|how)\s+(we|you|i)\s+(have|do|are|is)\b", normalized):
+        reasons.append("question_shaped_stt_gibberish")
+    if len(words) >= 5:
+        common_words = {"the", "to", "of", "and", "or", "is", "it", "you", "me", "what", "how", "would", "like"}
+        odd_words = [word for word in words if word not in common_words and word not in MIM_REFERENCE_TOKENS]
+        if len(odd_words) >= 4 and not set(words).intersection(ACTIONABLE_TOKENS):
+            reasons.append("no_actionable_tokens_in_long_phrase")
+    status = "low_confidence" if reasons else "usable"
+    return {
+        "status": status,
+        "usable": status == "usable",
+        "reason_codes": reasons,
+        "unknown_token_count": unk_count,
+        "word_count": len(words),
+        "meaningful_word_count": len(meaningful),
+        "normalized_transcript": normalized,
+    }
+
+
+def build_transcript_clarification_route(transcript: str, quality: dict[str, Any]) -> dict[str, Any]:
+    write_json(
+        SHARED / "MIM_VOICE_TRANSCRIPT_QUALITY.latest.json",
+        {
+            "packet_type": "mim-voice-transcript-quality-v1",
+            "generated_at": now_iso(),
+            "status": "clarification_required",
+            "success": True,
+            "transcript": transcript,
+            "quality": quality,
+            "policy": "Low-confidence STT is not forwarded to UI chat as if it were reliable operator intent.",
+            "no_audio_retained": True,
+        },
+    )
+    return {
+        "intent": "voice_transcript_unclear",
+        "action": "ask_operator_to_repeat_unclear_voice_turn",
+        "response_text": "Dave, I caught pieces of that, but not enough to answer cleanly. Say that last part again.",
+        "artifacts": ["runtime/shared/MIM_VOICE_TRANSCRIPT_QUALITY.latest.json"],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "low_confidence_transcript"},
+        "fallback_used": True,
+        "transcript_quality": quality,
+    }
 
 
 def should_suppress_fragment_before_chat(transcript: str, classification: dict[str, Any], addressing: dict[str, Any]) -> bool:
@@ -1479,6 +1555,9 @@ def concise_voice_text(text: str, *, max_chars: int = 260) -> str:
         return ""
     # UI chat sometimes prefixes the session display name; voice should not.
     cleaned = re.sub(r"^(giving some extra context|dave|operator)\s*,\s*", "", cleaned, flags=re.I)
+    # Some gateway replies include a leaked planning/status prefix that sounds awful over TTS.
+    cleaned = re.sub(r"^(thinking of it'?s not|thinking of its not)\s*,?\s*", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"^(thinking of it'?s not|thinking of its not)\b[:;,.-]?\s*", "", cleaned, flags=re.I)
     sentences = re.split(r"(?<=[.!?])\s+", cleaned)
     short = " ".join([item for item in sentences if item][:3]).strip()
     if len(short) > max_chars:
@@ -1657,6 +1736,69 @@ def build_current_time_route() -> dict[str, Any]:
     }
 
 
+def build_voice_improvement_route() -> dict[str, Any]:
+    listener = load_shared_json("MIM_WAKE_LISTENER_STATUS.latest.json")
+    quality = load_shared_json("MIM_VOICE_TRANSCRIPT_QUALITY.latest.json")
+    response = (
+        "I need three things next: cleaner transcription, better repeat requests when STT is garbled, "
+        "and fresher camera evidence so I know who is talking."
+    )
+    return {
+        "intent": "voice_improvement_status",
+        "action": "summarize_voice_improvement_priorities",
+        "response_text": response,
+        "artifacts": [
+            "runtime/shared/MIM_WAKE_LISTENER_STATUS.latest.json",
+            "runtime/shared/MIM_VOICE_TRANSCRIPT_QUALITY.latest.json",
+            "runtime/shared/MIM_LAB_CONVERSATION_SCENE.latest.json",
+        ],
+        "chat_bridge": {
+            "ok": False,
+            "skipped": True,
+            "reason": "handled_by_local_voice_improvement_route",
+            "audio_device": listener.get("audio_device"),
+            "last_quality_status": quality.get("status"),
+        },
+        "fallback_used": True,
+    }
+
+
+def build_arm_status_route() -> dict[str, Any]:
+    camera = load_shared_json("MIM_LAB_CAMERA_CYCLE_STATUS.latest.json")
+    inventory = load_shared_json("MIM_LAB_SENSOR_INVENTORY.latest.json")
+    bridge = load_shared_json("MIM_ARM_CAMERA_BRIDGE_STATUS.latest.json")
+    bridge_status = compact_status(bridge.get("status") if isinstance(bridge, dict) else "")
+    if bridge_status == "unknown":
+        bridge_status = compact_status(inventory.get("arm_camera_bridge_status") if isinstance(inventory, dict) else "")
+    response = (
+        "For the arm camera, I need to verify the bridge and include it in the camera cycle. "
+        f"Current camera cycle is {compact_status(camera.get('status'))}; arm bridge is {bridge_status}."
+    )
+    return {
+        "intent": "arm_camera_status",
+        "action": "summarize_arm_camera_status",
+        "response_text": response[:260],
+        "artifacts": [
+            "runtime/shared/MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+            "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+            "runtime/shared/MIM_ARM_CAMERA_BRIDGE_STATUS.latest.json",
+        ],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_local_arm_camera_route"},
+        "fallback_used": True,
+    }
+
+
+def build_news_route() -> dict[str, Any]:
+    return {
+        "intent": "current_news_request",
+        "action": "blocked_no_live_news_executor",
+        "response_text": "I heard the news request, but I do not have a live news executor bound in voice yet. I should route that through a web-backed tool next.",
+        "artifacts": ["runtime/shared/MIM_VOICE_UI_CHAT_BRIDGE.latest.json"],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "no_live_news_executor_bound"},
+        "fallback_used": True,
+    }
+
+
 def build_address_ack_route() -> dict[str, Any]:
     return {
         "intent": "mim_address_acknowledgement",
@@ -1828,6 +1970,15 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_training_topic_route()
     if re.search(r"\b(what time is it|current time|time now)\b", normalized):
         return build_current_time_route()
+    if re.search(r"\b(arm|middle arm|arm camera|robot arm|wrist|claw)\b", normalized):
+        return build_arm_status_route()
+    if re.search(r"\b(top news|news today|today'?s news|latest news)\b", normalized):
+        return build_news_route()
+    if re.search(r"\b(improve|better|current state|what.*work on|would you like.*work|need.*improve|priorit(y|ies))\b", normalized):
+        return build_voice_improvement_route()
+    quality = classify_transcript_quality(transcript)
+    if not quality.get("usable"):
+        return build_transcript_clarification_route(transcript, quality)
     chat_bridge = call_mim_ui_chat(transcript)
     if chat_bridge.get("ok"):
         return {
