@@ -1090,6 +1090,10 @@ def normalize_voice_transcript_for_intent(transcript: str) -> str:
 def select_effective_transcript(text: str, wake_text: str) -> str:
     general = str(text or "").strip()
     wake = str(wake_text or "").strip()
+    if wake and has_mim_reference(wake) and general and not has_mim_reference(general):
+        return f"{wake} {general}".strip()
+    if wake and has_mim_reference(wake) and not general:
+        return wake
     if general and wake and detect_wake(wake) and classify_voice_fragment(general).get("is_fragment"):
         return wake
     return general or wake
