@@ -1105,7 +1105,7 @@ def load_shared_json(name: str) -> dict[str, Any]:
     path = SHARED / name
     try:
         if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
+            return json.loads(path.read_text(encoding="utf-8-sig"))
     except Exception as exc:
         return {"_error": f"{type(exc).__name__}: {exc}"}
     return {}
@@ -1115,7 +1115,7 @@ def load_runtime_json(relative_path: str) -> dict[str, Any]:
     path = ROOT / relative_path
     try:
         if path.exists():
-            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload = json.loads(path.read_text(encoding="utf-8-sig"))
             return payload if isinstance(payload, dict) else {}
     except Exception as exc:
         return {"_error": f"{type(exc).__name__}: {exc}"}
@@ -1951,6 +1951,44 @@ def build_arm_status_route() -> dict[str, Any]:
     }
 
 
+def build_station_file_index_route(transcript: str) -> dict[str, Any]:
+    index = load_shared_json("MIM_STATION_FILE_INDEX.latest.json")
+    requested = index.get("requested_access") if isinstance(index.get("requested_access"), dict) else {}
+    totals = index.get("totals") if isinstance(index.get("totals"), dict) else {}
+    context = index.get("primary_working_context") if isinstance(index.get("primary_working_context"), dict) else {}
+    recent = context.get("recent_files") if isinstance(context.get("recent_files"), list) else []
+    candidates = context.get("arm_component_candidates") if isinstance(context.get("arm_component_candidates"), list) else []
+    if not index:
+        response = "I do not have the station file index yet. TOD needs to publish MIM_STATION_FILE_INDEX.latest.json from this PC."
+        status = "blocked_missing_station_file_index"
+    else:
+        names = []
+        for item in candidates[:5]:
+            if isinstance(item, dict) and item.get("name"):
+                names.append(str(item.get("name")))
+        if not names:
+            for item in recent[:5]:
+                if isinstance(item, dict) and item.get("name"):
+                    names.append(str(item.get("name")))
+        current_path = str(context.get("path") or requested.get("primary_working_path") or "")
+        response = (
+            f"Yes. I have the station index for {current_path}. "
+            f"It shows {compact_status(totals.get('primary_working_files'))} design-parts files and "
+            f"{compact_status(totals.get('files_indexed'))} MIM station files indexed. "
+            f"Likely arm files include: {', '.join(names[:4])}."
+        )
+        status = "summarized_station_file_index"
+    return {
+        "intent": "mim_station_file_access",
+        "action": status,
+        "response_text": response[:260],
+        "artifacts": ["runtime/shared/MIM_STATION_FILE_INDEX.latest.json"],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_station_file_index"},
+        "fallback_used": True,
+        "source_transcript": transcript,
+    }
+
+
 def build_news_route() -> dict[str, Any]:
     return {
         "intent": "current_news_request",
@@ -2152,6 +2190,10 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_current_time_route()
     if re.search(r"\b(can you hear me|do you hear me|hear me clearly|can you see me|do you see me)\b", normalized):
         return build_voice_presence_check_route(transcript)
+    if re.search(r"\b(file|files|part|parts|component|components|design[_ ]?parts|design parts)\b", normalized) and re.search(
+        r"\b(mim arm|mid arm|middle arm|arm|servo|claw|gear|base)\b", normalized
+    ):
+        return build_station_file_index_route(transcript)
     if re.search(r"\b(are you familiar|do you know|what do you know|tell me about)\b", normalized):
         chat_bridge = call_mim_ui_chat(transcript)
         if chat_bridge.get("ok"):
