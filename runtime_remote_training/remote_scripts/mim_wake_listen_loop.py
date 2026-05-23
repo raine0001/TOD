@@ -1265,6 +1265,10 @@ def classify_transcript_quality(transcript: str) -> dict[str, Any]:
         "we'll see you next week",
         "we will see you next week",
         "see you next week",
+        "my little eye",
+        "i'm all good i'm all good",
+        "i'm all good. i'm all good",
+        "easy easy",
     ]
     reasons: list[str] = []
     if unk_count >= 2:

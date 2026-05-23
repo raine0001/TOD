@@ -12,7 +12,7 @@ Environment=MIM_WHISPER_MODEL_SIZE=base.en
 Environment=LD_LIBRARY_PATH=/home/testpilot/mim/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:/home/testpilot/mim/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib:/home/testpilot/mim/.venv/lib/python3.12/site-packages/nvidia/cuda_nvrtc/lib
 Environment=MIM_WHISPER_DEVICE=cuda
 Environment=MIM_WHISPER_COMPUTE_TYPE=float16
-Environment=MIM_WHISPER_VAD_FILTER=0
+Environment=MIM_WHISPER_VAD_FILTER=1
 Environment=MIM_WHISPER_BEAM_SIZE=1
 Environment=MIM_TURN_FRAME_MS=100
 Environment=MIM_TURN_START_FRAMES=2
