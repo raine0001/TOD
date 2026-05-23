@@ -1247,6 +1247,15 @@ def classify_transcript_quality(transcript: str) -> dict[str, Any]:
         "the parents who we have",
         "you know if the newborn is",
     ]
+    whisper_hallucination_phrases = [
+        "thanks for watching",
+        "thank you very much",
+        "heh heh",
+        "posho",
+        "pizza with boys",
+        "okay. okay",
+        "okay okay",
+    ]
     reasons: list[str] = []
     if unk_count >= 2:
         reasons.append("multiple_unknown_tokens")
@@ -1254,6 +1263,13 @@ def classify_transcript_quality(transcript: str) -> dict[str, Any]:
         reasons.append("unknown_token_with_low_content")
     if any(phrase in normalized for phrase in suspicious_phrases):
         reasons.append("known_garbled_stt_phrase")
+    if any(phrase in normalized for phrase in whisper_hallucination_phrases):
+        reasons.append("known_whisper_hallucination_phrase")
+    if re.search(r"\b(\w+)(?:[.!?, ]+\1){2,}\b", normalized):
+        reasons.append("repeated_token_hallucination")
+    sentence_parts = [part.strip() for part in re.split(r"[.!?]+", normalized) if part.strip()]
+    if len(sentence_parts) >= 2 and len(set(sentence_parts)) < len(sentence_parts):
+        reasons.append("repeated_sentence_hallucination")
     if len(raw_words) >= 4 and len(meaningful) <= 1:
         reasons.append("low_meaningful_word_count")
     if re.search(r"\b(the|a)\s+\w+\s+(who|what|where|when|why|how)\s+(we|you|i)\s+(have|do|are|is)\b", normalized):
@@ -1273,6 +1289,21 @@ def classify_transcript_quality(transcript: str) -> dict[str, Any]:
         "meaningful_word_count": len(meaningful),
         "normalized_transcript": normalized,
     }
+
+
+def should_observe_low_confidence_transcript(transcript: str, quality: dict[str, Any]) -> bool:
+    reasons = set(quality.get("reason_codes") or [])
+    if has_mim_reference(transcript) or is_assistant_shaped(transcript):
+        return False
+    return bool(
+        reasons.intersection(
+            {
+                "known_whisper_hallucination_phrase",
+                "repeated_token_hallucination",
+                "repeated_sentence_hallucination",
+            }
+        )
+    )
 
 
 def build_transcript_clarification_route(transcript: str, quality: dict[str, Any]) -> dict[str, Any]:
@@ -1506,6 +1537,7 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
     active_session = bool(active_until and active_until > datetime.now(timezone.utc) and not suppress_active)
     followup_reference = bool(set(words).intersection(FOLLOWUP_REFERENCE_TOKENS))
     short_followup = bool(previous_topic and 1 <= len(words) <= 5 and followup_reference and not mim_reference)
+    actionable_followup = bool(set(words).intersection(ACTIONABLE_TOKENS)) or assistant_shape or short_followup
     if feedback.get("is_feedback"):
         addressed = True
         confidence = 0.99
@@ -1521,11 +1553,16 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
         confidence = 0.995
         reason = "mim_or_mim_like_reference"
         action = "respond"
-    elif active_session:
+    elif active_session and actionable_followup:
         addressed = True
         confidence = 0.9 if assistant_shape else 0.78
         reason = "active_mim_conversation_window"
         action = "respond"
+    elif active_session:
+        addressed = False
+        confidence = 0.62
+        reason = "active_session_ambient_or_low_intent_speech"
+        action = "observe"
     elif assistant_shape:
         addressed = True
         confidence = 0.82
@@ -1569,6 +1606,7 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
         "active_conversation_until": active_until.replace(microsecond=0).isoformat().replace("+00:00", "Z") if active_until else "",
         "short_followup": short_followup,
         "followup_reference": followup_reference,
+        "actionable_followup": actionable_followup,
         "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)),
         "policy": "MIM-like words are treated as direct address; assistant-shaped speech in the lab is presumed for MIM unless scene evidence shows humans talking to each other.",
         "no_audio_retained": True,
@@ -1822,6 +1860,31 @@ def build_current_time_route() -> dict[str, Any]:
     }
 
 
+def build_voice_presence_check_route(transcript: str) -> dict[str, Any]:
+    normalized = normalize_voice_transcript_for_intent(transcript)
+    if "see" in normalized:
+        response = "I can hear this request. Camera presence is still limited by stale lab-awareness evidence, so I can't honestly say I see you yet."
+        action = "answer_hear_and_camera_presence_status"
+        artifacts = [
+            "runtime/shared/MIM_WAKE_LISTENER_STATUS.latest.json",
+            "runtime/shared/MIM_LAB_CONVERSATION_SCENE.latest.json",
+            "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+        ]
+    else:
+        listener = load_shared_json("MIM_WAKE_LISTENER_STATUS.latest.json")
+        response = f"I hear you through {compact_status(listener.get('audio_device'))}. Speech recognition is active, but still being tuned."
+        action = "answer_voice_hearing_status"
+        artifacts = ["runtime/shared/MIM_WAKE_LISTENER_STATUS.latest.json"]
+    return {
+        "intent": "voice_presence_check",
+        "action": action,
+        "response_text": response[:260],
+        "artifacts": artifacts,
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_local_voice_presence_route"},
+        "fallback_used": True,
+    }
+
+
 def build_voice_improvement_route() -> dict[str, Any]:
     listener = load_shared_json("MIM_WAKE_LISTENER_STATUS.latest.json")
     quality = load_shared_json("MIM_VOICE_TRANSCRIPT_QUALITY.latest.json")
@@ -2056,6 +2119,8 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_training_topic_route()
     if re.search(r"\b(what time is it|current time|time now)\b", normalized):
         return build_current_time_route()
+    if re.search(r"\b(can you hear me|do you hear me|hear me clearly|can you see me|do you see me)\b", normalized):
+        return build_voice_presence_check_route(transcript)
     if re.search(r"\b(arm|middle arm|arm camera|robot arm|wrist|claw)\b", normalized):
         return build_arm_status_route()
     if re.search(r"\b(top news|news today|today'?s news|latest news)\b", normalized):
@@ -2347,6 +2412,47 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
             "voice_wav_output_accepted": None,
             "no_audio_retained": True,
             "policy": "MIM listens continuously, but low-content STT fragments are evidence only and do not trigger a spoken clarification.",
+        }
+        write_json(FOLLOWUP_PATH, result)
+        return result
+    quality = classify_transcript_quality(transcript)
+    if should_observe_low_confidence_transcript(transcript, quality):
+        write_json(
+            SHARED / "MIM_VOICE_TRANSCRIPT_QUALITY.latest.json",
+            {
+                "packet_type": "mim-voice-transcript-quality-v1",
+                "generated_at": now_iso(),
+                "status": "observed_probable_stt_hallucination",
+                "success": True,
+                "transcript": transcript,
+                "quality": quality,
+                "policy": "Known ASR hallucination patterns are observed silently instead of being routed to chat or spoken back.",
+                "no_audio_retained": True,
+            },
+        )
+        result = {
+            "packet_type": "mim-lab-conversation-turn-v1",
+            "generated_at": now_iso(),
+            "objective_id": "MIM-LAB-CONVERSATION-CONTROL-LAYER-V1",
+            "status": "observed_probable_stt_hallucination",
+            "success": True,
+            "mode": "ambient_lab_conversation",
+            "transcript": transcript,
+            "intent": "probable_stt_hallucination",
+            "action": "observe_without_response",
+            "artifacts": ["runtime/shared/MIM_VOICE_TRANSCRIPT_QUALITY.latest.json"],
+            "chat_bridge": {"ok": False, "skipped": True, "reason": "probable_stt_hallucination"},
+            "fallback_used": False,
+            "fragment_classification": fragment,
+            "addressing_decision": addressing,
+            "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)),
+            "addressing_artifact": str(VOICE_ADDRESSING_DECISION_PATH.relative_to(ROOT)),
+            "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
+            "response_text": "",
+            "voice_response": {},
+            "voice_wav_output_accepted": None,
+            "no_audio_retained": True,
+            "policy": "Suppress likely ASR hallucinations unless MIM is clearly addressed.",
         }
         write_json(FOLLOWUP_PATH, result)
         return result
