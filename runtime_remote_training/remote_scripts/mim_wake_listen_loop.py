@@ -1537,7 +1537,7 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
     active_session = bool(active_until and active_until > datetime.now(timezone.utc) and not suppress_active)
     followup_reference = bool(set(words).intersection(FOLLOWUP_REFERENCE_TOKENS))
     short_followup = bool(previous_topic and 1 <= len(words) <= 5 and followup_reference and not mim_reference)
-    actionable_followup = bool(set(words).intersection(ACTIONABLE_TOKENS)) or assistant_shape or short_followup
+    actionable_followup = assistant_shape or short_followup
     if feedback.get("is_feedback"):
         addressed = True
         confidence = 0.99
