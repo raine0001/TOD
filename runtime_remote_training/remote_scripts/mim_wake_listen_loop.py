@@ -430,6 +430,8 @@ def select_audio_device() -> tuple[str, dict[str, Any]]:
                     "rms": level["rms"],
                     "max": level["max"],
                     "bytes": level["bytes"],
+                    "clipped": level.get("clipped", False),
+                    "noise_risk": level.get("noise_risk", "unknown"),
                     "error": "" if probe["ok"] else probe.get("stderr") or probe.get("stdout"),
                 }
             )
@@ -439,14 +441,24 @@ def select_audio_device() -> tuple[str, dict[str, Any]]:
             except Exception:
                 pass
     openable = [item for item in attempts if item.get("ok")]
+    clean = [
+        item
+        for item in openable
+        if int(item.get("max") or 0) < 32760
+        and int(item.get("rms") or 0) >= 20
+        and int(item.get("rms") or 0) <= 700
+    ]
+    if clean:
+        selected = clean[0]
+        return str(selected["device"]), {"attempts": attempts, "selection_reason": "first_clean_low_noise_signal_in_priority_order"}
     usable = [
         item
         for item in openable
-        if int(item.get("rms") or 0) >= 200 and int(item.get("max") or 0) < 32760
+        if int(item.get("rms") or 0) >= 20 and int(item.get("max") or 0) < 32760
     ]
     if usable:
-        selected = usable[0]
-        return str(selected["device"]), {"attempts": attempts, "selection_reason": "first_nonclipped_signal_in_priority_order"}
+        selected = sorted(usable, key=lambda item: abs(int(item.get("rms") or 0) - 120))[0]
+        return str(selected["device"]), {"attempts": attempts, "selection_reason": "nearest_quiet_usable_signal"}
     if openable:
         selected = sorted(openable, key=lambda item: (int(item.get("rms") or 0), int(item.get("max") or 0)), reverse=True)[0]
         return str(selected["device"]), {"attempts": attempts, "selection_reason": "highest_probe_rms"}
