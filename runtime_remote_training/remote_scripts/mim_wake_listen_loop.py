@@ -2138,18 +2138,33 @@ def route_followup(transcript: str) -> dict[str, Any]:
         if re.search(r"\b(remember|note|save|know|familiar)\b", normalized):
             return build_voice_repeat_or_continue_route(transcript)
         return build_address_ack_route()
-    if previous_topic and re.search(r"\b(do you know|are you familiar|i'?m asking|doing today|what.*today)\b", normalized):
+    if (
+        previous_topic
+        and re.search(r"\b(do you know|are you familiar|i'?m asking|doing today|what.*today)\b", normalized)
+        and classify_voice_fragment(transcript).get("is_fragment")
+    ):
         return build_voice_repeat_or_continue_route(transcript)
     if re.search(r"\b(how much time|time left|time.*training|training.*time)\b", normalized):
         return build_training_time_route()
     if re.search(r"\b(good or bad|bad or good|is (that|it) good|is (that|it) bad|how.*going|how.*doing)\b", normalized) and is_training_topic(previous_topic):
         return build_training_quality_route()
-    if re.search(r"\b(current training|current.*cycle|during cycle|cycle.*going|your training|what.*working on|you'?re working on|you are working on|working on|what.*training\s+on|training.*right now|what.*training)\b", normalized):
-        return build_training_topic_route()
     if re.search(r"\b(what time is it|current time|time now)\b", normalized):
         return build_current_time_route()
     if re.search(r"\b(can you hear me|do you hear me|hear me clearly|can you see me|do you see me)\b", normalized):
         return build_voice_presence_check_route(transcript)
+    if re.search(r"\b(are you familiar|do you know|what do you know|tell me about)\b", normalized):
+        chat_bridge = call_mim_ui_chat(transcript)
+        if chat_bridge.get("ok"):
+            return {
+                "intent": "mim_ui_chat",
+                "action": "voice_to_ui_chat_bridge",
+                "response_text": str(chat_bridge.get("reply_text") or "")[:260],
+                "artifacts": ["runtime/shared/MIM_VOICE_UI_CHAT_BRIDGE.latest.json"],
+                "chat_bridge": chat_bridge,
+                "fallback_used": False,
+            }
+    if re.search(r"\b(current training|current.*cycle|during cycle|cycle.*going|your training|what.*working on|you'?re working on|you are working on|what.*training\s+on|training.*right now|what.*training)\b", normalized):
+        return build_training_topic_route()
     if re.search(r"\b(arm|middle arm|arm camera|robot arm|wrist|claw)\b", normalized):
         return build_arm_status_route()
     if re.search(r"\b(top news|news today|today'?s news|latest news)\b", normalized):
