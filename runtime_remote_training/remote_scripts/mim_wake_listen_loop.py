@@ -1078,6 +1078,7 @@ def transcript_words(transcript: str) -> list[str]:
 
 def normalize_voice_transcript_for_intent(transcript: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
+    normalized = re.sub(r"\bunk\b", " ", normalized)
     normalized = re.sub(r"\b(ma'?am|mam|mom|mem|men|min|mime)\b", "mim", normalized)
     normalized = re.sub(r"\btrying\s+on\b", "training on", normalized)
     normalized = re.sub(r"\btry\s+on\b", "training on", normalized)
@@ -1085,6 +1086,10 @@ def normalize_voice_transcript_for_intent(transcript: str) -> str:
     normalized = re.sub(r"\bthere\s+will\s+be\s+working\b", "what are you working on", normalized)
     normalized = re.sub(r"\s+", " ", normalized).strip()
     return normalized
+
+
+def is_training_topic(topic: str) -> bool:
+    return str(topic or "").strip() in {"training_topic_status", "training_time_status"}
 
 
 def select_effective_transcript(text: str, wake_text: str) -> str:
@@ -1601,6 +1606,43 @@ def build_training_topic_route() -> dict[str, Any]:
     }
 
 
+def build_training_quality_route() -> dict[str, Any]:
+    status = load_runtime_json("runtime/reports/mim_evolution_continuous_training.latest.json")
+    summary = load_runtime_json("runtime/reports/mim_evolution_training_summary.json")
+    conversation = summary.get("conversation") if isinstance(summary.get("conversation"), dict) else {}
+    plan = status.get("cycle_plan") if isinstance(status.get("cycle_plan"), dict) else {}
+    overall = conversation.get("overall") if conversation.get("overall") is not None else plan.get("overall")
+    failures = conversation.get("failure_count") if conversation.get("failure_count") is not None else plan.get("failure_count")
+    scenario_count = conversation.get("scenario_count") if conversation.get("scenario_count") is not None else plan.get("scenario_count")
+    top_failures = conversation.get("top_failures") if isinstance(conversation.get("top_failures"), list) else []
+    top_tags = [
+        str(item.get("tag") or "").replace("_", " ")
+        for item in top_failures
+        if isinstance(item, dict) and str(item.get("tag") or "").strip()
+    ][:3]
+    try:
+        score = float(overall)
+    except (TypeError, ValueError):
+        score = 0.0
+    verdict = "mixed but improving" if score >= 0.8 else "not good yet"
+    response = (
+        f"Mixed: score {compact_status(overall)} over {compact_status(scenario_count)} scenarios, "
+        f"with {compact_status(failures)} failures. "
+        f"So, {verdict}. Biggest issues are {', '.join(top_tags) if top_tags else 'not identified'}."
+    )
+    return {
+        "intent": "training_topic_status",
+        "action": "summarize_training_quality",
+        "response_text": response[:260],
+        "artifacts": [
+            "runtime/reports/mim_evolution_continuous_training.latest.json",
+            "runtime/reports/mim_evolution_training_summary.json",
+        ],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_local_training_quality_route"},
+        "fallback_used": True,
+    }
+
+
 def build_current_time_route() -> dict[str, Any]:
     now_local = datetime.now(timezone.utc).astimezone(operator_timezone())
     hour = now_local.strftime("%I").lstrip("0") or "0"
@@ -1780,7 +1822,9 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_address_ack_route()
     if re.search(r"\b(how much time|time left|time.*training|training.*time)\b", normalized):
         return build_training_time_route()
-    if re.search(r"\b(current training|your training|what.*working on|you'?re working on|you are working on|working on|what.*training\s+on|training.*right now|what.*training)\b", normalized):
+    if re.search(r"\b(good or bad|bad or good|is (that|it) good|is (that|it) bad|how.*going|how.*doing)\b", normalized) and is_training_topic(previous_topic):
+        return build_training_quality_route()
+    if re.search(r"\b(current training|current.*cycle|during cycle|cycle.*going|your training|what.*working on|you'?re working on|you are working on|working on|what.*training\s+on|training.*right now|what.*training)\b", normalized):
         return build_training_topic_route()
     if re.search(r"\b(what time is it|current time|time now)\b", normalized):
         return build_current_time_route()
