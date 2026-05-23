@@ -40,6 +40,7 @@ VOICE_CONTROL_OBJECTIVE_PATH = SHARED / "MIM_LAB_CONVERSATION_CONTROL_LAYER_OBJE
 VOICE_ADDRESSING_DECISION_PATH = SHARED / "MIM_VOICE_ADDRESSING_DECISION.latest.json"
 LAB_CONVERSATION_SCENE_PATH = SHARED / "MIM_LAB_CONVERSATION_SCENE.latest.json"
 VOICE_INTERACTION_LEARNING_PATH = SHARED / "MIM_VOICE_INTERACTION_LEARNING.latest.json"
+STATION_FILE_FETCH_REQUEST_PATH = SHARED / "MIM_STATION_FILE_FETCH_REQUEST.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -1989,6 +1990,41 @@ def build_station_file_index_route(transcript: str) -> dict[str, Any]:
     }
 
 
+def build_station_file_fetch_request_route(transcript: str) -> dict[str, Any]:
+    filename_match = re.search(
+        r"([A-Za-z0-9][A-Za-z0-9 _.,&()#+'-]{0,120}\.(?:stl|3mf|skp|skb|obj|step|stp|f3d|jpg|jpeg|png|pdf|docx|txt|md|json|csv))",
+        transcript,
+        flags=re.I,
+    )
+    query = filename_match.group(1).strip(" .,") if filename_match else transcript.strip()
+    query = re.sub(r"^(?:mim|hey mim|okay mim|ok mim|ma'?am|mom)?\s*,?\s*(?:fetch|mirror|copy|upload|pull|send|get)\s+", "", query, flags=re.I).strip()
+    index = load_shared_json("MIM_STATION_FILE_INDEX.latest.json")
+    context = index.get("primary_working_context") if isinstance(index.get("primary_working_context"), dict) else {}
+    request = {
+        "packet_type": "mim-station-file-fetch-request-v1",
+        "generated_at": now_iso(),
+        "status": "queued_for_tod_station_mirror",
+        "success": True,
+        "source": "mim_voice",
+        "transcript": transcript,
+        "query": query,
+        "primary_working_path": context.get("path", ""),
+        "requested_artifact": "runtime/shared/MIM_STATION_FILE_MIRROR.latest.json",
+        "expected_executor": "scripts/Invoke-MIMStationFileMirror.ps1 -Query <query> -UploadToMim",
+        "policy": "MIM queues station-file fetch requests; TOD validates the path against approved station roots before mirroring.",
+        "no_audio_retained": True,
+    }
+    write_json(STATION_FILE_FETCH_REQUEST_PATH, request)
+    return {
+        "intent": "mim_station_file_fetch_request",
+        "action": "queue_station_file_fetch_request",
+        "response_text": f"I queued a station-file fetch request for {query[:120]}. TOD needs to mirror it from the station index.",
+        "artifacts": ["runtime/shared/MIM_STATION_FILE_FETCH_REQUEST.latest.json"],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "queued_station_file_fetch_request"},
+        "fallback_used": True,
+    }
+
+
 def build_news_route() -> dict[str, Any]:
     return {
         "intent": "current_news_request",
@@ -2190,6 +2226,10 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_current_time_route()
     if re.search(r"\b(can you hear me|do you hear me|hear me clearly|can you see me|do you see me)\b", normalized):
         return build_voice_presence_check_route(transcript)
+    if re.search(r"\b(fetch|mirror|copy|upload|pull|send|get)\b", normalized) and re.search(
+        r"\b(file|files|part|parts|component|components|stl|3mf|skp|skb|design[_ ]?parts|design parts)\b", normalized
+    ):
+        return build_station_file_fetch_request_route(transcript)
     if re.search(r"\b(file|files|part|parts|component|components|design[_ ]?parts|design parts)\b", normalized) and re.search(
         r"\b(mim arm|mid arm|middle arm|arm|servo|claw|gear|base)\b", normalized
     ):
