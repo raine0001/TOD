@@ -94,6 +94,11 @@ VOICE_TRANSCRIPT_LOG_MAX_LINES = int(os.environ.get("MIM_VOICE_TRANSCRIPT_LOG_MA
 VOICE_FRAGMENT_SUPPRESSION_ENABLED = (
     os.environ.get("MIM_VOICE_FRAGMENT_SUPPRESSION", "1").strip().lower() not in {"0", "false", "no", "off"}
 )
+STT_ENGINE = os.environ.get("MIM_STT_ENGINE", "vosk").strip().lower()
+WHISPER_MODEL_SIZE = os.environ.get("MIM_WHISPER_MODEL_SIZE", "small.en").strip()
+WHISPER_DEVICE = os.environ.get("MIM_WHISPER_DEVICE", "cpu").strip()
+WHISPER_COMPUTE_TYPE = os.environ.get("MIM_WHISPER_COMPUTE_TYPE", "int8").strip()
+WHISPER_VAD_FILTER = os.environ.get("MIM_WHISPER_VAD_FILTER", "1").strip().lower() not in {"0", "false", "no", "off"}
 VOICE_PIPER_SPEAKER = os.environ.get("MIM_VOICE_PIPER_SPEAKER", "").strip()
 VOICE_PIPER_LENGTH_SCALE = os.environ.get("MIM_VOICE_PIPER_LENGTH_SCALE", "0.82").strip()
 VOICE_PIPER_NOISE_SCALE = os.environ.get("MIM_VOICE_PIPER_NOISE_SCALE", "0.48").strip()
@@ -189,6 +194,8 @@ WAKE_GRAMMAR = json.dumps(
         "[unk]",
     ]
 )
+
+WHISPER_MODEL: Any | None = None
 
 
 def now_iso() -> str:
@@ -467,6 +474,79 @@ def select_audio_device() -> tuple[str, dict[str, Any]]:
 
 
 def transcribe_wav(model: Model, wav_path: Path) -> dict[str, Any]:
+    vosk = transcribe_wav_vosk(model, wav_path)
+    if STT_ENGINE not in {"faster-whisper", "faster_whisper", "whisper", "auto"}:
+        return vosk
+    whisper = transcribe_wav_faster_whisper(wav_path)
+    if whisper.get("ok") and str(whisper.get("text") or "").strip():
+        return {
+            **vosk,
+            "text": str(whisper.get("text") or "").strip(),
+            "stt_engine": "faster_whisper",
+            "stt_primary": whisper,
+            "stt_fallback": {"engine": "vosk", "text": vosk.get("text", ""), "wake_text": vosk.get("wake_text", "")},
+        }
+    return {
+        **vosk,
+        "stt_engine": "vosk",
+        "stt_primary": {"engine": "faster_whisper", "ok": False, "error": whisper.get("error", "empty_whisper_transcript"), "text": whisper.get("text", "")},
+        "stt_fallback": {"engine": "vosk", "reason": "faster_whisper_empty_or_failed"},
+    }
+
+
+def transcribe_wav_faster_whisper(wav_path: Path) -> dict[str, Any]:
+    global WHISPER_MODEL
+    started = time.time()
+    try:
+        from faster_whisper import WhisperModel
+    except Exception as exc:
+        return {
+            "engine": "faster_whisper",
+            "ok": False,
+            "text": "",
+            "error": f"import_failed: {type(exc).__name__}: {exc}",
+            "duration_seconds": round(time.time() - started, 3),
+        }
+    try:
+        if WHISPER_MODEL is None:
+            WHISPER_MODEL = WhisperModel(WHISPER_MODEL_SIZE, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE_TYPE)
+        segments, info = WHISPER_MODEL.transcribe(
+            str(wav_path),
+            beam_size=5,
+            vad_filter=WHISPER_VAD_FILTER,
+            vad_parameters={"min_silence_duration_ms": 500},
+            language="en",
+            condition_on_previous_text=False,
+        )
+        text = " ".join(segment.text.strip() for segment in segments if segment.text.strip()).strip()
+        return {
+            "engine": "faster_whisper",
+            "ok": True,
+            "text": text,
+            "model_size": WHISPER_MODEL_SIZE,
+            "device": WHISPER_DEVICE,
+            "compute_type": WHISPER_COMPUTE_TYPE,
+            "vad_filter": WHISPER_VAD_FILTER,
+            "language": getattr(info, "language", ""),
+            "language_probability": getattr(info, "language_probability", None),
+            "duration_seconds": round(time.time() - started, 3),
+            "error": "",
+        }
+    except Exception as exc:
+        return {
+            "engine": "faster_whisper",
+            "ok": False,
+            "text": "",
+            "model_size": WHISPER_MODEL_SIZE,
+            "device": WHISPER_DEVICE,
+            "compute_type": WHISPER_COMPUTE_TYPE,
+            "vad_filter": WHISPER_VAD_FILTER,
+            "duration_seconds": round(time.time() - started, 3),
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
+def transcribe_wav_vosk(model: Model, wav_path: Path) -> dict[str, Any]:
     with wave.open(str(wav_path), "rb") as wav_file:
         if wav_file.getnchannels() != 1 or wav_file.getsampwidth() != 2 or wav_file.getframerate() != 16000:
             return {
@@ -503,7 +583,7 @@ def transcribe_wav(model: Model, wav_path: Path) -> dict[str, Any]:
     wake_final_text = str(wake_result.get("text") or "").strip()
     text = " ".join([*accepted_texts, final_text]).strip()
     wake_text = " ".join([*wake_texts, wake_final_text]).strip()
-    return {"ok": True, "text": text, "wake_text": wake_text, "raw_result": result, "wake_result": wake_result, "error": ""}
+    return {"ok": True, "text": text, "wake_text": wake_text, "raw_result": result, "wake_result": wake_result, "error": "", "stt_engine": "vosk"}
 
 
 def detect_wake(text: str) -> bool:
@@ -582,6 +662,9 @@ def classify_diagnostic(result: dict[str, Any]) -> dict[str, Any]:
             "transcript": transcript,
             "general_transcript": general_transcript,
             "wake_transcript": wake_transcript,
+            "stt_engine": result.get("stt_engine"),
+            "stt_primary": result.get("stt_primary", {}),
+            "stt_fallback": result.get("stt_fallback", {}),
             "rms": rms,
             "max": max_level,
             "wake_phrase_detected": wake,
@@ -645,6 +728,9 @@ def publish_transcript_log(result: dict[str, Any], *, device: str) -> None:
         "general_transcript": general,
         "wake_transcript": wake_text,
         "stt_error": result.get("stt_error", ""),
+        "stt_engine": result.get("stt_engine", ""),
+        "stt_primary": result.get("stt_primary", {}),
+        "stt_fallback": result.get("stt_fallback", {}),
         "audio_level": level,
         "audio_condition": audio_condition,
         "vad": vad,
@@ -2372,6 +2458,9 @@ def listen_once(model: Model, device: str, *, seconds: int) -> dict[str, Any]:
             "transcript": transcript,
             "general_transcript": stt.get("text", ""),
             "wake_transcript": stt.get("wake_text", ""),
+            "stt_engine": stt.get("stt_engine", ""),
+            "stt_primary": stt.get("stt_primary", {}),
+            "stt_fallback": stt.get("stt_fallback", {}),
             "wake_phrase_detected": wake,
             "probable_wake_check": probable_wake,
             "self_output_detected": self_output_detected,
@@ -2460,6 +2549,9 @@ def main() -> int:
                 "probable_wake_check": result.get("probable_wake_check", False),
                 "self_output_detected": result.get("self_output_detected", False),
                 "stt_error": result.get("stt_error", ""),
+                "stt_engine": result.get("stt_engine", ""),
+                "stt_primary": result.get("stt_primary", {}),
+                "stt_fallback": result.get("stt_fallback", {}),
                 "tts_ok": result.get("tts_ok"),
                 "alert_any_output_accepted": result.get("alert_any_output_accepted"),
                 "voice_wav_output_accepted": result.get("voice_wav_output_accepted"),

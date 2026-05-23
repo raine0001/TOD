@@ -7,7 +7,7 @@ Wants=speech-dispatcher.service pipewire-pulse.service
 Type=simple
 WorkingDirectory=/home/testpilot/mim
 Environment=MIM_WAKE_AUDIO_DEVICE=plughw:CARD=AUDIO,DEV=0;plughw:2,0;default;plughw:0,0;plughw:3,0;plughw:3,2
-Environment=MIM_WAKE_CHUNK_SECONDS=4
+Environment=MIM_WAKE_CHUNK_SECONDS=6
 Environment=MIM_WAKE_IDLE_SECONDS=0.5
 Environment=MIM_WAKE_COOLDOWN_SECONDS=6
 Environment=MIM_WAKE_DIAGNOSTIC=1
@@ -20,6 +20,11 @@ Environment=MIM_VOICE_UI_CHAT_BRIDGE=1
 Environment=MIM_VOICE_UI_CHAT_SESSION_ID=mim-ambient-lab-voice-ui-chat
 Environment=MIM_VOICE_TRANSCRIPT_LOG=1
 Environment=MIM_VOICE_TRANSCRIPT_LOG_MAX_LINES=500
+Environment=MIM_STT_ENGINE=faster-whisper
+Environment=MIM_WHISPER_MODEL_SIZE=small.en
+Environment=MIM_WHISPER_DEVICE=cpu
+Environment=MIM_WHISPER_COMPUTE_TYPE=int8
+Environment=MIM_WHISPER_VAD_FILTER=1
 Environment=MIM_VOICE_PIPER_MODEL=/home/testpilot/mim/runtime/models/piper/en_US-arctic-medium/en_US-arctic-medium.onnx
 Environment=MIM_VOICE_PIPER_LENGTH_SCALE=0.78
 Environment=MIM_VOICE_PIPER_NOISE_SCALE=0.46
