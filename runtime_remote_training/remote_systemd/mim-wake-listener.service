@@ -21,7 +21,7 @@ Environment=MIM_VOICE_UI_CHAT_SESSION_ID=mim-ambient-lab-voice-ui-chat
 Environment=MIM_VOICE_TRANSCRIPT_LOG=1
 Environment=MIM_VOICE_TRANSCRIPT_LOG_MAX_LINES=500
 Environment=MIM_STT_ENGINE=faster-whisper
-Environment=MIM_WHISPER_MODEL_SIZE=small.en
+Environment=MIM_WHISPER_MODEL_SIZE=base.en
 Environment=MIM_WHISPER_DEVICE=cpu
 Environment=MIM_WHISPER_COMPUTE_TYPE=int8
 Environment=MIM_WHISPER_VAD_FILTER=1

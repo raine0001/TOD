@@ -141,13 +141,17 @@ MIM_REFERENCE_TOKENS = {
 FOLLOWUP_REFERENCE_TOKENS = {
     "again",
     "also",
+    "do",
+    "doing",
     "it",
+    "know",
     "one",
     "that",
     "there",
     "this",
     "those",
     "too",
+    "today",
 }
 
 LEARNING_SUPPRESSION_SECONDS = int(os.environ.get("MIM_VOICE_LEARNING_SUPPRESSION_SECONDS", "180"))
@@ -1207,7 +1211,7 @@ def is_assistant_shaped(transcript: str) -> bool:
     return bool(
         re.search(
             r"\b(can you|could you|would you|will you|please|what|how|why|when|where|who|"
-            r"tell me|show me|check|start|stop|pause|resume|remember|note this|status|"
+            r"do you know|are you familiar|i'?m asking|tell me|show me|check|start|stop|pause|resume|remember|note this|status|"
             r"look|listen|find|open|close|run|execute|turn on|turn off)\b",
             normalized,
         )
@@ -1959,6 +1963,17 @@ def build_address_ack_route() -> dict[str, Any]:
     }
 
 
+def build_voice_repeat_or_continue_route(transcript: str) -> dict[str, Any]:
+    return {
+        "intent": "voice_fragment_continue",
+        "action": "ask_operator_to_finish_fragment",
+        "response_text": "I heard part of that, Dave. Finish the thought and I’ll stay with it.",
+        "artifacts": ["runtime/shared/MIM_VOICE_TURN_STATE.latest.json"],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "active_conversation_fragment"},
+        "fallback_used": True,
+    }
+
+
 def build_interaction_feedback_route(transcript: str, feedback: dict[str, Any]) -> dict[str, Any]:
     learning = save_interaction_feedback(transcript, feedback)
     feedback_type = str(feedback.get("feedback_type") or "")
@@ -2110,7 +2125,11 @@ def route_followup(transcript: str) -> dict[str, Any]:
     if feedback.get("is_feedback"):
         return build_interaction_feedback_route(transcript, feedback)
     if has_mim_reference(transcript) and len(transcript_words(transcript)) <= 2:
+        if re.search(r"\b(remember|note|save|know|familiar)\b", normalized):
+            return build_voice_repeat_or_continue_route(transcript)
         return build_address_ack_route()
+    if previous_topic and re.search(r"\b(do you know|are you familiar|i'?m asking|doing today|what.*today)\b", normalized):
+        return build_voice_repeat_or_continue_route(transcript)
     if re.search(r"\b(how much time|time left|time.*training|training.*time)\b", normalized):
         return build_training_time_route()
     if re.search(r"\b(good or bad|bad or good|is (that|it) good|is (that|it) bad|how.*going|how.*doing)\b", normalized) and is_training_topic(previous_topic):
