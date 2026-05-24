@@ -41,6 +41,7 @@ VOICE_ADDRESSING_DECISION_PATH = SHARED / "MIM_VOICE_ADDRESSING_DECISION.latest.
 LAB_CONVERSATION_SCENE_PATH = SHARED / "MIM_LAB_CONVERSATION_SCENE.latest.json"
 VOICE_INTERACTION_LEARNING_PATH = SHARED / "MIM_VOICE_INTERACTION_LEARNING.latest.json"
 STATION_FILE_FETCH_REQUEST_PATH = SHARED / "MIM_STATION_FILE_FETCH_REQUEST.latest.json"
+ARM_MOTION_PROPOSAL_PATH = SHARED / "MIM_ARM_MOTION_PROPOSAL.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -1124,6 +1125,8 @@ def load_runtime_json(relative_path: str) -> dict[str, Any]:
 
 
 def compact_status(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
     text = str(value or "").strip()
     return text if text else "unknown"
 
@@ -1928,6 +1931,29 @@ def build_voice_improvement_route() -> dict[str, Any]:
 
 
 def build_arm_status_route() -> dict[str, Any]:
+    support = load_shared_json("MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json")
+    if support:
+        app = support.get("arm_application") if isinstance(support.get("arm_application"), dict) else {}
+        motion = support.get("motion_awareness") if isinstance(support.get("motion_awareness"), dict) else {}
+        parts = support.get("parts_and_configuration") if isinstance(support.get("parts_and_configuration"), dict) else {}
+        blockers = support.get("blockers") if isinstance(support.get("blockers"), list) else []
+        response = (
+            f"Arm app is {compact_status(app.get('runtime'))}; serial is "
+            f"{compact_status(((motion.get('serial') or {}) if isinstance(motion.get('serial'), dict) else {}).get('status'))}; "
+            f"pose is {motion.get('current_pose')}. "
+            f"Sync confirmed is {compact_status(app.get('sim_enabled'))}. "
+            f"Parts index has {compact_status(parts.get('design_parts_count'))} design files."
+        )
+        if blockers:
+            response += f" Watch item: {compact_status(blockers[0])}."
+        return {
+            "intent": "arm_development_status",
+            "action": "summarize_arm_development_support_status",
+            "response_text": response[:260],
+            "artifacts": ["runtime/shared/MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json"],
+            "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_arm_development_support_status"},
+            "fallback_used": True,
+        }
     camera = load_shared_json("MIM_LAB_CAMERA_CYCLE_STATUS.latest.json")
     inventory = load_shared_json("MIM_LAB_SENSOR_INVENTORY.latest.json")
     bridge = load_shared_json("MIM_ARM_CAMERA_BRIDGE_STATUS.latest.json")
@@ -1948,6 +1974,102 @@ def build_arm_status_route() -> dict[str, Any]:
             "runtime/shared/MIM_ARM_CAMERA_BRIDGE_STATUS.latest.json",
         ],
         "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_local_arm_camera_route"},
+        "fallback_used": True,
+    }
+
+
+def extract_arm_motion_request(transcript: str) -> dict[str, Any]:
+    normalized = normalize_voice_transcript_for_intent(transcript)
+    joint_aliases = {
+        "base": "base",
+        "shoulder": "shoulder",
+        "elbow": "elbow",
+        "forearm": "elbow",
+        "wrist": "wrist",
+        "hand": "hand",
+        "grip": "claw",
+        "gripper": "claw",
+        "claw": "claw",
+    }
+    joint = ""
+    for alias, canonical in joint_aliases.items():
+        if re.search(rf"\b{re.escape(alias)}\b", normalized):
+            joint = canonical
+            break
+    if not joint:
+        return {}
+    direction = ""
+    for candidate in ["right", "left", "forward", "back", "up", "down", "open", "close"]:
+        if re.search(rf"\b{candidate}\b", normalized):
+            direction = candidate
+            break
+    amount = 0
+    match = re.search(r"\b(\d{1,3})\s*(?:degree|degrees|deg)?\b", normalized)
+    if match:
+        amount = int(match.group(1))
+    if joint == "claw" and direction in {"open", "close"} and amount == 0:
+        amount = 10
+    if not direction and re.search(r"\b(open|close)\b", normalized) and joint == "claw":
+        direction = "open" if "open" in normalized else "close"
+    if not direction:
+        return {}
+    return {"joint": joint, "direction": direction, "degrees": amount or 5}
+
+
+def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
+    request = extract_arm_motion_request(transcript)
+    support = load_shared_json("MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json")
+    app = support.get("arm_application") if isinstance(support.get("arm_application"), dict) else {}
+    motion = support.get("motion_awareness") if isinstance(support.get("motion_awareness"), dict) else {}
+    blockers = support.get("blockers") if isinstance(support.get("blockers"), list) else []
+    current_pose = motion.get("current_pose") if isinstance(motion.get("current_pose"), list) else []
+    joint_map = motion.get("joint_map") if isinstance(motion.get("joint_map"), dict) else {}
+    serial = motion.get("serial") if isinstance(motion.get("serial"), dict) else {}
+    max_degrees = int(((motion.get("motion_policy") or {}) if isinstance(motion.get("motion_policy"), dict) else {}).get("small_test_move_max_degrees") or 10)
+    degrees = min(abs(int(request.get("degrees") or 5)), max_degrees)
+    joint = str(request.get("joint") or "")
+    direction = str(request.get("direction") or "")
+    joint_index = joint_map.get(joint)
+    current_value = current_pose[joint_index] if isinstance(joint_index, int) and 0 <= joint_index < len(current_pose) else None
+    status = "awaiting_operator_safety_confirmation"
+    if blockers:
+        status = "blocked_needs_attention_before_motion"
+    proposal = {
+        "packet_type": "mim-arm-motion-proposal-v1",
+        "generated_at": now_iso(),
+        "objective_id": "MIM-ARM-DEVELOPMENT-SUPPORT-V1",
+        "status": status,
+        "success": True,
+        "source": "mim_voice",
+        "transcript": transcript,
+        "proposal": {
+            "joint": joint,
+            "joint_index": joint_index,
+            "direction": direction,
+            "degrees": degrees,
+            "current_value": current_value,
+            "execution": "not_executed",
+            "requires_operator_confirmation": True,
+        },
+        "arm_application": app,
+        "serial": serial,
+        "blockers": blockers,
+        "policy": "Voice arm motion requests become proposals only until Dave confirms the movement is safe.",
+    }
+    write_json(ARM_MOTION_PROPOSAL_PATH, proposal)
+    if blockers:
+        response = f"I prepared the {joint} {degrees} degree {direction} proposal, but I see {compact_status(blockers[0])}. Let's troubleshoot before moving."
+    else:
+        response = f"Dave, I am going to move the {joint} {degrees} degrees {direction}. Is that a safe move?"
+    return {
+        "intent": "arm_motion_safety_proposal",
+        "action": status,
+        "response_text": response[:260],
+        "artifacts": [
+            "runtime/shared/MIM_ARM_MOTION_PROPOSAL.latest.json",
+            "runtime/shared/MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json",
+        ],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "operator_confirmation_required_before_arm_motion"},
         "fallback_used": True,
     }
 
@@ -2226,6 +2348,10 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_current_time_route()
     if re.search(r"\b(can you hear me|do you hear me|hear me clearly|can you see me|do you see me)\b", normalized):
         return build_voice_presence_check_route(transcript)
+    if re.search(r"\b(move|nudge|open|close)\b", normalized) and re.search(r"\b(base|shoulder|elbow|forearm|wrist|hand|grip|gripper|claw)\b", normalized):
+        return build_arm_motion_proposal_route(transcript)
+    if re.search(r"\b(arm status|sync mode|arm sync|is.*arm.*sync|arm.*moving|arm.*expected|troubleshoot.*arm)\b", normalized):
+        return build_arm_status_route()
     if re.search(r"\b(fetch|mirror|copy|upload|pull|send|get)\b", normalized) and re.search(
         r"\b(file|files|part|parts|component|components|stl|3mf|skp|skb|design[_ ]?parts|design parts)\b", normalized
     ):
