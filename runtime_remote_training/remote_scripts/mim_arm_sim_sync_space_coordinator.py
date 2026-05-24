@@ -17,6 +17,7 @@ GATEWAY_HOST = "http://127.0.0.1:18001"
 OBJECTIVE_PATH = SHARED / "MIM_ARM_SIM_SYNC_SPACE_OBJECTIVE.latest.json"
 STATUS_PATH = SHARED / "MIM_ARM_SIM_SYNC_SPACE_STATUS.latest.json"
 SCAN_PATH = SHARED / "MIM_ARM_AUTONOMOUS_SPACE_SCAN.latest.json"
+AREA_PATH = SHARED / "MIM_ARM_AREA_EXPLORATION.latest.json"
 
 
 def now_iso() -> str:
@@ -246,12 +247,140 @@ def execute_micro_scan() -> dict[str, Any]:
     return payload
 
 
+def move_servo_verified(servo: int, angle: int, *, settle_seconds: float = 0.35) -> dict[str, Any]:
+    before = get_url(f"{ARM_HOST}/arm_state")
+    result = post_json(f"{ARM_HOST}/move", {"servo": servo, "angle": angle})
+    time.sleep(settle_seconds)
+    after = get_url(f"{ARM_HOST}/arm_state")
+    after_pose = (after.get("data") or {}).get("current_pose") if isinstance(after.get("data"), dict) else []
+    return {
+        "servo": servo,
+        "target_angle": angle,
+        "before_pose": (before.get("data") or {}).get("current_pose") if isinstance(before.get("data"), dict) else [],
+        "http_result": result,
+        "after_pose": after_pose,
+        "verified_pose_angle": after_pose[servo] if isinstance(after_pose, list) and len(after_pose) > servo else None,
+        "verified": bool(result.get("ok") and isinstance(after_pose, list) and len(after_pose) > servo and int(after_pose[servo]) == angle),
+    }
+
+
+def move_pose_stepwise(target_pose: list[int], limits: dict[int, dict[str, int]]) -> list[dict[str, Any]]:
+    steps: list[dict[str, Any]] = []
+    for servo, angle in enumerate(target_pose):
+        limit = limits.get(servo, {"min": 0, "max": 180})
+        safe_angle = clamp(int(angle), limit["min"], limit["max"])
+        steps.append(move_servo_verified(servo, safe_angle))
+        if not steps[-1].get("verified"):
+            break
+    return steps
+
+
+def execute_area_exploration() -> dict[str, Any]:
+    arm_state = get_url(f"{ARM_HOST}/arm_state")
+    workspace = get_url(f"{ARM_HOST}/workspace_setup_state")
+    servo = get_url(f"{ARM_HOST}/servo_config")
+    blockers: list[str] = []
+    if not arm_state.get("ok"):
+        blockers.append("arm_state_unreachable")
+    if not workspace.get("ok"):
+        blockers.append("workspace_setup_state_unreachable")
+    if not servo.get("ok"):
+        blockers.append("servo_config_unreachable")
+
+    arm_data = arm_state.get("data") if isinstance(arm_state.get("data"), dict) else {}
+    workspace_data = workspace.get("data") if isinstance(workspace.get("data"), dict) else {}
+    servo_data = servo.get("data") if isinstance(servo.get("data"), dict) else {}
+    start_pose_raw = arm_data.get("current_pose") if isinstance(arm_data.get("current_pose"), list) else []
+    start_pose = [int(value) for value in start_pose_raw[:6]] if len(start_pose_raw) >= 6 else []
+    serial = arm_data.get("serial") if isinstance(arm_data.get("serial"), dict) else {}
+    obstacles = workspace_data.get("obstacles") if isinstance(workspace_data.get("obstacles"), list) else []
+    limits = servo_limits(servo_data.get("servos") if isinstance(servo_data.get("servos"), list) else [])
+
+    if not serial.get("serial_ready"):
+        blockers.append("serial_not_ready")
+    if not start_pose:
+        blockers.append("current_pose_unavailable")
+    if obstacles:
+        blockers.append("workspace_obstacles_present_unhandled")
+    if len(limits) < 6:
+        blockers.append("servo_limits_incomplete")
+
+    max_delta = 5
+    viewpoints: list[dict[str, Any]] = []
+    if not blockers:
+        candidates = [
+            ("look_left", {0: start_pose[0] + max_delta}),
+            ("look_right", {0: start_pose[0] - max_delta}),
+            ("look_slightly_higher", {1: start_pose[1] + 3, 2: start_pose[2] - 3}),
+            ("look_slightly_lower", {1: start_pose[1] - 3, 2: start_pose[2] + 3}),
+        ]
+        for label, changes in candidates:
+            target = list(start_pose)
+            for servo_id, angle in changes.items():
+                limit = limits.get(servo_id, {"min": 0, "max": 180})
+                target[servo_id] = clamp(int(angle), limit["min"], limit["max"])
+            steps = move_pose_stepwise(target, limits)
+            camera = camera_evidence()
+            after = get_url(f"{ARM_HOST}/arm_state")
+            viewpoints.append(
+                {
+                    "label": label,
+                    "target_pose": target,
+                    "move_steps": steps,
+                    "verified": bool(steps and all(step.get("verified") for step in steps)),
+                    "arm_state_after_view": (after.get("data") or {}).get("current_pose") if isinstance(after.get("data"), dict) else [],
+                    "camera_checkpoint": camera,
+                }
+            )
+            return_steps = move_pose_stepwise(start_pose, limits)
+            viewpoints[-1]["return_steps"] = return_steps
+            viewpoints[-1]["returned_home"] = bool(return_steps and all(step.get("verified") for step in return_steps))
+            if not viewpoints[-1]["verified"] or not viewpoints[-1]["returned_home"]:
+                blockers.append(f"viewpoint_{label}_verification_failed")
+                break
+
+    final_state = get_url(f"{ARM_HOST}/arm_state")
+    final_pose = (final_state.get("data") or {}).get("current_pose") if isinstance(final_state.get("data"), dict) else []
+    completed = not blockers and bool(viewpoints) and all(v.get("verified") and v.get("returned_home") for v in viewpoints)
+    payload = {
+        "packet_type": "mim-arm-area-exploration-v1",
+        "generated_at": now_iso(),
+        "objective_id": "MIM-ARM-SIM-SYNC-SPACE-COORDINATOR-V1",
+        "status": "completed_with_evidence" if completed else "blocked_with_evidence",
+        "success": completed,
+        "mode": "autonomous_bounded_area_exploration",
+        "human_interaction_required_for_this_scan": False,
+        "preflight": {
+            "arm_state_ok": bool(arm_state.get("ok")),
+            "workspace_setup_ok": bool(workspace.get("ok")),
+            "servo_config_ok": bool(servo.get("ok")),
+            "serial_ready": bool(serial.get("serial_ready")),
+            "start_pose": start_pose,
+            "max_delta_degrees": max_delta,
+            "obstacle_count": len(obstacles),
+            "workspace_pose": workspace_data.get("current_pose"),
+            "table": workspace_data.get("table"),
+            "obstacles": obstacles,
+        },
+        "viewpoints": viewpoints,
+        "final_pose": final_pose,
+        "returned_to_start_pose": bool(start_pose and final_pose[:6] == start_pose),
+        "blockers": blockers,
+        "next_recovery_action": ""
+        if completed
+        else "Inspect the failed viewpoint and recover camera/frame bridge or motion verification before wider exploration.",
+    }
+    write_json(AREA_PATH, payload)
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--execute-micro-scan", action="store_true")
+    parser.add_argument("--explore-area", action="store_true")
     args = parser.parse_args()
     objective = publish_objective()
-    scan = execute_micro_scan() if args.execute_micro_scan else {}
+    scan = execute_area_exploration() if args.explore_area else execute_micro_scan() if args.execute_micro_scan else {}
     camera = camera_evidence()
     status = {
         "packet_type": "mim-arm-sim-sync-space-status-v1",
@@ -260,7 +389,13 @@ def main() -> int:
         "status": scan.get("status") if scan else "objective_published",
         "success": bool(scan.get("success")) if scan else False,
         "objective_artifact": "runtime/shared/MIM_ARM_SIM_SYNC_SPACE_OBJECTIVE.latest.json",
-        "scan_artifact": "runtime/shared/MIM_ARM_AUTONOMOUS_SPACE_SCAN.latest.json" if scan else "",
+        "scan_artifact": (
+            "runtime/shared/MIM_ARM_AREA_EXPLORATION.latest.json"
+            if args.explore_area and scan
+            else "runtime/shared/MIM_ARM_AUTONOMOUS_SPACE_SCAN.latest.json"
+            if scan
+            else ""
+        ),
         "camera_evidence": camera,
         "next_step": "Use the completed bounded scan as the proof slice, then bind current arm-camera frame capture before object-aware exploration.",
     }
