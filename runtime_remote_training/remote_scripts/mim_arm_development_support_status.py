@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SHARED = ROOT / "runtime" / "shared"
 STATUS_PATH = SHARED / "MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json"
 OBJECTIVE_PATH = SHARED / "MIM_ARM_DEVELOPMENT_SUPPORT_OBJECTIVE.latest.json"
+SYNC_ASSERTION_PATH = SHARED / "MIM_ARM_SYNC_OPERATOR_ASSERTION.latest.json"
 ARM_HOST = "http://192.168.1.90:5000"
 
 
@@ -46,6 +47,15 @@ def get_json(endpoint: str) -> dict[str, Any]:
         return {"ok": False, "url": url, "data": {}, "error": f"{type(exc).__name__}: {exc}"}
 
 
+def parse_utc(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
 def main() -> int:
     arm_state = get_json("/arm_state")
     workspace = get_json("/workspace_setup_state")
@@ -54,6 +64,7 @@ def main() -> int:
     station_mirror = read_json(SHARED / "MIM_STATION_FILE_MIRROR.latest.json")
     sensor_inventory = read_json(SHARED / "MIM_LAB_SENSOR_INVENTORY.latest.json")
     camera_cycle = read_json(SHARED / "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json")
+    sync_assertion = read_json(SYNC_ASSERTION_PATH)
 
     arm_state_data = arm_state.get("data") if isinstance(arm_state.get("data"), dict) else {}
     workspace_data = workspace.get("data") if isinstance(workspace.get("data"), dict) else {}
@@ -64,18 +75,51 @@ def main() -> int:
     setup_arm = workspace_data.get("arm") if isinstance(workspace_data.get("arm"), dict) else {}
     joint_map = setup_arm.get("joint_map") if isinstance(setup_arm.get("joint_map"), dict) else {}
     servo_list = servo_data.get("servos") if isinstance(servo_data.get("servos"), list) else []
+    serial_ready = bool(serial.get("serial_ready"))
+    assertion_at = parse_utc(sync_assertion.get("generated_at"))
+    assertion_age_seconds = (
+        (datetime.now(timezone.utc) - assertion_at).total_seconds() if assertion_at else None
+    )
+    fresh_operator_sync_assertion = (
+        sync_assertion.get("sync_enabled") is True
+        and assertion_age_seconds is not None
+        and assertion_age_seconds <= 7200
+    )
+    sync_awareness = {
+        "arm_state_sim_enabled": arm_state_data.get("sim_enabled"),
+        "sync_confirmed": bool(arm_state_data.get("sim_enabled") is True or fresh_operator_sync_assertion),
+        "source": (
+            "arm_state"
+            if arm_state_data.get("sim_enabled") is True
+            else "fresh_operator_voice_assertion"
+            if fresh_operator_sync_assertion
+            else "unconfirmed"
+        ),
+        "operator_assertion": {
+            "present": bool(sync_assertion),
+            "sync_enabled": sync_assertion.get("sync_enabled"),
+            "generated_at": sync_assertion.get("generated_at"),
+            "age_seconds": assertion_age_seconds,
+            "transcript": sync_assertion.get("transcript", ""),
+        },
+        "note": "The workspace UI has a Live Sync control, but /arm_state may not expose the operator-visible checkbox state.",
+    }
 
     blockers: list[str] = []
+    warnings: list[str] = []
     if not arm_state.get("ok"):
         blockers.append("arm_state_endpoint_unreachable")
     if not servo.get("ok"):
         blockers.append("servo_config_endpoint_unreachable")
-    if not serial.get("serial_ready"):
+    if not serial_ready:
         blockers.append("serial_not_ready")
     if not isinstance(current_pose, list) or len(current_pose) < 6:
         blockers.append("current_pose_unavailable")
-    if arm_state_data.get("sim_enabled") is not True:
-        blockers.append("sync_mode_not_confirmed_by_arm_state")
+    if not sync_awareness["sync_confirmed"]:
+        if arm_state.get("ok") and serial_ready and current_pose:
+            warnings.append("sync_mode_not_confirmed_by_arm_state")
+        else:
+            blockers.append("sync_mode_not_confirmed_by_arm_state")
     if not station_index:
         blockers.append("station_file_index_missing")
 
@@ -119,6 +163,7 @@ def main() -> int:
             "runtime": arm_state_data.get("runtime"),
             "mode": arm_state_data.get("mode"),
             "sim_enabled": arm_state_data.get("sim_enabled"),
+            "sync_awareness": sync_awareness,
             "app_alive": arm_state_data.get("app_alive"),
         },
         "motion_awareness": {
@@ -143,6 +188,7 @@ def main() -> int:
             "visual_calibration": setup_arm.get("visual_calibration", {}),
         },
         "blockers": blockers,
+        "warnings": warnings,
         "recommended_next_step": "Use voice to ask for arm status, parts, sync state, or safe movement proposals. Confirm before live motion.",
         "source_endpoints": {
             "arm_state": arm_state.get("url"),

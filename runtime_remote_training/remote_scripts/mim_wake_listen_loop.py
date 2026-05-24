@@ -42,6 +42,7 @@ LAB_CONVERSATION_SCENE_PATH = SHARED / "MIM_LAB_CONVERSATION_SCENE.latest.json"
 VOICE_INTERACTION_LEARNING_PATH = SHARED / "MIM_VOICE_INTERACTION_LEARNING.latest.json"
 STATION_FILE_FETCH_REQUEST_PATH = SHARED / "MIM_STATION_FILE_FETCH_REQUEST.latest.json"
 ARM_MOTION_PROPOSAL_PATH = SHARED / "MIM_ARM_MOTION_PROPOSAL.latest.json"
+ARM_SYNC_ASSERTION_PATH = SHARED / "MIM_ARM_SYNC_OPERATOR_ASSERTION.latest.json"
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -1937,15 +1938,19 @@ def build_arm_status_route() -> dict[str, Any]:
         motion = support.get("motion_awareness") if isinstance(support.get("motion_awareness"), dict) else {}
         parts = support.get("parts_and_configuration") if isinstance(support.get("parts_and_configuration"), dict) else {}
         blockers = support.get("blockers") if isinstance(support.get("blockers"), list) else []
+        warnings = support.get("warnings") if isinstance(support.get("warnings"), list) else []
+        sync = app.get("sync_awareness") if isinstance(app.get("sync_awareness"), dict) else {}
         response = (
             f"Arm app is {compact_status(app.get('runtime'))}; serial is "
             f"{compact_status(((motion.get('serial') or {}) if isinstance(motion.get('serial'), dict) else {}).get('status'))}; "
             f"pose is {motion.get('current_pose')}. "
-            f"Sync confirmed is {compact_status(app.get('sim_enabled'))}. "
+            f"Sync is {compact_status(sync.get('source') or app.get('sim_enabled'))}. "
             f"Parts index has {compact_status(parts.get('design_parts_count'))} design files."
         )
         if blockers:
             response += f" Watch item: {compact_status(blockers[0])}."
+        elif warnings:
+            response += f" Warning: {compact_status(warnings[0])}."
         return {
             "intent": "arm_development_status",
             "action": "summarize_arm_development_support_status",
@@ -1974,6 +1979,57 @@ def build_arm_status_route() -> dict[str, Any]:
             "runtime/shared/MIM_ARM_CAMERA_BRIDGE_STATUS.latest.json",
         ],
         "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_local_arm_camera_route"},
+        "fallback_used": True,
+    }
+
+
+def build_arm_sync_assertion_route(transcript: str) -> dict[str, Any]:
+    normalized = normalize_voice_transcript_for_intent(transcript)
+    sync_enabled = not re.search(r"\b(off|disabled|not on|not enabled)\b", normalized)
+    assertion = {
+        "packet_type": "mim-arm-sync-operator-assertion-v1",
+        "generated_at": now_iso(),
+        "objective_id": "MIM-ARM-DEVELOPMENT-SUPPORT-V1",
+        "sync_enabled": sync_enabled,
+        "asserted_by": "Dave",
+        "source": "mim_voice",
+        "transcript": transcript,
+        "policy": "Operator-visible sync assertions inform MIM's support layer, but live arm motion still requires explicit safety confirmation.",
+    }
+    write_json(ARM_SYNC_ASSERTION_PATH, assertion)
+    support = load_shared_json("MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json")
+    if isinstance(support, dict) and support:
+        app = support.get("arm_application") if isinstance(support.get("arm_application"), dict) else {}
+        sync_awareness = app.get("sync_awareness") if isinstance(app.get("sync_awareness"), dict) else {}
+        sync_awareness.update(
+            {
+                "sync_confirmed": sync_enabled,
+                "source": "fresh_operator_voice_assertion" if sync_enabled else "operator_voice_assertion_off",
+                "operator_assertion": {
+                    "present": True,
+                    "sync_enabled": sync_enabled,
+                    "generated_at": assertion["generated_at"],
+                    "age_seconds": 0,
+                    "transcript": transcript,
+                },
+            }
+        )
+        app["sync_awareness"] = sync_awareness
+        support["arm_application"] = app
+        warnings = support.get("warnings") if isinstance(support.get("warnings"), list) else []
+        warnings = [item for item in warnings if item != "sync_mode_not_confirmed_by_arm_state"]
+        if not sync_enabled and "operator_asserted_sync_off" not in warnings:
+            warnings.append("operator_asserted_sync_off")
+        support["warnings"] = warnings
+        write_json(SHARED / "MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json", support)
+    state = "on" if sync_enabled else "off"
+    response = f"Got it. I will treat live sync as {state}, and I will still ask before any arm movement."
+    return {
+        "intent": "arm_sync_operator_assertion",
+        "action": f"record_live_sync_{state}",
+        "response_text": response,
+        "artifacts": ["runtime/shared/MIM_ARM_SYNC_OPERATOR_ASSERTION.latest.json"],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "recorded_operator_sync_assertion"},
         "fallback_used": True,
     }
 
@@ -2022,6 +2078,7 @@ def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
     app = support.get("arm_application") if isinstance(support.get("arm_application"), dict) else {}
     motion = support.get("motion_awareness") if isinstance(support.get("motion_awareness"), dict) else {}
     blockers = support.get("blockers") if isinstance(support.get("blockers"), list) else []
+    warnings = support.get("warnings") if isinstance(support.get("warnings"), list) else []
     current_pose = motion.get("current_pose") if isinstance(motion.get("current_pose"), list) else []
     joint_map = motion.get("joint_map") if isinstance(motion.get("joint_map"), dict) else {}
     serial = motion.get("serial") if isinstance(motion.get("serial"), dict) else {}
@@ -2054,6 +2111,7 @@ def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
         "arm_application": app,
         "serial": serial,
         "blockers": blockers,
+        "warnings": warnings,
         "policy": "Voice arm motion requests become proposals only until Dave confirms the movement is safe.",
     }
     write_json(ARM_MOTION_PROPOSAL_PATH, proposal)
@@ -2061,6 +2119,8 @@ def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
         response = f"I prepared the {joint} {degrees} degree {direction} proposal, but I see {compact_status(blockers[0])}. Let's troubleshoot before moving."
     else:
         response = f"Dave, I am going to move the {joint} {degrees} degrees {direction}. Is that a safe move?"
+        if warnings:
+            response += f" I still see {compact_status(warnings[0])}."
     return {
         "intent": "arm_motion_safety_proposal",
         "action": status,
@@ -2348,6 +2408,10 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_current_time_route()
     if re.search(r"\b(can you hear me|do you hear me|hear me clearly|can you see me|do you see me)\b", normalized):
         return build_voice_presence_check_route(transcript)
+    if re.search(r"\b(live\s+sync|sync)\b", normalized) and re.search(
+        r"\b(on|enabled|off|disabled|not on|not enabled)\b", normalized
+    ):
+        return build_arm_sync_assertion_route(transcript)
     if re.search(r"\b(move|nudge|open|close)\b", normalized) and re.search(r"\b(base|shoulder|elbow|forearm|wrist|hand|grip|gripper|claw)\b", normalized):
         return build_arm_motion_proposal_route(transcript)
     if re.search(r"\b(arm status|sync mode|arm sync|is.*arm.*sync|arm.*moving|arm.*expected|troubleshoot.*arm)\b", normalized):
