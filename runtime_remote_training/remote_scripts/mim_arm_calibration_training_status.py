@@ -39,22 +39,24 @@ def main() -> int:
     generated_at = now_iso()
     scene = read_json("MIM_ARM_TABLE_SCENE.latest.json")
     camera_scene = read_json("MIM_ARM_CAMERA_SCENE_TRAINING_STATUS.latest.json")
+    reference_map = read_json("MIM_ARM_TABLE_REFERENCE_MAP.latest.json")
     sim_sync = read_json("MIM_ARM_SIM_SYNC_SPACE_STATUS.latest.json")
     area = read_json("MIM_ARM_AREA_EXPLORATION.latest.json")
     manipulation = read_json("MIM_ARM_TABLE_MANIPULATION_TRAINING_STATUS.latest.json")
 
     object_counts = ((camera_scene.get("scene") or {}).get("object_counts") or {}) if isinstance(camera_scene.get("scene"), dict) else {}
     pad_candidates = scene.get("pad_candidates") if isinstance(scene.get("pad_candidates"), list) else []
+    reference_pads = reference_map.get("unlabeled_pad_candidates") if isinstance(reference_map.get("unlabeled_pad_candidates"), list) else []
     blockers = []
     if not camera_scene.get("success"):
         blockers.append("camera_scene_training_not_ready")
-    if len(pad_candidates) < 3:
+    if len(pad_candidates) < 3 and len(reference_pads) < 3:
         blockers.append("insufficient_pad_candidates_for_calibration")
     if "number_pad_ocr_not_bound" in (scene.get("blockers") if isinstance(scene.get("blockers"), list) else []):
         blockers.append("number_pad_ocr_not_bound")
     blockers.extend(
         [
-            "fiducial_marker_map_not_bound",
+            "trusted_numbered_pad_or_fiducial_map_not_bound",
             "image_to_table_homography_not_bound",
             "table_coordinate_to_arm_pose_solver_not_bound",
             "calibration_validation_motion_not_run",
@@ -83,17 +85,28 @@ def main() -> int:
         ],
     }
 
+    has_reference_map = len(reference_pads) >= 3
+    status_text = (
+        "blocked_pending_trusted_labels_and_metric_calibration"
+        if has_reference_map
+        else "blocked_pending_reference_map"
+    )
     status = {
         "packet_type": "mim-arm-calibration-training-status-v1",
         "generated_at": generated_at,
         "objective_id": objective["objective_id"],
-        "status": "blocked_pending_reference_map",
+        "status": status_text,
         "success": False,
         "current_evidence": {
             "camera_scene_status": camera_scene.get("status"),
             "camera_scene_success": camera_scene.get("success"),
             "object_counts": object_counts,
             "pad_candidate_count": len(pad_candidates),
+            "reference_map_status": reference_map.get("status"),
+            "reference_map_candidate_count": len(reference_pads),
+            "reference_map_label_trusted": bool((reference_map.get("label_policy") or {}).get("numbered_pad_labels_trusted"))
+            if isinstance(reference_map.get("label_policy"), dict)
+            else False,
             "sim_sync_status": sim_sync.get("status"),
             "area_exploration_status": area.get("status"),
             "manipulation_status": manipulation.get("status"),
@@ -102,12 +115,18 @@ def main() -> int:
         "action_policy": {
             "safe_to_use_for_pick_place": False,
             "safe_to_use_for_no_contact_validation": False,
-            "reason": "No labeled reference map or validated image-to-table transform exists yet.",
+            "reason": (
+                "A provisional visual reference map exists, but numbered labels, metric table coordinates, "
+                "arm-pose solving, and validation motion are not trusted yet."
+                if has_reference_map
+                else "No labeled reference map or validated image-to-table transform exists yet."
+            ),
         },
         "next_recovery_action": "Bind pad labels via OCR/fiducials/calibrated map, then compute image-to-table coordinates and run no-contact validation moves.",
         "evidence_artifacts": [
             "runtime/shared/MIM_ARM_CAMERA_SCENE_TRAINING_STATUS.latest.json",
             "runtime/shared/MIM_ARM_TABLE_SCENE.latest.json",
+            "runtime/shared/MIM_ARM_TABLE_REFERENCE_MAP.latest.json",
             "runtime/shared/MIM_ARM_SIM_SYNC_SPACE_STATUS.latest.json",
             "runtime/shared/MIM_ARM_CALIBRATION_TRAINING_OBJECTIVE.latest.json",
         ],

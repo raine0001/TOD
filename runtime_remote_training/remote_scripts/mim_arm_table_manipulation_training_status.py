@@ -51,6 +51,7 @@ def main() -> int:
     scene = read_json(SCENE_PATH)
     proposal = read_json(PROPOSAL_PATH)
     interaction_objective = read_json(INTERACTION_OBJECTIVE_PATH)
+    reference_map = read_json(SHARED / "MIM_ARM_TABLE_REFERENCE_MAP.latest.json")
 
     scene_blockers = scene.get("blockers") if isinstance(scene.get("blockers"), list) else []
     proposal_blockers = proposal.get("blockers") if isinstance(proposal.get("blockers"), list) else []
@@ -61,6 +62,8 @@ def main() -> int:
         "white_or_gray_candidates": len(scene.get("white_or_gray_candidates") or []),
         "pad_candidates": len(scene.get("pad_candidates") or []),
         "objects_total": len(scene.get("objects") or []),
+        "reference_map_pad_candidates": len(reference_map.get("unlabeled_pad_candidates") or []),
+        "reference_map_blue_candidates": len(reference_map.get("blue_object_candidates") or []),
     }
 
     stages = [
@@ -81,6 +84,13 @@ def main() -> int:
             "status": "blocked" if blocker_present(blockers, "number_pad_ocr_not_bound") else "ready",
             "reason_code": "number_pad_ocr_not_bound",
             "next_action": "Bind OCR, fiducial markers, or a calibrated pad map for number pads 1, 2, and 3.",
+            "current_reference_map": {
+                "status": reference_map.get("status"),
+                "candidate_count": len(reference_map.get("unlabeled_pad_candidates") or []),
+                "numbered_labels_trusted": bool((reference_map.get("label_policy") or {}).get("numbered_pad_labels_trusted"))
+                if isinstance(reference_map.get("label_policy"), dict)
+                else False,
+            },
         },
         {
             "stage": 3,
@@ -184,6 +194,7 @@ def main() -> int:
             "runtime/shared/MIM_ARM_TABLE_MANIPULATION_PROPOSAL.latest.json",
             "runtime/shared/MIM_ARM_TABLE_OBJECT_INTERACTION_OBJECTIVE.latest.json",
             "runtime/shared/MIM_ARM_TABLE_MANIPULATION_TRAINING_OBJECTIVE.latest.json",
+            "runtime/shared/MIM_ARM_TABLE_REFERENCE_MAP.latest.json",
         ],
         "related_objective": interaction_objective.get("objective_id"),
     }

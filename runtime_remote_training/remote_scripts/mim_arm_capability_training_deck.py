@@ -82,6 +82,7 @@ def main() -> int:
         "arm_camera_capture": artifact_summary("MIM_ARM_CAMERA_CAPTURE_STATUS.latest.json"),
         "camera_scene_training": artifact_summary("MIM_ARM_CAMERA_SCENE_TRAINING_STATUS.latest.json"),
         "calibration_training": artifact_summary("MIM_ARM_CALIBRATION_TRAINING_STATUS.latest.json"),
+        "table_reference_map": artifact_summary("MIM_ARM_TABLE_REFERENCE_MAP.latest.json"),
         "table_scene": artifact_summary("MIM_ARM_TABLE_SCENE.latest.json"),
         "table_manipulation_training": artifact_summary("MIM_ARM_TABLE_MANIPULATION_TRAINING_STATUS.latest.json"),
         "dispatch_telemetry": artifact_summary("MIM_ARM_DISPATCH_TELEMETRY.latest.json"),
@@ -144,7 +145,7 @@ def main() -> int:
         {
             "track_id": "ARM-05",
             "name": "calibration_and_coordinate_mapping",
-            "status": stage_status("MIM_ARM_CALIBRATION_TRAINING_STATUS.latest.json"),
+            "status": stage_status("MIM_ARM_CALIBRATION_TRAINING_STATUS.latest.json", "MIM_ARM_TABLE_REFERENCE_MAP.latest.json"),
             "goal": "MIM converts camera pixels and simulation coordinates into real table coordinates that the arm can reach.",
             "next_objectives": [
                 "Calibrate number pads or fiducial markers as fixed table reference points.",
