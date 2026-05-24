@@ -2093,18 +2093,26 @@ def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
     current_pose = motion.get("current_pose") if isinstance(motion.get("current_pose"), list) else []
     joint_map = motion.get("joint_map") if isinstance(motion.get("joint_map"), dict) else {}
     serial = motion.get("serial") if isinstance(motion.get("serial"), dict) else {}
-    max_degrees = int(((motion.get("motion_policy") or {}) if isinstance(motion.get("motion_policy"), dict) else {}).get("small_test_move_max_degrees") or 10)
-    degrees = min(abs(int(request.get("degrees") or 5)), max_degrees)
+    degrees = abs(int(request.get("degrees") or 5))
     joint = str(request.get("joint") or "")
     direction = str(request.get("direction") or "")
     joint_index = joint_map.get(joint)
     current_value = current_pose[joint_index] if isinstance(joint_index, int) and 0 <= joint_index < len(current_pose) else None
     direction_mapped = direction_delta_sign(direction, joint_index, motion.get("servo_config") if isinstance(motion.get("servo_config"), list) else []) is not None
+    simulation_safety = evaluate_arm_sim_move_safety(
+        joint_index,
+        int(current_value) if isinstance(current_value, (int, float)) else None,
+        direction,
+        degrees,
+        motion.get("servo_config") if isinstance(motion.get("servo_config"), list) else [],
+    )
     status = "awaiting_operator_safety_confirmation"
     if blockers:
         status = "blocked_needs_attention_before_motion"
     elif not direction_mapped:
         status = "blocked_needs_direction_mapping"
+    elif simulation_safety.get("blocked"):
+        status = "blocked_by_sim_workspace_safety"
     proposal = {
         "packet_type": "mim-arm-motion-proposal-v1",
         "generated_at": now_iso(),
@@ -2122,20 +2130,28 @@ def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
             "execution": "not_executed",
             "requires_operator_confirmation": True,
             "direction_mapped": direction_mapped,
+            "simulation_safety": simulation_safety,
         },
         "arm_application": app,
         "serial": serial,
         "blockers": blockers,
         "warnings": warnings,
-        "policy": "Voice arm motion requests become proposals only until Dave confirms the movement is safe.",
+        "policy": "Voice arm motion requests become proposals until Dave confirms; degrees are bounded by servo limits and sim-space safety, not a fixed 10 degree cap.",
     }
     write_json(ARM_MOTION_PROPOSAL_PATH, proposal)
     if blockers:
         response = f"I prepared the {joint} {degrees} degree {direction} proposal, but I see {compact_status(blockers[0])}. Let's troubleshoot before moving."
     elif not direction_mapped:
         response = f"I know {joint}, but {direction} is not mapped for that joint. Use one of the configured directions for that servo."
+    elif simulation_safety.get("blocked"):
+        reason = compact_status(simulation_safety.get("reason_code"))
+        response = f"I blocked that {joint} move because sim-space safety reports {reason}."
+        if simulation_safety.get("warning"):
+            response += f" {simulation_safety.get('warning')}"
     else:
         response = f"Dave, I am going to move the {joint} {degrees} degrees {direction}. Is that a safe move?"
+        if simulation_safety.get("warning"):
+            response += f" {simulation_safety.get('warning')}"
         if warnings:
             response += f" I still see {compact_status(warnings[0])}."
     return {
@@ -2274,6 +2290,87 @@ def direction_delta_sign(direction: str, joint_index: int | None, servo_config: 
     return None
 
 
+def get_arm_workspace_state() -> dict[str, Any]:
+    try:
+        with urllib.request.urlopen(f"{ARM_HOST}/workspace_setup_state", timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8", "replace"))
+        return data if isinstance(data, dict) else {}
+    except Exception as exc:
+        return {"_error": f"{type(exc).__name__}: {exc}"}
+
+
+def servo_limit_for(servo: int | None, servo_config: list[Any]) -> dict[str, Any]:
+    for item in servo_config:
+        if not isinstance(item, dict):
+            continue
+        try:
+            if int(item.get("id", -1)) == servo:
+                return {
+                    "min": int(item.get("min", 0)),
+                    "max": int(item.get("max", 180)),
+                    "source": "servo_config",
+                }
+        except Exception:
+            continue
+    return {"min": 0, "max": 180, "source": "default"}
+
+
+def evaluate_arm_sim_move_safety(
+    joint_index: int | None,
+    current_value: int | None,
+    direction: str,
+    degrees: int,
+    servo_config: list[Any],
+) -> dict[str, Any]:
+    workspace = get_arm_workspace_state()
+    obstacles = workspace.get("obstacles") if isinstance(workspace.get("obstacles"), list) else []
+    markers = workspace.get("markers") if isinstance(workspace.get("markers"), list) else []
+    limit = servo_limit_for(joint_index, servo_config)
+    sign = direction_delta_sign(direction, joint_index, servo_config)
+    target_angle = None
+    clamped = False
+    if isinstance(current_value, int) and sign is not None:
+        requested = current_value + (sign * abs(int(degrees)))
+        target_angle = max(int(limit["min"]), min(int(limit["max"]), requested))
+        clamped = target_angle != requested
+
+    blocked = False
+    reason_code = ""
+    warning = ""
+    if workspace.get("_error"):
+        blocked = True
+        reason_code = "workspace_setup_state_unreachable"
+    elif obstacles:
+        blocked = True
+        reason_code = "workspace_obstacles_present_collision_model_missing"
+        warning = "That movement may impact objects within the sim model, so I need object-aware collision clearance first."
+    elif joint_index is None or current_value is None or sign is None:
+        blocked = True
+        reason_code = "motion_target_incomplete_for_sim_safety"
+    elif clamped:
+        warning = f"Requested movement reaches the servo limit; target is clamped to {target_angle} degrees."
+    else:
+        warning = "Sim workspace reports no registered obstacles for this move."
+
+    return {
+        "status": "blocked" if blocked else "clear_with_evidence",
+        "blocked": blocked,
+        "reason_code": reason_code,
+        "warning": warning,
+        "workspace_source": f"{ARM_HOST}/workspace_setup_state",
+        "obstacle_count": len(obstacles),
+        "marker_count": len(markers),
+        "known_obstacles": obstacles,
+        "known_markers": markers,
+        "servo_limit": limit,
+        "current_angle": current_value,
+        "target_angle": target_angle,
+        "requested_degrees": degrees,
+        "clamped_to_servo_limit": clamped,
+        "collision_policy": "Block if the sim reports obstacles and no object-aware path clearance exists; otherwise warn and require Dave confirmation.",
+    }
+
+
 def post_arm_move(servo: int, angle: int) -> dict[str, Any]:
     payload = json.dumps({"servo": servo, "angle": angle}).encode("utf-8")
     request = urllib.request.Request(
@@ -2353,10 +2450,19 @@ def build_arm_motion_confirmation_route(transcript: str) -> dict[str, Any]:
         cfg = next((item for item in servo_config if isinstance(item, dict) and int(item.get("id", -1)) == joint_index), {})
         min_angle = int(cfg.get("min", 0)) if isinstance(cfg, dict) else 0
         max_angle = int(cfg.get("max", 180)) if isinstance(cfg, dict) else 180
+        simulation_safety = evaluate_arm_sim_move_safety(joint_index, current_value, direction, degrees, servo_config)
         if sign is None:
             execution = {"status": "blocked_with_evidence", "reason_code": "direction_not_mapped", "direction": direction}
             write_json(ARM_MOTION_EXECUTION_PATH, execution)
             response = f"I cannot safely map {direction} for the {joint} yet, so I did not move it."
+        elif simulation_safety.get("blocked"):
+            execution = {
+                "status": "blocked_with_evidence",
+                "reason_code": simulation_safety.get("reason_code"),
+                "simulation_safety": simulation_safety,
+            }
+            write_json(ARM_MOTION_EXECUTION_PATH, execution)
+            response = f"I did not move the {joint}; sim-space safety reports {compact_status(simulation_safety.get('reason_code'))}."
         else:
             target_angle = max(min_angle, min(max_angle, current_value + (sign * degrees)))
             result = post_arm_move(joint_index, target_angle)
@@ -2378,6 +2484,7 @@ def build_arm_motion_confirmation_route(transcript: str) -> dict[str, Any]:
                 "target_angle": target_angle,
                 "pose_source": "live_arm_state" if live_pose else "support_status_artifact",
                 "http_result": result,
+                "simulation_safety": simulation_safety,
             }
             write_json(ARM_MOTION_EXECUTION_PATH, execution)
             proposal["status"] = "executed_with_evidence" if result.get("ok") else "blocked_with_evidence"

@@ -125,10 +125,13 @@ def main() -> int:
 
     motion_policy = {
         "direct_voice_motion": "proposal_only_until_operator_confirms",
-        "small_test_move_max_degrees": 10,
+        "degree_limit_policy": "no_fixed_voice_degree_cap",
+        "motion_limit_source": "servo_config_limits_and_sim_workspace_safety",
         "requires_current_pose": True,
         "requires_serial_ready": True,
         "requires_operator_safety_confirmation": True,
+        "requires_sim_workspace_safety_check": True,
+        "block_if_sim_obstacles_present_without_collision_clearance": True,
         "safe_prompt_template": "Dave, I am going to move {joint} {degrees} degrees {direction}. Is that a safe move?",
     }
 
