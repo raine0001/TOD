@@ -132,6 +132,7 @@ def camera_evidence() -> dict[str, Any]:
     camera_state = get_url(f"{GATEWAY_HOST}/mim/arm/camera-state", timeout=2.0)
     capture_proposal = get_url(f"{GATEWAY_HOST}/mim/arm/proposals/capture-frame", timeout=2.0)
     table_observer = read_json(SHARED / "MIM_ARM_TABLE_OBSERVER_STATUS.latest.json")
+    pi_table_observer = read_json(SHARED / "MIM_ARM_PI_TABLE_OBSERVER_STATUS.latest.json")
     arm_camera = {}
     if arm_state.get("ok") and isinstance(arm_state.get("data"), dict):
         arm_camera = arm_state["data"].get("camera") if isinstance(arm_state["data"].get("camera"), dict) else {}
@@ -152,6 +153,24 @@ def camera_evidence() -> dict[str, Any]:
             "frame": table_observer.get("frame", {}),
             "next_recovery_action": table_observer.get("next_recovery_action", ""),
         },
+        "pi_arm_table_observer": {
+            "status": pi_table_observer.get("status"),
+            "success": pi_table_observer.get("success"),
+            "generated_at": pi_table_observer.get("generated_at"),
+            "device": pi_table_observer.get("device"),
+            "camera_name": pi_table_observer.get("camera_name"),
+            "remote_frame_path": pi_table_observer.get("remote_frame_path"),
+            "arm_host_frame_path": pi_table_observer.get("arm_host_frame_path"),
+            "frame": pi_table_observer.get("frame", {}),
+            "next_recovery_action": pi_table_observer.get("next_recovery_action", ""),
+        },
+        "preferred_fixed_observer": (
+            "pi_arm_table_observer"
+            if pi_table_observer.get("success") is True
+            else "arm_table_observer"
+            if table_observer.get("success") is True
+            else ""
+        ),
         "current_camera_exploration_ready": current_frame,
         "blocker": "" if current_frame else "no_current_arm_camera_frame_bridge_evidence",
     }
