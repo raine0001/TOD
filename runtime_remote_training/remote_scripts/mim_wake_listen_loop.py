@@ -2151,6 +2151,79 @@ def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
     }
 
 
+def build_arm_workspace_exploration_route(transcript: str) -> dict[str, Any]:
+    coordinator = ROOT / "scripts" / "mim_arm_sim_sync_space_coordinator.py"
+    python_bin = ROOT / ".venv" / "bin" / "python"
+    command = [str(python_bin if python_bin.exists() else "python3"), str(coordinator), "--explore-area"]
+    run_result: dict[str, Any] = {
+        "command": command,
+        "returncode": None,
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "error": "",
+    }
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=75, check=False)
+        run_result.update(
+            {
+                "returncode": completed.returncode,
+                "stdout_tail": completed.stdout[-2000:],
+                "stderr_tail": completed.stderr[-2000:],
+            }
+        )
+    except Exception as exc:
+        run_result["error"] = f"{type(exc).__name__}: {exc}"
+
+    exploration = load_shared_json("MIM_ARM_AREA_EXPLORATION.latest.json")
+    status = str(exploration.get("status") or "unknown")
+    success = exploration.get("success") is True
+    blockers = exploration.get("blockers") if isinstance(exploration.get("blockers"), list) else []
+    viewpoints = exploration.get("viewpoints") if isinstance(exploration.get("viewpoints"), list) else []
+    final_pose = exploration.get("final_pose")
+    returned_home = exploration.get("returned_to_start_pose")
+    response = (
+        f"I ran the bounded table workspace exploration. Status is {compact_status(status)}; "
+        f"{len(viewpoints)} viewpoints; final pose {compact_status(final_pose)}."
+    )
+    if success:
+        response += " The scan completed and returned home."
+    elif blockers:
+        response += f" Blocked by {compact_status(blockers[0])}."
+    elif run_result.get("error"):
+        response += f" Runner error: {compact_status(run_result.get('error'))}."
+    if returned_home is True and not success:
+        response += " I returned to the start pose, but I still need physical/camera verification before calling it success."
+
+    status_payload = {
+        "packet_type": "mim-arm-workspace-exploration-voice-route-v1",
+        "generated_at": now_iso(),
+        "objective_id": "MIM-ARM-WORKSPACE-EXPLORATION-VOICE-ROUTE-V1",
+        "status": "completed_with_evidence" if success else "blocked_with_evidence",
+        "success": success,
+        "source_transcript": transcript,
+        "runner": run_result,
+        "exploration_artifact": "runtime/shared/MIM_ARM_AREA_EXPLORATION.latest.json",
+        "exploration_status": status,
+        "blockers": blockers,
+        "viewpoint_count": len(viewpoints),
+        "final_pose": final_pose,
+        "returned_to_start_pose": returned_home,
+    }
+    write_json(SHARED / "MIM_ARM_WORKSPACE_EXPLORATION_VOICE_ROUTE.latest.json", status_payload)
+    return {
+        "intent": "arm_workspace_exploration",
+        "action": "execute_bounded_workspace_exploration",
+        "response_text": response[:260],
+        "artifacts": [
+            "runtime/shared/MIM_ARM_WORKSPACE_EXPLORATION_VOICE_ROUTE.latest.json",
+            "runtime/shared/MIM_ARM_AREA_EXPLORATION.latest.json",
+            "runtime/shared/MIM_ARM_SIM_SYNC_SPACE_STATUS.latest.json",
+        ],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_arm_workspace_exploration_route"},
+        "fallback_used": True,
+    }
+
+
 def latest_pending_arm_motion_proposal(max_age_seconds: int = 180) -> tuple[dict[str, Any], str]:
     proposal = load_shared_json("MIM_ARM_MOTION_PROPOSAL.latest.json")
     if not proposal:
@@ -2649,6 +2722,10 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_arm_sync_assertion_route(transcript)
     if re.search(r"\b(move|nudge|open|close)\b", normalized) and re.search(r"\b(base|shoulder|elbow|forearm|wrist|hand|grip|gripper|claw)\b", normalized):
         return build_arm_motion_proposal_route(transcript)
+    if re.search(r"\b(explore|scan|look around|survey|inspect)\b", normalized) and re.search(
+        r"\b(workspace|table|area|surroundings|arm space|arm workspace)\b", normalized
+    ):
+        return build_arm_workspace_exploration_route(transcript)
     if re.search(r"\b(troubleshoot|no movement|no movements|not moving|didn'?t move|doesn'?t move|showing no movement)\b", normalized) and re.search(r"\b(arm|base|shoulder|elbow|wrist|hand|grip|claw|movement|movements)\b", normalized):
         return build_arm_troubleshoot_route(transcript)
     if re.search(r"\b(arm status|sync mode|arm sync|is.*arm.*sync|arm.*moving|arm.*expected|troubleshoot.*arm)\b", normalized):
