@@ -37,11 +37,21 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def artifact_summary(name: str) -> dict[str, Any]:
     data = read_json(name)
+    status = data.get("status")
+    success = data.get("success")
+    if success is None and data.get("dispatch_status") == "completed":
+        success = True
+    if status is None and data.get("dispatch_status"):
+        status = data.get("dispatch_status")
+    if success is None and data.get("completion_status") == "completed":
+        success = True
+    if success is None and status == "idle" and name == "MIM_READY_TASK_DISPATCHER_STATUS.latest.json":
+        success = True
     return {
         "artifact": f"runtime/shared/{name}",
         "exists": bool(data),
-        "status": data.get("status"),
-        "success": data.get("success"),
+        "status": status,
+        "success": success,
         "generated_at": data.get("generated_at"),
         "objective_id": data.get("objective_id"),
         "blockers": data.get("blockers") if isinstance(data.get("blockers"), list) else [],
@@ -65,12 +75,19 @@ def main() -> int:
     evidence = {
         "access_binding": artifact_summary("MIM_ARM_ACCESS_BINDING.latest.json"),
         "development_support": artifact_summary("MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json"),
+        "joint_motion_training": artifact_summary("MIM_ARM_JOINT_MOTION_TRAINING_STATUS.latest.json"),
         "motion_execution": artifact_summary("MIM_ARM_MOTION_EXECUTION.latest.json"),
         "sim_sync_space": artifact_summary("MIM_ARM_SIM_SYNC_SPACE_STATUS.latest.json"),
         "area_exploration": artifact_summary("MIM_ARM_AREA_EXPLORATION.latest.json"),
+        "arm_camera_capture": artifact_summary("MIM_ARM_CAMERA_CAPTURE_STATUS.latest.json"),
+        "camera_scene_training": artifact_summary("MIM_ARM_CAMERA_SCENE_TRAINING_STATUS.latest.json"),
+        "calibration_training": artifact_summary("MIM_ARM_CALIBRATION_TRAINING_STATUS.latest.json"),
         "table_scene": artifact_summary("MIM_ARM_TABLE_SCENE.latest.json"),
         "table_manipulation_training": artifact_summary("MIM_ARM_TABLE_MANIPULATION_TRAINING_STATUS.latest.json"),
         "dispatch_telemetry": artifact_summary("MIM_ARM_DISPATCH_TELEMETRY.latest.json"),
+        "ready_task_dispatcher": artifact_summary("MIM_READY_TASK_DISPATCHER_STATUS.latest.json"),
+        "station_file_index": artifact_summary("MIM_STATION_FILE_INDEX.latest.json"),
+        "station_file_mirror": artifact_summary("MIM_STATION_FILE_MIRROR.latest.json"),
     }
 
     training_tracks = [
@@ -88,7 +105,7 @@ def main() -> int:
         {
             "track_id": "ARM-02",
             "name": "joint_motion_skill_library",
-            "status": stage_status("MIM_ARM_MOTION_EXECUTION.latest.json"),
+            "status": stage_status("MIM_ARM_JOINT_MOTION_TRAINING_STATUS.latest.json", "MIM_ARM_MOTION_EXECUTION.latest.json"),
             "goal": "MIM can reliably move base, shoulder, elbow, wrist, and grip by named intent and by degrees within configured limits.",
             "next_objectives": [
                 "Train individual joint movement verification with before/after pose evidence.",
@@ -110,7 +127,13 @@ def main() -> int:
         {
             "track_id": "ARM-04",
             "name": "camera_and_scene_perception",
-            "status": stage_status("MIM_ARM_TABLE_SCENE.latest.json", "MIM_ARM_PI_TABLE_OBSERVER_STATUS.latest.json"),
+            "status": stage_status(
+                "MIM_ARM_CAMERA_SCENE_TRAINING_STATUS.latest.json",
+                "MIM_ARM_CAMERA_CAPTURE_STATUS.latest.json",
+                "MIM_ARM_TABLE_SCENE.latest.json",
+                "MIM_ARM_PI_TABLE_OBSERVER_STATUS.latest.json",
+                "MIM_ARM_TABLE_OBSERVER_STATUS.latest.json",
+            ),
             "goal": "MIM can use arm camera and fixed observer views to identify the table, blocks, pads, gripper, humans, and obstacles.",
             "next_objectives": [
                 "Capture fresh arm-camera frames on demand and mirror them to MIM shared runtime.",
@@ -121,7 +144,7 @@ def main() -> int:
         {
             "track_id": "ARM-05",
             "name": "calibration_and_coordinate_mapping",
-            "status": "blocked_or_training",
+            "status": stage_status("MIM_ARM_CALIBRATION_TRAINING_STATUS.latest.json"),
             "goal": "MIM converts camera pixels and simulation coordinates into real table coordinates that the arm can reach.",
             "next_objectives": [
                 "Calibrate number pads or fiducial markers as fixed table reference points.",
@@ -143,7 +166,11 @@ def main() -> int:
         {
             "track_id": "ARM-07",
             "name": "interactive_development_assistant",
-            "status": stage_status("MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json"),
+            "status": stage_status(
+                "MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json",
+                "MIM_STATION_FILE_INDEX.latest.json",
+                "MIM_STATION_FILE_MIRROR.latest.json",
+            ),
             "goal": "MIM helps Dave develop the arm by reading design files, explaining configuration, and turning problems into TOD objectives.",
             "next_objectives": [
                 "Index MIM Robotics design_parts and servo configuration references for voice recall.",
@@ -154,7 +181,11 @@ def main() -> int:
         {
             "track_id": "ARM-08",
             "name": "autonomous_exploration_and_learning",
-            "status": "needs_evidence",
+            "status": stage_status(
+                "MIM_ARM_AREA_EXPLORATION.latest.json",
+                "MIM_ARM_CAMERA_SCENE_TRAINING_STATUS.latest.json",
+                "MIM_ARM_TABLE_MANIPULATION_TRAINING_STATUS.latest.json",
+            ),
             "goal": "MIM can explore the table and room with the arm camera, ask questions about unknowns, and improve its future responses.",
             "next_objectives": [
                 "Define explore table versus explore area as separate scan profiles and artifacts.",
@@ -165,7 +196,7 @@ def main() -> int:
         {
             "track_id": "ARM-09",
             "name": "task_dispatch_and_background_execution",
-            "status": stage_status("MIM_ARM_DISPATCH_TELEMETRY.latest.json"),
+            "status": stage_status("MIM_READY_TASK_DISPATCHER_STATUS.latest.json", "MIM_ARM_DISPATCH_TELEMETRY.latest.json"),
             "goal": "MIM can queue, claim, execute, and report arm tasks without losing state or pretending success.",
             "next_objectives": [
                 "Bind arm training tracks into MIM-owned queued tasks with explicit dispatcher status.",
