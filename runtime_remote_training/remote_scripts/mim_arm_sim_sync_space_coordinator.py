@@ -18,6 +18,7 @@ OBJECTIVE_PATH = SHARED / "MIM_ARM_SIM_SYNC_SPACE_OBJECTIVE.latest.json"
 STATUS_PATH = SHARED / "MIM_ARM_SIM_SYNC_SPACE_STATUS.latest.json"
 SCAN_PATH = SHARED / "MIM_ARM_AUTONOMOUS_SPACE_SCAN.latest.json"
 AREA_PATH = SHARED / "MIM_ARM_AREA_EXPLORATION.latest.json"
+PHYSICAL_OBSERVATION_PATH = SHARED / "MIM_ARM_PHYSICAL_MOTION_OBSERVATION.latest.json"
 
 
 def now_iso() -> str:
@@ -39,6 +40,17 @@ def read_json(path: Path) -> dict[str, Any]:
     except Exception as exc:
         return {"_error": f"{type(exc).__name__}: {exc}"}
     return {}
+
+
+def latest_physical_motion_observation() -> dict[str, Any]:
+    observation = read_json(PHYSICAL_OBSERVATION_PATH)
+    if not observation:
+        return {
+            "status": "missing",
+            "physical_motion_observed": None,
+            "reason_code": "no_external_physical_motion_observation",
+        }
+    return observation
 
 
 def get_url(url: str, *, timeout: float = 5.0) -> dict[str, Any]:
@@ -289,7 +301,9 @@ def move_servo_verified(servo: int, angle: int, *, settle_seconds: float = 0.35)
         "http_result": result,
         "after_pose": after_pose,
         "verified_pose_angle": after_pose[servo] if isinstance(after_pose, list) and len(after_pose) > servo else None,
-        "verified": bool(result.get("ok") and isinstance(after_pose, list) and len(after_pose) > servo and int(after_pose[servo]) == angle),
+        "software_pose_verified": bool(result.get("ok") and isinstance(after_pose, list) and len(after_pose) > servo and int(after_pose[servo]) == angle),
+        "physical_motion_verified": False,
+        "verification_note": "Software pose reflects the app's saved pose after serial DONE. It is not proof of physical servo motion.",
     }
 
 
@@ -299,7 +313,7 @@ def move_pose_stepwise(target_pose: list[int], limits: dict[int, dict[str, int]]
         limit = limits.get(servo, {"min": 0, "max": 180})
         safe_angle = clamp(int(angle), limit["min"], limit["max"])
         steps.append(move_servo_verified(servo, safe_angle))
-        if not steps[-1].get("verified"):
+        if not steps[-1].get("software_pose_verified"):
             break
     return steps
 
@@ -333,6 +347,9 @@ def execute_area_exploration() -> dict[str, Any]:
         blockers.append("workspace_obstacles_present_unhandled")
     if len(limits) < 6:
         blockers.append("servo_limits_incomplete")
+    physical_observation = latest_physical_motion_observation()
+    if physical_observation.get("physical_motion_observed") is False:
+        blockers.append("operator_reported_no_physical_motion_after_software_ack")
 
     max_delta = 5
     viewpoints: list[dict[str, Any]] = []
@@ -356,21 +373,26 @@ def execute_area_exploration() -> dict[str, Any]:
                     "label": label,
                     "target_pose": target,
                     "move_steps": steps,
-                    "verified": bool(steps and all(step.get("verified") for step in steps)),
+                    "software_pose_verified": bool(steps and all(step.get("software_pose_verified") for step in steps)),
+                    "physical_motion_verified": False,
                     "arm_state_after_view": (after.get("data") or {}).get("current_pose") if isinstance(after.get("data"), dict) else [],
                     "camera_checkpoint": camera,
                 }
             )
             return_steps = move_pose_stepwise(start_pose, limits)
             viewpoints[-1]["return_steps"] = return_steps
-            viewpoints[-1]["returned_home"] = bool(return_steps and all(step.get("verified") for step in return_steps))
-            if not viewpoints[-1]["verified"] or not viewpoints[-1]["returned_home"]:
+            viewpoints[-1]["returned_home"] = bool(return_steps and all(step.get("software_pose_verified") for step in return_steps))
+            if not viewpoints[-1]["software_pose_verified"] or not viewpoints[-1]["returned_home"]:
                 blockers.append(f"viewpoint_{label}_verification_failed")
                 break
 
     final_state = get_url(f"{ARM_HOST}/arm_state")
     final_pose = (final_state.get("data") or {}).get("current_pose") if isinstance(final_state.get("data"), dict) else []
-    completed = not blockers and bool(viewpoints) and all(v.get("verified") and v.get("returned_home") for v in viewpoints)
+    software_completed = not blockers and bool(viewpoints) and all(v.get("software_pose_verified") and v.get("returned_home") for v in viewpoints)
+    physical_completed = bool(viewpoints) and all(v.get("physical_motion_verified") for v in viewpoints)
+    if software_completed and not physical_completed:
+        blockers.append("external_physical_motion_verification_missing")
+    completed = not blockers and software_completed and physical_completed
     payload = {
         "packet_type": "mim-arm-area-exploration-v1",
         "generated_at": now_iso(),
@@ -379,6 +401,11 @@ def execute_area_exploration() -> dict[str, Any]:
         "success": completed,
         "mode": "autonomous_bounded_area_exploration",
         "human_interaction_required_for_this_scan": False,
+        "verification_policy": {
+            "software_pose_verification_is_not_physical_success": True,
+            "requires_external_physical_motion_evidence_for_success": True,
+            "physical_motion_observation": physical_observation,
+        },
         "preflight": {
             "arm_state_ok": bool(arm_state.get("ok")),
             "workspace_setup_ok": bool(workspace.get("ok")),
@@ -397,7 +424,7 @@ def execute_area_exploration() -> dict[str, Any]:
         "blockers": blockers,
         "next_recovery_action": ""
         if completed
-        else "Inspect the failed viewpoint and recover camera/frame bridge or motion verification before wider exploration.",
+        else "Do not claim arm exploration success from software pose alone. Verify physical servo power/control and add external camera or operator physical-motion evidence before wider exploration.",
     }
     write_json(AREA_PATH, payload)
     return payload

@@ -94,6 +94,7 @@ def main() -> int:
     autonomous_scan = read_json(SHARED / "MIM_ARM_AUTONOMOUS_SPACE_SCAN.latest.json")
     sync_assertion = read_json(SHARED / "MIM_ARM_SYNC_OPERATOR_ASSERTION.latest.json")
     development_status = read_json(SHARED / "MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json")
+    physical_observation = read_json(SHARED / "MIM_ARM_PHYSICAL_MOTION_OBSERVATION.latest.json")
 
     blockers: list[str] = []
     warnings: list[str] = []
@@ -113,6 +114,8 @@ def main() -> int:
         warnings.append("workspace_obstacles_present_requires_object_aware_planning")
     if not fresh_success(pi_observer) and not fresh_success(pc_observer):
         warnings.append("no_fixed_observer_frame_success_currently_bound")
+    if physical_observation.get("physical_motion_observed") is False:
+        blockers.append("operator_reported_no_physical_motion_after_software_ack")
 
     preferred_observer = ""
     if fresh_success(pi_observer):
@@ -160,6 +163,7 @@ def main() -> int:
             "servo_map": servo_summary(servo_data),
             "last_command_result": arm_data.get("last_command_result", {}),
             "last_motion_execution": read_json(SHARED / "MIM_ARM_MOTION_EXECUTION.latest.json"),
+            "latest_physical_motion_observation": physical_observation,
         },
         "vision_access": {
             "preferred_fixed_observer": preferred_observer,
@@ -215,6 +219,7 @@ def main() -> int:
                 "current_pose_unavailable",
                 "servo_map_unavailable",
                 "unexpected_pose_after_move",
+                "operator_reported_no_physical_motion_after_software_ack",
                 "operator_says_stop_or_do_not_disturb",
             ],
         },
