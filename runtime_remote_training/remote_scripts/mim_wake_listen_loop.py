@@ -2057,7 +2057,14 @@ def extract_arm_motion_request(transcript: str) -> dict[str, Any]:
     if not joint:
         return {}
     direction = ""
+    if joint == "claw":
+        if re.search(r"\b(open|opened|opening)\b", normalized):
+            direction = "open"
+        elif re.search(r"\b(close|closed|closing|shut)\b", normalized):
+            direction = "close"
     for candidate in ["right", "left", "forward", "back", "up", "down", "open", "close"]:
+        if direction:
+            break
         if re.search(rf"\b{candidate}\b", normalized):
             direction = candidate
             break
@@ -2066,6 +2073,8 @@ def extract_arm_motion_request(transcript: str) -> dict[str, Any]:
     if match:
         amount = int(match.group(1))
     if joint == "claw" and direction in {"open", "close"} and amount == 0:
+        amount = 10
+    if joint == "claw" and re.search(r"\b(all the way|fully|full)\b", normalized):
         amount = 10
     if not direction and re.search(r"\b(open|close)\b", normalized) and joint == "claw":
         direction = "open" if "open" in normalized else "close"
@@ -2090,9 +2099,12 @@ def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
     direction = str(request.get("direction") or "")
     joint_index = joint_map.get(joint)
     current_value = current_pose[joint_index] if isinstance(joint_index, int) and 0 <= joint_index < len(current_pose) else None
+    direction_mapped = direction_delta_sign(direction, joint_index, motion.get("servo_config") if isinstance(motion.get("servo_config"), list) else []) is not None
     status = "awaiting_operator_safety_confirmation"
     if blockers:
         status = "blocked_needs_attention_before_motion"
+    elif not direction_mapped:
+        status = "blocked_needs_direction_mapping"
     proposal = {
         "packet_type": "mim-arm-motion-proposal-v1",
         "generated_at": now_iso(),
@@ -2109,6 +2121,7 @@ def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
             "current_value": current_value,
             "execution": "not_executed",
             "requires_operator_confirmation": True,
+            "direction_mapped": direction_mapped,
         },
         "arm_application": app,
         "serial": serial,
@@ -2119,6 +2132,8 @@ def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
     write_json(ARM_MOTION_PROPOSAL_PATH, proposal)
     if blockers:
         response = f"I prepared the {joint} {degrees} degree {direction} proposal, but I see {compact_status(blockers[0])}. Let's troubleshoot before moving."
+    elif not direction_mapped:
+        response = f"I know {joint}, but {direction} is not mapped for that joint. Use one of the configured directions for that servo."
     else:
         response = f"Dave, I am going to move the {joint} {degrees} degrees {direction}. Is that a safe move?"
         if warnings:
@@ -2179,9 +2194,9 @@ def direction_delta_sign(direction: str, joint_index: int | None, servo_config: 
             return 1
         if direction == left_label:
             return -1
-    if direction in {"open", "up", "forward"}:
+    if direction in {"open", "up"}:
         return 1
-    if direction in {"close", "down", "back"}:
+    if direction in {"close", "down"}:
         return -1
     return None
 
@@ -2204,6 +2219,16 @@ def post_arm_move(servo: int, angle: int) -> dict[str, Any]:
         return {"ok": True, "status_code": response.status, "data": data, "error": ""}
     except Exception as exc:
         return {"ok": False, "status_code": None, "data": {}, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def get_live_arm_pose() -> list[Any]:
+    try:
+        with urllib.request.urlopen(f"{ARM_HOST}/arm_state", timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8", "replace"))
+        pose = data.get("current_pose") if isinstance(data, dict) else []
+        return pose if isinstance(pose, list) else []
+    except Exception:
+        return []
 
 
 def build_arm_motion_confirmation_route(transcript: str) -> dict[str, Any]:
@@ -2235,7 +2260,8 @@ def build_arm_motion_confirmation_route(transcript: str) -> dict[str, Any]:
     support = load_shared_json("MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json")
     motion = support.get("motion_awareness") if isinstance(support.get("motion_awareness"), dict) else {}
     servo_config = motion.get("servo_config") if isinstance(motion.get("servo_config"), list) else []
-    current_pose = motion.get("current_pose") if isinstance(motion.get("current_pose"), list) else []
+    live_pose = get_live_arm_pose()
+    current_pose = live_pose or (motion.get("current_pose") if isinstance(motion.get("current_pose"), list) else [])
     joint = str(proposal_body.get("joint") or "")
     direction = str(proposal_body.get("direction") or "")
     joint_index = proposal_body.get("joint_index")
@@ -2277,6 +2303,7 @@ def build_arm_motion_confirmation_route(transcript: str) -> dict[str, Any]:
                 "degrees": degrees,
                 "from_angle": current_value,
                 "target_angle": target_angle,
+                "pose_source": "live_arm_state" if live_pose else "support_status_artifact",
                 "http_result": result,
             }
             write_json(ARM_MOTION_EXECUTION_PATH, execution)
@@ -2296,6 +2323,45 @@ def build_arm_motion_confirmation_route(transcript: str) -> dict[str, Any]:
             "runtime/shared/MIM_ARM_MOTION_EXECUTION.latest.json",
         ],
         "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_arm_motion_confirmation"},
+        "fallback_used": True,
+    }
+
+
+def pending_arm_confirmation_route_if_any(transcript: str) -> dict[str, Any]:
+    if arm_motion_confirmation_kind(transcript) and latest_pending_arm_motion_proposal()[0]:
+        return build_arm_motion_confirmation_route(transcript)
+    return {}
+
+
+def build_arm_troubleshoot_route(transcript: str) -> dict[str, Any]:
+    proposal = load_shared_json("MIM_ARM_MOTION_PROPOSAL.latest.json")
+    execution = load_shared_json("MIM_ARM_MOTION_EXECUTION.latest.json")
+    arm_state = {}
+    try:
+        with urllib.request.urlopen(f"{ARM_HOST}/arm_state", timeout=5) as response:
+            arm_state = json.loads(response.read().decode("utf-8", "replace"))
+    except Exception as exc:
+        arm_state = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
+    last_sent = ((execution.get("http_result") or {}).get("data") or {}).get("sent") if isinstance(execution, dict) else ""
+    latest_proposal_status = proposal.get("status") if isinstance(proposal, dict) else ""
+    latest_joint = ((proposal.get("proposal") or {}) if isinstance(proposal.get("proposal"), dict) else {}).get("joint", "")
+    response = (
+        f"Arm troubleshooting: latest proposal is {compact_status(latest_proposal_status)} for {compact_status(latest_joint)}. "
+        f"Last executed command was {compact_status(last_sent)}. "
+        f"Live pose is {compact_status(arm_state.get('current_pose'))}."
+    )
+    if latest_proposal_status == "awaiting_operator_safety_confirmation":
+        response += " I am still waiting for a clear yes or cancel."
+    return {
+        "intent": "arm_motion_troubleshooting",
+        "action": "summarize_arm_motion_evidence",
+        "response_text": response[:260],
+        "artifacts": [
+            "runtime/shared/MIM_ARM_MOTION_PROPOSAL.latest.json",
+            "runtime/shared/MIM_ARM_MOTION_EXECUTION.latest.json",
+            "runtime/shared/MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json",
+        ],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_arm_motion_troubleshooting"},
         "fallback_used": True,
     }
 
@@ -2574,14 +2640,17 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_current_time_route()
     if re.search(r"\b(can you hear me|do you hear me|hear me clearly|can you see me|do you see me)\b", normalized):
         return build_voice_presence_check_route(transcript)
-    if arm_motion_confirmation_kind(transcript) and latest_pending_arm_motion_proposal()[0]:
-        return build_arm_motion_confirmation_route(transcript)
+    pending_confirmation = pending_arm_confirmation_route_if_any(transcript)
+    if pending_confirmation:
+        return pending_confirmation
     if re.search(r"\b(live\s+sync|sync)\b", normalized) and re.search(
         r"\b(on|enabled|off|disabled|not on|not enabled)\b", normalized
     ):
         return build_arm_sync_assertion_route(transcript)
     if re.search(r"\b(move|nudge|open|close)\b", normalized) and re.search(r"\b(base|shoulder|elbow|forearm|wrist|hand|grip|gripper|claw)\b", normalized):
         return build_arm_motion_proposal_route(transcript)
+    if re.search(r"\b(troubleshoot|no movement|no movements|not moving|didn'?t move|doesn'?t move|showing no movement)\b", normalized) and re.search(r"\b(arm|base|shoulder|elbow|wrist|hand|grip|claw|movement|movements)\b", normalized):
+        return build_arm_troubleshoot_route(transcript)
     if re.search(r"\b(arm status|sync mode|arm sync|is.*arm.*sync|arm.*moving|arm.*expected|troubleshoot.*arm)\b", normalized):
         return build_arm_status_route()
     if re.search(r"\b(fetch|mirror|copy|upload|pull|send|get)\b", normalized) and re.search(
@@ -2754,6 +2823,7 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
         transcript = select_effective_transcript(stt.get("text", ""), stt.get("wake_text", ""))
         self_output_detected = detect_self_output(stt.get("text", "")) or detect_self_output(stt.get("wake_text", ""))
         route = {"intent": "none", "action": "none", "artifacts": []}
+        pending_confirmation = {}
         scene = build_lab_conversation_scene(transcript, vad=vad, audio_level=level) if transcript and not self_output_detected else {}
         addressing = (
             decide_voice_addressing(transcript, scene=scene, source="followup")
@@ -2766,6 +2836,16 @@ def listen_for_followup(model: Model, device: str, *, seconds: int) -> dict[str,
         elif self_output_detected:
             status = "ignored_self_output"
             response_text = ""
+        else:
+            pending_confirmation = pending_arm_confirmation_route_if_any(transcript)
+        if not stt["ok"]:
+            pass
+        elif self_output_detected:
+            pass
+        elif pending_confirmation:
+            route = pending_confirmation
+            status = "operator_followup_routed"
+            response_text = route["response_text"]
         elif addressing and not addressing.get("addressed_to_mim"):
             status = "operator_followup_observed_not_addressed"
             route = {
@@ -2848,6 +2928,36 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
     publish_conversation_control_objective()
     scene = build_lab_conversation_scene(transcript)
     addressing = decide_voice_addressing(transcript, scene=scene, source="ambient_lab_conversation")
+    pending_confirmation = pending_arm_confirmation_route_if_any(transcript)
+    if pending_confirmation:
+        response_text = pending_confirmation["response_text"]
+        voice_response = play_voice_response(response_text) if response_text else {}
+        result = {
+            "packet_type": "mim-lab-conversation-turn-v1",
+            "generated_at": now_iso(),
+            "objective_id": "MIM-LAB-CONVERSATION-CONTROL-LAYER-V1",
+            "status": "responded" if response_text else "observed_no_response",
+            "success": True,
+            "mode": "ambient_lab_conversation",
+            "transcript": transcript,
+            "intent": pending_confirmation.get("intent"),
+            "action": pending_confirmation.get("action"),
+            "artifacts": pending_confirmation.get("artifacts", []),
+            "chat_bridge": pending_confirmation.get("chat_bridge", {}),
+            "fallback_used": pending_confirmation.get("fallback_used"),
+            "addressing_decision": addressing,
+            "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)),
+            "addressing_artifact": str(VOICE_ADDRESSING_DECISION_PATH.relative_to(ROOT)),
+            "turn_state_artifact": str(TURN_STATE_PATH.relative_to(ROOT)),
+            "response_text": response_text,
+            "voice_response": voice_response,
+            "voice_wav_output_accepted": bool(voice_response.get("any_output_accepted")) if response_text else None,
+            "no_audio_retained": True,
+            "policy": "Fresh arm movement confirmations are routed before ambient-addressing suppression.",
+        }
+        save_turn_state(transcript=transcript, route=pending_confirmation, response_text=response_text)
+        write_json(FOLLOWUP_PATH, result)
+        return result
     if not addressing.get("addressed_to_mim"):
         result = {
             "packet_type": "mim-lab-conversation-turn-v1",
