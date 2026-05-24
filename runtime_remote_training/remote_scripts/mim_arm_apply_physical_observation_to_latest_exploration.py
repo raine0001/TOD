@@ -37,8 +37,8 @@ def main() -> int:
 
     area = read_json("MIM_ARM_AREA_EXPLORATION.latest.json")
     viewpoints = area.get("viewpoints") if isinstance(area.get("viewpoints"), list) else []
-    software_ok = bool(viewpoints) and all(
-        view.get("software_pose_verified") and view.get("returned_home") for view in viewpoints
+    software_ok = bool(viewpoints) and all(view.get("software_pose_verified") for view in viewpoints) and bool(
+        area.get("returned_to_start_pose")
     )
     if not software_ok:
         print(json.dumps({"status": "blocked", "reason": "software_viewpoints_not_verified"}))

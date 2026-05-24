@@ -370,14 +370,19 @@ def execute_area_exploration() -> dict[str, Any]:
     if physical_observation.get("physical_motion_observed") is False:
         blockers.append("operator_reported_no_physical_motion_after_software_ack")
 
-    max_delta = 5
+    base_sweep_degrees = 25
+    pitch_delta_degrees = 8
+    min_required_base_sweep_degrees = 40
+    min_required_viewpoints = 5
     viewpoints: list[dict[str, Any]] = []
     if not blockers:
         candidates = [
-            ("look_left", {0: start_pose[0] + max_delta}),
-            ("look_right", {0: start_pose[0] - max_delta}),
-            ("look_slightly_higher", {1: start_pose[1] + 3, 2: start_pose[2] - 3}),
-            ("look_slightly_lower", {1: start_pose[1] - 3, 2: start_pose[2] + 3}),
+            ("center_reference", {}),
+            ("table_sweep_left", {0: start_pose[0] + base_sweep_degrees}),
+            ("table_sweep_right", {0: start_pose[0] - base_sweep_degrees}),
+            ("table_upper_left", {0: start_pose[0] + base_sweep_degrees, 1: start_pose[1] + pitch_delta_degrees, 2: start_pose[2] - pitch_delta_degrees}),
+            ("table_lower_right", {0: start_pose[0] - base_sweep_degrees, 1: start_pose[1] - pitch_delta_degrees, 2: start_pose[2] + pitch_delta_degrees}),
+            ("center_return_check", {}),
         ]
         for label, changes in candidates:
             target = list(start_pose)
@@ -403,16 +408,39 @@ def execute_area_exploration() -> dict[str, Any]:
                     "camera_checkpoint": camera,
                 }
             )
-            return_steps = move_pose_stepwise(start_pose, limits)
-            viewpoints[-1]["return_steps"] = return_steps
-            viewpoints[-1]["returned_home"] = bool(return_steps and all(step.get("software_pose_verified") for step in return_steps))
-            if not viewpoints[-1]["software_pose_verified"] or not viewpoints[-1]["returned_home"]:
+            if not viewpoints[-1]["software_pose_verified"]:
                 blockers.append(f"viewpoint_{label}_verification_failed")
                 break
 
+        return_steps: list[dict[str, Any]] = []
+        if not blockers and viewpoints:
+            return_steps = move_pose_stepwise(start_pose, limits)
+            returned_home = bool(return_steps and all(step.get("software_pose_verified") for step in return_steps))
+            viewpoints[-1]["return_steps"] = return_steps
+            viewpoints[-1]["returned_home"] = returned_home
+            if not returned_home:
+                blockers.append("return_to_start_verification_failed")
+
     final_state = get_url(f"{ARM_HOST}/arm_state")
     final_pose = (final_state.get("data") or {}).get("current_pose") if isinstance(final_state.get("data"), dict) else []
-    software_completed = not blockers and bool(viewpoints) and all(v.get("software_pose_verified") and v.get("returned_home") for v in viewpoints)
+    base_angles = [
+        int(view["target_pose"][0])
+        for view in viewpoints
+        if isinstance(view.get("target_pose"), list) and view.get("target_pose")
+    ]
+    actual_base_sweep_degrees = (max(base_angles) - min(base_angles)) if base_angles else 0
+    coverage_blockers: list[str] = []
+    if len(viewpoints) < min_required_viewpoints:
+        coverage_blockers.append("insufficient_viewpoint_count")
+    if actual_base_sweep_degrees < min_required_base_sweep_degrees:
+        coverage_blockers.append("insufficient_base_sweep_coverage")
+    blockers.extend(item for item in coverage_blockers if item not in blockers)
+    software_completed = (
+        not blockers
+        and bool(viewpoints)
+        and all(v.get("software_pose_verified") for v in viewpoints)
+        and bool(start_pose and final_pose[:6] == start_pose)
+    )
     physical_completed = bool(viewpoints) and physical_motion_supported and all(v.get("physical_motion_verified") for v in viewpoints)
     if software_completed and not physical_completed:
         blockers.append("external_physical_motion_verification_missing")
@@ -437,7 +465,14 @@ def execute_area_exploration() -> dict[str, Any]:
             "servo_config_ok": bool(servo.get("ok")),
             "serial_ready": bool(serial.get("serial_ready")),
             "start_pose": start_pose,
-            "max_delta_degrees": max_delta,
+            "scan_profile": {
+                "base_sweep_degrees_each_side": base_sweep_degrees,
+                "pitch_delta_degrees": pitch_delta_degrees,
+                "min_required_base_sweep_degrees": min_required_base_sweep_degrees,
+                "min_required_viewpoints": min_required_viewpoints,
+                "return_home_policy": "return_after_scan_not_after_every_viewpoint",
+            },
+            "actual_base_sweep_degrees": actual_base_sweep_degrees,
             "obstacle_count": len(obstacles),
             "workspace_pose": workspace_data.get("current_pose"),
             "table": workspace_data.get("table"),
