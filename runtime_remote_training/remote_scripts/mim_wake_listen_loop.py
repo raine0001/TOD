@@ -42,7 +42,9 @@ LAB_CONVERSATION_SCENE_PATH = SHARED / "MIM_LAB_CONVERSATION_SCENE.latest.json"
 VOICE_INTERACTION_LEARNING_PATH = SHARED / "MIM_VOICE_INTERACTION_LEARNING.latest.json"
 STATION_FILE_FETCH_REQUEST_PATH = SHARED / "MIM_STATION_FILE_FETCH_REQUEST.latest.json"
 ARM_MOTION_PROPOSAL_PATH = SHARED / "MIM_ARM_MOTION_PROPOSAL.latest.json"
+ARM_MOTION_EXECUTION_PATH = SHARED / "MIM_ARM_MOTION_EXECUTION.latest.json"
 ARM_SYNC_ASSERTION_PATH = SHARED / "MIM_ARM_SYNC_OPERATOR_ASSERTION.latest.json"
+ARM_HOST = os.environ.get("MIM_ARM_HOST", "http://192.168.1.90:5000").rstrip("/")
 ALERT_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_ALERT.wav"
 VOICE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_VOICE_RESPONSE.wav"
 COMBINED_RESPONSE_WAV_PATH = ROOT / "runtime" / "shared" / "MIM_WAKE_COMBINED_RESPONSE.wav"
@@ -2134,6 +2136,170 @@ def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
     }
 
 
+def latest_pending_arm_motion_proposal(max_age_seconds: int = 180) -> tuple[dict[str, Any], str]:
+    proposal = load_shared_json("MIM_ARM_MOTION_PROPOSAL.latest.json")
+    if not proposal:
+        return {}, "no_pending_motion_proposal"
+    if proposal.get("status") != "awaiting_operator_safety_confirmation":
+        return {}, "motion_proposal_not_awaiting_confirmation"
+    generated_at = parse_utc_timestamp(proposal.get("generated_at"))
+    if not generated_at:
+        return {}, "motion_proposal_missing_timestamp"
+    age = (datetime.now(timezone.utc) - generated_at.astimezone(timezone.utc)).total_seconds()
+    if age > max_age_seconds:
+        return {}, "motion_proposal_expired"
+    if proposal.get("blockers"):
+        return {}, "motion_proposal_has_blockers"
+    return proposal, ""
+
+
+def arm_motion_confirmation_kind(transcript: str) -> str:
+    normalized = normalize_voice_transcript_for_intent(transcript)
+    if re.fullmatch(r"(yes|yeah|yep|correct|confirmed|confirm|approved|safe|safe move|go ahead|do it|that is safe|it is safe|yes it is)[\.\s]*", normalized):
+        return "confirm"
+    if re.fullmatch(r"(no|nope|cancel|stop|do not|don't|dont|not safe|hold|wait)[\.\s]*", normalized):
+        return "cancel"
+    if re.search(r"\b(yes|yeah|yep|confirm|confirmed|approved|safe|go ahead|do it)\b", normalized) and len(transcript_words(normalized)) <= 5:
+        return "confirm"
+    if re.search(r"\b(no|nope|cancel|stop|not safe|hold|wait)\b", normalized) and len(transcript_words(normalized)) <= 5:
+        return "cancel"
+    return ""
+
+
+def direction_delta_sign(direction: str, joint_index: int | None, servo_config: list[Any]) -> int | None:
+    direction = direction.lower().strip()
+    for item in servo_config:
+        if not isinstance(item, dict):
+            continue
+        if int(item.get("id", -1)) != joint_index:
+            continue
+        left_label = str(item.get("left") or "").lower().strip()
+        right_label = str(item.get("right") or "").lower().strip()
+        if direction == right_label:
+            return 1
+        if direction == left_label:
+            return -1
+    if direction in {"open", "up", "forward"}:
+        return 1
+    if direction in {"close", "down", "back"}:
+        return -1
+    return None
+
+
+def post_arm_move(servo: int, angle: int) -> dict[str, Any]:
+    payload = json.dumps({"servo": servo, "angle": angle}).encode("utf-8")
+    request = urllib.request.Request(
+        f"{ARM_HOST}/move",
+        data=payload,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            raw = response.read().decode("utf-8", "replace")
+        try:
+            data = json.loads(raw) if raw else {}
+        except Exception:
+            data = {"raw": raw}
+        return {"ok": True, "status_code": response.status, "data": data, "error": ""}
+    except Exception as exc:
+        return {"ok": False, "status_code": None, "data": {}, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def build_arm_motion_confirmation_route(transcript: str) -> dict[str, Any]:
+    kind = arm_motion_confirmation_kind(transcript)
+    proposal, reason = latest_pending_arm_motion_proposal()
+    if not proposal:
+        return {
+            "intent": "arm_motion_confirmation",
+            "action": "no_fresh_pending_arm_motion",
+            "response_text": "I do not have a fresh pending arm move to confirm. Ask for the move again and I will stage it safely.",
+            "artifacts": ["runtime/shared/MIM_ARM_MOTION_PROPOSAL.latest.json"],
+            "chat_bridge": {"ok": False, "skipped": True, "reason": reason},
+            "fallback_used": True,
+        }
+    proposal_body = proposal.get("proposal") if isinstance(proposal.get("proposal"), dict) else {}
+    if kind == "cancel":
+        proposal["status"] = "cancelled_by_operator"
+        proposal["cancelled_at"] = now_iso()
+        proposal["confirmation_transcript"] = transcript
+        write_json(ARM_MOTION_PROPOSAL_PATH, proposal)
+        return {
+            "intent": "arm_motion_confirmation",
+            "action": "cancel_arm_motion_proposal",
+            "response_text": "Cancelled. I will not move the arm.",
+            "artifacts": ["runtime/shared/MIM_ARM_MOTION_PROPOSAL.latest.json"],
+            "chat_bridge": {"ok": False, "skipped": True, "reason": "operator_cancelled_arm_motion"},
+            "fallback_used": True,
+        }
+    support = load_shared_json("MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json")
+    motion = support.get("motion_awareness") if isinstance(support.get("motion_awareness"), dict) else {}
+    servo_config = motion.get("servo_config") if isinstance(motion.get("servo_config"), list) else []
+    current_pose = motion.get("current_pose") if isinstance(motion.get("current_pose"), list) else []
+    joint = str(proposal_body.get("joint") or "")
+    direction = str(proposal_body.get("direction") or "")
+    joint_index = proposal_body.get("joint_index")
+    if not isinstance(joint_index, int):
+        execution = {"status": "blocked_with_evidence", "reason_code": "missing_joint_index"}
+        write_json(ARM_MOTION_EXECUTION_PATH, execution)
+        response = "I cannot execute that arm move because the joint index is missing."
+    else:
+        current_value = (
+            int(current_pose[joint_index])
+            if 0 <= joint_index < len(current_pose) and isinstance(current_pose[joint_index], (int, float))
+            else int(proposal_body.get("current_value") or 0)
+        )
+        degrees = abs(int(proposal_body.get("degrees") or 0))
+        sign = direction_delta_sign(direction, joint_index, servo_config)
+        cfg = next((item for item in servo_config if isinstance(item, dict) and int(item.get("id", -1)) == joint_index), {})
+        min_angle = int(cfg.get("min", 0)) if isinstance(cfg, dict) else 0
+        max_angle = int(cfg.get("max", 180)) if isinstance(cfg, dict) else 180
+        if sign is None:
+            execution = {"status": "blocked_with_evidence", "reason_code": "direction_not_mapped", "direction": direction}
+            write_json(ARM_MOTION_EXECUTION_PATH, execution)
+            response = f"I cannot safely map {direction} for the {joint} yet, so I did not move it."
+        else:
+            target_angle = max(min_angle, min(max_angle, current_value + (sign * degrees)))
+            result = post_arm_move(joint_index, target_angle)
+            status = "completed_with_evidence" if result.get("ok") else "blocked_with_evidence"
+            execution = {
+                "packet_type": "mim-arm-motion-execution-v1",
+                "generated_at": now_iso(),
+                "objective_id": "MIM-ARM-DEVELOPMENT-SUPPORT-V1",
+                "status": status,
+                "success": bool(result.get("ok")),
+                "source": "operator_voice_confirmation",
+                "confirmation_transcript": transcript,
+                "proposal_generated_at": proposal.get("generated_at"),
+                "joint": joint,
+                "servo": joint_index,
+                "direction": direction,
+                "degrees": degrees,
+                "from_angle": current_value,
+                "target_angle": target_angle,
+                "http_result": result,
+            }
+            write_json(ARM_MOTION_EXECUTION_PATH, execution)
+            proposal["status"] = "executed_with_evidence" if result.get("ok") else "blocked_with_evidence"
+            proposal["execution"] = execution
+            write_json(ARM_MOTION_PROPOSAL_PATH, proposal)
+            if result.get("ok"):
+                response = f"Confirmed. I moved the {joint} from {current_value} to {target_angle}."
+            else:
+                response = f"I tried to move the {joint}, but the arm API blocked it: {compact_status(result.get('error'))}."
+    return {
+        "intent": "arm_motion_confirmation",
+        "action": "execute_confirmed_arm_motion" if kind == "confirm" else "cancel_arm_motion_proposal",
+        "response_text": response[:260],
+        "artifacts": [
+            "runtime/shared/MIM_ARM_MOTION_PROPOSAL.latest.json",
+            "runtime/shared/MIM_ARM_MOTION_EXECUTION.latest.json",
+        ],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_arm_motion_confirmation"},
+        "fallback_used": True,
+    }
+
+
 def build_station_file_index_route(transcript: str) -> dict[str, Any]:
     index = load_shared_json("MIM_STATION_FILE_INDEX.latest.json")
     requested = index.get("requested_access") if isinstance(index.get("requested_access"), dict) else {}
@@ -2408,6 +2574,8 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_current_time_route()
     if re.search(r"\b(can you hear me|do you hear me|hear me clearly|can you see me|do you see me)\b", normalized):
         return build_voice_presence_check_route(transcript)
+    if arm_motion_confirmation_kind(transcript) and latest_pending_arm_motion_proposal()[0]:
+        return build_arm_motion_confirmation_route(transcript)
     if re.search(r"\b(live\s+sync|sync)\b", normalized) and re.search(
         r"\b(on|enabled|off|disabled|not on|not enabled)\b", normalized
     ):
