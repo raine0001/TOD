@@ -53,6 +53,24 @@ def latest_physical_motion_observation() -> dict[str, Any]:
     return observation
 
 
+def parse_utc(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def physical_motion_observation_supports_scan(observation: dict[str, Any], *, max_age_seconds: int = 1800) -> bool:
+    if observation.get("physical_motion_observed") is not True:
+        return False
+    generated_at = parse_utc(observation.get("generated_at"))
+    if not generated_at:
+        return False
+    return (datetime.now(timezone.utc) - generated_at).total_seconds() <= max_age_seconds
+
+
 def get_url(url: str, *, timeout: float = 5.0) -> dict[str, Any]:
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
@@ -348,6 +366,7 @@ def execute_area_exploration() -> dict[str, Any]:
     if len(limits) < 6:
         blockers.append("servo_limits_incomplete")
     physical_observation = latest_physical_motion_observation()
+    physical_motion_supported = physical_motion_observation_supports_scan(physical_observation)
     if physical_observation.get("physical_motion_observed") is False:
         blockers.append("operator_reported_no_physical_motion_after_software_ack")
 
@@ -374,7 +393,12 @@ def execute_area_exploration() -> dict[str, Any]:
                     "target_pose": target,
                     "move_steps": steps,
                     "software_pose_verified": bool(steps and all(step.get("software_pose_verified") for step in steps)),
-                    "physical_motion_verified": False,
+                    "physical_motion_verified": physical_motion_supported,
+                    "physical_motion_evidence_source": (
+                        "recent_operator_or_external_observation"
+                        if physical_motion_supported
+                        else "missing_external_physical_motion_observation"
+                    ),
                     "arm_state_after_view": (after.get("data") or {}).get("current_pose") if isinstance(after.get("data"), dict) else [],
                     "camera_checkpoint": camera,
                 }
@@ -389,7 +413,7 @@ def execute_area_exploration() -> dict[str, Any]:
     final_state = get_url(f"{ARM_HOST}/arm_state")
     final_pose = (final_state.get("data") or {}).get("current_pose") if isinstance(final_state.get("data"), dict) else []
     software_completed = not blockers and bool(viewpoints) and all(v.get("software_pose_verified") and v.get("returned_home") for v in viewpoints)
-    physical_completed = bool(viewpoints) and all(v.get("physical_motion_verified") for v in viewpoints)
+    physical_completed = bool(viewpoints) and physical_motion_supported and all(v.get("physical_motion_verified") for v in viewpoints)
     if software_completed and not physical_completed:
         blockers.append("external_physical_motion_verification_missing")
     completed = not blockers and software_completed and physical_completed
@@ -405,6 +429,7 @@ def execute_area_exploration() -> dict[str, Any]:
             "software_pose_verification_is_not_physical_success": True,
             "requires_external_physical_motion_evidence_for_success": True,
             "physical_motion_observation": physical_observation,
+            "physical_motion_supported": physical_motion_supported,
         },
         "preflight": {
             "arm_state_ok": bool(arm_state.get("ok")),

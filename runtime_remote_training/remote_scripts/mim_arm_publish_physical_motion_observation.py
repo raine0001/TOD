@@ -29,6 +29,7 @@ def main() -> int:
     parser.add_argument("--observed", choices=["yes", "no", "unknown"], required=True)
     parser.add_argument("--source", default="Dave")
     parser.add_argument("--note", default="")
+    parser.add_argument("--confidence", default="operator_observed")
     parser.add_argument("--related-artifact", default="MIM_ARM_AREA_EXPLORATION.latest.json")
     args = parser.parse_args()
 
@@ -50,6 +51,7 @@ def main() -> int:
         "source": args.source,
         "related_artifact": args.related_artifact,
         "note": args.note,
+        "confidence": args.confidence,
         "policy_effect": (
             "Do not mark autonomous arm exploration complete from software pose or serial DONE alone."
             if observed is False
