@@ -131,6 +131,7 @@ def camera_evidence() -> dict[str, Any]:
     arm_state = get_url(f"{ARM_HOST}/arm_state")
     camera_state = get_url(f"{GATEWAY_HOST}/mim/arm/camera-state", timeout=2.0)
     capture_proposal = get_url(f"{GATEWAY_HOST}/mim/arm/proposals/capture-frame", timeout=2.0)
+    table_observer = read_json(SHARED / "MIM_ARM_TABLE_OBSERVER_STATUS.latest.json")
     arm_camera = {}
     if arm_state.get("ok") and isinstance(arm_state.get("data"), dict):
         arm_camera = arm_state["data"].get("camera") if isinstance(arm_state["data"].get("camera"), dict) else {}
@@ -142,6 +143,15 @@ def camera_evidence() -> dict[str, Any]:
         "arm_state_camera": arm_camera,
         "gateway_camera_state": camera_state,
         "gateway_capture_proposal": capture_proposal,
+        "arm_table_observer": {
+            "status": table_observer.get("status"),
+            "success": table_observer.get("success"),
+            "generated_at": table_observer.get("generated_at"),
+            "remote_frame_path": table_observer.get("remote_frame_path"),
+            "selected_camera_index": table_observer.get("selected_camera_index"),
+            "frame": table_observer.get("frame", {}),
+            "next_recovery_action": table_observer.get("next_recovery_action", ""),
+        },
         "current_camera_exploration_ready": current_frame,
         "blocker": "" if current_frame else "no_current_arm_camera_frame_bridge_evidence",
     }
