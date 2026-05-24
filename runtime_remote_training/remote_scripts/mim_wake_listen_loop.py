@@ -2169,6 +2169,7 @@ def build_arm_motion_proposal_route(transcript: str) -> dict[str, Any]:
 
 def build_arm_workspace_exploration_route(transcript: str) -> dict[str, Any]:
     coordinator = ROOT / "scripts" / "mim_arm_sim_sync_space_coordinator.py"
+    perception = ROOT / "scripts" / "mim_arm_table_scene_perception.py"
     python_bin = ROOT / ".venv" / "bin" / "python"
     command = [str(python_bin if python_bin.exists() else "python3"), str(coordinator), "--explore-area"]
     run_result: dict[str, Any] = {
@@ -2189,18 +2190,39 @@ def build_arm_workspace_exploration_route(transcript: str) -> dict[str, Any]:
         )
     except Exception as exc:
         run_result["error"] = f"{type(exc).__name__}: {exc}"
+    normalized = normalize_voice_transcript_for_intent(transcript)
+    perception_result: dict[str, Any] = {}
+    if re.search(r"\b(table|workspace|arm workspace)\b", normalized) and perception.exists():
+        perception_command = ["python3", str(perception), "--query", transcript]
+        try:
+            completed = subprocess.run(perception_command, capture_output=True, text=True, timeout=30, check=False)
+            perception_result = {
+                "command": perception_command,
+                "returncode": completed.returncode,
+                "stdout_tail": completed.stdout[-1200:],
+                "stderr_tail": completed.stderr[-1200:],
+            }
+        except Exception as exc:
+            perception_result = {"command": perception_command, "error": f"{type(exc).__name__}: {exc}"}
 
     exploration = load_shared_json("MIM_ARM_AREA_EXPLORATION.latest.json")
+    table_scene = load_shared_json("MIM_ARM_TABLE_SCENE.latest.json")
     status = str(exploration.get("status") or "unknown")
     success = exploration.get("success") is True
     blockers = exploration.get("blockers") if isinstance(exploration.get("blockers"), list) else []
     viewpoints = exploration.get("viewpoints") if isinstance(exploration.get("viewpoints"), list) else []
     final_pose = exploration.get("final_pose")
     returned_home = exploration.get("returned_to_start_pose")
+    objects = table_scene.get("objects") if isinstance(table_scene.get("objects"), list) else []
+    blue_blocks = table_scene.get("blue_block_candidates") if isinstance(table_scene.get("blue_block_candidates"), list) else []
     response = (
         f"I ran the bounded table workspace exploration. Status is {compact_status(status)}; "
         f"{len(viewpoints)} viewpoints; final pose {compact_status(final_pose)}."
     )
+    if objects:
+        response += f" I also mapped {len(objects)} table object candidates."
+    if blue_blocks:
+        response += " I see a blue block candidate."
     if success:
         response += " The scan completed and returned home."
     elif blockers:
@@ -2218,12 +2240,16 @@ def build_arm_workspace_exploration_route(transcript: str) -> dict[str, Any]:
         "success": success,
         "source_transcript": transcript,
         "runner": run_result,
+        "perception_runner": perception_result,
         "exploration_artifact": "runtime/shared/MIM_ARM_AREA_EXPLORATION.latest.json",
+        "table_scene_artifact": "runtime/shared/MIM_ARM_TABLE_SCENE.latest.json",
         "exploration_status": status,
         "blockers": blockers,
         "viewpoint_count": len(viewpoints),
         "final_pose": final_pose,
         "returned_to_start_pose": returned_home,
+        "object_candidate_count": len(objects),
+        "blue_block_candidate_count": len(blue_blocks),
     }
     write_json(SHARED / "MIM_ARM_WORKSPACE_EXPLORATION_VOICE_ROUTE.latest.json", status_payload)
     return {
@@ -2234,8 +2260,109 @@ def build_arm_workspace_exploration_route(transcript: str) -> dict[str, Any]:
             "runtime/shared/MIM_ARM_WORKSPACE_EXPLORATION_VOICE_ROUTE.latest.json",
             "runtime/shared/MIM_ARM_AREA_EXPLORATION.latest.json",
             "runtime/shared/MIM_ARM_SIM_SYNC_SPACE_STATUS.latest.json",
+            "runtime/shared/MIM_ARM_TABLE_SCENE.latest.json",
         ],
         "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_arm_workspace_exploration_route"},
+        "fallback_used": True,
+    }
+
+
+def run_arm_table_scene_perception(transcript: str) -> dict[str, Any]:
+    perception = ROOT / "scripts" / "mim_arm_table_scene_perception.py"
+    command = ["python3", str(perception), "--query", transcript]
+    if not perception.exists():
+        return {"ok": False, "error": "mim_arm_table_scene_perception.py_missing", "command": command}
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
+        return {
+            "ok": completed.returncode in {0, 2},
+            "returncode": completed.returncode,
+            "command": command,
+            "stdout_tail": completed.stdout[-1200:],
+            "stderr_tail": completed.stderr[-1200:],
+        }
+    except Exception as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "command": command}
+
+
+def build_arm_table_object_query_route(transcript: str) -> dict[str, Any]:
+    run_result = run_arm_table_scene_perception(transcript)
+    scene = load_shared_json("MIM_ARM_TABLE_SCENE.latest.json")
+    normalized = normalize_voice_transcript_for_intent(transcript)
+    blue_blocks = scene.get("blue_block_candidates") if isinstance(scene.get("blue_block_candidates"), list) else []
+    pads = scene.get("pad_candidates") if isinstance(scene.get("pad_candidates"), list) else []
+    blockers = scene.get("blockers") if isinstance(scene.get("blockers"), list) else []
+    if re.search(r"\b(what|which).*number|number.*(blue|block)|blue.*number\b", normalized):
+        if blue_blocks:
+            response = "I see a blue block candidate, but I cannot read which number pad it is on yet. Number-pad OCR or fiducial labels are not bound."
+        else:
+            response = "I do not have a reliable blue block detection yet from the table camera."
+    elif re.search(r"\b(find|where|locate|see).*(blue|block)|blue block\b", normalized):
+        if blue_blocks:
+            b = blue_blocks[0].get("bbox", {})
+            response = f"I see a blue block candidate in the table view near pixel {b.get('x')}, {b.get('y')}."
+            if blockers:
+                response += f" Remaining blocker: {compact_status(blockers[0])}."
+        else:
+            response = "I looked at the table scene, but I do not have a reliable blue block candidate yet."
+    else:
+        response = f"I mapped {len(scene.get('objects') or [])} table object candidates, including {len(blue_blocks)} blue candidates and {len(pads)} light pad or block candidates."
+        if blockers:
+            response += f" Next blocker: {compact_status(blockers[0])}."
+    return {
+        "intent": "arm_table_object_query",
+        "action": "perceive_table_objects",
+        "response_text": response[:260],
+        "artifacts": [
+            "runtime/shared/MIM_ARM_TABLE_SCENE.latest.json",
+            "runtime/shared/MIM_ARM_TABLE_OBJECT_INTERACTION_OBJECTIVE.latest.json",
+            "runtime/shared/MIM_ARM_PI_TABLE_OBSERVER_STATUS.latest.json",
+        ],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "handled_by_arm_table_scene_perception", "perception_runner": run_result},
+        "fallback_used": True,
+    }
+
+
+def build_arm_table_manipulation_route(transcript: str) -> dict[str, Any]:
+    run_result = run_arm_table_scene_perception(transcript)
+    scene = load_shared_json("MIM_ARM_TABLE_SCENE.latest.json")
+    proposal = {
+        "packet_type": "mim-arm-table-manipulation-proposal-v1",
+        "generated_at": now_iso(),
+        "objective_id": "MIM-ARM-TABLE-OBJECT-INTERACTION-V1",
+        "status": "blocked_with_evidence",
+        "success": False,
+        "source_transcript": transcript,
+        "requested_action": "pick_and_place_or_object_interaction",
+        "scene_artifact": "runtime/shared/MIM_ARM_TABLE_SCENE.latest.json",
+        "blockers": [
+            "number_pad_ocr_not_bound",
+            "arm_camera_to_table_coordinate_calibration_not_bound",
+            "grasp_planner_not_bound",
+            "collision_checked_pick_and_place_path_not_bound",
+        ],
+        "scene_summary": {
+            "object_candidate_count": len(scene.get("objects") if isinstance(scene.get("objects"), list) else []),
+            "blue_block_candidate_count": len(scene.get("blue_block_candidates") if isinstance(scene.get("blue_block_candidates"), list) else []),
+            "pad_candidate_count": len(scene.get("pad_candidates") if isinstance(scene.get("pad_candidates"), list) else []),
+        },
+        "perception_runner": run_result,
+        "next_recovery_action": "Train/calibrate numbered pad recognition, object table coordinates, grip approach poses, and safe lift/place routines before live pick-and-place.",
+    }
+    write_json(SHARED / "MIM_ARM_TABLE_MANIPULATION_PROPOSAL.latest.json", proposal)
+    response = (
+        "I understand the table manipulation request, but I am blocking live pick-and-place for now. "
+        "I need numbered-pad recognition, table coordinates, and a proven grasp plan first."
+    )
+    return {
+        "intent": "arm_table_manipulation",
+        "action": "blocked_pending_grasp_training",
+        "response_text": response[:260],
+        "artifacts": [
+            "runtime/shared/MIM_ARM_TABLE_MANIPULATION_PROPOSAL.latest.json",
+            "runtime/shared/MIM_ARM_TABLE_SCENE.latest.json",
+        ],
+        "chat_bridge": {"ok": False, "skipped": True, "reason": "manipulation_requires_grasp_training"},
         "fallback_used": True,
     }
 
@@ -2829,6 +2956,14 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_arm_sync_assertion_route(transcript)
     if re.search(r"\b(move|nudge|open|close)\b", normalized) and re.search(r"\b(base|shoulder|elbow|forearm|wrist|hand|grip|gripper|claw)\b", normalized):
         return build_arm_motion_proposal_route(transcript)
+    if re.search(r"\b(pick up|pickup|grab|grip|move|place|put)\b", normalized) and re.search(
+        r"\b(block|cube|pad|number\s*[123]|one|two|three|blue|white|gray|grey)\b", normalized
+    ):
+        return build_arm_table_manipulation_route(transcript)
+    if re.search(r"\b(find|where|locate|see|identify|what number|which number|what.*on|object|objects|block|blocks|pad|pads)\b", normalized) and re.search(
+        r"\b(table|blue|white|gray|grey|block|cube|pad|number\s*[123]|one|two|three)\b", normalized
+    ):
+        return build_arm_table_object_query_route(transcript)
     if re.search(r"\b(explore|scan|look around|survey|inspect)\b", normalized) and re.search(
         r"\b(workspace|table|area|surroundings|arm space|arm workspace)\b", normalized
     ):
