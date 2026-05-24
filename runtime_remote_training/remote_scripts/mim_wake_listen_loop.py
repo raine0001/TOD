@@ -2285,6 +2285,24 @@ def run_arm_table_scene_perception(transcript: str) -> dict[str, Any]:
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "command": command}
 
 
+def run_arm_table_manipulation_training_status() -> dict[str, Any]:
+    publisher = ROOT / "scripts" / "mim_arm_table_manipulation_training_status.py"
+    command = ["python3", str(publisher)]
+    if not publisher.exists():
+        return {"ok": False, "error": "mim_arm_table_manipulation_training_status.py_missing", "command": command}
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=20, check=False)
+        return {
+            "ok": completed.returncode == 0,
+            "returncode": completed.returncode,
+            "command": command,
+            "stdout_tail": completed.stdout[-1200:],
+            "stderr_tail": completed.stderr[-1200:],
+        }
+    except Exception as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "command": command}
+
+
 def build_arm_table_object_query_route(transcript: str) -> dict[str, Any]:
     run_result = run_arm_table_scene_perception(transcript)
     scene = load_shared_json("MIM_ARM_TABLE_SCENE.latest.json")
@@ -2350,6 +2368,7 @@ def build_arm_table_manipulation_route(transcript: str) -> dict[str, Any]:
         "next_recovery_action": "Train/calibrate numbered pad recognition, object table coordinates, grip approach poses, and safe lift/place routines before live pick-and-place.",
     }
     write_json(SHARED / "MIM_ARM_TABLE_MANIPULATION_PROPOSAL.latest.json", proposal)
+    training_result = run_arm_table_manipulation_training_status()
     response = (
         "I understand the table manipulation request, but I am blocking live pick-and-place for now. "
         "I need numbered-pad recognition, table coordinates, and a proven grasp plan first."
@@ -2361,8 +2380,44 @@ def build_arm_table_manipulation_route(transcript: str) -> dict[str, Any]:
         "artifacts": [
             "runtime/shared/MIM_ARM_TABLE_MANIPULATION_PROPOSAL.latest.json",
             "runtime/shared/MIM_ARM_TABLE_SCENE.latest.json",
+            "runtime/shared/MIM_ARM_TABLE_MANIPULATION_TRAINING_STATUS.latest.json",
+            "runtime/shared/MIM_ARM_TABLE_MANIPULATION_TRAINING_OBJECTIVE.latest.json",
         ],
-        "chat_bridge": {"ok": False, "skipped": True, "reason": "manipulation_requires_grasp_training"},
+        "chat_bridge": {
+            "ok": False,
+            "skipped": True,
+            "reason": "manipulation_requires_grasp_training",
+            "training_status_publisher": training_result,
+        },
+        "fallback_used": True,
+    }
+
+
+def build_arm_table_manipulation_blocker_route(transcript: str) -> dict[str, Any]:
+    training_result = run_arm_table_manipulation_training_status()
+    status = load_shared_json("MIM_ARM_TABLE_MANIPULATION_TRAINING_STATUS.latest.json")
+    blockers = status.get("blockers") if isinstance(status.get("blockers"), list) else []
+    response = (
+        "Block movement is intentionally blocked right now. "
+        "I need pad recognition, table coordinate calibration, grasp planning, and collision checking before I move blocks."
+    )
+    if blockers:
+        response = f"Block movement is blocked by {compact_status(blockers[0])}. I logged the training path."
+    return {
+        "intent": "arm_table_manipulation_blocker_status",
+        "action": "explain_manipulation_training_blocker",
+        "response_text": response[:260],
+        "artifacts": [
+            "runtime/shared/MIM_ARM_TABLE_MANIPULATION_TRAINING_STATUS.latest.json",
+            "runtime/shared/MIM_ARM_TABLE_MANIPULATION_TRAINING_OBJECTIVE.latest.json",
+            "runtime/shared/MIM_ARM_TABLE_MANIPULATION_PROPOSAL.latest.json",
+        ],
+        "chat_bridge": {
+            "ok": False,
+            "skipped": True,
+            "reason": "handled_by_manipulation_training_status",
+            "training_status_publisher": training_result,
+        },
         "fallback_used": True,
     }
 
@@ -2956,6 +3011,10 @@ def route_followup(transcript: str) -> dict[str, Any]:
         return build_arm_sync_assertion_route(transcript)
     if re.search(r"\b(move|nudge|open|close)\b", normalized) and re.search(r"\b(base|shoulder|elbow|forearm|wrist|hand|grip|gripper|claw)\b", normalized):
         return build_arm_motion_proposal_route(transcript)
+    if re.search(r"\b(why|what|status|explain|blocked|blocker|blockers|unable|can'?t|cannot|won'?t)\b", normalized) and re.search(
+        r"\b(block|cube|pick|place|grab|grip|table|pad|number)\b", normalized
+    ):
+        return build_arm_table_manipulation_blocker_route(transcript)
     if re.search(r"\b(pick up|pickup|grab|grip|move|place|put)\b", normalized) and re.search(
         r"\b(block|cube|pad|number\s*[123]|one|two|three|blue|white|gray|grey)\b", normalized
     ):
