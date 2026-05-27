@@ -1,0 +1,148 @@
+{
+  "generated_at": "2026-05-27T13:35:00-07:00",
+  "created_by": "codex",
+  "deck_id": "MIM_TOD_AWAY_WORK_OBJECTIVE_STACK_2026_05_27",
+  "priority": "critical",
+  "operator_context": "Dave is away for several hours. MIM and TOD should keep training, complete queued objectives, and escalate only with concise evidence when blocked.",
+  "standing_policy": {
+    "keep_training_active": true,
+    "make_mim_tod_do_the_work": true,
+    "do_not_leave_dirty_files": true,
+    "operator_reporting_style": "natural_human_summary",
+    "canonical_check_required_before_implementation": true
+  },
+  "objectives": [
+    {
+      "objective_id": "MIM-WALL-DIRECT-MIM-BRIDGE-HARDENING-V1",
+      "title": "MIM Wall phone app must talk to real MIM first",
+      "priority": "P0",
+      "owner": "MIM_TOD",
+      "status": "queued",
+      "app_path": "E:/mim_wall",
+      "goal": "Ensure mim_wall routes user prompts and status requests to live MIM, not OpenAI, by default.",
+      "required_actions": [
+        "Verify provider defaults prefer MIM and default to https://mim.mimtod.com.",
+        "Verify phone prompts hit /gateway/intake/text before local or OpenAI fallback.",
+        "Verify live objective feed hits /objectives/state.",
+        "Add clear in-app status when live MIM is unavailable, rejected, or using fallback.",
+        "Build a debug APK and publish install/test instructions.",
+        "Do not remove OpenAI fallback, but make fallback visible and non-silent."
+      ],
+      "success_criteria": [
+        "Fresh install defaults point at real MIM.",
+        "A phone prompt produces live MIM delivery evidence or explicit rejection evidence.",
+        "Fallback path is operator-visible.",
+        "Repo is clean after commit."
+      ]
+    },
+    {
+      "objective_id": "MIM-APP-REAL-MIM-CONNECTION-AUDIT-V1",
+      "title": "Audit all MIM apps for real-MIM vs OpenAI coupling",
+      "priority": "P0",
+      "owner": "MIM_TOD",
+      "status": "queued",
+      "app_paths": [
+        "E:/coachMIM",
+        "E:/comm_app",
+        "E:/mim_wall"
+      ],
+      "goal": "Map every AI/provider integration and identify which app features call real MIM, TOD, OpenAI, local fallback, or static rules.",
+      "required_actions": [
+        "Inventory provider/config files, routes, Android stores, and environment variables.",
+        "Classify every AI feature by provider: MIM gateway, TOD, OpenAI direct, local/rule fallback.",
+        "Flag user-visible features that should route through MIM but currently call OpenAI directly.",
+        "Create a migration plan for each app with low-risk phases and validation steps.",
+        "Publish a concise app-by-app operator report."
+      ],
+      "success_criteria": [
+        "Report names specific files and routes.",
+        "Report identifies canonical provider architecture per app.",
+        "Migration objectives exist for each gap.",
+        "No code changes are made without canonical capability check."
+      ]
+    },
+    {
+      "objective_id": "AGENTMIM-ANALYZER-FREE-LEAD-FUNNEL-V1",
+      "title": "Improve public analyzer as free lead funnel",
+      "priority": "P0",
+      "owner": "MIM_TOD",
+      "status": "in_progress",
+      "app_path": "E:/comm_app",
+      "goal": "Make https://www.agentmim.com/analyzer more useful and conversion-oriented for agents evaluating carrier statements.",
+      "required_actions": [
+        "Verify the analyzer upload flow with known April commission downloads/fixtures.",
+        "Show total carrier paid amount immediately after upload so users can compare against their statement.",
+        "Change CTA copy to 'Want the full report and downloads FREE?'",
+        "Surface mapping confidence, row count, period, carrier, and reconciliation notes in plain language.",
+        "Create regression coverage for analyzer preview fields and CTA text."
+      ],
+      "success_criteria": [
+        "Analyzer shows total carrier paid in the detected summary.",
+        "CTA uses FREE language.",
+        "April test files are exercised or explicit missing-fixture blocker is published.",
+        "Repo is clean after commit."
+      ]
+    },
+    {
+      "objective_id": "AGENTMIM-SOCIAL-CONTENT-AUTOMATION-REVIEW-V1",
+      "title": "Review and strengthen AgentMIM social/content automation",
+      "priority": "P1",
+      "owner": "MIM_TOD",
+      "status": "queued",
+      "app_path": "E:/comm_app",
+      "goal": "Get social media posts, content creation, and marketing automation working reliably enough to drive AgentMIM growth.",
+      "required_actions": [
+        "Inspect campaigns, feeds/keywords, social account connection, post generation, scheduling, and queue routes.",
+        "Verify whether generated forum graphics capability is reused by marketing tools.",
+        "Identify missing schedulers, provider credentials, publish approvals, and media generation blockers.",
+        "Create bounded implementation objectives for each blocker.",
+        "Publish a marketing automation readiness report."
+      ],
+      "success_criteria": [
+        "Known routes and jobs are listed.",
+        "Working vs blocked features are explicit.",
+        "Next fixes are bounded by file/path and validation."
+      ]
+    },
+    {
+      "objective_id": "AGENTMIM-SUPPORT-HELPDESK-MIM-TOD-ROUTING-V1",
+      "title": "Support/helpdesk requests route to MIM and TOD",
+      "priority": "P1",
+      "owner": "MIM_TOD",
+      "status": "queued",
+      "app_path": "E:/comm_app",
+      "goal": "Make support, troubleshooting, and help desk resources flow into MIM/TOD for resolution and objective creation.",
+      "required_actions": [
+        "Inventory help, ticket, inbox, admin support, and user-facing support routes.",
+        "Identify which support events should create MIM/TOD objectives or escalation packets.",
+        "Design an auditable routing contract with user, context, attachment, app route, problem class, and requested outcome.",
+        "Add implementation objectives for missing adapters."
+      ],
+      "success_criteria": [
+        "Support surfaces are mapped.",
+        "MIM/TOD intake contract is specified.",
+        "Blocked routing gaps have objective cards."
+      ]
+    },
+    {
+      "objective_id": "AGENTMIM-DYNAMIC-EMAIL-CAMPAIGNS-V1",
+      "title": "Plan dynamic email campaigns for user solicitation",
+      "priority": "P2",
+      "owner": "MIM_TOD",
+      "status": "queued",
+      "app_path": "E:/comm_app",
+      "goal": "Create a safe plan for dynamic email campaigns that promote useful free tools without spammy behavior.",
+      "required_actions": [
+        "Inventory existing campaign/email tooling.",
+        "Identify list sources, opt-in/opt-out handling, templates, tracking, and compliance gaps.",
+        "Draft campaign concepts for the free analyzer and commission workflow pain points.",
+        "Require operator approval before any outbound send automation."
+      ],
+      "success_criteria": [
+        "Campaign plan exists with compliance safeguards.",
+        "No outbound sends occur without explicit operator approval.",
+        "Implementation gaps are converted into bounded objectives."
+      ]
+    }
+  ]
+}
