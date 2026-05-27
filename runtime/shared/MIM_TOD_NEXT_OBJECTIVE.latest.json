@@ -1,23 +1,21 @@
-﻿{
-    "packet_type":  "mim-tod-next-objective-v1",
-    "generated_at":  "2026-05-24T17:52:01Z",
-    "objective_id":  "MIM-ARM-BLUE-BLOCK-PICKUP-CONTINUE-UNTIL-SAFE-SUCCESS-V1",
-    "status":  "active",
-    "goal":  "Continue toward verified pickup of the blue block without human prompts, but do not execute contact motion while the workspace is occupied or alignment is unproven.",
-    "order":  [
-                  "Continuously consume MIM_ARM_BLUE_BLOCK_PICKUP_TRAINING.latest.json, MIM_ARM_BLUE_BLOCK_VISUAL_SERVO_PROBE.latest.json, and MIM_ARM_BLUE_BLOCK_WORKSPACE_SAFETY.latest.json.",
-                  "When fixed observer evidence shows the arm workspace is clear, run only slow no-contact alignment refinement first.",
-                  "Do not close the claw until target selection, visual alignment, collision path, and before/after camera evidence are all present.",
-                  "Treat every blocked run as training evidence and publish the exact blocker and next recovery action.",
-                  "Never mark pickup complete from speech, queue activity, or software pose alone."
-              ],
-    "success":  "MIM physically picks up the selected blue block and publishes before/after camera evidence plus arm-state evidence showing the action completed.",
-    "current_blockers":  [
-                             "human_present_in_arm_workspace",
-                             "visual_servo_target_alignment_not_validated",
-                             "collision_checked_approach_path_not_bound",
-                             "grasp_close_lift_verify_sequence_not_bound",
-                             "ir_proximity_sensor_connected_but_not_calibrated_for_grip_approach"
-                         ],
-    "next_safe_action":  "Wait for clear workspace evidence, then run slow no-contact visual alignment refinement; do not grip."
+{
+  "packet_type": "mim-tod-next-objective-v1",
+  "generated_at": "2026-05-27T13:45:00-07:00",
+  "objective_id": "MIM-TOD-AWAY-WORK-APP-REVIEW-AND-MARKETING-PUSH-V1",
+  "status": "active",
+  "goal": "While Dave is away for several hours, keep MIM/TOD training active and execute the app review, MIM Wall direct-MIM bridge, AgentMIM analyzer, social/content automation, support/helpdesk routing, and email campaign planning objectives.",
+  "source_deck": "runtime/shared/MIM_TOD_AWAY_WORK_OBJECTIVE_STACK_2026_05_27.latest.json",
+  "order": [
+    "Confirm MIM/TOD training and autonomous loops are alive; restart or escalate with evidence if stalled.",
+    "Consume runtime/shared/MIM_TOD_AWAY_WORK_OBJECTIVE_STACK_2026_05_27.latest.json.",
+    "Finish MIM-WALL-DIRECT-MIM-BRIDGE-HARDENING-V1 and verify phone prompts prefer live MIM.",
+    "Run MIM-APP-REAL-MIM-CONNECTION-AUDIT-V1 across E:/coachMIM, E:/comm_app, and E:/mim_wall.",
+    "Continue AGENTMIM-ANALYZER-FREE-LEAD-FUNNEL-V1 and verify April carrier statement coverage or publish missing-fixture blocker.",
+    "Review AgentMIM social/content/media automation and support/helpdesk routing.",
+    "Create bounded implementation objectives for any blockers rather than waiting silently.",
+    "Report progress in concise human language: completed, blocked, why, next action."
+  ],
+  "success": "MIM/TOD remain active, publish app-by-app review evidence, complete direct-MIM phone bridge hardening, improve analyzer lead funnel evidence, and create bounded follow-on objectives for marketing/social/support gaps.",
+  "current_blockers": [],
+  "next_safe_action": "Start with live process confirmation and MIM Wall bridge validation, then proceed through the away-work objective stack without waiting for Dave."
 }

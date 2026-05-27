@@ -1,7 +1,7 @@
 {
     "ok":  true,
     "source":  "tod-project-library-index-v1",
-    "generated_at":  "2026-05-27T17:21:29.8048765Z",
+    "generated_at":  "2026-05-27T20:18:22.6580617Z",
     "library_root":  "E:/",
     "registry_path":  "E:/TOD/tod/config/project-registry.json",
     "registered_project_count":  12,
@@ -45,11 +45,23 @@
                                             "notes":  "Runtime/state artifacts are read-only by default; code/docs require review gates."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:28.8524275Z",
+                                           "scanned_at":  "2026-05-27T20:18:21.2062532Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
+                                                                 "shared_state/TOD_SELF_HEAL_ORDER.latest.json",
+                                                                 "shared_state/TOD_MIM_BRIDGE_SMOKE.latest.json",
+                                                                 "shared_state/TOD_MIM_REMOTE_BOUNDARY_DIAGNOSTIC.latest.json",
                                                                  "shared_state/integration_status.json",
                                                                  "shared_state/tod_training_status.latest.json",
+                                                                 "shared_state/tod_objective_roadmap.json",
+                                                                 "shared_state/tod_execution_readiness_history.latest.json",
+                                                                 "shared_state/TOD_MIM_REMOTE_REQUEST_PROBE.latest.json",
+                                                                 "tod/state/engineering_memory.json",
+                                                                 "tod/data/engineering-memory.json",
+                                                                 "shared_state/dialog/MIM_TOD_DIALOG.sessions.latest.json",
+                                                                 "shared_state/dialog/MIM_TOD_DIALOG.session-autonomous-idle-20260527T201248Z-d318a1c8.latest.json",
+                                                                 "shared_state/dialog/MIM_TOD_DIALOG.latest.jsonl",
+                                                                 "shared_state/dialog/MIM_TOD_DIALOG.session-autonomous-idle-20260527T201248Z-d318a1c8.jsonl",
                                                                  "shared_state/chatgpt_update.md",
                                                                  "shared_state/chatgpt_update.json",
                                                                  "shared_state/latest_summary.md",
@@ -60,19 +72,7 @@
                                                                  "shared_state/objectives.json",
                                                                  "shared_state/current_build_state.json",
                                                                  "shared_state/execution_evidence.json",
-                                                                 "shared_state/TOD_INTEGRATION_STATUS_UPLOAD_RECEIPT.latest.json",
-                                                                 "shared_state/TOD_MIM_ARM_STATUS_UPLOAD_RECEIPT.latest.json",
-                                                                 "shared_state/tod_objective_roadmap.json",
-                                                                 "shared_state/tod_execution_readiness_history.latest.json",
-                                                                 "tod/state/engineering_memory.json",
-                                                                 "tod/data/engineering-memory.json",
-                                                                 "runtime/shared/TOD_EXECUTION_LOCK.latest.json",
-                                                                 "shared_state/tod_autonomy_status.latest.json",
-                                                                 "shared_state/tod_watchdog_drift_guard.log.jsonl",
-                                                                 "shared_state/tod_watchdog_drift_guard.latest.json",
-                                                                 "shared_state/tod_recovery_watchdog.latest.json",
-                                                                 "shared_state/tod_recovery_watchdog.log.jsonl",
-                                                                 "shared_state/TOD_SELF_HEAL_ORDER.latest.json"
+                                                                 "shared_state/TOD_INTEGRATION_STATUS_UPLOAD_RECEIPT.latest.json"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -137,11 +137,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".json",
-                                                                         "count":  3282
+                                                                         "count":  3285
                                                                      },
                                                                      {
                                                                          "extension":  ".jsonl",
-                                                                         "count":  2818
+                                                                         "count":  2821
                                                                      },
                                                                      {
                                                                          "extension":  ".log",
@@ -280,9 +280,12 @@
                                             "notes":  "Business logic and workflow routes require explicit test plans before write operations. Feature-scoped verification should start with the AgentMIM admin marketing avatar/video surface before broader app edits. Use the TOD comm_app managed-work command to separate product patch scope from QA/support artifacts before live edits."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:29.1390533Z",
+                                           "scanned_at":  "2026-05-27T20:18:21.5614410Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
+                                                                 ".git/gk/config",
+                                                                 "external/MuseTalk/download_required_weights.py",
+                                                                 "external/MuseTalk/.gitignore",
                                                                  ".git/logs/HEAD",
                                                                  ".git/COMMIT_EDITMSG",
                                                                  ".git/index",
@@ -304,10 +307,7 @@
                                                                  "instance/flask_session/68929cf913af9ca5c43ddbce0adec080",
                                                                  "instance/flask_session/e25147169defd1e5597ba01cc969357c",
                                                                  "instance/flask_session/51ada6e94ea18b1f48ac5e04061b0f1e",
-                                                                 "instance/flask_session/7d600ff74413c6fbd8bb83e48dda4adc",
-                                                                 "instance/flask_session/45cd4ed1389273dd3f0f4f723e470f0e",
-                                                                 "instance/flask_session/f9fe70749ece2b2c52d98fb9ecb40acb",
-                                                                 "instance/flask_session/4e13d0f32e1207ec8da91fb762a6d1e3"
+                                                                 "instance/flask_session/7d600ff74413c6fbd8bb83e48dda4adc"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -544,7 +544,7 @@
                                             "notes":  "Prefer advisory mode first; promote to patch mode after baseline test map is stable."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:29.1890728Z",
+                                           "scanned_at":  "2026-05-27T20:18:21.6409714Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -701,7 +701,7 @@
                                             "notes":  "Architecture-sensitive domain; start in read-only and advisory modes."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:29.3541367Z",
+                                           "scanned_at":  "2026-05-27T20:18:21.9193561Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -885,13 +885,22 @@
                                             "notes":  "Hardware-facing changes should require explicit human approval and rollback plans."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:29.4715486Z",
+                                           "scanned_at":  "2026-05-27T20:18:22.0643963Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
+                                                                 "images/catch system.png",
+                                                                 "materials_docs/MIM Robots Automation Intro.pdf",
+                                                                 "materials_docs/MIM Robots Automation Intro.docx",
+                                                                 "images/payback.png",
+                                                                 "images/MIM services.png",
+                                                                 "images/lets build.png",
+                                                                 "images/next steps.png",
+                                                                 "images/real roi.png",
+                                                                 "images/common questions.png",
+                                                                 "images/planning stage.png",
+                                                                 "images/getting started banner.png",
                                                                  "images/banners.png",
                                                                  "images/side banner.png",
-                                                                 "materials_docs/~$M Robots Automation Intro.docx",
-                                                                 "materials_docs/MIM Robots Automation Intro.docx",
                                                                  "design_parts/finger parts.skp",
                                                                  "design_parts/finger parts.skb",
                                                                  "automation.png",
@@ -903,16 +912,7 @@
                                                                  "design_parts/claw_all_final.3mf",
                                                                  "design_parts/v2/servo_cap_70.skp",
                                                                  "design_parts/v2/servo_cap_70.skb",
-                                                                 "3d model/MIM_full_build.blend",
-                                                                 "3d model/MIM_full_build.blend1",
-                                                                 "design_parts/v2/base_with_sleve.skp",
-                                                                 "design_parts/v2/base_with_sleve.skb",
-                                                                 "design_parts/v2/arm.skp",
-                                                                 "design_parts/v2/arm.skb",
-                                                                 "design_parts/v2/servo_cap_150.skp",
-                                                                 "design_parts/v2/servo_cap_150.skb",
-                                                                 "design_parts/v2/serveo_cap_concave_150kg.skb",
-                                                                 "design_parts/arm_cap_2.stl"
+                                                                 "3d model/MIM_full_build.blend"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -949,7 +949,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".docx",
-                                                                         "count":  16
+                                                                         "count":  15
                                                                      },
                                                                      {
                                                                          "extension":  ".dwg",
@@ -1017,11 +1017,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".pdf",
-                                                                         "count":  13
+                                                                         "count":  14
                                                                      },
                                                                      {
                                                                          "extension":  ".png",
-                                                                         "count":  59
+                                                                         "count":  68
                                                                      },
                                                                      {
                                                                          "extension":  ".pt",
@@ -1152,7 +1152,7 @@
                                             "notes":  "ML model weights, training outputs and frame caches are data-critical and excluded from automated edits. Deployed on Render — validate changes against Dockerfile before push."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:29.5981221Z",
+                                           "scanned_at":  "2026-05-27T20:18:22.2409687Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1390,7 +1390,7 @@
                                             "notes":  "Enable controlled implementation once baseline architecture map is generated."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:29.6522096Z",
+                                           "scanned_at":  "2026-05-27T20:18:22.3197947Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1568,7 +1568,7 @@
                                             "notes":  "Treat as experimental domain; prioritize architecture summaries and drift tracking."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:29.6722067Z",
+                                           "scanned_at":  "2026-05-27T20:18:22.4540876Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "12 project MIM devl.docx",
@@ -1701,7 +1701,7 @@
                                             "notes":  "Use as pattern library and experiments workspace; avoid unmanaged refactors."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:29.7393555Z",
+                                           "scanned_at":  "2026-05-27T20:18:22.5142805Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "accounting/may-jun-2026/zoom_INV355453643_A26051480_05242026.pdf",
@@ -1850,7 +1850,7 @@
                                             "notes":  "Primary domain for generated media/content workflows; keep secret-bearing config out of automated edits."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:29.7453545Z",
+                                           "scanned_at":  "2026-05-27T20:18:22.5182846Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1911,7 +1911,7 @@
                                             "notes":  "Dedicated media creation and processing domain for TOD image/video/audio outputs and workflow indexing."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:29.7504071Z",
+                                           "scanned_at":  "2026-05-27T20:18:22.5262853Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1997,7 +1997,7 @@
                                             "notes":  "Android app changes should keep build, lint, and automated dialog regression gates green before publish. Prefer README.md, TOD.md, MIM_ASSIST_SPEC.md, DEVELOPMENT_PLAN.md, and sprint plan docs as the default familiarization path."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-27T17:21:29.8013599Z",
+                                           "scanned_at":  "2026-05-27T20:18:22.5838031Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  ".gradle/buildOutputCleanup/buildOutputCleanup.lock",
