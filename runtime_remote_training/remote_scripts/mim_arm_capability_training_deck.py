@@ -73,6 +73,7 @@ def stage_status(*artifact_names: str) -> str:
 def main() -> int:
     generated_at = now_iso()
     evidence = {
+        "mechanical_structure_learning": artifact_summary("MIM_MECHANICAL_STRUCTURE_LEARNING_STATUS.latest.json"),
         "access_binding": artifact_summary("MIM_ARM_ACCESS_BINDING.latest.json"),
         "development_support": artifact_summary("MIM_ARM_DEVELOPMENT_SUPPORT_STATUS.latest.json"),
         "joint_motion_training": artifact_summary("MIM_ARM_JOINT_MOTION_TRAINING_STATUS.latest.json"),
@@ -81,9 +82,11 @@ def main() -> int:
         "area_exploration": artifact_summary("MIM_ARM_AREA_EXPLORATION.latest.json"),
         "arm_camera_capture": artifact_summary("MIM_ARM_CAMERA_CAPTURE_STATUS.latest.json"),
         "camera_scene_training": artifact_summary("MIM_ARM_CAMERA_SCENE_TRAINING_STATUS.latest.json"),
+        "ir_sensor_calibration": artifact_summary("MIM_ARM_IR_SENSOR_CALIBRATION_STATUS.latest.json"),
         "calibration_training": artifact_summary("MIM_ARM_CALIBRATION_TRAINING_STATUS.latest.json"),
         "table_reference_map": artifact_summary("MIM_ARM_TABLE_REFERENCE_MAP.latest.json"),
         "table_scene": artifact_summary("MIM_ARM_TABLE_SCENE.latest.json"),
+        "blue_block_pickup_training": artifact_summary("MIM_ARM_BLUE_BLOCK_PICKUP_TRAINING.latest.json"),
         "table_manipulation_training": artifact_summary("MIM_ARM_TABLE_MANIPULATION_TRAINING_STATUS.latest.json"),
         "dispatch_telemetry": artifact_summary("MIM_ARM_DISPATCH_TELEMETRY.latest.json"),
         "ready_task_dispatcher": artifact_summary("MIM_READY_TASK_DISPATCHER_STATUS.latest.json"),
@@ -135,8 +138,10 @@ def main() -> int:
                 "MIM_ARM_PI_TABLE_OBSERVER_STATUS.latest.json",
                 "MIM_ARM_TABLE_OBSERVER_STATUS.latest.json",
             ),
-            "goal": "MIM can use arm camera and fixed observer views to identify the table, blocks, pads, gripper, humans, and obstacles.",
+            "goal": "MIM can use the wrist-mounted arm camera and fixed observer views to identify the table, blocks, pads, gripper, humans, and obstacles.",
             "next_objectives": [
+                "Model the arm camera as mounted on top of the wrist; use wrist and hand movements as the first camera-view controls.",
+                "Model the top-of-hand IR sensor as 142 mm behind the grip tips and validate it before using proximity readings.",
                 "Capture fresh arm-camera frames on demand and mirror them to MIM shared runtime.",
                 "Fuse fixed table observer with arm-mounted camera so object detections have confidence and viewpoint.",
                 "Train object labels: blue block, white block, gray block, number pad 1, number pad 2, number pad 3.",
@@ -148,6 +153,7 @@ def main() -> int:
             "status": stage_status("MIM_ARM_CALIBRATION_TRAINING_STATUS.latest.json", "MIM_ARM_TABLE_REFERENCE_MAP.latest.json"),
             "goal": "MIM converts camera pixels and simulation coordinates into real table coordinates that the arm can reach.",
             "next_objectives": [
+                "Calibrate the top-of-hand IR proximity sensor against known distances and apply the 142 mm grip-tip offset.",
                 "Calibrate number pads or fiducial markers as fixed table reference points.",
                 "Publish image-to-table homography with confidence and last validation time.",
                 "Validate coordinate mapping by moving the gripper near, not touching, each reference point.",
@@ -223,6 +229,7 @@ def main() -> int:
         "objective_id": "MIM-ARM-CAPABILITY-TRAINING-DECK-V1",
         "status": "active",
         "goal": "Develop MIM into a capable arm development, perception, safety, and manipulation assistant.",
+        "parent_objective": "MIM-MECHANICAL-STRUCTURE-LEARNING-V1",
         "operator": "Dave",
         "success_definition": [
             "MIM can explain the arm state, camera state, sync state, authority state, and current training state.",
@@ -249,6 +256,11 @@ def main() -> int:
         "success": False,
         "summary": "MIM has guarded motion, sync-space exploration, and table-scene candidate perception; manipulation remains blocked pending calibration and grasp training.",
         "evidence": evidence,
+        "parent_objective": {
+            "objective_id": "MIM-MECHANICAL-STRUCTURE-LEARNING-V1",
+            "artifact": "runtime/shared/MIM_MECHANICAL_STRUCTURE_LEARNING_OBJECTIVE.latest.json",
+            "status_artifact": "runtime/shared/MIM_MECHANICAL_STRUCTURE_LEARNING_STATUS.latest.json",
+        },
         "training_tracks": training_tracks,
         "recommended_next_objective": immediate_sequence[0],
         "recommended_sequence": immediate_sequence,

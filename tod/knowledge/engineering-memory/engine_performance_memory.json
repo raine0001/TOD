@@ -1,121 +1,933 @@
-{
-    "id":  "MEM-11B0B9E1",
-    "title":  "engine performance update",
-    "note":  "engine=local category=mim_synced decision=revise",
-    "tags":  [
-                 "engine-performance",
-                 "engine:local",
-                 "category:mim_synced",
-                 "decision:revise"
-             ],
-    "record":  {
-                   "id":  "ENGPERF-F1B499AF",
-                   "task_id":  "objective-2914-local-executor-binding-repair-1778196745785",
-                   "engine":  "local",
-                   "task_type":  "programming",
-                   "task_category":  "mim_synced",
-                   "fallback_applied":  false,
-                   "attempted_engines":  [
+[
+    {
+        "id":  "MEM-11B0B9E1",
+        "title":  "engine performance update",
+        "note":  "engine=local category=mim_synced decision=revise",
+        "tags":  [
+                     "engine-performance",
+                     "engine:local",
+                     "category:mim_synced",
+                     "decision:revise"
+                 ],
+        "record":  {
+                       "id":  "ENGPERF-F1B499AF",
+                       "task_id":  "objective-2914-local-executor-binding-repair-1778196745785",
+                       "engine":  "local",
+                       "task_type":  "programming",
+                       "task_category":  "mim_synced",
+                       "fallback_applied":  false,
+                       "attempted_engines":  [
 
-                                         ],
-                   "attempts_count":  0,
-                   "retry_inflated":  false,
-                   "result_status":  "failed",
-                   "needs_escalation":  false,
-                   "failure_category":  "materialization_blocked",
-                   "review_decision":  "revise",
-                   "success":  false,
-                   "recovered_on_retry":  false,
-                   "recovered_on_fallback":  false,
-                   "unrecovered_failure":  false,
-                   "degraded_success":  false,
-                   "manual_intervention_required":  true,
-                   "review_score":  0.5,
-                   "latency_ms":  null,
-                   "files_involved":  [
+                                             ],
+                       "attempts_count":  0,
+                       "retry_inflated":  false,
+                       "result_status":  "failed",
+                       "needs_escalation":  false,
+                       "failure_category":  "materialization_blocked",
+                       "review_decision":  "revise",
+                       "success":  false,
+                       "recovered_on_retry":  false,
+                       "recovered_on_fallback":  false,
+                       "unrecovered_failure":  false,
+                       "degraded_success":  false,
+                       "manual_intervention_required":  true,
+                       "review_score":  0.5,
+                       "latency_ms":  null,
+                       "files_involved":  [
 
-                                      ],
-                   "modules_involved":  [
-
-                                        ],
-                   "wrapper_only_engines":  [
+                                          ],
+                       "modules_involved":  [
 
                                             ],
-                   "wrapper_only_codex_seen":  false,
-                   "created_at":  "2026-05-07T23:37:52.0036587Z"
-               },
-    "aggregate":  [
-                      {
-                          "engine":  "local",
-                          "total_runs":  34,
-                          "pass_rate":  73.53,
-                          "revise_rate":  26.47,
-                          "fallback_frequency":  38.24,
-                          "escalation_rate":  0,
-                          "average_review_outcome":  0.868,
-                          "average_latency_ms":  1360.27,
-                          "task_types":  [
-                                             {
-                                                 "task_type":  "implementation",
-                                                 "count":  31
-                                             },
-                                             {
-                                                 "task_type":  "programming",
-                                                 "count":  3
-                                             }
-                                         ],
-                          "category_breakdown":  [
-                                                     {
-                                                         "task_category":  "code_change",
-                                                         "runs":  8,
-                                                         "success_rate":  87.5
-                                                     },
-                                                     {
-                                                         "task_category":  "chat_execution",
-                                                         "runs":  6,
-                                                         "success_rate":  83.33
-                                                     },
-                                                     {
-                                                         "task_category":  "docs_change",
-                                                         "runs":  11,
-                                                         "success_rate":  100
-                                                     },
-                                                     {
-                                                         "task_category":  "bridge_runtime",
-                                                         "runs":  6,
-                                                         "success_rate":  33.33
-                                                     },
-                                                     {
-                                                         "task_category":  "initiative_training",
-                                                         "runs":  2,
-                                                         "success_rate":  0
-                                                     },
-                                                     {
-                                                         "task_category":  "mim_synced",
-                                                         "runs":  1,
-                                                         "success_rate":  0
-                                                     }
-                                                 ],
-                          "modules_involved":  [
-                                                   {
-                                                       "module":  "tod",
-                                                       "count":  7
-                                                   },
-                                                   {
-                                                       "module":  "docs",
-                                                       "count":  4
-                                                   },
-                                                   {
-                                                       "module":  "scripts",
-                                                       "count":  1
-                                                   }
-                                               ],
-                          "recent_trend":  {
-                                               "direction":  "down",
-                                               "recent_success_rate":  0,
-                                               "prior_success_rate":  40
-                                           }
-                      }
-                  ],
-    "created_at":  "2026-05-07T23:37:52.2845648Z"
-}
+                       "wrapper_only_engines":  [
+
+                                                ],
+                       "wrapper_only_codex_seen":  false,
+                       "created_at":  "2026-05-07T23:37:52.0036587Z"
+                   },
+        "aggregate":  [
+                          {
+                              "engine":  "local",
+                              "total_runs":  34,
+                              "pass_rate":  73.53,
+                              "revise_rate":  26.47,
+                              "fallback_frequency":  38.24,
+                              "escalation_rate":  0,
+                              "average_review_outcome":  0.868,
+                              "average_latency_ms":  1360.27,
+                              "task_types":  [
+                                                 {
+                                                     "task_type":  "implementation",
+                                                     "count":  31
+                                                 },
+                                                 {
+                                                     "task_type":  "programming",
+                                                     "count":  3
+                                                 }
+                                             ],
+                              "category_breakdown":  [
+                                                         {
+                                                             "task_category":  "code_change",
+                                                             "runs":  8,
+                                                             "success_rate":  87.5
+                                                         },
+                                                         {
+                                                             "task_category":  "chat_execution",
+                                                             "runs":  6,
+                                                             "success_rate":  83.33
+                                                         },
+                                                         {
+                                                             "task_category":  "docs_change",
+                                                             "runs":  11,
+                                                             "success_rate":  100
+                                                         },
+                                                         {
+                                                             "task_category":  "bridge_runtime",
+                                                             "runs":  6,
+                                                             "success_rate":  33.33
+                                                         },
+                                                         {
+                                                             "task_category":  "initiative_training",
+                                                             "runs":  2,
+                                                             "success_rate":  0
+                                                         },
+                                                         {
+                                                             "task_category":  "mim_synced",
+                                                             "runs":  1,
+                                                             "success_rate":  0
+                                                         }
+                                                     ],
+                              "modules_involved":  [
+                                                       {
+                                                           "module":  "tod",
+                                                           "count":  7
+                                                       },
+                                                       {
+                                                           "module":  "docs",
+                                                           "count":  4
+                                                       },
+                                                       {
+                                                           "module":  "scripts",
+                                                           "count":  1
+                                                       }
+                                                   ],
+                              "recent_trend":  {
+                                                   "direction":  "down",
+                                                   "recent_success_rate":  0,
+                                                   "prior_success_rate":  40
+                                               }
+                          }
+                      ],
+        "created_at":  "2026-05-07T23:37:52.2845648Z"
+    },
+    {
+        "id":  "MEM-5422DC1D",
+        "title":  "engine performance update",
+        "note":  "engine=local category=refactor decision=revise",
+        "tags":  [
+                     "engine-performance",
+                     "engine:local",
+                     "category:refactor",
+                     "decision:revise"
+                 ],
+        "record":  {
+                       "id":  "ENGPERF-F1DFA66E",
+                       "task_id":  "45",
+                       "engine":  "local",
+                       "task_type":  "implementation",
+                       "task_category":  "refactor",
+                       "fallback_applied":  false,
+                       "attempted_engines":  [
+
+                                             ],
+                       "attempts_count":  0,
+                       "retry_inflated":  false,
+                       "result_status":  "failed",
+                       "needs_escalation":  false,
+                       "failure_category":  "materialization_blocked",
+                       "review_decision":  "revise",
+                       "success":  false,
+                       "recovered_on_retry":  false,
+                       "recovered_on_fallback":  false,
+                       "unrecovered_failure":  false,
+                       "degraded_success":  false,
+                       "manual_intervention_required":  true,
+                       "review_score":  0.5,
+                       "latency_ms":  null,
+                       "files_involved":  [
+
+                                          ],
+                       "modules_involved":  [
+
+                                            ],
+                       "wrapper_only_engines":  [
+
+                                                ],
+                       "wrapper_only_codex_seen":  false,
+                       "created_at":  "2026-05-26T05:51:43.9215034Z"
+                   },
+        "aggregate":  [
+                          {
+                              "engine":  "local",
+                              "total_runs":  1,
+                              "pass_rate":  0,
+                              "revise_rate":  100,
+                              "fallback_frequency":  0,
+                              "escalation_rate":  0,
+                              "average_review_outcome":  0.5,
+                              "average_latency_ms":  null,
+                              "task_types":  [
+                                                 {
+                                                     "task_type":  "implementation",
+                                                     "count":  1
+                                                 }
+                                             ],
+                              "category_breakdown":  [
+                                                         {
+                                                             "task_category":  "refactor",
+                                                             "runs":  1,
+                                                             "success_rate":  0
+                                                         }
+                                                     ],
+                              "modules_involved":  [
+
+                                                   ],
+                              "recent_trend":  {
+                                                   "direction":  "stable",
+                                                   "recent_success_rate":  0,
+                                                   "prior_success_rate":  null
+                                               }
+                          }
+                      ],
+        "created_at":  "2026-05-26T05:51:44.0777571Z"
+    },
+    {
+        "id":  "MEM-3754F3BA",
+        "title":  "engine performance update",
+        "note":  "engine=local category=refactor decision=revise",
+        "tags":  [
+                     "engine-performance",
+                     "engine:local",
+                     "category:refactor",
+                     "decision:revise"
+                 ],
+        "record":  {
+                       "id":  "ENGPERF-8136771D",
+                       "task_id":  "45",
+                       "engine":  "local",
+                       "task_type":  "implementation",
+                       "task_category":  "refactor",
+                       "fallback_applied":  false,
+                       "attempted_engines":  [
+
+                                             ],
+                       "attempts_count":  0,
+                       "retry_inflated":  false,
+                       "result_status":  "failed",
+                       "needs_escalation":  false,
+                       "failure_category":  "materialization_blocked",
+                       "review_decision":  "revise",
+                       "success":  false,
+                       "recovered_on_retry":  false,
+                       "recovered_on_fallback":  false,
+                       "unrecovered_failure":  false,
+                       "degraded_success":  false,
+                       "manual_intervention_required":  true,
+                       "review_score":  0.5,
+                       "latency_ms":  null,
+                       "files_involved":  [
+
+                                          ],
+                       "modules_involved":  [
+
+                                            ],
+                       "wrapper_only_engines":  [
+
+                                                ],
+                       "wrapper_only_codex_seen":  false,
+                       "created_at":  "2026-05-26T05:51:48.1625709Z"
+                   },
+        "aggregate":  [
+                          {
+                              "engine":  "local",
+                              "total_runs":  1,
+                              "pass_rate":  0,
+                              "revise_rate":  100,
+                              "fallback_frequency":  0,
+                              "escalation_rate":  0,
+                              "average_review_outcome":  0.5,
+                              "average_latency_ms":  null,
+                              "task_types":  [
+                                                 {
+                                                     "task_type":  "implementation",
+                                                     "count":  1
+                                                 }
+                                             ],
+                              "category_breakdown":  [
+                                                         {
+                                                             "task_category":  "refactor",
+                                                             "runs":  1,
+                                                             "success_rate":  0
+                                                         }
+                                                     ],
+                              "modules_involved":  [
+
+                                                   ],
+                              "recent_trend":  {
+                                                   "direction":  "stable",
+                                                   "recent_success_rate":  0,
+                                                   "prior_success_rate":  null
+                                               }
+                          }
+                      ],
+        "created_at":  "2026-05-26T05:51:48.7316392Z"
+    },
+    {
+        "id":  "MEM-BAAB88CE",
+        "title":  "engine performance update",
+        "note":  "engine=local category=refactor decision=revise",
+        "tags":  [
+                     "engine-performance",
+                     "engine:local",
+                     "category:refactor",
+                     "decision:revise"
+                 ],
+        "record":  {
+                       "id":  "ENGPERF-EEA22364",
+                       "task_id":  "45",
+                       "engine":  "local",
+                       "task_type":  "implementation",
+                       "task_category":  "refactor",
+                       "fallback_applied":  false,
+                       "attempted_engines":  [
+
+                                             ],
+                       "attempts_count":  0,
+                       "retry_inflated":  false,
+                       "result_status":  "failed",
+                       "needs_escalation":  false,
+                       "failure_category":  "materialization_blocked",
+                       "review_decision":  "revise",
+                       "success":  false,
+                       "recovered_on_retry":  false,
+                       "recovered_on_fallback":  false,
+                       "unrecovered_failure":  false,
+                       "degraded_success":  false,
+                       "manual_intervention_required":  true,
+                       "review_score":  0.5,
+                       "latency_ms":  null,
+                       "files_involved":  [
+
+                                          ],
+                       "modules_involved":  [
+
+                                            ],
+                       "wrapper_only_engines":  [
+
+                                                ],
+                       "wrapper_only_codex_seen":  false,
+                       "created_at":  "2026-05-26T05:58:56.8248725Z"
+                   },
+        "aggregate":  [
+                          {
+                              "engine":  "local",
+                              "total_runs":  1,
+                              "pass_rate":  0,
+                              "revise_rate":  100,
+                              "fallback_frequency":  0,
+                              "escalation_rate":  0,
+                              "average_review_outcome":  0.5,
+                              "average_latency_ms":  null,
+                              "task_types":  [
+                                                 {
+                                                     "task_type":  "implementation",
+                                                     "count":  1
+                                                 }
+                                             ],
+                              "category_breakdown":  [
+                                                         {
+                                                             "task_category":  "refactor",
+                                                             "runs":  1,
+                                                             "success_rate":  0
+                                                         }
+                                                     ],
+                              "modules_involved":  [
+
+                                                   ],
+                              "recent_trend":  {
+                                                   "direction":  "stable",
+                                                   "recent_success_rate":  0,
+                                                   "prior_success_rate":  null
+                                               }
+                          }
+                      ],
+        "created_at":  "2026-05-26T05:58:56.9164085Z"
+    },
+    {
+        "id":  "MEM-BC659161",
+        "title":  "engine performance update",
+        "note":  "engine=local category=refactor decision=revise",
+        "tags":  [
+                     "engine-performance",
+                     "engine:local",
+                     "category:refactor",
+                     "decision:revise"
+                 ],
+        "record":  {
+                       "id":  "ENGPERF-BFEE0282",
+                       "task_id":  "45",
+                       "engine":  "local",
+                       "task_type":  "implementation",
+                       "task_category":  "refactor",
+                       "fallback_applied":  false,
+                       "attempted_engines":  [
+
+                                             ],
+                       "attempts_count":  0,
+                       "retry_inflated":  false,
+                       "result_status":  "failed",
+                       "needs_escalation":  false,
+                       "failure_category":  "materialization_blocked",
+                       "review_decision":  "revise",
+                       "success":  false,
+                       "recovered_on_retry":  false,
+                       "recovered_on_fallback":  false,
+                       "unrecovered_failure":  false,
+                       "degraded_success":  false,
+                       "manual_intervention_required":  true,
+                       "review_score":  0.5,
+                       "latency_ms":  null,
+                       "files_involved":  [
+
+                                          ],
+                       "modules_involved":  [
+
+                                            ],
+                       "wrapper_only_engines":  [
+
+                                                ],
+                       "wrapper_only_codex_seen":  false,
+                       "created_at":  "2026-05-26T05:59:00.3145992Z"
+                   },
+        "aggregate":  [
+                          {
+                              "engine":  "local",
+                              "total_runs":  1,
+                              "pass_rate":  0,
+                              "revise_rate":  100,
+                              "fallback_frequency":  0,
+                              "escalation_rate":  0,
+                              "average_review_outcome":  0.5,
+                              "average_latency_ms":  null,
+                              "task_types":  [
+                                                 {
+                                                     "task_type":  "implementation",
+                                                     "count":  1
+                                                 }
+                                             ],
+                              "category_breakdown":  [
+                                                         {
+                                                             "task_category":  "refactor",
+                                                             "runs":  1,
+                                                             "success_rate":  0
+                                                         }
+                                                     ],
+                              "modules_involved":  [
+
+                                                   ],
+                              "recent_trend":  {
+                                                   "direction":  "stable",
+                                                   "recent_success_rate":  0,
+                                                   "prior_success_rate":  null
+                                               }
+                          }
+                      ],
+        "created_at":  "2026-05-26T05:59:00.4014491Z"
+    },
+    {
+        "id":  "MEM-3BD22C1A",
+        "title":  "engine performance update",
+        "note":  "engine=local category=refactor decision=revise",
+        "tags":  [
+                     "engine-performance",
+                     "engine:local",
+                     "category:refactor",
+                     "decision:revise"
+                 ],
+        "record":  {
+                       "id":  "ENGPERF-6C522DE1",
+                       "task_id":  "45",
+                       "engine":  "local",
+                       "task_type":  "implementation",
+                       "task_category":  "refactor",
+                       "fallback_applied":  false,
+                       "attempted_engines":  [
+
+                                             ],
+                       "attempts_count":  0,
+                       "retry_inflated":  false,
+                       "result_status":  "failed",
+                       "needs_escalation":  false,
+                       "failure_category":  "materialization_blocked",
+                       "review_decision":  "revise",
+                       "success":  false,
+                       "recovered_on_retry":  false,
+                       "recovered_on_fallback":  false,
+                       "unrecovered_failure":  false,
+                       "degraded_success":  false,
+                       "manual_intervention_required":  true,
+                       "review_score":  0.5,
+                       "latency_ms":  null,
+                       "files_involved":  [
+
+                                          ],
+                       "modules_involved":  [
+
+                                            ],
+                       "wrapper_only_engines":  [
+
+                                                ],
+                       "wrapper_only_codex_seen":  false,
+                       "created_at":  "2026-05-26T06:14:10.5547019Z"
+                   },
+        "aggregate":  [
+                          {
+                              "engine":  "local",
+                              "total_runs":  1,
+                              "pass_rate":  0,
+                              "revise_rate":  100,
+                              "fallback_frequency":  0,
+                              "escalation_rate":  0,
+                              "average_review_outcome":  0.5,
+                              "average_latency_ms":  null,
+                              "task_types":  [
+                                                 {
+                                                     "task_type":  "implementation",
+                                                     "count":  1
+                                                 }
+                                             ],
+                              "category_breakdown":  [
+                                                         {
+                                                             "task_category":  "refactor",
+                                                             "runs":  1,
+                                                             "success_rate":  0
+                                                         }
+                                                     ],
+                              "modules_involved":  [
+
+                                                   ],
+                              "recent_trend":  {
+                                                   "direction":  "stable",
+                                                   "recent_success_rate":  0,
+                                                   "prior_success_rate":  null
+                                               }
+                          }
+                      ],
+        "created_at":  "2026-05-26T06:14:10.6774603Z"
+    },
+    {
+        "id":  "MEM-138E8C37",
+        "title":  "engine performance update",
+        "note":  "engine=local category=refactor decision=revise",
+        "tags":  [
+                     "engine-performance",
+                     "engine:local",
+                     "category:refactor",
+                     "decision:revise"
+                 ],
+        "record":  {
+                       "id":  "ENGPERF-A7D78CE2",
+                       "task_id":  "45",
+                       "engine":  "local",
+                       "task_type":  "implementation",
+                       "task_category":  "refactor",
+                       "fallback_applied":  false,
+                       "attempted_engines":  [
+
+                                             ],
+                       "attempts_count":  0,
+                       "retry_inflated":  false,
+                       "result_status":  "failed",
+                       "needs_escalation":  false,
+                       "failure_category":  "materialization_blocked",
+                       "review_decision":  "revise",
+                       "success":  false,
+                       "recovered_on_retry":  false,
+                       "recovered_on_fallback":  false,
+                       "unrecovered_failure":  false,
+                       "degraded_success":  false,
+                       "manual_intervention_required":  true,
+                       "review_score":  0.5,
+                       "latency_ms":  null,
+                       "files_involved":  [
+
+                                          ],
+                       "modules_involved":  [
+
+                                            ],
+                       "wrapper_only_engines":  [
+
+                                                ],
+                       "wrapper_only_codex_seen":  false,
+                       "created_at":  "2026-05-26T06:14:13.5924378Z"
+                   },
+        "aggregate":  [
+                          {
+                              "engine":  "local",
+                              "total_runs":  1,
+                              "pass_rate":  0,
+                              "revise_rate":  100,
+                              "fallback_frequency":  0,
+                              "escalation_rate":  0,
+                              "average_review_outcome":  0.5,
+                              "average_latency_ms":  null,
+                              "task_types":  [
+                                                 {
+                                                     "task_type":  "implementation",
+                                                     "count":  1
+                                                 }
+                                             ],
+                              "category_breakdown":  [
+                                                         {
+                                                             "task_category":  "refactor",
+                                                             "runs":  1,
+                                                             "success_rate":  0
+                                                         }
+                                                     ],
+                              "modules_involved":  [
+
+                                                   ],
+                              "recent_trend":  {
+                                                   "direction":  "stable",
+                                                   "recent_success_rate":  0,
+                                                   "prior_success_rate":  null
+                                               }
+                          }
+                      ],
+        "created_at":  "2026-05-26T06:14:13.6703531Z"
+    },
+    {
+        "id":  "MEM-98293398",
+        "title":  "engine performance update",
+        "note":  "engine=local category=refactor decision=revise",
+        "tags":  [
+                     "engine-performance",
+                     "engine:local",
+                     "category:refactor",
+                     "decision:revise"
+                 ],
+        "record":  {
+                       "id":  "ENGPERF-0B21F75B",
+                       "task_id":  "45",
+                       "engine":  "local",
+                       "task_type":  "implementation",
+                       "task_category":  "refactor",
+                       "fallback_applied":  false,
+                       "attempted_engines":  [
+
+                                             ],
+                       "attempts_count":  0,
+                       "retry_inflated":  false,
+                       "result_status":  "failed",
+                       "needs_escalation":  false,
+                       "failure_category":  "materialization_blocked",
+                       "review_decision":  "revise",
+                       "success":  false,
+                       "recovered_on_retry":  false,
+                       "recovered_on_fallback":  false,
+                       "unrecovered_failure":  false,
+                       "degraded_success":  false,
+                       "manual_intervention_required":  true,
+                       "review_score":  0.5,
+                       "latency_ms":  null,
+                       "files_involved":  [
+
+                                          ],
+                       "modules_involved":  [
+
+                                            ],
+                       "wrapper_only_engines":  [
+
+                                                ],
+                       "wrapper_only_codex_seen":  false,
+                       "created_at":  "2026-05-26T06:31:31.4915136Z"
+                   },
+        "aggregate":  [
+                          {
+                              "engine":  "local",
+                              "total_runs":  1,
+                              "pass_rate":  0,
+                              "revise_rate":  100,
+                              "fallback_frequency":  0,
+                              "escalation_rate":  0,
+                              "average_review_outcome":  0.5,
+                              "average_latency_ms":  null,
+                              "task_types":  [
+                                                 {
+                                                     "task_type":  "implementation",
+                                                     "count":  1
+                                                 }
+                                             ],
+                              "category_breakdown":  [
+                                                         {
+                                                             "task_category":  "refactor",
+                                                             "runs":  1,
+                                                             "success_rate":  0
+                                                         }
+                                                     ],
+                              "modules_involved":  [
+
+                                                   ],
+                              "recent_trend":  {
+                                                   "direction":  "stable",
+                                                   "recent_success_rate":  0,
+                                                   "prior_success_rate":  null
+                                               }
+                          }
+                      ],
+        "created_at":  "2026-05-26T06:31:31.5767186Z"
+    },
+    {
+        "id":  "MEM-C81243CB",
+        "title":  "engine performance update",
+        "note":  "engine=local category=refactor decision=revise",
+        "tags":  [
+                     "engine-performance",
+                     "engine:local",
+                     "category:refactor",
+                     "decision:revise"
+                 ],
+        "record":  {
+                       "id":  "ENGPERF-B508AA03",
+                       "task_id":  "45",
+                       "engine":  "local",
+                       "task_type":  "implementation",
+                       "task_category":  "refactor",
+                       "fallback_applied":  false,
+                       "attempted_engines":  [
+
+                                             ],
+                       "attempts_count":  0,
+                       "retry_inflated":  false,
+                       "result_status":  "failed",
+                       "needs_escalation":  false,
+                       "failure_category":  "materialization_blocked",
+                       "review_decision":  "revise",
+                       "success":  false,
+                       "recovered_on_retry":  false,
+                       "recovered_on_fallback":  false,
+                       "unrecovered_failure":  false,
+                       "degraded_success":  false,
+                       "manual_intervention_required":  true,
+                       "review_score":  0.5,
+                       "latency_ms":  null,
+                       "files_involved":  [
+
+                                          ],
+                       "modules_involved":  [
+
+                                            ],
+                       "wrapper_only_engines":  [
+
+                                                ],
+                       "wrapper_only_codex_seen":  false,
+                       "created_at":  "2026-05-26T06:31:34.1353448Z"
+                   },
+        "aggregate":  [
+                          {
+                              "engine":  "local",
+                              "total_runs":  1,
+                              "pass_rate":  0,
+                              "revise_rate":  100,
+                              "fallback_frequency":  0,
+                              "escalation_rate":  0,
+                              "average_review_outcome":  0.5,
+                              "average_latency_ms":  null,
+                              "task_types":  [
+                                                 {
+                                                     "task_type":  "implementation",
+                                                     "count":  1
+                                                 }
+                                             ],
+                              "category_breakdown":  [
+                                                         {
+                                                             "task_category":  "refactor",
+                                                             "runs":  1,
+                                                             "success_rate":  0
+                                                         }
+                                                     ],
+                              "modules_involved":  [
+
+                                                   ],
+                              "recent_trend":  {
+                                                   "direction":  "stable",
+                                                   "recent_success_rate":  0,
+                                                   "prior_success_rate":  null
+                                               }
+                          }
+                      ],
+        "created_at":  "2026-05-26T06:31:34.2204396Z"
+    },
+    {
+        "id":  "MEM-C3B3392F",
+        "title":  "engine performance update",
+        "note":  "engine=local category=refactor decision=revise",
+        "tags":  [
+                     "engine-performance",
+                     "engine:local",
+                     "category:refactor",
+                     "decision:revise"
+                 ],
+        "record":  {
+                       "id":  "ENGPERF-0BCACAEE",
+                       "task_id":  "45",
+                       "engine":  "local",
+                       "task_type":  "implementation",
+                       "task_category":  "refactor",
+                       "fallback_applied":  false,
+                       "attempted_engines":  [
+
+                                             ],
+                       "attempts_count":  0,
+                       "retry_inflated":  false,
+                       "result_status":  "failed",
+                       "needs_escalation":  false,
+                       "failure_category":  "materialization_blocked",
+                       "review_decision":  "revise",
+                       "success":  false,
+                       "recovered_on_retry":  false,
+                       "recovered_on_fallback":  false,
+                       "unrecovered_failure":  false,
+                       "degraded_success":  false,
+                       "manual_intervention_required":  true,
+                       "review_score":  0.5,
+                       "latency_ms":  null,
+                       "files_involved":  [
+
+                                          ],
+                       "modules_involved":  [
+
+                                            ],
+                       "wrapper_only_engines":  [
+
+                                                ],
+                       "wrapper_only_codex_seen":  false,
+                       "created_at":  "2026-05-27T06:20:43.3186680Z"
+                   },
+        "aggregate":  [
+                          {
+                              "engine":  "local",
+                              "total_runs":  1,
+                              "pass_rate":  0,
+                              "revise_rate":  100,
+                              "fallback_frequency":  0,
+                              "escalation_rate":  0,
+                              "average_review_outcome":  0.5,
+                              "average_latency_ms":  null,
+                              "task_types":  [
+                                                 {
+                                                     "task_type":  "implementation",
+                                                     "count":  1
+                                                 }
+                                             ],
+                              "category_breakdown":  [
+                                                         {
+                                                             "task_category":  "refactor",
+                                                             "runs":  1,
+                                                             "success_rate":  0
+                                                         }
+                                                     ],
+                              "modules_involved":  [
+
+                                                   ],
+                              "recent_trend":  {
+                                                   "direction":  "stable",
+                                                   "recent_success_rate":  0,
+                                                   "prior_success_rate":  null
+                                               }
+                          }
+                      ],
+        "created_at":  "2026-05-27T06:20:43.5027396Z"
+    },
+    {
+        "id":  "MEM-4F7B0E50",
+        "title":  "engine performance update",
+        "note":  "engine=local category=refactor decision=revise",
+        "tags":  [
+                     "engine-performance",
+                     "engine:local",
+                     "category:refactor",
+                     "decision:revise"
+                 ],
+        "record":  {
+                       "id":  "ENGPERF-6417A537",
+                       "task_id":  "45",
+                       "engine":  "local",
+                       "task_type":  "implementation",
+                       "task_category":  "refactor",
+                       "fallback_applied":  false,
+                       "attempted_engines":  [
+
+                                             ],
+                       "attempts_count":  0,
+                       "retry_inflated":  false,
+                       "result_status":  "failed",
+                       "needs_escalation":  false,
+                       "failure_category":  "materialization_blocked",
+                       "review_decision":  "revise",
+                       "success":  false,
+                       "recovered_on_retry":  false,
+                       "recovered_on_fallback":  false,
+                       "unrecovered_failure":  false,
+                       "degraded_success":  false,
+                       "manual_intervention_required":  true,
+                       "review_score":  0.5,
+                       "latency_ms":  null,
+                       "files_involved":  [
+
+                                          ],
+                       "modules_involved":  [
+
+                                            ],
+                       "wrapper_only_engines":  [
+
+                                                ],
+                       "wrapper_only_codex_seen":  false,
+                       "created_at":  "2026-05-27T06:20:46.9615686Z"
+                   },
+        "aggregate":  [
+                          {
+                              "engine":  "local",
+                              "total_runs":  1,
+                              "pass_rate":  0,
+                              "revise_rate":  100,
+                              "fallback_frequency":  0,
+                              "escalation_rate":  0,
+                              "average_review_outcome":  0.5,
+                              "average_latency_ms":  null,
+                              "task_types":  [
+                                                 {
+                                                     "task_type":  "implementation",
+                                                     "count":  1
+                                                 }
+                                             ],
+                              "category_breakdown":  [
+                                                         {
+                                                             "task_category":  "refactor",
+                                                             "runs":  1,
+                                                             "success_rate":  0
+                                                         }
+                                                     ],
+                              "modules_involved":  [
+
+                                                   ],
+                              "recent_trend":  {
+                                                   "direction":  "stable",
+                                                   "recent_success_rate":  0,
+                                                   "prior_success_rate":  null
+                                               }
+                          }
+                      ],
+        "created_at":  "2026-05-27T06:20:47.1377359Z"
+    }
+]

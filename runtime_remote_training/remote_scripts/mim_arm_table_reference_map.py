@@ -35,6 +35,16 @@ def read_json(name: str) -> dict[str, Any]:
     return {}
 
 
+def parse_utc_timestamp(value: Any) -> datetime | None:
+    try:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -79,11 +89,18 @@ def components(mask: set[tuple[int, int]], *, min_points: int) -> list[dict[str,
 
 
 def observer_frame() -> tuple[Path, dict[str, Any], str]:
+    now = datetime.now(timezone.utc)
     for artifact, label in (
-        ("MIM_ARM_TABLE_OBSERVER_STATUS.latest.json", "operator_pc_table_observer"),
         ("MIM_ARM_PI_TABLE_OBSERVER_STATUS.latest.json", "pi_table_observer"),
+        ("MIM_ARM_TABLE_OBSERVER_STATUS.latest.json", "operator_pc_table_observer"),
     ):
         status = read_json(artifact)
+        generated_at = parse_utc_timestamp(status.get("generated_at"))
+        age_seconds = (now - generated_at).total_seconds() if generated_at else None
+        if status.get("success") is not True:
+            continue
+        if age_seconds is None or age_seconds > 900:
+            continue
         frame = Path(str(status.get("remote_frame_path") or ""))
         if frame.exists():
             return frame, status, label

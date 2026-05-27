@@ -1199,6 +1199,17 @@ def is_training_topic(topic: str) -> bool:
 def select_effective_transcript(text: str, wake_text: str) -> str:
     general = str(text or "").strip()
     wake = str(wake_text or "").strip()
+    wake_has_unknown = bool(re.search(r"\[unk\]|\bunk\b", wake, flags=re.I))
+    if wake_has_unknown:
+        clean_wake = re.sub(r"\[unk\]|\bunk\b", " ", wake, flags=re.I)
+        clean_wake = re.sub(r"\s+", " ", clean_wake).strip()
+        if general:
+            if has_mim_reference(general) or is_assistant_shaped(general) or len(transcript_words(general)) >= 3:
+                return general
+            if clean_wake and has_mim_reference(clean_wake):
+                return f"{clean_wake} {general}".strip()
+            return general
+        wake = clean_wake
     if wake and has_mim_reference(wake) and general and not has_mim_reference(general):
         return f"{wake} {general}".strip()
     if wake and has_mim_reference(wake) and not general:
@@ -1314,17 +1325,16 @@ def classify_transcript_quality(transcript: str) -> dict[str, Any]:
 
 def should_observe_low_confidence_transcript(transcript: str, quality: dict[str, Any]) -> bool:
     reasons = set(quality.get("reason_codes") or [])
+    hallucination_reasons = {
+        "known_whisper_hallucination_phrase",
+        "repeated_token_hallucination",
+        "repeated_sentence_hallucination",
+    }
+    if reasons.intersection(hallucination_reasons) and not has_mim_reference(transcript):
+        return True
     if has_mim_reference(transcript) or is_assistant_shaped(transcript):
         return False
-    return bool(
-        reasons.intersection(
-            {
-                "known_whisper_hallucination_phrase",
-                "repeated_token_hallucination",
-                "repeated_sentence_hallucination",
-            }
-        )
-    )
+    return bool(reasons.intersection(hallucination_reasons))
 
 
 def build_transcript_clarification_route(transcript: str, quality: dict[str, Any]) -> dict[str, Any]:
@@ -1599,6 +1609,11 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
         confidence = 0.55
         reason = "multiple_humans_without_mim_reference"
         action = "ask_if_addressed"
+    elif scene.get("conversation_mode") in {"single_speaker_or_unknown", "single_human"}:
+        addressed = True
+        confidence = 0.68
+        reason = "single_speaker_lab_default_addressed"
+        action = "respond"
     else:
         addressed = False
         confidence = 0.35
@@ -1629,7 +1644,7 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
         "followup_reference": followup_reference,
         "actionable_followup": actionable_followup,
         "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)),
-        "policy": "MIM-like words are treated as direct address; assistant-shaped speech in the lab is presumed for MIM unless scene evidence shows humans talking to each other.",
+        "policy": "MIM-like words are treated as direct address; in a single-speaker lab context, non-fragment speech is treated as MIM-directed unless scene evidence shows humans talking to each other.",
         "no_audio_retained": True,
     }
     write_json(VOICE_ADDRESSING_DECISION_PATH, decision)

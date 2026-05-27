@@ -1,0 +1,47 @@
+{
+  "packet_type": "mim-human-identity-binding-objective-v1",
+  "objective_id": "MIM-HUMAN-IDENTITY-BINDING-V1",
+  "parent_objective_id": "MIM-HUMAN-INTERACTION-V1",
+  "generated_at": "2026-05-24T20:52:30Z",
+  "goal": "Convert fresh lab person/face/voice evidence into real human identity recognition for greetings, conversation gating, and memory.",
+  "current_evidence": {
+    "person_detection": "runtime/shared/MIM_LAB_PERSON_DETECTION_STATUS.latest.json",
+    "face_recognition": "runtime/shared/MIM_FACE_RECOGNITION_STATUS.latest.json",
+    "voice_recognition": "runtime/shared/MIM_VOICE_RECOGNITION_STATUS.latest.json",
+    "human_interaction_status": "runtime/shared/MIM_HUMAN_INTERACTION_V1_STATUS.latest.json"
+  },
+  "known_state": {
+    "fresh_camera_frames_available": true,
+    "latest_human_count": 1,
+    "latest_face_count": 1,
+    "dave_known_by_memory": true,
+    "dave_face_verified": false,
+    "dave_voice_verified": false,
+    "opencv_bound": true,
+    "face_identity_runtime_bound": false,
+    "speaker_identity_runtime_bound": false
+  },
+  "required_actions": [
+    "Select and bind a maintainable face identity runtime for MIM's Python environment.",
+    "Create a verified Dave face enrollment from a confirmed lab greeting frame; do not treat unverified detected faces as Dave.",
+    "Select and bind a maintainable speaker identity runtime or speaker embedding method for MIM's voice environment.",
+    "Create a verified Dave voice enrollment from a confirmed short voice sample; do not treat transcript context as voice identity.",
+    "Update MIM_HUMAN_IDENTITY_REGISTRY.latest.json with face and voice enrollment evidence.",
+    "Wire greeting behavior to person entry events: greet one known human by name, introduce yourself to unknown humans, and ask for a name.",
+    "When person_count is two or more, switch to observe/listen mode and wait for an explicit MIM-directed prompt before joining the conversation.",
+    "Publish refreshed evidence artifacts after each binding step."
+  ],
+  "success": {
+    "person_count": "Fresh camera evidence reports a current human count.",
+    "face_recognition": "A verified Dave face enrollment exists and a fresh frame can either recognize Dave or explicitly report unknown/blocked evidence.",
+    "voice_recognition": "A verified Dave voice enrollment exists and a fresh voice sample can either recognize Dave or explicitly report unknown/blocked evidence.",
+    "interaction_policy": "MIM can choose single-human active conversation mode versus multi-human prompt-required mode from fresh evidence."
+  },
+  "safety_and_truth_rules": [
+    "Do not claim Dave face recognition from memory-only evidence.",
+    "Do not claim Dave voice recognition from transcript-only evidence.",
+    "Detected face equals possible human, not verified identity.",
+    "Someone visible in the lab is not a stop condition for non-dangerous background work."
+  ],
+  "next_recovery_action": "Bind face identity runtime first, then speaker identity runtime, then rerun MIM human identity evidence probe."
+}

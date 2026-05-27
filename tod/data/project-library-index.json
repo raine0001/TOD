@@ -1,7 +1,7 @@
 {
     "ok":  true,
     "source":  "tod-project-library-index-v1",
-    "generated_at":  "2026-05-05T19:12:58.4132951Z",
+    "generated_at":  "2026-05-27T17:21:29.8048765Z",
     "library_root":  "E:/",
     "registry_path":  "E:/TOD/tod/config/project-registry.json",
     "registered_project_count":  12,
@@ -45,7 +45,7 @@
                                             "notes":  "Runtime/state artifacts are read-only by default; code/docs require review gates."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:57.7685887Z",
+                                           "scanned_at":  "2026-05-27T17:21:28.8524275Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "shared_state/integration_status.json",
@@ -63,22 +63,18 @@
                                                                  "shared_state/TOD_INTEGRATION_STATUS_UPLOAD_RECEIPT.latest.json",
                                                                  "shared_state/TOD_MIM_ARM_STATUS_UPLOAD_RECEIPT.latest.json",
                                                                  "shared_state/tod_objective_roadmap.json",
+                                                                 "shared_state/tod_execution_readiness_history.latest.json",
+                                                                 "tod/state/engineering_memory.json",
+                                                                 "tod/data/engineering-memory.json",
+                                                                 "runtime/shared/TOD_EXECUTION_LOCK.latest.json",
                                                                  "shared_state/tod_autonomy_status.latest.json",
-                                                                 "shared_state/tod_catchup_gate_watcher.log.jsonl",
-                                                                 "shared_state/tod_catchup_gate_watcher.latest.json",
-                                                                 "shared_state/tod_recoupling_gate_state.latest.json",
-                                                                 "shared_state/tod_recoupling_gate_state.latest.json.writer.lock.json",
                                                                  "shared_state/tod_watchdog_drift_guard.log.jsonl",
                                                                  "shared_state/tod_watchdog_drift_guard.latest.json",
-                                                                 ".git/gk/config",
                                                                  "shared_state/tod_recovery_watchdog.latest.json",
-                                                                 "shared_state/tod_recovery_watchdog.log.jsonl"
+                                                                 "shared_state/tod_recovery_watchdog.log.jsonl",
+                                                                 "shared_state/TOD_SELF_HEAL_ORDER.latest.json"
                                                              ],
                                            "extension_summary":  [
-                                                                     {
-                                                                         "extension":  ".bak",
-                                                                         "count":  5
-                                                                     },
                                                                      {
                                                                          "extension":  ".bat",
                                                                          "count":  2
@@ -93,6 +89,10 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".code-workspace",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".conf",
                                                                          "count":  1
                                                                      },
                                                                      {
@@ -125,31 +125,35 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".html",
-                                                                         "count":  11
+                                                                         "count":  16
                                                                      },
                                                                      {
                                                                          "extension":  ".jpg",
-                                                                         "count":  1
+                                                                         "count":  27
                                                                      },
                                                                      {
                                                                          "extension":  ".js",
-                                                                         "count":  2
+                                                                         "count":  12
                                                                      },
                                                                      {
                                                                          "extension":  ".json",
-                                                                         "count":  2947
+                                                                         "count":  3282
                                                                      },
                                                                      {
                                                                          "extension":  ".jsonl",
-                                                                         "count":  2714
+                                                                         "count":  2818
                                                                      },
                                                                      {
                                                                          "extension":  ".log",
-                                                                         "count":  4896
+                                                                         "count":  13524
                                                                      },
                                                                      {
                                                                          "extension":  ".md",
-                                                                         "count":  77
+                                                                         "count":  122
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".patch",
+                                                                         "count":  1
                                                                      },
                                                                      {
                                                                          "extension":  ".pending",
@@ -161,27 +165,39 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".ps1",
-                                                                         "count":  296
+                                                                         "count":  343
                                                                      },
                                                                      {
                                                                          "extension":  ".py",
-                                                                         "count":  130
+                                                                         "count":  225
                                                                      },
                                                                      {
                                                                          "extension":  ".pyc",
-                                                                         "count":  20
+                                                                         "count":  24
                                                                      },
                                                                      {
                                                                          "extension":  ".sample",
                                                                          "count":  14
                                                                      },
                                                                      {
+                                                                         "extension":  ".service",
+                                                                         "count":  4
+                                                                     },
+                                                                     {
                                                                          "extension":  ".sh",
+                                                                         "count":  4
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".sql",
                                                                          "count":  2
                                                                      },
                                                                      {
+                                                                         "extension":  ".sqlite3",
+                                                                         "count":  1
+                                                                     },
+                                                                     {
                                                                          "extension":  ".txt",
-                                                                         "count":  41
+                                                                         "count":  46
                                                                      },
                                                                      {
                                                                          "extension":  ".yaml",
@@ -189,15 +205,15 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".yml",
-                                                                         "count":  1
+                                                                         "count":  3
                                                                      },
                                                                      {
                                                                          "extension":  ".zip",
-                                                                         "count":  2
+                                                                         "count":  3
                                                                      },
                                                                      {
                                                                          "extension":  "\u003cnone\u003e",
-                                                                         "count":  12
+                                                                         "count":  14
                                                                      }
                                                                  ],
                                            "detected_test_artifacts":  [
@@ -264,34 +280,34 @@
                                             "notes":  "Business logic and workflow routes require explicit test plans before write operations. Feature-scoped verification should start with the AgentMIM admin marketing avatar/video surface before broader app edits. Use the TOD comm_app managed-work command to separate product patch scope from QA/support artifacts before live edits."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:57.9396923Z",
+                                           "scanned_at":  "2026-05-27T17:21:29.1390533Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
-                                                                 ".git/index",
-                                                                 "routes/routes.py",
-                                                                 "tests/test_forum_post_quality.py",
                                                                  ".git/logs/HEAD",
                                                                  ".git/COMMIT_EDITMSG",
+                                                                 ".git/index",
                                                                  "instance/flask_session/2029240f6d1128be89ddc32729463129",
-                                                                 "routes/__pycache__/routes.cpython-311.pyc",
-                                                                 "tests/__pycache__/test_forum_post_quality.cpython-311-pytest-8.4.2.pyc",
-                                                                 ".git/gk/config",
-                                                                 "worker/handler.py",
-                                                                 "worker/app.py",
-                                                                 "tmp_live_forum_image_batch.py",
-                                                                 "tmp_forum_image_batch/results.json",
-                                                                 "tmp_forum_image_batch/forum_batch/04101a67c9e646c19cac4babd0537ede.png",
-                                                                 "tmp_forum_image_batch/forum_batch/954c839df3c34782a22f3db1974282d5.png",
-                                                                 "worker/README.md",
-                                                                 "worker/Dockerfile",
-                                                                 "tests/test_marketing_animation_provider.py",
-                                                                 "worker/__pycache__/app.cpython-311.pyc",
-                                                                 "tests/__pycache__/test_marketing_animation_provider.cpython-311-pytest-8.4.2.pyc",
-                                                                 "worker/requirements.txt",
-                                                                 "app/.env",
-                                                                 "__pycache__/config.cpython-311.pyc",
-                                                                 "config.py",
-                                                                 "worker/output/7d66e3411d31404cbca88d5a66c24046.png"
+                                                                 "scripts/__pycache__/simulate_commission_upload_batch.cpython-311.pyc",
+                                                                 "routes/__pycache__/upload_routes.cpython-311.pyc",
+                                                                 "app/__pycache__/ai_file_processor.cpython-311.pyc",
+                                                                 "app/__pycache__/agent_tools.cpython-311.pyc",
+                                                                 "app/agent_tools.py",
+                                                                 "instance/flask_session/b21b3bd55f54b9dd8dbc0497e8ff1bc3",
+                                                                 "instance/flask_session/f030096f0d38c36077db37d731299761",
+                                                                 "instance/flask_session/02c130d177c8f5e36a4f61a943cf676d",
+                                                                 "instance/flask_session/354dc0890b909c72f07eba4a20178221",
+                                                                 "instance/flask_session/eb1017801861564f592456a4e1ea6ba3",
+                                                                 "instance/flask_session/039a748bd691d74a4179f4a95327214a",
+                                                                 "instance/flask_session/5fae3494357be46c53d5231da5bed715",
+                                                                 "instance/flask_session/58c5e856e29590891989f2efa04a654a",
+                                                                 "instance/flask_session/1f8cf72c6e143086e9b2f47cece9c7cf",
+                                                                 "instance/flask_session/68929cf913af9ca5c43ddbce0adec080",
+                                                                 "instance/flask_session/e25147169defd1e5597ba01cc969357c",
+                                                                 "instance/flask_session/51ada6e94ea18b1f48ac5e04061b0f1e",
+                                                                 "instance/flask_session/7d600ff74413c6fbd8bb83e48dda4adc",
+                                                                 "instance/flask_session/45cd4ed1389273dd3f0f4f723e470f0e",
+                                                                 "instance/flask_session/f9fe70749ece2b2c52d98fb9ecb40acb",
+                                                                 "instance/flask_session/4e13d0f32e1207ec8da91fb762a6d1e3"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -320,7 +336,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".db",
-                                                                         "count":  12
+                                                                         "count":  13
                                                                      },
                                                                      {
                                                                          "extension":  ".dockerignore",
@@ -368,7 +384,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".json",
-                                                                         "count":  19
+                                                                         "count":  23
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".log",
+                                                                         "count":  2
                                                                      },
                                                                      {
                                                                          "extension":  ".mako",
@@ -376,7 +396,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".md",
-                                                                         "count":  26
+                                                                         "count":  28
                                                                      },
                                                                      {
                                                                          "extension":  ".mjs",
@@ -408,15 +428,15 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".ps1",
-                                                                         "count":  7
+                                                                         "count":  8
                                                                      },
                                                                      {
                                                                          "extension":  ".py",
-                                                                         "count":  266
+                                                                         "count":  276
                                                                      },
                                                                      {
                                                                          "extension":  ".pyc",
-                                                                         "count":  95
+                                                                         "count":  100
                                                                      },
                                                                      {
                                                                          "extension":  ".sample",
@@ -444,7 +464,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".txt",
-                                                                         "count":  19
+                                                                         "count":  22
                                                                      },
                                                                      {
                                                                          "extension":  ".wav",
@@ -468,7 +488,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  "\u003cnone\u003e",
-                                                                         "count":  56
+                                                                         "count":  121
                                                                      }
                                                                  ],
                                            "detected_test_artifacts":  [
@@ -477,11 +497,11 @@
                                                                            "tmp_flask_db_upgrade_latest.txt",
                                                                            "tmp_flask_db_upgrade_latest_utf8.txt",
                                                                            "tmp_musetalk_test.py",
+                                                                           "tmp_one_test.txt",
+                                                                           "tmp_pytest_live.log",
+                                                                           "tmp_pytest_stage.log",
                                                                            "tmp_sharp_pytest.txt",
-                                                                           "instance/agent_smoke_test.db",
-                                                                           "tests/conftest.py",
-                                                                           "tests/test_admin_customer_directory.py",
-                                                                           "tests/test_admin_usage_analytics.py"
+                                                                           "instance/agent_smoke_test.db"
                                                                        ],
                                            "detected_entrypoints":  [
                                                                         "package.json",
@@ -524,7 +544,7 @@
                                             "notes":  "Prefer advisory mode first; promote to patch mode after baseline test map is stable."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:58.0565810Z",
+                                           "scanned_at":  "2026-05-27T17:21:29.1890728Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -681,7 +701,7 @@
                                             "notes":  "Architecture-sensitive domain; start in read-only and advisory modes."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:58.1388615Z",
+                                           "scanned_at":  "2026-05-27T17:21:29.3541367Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -865,39 +885,51 @@
                                             "notes":  "Hardware-facing changes should require explicit human approval and rollback plans."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:58.1931489Z",
+                                           "scanned_at":  "2026-05-27T17:21:29.4715486Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
-                                                                 "TOD.md",
-                                                                 "MIM_ARM/routes.live.py",
-                                                                 "MIM_ARM/camera_routes.live.py",
-                                                                 "MIM_ARM/__pycache__/camera_routes.live.cpython-313.pyc",
-                                                                 "MIM_ARM/__pycache__/routes.live.cpython-313.pyc",
-                                                                 "MIM_ARM/model_loader.live.py",
-                                                                 "MIM_ARM/app.live.py",
-                                                                 "MIM_ARM/settings_routes.live.py",
-                                                                 "MIM_ARM/config_paths.live.py",
-                                                                 "MIM_ARM/__pycache__/app.live.cpython-313.pyc",
-                                                                 "MIM_ARM/__pycache__/model_loader.live.cpython-313.pyc",
-                                                                 "MIM_ARM/__pycache__/settings_routes.live.cpython-313.pyc",
-                                                                 "MIM_ARM/__pycache__/config_paths.live.cpython-313.pyc",
-                                                                 "MIM_ARM/mim_app.live.env",
-                                                                 "MIM_ARM/shared.live.py",
-                                                                 "MIM_ARM/command_processor.live.py",
-                                                                 "MIM_ARM/voice_routes.live.py",
-                                                                 "MIM_ARM/__pycache__/command_processor.live.cpython-313.pyc",
-                                                                 "MIM_ARM/__pycache__/voice_routes.live.cpython-313.pyc",
-                                                                 "MIM_ARM/explore_action_script_probe.txt",
-                                                                 "MIM_ARM/templates.live.json",
-                                                                 "MIM_ARM/MIM_arm.py",
-                                                                 "MIM_ARM/__pycache__/MIM_arm.cpython-313.pyc",
-                                                                 "MIM_ARM/chat_routes.live.py",
-                                                                 "MIM_ARM/__pycache__/chat_routes.live.cpython-313.pyc"
+                                                                 "images/banners.png",
+                                                                 "images/side banner.png",
+                                                                 "materials_docs/~$M Robots Automation Intro.docx",
+                                                                 "materials_docs/MIM Robots Automation Intro.docx",
+                                                                 "design_parts/finger parts.skp",
+                                                                 "design_parts/finger parts.skb",
+                                                                 "automation.png",
+                                                                 "How-to-Automate-Brownfield-and-Greenfield-Warehouse-Operations-with-Robots.pdf",
+                                                                 "design_parts/new hand concept.skp",
+                                                                 "design_parts/new hand concept.skb",
+                                                                 "An_Open-source_Anthropomorphic_Robot_Hand_System_H.pdf",
+                                                                 "an-open-source-3d-printed-underactuated-robotic-gripper-qpwp78v1qz.pdf",
+                                                                 "design_parts/claw_all_final.3mf",
+                                                                 "design_parts/v2/servo_cap_70.skp",
+                                                                 "design_parts/v2/servo_cap_70.skb",
+                                                                 "3d model/MIM_full_build.blend",
+                                                                 "3d model/MIM_full_build.blend1",
+                                                                 "design_parts/v2/base_with_sleve.skp",
+                                                                 "design_parts/v2/base_with_sleve.skb",
+                                                                 "design_parts/v2/arm.skp",
+                                                                 "design_parts/v2/arm.skb",
+                                                                 "design_parts/v2/servo_cap_150.skp",
+                                                                 "design_parts/v2/servo_cap_150.skb",
+                                                                 "design_parts/v2/serveo_cap_concave_150kg.skb",
+                                                                 "design_parts/arm_cap_2.stl"
                                                              ],
                                            "extension_summary":  [
                                                                      {
+                                                                         "extension":  ".3mf",
+                                                                         "count":  47
+                                                                     },
+                                                                     {
                                                                          "extension":  ".7z",
                                                                          "count":  1
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".blend",
+                                                                         "count":  3
+                                                                     },
+                                                                     {
+                                                                         "extension":  ".blend1",
+                                                                         "count":  3
                                                                      },
                                                                      {
                                                                          "extension":  ".bmp",
@@ -917,7 +949,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".docx",
-                                                                         "count":  10
+                                                                         "count":  16
                                                                      },
                                                                      {
                                                                          "extension":  ".dwg",
@@ -936,6 +968,10 @@
                                                                          "count":  1
                                                                      },
                                                                      {
+                                                                         "extension":  ".glb",
+                                                                         "count":  4
+                                                                     },
+                                                                     {
                                                                          "extension":  ".ico",
                                                                          "count":  2
                                                                      },
@@ -949,7 +985,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".jpg",
-                                                                         "count":  380
+                                                                         "count":  382
                                                                      },
                                                                      {
                                                                          "extension":  ".json",
@@ -969,23 +1005,23 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".mp4",
-                                                                         "count":  1
+                                                                         "count":  5
                                                                      },
                                                                      {
                                                                          "extension":  ".mtl",
-                                                                         "count":  1
+                                                                         "count":  2
                                                                      },
                                                                      {
                                                                          "extension":  ".obj",
-                                                                         "count":  1
+                                                                         "count":  2
                                                                      },
                                                                      {
                                                                          "extension":  ".pdf",
-                                                                         "count":  8
+                                                                         "count":  13
                                                                      },
                                                                      {
                                                                          "extension":  ".png",
-                                                                         "count":  51
+                                                                         "count":  59
                                                                      },
                                                                      {
                                                                          "extension":  ".pt",
@@ -1009,15 +1045,15 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".skb",
-                                                                         "count":  4
+                                                                         "count":  69
                                                                      },
                                                                      {
                                                                          "extension":  ".skp",
-                                                                         "count":  4
+                                                                         "count":  95
                                                                      },
                                                                      {
                                                                          "extension":  ".stl",
-                                                                         "count":  2
+                                                                         "count":  115
                                                                      },
                                                                      {
                                                                          "extension":  ".svg",
@@ -1033,11 +1069,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".url",
-                                                                         "count":  1
+                                                                         "count":  7
                                                                      },
                                                                      {
                                                                          "extension":  ".webp",
-                                                                         "count":  4
+                                                                         "count":  6
                                                                      },
                                                                      {
                                                                          "extension":  ".xcf",
@@ -1045,11 +1081,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".xlsx",
-                                                                         "count":  6
+                                                                         "count":  7
                                                                      },
                                                                      {
                                                                          "extension":  ".zip",
-                                                                         "count":  1
+                                                                         "count":  2
                                                                      },
                                                                      {
                                                                          "extension":  "\u003cnone\u003e",
@@ -1057,6 +1093,8 @@
                                                                      }
                                                                  ],
                                            "detected_test_artifacts":  [
+                                                                           "design_parts/claw_testing_parts_v1.stl",
+                                                                           "design_parts/claw_testing_parts_v2.stl",
                                                                            "images/mim arm testing.jpg",
                                                                            "mimrobots.com/test_db.py"
                                                                        ],
@@ -1114,7 +1152,7 @@
                                             "notes":  "ML model weights, training outputs and frame caches are data-critical and excluded from automated edits. Deployed on Render — validate changes against Dockerfile before push."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:58.2749599Z",
+                                           "scanned_at":  "2026-05-27T17:21:29.5981221Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1352,7 +1390,7 @@
                                             "notes":  "Enable controlled implementation once baseline architecture map is generated."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:58.3069793Z",
+                                           "scanned_at":  "2026-05-27T17:21:29.6522096Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1530,10 +1568,9 @@
                                             "notes":  "Treat as experimental domain; prioritize architecture summaries and drift tracking."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:58.3209874Z",
+                                           "scanned_at":  "2026-05-27T17:21:29.6722067Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
-                                                                 "~$ project MIM devl.docx",
                                                                  "12 project MIM devl.docx",
                                                                  "TOD.md",
                                                                  "Who or what is MIM.docx",
@@ -1557,7 +1594,8 @@
                                                                  "mimenv/Scripts/toco.exe",
                                                                  "mimenv/Scripts/tf_upgrade_v2.exe",
                                                                  "mimenv/Scripts/tflite_convert.exe",
-                                                                 "mimenv/Scripts/tensorboard.exe"
+                                                                 "mimenv/Scripts/tensorboard.exe",
+                                                                 "mimenv/Scripts/saved_model_cli.exe"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -1578,7 +1616,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".docx",
-                                                                         "count":  6
+                                                                         "count":  5
                                                                      },
                                                                      {
                                                                          "extension":  ".exe",
@@ -1663,34 +1701,34 @@
                                             "notes":  "Use as pattern library and experiments workspace; avoid unmanaged refactors."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:58.3579272Z",
+                                           "scanned_at":  "2026-05-27T17:21:29.7393555Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
-                                                                 "app development/~$age process.docx",
-                                                                 "app development/Image process.docx",
-                                                                 "accounting/may-jun-2026/render Receipt-2528-9706.pdf",
-                                                                 "accounting/may-jun-2026/Gmail - Your OpenAI API account has been funded.pdf",
-                                                                 "proposals/~$P realestate.docx",
-                                                                 "proposals/EXP realestate.docx",
-                                                                 "accounting/may-jun-2026/linkedin marketing invoice_1006.pdf",
-                                                                 "Investment deck/~$M Robots LLC capital raise overview.docx",
-                                                                 "Investment deck/MIM Core Pitch.docx",
-                                                                 "accounting/may-jun-2026/RemotePC account has been created.pdf",
-                                                                 "accounting/may-jun-2026/hosting A-INV-1046377.pdf",
-                                                                 "accounting/may-jun-2026/Gmail - [PythonAnywhere] Billing.pdf",
-                                                                 "accounting/may-jun-2026/zoom INV351235613_A26051480_04242026.pdf",
-                                                                 "accounting/may-jun-2026/bito Receipt-2827-9815.pdf",
-                                                                 "accounting/may-jun-2026/digital ocean 152117717.pdf",
-                                                                 "accounting/may-jun-2026/hosting- Invoice payment received.pdf",
-                                                                 "accounting/MAR-APR-2026-DR/Gmail - Your receipt from X #2710-0228-8017.pdf",
-                                                                 "Training \u0026 content/MIM_TOD Deep Architecture Appendix.docx",
-                                                                 "accounting/MAR-APR-2026-DR/Linkedin followers - paid usdc-dr_invoice_1005.pdf",
-                                                                 "accounting/MAR-APR-2026-DR/Google Play Order Receipt from Apr 15, 2026.pdf",
-                                                                 "Training \u0026 content/MIM-TOD_dr_4_2026.docx",
-                                                                 "app development/AgentMIM link pyramid by 3 tier backlinks.xlsx",
-                                                                 "app development/Link pyramid by 3 tier backlinks.zip",
-                                                                 "Training \u0026 content/~$M_TOD Deep Architecture Appendix.docx",
-                                                                 "Training \u0026 content/MIM_TOD whitepaper Mar 2026.pdf"
+                                                                 "accounting/may-jun-2026/zoom_INV355453643_A26051480_05242026.pdf",
+                                                                 "accounting/may-jun-2026/zoom INV355453643_A26051480_05242026.pdf",
+                                                                 "accounting/may-jun-2026/Trimble account statement.pdf",
+                                                                 "app development/chat sessions/continued MIM ARM and SIM sync.txt",
+                                                                 "accounting/may-jun-2026/hosting A-INV-1105476.pdf",
+                                                                 "accounting/may 14 full update.docx",
+                                                                 "accounting/MIM_Full_Expense_Report.xlsx",
+                                                                 "accounting/financials_UPDATED_MAY2026.xlsx",
+                                                                 "accounting/may-jun-2026/OpenAI API account has been funded.pdf",
+                                                                 "accounting/may-jun-2026/Google Play Order Receipt from May 15, 2026.pdf",
+                                                                 "accounting/may-jun-2026/MIM Robots LLC Mail - #13171067 Realistic 3D Mechanical Animation (pid 40437800) - Closing Statement.pdf",
+                                                                 "accounting/may-jun-2026/MIM Robots LLC Mail - #13171155 Realistic 3D Mechanical Animation (pid 40437800) - Closing Statement.pdf",
+                                                                 "accounting/may-jun-2026/Trimble Automatic Subscription Renewal Reminder.pdf",
+                                                                 "accounting/may-jun-2026/linked in marketing Invoice_1007_AgentMIM.pdf",
+                                                                 "accounting/may-jun-2026/github-raine0001-receipt-2026-05-11.pdf",
+                                                                 "accounting/may-jun-2026/postmark - Your May 2026 Receipt.pdf",
+                                                                 "app development/chat sessions/continued MIM TOD System Stabilization.txt",
+                                                                 "app development/OBJECTIVE MIM-TOD-COMMUNICATION-SOA.txt",
+                                                                 "accounting/may-jun-2026/Postmark-Invoice-May082026-#LUKMPAJE-0006.pdf",
+                                                                 "app development/chat sessions/MIM Server_continued we ran out of space.txt",
+                                                                 "app development/chat sessions/starting fresh catching up on context.txt",
+                                                                 "app development/chat sessions/codex chat - backend cleanup commit and push instructions.txt",
+                                                                 "app development/OBJECTIVE TOD-MIM-SYNC-POINT-INVENT.txt",
+                                                                 "Investment deck/Capital_agentMIM.docx",
+                                                                 "Marketing media/MIM-TOD evolution.png"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -1699,7 +1737,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".docx",
-                                                                         "count":  80
+                                                                         "count":  79
                                                                      },
                                                                      {
                                                                          "extension":  ".drp",
@@ -1723,11 +1761,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".pdf",
-                                                                         "count":  175
+                                                                         "count":  189
                                                                      },
                                                                      {
                                                                          "extension":  ".png",
-                                                                         "count":  77
+                                                                         "count":  78
                                                                      },
                                                                      {
                                                                          "extension":  ".pptx",
@@ -1735,7 +1773,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".svg",
-                                                                         "count":  1
+                                                                         "count":  2
                                                                      },
                                                                      {
                                                                          "extension":  ".tmp",
@@ -1743,7 +1781,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".txt",
-                                                                         "count":  15
+                                                                         "count":  22
                                                                      },
                                                                      {
                                                                          "extension":  ".url",
@@ -1759,7 +1797,7 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".xlsx",
-                                                                         "count":  10
+                                                                         "count":  11
                                                                      },
                                                                      {
                                                                          "extension":  ".zip",
@@ -1812,7 +1850,7 @@
                                             "notes":  "Primary domain for generated media/content workflows; keep secret-bearing config out of automated edits."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:58.3619934Z",
+                                           "scanned_at":  "2026-05-27T17:21:29.7453545Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1873,7 +1911,7 @@
                                             "notes":  "Dedicated media creation and processing domain for TOD image/video/audio outputs and workflow indexing."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:58.3667659Z",
+                                           "scanned_at":  "2026-05-27T17:21:29.7504071Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1959,18 +1997,18 @@
                                             "notes":  "Android app changes should keep build, lint, and automated dialog regression gates green before publish. Prefer README.md, TOD.md, MIM_ASSIST_SPEC.md, DEVELOPMENT_PLAN.md, and sprint plan docs as the default familiarization path."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-05T19:12:58.4064634Z",
+                                           "scanned_at":  "2026-05-27T17:21:29.8013599Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
-                                                                 ".git/gk/config",
-                                                                 "scripts/device_smoke_test.ps1",
-                                                                 "scripts/automated_dialog_regression.ps1",
                                                                  ".gradle/buildOutputCleanup/buildOutputCleanup.lock",
                                                                  ".gradle/buildOutputCleanup/outputFiles.bin",
                                                                  ".gradle/file-system.probe",
-                                                                 "local.properties",
                                                                  ".gradle/8.7/gc.properties",
                                                                  ".gradle/vcs-1/gc.properties",
+                                                                 ".git/gk/config",
+                                                                 "scripts/automated_dialog_regression.ps1",
+                                                                 "scripts/device_smoke_test.ps1",
+                                                                 "local.properties",
                                                                  "DEVELOPMENT_PLAN.md",
                                                                  "TOD.md",
                                                                  "README.md",
@@ -2087,7 +2125,9 @@
                  ],
     "unregistered_top_level_directories":  [
                                                "E:/app",
+                                               "E:/coffee bot",
                                                "E:/literature",
+                                               "E:/TOD_BACKUPS",
                                                "E:/Viasion"
                                            ]
 }

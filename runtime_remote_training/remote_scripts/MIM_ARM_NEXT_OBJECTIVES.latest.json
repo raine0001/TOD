@@ -1,0 +1,54 @@
+{
+  "packet_type": "mim-arm-next-objectives-v1",
+  "generated_at": "2026-05-24T22:52:05Z",
+  "source": "operator_codex_handoff",
+  "primary_operator": "Dave",
+  "objectives": [
+    {
+      "objective_id": "MIM-ARM-IR-SENSOR-CONFIGURATION-AND-TESTING",
+      "tod_objective_id": "OBJ-0099",
+      "priority": "high",
+      "status": "active_blocked_with_evidence",
+      "goal": "Verify and recover the top-of-hand IR/distance sensor before using it for approach or grip contact proof.",
+      "current_evidence": {
+        "artifact": "runtime/shared/MIM_ARM_IR_SENSOR_CALIBRATION_STATUS.latest.json",
+        "connected_samples": 12,
+        "nonzero_distance_samples": 0,
+        "nonzero_signal_samples": 0,
+        "configured_port": "/dev/ttyAMA0",
+        "offset_from_grip_tips_mm": 142
+      },
+      "policy": "IR is not a blocker for visual no-contact learning. IR is a blocker for claiming proximity/contact proof until nonzero known-distance calibration succeeds.",
+      "next_action": "Inspect TF Luna/IR wiring, power, UART path, baud rate, and driver frame synchronization; rerun known-distance calibration after nonzero frames are recovered."
+    },
+    {
+      "objective_id": "MIM-ARM-BLOCK-PICKUP-LEARNING-V2",
+      "tod_objective_id": "OBJ-0100",
+      "priority": "critical",
+      "status": "active_learning_in_progress",
+      "goal": "Deploy MIM to learn how to pick up the blocks, starting with the blue block, using slow camera-led no-contact probing before any grip attempt.",
+      "current_evidence": {
+        "pickup_artifact": "runtime/shared/MIM_ARM_BLUE_BLOCK_PICKUP_TRAINING.latest.json",
+        "target_selected": true,
+        "wrist_camera_scan_target_visible": true,
+        "wrist_camera_scan_returned_to_start": true,
+        "no_contact_sweep_target_visible": true,
+        "no_contact_sweep_returned_to_start": true,
+        "arm_camera_fresh": true,
+        "pc_fixed_observer_fresh": true,
+        "pi_fixed_observer_status": "blocked_missing_/dev/video0"
+      },
+      "policy": "Use slow visible movements. Do not close the claw until visual alignment, collision clearance, and close/lift/verify sequence are explicitly bound.",
+      "next_action": "Relax the stale all-camera requirement to accept arm camera plus PC observer, then compute a trusted approach model from the no-contact probes."
+    }
+  ],
+  "artifacts": [
+    "runtime/shared/MIM_ARM_NEXT_OBJECTIVES.latest.json",
+    "runtime/shared/MIM_ARM_NEXT_OBJECTIVES_TOD_CREATE_RESULT.latest.json",
+    "runtime/shared/MIM_ARM_NEXT_OBJECTIVES_TOD_TASKS.latest.json",
+    "runtime/shared/MIM_ARM_IR_SENSOR_CALIBRATION_STATUS.latest.json",
+    "runtime/shared/MIM_ARM_BLUE_BLOCK_PICKUP_TRAINING.latest.json"
+  ],
+  "success_definition": "MIM eventually picks up the blue block only after evidence proves target selection, no-contact alignment, collision-safe approach, gripper alignment, close/lift/verify sequence, and before/after camera confirmation.",
+  "no_audio_retained": true
+}

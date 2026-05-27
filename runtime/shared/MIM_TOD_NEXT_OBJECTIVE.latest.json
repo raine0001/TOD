@@ -1,14 +1,23 @@
 ﻿{
-    "packet_type":  "mim-next-objective-v1",
-    "generated_at":  "2026-05-21T16:30:39Z",
-    "objective_id":  "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1",
-    "task_id":  "mim-lab-awareness-human-interaction-v1-task-001",
-    "status":  "published",
-    "goal":  "MIM becomes aware of activity, humans, and objects in its private lab/space, initiates voice interaction with humans, remembers interactions and names, recognizes Dave as primary operator, asks about unknown objects, and cycles all cameras including the arm camera.",
-    "owner":  "MIM",
-    "next_action":  "Execute sensor inventory, camera cycle readiness, and first lab-awareness status publication.",
-    "evidence_files":  [
-                           "runtime/shared/MIM_LAB_AWARENESS_OBJECTIVE.latest.json",
-                           "runtime/shared/MIM_DIRECT_EXECUTION_ORDER.latest.json"
-                       ]
+    "packet_type":  "mim-tod-next-objective-v1",
+    "generated_at":  "2026-05-24T17:52:01Z",
+    "objective_id":  "MIM-ARM-BLUE-BLOCK-PICKUP-CONTINUE-UNTIL-SAFE-SUCCESS-V1",
+    "status":  "active",
+    "goal":  "Continue toward verified pickup of the blue block without human prompts, but do not execute contact motion while the workspace is occupied or alignment is unproven.",
+    "order":  [
+                  "Continuously consume MIM_ARM_BLUE_BLOCK_PICKUP_TRAINING.latest.json, MIM_ARM_BLUE_BLOCK_VISUAL_SERVO_PROBE.latest.json, and MIM_ARM_BLUE_BLOCK_WORKSPACE_SAFETY.latest.json.",
+                  "When fixed observer evidence shows the arm workspace is clear, run only slow no-contact alignment refinement first.",
+                  "Do not close the claw until target selection, visual alignment, collision path, and before/after camera evidence are all present.",
+                  "Treat every blocked run as training evidence and publish the exact blocker and next recovery action.",
+                  "Never mark pickup complete from speech, queue activity, or software pose alone."
+              ],
+    "success":  "MIM physically picks up the selected blue block and publishes before/after camera evidence plus arm-state evidence showing the action completed.",
+    "current_blockers":  [
+                             "human_present_in_arm_workspace",
+                             "visual_servo_target_alignment_not_validated",
+                             "collision_checked_approach_path_not_bound",
+                             "grasp_close_lift_verify_sequence_not_bound",
+                             "ir_proximity_sensor_connected_but_not_calibrated_for_grip_approach"
+                         ],
+    "next_safe_action":  "Wait for clear workspace evidence, then run slow no-contact visual alignment refinement; do not grip."
 }

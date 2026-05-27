@@ -1,11 +1,11 @@
 {
-    "generated_at":  "2026-05-20T14:32:54.2936708Z",
-    "emitted_at":  "2026-05-20T14:32:54.2936708Z",
-    "request_id":  "objective-2-task-1779287574",
-    "task_id":  "objective-2-task-1779287574",
-    "objective_id":  "objective-2",
+    "generated_at":  "2026-05-27T09:30:19.7257919Z",
+    "emitted_at":  "2026-05-27T09:30:19.7257919Z",
+    "request_id":  "objective-3312-task-1779874219",
+    "task_id":  "objective-3312-task-1779874219",
+    "objective_id":  "objective-3312",
     "correlation_id":  "watchdog-publication-surface-self-heal",
-    "sequence":  1779287574,
+    "sequence":  1779874219,
     "source_service":  "tod_watchdog_autorepair",
     "canonical_lane_source":  "shared_truth",
     "source_instance_id":  "TOD-3322"

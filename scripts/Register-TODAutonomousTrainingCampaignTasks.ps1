@@ -79,7 +79,7 @@ $daemonArgs = @(
     '-SimulationCooldownMinutes', [string]$SimulationCooldownMinutes,
     '-SolicitationCooldownMinutes', [string]$SolicitationCooldownMinutes,
     '-LongIdleProfileThresholdMinutes', [string]$LongIdleProfileThresholdMinutes,
-    '-IgnoreCampaignCompletion', 'true',
+    '-IgnoreCampaignCompletion', '1',
     '-StartupHealthCheck'
 ) -join ' '
 

@@ -1164,7 +1164,15 @@ PY'
                     $handoffCheck = $null
                 }
             }
-            if ($handoffCheck -and [bool]$handoffCheck.fresh_pending -and [bool]$handoffCheck.noncanonical) {
+            $handoffFreshPending = $false
+            $handoffNoncanonical = $false
+            if ($handoffCheck -and $handoffCheck.PSObject.Properties['fresh_pending']) {
+                $handoffFreshPending = [bool]$handoffCheck.fresh_pending
+            }
+            if ($handoffCheck -and $handoffCheck.PSObject.Properties['noncanonical']) {
+                $handoffNoncanonical = [bool]$handoffCheck.noncanonical
+            }
+            if ($handoffCheck -and $handoffFreshPending -and $handoffNoncanonical) {
                 return [pscustomobject]@{
                     attempted = $true
                     repaired = $true

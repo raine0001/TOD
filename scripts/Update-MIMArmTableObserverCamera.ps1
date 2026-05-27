@@ -233,6 +233,15 @@ def main():
     for probe in probes:
         stats = probe.get("stats") if isinstance(probe.get("stats"), dict) else {}
         if probe.get("frame_ok"):
+            # Reject virtual/blank placeholder frames. They can be technically
+            # openable but provide no arm-table evidence.
+            if (
+                float(stats.get("mean_brightness", 0)) < 60.0
+                or float(stats.get("brightness_stddev", 0)) < 40.0
+                or float(stats.get("edge_pixel_ratio", 0)) < 0.01
+            ):
+                probe["frame_rejected"] = "blank_or_virtual_placeholder"
+                continue
             score = (
                 float(stats.get("brightness_stddev", 0)) * 2.0
                 + float(stats.get("edge_pixel_ratio", 0)) * 5000.0
@@ -275,7 +284,7 @@ def main():
         },
         "camera_index_probes": probes,
         "policy": "This observer gives MIM a fixed external view for motion verification and workspace reference; raw frame retention is limited to the latest operator-authorized observer frame.",
-        "next_recovery_action": "" if sha256 else "Close apps using the camera or specify a different camera index/device.",
+        "next_recovery_action": "" if sha256 else "Close apps using the physical EMEET camera or specify a different physical arm-table camera; virtual/blank camera frames are not accepted.",
     }
     status_path.parent.mkdir(parents=True, exist_ok=True)
     status_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")

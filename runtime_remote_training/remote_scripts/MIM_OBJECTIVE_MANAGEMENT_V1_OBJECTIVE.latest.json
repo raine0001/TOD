@@ -1,0 +1,104 @@
+{
+  "packet_type": "mim-objective-management-objective-v1",
+  "generated_at": "2026-05-24T22:40:45Z",
+  "objective_id": "MIM-OBJECTIVE-MANAGEMENT-V1",
+  "tod_objective_id": "OBJ-0098",
+  "title": "Objective Management V1",
+  "priority": "high",
+  "status": "ready_for_mim_tod_planning",
+  "source": "operator_codex_handoff",
+  "primary_operator": "Dave",
+  "goal": "Create a durable objective and activity management section in the MIM UI/backend so Dave, MIM, TOD, and Codex can add, plan, prioritize, execute, track, and report objectives from one queue.",
+  "required_capabilities": [
+    "objectives page or section in the MIM UI/backend",
+    "add objective from UI",
+    "add objective from conversation with Dave or MIM",
+    "add objective from Codex handoff into the same list",
+    "show objective status and completion reports",
+    "show supporting objectives, planning, and evidence",
+    "show MIM/TOD-created objectives and working/completion state",
+    "support priorities and priority changes",
+    "allow collaborative pre-implementation planning before objective execution",
+    "report completed objectives directly to Dave when Dave is present"
+  ],
+  "implementation_principles": [
+    "reuse the existing objective/task API and shared ledgers before adding new stores",
+    "do not create a parallel source of truth",
+    "do not count queue activity alone as completion",
+    "blocked objectives must publish explicit blocker evidence",
+    "planning and supporting objectives must be linked to parent objectives",
+    "conversation-created objectives should support a draft/planning state before execution"
+  ],
+  "task_deck": [
+    {
+      "tod_task_id": "TSK-1935",
+      "title": "Inventory existing objective/task APIs and UI routes",
+      "status": "planned",
+      "assigned_executor": "mim-tod"
+    },
+    {
+      "tod_task_id": "TSK-1936",
+      "title": "Design Objective Management V1 data contract",
+      "status": "planned",
+      "assigned_executor": "mim-tod"
+    },
+    {
+      "tod_task_id": "TSK-1937",
+      "title": "Add MIM UI Objectives page or section",
+      "status": "planned",
+      "assigned_executor": "mim-tod"
+    },
+    {
+      "tod_task_id": "TSK-1938",
+      "title": "Add objective creation from UI conversation and Codex handoff",
+      "status": "planned",
+      "assigned_executor": "mim-tod"
+    },
+    {
+      "tod_task_id": "TSK-1939",
+      "title": "Bind MIM/TOD pending objective worker behavior",
+      "status": "planned",
+      "assigned_executor": "mim-tod"
+    },
+    {
+      "tod_task_id": "TSK-1940",
+      "title": "Add completion reports and Dave-present notification",
+      "status": "planned",
+      "assigned_executor": "mim-tod"
+    },
+    {
+      "tod_task_id": "TSK-1941",
+      "title": "Add objective backlog hygiene and learning conversion",
+      "status": "planned",
+      "assigned_executor": "mim-tod"
+    }
+  ],
+  "suggested_additions": [
+    "objective inbox with draft, ready, active, blocked, complete, archived lanes",
+    "parent/child objective graph for supporting objectives",
+    "blocker-to-learning-objective conversion",
+    "objective source tags: Dave, MIM, TOD, Codex, system, failure-learning",
+    "recency and priority score so urgent lab blockers surface above background training",
+    "decision log per objective showing why MIM/TOD chose the current next step",
+    "operator presence notification queue so completed objectives are reported when Dave is available",
+    "objective templates for hardware, voice, UI/backend, research, training, and repair work"
+  ],
+  "success_criteria": [
+    "MIM UI/backend exposes an Objectives page or section",
+    "objectives can be added from UI and conversation",
+    "Codex-created objectives are inserted into the same objective list",
+    "pending, active, completed, and blocked status is visible",
+    "priority is visible and editable",
+    "supporting objectives and planning are visible",
+    "MIM/TOD-created objectives show creator/source and working/completion status",
+    "MIM reports completed objectives to Dave when Dave is present",
+    "implementation is verified with tests, screenshots, API responses, or explicit blocked evidence"
+  ],
+  "artifacts": [
+    "runtime/shared/MIM_OBJECTIVE_MANAGEMENT_V1_OBJECTIVE.latest.json",
+    "runtime/shared/MIM_OBJECTIVE_MANAGEMENT_V1_TOD_OBJECTIVE_CREATE_RESULT.latest.json",
+    "runtime/shared/MIM_OBJECTIVE_MANAGEMENT_V1_TOD_TASKS.latest.json"
+  ],
+  "next_action": "MIM/TOD should begin with TSK-1935, inventory existing objective/task APIs and UI routes, then publish an implementation plan before editing.",
+  "no_audio_retained": true
+}

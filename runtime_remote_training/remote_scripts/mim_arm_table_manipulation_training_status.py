@@ -14,6 +14,7 @@ OBJECTIVE_PATH = SHARED / "MIM_ARM_TABLE_MANIPULATION_TRAINING_OBJECTIVE.latest.
 SCENE_PATH = SHARED / "MIM_ARM_TABLE_SCENE.latest.json"
 PROPOSAL_PATH = SHARED / "MIM_ARM_TABLE_MANIPULATION_PROPOSAL.latest.json"
 INTERACTION_OBJECTIVE_PATH = SHARED / "MIM_ARM_TABLE_OBJECT_INTERACTION_OBJECTIVE.latest.json"
+PICKUP_TRAINING_PATH = SHARED / "MIM_ARM_BLUE_BLOCK_PICKUP_TRAINING.latest.json"
 
 
 def now_iso() -> str:
@@ -52,6 +53,7 @@ def main() -> int:
     proposal = read_json(PROPOSAL_PATH)
     interaction_objective = read_json(INTERACTION_OBJECTIVE_PATH)
     reference_map = read_json(SHARED / "MIM_ARM_TABLE_REFERENCE_MAP.latest.json")
+    pickup_training = read_json(PICKUP_TRAINING_PATH)
 
     scene_blockers = scene.get("blockers") if isinstance(scene.get("blockers"), list) else []
     proposal_blockers = proposal.get("blockers") if isinstance(proposal.get("blockers"), list) else []
@@ -179,6 +181,12 @@ def main() -> int:
             "proposal_status": proposal.get("status"),
             "proposal_generated_at": proposal.get("generated_at"),
         },
+        "blue_block_pickup_training": {
+            "status": pickup_training.get("status"),
+            "generated_at": pickup_training.get("generated_at"),
+            "target_selection": pickup_training.get("target_selection", {}),
+            "blockers": pickup_training.get("blockers", []),
+        },
         "scene_summary": {
             "scene_status": scene.get("status"),
             "scene_generated_at": scene.get("generated_at"),
@@ -195,6 +203,7 @@ def main() -> int:
             "runtime/shared/MIM_ARM_TABLE_OBJECT_INTERACTION_OBJECTIVE.latest.json",
             "runtime/shared/MIM_ARM_TABLE_MANIPULATION_TRAINING_OBJECTIVE.latest.json",
             "runtime/shared/MIM_ARM_TABLE_REFERENCE_MAP.latest.json",
+            "runtime/shared/MIM_ARM_BLUE_BLOCK_PICKUP_TRAINING.latest.json",
         ],
         "related_objective": interaction_objective.get("objective_id"),
     }

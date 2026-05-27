@@ -10,13 +10,20 @@ param(
     [int]$SolicitationCooldownMinutes = 60,
     [int]$LongIdleProfileThresholdMinutes = 30,
     [int]$RecoveryCooldownMinutes = 30,
-    [bool]$IgnoreCampaignCompletion = $true,
+    $IgnoreCampaignCompletion = $true,
     [switch]$StartupHealthCheck,
     [switch]$RunOnce
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($IgnoreCampaignCompletion -is [string]) {
+    $IgnoreCampaignCompletion = @('1', 'true', 'yes', 'on').Contains($IgnoreCampaignCompletion.Trim().ToLowerInvariant())
+}
+else {
+    $IgnoreCampaignCompletion = [bool]$IgnoreCampaignCompletion
+}
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repoRoot
@@ -159,7 +166,8 @@ function Invoke-JsonPowerShellScript {
     }
 
     $rawOutput = & $powershellExe @invocationArgs 2>&1 | Out-String
-    $exitCode = if ($LASTEXITCODE -is [int]) { [int]$LASTEXITCODE } else { 0 }
+    $lastExitCodeVar = Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue
+    $exitCode = if ($lastExitCodeVar -and $lastExitCodeVar.Value -is [int]) { [int]$lastExitCodeVar.Value } else { 0 }
     if ($exitCode -ne 0) {
         throw ("Script failed with exit code {0}: {1}`n{2}" -f $exitCode, $ScriptPath, $rawOutput.Trim())
     }
@@ -174,8 +182,10 @@ function Invoke-JsonScriptInline {
     )
 
     $rawOutput = & $ScriptPath @Arguments 2>&1 | Out-String
-    if ($LASTEXITCODE -is [int] -and [int]$LASTEXITCODE -ne 0) {
-        throw ("Script failed with exit code {0}: {1}`n{2}" -f [int]$LASTEXITCODE, $ScriptPath, $rawOutput.Trim())
+    $lastExitCodeVar = Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue
+    $exitCode = if ($lastExitCodeVar -and $lastExitCodeVar.Value -is [int]) { [int]$lastExitCodeVar.Value } else { 0 }
+    if ($exitCode -ne 0) {
+        throw ("Script failed with exit code {0}: {1}`n{2}" -f $exitCode, $ScriptPath, $rawOutput.Trim())
     }
 
     return (ConvertFrom-JsonLoose -Text $rawOutput)
@@ -203,6 +213,28 @@ function Write-DaemonLog {
 function Get-DaemonState {
     $existing = Read-JsonFileIfExists -PathValue $daemonStatePath
     if ($null -ne $existing) {
+        $defaults = @{
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            source = 'tod-autonomous-training-daemon-v1'
+            idle_started_at_utc = ''
+            pending_mim_session_id = ''
+            pending_mim_requested_at_utc = ''
+            pending_mim_task_id = ''
+            last_mim_response_at_utc = ''
+            last_mim_solicitation_utc = ''
+            last_training_profile = ''
+            last_training_reason = ''
+            last_simulation_run_utc = ''
+            last_recovery_run_utc = ''
+            last_startup_health_check_utc = ''
+            last_status = 'loaded_legacy_state'
+            updated_at_utc = ''
+        }
+        foreach ($key in $defaults.Keys) {
+            if (-not $existing.PSObject.Properties[$key]) {
+                $existing | Add-Member -NotePropertyName $key -NotePropertyValue $defaults[$key]
+            }
+        }
         return $existing
     }
 
