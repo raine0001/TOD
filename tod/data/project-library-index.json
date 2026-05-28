@@ -1,7 +1,7 @@
 {
     "ok":  true,
     "source":  "tod-project-library-index-v1",
-    "generated_at":  "2026-05-28T13:33:06.2042122Z",
+    "generated_at":  "2026-05-28T14:03:57.3986066Z",
     "library_root":  "E:/",
     "registry_path":  "E:/TOD/tod/config/project-registry.json",
     "registered_project_count":  12,
@@ -45,12 +45,15 @@
                                             "notes":  "Runtime/state artifacts are read-only by default; code/docs require review gates."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:05.2084856Z",
+                                           "scanned_at":  "2026-05-28T14:03:56.6192551Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "shared_state/integration_status.json",
                                                                  "shared_state/tod_training_status.latest.json",
+                                                                 "tod/state/engineering_memory.json",
+                                                                 "tod/data/engineering-memory.json",
                                                                  "shared_state/tod_execution_readiness_history.latest.json",
+                                                                 "runtime/shared/TOD_EXECUTION_LOCK.latest.json",
                                                                  "shared_state/chatgpt_update.md",
                                                                  "shared_state/chatgpt_update.json",
                                                                  "shared_state/latest_summary.md",
@@ -59,20 +62,17 @@
                                                                  "shared_state/next_actions.json",
                                                                  "shared_state/contracts.json",
                                                                  "shared_state/objectives.json",
-                                                                 "tod/state/engineering_memory.json",
                                                                  "shared_state/current_build_state.json",
                                                                  "shared_state/execution_evidence.json",
                                                                  "shared_state/TOD_INTEGRATION_STATUS_UPLOAD_RECEIPT.latest.json",
                                                                  "shared_state/TOD_MIM_ARM_STATUS_UPLOAD_RECEIPT.latest.json",
-                                                                 "tod/data/engineering-memory.json",
                                                                  "shared_state/tod_objective_roadmap.json",
-                                                                 "shared_state/TOD_MIM_BRIDGE_SMOKE.latest.json",
-                                                                 "shared_state/TOD_MIM_REMOTE_BOUNDARY_DIAGNOSTIC.latest.json",
-                                                                 "shared_state/TOD_MIM_REMOTE_REQUEST_PROBE.latest.json",
-                                                                 "runtime/shared/TOD_EXECUTION_LOCK.latest.json",
-                                                                 "shared_state/tod_autonomy_status.latest.json",
                                                                  "shared_state/tod_watchdog_drift_guard.log.jsonl",
-                                                                 "shared_state/tod_watchdog_drift_guard.latest.json"
+                                                                 "shared_state/tod_watchdog_drift_guard.latest.json",
+                                                                 "shared_state/tod_recovery_watchdog.latest.json",
+                                                                 "shared_state/tod_recovery_watchdog.log.jsonl",
+                                                                 "shared_state/TOD_SELF_HEAL_ORDER.latest.json",
+                                                                 "shared_state/TOD_MIM_BRIDGE_SMOKE.latest.json"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -137,11 +137,11 @@
                                                                      },
                                                                      {
                                                                          "extension":  ".json",
-                                                                         "count":  3305
+                                                                         "count":  3307
                                                                      },
                                                                      {
                                                                          "extension":  ".jsonl",
-                                                                         "count":  2837
+                                                                         "count":  2838
                                                                      },
                                                                      {
                                                                          "extension":  ".log",
@@ -280,34 +280,34 @@
                                             "notes":  "Business logic and workflow routes require explicit test plans before write operations. Feature-scoped verification should start with the AgentMIM admin marketing avatar/video surface before broader app edits. Use the TOD comm_app managed-work command to separate product patch scope from QA/support artifacts before live edits."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:05.4920352Z",
+                                           "scanned_at":  "2026-05-28T14:03:56.8850913Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  ".git/logs/HEAD",
                                                                  ".git/COMMIT_EDITMSG",
                                                                  ".git/index",
+                                                                 "instance/flask_session/2029240f6d1128be89ddc32729463129",
+                                                                 "scripts/__pycache__/run_forum_image_auto_qa_remediation.cpython-311.pyc",
+                                                                 "app/__pycache__/__init__.cpython-311.pyc",
+                                                                 "routes/__pycache__/routes.cpython-311.pyc",
+                                                                 ".git/gk/config",
+                                                                 "tests/__pycache__/test_forum_post_quality.cpython-311-pytest-8.4.2.pyc",
+                                                                 "tests/test_forum_post_quality.py",
+                                                                 "routes/routes.py",
                                                                  "routes/__pycache__/analyzer_routes.cpython-311.pyc",
                                                                  "routes/analyzer_routes.py",
                                                                  "tests/__pycache__/test_public_analyzer_funnel.cpython-311-pytest-8.4.2.pyc",
                                                                  "tests/test_public_analyzer_funnel.py",
                                                                  "app/templates/analyzer.html",
-                                                                 ".git/gk/config",
                                                                  "external/MuseTalk/download_required_weights.py",
                                                                  "external/MuseTalk/.gitignore",
-                                                                 "instance/flask_session/2029240f6d1128be89ddc32729463129",
                                                                  "scripts/__pycache__/simulate_commission_upload_batch.cpython-311.pyc",
                                                                  "routes/__pycache__/upload_routes.cpython-311.pyc",
                                                                  "app/__pycache__/ai_file_processor.cpython-311.pyc",
                                                                  "app/__pycache__/agent_tools.cpython-311.pyc",
                                                                  "app/agent_tools.py",
                                                                  "instance/flask_session/b21b3bd55f54b9dd8dbc0497e8ff1bc3",
-                                                                 "instance/flask_session/f030096f0d38c36077db37d731299761",
-                                                                 "instance/flask_session/02c130d177c8f5e36a4f61a943cf676d",
-                                                                 "instance/flask_session/354dc0890b909c72f07eba4a20178221",
-                                                                 "instance/flask_session/eb1017801861564f592456a4e1ea6ba3",
-                                                                 "instance/flask_session/039a748bd691d74a4179f4a95327214a",
-                                                                 "instance/flask_session/5fae3494357be46c53d5231da5bed715",
-                                                                 "instance/flask_session/58c5e856e29590891989f2efa04a654a"
+                                                                 "instance/flask_session/f030096f0d38c36077db37d731299761"
                                                              ],
                                            "extension_summary":  [
                                                                      {
@@ -544,7 +544,7 @@
                                             "notes":  "Prefer advisory mode first; promote to patch mode after baseline test map is stable."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:05.5794906Z",
+                                           "scanned_at":  "2026-05-28T14:03:56.9250582Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -701,7 +701,7 @@
                                             "notes":  "Architecture-sensitive domain; start in read-only and advisory modes."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:05.7120422Z",
+                                           "scanned_at":  "2026-05-28T14:03:57.0213090Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -885,7 +885,7 @@
                                             "notes":  "Hardware-facing changes should require explicit human approval and rollback plans."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:05.8837832Z",
+                                           "scanned_at":  "2026-05-28T14:03:57.1448700Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "images/catch system.png",
@@ -1152,7 +1152,7 @@
                                             "notes":  "ML model weights, training outputs and frame caches are data-critical and excluded from automated edits. Deployed on Render — validate changes against Dockerfile before push."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:06.0113626Z",
+                                           "scanned_at":  "2026-05-28T14:03:57.2434019Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1390,7 +1390,7 @@
                                             "notes":  "Enable controlled implementation once baseline architecture map is generated."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:06.0513317Z",
+                                           "scanned_at":  "2026-05-28T14:03:57.2830025Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1568,7 +1568,7 @@
                                             "notes":  "Treat as experimental domain; prioritize architecture summaries and drift tracking."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:06.0758437Z",
+                                           "scanned_at":  "2026-05-28T14:03:57.3009907Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "12 project MIM devl.docx",
@@ -1701,7 +1701,7 @@
                                             "notes":  "Use as pattern library and experiments workspace; avoid unmanaged refactors."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:06.1438410Z",
+                                           "scanned_at":  "2026-05-28T14:03:57.3509908Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "accounting/may-jun-2026/zoom_INV355453643_A26051480_05242026.pdf",
@@ -1850,7 +1850,7 @@
                                             "notes":  "Primary domain for generated media/content workflows; keep secret-bearing config out of automated edits."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:06.1488426Z",
+                                           "scanned_at":  "2026-05-28T14:03:57.3549902Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1911,7 +1911,7 @@
                                             "notes":  "Dedicated media creation and processing domain for TOD image/video/audio outputs and workflow indexing."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:06.1568597Z",
+                                           "scanned_at":  "2026-05-28T14:03:57.3640323Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  "TOD.md",
@@ -1997,7 +1997,7 @@
                                             "notes":  "Android app changes should keep build, lint, and automated dialog regression gates green before publish. Prefer README.md, TOD.md, MIM_ASSIST_SPEC.md, DEVELOPMENT_PLAN.md, and sprint plan docs as the default familiarization path."
                                         },
                          "discovery":  {
-                                           "scanned_at":  "2026-05-28T13:33:06.2022132Z",
+                                           "scanned_at":  "2026-05-28T14:03:57.3966154Z",
                                            "max_depth":  2,
                                            "sampled_files":  [
                                                                  ".git/info/refs",
