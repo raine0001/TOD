@@ -3,6 +3,8 @@ import base64
 import io
 import asyncio
 import concurrent.futures
+import email
+import imaplib
 import logging
 import os
 import importlib
@@ -14,6 +16,8 @@ import time
 import wave
 import array
 import html
+from collections import Counter
+from email.header import decode_header
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import parse_qs, quote_plus, unquote, urlencode, urlparse
@@ -5851,6 +5855,26 @@ def _private_lab_sensor_project_reply(text: str, *, shared_root: Path) -> str:
     if not next_task:
         next_task = "mim-private-lab-resource-inventory-v1"
 
+    route_lock = _load_mim_tod_json_artifact(
+        shared_root / "MIM_DO_NOT_STOP_SHORT_OF_THE_WIN.latest.json"
+    )
+    route_query = " ".join(str(text or "").strip().lower().split())
+    if route_lock and any(term in route_query for term in {"can you hear me", "can you see me", "verify the camera", "verify camera", "verify the mic", "verify mic", "camera and mic", "camera and microphone"}):
+        verified_facts = route_lock.get("verified_facts") if isinstance(route_lock.get("verified_facts"), list) else []
+        unknowns = route_lock.get("unknowns") if isinstance(route_lock.get("unknowns"), list) else []
+        next_action = str(route_lock.get("next_bounded_action") or "run_camera_frame_capture_probe_then_build_stt_tts_probe").strip()
+        verified_text = "; ".join(str(item).strip() for item in verified_facts[:5] if str(item).strip())
+        unknown_text = "; ".join(str(item).strip() for item in unknowns[:4] if str(item).strip())
+        if not verified_text:
+            verified_text = "the private-lab resource inventory exists, but it did not contain enough verified facts"
+        if not unknown_text:
+            unknown_text = "no remaining unknowns recorded"
+        return (
+            "I checked the current lab evidence instead of falling back to a generic denial. "
+            f"Verified: {verified_text}. "
+            f"Not verified yet: {unknown_text}. "
+            f"My next automatic bounded action is {next_action}."
+        )
     query = " ".join(str(text or "").strip().lower().split())
     if any(term in query for term in {"can you hear me", "can you see me", "verify the camera", "verify camera", "verify the mic", "verify mic", "camera and mic", "camera and microphone"}):
         return (
@@ -8008,16 +8032,16 @@ def _mim_tod_active_project_status_response(
         root / "MIM_TOD_NEXT_OBJECTIVE.latest.json"
     )
     technical_detail = _mim_tod_operator_requested_technical_detail(query)
-    runtime_objective = str(runtime_ownership.get("objective_id") or "").strip()
-    next_objective_id = str(next_objective.get("objective_id") or "").strip()
 
-    if _looks_like_mim_tod_activity_question(query) and not runtime_objective:
+    if _looks_like_mim_tod_activity_question(query):
         return _mim_tod_combined_activity_response(
             shared_root=root,
             technical_detail=technical_detail,
             query=query,
         )
 
+    runtime_objective = str(runtime_ownership.get("objective_id") or "").strip()
+    next_objective_id = str(next_objective.get("objective_id") or "").strip()
     if not project_context_requested and not runtime_objective and not next_objective_id:
         return ""
 
@@ -10052,6 +10076,173 @@ def _mim_implementation_dispatch_target_files(raw_input: str) -> list[str]:
         }
     )
     return mentioned[:8]
+
+
+def _looks_like_mim_lab_awareness_runtime_objective(raw_input: str) -> bool:
+    objective_id = _mim_implementation_dispatch_objective_id(raw_input).upper()
+    if objective_id.startswith("MIM-LAB-AWARENESS"):
+        return True
+    text = str(raw_input or "").upper()
+    return "MIM_LAB_AWARENESS_STATUS" in text or "MIM_LAB_SENSOR_INVENTORY" in text
+
+
+def _write_mim_lab_awareness_runtime_status_request(
+    *,
+    shared_root: Path,
+    request_id: str,
+    raw_input: str,
+) -> dict[str, object]:
+    shared_root.mkdir(parents=True, exist_ok=True)
+    now = _mim_tod_stage_timestamp()
+    objective_id = _mim_implementation_dispatch_objective_id(raw_input) or "MIM-LAB-AWARENESS-HUMAN-INTERACTION-V1"
+    raw_upper = str(raw_input or "").upper()
+    executor_discovery_required = (
+        "EXECUTOR_DISCOVERY" in raw_upper
+        or "DISCOVERING OR RUNNING" in raw_upper
+        or "DISCOVER THE MIM-OWNED SENSOR INVENTORY EXECUTOR" in raw_upper
+        or "REPEATING \"NO MIM-OWNED LAB SENSOR INVENTORY RUNNER" in raw_upper
+    )
+    required_artifacts = [
+        "MIM_LAB_AWARENESS_STATUS.latest.json",
+        "MIM_LAB_SENSOR_INVENTORY.latest.json",
+        "MIM_LAB_CAMERA_CYCLE_STATUS.latest.json",
+        "MIM_HUMAN_INTERACTION_MEMORY.latest.json",
+        "MIM_OBJECT_MEMORY_AND_INQUIRY.latest.json",
+        "MIM_LAB_AWARENESS_EXECUTION_EVIDENCE.latest.json",
+    ]
+    status_payload = {
+        "packet_type": "mim-lab-awareness-status-v1",
+        "generated_at": now,
+        "source": "mim_gateway_lab_awareness_runtime_route",
+        "request_id": request_id,
+        "objective_id": objective_id,
+        "phase": "sensor_inventory",
+        "percent_complete": 0,
+        "currently_blocked": True,
+        "blocker_if_any": "MIM gateway accepted the lab-awareness runtime objective, but no lab sensor inventory runner has published live camera/microphone/arm-camera openability evidence yet.",
+        "next_mim_owned_action": "Run or connect the MIM lab sensor inventory routine, then update MIM_LAB_SENSOR_INVENTORY.latest.json with per-device evidence.",
+        "required_artifact_checklist": {
+            artifact: {
+                "present": artifact in {
+                    "MIM_LAB_AWARENESS_STATUS.latest.json",
+                    "MIM_LAB_SENSOR_INVENTORY.latest.json",
+                } or (shared_root / artifact).exists(),
+                "required_for_completion": True,
+            }
+            for artifact in required_artifacts
+        },
+        "evidence_created_after": now,
+        "success": False,
+        "tod_codex_boundary": "monitor_only; do not implement camera, microphone, TTS, human memory, or object recognition work for MIM",
+    }
+    inventory_payload = {
+        "packet_type": "mim-lab-sensor-inventory-v1",
+        "generated_at": now,
+        "source": "mim_gateway_lab_awareness_runtime_route",
+        "request_id": request_id,
+        "objective_id": objective_id,
+        "status": "executor_discovery_required" if executor_discovery_required else "blocked_with_inspection",
+        "inspection_scope": [
+            "lab cameras",
+            "lab microphones",
+            "arm camera",
+        ],
+        "devices": [],
+        "blocker": (
+            "Repeated generic sensor-inventory blocker is no longer sufficient; MIM must discover the executor path or name the exact missing binding."
+            if executor_discovery_required
+            else "No MIM-owned lab sensor inventory runner has provided current device enumeration/openability evidence to this gateway route."
+        ),
+        "next_mim_owned_action": (
+            "Publish fresh per-device evidence or executor_discovery evidence naming inspected files/services/endpoints and the precise missing binding."
+            if executor_discovery_required
+            else "Bind the existing camera/microphone/arm-camera resource access path to this objective and republish with per-device openability, freshness, and failure reasons."
+        ),
+        "success": False,
+    }
+    if executor_discovery_required:
+        inventory_payload["executor_discovery_required"] = True
+        inventory_payload["minimum_next_evidence"] = [
+            "inspected files/services/endpoints",
+            "candidate executor path or exact missing binding",
+            "per-resource camera/microphone/arm-camera evidence or blocker",
+        ]
+        inventory_payload["starting_context"] = {
+            "docs": [
+                "docs/objective-61-live-perception-adapters.md",
+                "docs/objective-82-live-perception-governance-grounding.md",
+            ],
+            "endpoints": [
+                "GET /gateway/perception/status",
+                "GET /gateway/perception/sources",
+                "POST /gateway/perception/camera/events",
+                "POST /gateway/perception/mic/events",
+            ],
+            "authorized_surfaces": [
+                "/dev/video0",
+                "/dev/video1",
+                "/dev/video2",
+                "/dev/video3",
+                "local audio capture devices",
+                "arm camera bridge/live probe",
+            ],
+        }
+    (shared_root / "MIM_LAB_AWARENESS_STATUS.latest.json").write_text(
+        json.dumps(status_payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    (shared_root / "MIM_LAB_SENSOR_INVENTORY.latest.json").write_text(
+        json.dumps(inventory_payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    _write_mim_operator_status(
+        shared_root=shared_root,
+        current_operator_request=raw_input,
+        current_objective_id=objective_id,
+        request_type="mim_lab_runtime",
+        classification="mim_lab_awareness_runtime_route_v1",
+        owner="MIM",
+        current_phase="blocked",
+        what_mim_is_doing=(
+            "MIM accepted the lab-awareness runtime objective and published current "
+            "blocked-with-inspection lab status artifacts."
+        ),
+        what_tod_is_doing=(
+            "TOD is monitoring and guiding only; TOD is not implementing camera, "
+            "microphone, TTS, human memory, or object recognition work."
+        ),
+        waiting_on="MIM lab sensor inventory runner",
+        last_fresh_event="MIM published lab-awareness runtime status",
+        last_fresh_event_at=now,
+        stale_panels=[
+            "old TOD implementation, diagnostic, or lifecycle panels are debug-only unless their objective matches the current lab-awareness request"
+        ],
+        active_artifacts=[
+            "runtime/shared/MIM_OPERATOR_STATUS.latest.json",
+            "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+            "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+        ],
+        blocking_issue=inventory_payload["blocker"],
+        next_safe_action="run/connect MIM lab sensor inventory and publish per-device evidence",
+        operator_guidance="monitor",
+        debug_artifacts_available=True,
+    )
+    return {
+        "status": "blocked_with_inspection",
+        "reply_text": (
+            "Accepted MIM lab-awareness as a MIM-owned runtime objective. "
+            "Published lab-awareness status and sensor-inventory blocker artifacts; "
+            "MIM must now connect/run the lab sensor inventory routine."
+        ),
+        "objective_id": objective_id,
+        "request_id": request_id,
+        "artifacts": [
+            "runtime/shared/MIM_LAB_AWARENESS_STATUS.latest.json",
+            "runtime/shared/MIM_LAB_SENSOR_INVENTORY.latest.json",
+        ],
+        "next_action": "mim_run_lab_sensor_inventory",
+        "operator_satisfaction_status": "not_complete",
+    }
 
 
 def _mim_patch_type_selection(raw_input: str) -> dict[str, object]:
@@ -17247,6 +17438,396 @@ def _conversation_pending_action_request(
     return _compact_text(pending, 240)
 
 
+def _mim_personal_assistant_shared_root() -> Path:
+    return Path.cwd() / "runtime" / "shared"
+
+
+def _mim_personal_assistant_env_value(name: str) -> str:
+    direct = os.environ.get(name, "")
+    if str(direct or "").strip():
+        return str(direct).strip().strip("\"'")
+    for path in (Path.cwd() / ".env", Path.cwd() / "env" / ".env"):
+        if not path.exists():
+            continue
+        try:
+            for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                if key.strip() == name:
+                    return value.strip().strip("\"'")
+        except Exception:
+            continue
+    return ""
+
+
+def _mim_decode_email_header(value: str) -> str:
+    parts: list[str] = []
+    for part, charset in decode_header(str(value or "")):
+        if isinstance(part, bytes):
+            encoding = charset or "utf-8"
+            try:
+                parts.append(part.decode(encoding, errors="replace"))
+            except Exception:
+                parts.append(part.decode("utf-8", errors="replace"))
+        else:
+            parts.append(str(part))
+    return _compact_text(" ".join(parts), 180)
+
+
+def _mim_sender_domain(value: str) -> str:
+    text = str(value or "").strip().lower()
+    match = re.search(r"@([a-z0-9.-]+\.[a-z]{2,})", text)
+    return match.group(1) if match else "unknown"
+
+
+def _mim_email_subject_category(subject: str) -> str:
+    normalized = str(subject or "").lower()
+    if any(token in normalized for token in ("invoice", "payment", "paid", "receipt", "commission")):
+        return "financial"
+    if any(token in normalized for token in ("meeting", "calendar", "appointment", "schedule", "zoom")):
+        return "calendar"
+    if any(token in normalized for token in ("urgent", "action required", "deadline", "overdue", "respond")):
+        return "action_needed"
+    if any(token in normalized for token in ("lead", "quote", "client", "customer", "prospect")):
+        return "client_or_lead"
+    if any(token in normalized for token in ("alert", "security", "password", "login", "verification")):
+        return "security"
+    if any(token in normalized for token in ("newsletter", "unsubscribe", "webinar", "sale", "offer")):
+        return "bulk_or_marketing"
+    return "general"
+
+
+def _mim_email_summary_reply(summary: dict[str, object]) -> str:
+    if str(summary.get("status") or "").strip() != "completed_with_live_path_evidence":
+        reason = str(summary.get("reason_code") or "email_read_summary_unavailable").strip()
+        return (
+            "I could not read the inbox summary yet. "
+            f"Blocker: {reason}. "
+            "I kept email content private and did not attempt outbound actions."
+        )
+    counts = summary.get("counts") if isinstance(summary.get("counts"), dict) else {}
+    category_counts = summary.get("category_counts") if isinstance(summary.get("category_counts"), dict) else {}
+    top_categories = [
+        f"{key}: {value}"
+        for key, value in list(category_counts.items())[:3]
+        if int(value or 0) > 0
+    ]
+    action_needed = int(counts.get("action_needed", 0) or 0)
+    unread = int(counts.get("unread_seen_in_sample", 0) or 0)
+    inspected = int(counts.get("messages_inspected", 0) or 0)
+    parts = [
+        f"I checked the live inbox path and summarized {inspected} recent message headers.",
+        f"I saw {unread} unread item(s) in that sample and {action_needed} likely action-needed item(s).",
+    ]
+    if top_categories:
+        parts.append("Top categories: " + ", ".join(top_categories) + ".")
+    parts.append("Outbound email, text, and calls remain confirmation-gated.")
+    return " ".join(parts)
+
+
+def _mim_write_personal_assistant_status_artifacts(summary: dict[str, object]) -> None:
+    shared_root = _mim_personal_assistant_shared_root()
+    shared_root.mkdir(parents=True, exist_ok=True)
+    generated_at = str(summary.get("generated_at") or _mim_tod_stage_timestamp())
+    objective_id = "MIM-DAVE-CALENDAR-PHONE-EMAILS-V1"
+
+    (shared_root / "MIM_DAVE_EMAIL_READ_SUMMARY_STATUS.latest.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    wall_path = shared_root / "MIM_WALL_PHONE_BRIDGE_STATUS.latest.json"
+    wall_existing: dict[str, object] = {}
+    if wall_path.exists():
+        try:
+            loaded = json.loads(wall_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                wall_existing = loaded
+        except Exception:
+            wall_existing = {}
+    wall_status = {
+        **wall_existing,
+        "packet_type": "mim-wall-phone-bridge-status-v2",
+        "generated_at": generated_at,
+        "objective_id": objective_id,
+        "status": "live_bridge_bound_pending_device_roundtrip" if wall_existing else "blocked_with_evidence",
+        "capabilities": {
+            "live_feed_endpoint": "/objectives/state",
+            "phone_to_mim_message_endpoint": "/gateway/intake/text",
+            "state_snapshot_endpoint": "/memory/snapshot",
+            "app_default_mode": "mim",
+            "outbound_text_confirmation_gated": True,
+            "outbound_call_confirmation_gated": True,
+        },
+        "operator_facing_summary": (
+            "MIM_Wall has a live-feed/client bridge path to MIM. "
+            "Device round-trip still requires the phone app to be installed/configured and tested live."
+        ),
+        "next_recovery_action": (
+            "Open MIM_Wall, enable workstation sync, point it at MIM, send a test prompt, "
+            "and confirm the response appears in the phone conversation feed."
+        ),
+    }
+    wall_path.write_text(json.dumps(wall_status, indent=2, sort_keys=True), encoding="utf-8")
+    email_next_recovery_action = str(summary.get("next_recovery_action") or "").strip()
+    if not email_next_recovery_action:
+        email_next_recovery_action = (
+            "Rerun /gateway/personal-assistant/email/read-summary after clearing "
+            "the current email blocker."
+        )
+
+    connector_status = {
+        "packet_type": "mim-dave-personal-assistant-connector-status-v3",
+        "generated_at": generated_at,
+        "objective_id": objective_id,
+        "status": "completed_with_email_summary_bound"
+        if summary.get("status") == "completed_with_live_path_evidence"
+        else "blocked_with_evidence",
+        "email": {
+            "read_summary_executor_bound": True,
+            "read_summary_live_path_completed": summary.get("status") == "completed_with_live_path_evidence",
+            "read_summary_artifact": "runtime/shared/MIM_DAVE_EMAIL_READ_SUMMARY_STATUS.latest.json",
+            "summary_only": True,
+            "raw_body_persisted": False,
+        },
+        "phone": {
+            "mim_wall_live_feed_endpoint": "/objectives/state",
+            "mim_wall_message_endpoint": "/gateway/intake/text",
+            "device_roundtrip_verified": False,
+        },
+        "outbound_guardrails": {
+            "email_send_requires_confirmation": True,
+            "text_send_requires_confirmation": True,
+            "call_start_requires_confirmation": True,
+        },
+        "operator_facing_summary": _mim_email_summary_reply(summary),
+        "evidence_artifacts": [
+            "runtime/shared/MIM_DAVE_EMAIL_READ_SUMMARY_STATUS.latest.json",
+            "runtime/shared/MIM_WALL_PHONE_BRIDGE_STATUS.latest.json",
+        ],
+    }
+    (shared_root / "MIM_DAVE_PERSONAL_ASSISTANT_CONNECTOR_STATUS.latest.json").write_text(
+        json.dumps(connector_status, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    evidence = {
+        "packet_type": "mim-tod-objective-execution-evidence-v3",
+        "generated_at": generated_at,
+        "objective_id": objective_id,
+        "title": "Dave calendar, phone, and email assistant integration",
+        "status": connector_status["status"],
+        "reason_code": summary.get("reason_code", ""),
+        "artifact": "runtime/shared/MIM_TOD_OBJECTIVE_EVIDENCE.MIM-DAVE-CALENDAR-PHONE-EMAILS-V1.latest.json",
+        "evidence_artifacts": connector_status["evidence_artifacts"],
+        "operator_facing_summary": connector_status["operator_facing_summary"],
+        "next_recovery_action": (
+            "Verify the MIM_Wall phone round trip on-device, then keep outbound actions confirmation-gated."
+            if connector_status["status"] == "completed_with_email_summary_bound"
+            else email_next_recovery_action
+        ),
+        "validation_requirements": [
+            "GET /gateway/personal-assistant/email/read-summary returns live summary evidence",
+            "POST /gateway/intake/text for an email-summary question returns mim_interface.reply_text",
+            "outbound email/text/call actions report confirmation-gated status",
+            "MIM_Wall can use /objectives/state and /gateway/intake/text",
+        ],
+        "email": summary,
+        "phone": wall_status,
+        "outbound_guardrails": connector_status["outbound_guardrails"],
+        "secret_policy": "No tokens, passwords, email bodies, or raw lifecycle wrappers are persisted in this evidence.",
+    }
+    (shared_root / "MIM_TOD_OBJECTIVE_EVIDENCE.MIM-DAVE-CALENDAR-PHONE-EMAILS-V1.latest.json").write_text(
+        json.dumps(evidence, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    status_path = shared_root / "MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json"
+    status: dict[str, object] = {}
+    if status_path.exists():
+        try:
+            loaded = json.loads(status_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                status = loaded
+        except Exception:
+            status = {}
+    entry = {
+        "artifact": "runtime/shared/MIM_TOD_OBJECTIVE_EVIDENCE.MIM-DAVE-CALENDAR-PHONE-EMAILS-V1.latest.json",
+        "generated_at": generated_at,
+        "next_recovery_action": evidence["next_recovery_action"],
+        "objective_id": objective_id,
+        "operator_facing_summary": evidence["operator_facing_summary"],
+        "reason_code": evidence["reason_code"],
+        "status": evidence["status"],
+        "title": evidence["title"],
+    }
+    objectives = status.setdefault("objectives", {})
+    if isinstance(objectives, dict):
+        objectives[objective_id] = entry
+    status["latest_action"] = entry
+    status["generated_at"] = generated_at
+    status_path.write_text(json.dumps(status, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _mim_dave_email_read_summary_executor(limit: int = 15, mailbox: str = "INBOX") -> dict[str, object]:
+    generated_at = _mim_tod_stage_timestamp()
+    safe_limit = max(1, min(int(limit or 15), 30))
+    host = _mim_personal_assistant_env_value("INBOUND_EMAIL_HOST")
+    username = _mim_personal_assistant_env_value("INBOUND_EMAIL_USERNAME")
+    password = _mim_personal_assistant_env_value("INBOUND_EMAIL_PASSWORD")
+    port_text = _mim_personal_assistant_env_value("INBOUND_EMAIL_PORT") or "993"
+    objective_id = "MIM-DAVE-CALENDAR-PHONE-EMAILS-V1"
+    base_payload: dict[str, object] = {
+        "packet_type": "mim-dave-email-read-summary-status-v2",
+        "generated_at": generated_at,
+        "objective_id": objective_id,
+        "executor": "gateway_personal_assistant_email_read_summary",
+        "mailbox": mailbox,
+        "limit": safe_limit,
+        "summary_only": True,
+        "raw_body_persisted": False,
+        "secret_policy": "No tokens, passwords, message bodies, or raw email addresses are written to runtime artifacts.",
+        "outbound_actions": {
+            "email_send_requires_confirmation": True,
+            "text_send_requires_confirmation": True,
+            "call_start_requires_confirmation": True,
+        },
+    }
+    if not host or not username or not password:
+        payload = {
+            **base_payload,
+            "status": "blocked_with_evidence",
+            "reason_code": "email_read_credentials_missing",
+            "operator_facing_summary": "Email summary is not available because inbound email credentials are not configured.",
+            "inspected_env_keys": ["INBOUND_EMAIL_HOST", "INBOUND_EMAIL_USERNAME", "INBOUND_EMAIL_PASSWORD", "INBOUND_EMAIL_PORT"],
+        }
+        _mim_write_personal_assistant_status_artifacts(payload)
+        return payload
+
+    messages: list[dict[str, object]] = []
+    category_counts: Counter[str] = Counter()
+    sender_domains: Counter[str] = Counter()
+    unread_seen = 0
+    action_needed = 0
+    try:
+        port = int(port_text)
+    except ValueError:
+        port = 993
+    try:
+        with imaplib.IMAP4_SSL(host, port, timeout=12) as client:
+            client.login(username, password)
+            select_status, _ = client.select(mailbox, readonly=True)
+            if select_status != "OK":
+                raise RuntimeError(f"imap_select_failed:{select_status}")
+            search_status, search_data = client.search(None, "ALL")
+            if search_status != "OK":
+                raise RuntimeError(f"imap_search_failed:{search_status}")
+            ids = search_data[0].split() if search_data and search_data[0] else []
+            for msg_id in reversed(ids[-safe_limit:]):
+                fetch_status, fetch_data = client.fetch(msg_id, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)] FLAGS)")
+                if fetch_status != "OK":
+                    continue
+                header_bytes = b""
+                flags_text = ""
+                for part in fetch_data:
+                    if isinstance(part, tuple):
+                        header_bytes += part[1] or b""
+                        flags_text += str(part[0] or "")
+                msg = email.message_from_bytes(header_bytes)
+                subject = _mim_decode_email_header(msg.get("Subject", ""))
+                sender_domain = _mim_sender_domain(msg.get("From", ""))
+                category = _mim_email_subject_category(subject)
+                is_unread = "\\Seen" not in flags_text
+                if is_unread:
+                    unread_seen += 1
+                if category in {"action_needed", "financial", "client_or_lead", "security"}:
+                    action_needed += 1
+                category_counts[category] += 1
+                sender_domains[sender_domain] += 1
+                messages.append({
+                    "category": category,
+                    "sender_domain": sender_domain,
+                    "unread": is_unread,
+                    "subject_fingerprint": sha256(subject.lower().encode("utf-8")).hexdigest()[:12],
+                })
+            try:
+                client.close()
+            except Exception:
+                pass
+    except Exception as exc:
+        safe_error_detail = _compact_text(str(exc), 220)
+        safe_error_detail = re.sub(r"[\w.+-]+@[\w.-]+", "[email-redacted]", safe_error_detail)
+        error_lower = f"{exc.__class__.__name__} {safe_error_detail}".lower()
+        if "authenticationfailed" in error_lower or "invalid credentials" in error_lower:
+            reason_code = "email_read_credentials_invalid"
+            operator_summary = (
+                "I reached the live email summary route, but the mail provider rejected "
+                "the stored inbound email credentials. No email bodies were stored."
+            )
+            next_action = (
+                "Refresh the inbound email app password or OAuth token with read-only "
+                "mail access, then rerun /gateway/personal-assistant/email/read-summary."
+            )
+        else:
+            reason_code = "email_read_summary_live_path_failed"
+            operator_summary = (
+                "I reached the live email summary route, but the IMAP read failed. "
+                "No email bodies were stored."
+            )
+            next_action = (
+                "Check inbound email credentials and IMAP access, then rerun "
+                "/gateway/personal-assistant/email/read-summary."
+            )
+        payload = {
+            **base_payload,
+            "status": "blocked_with_evidence",
+            "reason_code": reason_code,
+            "error_class": exc.__class__.__name__,
+            "error_detail_sanitized": safe_error_detail,
+            "operator_facing_summary": operator_summary,
+            "next_recovery_action": next_action,
+        }
+        _mim_write_personal_assistant_status_artifacts(payload)
+        return payload
+
+    payload = {
+        **base_payload,
+        "status": "completed_with_live_path_evidence",
+        "reason_code": "",
+        "counts": {
+            "messages_inspected": len(messages),
+            "unread_seen_in_sample": unread_seen,
+            "action_needed": action_needed,
+        },
+        "category_counts": dict(category_counts.most_common(8)),
+        "sender_domain_counts": dict(sender_domains.most_common(8)),
+        "message_summaries": messages[:safe_limit],
+        "operator_facing_summary": "",
+        "next_recovery_action": "Verify MIM_Wall phone round trip and keep outbound actions confirmation-gated.",
+        "live_path_proof": {
+            "route": "/gateway/personal-assistant/email/read-summary",
+            "imap_host_checked": bool(host),
+            "mailbox_selected": mailbox,
+            "header_only_fetch": True,
+            "body_fetch": False,
+        },
+    }
+    payload["operator_facing_summary"] = _mim_email_summary_reply(payload)
+    _mim_write_personal_assistant_status_artifacts(payload)
+    return payload
+
+
+def _looks_like_email_summary_request(text: str) -> bool:
+    query = _normalize_conversation_query(text)
+    return (
+        bool(query)
+        and any(token in query for token in {"email", "emails", "inbox", "mail", "gmail"})
+        and any(token in query for token in {"summary", "summarize", "what", "check", "read", "context", "unread"})
+    )
+
+
 async def _store_conversation_interface_state(
     *,
     db: AsyncSession,
@@ -21593,14 +22174,86 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
         and not fast_tod_simulation_factory
         and _looks_like_mim_implementation_objective_request(event.raw_input)
     )
+    fast_mim_lab_awareness_runtime_objective = bool(
+        fast_mim_implementation_objective
+        and _looks_like_mim_lab_awareness_runtime_objective(event.raw_input)
+    )
+    if fast_mim_lab_awareness_runtime_objective:
+        fast_mim_implementation_objective = False
+    fast_personal_email_summary = bool(
+        event.source == "text"
+        and not fast_mim_tod_handoff
+        and not fast_mim_implementation_objective
+        and not fast_mim_lab_awareness_runtime_objective
+        and not fast_reporting_visibility_objective
+        and not fast_mim_autonomy_roadmap_execution
+        and not fast_mim_semantic_intent_simulation
+        and not fast_tod_simulation_factory
+        and _looks_like_email_summary_request(event.raw_input)
+    )
     fast_active_project_response = ""
-    if not fast_mim_self_model_objective and not fast_mim_autonomy_roadmap_execution and not fast_mim_semantic_intent_simulation and not fast_tod_simulation_factory and not fast_mim_tod_handoff and not fast_mim_implementation_objective and not fast_reporting_visibility_objective and event.source == "text":
+    if not fast_mim_self_model_objective and not fast_mim_autonomy_roadmap_execution and not fast_mim_semantic_intent_simulation and not fast_tod_simulation_factory and not fast_mim_tod_handoff and not fast_mim_implementation_objective and not fast_reporting_visibility_objective and not fast_personal_email_summary and event.source == "text":
         fast_active_project_response = _mim_tod_active_project_status_response(
             _normalize_conversation_query(event.raw_input),
             {},
             shared_root=Path.cwd() / "runtime" / "shared",
         )
-    if fast_mim_semantic_intent_simulation:
+    if fast_personal_email_summary:
+        deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["deterministic_classifier_completed_at"]
+        email_summary = await asyncio.to_thread(_mim_dave_email_read_summary_executor, limit=15, mailbox="INBOX")
+        reply_text = _mim_email_summary_reply(email_summary)
+        resolution = InputEventResolution(
+            input_event_id=event.id,
+            internal_intent="mim_dave_email_read_summary",
+            confidence_tier="high",
+            outcome="store_only",
+            resolution_status="completed" if email_summary.get("status") == "completed_with_live_path_evidence" else "blocked",
+            safety_decision="store_only",
+            reason=str(email_summary.get("reason_code") or "email_read_summary_completed"),
+            clarification_prompt=reply_text,
+            escalation_reasons=[],
+            capability_name="personal_assistant_email_read_summary",
+            capability_registered=True,
+            capability_enabled=email_summary.get("status") == "completed_with_live_path_evidence",
+            goal_id=None,
+            proposed_goal_description=event.requested_goal or event.raw_input,
+            proposed_actions=[],
+            metadata_json={
+                "request_id": request_id,
+                "source": event.source,
+                "confidence": event.confidence,
+                "safety_flags": event.safety_flags,
+                "target_system": event.target_system,
+                "route_preference": "conversation_layer",
+                "conversation_override": True,
+                "skip_conversation_memory": False,
+                "deterministic_classifier": "mim_dave_email_read_summary_v1",
+                "request_type_classification": "personal_assistant_email_summary",
+                "execution_mode": "live_path_email_read_summary",
+                "email_summary_status": email_summary,
+                "operator_summary": reply_text,
+                "mim_interface_status_override": "done" if email_summary.get("status") == "completed_with_live_path_evidence" else "blocked",
+                "mim_interface_next_action_override": str(email_summary.get("next_recovery_action") or "Keep outbound actions confirmation-gated."),
+                "mim_interface_result_override": reply_text,
+                "mim_interface_reply_override": reply_text,
+                "communication_reply_contract": {
+                    "reply_text": reply_text,
+                    "response_mode": "live_email_summary",
+                    "composer_mode": "deterministic_live_path",
+                    "should_store_memory": True,
+                    "memory_topics": ["email_summary", "personal_assistant"],
+                    "memory_people": ["Dave"],
+                    "memory_events": [],
+                    "memory_experiences": [],
+                },
+                "classification_stage_timestamps": deterministic_stage_timestamps,
+            },
+        )
+        db.add(resolution)
+        await db.flush()
+    elif fast_mim_semantic_intent_simulation:
         deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
         deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
         deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["deterministic_classifier_completed_at"]
@@ -22056,6 +22709,54 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
                 "operator_summary": "dispatched_to_TOD",
                 "mim_interface_status_override": "doing",
                 "mim_interface_next_action_override": "Wait for TOD reporting behavior proof.",
+                "mim_interface_result_override": reply_text,
+                "mim_interface_reply_override": reply_text,
+                "classification_stage_timestamps": deterministic_stage_timestamps,
+            },
+        )
+        db.add(resolution)
+        await db.flush()
+    elif fast_mim_lab_awareness_runtime_objective:
+        deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["deterministic_classifier_completed_at"]
+        lab_runtime = _write_mim_lab_awareness_runtime_status_request(
+            shared_root=Path.cwd() / "runtime" / "shared",
+            request_id=request_id,
+            raw_input=event.raw_input,
+        )
+        reply_text = str(lab_runtime.get("reply_text") or "").strip()
+        resolution = InputEventResolution(
+            input_event_id=event.id,
+            internal_intent="mim_lab_awareness_runtime_objective",
+            confidence_tier="high",
+            outcome="store_only",
+            resolution_status="blocked",
+            safety_decision="store_only",
+            reason="mim_lab_awareness_runtime_status_published",
+            clarification_prompt=reply_text,
+            escalation_reasons=[],
+            capability_name="",
+            capability_registered=False,
+            capability_enabled=False,
+            goal_id=None,
+            proposed_goal_description=event.requested_goal or event.raw_input,
+            proposed_actions=[],
+            metadata_json={
+                "request_id": request_id,
+                "source": event.source,
+                "confidence": event.confidence,
+                "safety_flags": event.safety_flags,
+                "target_system": event.target_system,
+                "route_preference": "conversation_layer",
+                "conversation_override": True,
+                "skip_conversation_memory": False,
+                "deterministic_classifier": "mim_lab_awareness_runtime_route_v1",
+                "request_type_classification": "mim_owned_lab_runtime",
+                "lab_awareness_runtime": lab_runtime,
+                "operator_summary": "blocked_with_inspection",
+                "mim_interface_status_override": "blocked",
+                "mim_interface_next_action_override": "Run/connect MIM lab sensor inventory and publish per-device evidence.",
                 "mim_interface_result_override": reply_text,
                 "mim_interface_reply_override": reply_text,
                 "classification_stage_timestamps": deterministic_stage_timestamps,
@@ -24009,6 +24710,68 @@ async def intake_api(
         },
     )
     return await _store_normalized(normalized, db)
+
+
+@router.get("/personal-assistant/email/read-summary")
+async def personal_assistant_email_read_summary(
+    request: Request,
+    limit: int = 15,
+    mailbox: str = "INBOX",
+) -> dict:
+    ensure_authenticated_mimtod_api_request(request)
+    return await asyncio.to_thread(
+        _mim_dave_email_read_summary_executor,
+        limit=limit,
+        mailbox=mailbox,
+    )
+
+
+@router.get("/personal-assistant/capabilities")
+async def personal_assistant_capabilities(request: Request) -> dict:
+    ensure_authenticated_mimtod_api_request(request)
+    shared_root = _mim_personal_assistant_shared_root()
+    email_status: dict[str, object] = {}
+    wall_status: dict[str, object] = {}
+    for name, target in (
+        ("MIM_DAVE_EMAIL_READ_SUMMARY_STATUS.latest.json", email_status),
+        ("MIM_WALL_PHONE_BRIDGE_STATUS.latest.json", wall_status),
+    ):
+        path = shared_root / name
+        if not path.exists():
+            continue
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                target.update(loaded)
+        except Exception:
+            continue
+    return {
+        "packet_type": "mim-dave-personal-assistant-capabilities-v1",
+        "generated_at": _mim_tod_stage_timestamp(),
+        "email": {
+            "read_summary_endpoint": "/gateway/personal-assistant/email/read-summary",
+            "read_summary_executor_bound": True,
+            "read_summary_live_path_completed": email_status.get("status") == "completed_with_live_path_evidence",
+            "last_status": email_status.get("status", "unknown"),
+            "last_reason_code": email_status.get("reason_code", ""),
+            "summary_only": True,
+            "raw_body_persisted": False,
+        },
+        "phone": {
+            "mim_wall_live_feed_endpoint": "/objectives/state",
+            "mim_wall_message_endpoint": "/gateway/intake/text",
+            "last_status": wall_status.get("status", "unknown"),
+        },
+        "outbound_guardrails": {
+            "email_send_requires_confirmation": True,
+            "text_send_requires_confirmation": True,
+            "call_start_requires_confirmation": True,
+        },
+        "operator_facing_summary": (
+            "Email read summaries are available through a summary-only live route. "
+            "Outbound email, text, and call actions are confirmation-gated."
+        ),
+    }
 
 
 @router.post("/voice/input")
