@@ -40769,6 +40769,1602 @@
                                                          "created_at":  "2026-05-27T20:27:14.5167992Z"
                                                      },
                                         "created_at":  "2026-05-27T20:27:14.7847095Z"
+                                    },
+                                    {
+                                        "id":  "MEM-592A31D1",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-4A3E554E",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-27T20:58:17.2462783Z"
+                                                     },
+                                        "created_at":  "2026-05-27T20:58:17.5113801Z"
+                                    },
+                                    {
+                                        "id":  "MEM-118A3FDA",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-50EB1C9A",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-27T21:20:51.5488054Z"
+                                                     },
+                                        "created_at":  "2026-05-27T21:20:51.9869860Z"
+                                    },
+                                    {
+                                        "id":  "MEM-7554B106",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-C0C34FE9",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-27T21:29:09.1134608Z"
+                                                     },
+                                        "created_at":  "2026-05-27T21:29:09.5062717Z"
+                                    },
+                                    {
+                                        "id":  "MEM-2C430AB1",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-588FCB2E",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-27T22:00:04.7736424Z"
+                                                     },
+                                        "created_at":  "2026-05-27T22:00:05.1506804Z"
+                                    },
+                                    {
+                                        "id":  "MEM-F4DA0DE1",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-6ED8E8AB",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-27T22:23:33.5374297Z"
+                                                     },
+                                        "created_at":  "2026-05-27T22:23:33.9415591Z"
+                                    },
+                                    {
+                                        "id":  "MEM-4D6A3ED8",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-8AE86C76",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-27T22:31:02.6676291Z"
+                                                     },
+                                        "created_at":  "2026-05-27T22:31:02.9875645Z"
+                                    },
+                                    {
+                                        "id":  "MEM-6B3F6B6E",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-CE9401C6",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-27T23:01:58.6068001Z"
+                                                     },
+                                        "created_at":  "2026-05-27T23:01:58.9467185Z"
+                                    },
+                                    {
+                                        "id":  "MEM-2EE15339",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-E50487E3",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-27T23:26:04.3444527Z"
+                                                     },
+                                        "created_at":  "2026-05-27T23:26:04.6405941Z"
+                                    },
+                                    {
+                                        "id":  "MEM-AA6FAA8B",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-49214FDE",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-27T23:32:48.7910442Z"
+                                                     },
+                                        "created_at":  "2026-05-27T23:32:49.0418110Z"
+                                    },
+                                    {
+                                        "id":  "MEM-21CC920D",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-BC65AE04",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-28T00:03:38.5099125Z"
+                                                     },
+                                        "created_at":  "2026-05-28T00:03:38.7607639Z"
+                                    },
+                                    {
+                                        "id":  "MEM-C059852C",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-130F8C39",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-28T00:28:27.7909331Z"
+                                                     },
+                                        "created_at":  "2026-05-28T00:28:28.1196964Z"
+                                    },
+                                    {
+                                        "id":  "MEM-A973958D",
+                                        "title":  "routing decision",
+                                        "note":  "task=45 engine=codex reason=Task matched codex_required suitability, so Codex remains the primary executor. outcome=pre_invocation",
+                                        "tags":  [
+                                                     "routing",
+                                                     "engine:codex",
+                                                     "category:refactor",
+                                                     "outcome:pre_invocation"
+                                                 ],
+                                        "decision":  {
+                                                         "id":  "ROUTE-61D7D2D8",
+                                                         "task_id":  "45",
+                                                         "action":  "run_task",
+                                                         "task_category":  "refactor",
+                                                         "selected_engine":  "codex",
+                                                         "fallback_engine":  "local-placeholder",
+                                                         "candidate_engines":  [
+                                                                                   "codex",
+                                                                                   "local-placeholder"
+                                                                               ],
+                                                         "selection_reason":  "Task matched codex_required suitability, so Codex remains the primary executor.",
+                                                         "confidence":  0.84,
+                                                         "source":  "routing_policy_v1",
+                                                         "attempted_engines":  [
+
+                                                                               ],
+                                                         "fallback_applied":  false,
+                                                         "final_outcome":  "pre_invocation",
+                                                         "routing":  {
+                                                                         "applied":  true,
+                                                                         "reason":  "local_suitability_codex_required",
+                                                                         "disabled":  false,
+                                                                         "blocked":  false,
+                                                                         "task_category":  "refactor",
+                                                                         "policy":  {
+                                                                                        "enabled":  true,
+                                                                                        "min_runs":  1,
+                                                                                        "min_success_rate":  75,
+                                                                                        "improvement_margin":  5,
+                                                                                        "source":  "routing_policy_v1",
+                                                                                        "allow_placeholder_for_code_change":  false,
+                                                                                        "prefer_stable_on_sync_warn":  true,
+                                                                                        "block_on_contract_drift":  true,
+                                                                                        "recent_failure_window":  5,
+                                                                                        "recent_failure_threshold":  2,
+                                                                                        "min_category_records_light":  10,
+                                                                                        "min_category_records_strong":  20,
+                                                                                        "drift_detection":  {
+                                                                                                                "enabled":  true,
+                                                                                                                "recent_window":  20,
+                                                                                                                "baseline_window":  50,
+                                                                                                                "minimum_baseline_records":  10,
+                                                                                                                "failure_rate_multiplier":  1.5,
+                                                                                                                "retry_rate_threshold":  0.35,
+                                                                                                                "fallback_rate_multiplier":  1.5,
+                                                                                                                "fallback_rate_threshold":  0.3,
+                                                                                                                "guardrail_rate_multiplier":  1.8,
+                                                                                                                "guardrail_rate_threshold":  0.15,
+                                                                                                                "engine_score_drop_threshold":  0.2,
+                                                                                                                "confidence_penalty_failure_drift":  0.18,
+                                                                                                                "confidence_penalty_retry_high":  0.12,
+                                                                                                                "confidence_penalty_fallback_drift":  0.09,
+                                                                                                                "confidence_penalty_guardrail_spike":  0.1,
+                                                                                                                "confidence_penalty_score_drop":  0.12,
+                                                                                                                "score_penalty_failure_drift":  0.12,
+                                                                                                                "score_penalty_retry_high":  0.08,
+                                                                                                                "score_penalty_fallback_drift":  0.08,
+                                                                                                                "score_penalty_guardrail_spike":  0.1,
+                                                                                                                "score_penalty_score_drop":  0.12,
+                                                                                                                "normalization_window_runs":  8,
+                                                                                                                "stable_run_decay_floor":  0.2,
+                                                                                                                "decay_half_life_days":  7,
+                                                                                                                "decay_floor":  0.25,
+                                                                                                                "quarantine_enabled":  true,
+                                                                                                                "quarantine_alert_state":  "critical"
+                                                                                                            },
+                                                                                        "weights":  {
+                                                                                                        "availability":  0.25,
+                                                                                                        "task_category_support":  0.2,
+                                                                                                        "historical_success":  0.2,
+                                                                                                        "recent_fallback":  0.1,
+                                                                                                        "review_quality":  0.05,
+                                                                                                        "failure_rate":  0.1,
+                                                                                                        "review_corrections":  0.05,
+                                                                                                        "latency":  0.05
+                                                                                                    },
+                                                                                        "effective_weights":  {
+                                                                                                                  "availability":  0.25,
+                                                                                                                  "task_category_support":  0.2,
+                                                                                                                  "historical_success":  0.2,
+                                                                                                                  "recent_fallback":  0.1,
+                                                                                                                  "review_quality":  0.05,
+                                                                                                                  "failure_rate":  0.1,
+                                                                                                                  "review_corrections":  0.05,
+                                                                                                                  "latency":  0.05
+                                                                                                              }
+                                                                                    },
+                                                                         "retry_policy":  {
+                                                                                              "enabled":  false,
+                                                                                              "max_attempts_per_engine":  2,
+                                                                                              "max_attempts_by_category":  {
+                                                                                                                               "code_change":  1,
+                                                                                                                               "review_only":  2,
+                                                                                                                               "refactor":  2
+                                                                                                                           },
+                                                                                              "backoff_ms":  200,
+                                                                                              "retry_on_status":  [
+                                                                                                                      "failed",
+                                                                                                                      "error",
+                                                                                                                      "not_implemented"
+                                                                                                                  ],
+                                                                                              "no_retry_failure_categories":  [
+                                                                                                                                  "auth",
+                                                                                                                                  "capability"
+                                                                                                                              ],
+                                                                                              "backoff_by_failure_category":  {
+                                                                                                                                  "timeout":  2,
+                                                                                                                                  "network":  2,
+                                                                                                                                  "rate_limit":  3
+                                                                                                                              }
+                                                                                          },
+                                                                         "active_metrics":  {
+
+                                                                                            },
+                                                                         "fallback_metrics":  {
+
+                                                                                              }
+                                                                     },
+                                                         "created_at":  "2026-05-28T00:34:29.8472822Z"
+                                                     },
+                                        "created_at":  "2026-05-28T00:34:30.2306258Z"
                                     }
                                 ]
 }
