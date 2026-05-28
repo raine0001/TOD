@@ -1,0 +1,52 @@
+{
+  "generated_at": "2026-05-28T14:10:00Z",
+  "policy_id": "MIM-TOD-FRESHNESS-PROVENANCE-TRUST-V1",
+  "status": "active_candidate",
+  "rule": "Artifact freshness must distinguish fresh execution evidence from fresh wrappers around stale work.",
+  "why": "A system can appear alive by publishing new summaries while the underlying execution evidence is old. That creates false confidence and stalls recovery.",
+  "required_provenance_fields": [
+    "artifact_generated_at",
+    "source_artifact_paths",
+    "source_artifact_generated_at",
+    "source_artifact_age_minutes",
+    "evidence_kind",
+    "evidence_trust_rank",
+    "freshness_wrapper_only",
+    "stale_under_fresh_wrapper",
+    "lineage"
+  ],
+  "evidence_trust_rank_order": [
+    {
+      "rank": 1,
+      "kind": "live_path_execution",
+      "meaning": "Direct UI/API/scheduler/dispatcher path executed and produced the expected visible result."
+    },
+    {
+      "rank": 2,
+      "kind": "behavior_validation",
+      "meaning": "Focused test or runtime validation proved the requested behavior."
+    },
+    {
+      "rank": 3,
+      "kind": "material_diff",
+      "meaning": "Relevant source files changed and diff maps to requested behavior."
+    },
+    {
+      "rank": 4,
+      "kind": "direct_runtime_state",
+      "meaning": "Runtime state changed, but behavior may still need live-path proof."
+    },
+    {
+      "rank": 5,
+      "kind": "summary_wrapper",
+      "meaning": "A summary or latest artifact described work; not sufficient for completion by itself."
+    }
+  ],
+  "blocked_reason_codes": [
+    "stale_under_fresh_wrapper",
+    "source_evidence_too_old",
+    "wrapper_only_freshness",
+    "evidence_lineage_missing"
+  ],
+  "operator_summary": "MIM/TOD must report whether evidence is actually fresh or only newly summarized. New wrapper timestamps cannot rescue stale execution proof."
+}

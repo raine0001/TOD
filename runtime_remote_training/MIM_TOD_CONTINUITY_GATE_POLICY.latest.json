@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-05-26T07:32:00Z",
+  "policy_id": "MIM-TOD-CONTINUITY-GATE-POLICY-V1",
+  "status": "active",
+  "rule": "Implementation objectives must pass an existing-capability check before creation or execution.",
+  "why": "Prevent duplicate builds, stale objective revival, parser forks, route duplication, and losing known-good solutions while Dave is away.",
+  "applies_to": [
+    "implementation objectives",
+    "code changes",
+    "router/page/endpoint changes",
+    "executor/dispatcher/watcher binding",
+    "new objective implementation requests",
+    "TOD bounded implementation tasks"
+  ],
+  "required_check_fields": [
+    "existing_routes_checked",
+    "existing_runtime_artifacts_checked",
+    "existing_parser_or_executor_checked",
+    "existing_objective_overlap_checked",
+    "canonical_solution_checked",
+    "superseded_conflict_checked",
+    "validation_evidence_checked",
+    "material_implementation_proof_checked",
+    "freshness_provenance_checked",
+    "live_path_completion_proof_checked"
+  ],
+  "allowed_outcomes": [
+    "reuse_existing_capability",
+    "repair_existing_capability",
+    "create_bounded_new_implementation",
+    "create_structured_escalation",
+    "request_operator_review"
+  ],
+  "operator_facing_summary_template": "I checked whether we already have this. Reuse candidate: {reuse_candidate}. Blocked because: {blocked_because}. Next bounded step: {next_bounded_task}.",
+  "do_not": [
+    "start implementation from freeform objective text alone",
+    "rebuild an existing route or parser",
+    "ignore superseded implementation conflicts",
+    "mark complete without validation evidence",
+    "mark complete without material implementation proof",
+    "treat a new wrapper artifact as fresh execution evidence",
+    "ask Dave to rediscover context already in continuity memory"
+  ]
+}

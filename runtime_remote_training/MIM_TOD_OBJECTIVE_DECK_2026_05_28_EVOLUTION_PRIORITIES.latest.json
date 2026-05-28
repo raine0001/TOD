@@ -1,0 +1,107 @@
+{
+  "generated_at": "2026-05-28T14:10:00Z",
+  "created_by": "codex",
+  "deck_id": "MIM_TOD_EVOLUTION_PRIORITY_STACK_2026_05_28",
+  "priority": "P0",
+  "operator_context": "Dave identified the next evolution threshold: TOD must prove material implementation, MIM must suppress internal lifecycle/debug language in operator conversation, and MIM/TOD must distinguish fresh evidence from new wrappers around stale work.",
+  "objectives": [
+    {
+      "objective_id": "TOD-MATERIAL-IMPLEMENTATION-PROOF-V1",
+      "title": "TOD material implementation proof gate",
+      "priority": "P0",
+      "owner": "TOD",
+      "status": "queued",
+      "execution_mode": "auto",
+      "auto_continue": true,
+      "boundary_mode": "bounded",
+      "goal": "TOD must reject wrapper-only success and prove real implementation materialized before any implementation objective can be marked complete.",
+      "required_actions": [
+        "Require a real diff for implementation objectives.",
+        "Require at least one relevant expected file to be touched or an explicit no-change justification.",
+        "Require validation output tied to the changed behavior, not only syntax or wrapper checks.",
+        "Require live-path proof when the objective affects UI/API/scheduler/dispatcher/operator-visible behavior.",
+        "Attach regression evidence and changed-file summary to completion artifacts.",
+        "Auto-reject completion when only status wrappers, summaries, or regenerated metadata changed."
+      ],
+      "success_criteria": [
+        "Implementation completion artifacts include material_diff_present=true, relevant_files_touched, validation_changed_or_relevant=true, live_path_changed_or_verified, and regression_evidence.",
+        "Wrapper-only completions are blocked with reason_code=material_implementation_not_proven.",
+        "TOD can distinguish orchestrating Codex from independently materializing a bounded patch."
+      ],
+      "expected_artifacts": [
+        "runtime/shared/TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json",
+        "runtime/shared/TOD_MATERIAL_IMPLEMENTATION_PROOF_STATUS.latest.json"
+      ],
+      "metadata_json": {
+        "task_class": "implementation_policy",
+        "continuity_gate_exempt": false,
+        "blocked_because_code": "material_implementation_not_proven"
+      }
+    },
+    {
+      "objective_id": "MIM-OPERATOR-RESPONSE-SYNTHESIS-ENFORCEMENT-V2",
+      "title": "MIM conversational synthesis enforcement",
+      "priority": "P0",
+      "owner": "MIM",
+      "status": "queued",
+      "execution_mode": "auto",
+      "auto_continue": true,
+      "boundary_mode": "bounded",
+      "goal": "MIM must speak to Dave in concise operator-facing language and suppress orchestration/debug/lifecycle leakage unless diagnostics are explicitly requested.",
+      "required_actions": [
+        "Apply response synthesis policy to normal voice and UI replies.",
+        "Filter lifecycle fields, request IDs, artifact names, dispatch statuses, and internal task envelopes from normal conversation.",
+        "Compress status into: what changed, what is blocked, what matters now, and next action.",
+        "Preserve diagnostic detail only behind explicit 'show details', 'debug', or 'artifact' requests.",
+        "Create test prompts that currently produce lifecycle leakage and require human-readable replacements."
+      ],
+      "success_criteria": [
+        "MIM can summarize active objectives in under five short sentences without lifecycle leakage.",
+        "A regression set proves artifact/debug phrasing is suppressed by default.",
+        "Voice responses stay concise unless Dave asks for detail."
+      ],
+      "expected_artifacts": [
+        "runtime/shared/MIM_OPERATOR_RESPONSE_SYNTHESIS_POLICY.latest.json",
+        "runtime/shared/MIM_OPERATOR_RESPONSE_SYNTHESIS_ENFORCEMENT_STATUS.latest.json"
+      ],
+      "metadata_json": {
+        "task_class": "communication_policy",
+        "canonical_solution": "mim-operator-response-synthesis-policy-v1"
+      }
+    },
+    {
+      "objective_id": "MIM-TOD-FRESHNESS-PROVENANCE-TRUST-V1",
+      "title": "Freshness provenance and evidence trust ranking",
+      "priority": "P0",
+      "owner": "MIM_TOD",
+      "status": "queued",
+      "execution_mode": "auto",
+      "auto_continue": true,
+      "boundary_mode": "bounded",
+      "goal": "MIM/TOD must know whether an artifact contains fresh execution evidence or merely re-describes old work.",
+      "required_actions": [
+        "Add freshness provenance fields to objective/status artifacts.",
+        "Track source artifact age separately from wrapper artifact age.",
+        "Rank evidence by trust: live-path execution, validation output, material diff, direct runtime state, summary wrapper.",
+        "Mark wrapper-only refreshes as freshness_wrapper_only=true.",
+        "Prevent stale source evidence from being promoted by a fresh summary timestamp.",
+        "Make hourly reflection report stale-source warnings in operator language."
+      ],
+      "success_criteria": [
+        "Fresh wrapper around stale source evidence is flagged as stale_under_fresh_wrapper.",
+        "Objective completion requires trusted fresh evidence, not only a new latest file.",
+        "Hourly reflection reports source aging and trust rank for key artifacts."
+      ],
+      "expected_artifacts": [
+        "runtime/shared/MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json",
+        "runtime/shared/MIM_TOD_EVIDENCE_TRUST_RANKING.latest.json",
+        "runtime/shared/MIM_TOD_FRESHNESS_PROVENANCE_STATUS.latest.json"
+      ],
+      "metadata_json": {
+        "task_class": "truth_integrity_policy",
+        "blocked_because_code": "stale_under_fresh_wrapper"
+      }
+    }
+  ],
+  "operator_instruction": "MIM/TOD should execute these priorities before expanding lower-priority features. These are autonomy foundations: material proof, conversational clarity, and evidence freshness truth."
+}

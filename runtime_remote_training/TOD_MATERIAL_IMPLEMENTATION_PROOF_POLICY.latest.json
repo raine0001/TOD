@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-05-28T14:10:00Z",
+  "policy_id": "TOD-MATERIAL-IMPLEMENTATION-PROOF-V1",
+  "status": "active_candidate",
+  "rule": "Implementation objectives are not complete until material change is proven.",
+  "why": "TOD must graduate from orchestration supervision toward independent execution. Wrapper-only success, status-only updates, and helper-path-only validation do not prove implementation.",
+  "applies_to": [
+    "implementation objectives",
+    "code changes",
+    "executor binding",
+    "dispatcher/watcher binding",
+    "UI/API/scheduler behavior changes",
+    "remediation tools that claim product behavior is fixed"
+  ],
+  "required_completion_fields": [
+    "material_diff_present",
+    "relevant_files_touched",
+    "expected_files_touched_or_justified",
+    "validation_relevant_to_behavior",
+    "live_path_changed_or_verified",
+    "regression_evidence_attached",
+    "wrapper_only_success_rejected"
+  ],
+  "reject_completion_when": [
+    "only latest/status/summary artifacts changed",
+    "only a wrapper re-described stale work",
+    "no relevant source file changed and no no-change repair justification exists",
+    "validation is py_compile-only for behavior objectives",
+    "helper/remediation path passed but live operator-facing path was not verified",
+    "diff exists but does not touch files relevant to requested behavior"
+  ],
+  "allowed_no_change_completion": [
+    "objective was investigation-only and explicitly not implementation",
+    "existing capability already satisfies objective and live-path proof is attached",
+    "canonical solution already exists and source evidence is fresh"
+  ],
+  "blocked_reason_code": "material_implementation_not_proven",
+  "operator_summary": "TOD must show the patch, the relevant changed file, the behavior validation, and live-path/regression evidence before claiming implementation complete."
+}

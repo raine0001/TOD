@@ -1,0 +1,142 @@
+{
+  "generated_at": "2026-05-26T07:40:00Z",
+  "registry_id": "MIM-TOD-CANONICAL-AUTHORITY-REGISTRY-V1",
+  "status": "active_candidate",
+  "purpose": "When a canonical solution exists, competing non-canonical implementations lose execution authority automatically.",
+  "enforcement_rule": "Before execution, MIM/TOD must check whether the requested implementation, route, parser, artifact, or objective is canonical, superseded, or competing with a canonical solution.",
+  "canonical_solutions": [
+    {
+      "canonical_id": "objectives-file-backed-runtime-ui-v1",
+      "domain": "MIM objectives dashboard",
+      "title": "File-backed objectives dashboard runtime state",
+      "summary": "Use runtime/shared file-backed objectives, escalation, continuity, and gate artifacts while database objective queries remain slow/unreliable.",
+      "authoritative_artifacts": [
+        "runtime/shared/MIM_TOD_OBJECTIVE_INDEX.latest.json",
+        "runtime/shared/MIM_TOD_MANAGED_OBJECTIVES.latest.json",
+        "runtime/shared/MIM_TOD_ESCALATION_CENTER.latest.json",
+        "runtime/shared/MIM_TOD_CONTINUITY_MEMORY.latest.json",
+        "runtime/shared/MIM_TOD_CONTINUITY_GATE_POLICY.latest.json"
+      ],
+      "canonical_routes": [
+        "/objectives",
+        "/objectives/state",
+        "/objectives/capability-checks",
+        "/objectives/escalations",
+        "/objectives/escalations/results"
+      ],
+      "supersedes": [
+        "database-first-objective-dashboard-v0",
+        "freeform-codex-handoff-without-structured-packet",
+        "implementation-objective-without-existing-capability-check"
+      ],
+      "execution_authority": "canonical",
+      "enforcement_level": "block_noncanonical_competitors"
+    },
+    {
+      "canonical_id": "mim-tod-continuity-gate-v1",
+      "domain": "Implementation objective creation/execution",
+      "title": "Existing Capability Check before implementation",
+      "summary": "Implementation-like objectives require a completed existing-capability check before creation or execution.",
+      "authoritative_artifacts": [
+        "runtime/shared/MIM_TOD_CONTINUITY_GATE_POLICY.latest.json",
+        "runtime/shared/MIM_TOD_EXISTING_CAPABILITY_CHECKS.latest.json",
+        "runtime/shared/MIM_TOD_CONTINUITY_MEMORY.latest.json"
+      ],
+      "canonical_routes": [
+        "/objectives/capability-checks"
+      ],
+      "supersedes": [
+        "freeform-implementation-without-continuity-check",
+        "duplicate-route-build-without-canonical-check",
+        "parser-fork-before-existing-parser-check"
+      ],
+      "execution_authority": "canonical",
+      "enforcement_level": "block_noncanonical_competitors"
+    },
+    {
+      "canonical_id": "mim-operator-response-synthesis-policy-v1",
+      "domain": "MIM operator communication",
+      "title": "Operator-facing response synthesis",
+      "summary": "MIM replies should summarize what changed, what remains blocked, what matters now, and next action without lifecycle or artifact leakage.",
+      "authoritative_artifacts": [
+        "runtime/shared/MIM_OPERATOR_RESPONSE_SYNTHESIS_POLICY.latest.json"
+      ],
+      "canonical_routes": [],
+      "supersedes": [
+        "raw-lifecycle-status-as-normal-reply",
+        "artifact-centric-operator-summary",
+        "stale-debug-panel-summary-as-human-answer"
+      ],
+      "execution_authority": "canonical",
+      "enforcement_level": "warn_and_rewrite"
+    },
+    {
+      "canonical_id": "tod-material-implementation-proof-v1",
+      "domain": "TOD implementation execution",
+      "title": "Material implementation proof gate",
+      "summary": "TOD implementation completion requires material diff, relevant file touch, behavior validation, live-path proof when applicable, and regression evidence.",
+      "authoritative_artifacts": [
+        "runtime/shared/TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json"
+      ],
+      "canonical_routes": [],
+      "supersedes": [
+        "wrapper-only-implementation-completion",
+        "status-artifact-only-completion",
+        "py-compile-only-behavior-validation",
+        "helper-path-only-product-fix"
+      ],
+      "execution_authority": "canonical",
+      "enforcement_level": "block_noncanonical_completions"
+    },
+    {
+      "canonical_id": "mim-tod-freshness-provenance-trust-v1",
+      "domain": "MIM/TOD evidence freshness",
+      "title": "Freshness provenance and trust ranking",
+      "summary": "Evidence freshness must rank live-path, validation, material diff, runtime state, and wrapper summaries separately so a new wrapper cannot hide stale execution.",
+      "authoritative_artifacts": [
+        "runtime/shared/MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json",
+        "runtime/shared/MIM_TOD_HOURLY_REFLECTION.latest.json"
+      ],
+      "canonical_routes": [],
+      "supersedes": [
+        "latest-file-timestamp-as-truth",
+        "fresh-wrapper-over-stale-execution",
+        "summary-only-evidence-freshness"
+      ],
+      "execution_authority": "canonical",
+      "enforcement_level": "block_stale_completion_claims"
+    }
+  ],
+  "supersession_records": [
+    {
+      "superseded_id": "database-first-objective-dashboard-v0",
+      "superseded_by": "objectives-file-backed-runtime-ui-v1",
+      "reason": "Database objective query path can hang; file-backed runtime state is current authority for objectives UI continuity.",
+      "execution_authority": "revoked"
+    },
+    {
+      "superseded_id": "freeform-implementation-without-continuity-check",
+      "superseded_by": "mim-tod-continuity-gate-v1",
+      "reason": "Implementation work must check existing routes/artifacts/canonical solutions before execution.",
+      "execution_authority": "revoked"
+    },
+    {
+      "superseded_id": "freeform-codex-handoff-without-structured-packet",
+      "superseded_by": "objectives-file-backed-runtime-ui-v1",
+      "reason": "Codex escalation requires structured context and lineage.",
+      "execution_authority": "revoked"
+    },
+    {
+      "superseded_id": "wrapper-only-implementation-completion",
+      "superseded_by": "tod-material-implementation-proof-v1",
+      "reason": "Implementation completion must prove material source/behavior change, not only publish wrappers.",
+      "execution_authority": "revoked"
+    },
+    {
+      "superseded_id": "fresh-wrapper-over-stale-execution",
+      "superseded_by": "mim-tod-freshness-provenance-trust-v1",
+      "reason": "Fresh latest artifacts must not promote stale source evidence.",
+      "execution_authority": "revoked"
+    }
+  ]
+}

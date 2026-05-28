@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-05-26T07:22:00Z",
+  "memory_id": "MIM-TOD-CONTINUITY-MEMORY-V1",
+  "status": "active_candidate",
+  "purpose": "Keep objectives continuity-centric by surfacing known-good solutions, existing capabilities, superseded approaches, blocked-because reasons, and suggested next actions before rebuilding.",
+  "known_good_solutions": [
+    {
+      "domain": "MIM/TOD governance",
+      "summary": "MIM owns planning, governance, continuity, and operator-facing synthesis; TOD owns execution/runtime validation.",
+      "reuse_guidance": "Route execution to TOD and keep MIM focused on objective state, escalation, and communication."
+    },
+    {
+      "domain": "MIM objectives dashboard",
+      "summary": "Use runtime/shared file-backed artifacts for objective UI state when database objective queries are slow or unavailable.",
+      "reuse_guidance": "Do not rebuild DB-backed objective pages until database latency is resolved; extend the file-backed continuity layer first."
+    },
+    {
+      "domain": "Codex escalation",
+      "summary": "Use structured escalation packets with objective_id, problem_class, attempted_paths, canonical_solutions_checked, requested_action, expected_files, and validation_requirements.",
+      "reuse_guidance": "Do not ask Codex with freeform blocker text when a structured packet can preserve lineage."
+    },
+    {
+      "domain": "Operator response synthesis",
+      "summary": "Default replies should say what changed, what is blocked, what matters now, and the next action in under three sentences.",
+      "reuse_guidance": "Suppress lifecycle/artifact leakage unless diagnostics are explicitly requested."
+    },
+    {
+      "domain": "MIM ARM block pickup",
+      "summary": "Dave demonstrated known-good grip contact; yellow and green grip markers plus ToF/OAK-D evidence should be reused for pickup training.",
+      "reuse_guidance": "Before retraining blindly, load MIM_ARM_KNOWN_GOOD_BLOCK_GRIP_DEMONSTRATION.latest.json and current arm camera/ToF evidence."
+    },
+    {
+      "domain": "Meshtastic ESP32 LoRa V3",
+      "summary": "Both ESP32 LoRa V3 boards were flashed/configured; phone pairing over Meshtastic was verified.",
+      "reuse_guidance": "Do not repeat driver/flash discovery unless new boards are attached; start from ESP32_LORA_V3_MESHTASTIC_FLASH_STATUS.latest.json."
+    },
+    {
+      "domain": "Objective completion proof",
+      "summary": "Completion requires proof on the live operator-facing path, not only on helper scripts, remediation runners, or side paths.",
+      "reuse_guidance": "Before marking an objective complete, validate the exact UI/API/scheduler/dispatcher path Dave will use or see. If only a side runner was validated, mark blocked_because=live_path_not_validated and create a follow-on objective."
+    },
+    {
+      "domain": "TOD material implementation proof",
+      "summary": "TOD implementation success requires a material diff, relevant file touch, behavior validation, live-path proof when applicable, and regression evidence.",
+      "reuse_guidance": "Reject wrapper-only implementation completions with blocked_because=material_implementation_not_proven. Treat TOD as orchestrator-supervising-Codex until it can synthesize and validate bounded patches with this evidence."
+    },
+    {
+      "domain": "Freshness provenance",
+      "summary": "A fresh wrapper around stale source evidence is not fresh execution. Track source age, evidence kind, trust rank, and lineage separately from latest-file timestamp.",
+      "reuse_guidance": "If source evidence is old but a summary is new, mark stale_under_fresh_wrapper and require fresh live-path, validation, material diff, or direct runtime evidence before completion."
+    }
+  ],
+  "existing_capability_checks": [
+    "Existing route checked",
+    "Existing runtime artifact checked",
+    "Existing parser/executor checked",
+    "Existing objective overlap checked",
+    "Canonical solution checked",
+    "Superseded implementation conflict checked",
+    "Validation evidence checked",
+    "Reuse candidate identified or ruled out"
+  ],
+  "blocked_because_catalog": [
+    "no_executor_bound",
+    "dispatcher_not_consuming_queue",
+    "validation_evidence_incomplete",
+    "canonical_solution_already_exists",
+    "duplicate_implementation_risk",
+    "runtime_dependency_unavailable",
+    "device_permission_or_lock",
+    "operator_confirmation_required",
+    "objective_overlap_or_supersession",
+    "live_path_not_validated",
+    "material_implementation_not_proven",
+    "stale_under_fresh_wrapper",
+    "wrapper_only_freshness",
+    "evidence_lineage_missing"
+  ],
+  "suggested_next_action_policy": {
+    "format": "next bounded task + confidence + reason + reuse candidates + escalation recommendation",
+    "prefer": [
+      "reuse known-good solution",
+      "repair existing capability",
+      "bind missing executor",
+      "create structured escalation",
+      "ask operator only when boundary requires it"
+    ],
+    "avoid": [
+      "rebuilding an existing route",
+      "forking an existing parser",
+      "marking complete from planning artifacts",
+      "marking complete from helper/remediation runner success without live-path proof",
+      "marking implementation complete from wrapper-only status updates",
+      "treating a new summary timestamp as fresh execution evidence",
+      "continuing with stale objective memory"
+    ]
+  }
+}
