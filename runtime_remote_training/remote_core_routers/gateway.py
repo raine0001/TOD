@@ -17678,6 +17678,8 @@ def _mim_dave_email_read_summary_executor(limit: int = 15, mailbox: str = "INBOX
     username = _mim_personal_assistant_env_value("INBOUND_EMAIL_USERNAME")
     password = _mim_personal_assistant_env_value("INBOUND_EMAIL_PASSWORD")
     port_text = _mim_personal_assistant_env_value("INBOUND_EMAIL_PORT") or "993"
+    if password:
+        password = "".join(str(password).split())
     objective_id = "MIM-DAVE-CALENDAR-PHONE-EMAILS-V1"
     base_payload: dict[str, object] = {
         "packet_type": "mim-dave-email-read-summary-status-v2",
