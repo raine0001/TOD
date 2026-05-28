@@ -21,6 +21,10 @@ from core.models import Task, TaskResult
 ROOT = Path(__file__).resolve().parent.parent
 SHARED = ROOT / "runtime" / "shared"
 STATUS_PATH = SHARED / "MIM_READY_TASK_DISPATCHER_STATUS.latest.json"
+OBJECTIVE_EXECUTION_STATUS_PATH = SHARED / "MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json"
+BLOCKER_FOLLOWON_PATH = SHARED / "MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json"
+NEXT_BLOCKER_OBJECTIVE_PATH = SHARED / "MIM_TOD_NEXT_BLOCKER_OBJECTIVE.latest.json"
+NEXT_OBJECTIVE_PATH = SHARED / "MIM_TOD_NEXT_OBJECTIVE.latest.json"
 
 
 def now_iso() -> str:
@@ -85,6 +89,133 @@ def load_json_file(path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+
+def slugify(value: str, *, fallback: str = "unknown") -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", value or "").strip("-").upper()
+    return slug or fallback.upper()
+
+
+def objective_items_from_status(status_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = status_payload.get("objectives")
+    if isinstance(raw, dict):
+        return [item for item in raw.values() if isinstance(item, dict)]
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    return []
+
+
+def is_blocked_objective(item: dict[str, Any]) -> bool:
+    status = str(item.get("status") or "").lower()
+    reason = str(item.get("reason_code") or "").lower()
+    action = str(item.get("next_recovery_action") or "").lower()
+    if "complete" in status and "blocked" not in status:
+        return False
+    return any("block" in value or "missing" in value or "not_bound" in value for value in (status, reason, action))
+
+
+def synthesize_blocker_followon_objective(item: dict[str, Any]) -> dict[str, Any]:
+    source_objective_id = str(item.get("objective_id") or item.get("id") or "unknown").strip()
+    reason_code = str(item.get("reason_code") or "blocked_without_reason_code").strip()
+    title = str(item.get("title") or source_objective_id or "Blocked objective").strip()
+    next_action = str(item.get("next_recovery_action") or "Inspect blocker evidence and bind the missing executor or validation path.").strip()
+    summary = str(item.get("operator_facing_summary") or item.get("summary") or "").strip()
+    objective_id = f"{slugify(source_objective_id)}-UNBLOCK-{slugify(reason_code)}-V1"
+    expected_artifacts = [str(item.get("artifact") or "").strip()] if str(item.get("artifact") or "").strip() else []
+
+    return {
+        "objective_id": objective_id,
+        "title": f"Resolve blocker: {title}",
+        "priority": "P0",
+        "owner": "MIM_TOD",
+        "status": "queued",
+        "source_objective_id": source_objective_id,
+        "problem_class": reason_code,
+        "why_blocked": summary or f"{title} is blocked because {reason_code}.",
+        "requested_outcome": next_action,
+        "required_actions": [
+            "Inspect the source objective evidence artifact and confirm the blocker is still current.",
+            "Check canonical solutions and existing capabilities before creating or changing code.",
+            "Bind the missing executor, adapter, validation, credential, or runtime path named by the blocker.",
+            "Publish explicit evidence showing the blocker resolved or a narrower blocker remains.",
+            "Update operator-facing status in concise human language.",
+        ],
+        "validation_requirements": [
+            "source blocker artifact inspected",
+            "canonical capability check recorded",
+            "fresh evidence artifact published",
+            "status moves to running/completed_with_evidence or a narrower blocked_with_evidence state",
+        ],
+        "evidence_inputs": expected_artifacts,
+        "lineage": {
+            "created_from": "mim_ready_task_dispatcher_blocker_synthesis",
+            "source_artifact": "runtime/shared/MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json",
+            "source_objective_id": source_objective_id,
+            "source_reason_code": reason_code,
+        },
+    }
+
+
+def synthesize_blocker_followon_objectives() -> dict[str, Any]:
+    generated_at = now_iso()
+    status_payload = load_json_file(OBJECTIVE_EXECUTION_STATUS_PATH)
+    items = objective_items_from_status(status_payload)
+    blocked_items = [item for item in items if is_blocked_objective(item)]
+
+    followons_by_id: dict[str, dict[str, Any]] = {}
+    for item in blocked_items:
+        followon = synthesize_blocker_followon_objective(item)
+        followons_by_id[followon["objective_id"]] = followon
+
+    objectives = list(followons_by_id.values())
+    active = objectives[0] if objectives else None
+    payload = {
+        "packet_type": "mim-tod-blocker-followon-objectives-v1",
+        "generated_at": generated_at,
+        "source": "mim_ready_task_dispatcher",
+        "source_status_artifact": "runtime/shared/MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json",
+        "blocked_count": len(blocked_items),
+        "objective_count": len(objectives),
+        "objectives": objectives,
+        "active_followon_objective_id": active.get("objective_id") if active else "",
+        "operator_facing_summary": (
+            f"{len(objectives)} blocker follow-on objective(s) are queued for MIM/TOD."
+            if objectives
+            else "No blocked objectives currently require synthesized follow-on work."
+        ),
+    }
+    write_json(BLOCKER_FOLLOWON_PATH, payload)
+
+    if active:
+        next_payload = {
+            "packet_type": "mim-tod-next-objective-v1",
+            "generated_at": generated_at,
+            "objective_id": active["objective_id"],
+            "status": "active",
+            "goal": active["requested_outcome"],
+            "source_deck": "runtime/shared/MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json",
+            "source_objective_id": active["source_objective_id"],
+            "problem_class": active["problem_class"],
+            "order": active["required_actions"],
+            "success": "The source blocker is resolved with fresh evidence, or a narrower explicit blocker is published.",
+            "current_blockers": [active["problem_class"]],
+            "next_safe_action": active["requested_outcome"],
+            "operator_facing_summary": f"Next blocker to resolve: {active['title']}. {active['requested_outcome']}",
+        }
+        write_json(NEXT_BLOCKER_OBJECTIVE_PATH, next_payload)
+        write_json(NEXT_OBJECTIVE_PATH, next_payload)
+    else:
+        write_json(
+            NEXT_BLOCKER_OBJECTIVE_PATH,
+            {
+                "packet_type": "mim-tod-next-blocker-objective-v1",
+                "generated_at": generated_at,
+                "status": "idle",
+                "objective_id": "",
+                "operator_facing_summary": "No blocked objective needs a follow-on objective right now.",
+            },
+        )
+    return payload
 
 
 def discover_v4l2_capture_sources() -> dict[str, dict[str, Any]]:
@@ -979,6 +1110,7 @@ def has_lab_awareness_final_executor(task: Task) -> bool:
 
 
 async def process_once() -> bool:
+    synthesize_blocker_followon_objectives()
     async with SessionLocal() as db:
         task = (
             await db.execute(
