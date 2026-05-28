@@ -1,0 +1,18 @@
+{
+    "packet_type":  "mim-operator-response-synthesis-enforcement-status-v1",
+    "generated_at":  "2026-05-28T14:25:53.0937129Z",
+    "source":  "Test-MIMOperatorResponseSynthesis",
+    "input_path":  "",
+    "status":  "passed",
+    "violations":  [
+
+                   ],
+    "checks":  {
+                   "word_count":  13,
+                   "sentence_count":  3,
+                   "artifact_leakage_blocked":  true,
+                   "lifecycle_leakage_blocked":  true,
+                   "concise_by_default":  true
+               },
+    "operator_facing_policy":  "Give Dave the useful answer first, suppress lifecycle and artifact internals unless explicitly requested, and keep default voice turns short."
+}

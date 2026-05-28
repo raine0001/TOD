@@ -85,6 +85,8 @@ Describe 'TOD no-op execution detector' {
         Import-TodFunction -Name 'Resolve-LocalExecutionTaskClass'
         Import-TodFunction -Name 'Test-LocalExecutionPatchRequired'
         Import-TodFunction -Name 'Get-LocalExecutionNoOpAssessment'
+        Import-TodFunction -Name 'Test-TodWrapperOnlyChangedPath'
+        Import-TodFunction -Name 'Get-TodMaterialImplementationProofAssessment'
         Import-TodFunction -Name 'Publish-LocalExecutionArtifacts'
 
         function global:Get-UtcNow {
@@ -190,7 +192,7 @@ Describe 'TOD no-op execution detector' {
         [string]$published.execution_result.reason_code | Should Be 'no_meaningful_execution_evidence'
     }
 
-    It 'publishes completed artifacts when accepted result evidence supports a patch task' {
+    It 'blocks authoritative completion when accepted result evidence has no material diff' {
         $task = New-NoOpTestTask
         $result = New-NoOpResultPayload -Summary 'Updated the bounded routing report and published the accepted execution artifact.' -StructuredFindings @(
             [pscustomobject]@{
@@ -211,10 +213,11 @@ Describe 'TOD no-op execution detector' {
 
         $published = Publish-LocalExecutionArtifacts -Task $task -Objective $null -ResultPayload $result -ReviewDecision 'pass' -ExecutionId 'EXEC-003' -PackagePath 'E:\TOD\tod\out\prompts\objective-2913-task-7144.md' -ExecutionReadiness ([pscustomobject]@{ status = 'valid' })
 
-        [string]$published.active_task.status | Should Be 'completed'
-        [string]$published.execution_result.execution_state | Should Be 'completed'
+        [string]$published.active_task.status | Should Be 'blocked'
+        [string]$published.execution_result.execution_state | Should Be 'material_implementation_not_proven'
         [string]$published.active_task.execution_contract.command_runner.status | Should Be 'completed'
         [string]$published.active_task.execution_contract.patch_writer.status | Should Be 'evidence_only'
+        [bool]$published.execution_result.material_implementation_proof.allows_authoritative_completion | Should Be $false
     }
 
     It 'signals replay_or_replan_required for rejected no-op executions' {

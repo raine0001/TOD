@@ -196,6 +196,129 @@ function Get-Prop {
     return $Default
 }
 
+function Convert-ToNullableUtcDate {
+    param([AllowNull()]$Value)
+    if ($null -eq $Value) { return $null }
+    $text = ([string]$Value).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+    try {
+        return ([DateTime]::Parse($text)).ToUniversalTime()
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-JsonDateValue {
+    param(
+        [AllowNull()]$Object,
+        [string[]]$PathCandidates = @()
+    )
+
+    foreach ($path in @($PathCandidates)) {
+        if ($null -eq $Object -or [string]::IsNullOrWhiteSpace($path)) { continue }
+        $cursor = $Object
+        $missing = $false
+        foreach ($segment in @($path.Split('.') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+            if ($null -eq $cursor -or -not $cursor.PSObject.Properties[$segment]) {
+                $missing = $true
+                break
+            }
+            $cursor = $cursor.$segment
+        }
+        if (-not $missing) {
+            $dateValue = Convert-ToNullableUtcDate -Value $cursor
+            if ($null -ne $dateValue) { return $dateValue }
+        }
+    }
+
+    return $null
+}
+
+function Get-JsonStringValue {
+    param(
+        [AllowNull()]$Object,
+        [string[]]$PathCandidates = @()
+    )
+
+    foreach ($path in @($PathCandidates)) {
+        if ($null -eq $Object -or [string]::IsNullOrWhiteSpace($path)) { continue }
+        $cursor = $Object
+        $missing = $false
+        foreach ($segment in @($path.Split('.') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+            if ($null -eq $cursor -or -not $cursor.PSObject.Properties[$segment]) {
+                $missing = $true
+                break
+            }
+            $cursor = $cursor.$segment
+        }
+        if (-not $missing -and $null -ne $cursor -and -not [string]::IsNullOrWhiteSpace([string]$cursor)) {
+            return [string]$cursor
+        }
+    }
+
+    return ''
+}
+
+function New-FreshnessProvenanceItem {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)]$Info,
+        [Parameter(Mandatory = $true)][DateTime]$NowUtc
+    )
+
+    $json = $Info.json
+    $artifactGeneratedAt = Get-JsonDateValue -Object $json -PathCandidates @('generated_at', 'updated_at', 'completed_at', 'latest_execution_at')
+    $sourceGeneratedAt = Get-JsonDateValue -Object $json -PathCandidates @(
+        'source_artifact_generated_at',
+        'latest_action.generated_at',
+        'latest_action.completed_at',
+        'summary.latest_execution_at',
+        'execution_evidence.generated_at',
+        'dispatch_result.generated_at'
+    )
+    $sourceField = ''
+    if ($null -ne $sourceGeneratedAt) {
+        $sourceField = 'embedded_source'
+    }
+    elseif ($null -ne $artifactGeneratedAt) {
+        $sourceGeneratedAt = $artifactGeneratedAt
+        $sourceField = 'artifact_generated_at'
+    }
+    else {
+        $sourceField = 'file_mtime_only'
+    }
+
+    $artifactAgeMinutes = if ($null -ne $artifactGeneratedAt) { [Math]::Round(($NowUtc - $artifactGeneratedAt).TotalMinutes, 1) } else { $Info.age_minutes }
+    $sourceAgeMinutes = if ($null -ne $sourceGeneratedAt) { [Math]::Round(($NowUtc - $sourceGeneratedAt).TotalMinutes, 1) } else { $null }
+    $evidenceKind = Get-JsonStringValue -Object $json -PathCandidates @('evidence_kind', 'packet_type', 'source', 'execution_state', 'completion_status')
+    $trustRank = Get-JsonStringValue -Object $json -PathCandidates @('evidence_trust_rank', 'trust_rank', 'lineage.trust_rank')
+    if ([string]::IsNullOrWhiteSpace($trustRank)) {
+        if ($Name -match 'EXECUTION_RESULT|TASK_RESULT|VALIDATION|TRUTH') { $trustRank = 'execution_evidence' }
+        elseif ($Name -match 'STATUS|SUMMARY|REFLECTION') { $trustRank = 'summary_wrapper' }
+        else { $trustRank = 'unknown' }
+    }
+
+    $staleUnderFreshWrapper = ([bool]$Info.fresh -and $null -ne $sourceAgeMinutes -and $sourceAgeMinutes -gt $FreshMinutes)
+    $freshnessWrapperOnly = ([bool]$Info.fresh -and [string]::Equals($sourceField, 'file_mtime_only', [System.StringComparison]::OrdinalIgnoreCase) -and $Name -match 'STATUS|SUMMARY|REFLECTION')
+
+    return [pscustomobject]@{
+        name = $Name
+        source = $Info.source
+        exists = [bool]$Info.exists
+        wrapper_age_minutes = $Info.age_minutes
+        artifact_generated_at = if ($null -ne $artifactGeneratedAt) { Convert-ToIsoUtc -Value $artifactGeneratedAt } else { '' }
+        artifact_age_minutes = $artifactAgeMinutes
+        source_generated_at = if ($null -ne $sourceGeneratedAt) { Convert-ToIsoUtc -Value $sourceGeneratedAt } else { '' }
+        source_age_minutes = $sourceAgeMinutes
+        source_field = $sourceField
+        evidence_kind = $evidenceKind
+        evidence_trust_rank = $trustRank
+        stale_under_fresh_wrapper = $staleUnderFreshWrapper
+        freshness_wrapper_only = $freshnessWrapperOnly
+    }
+}
+
 $sharedAbs = Resolve-RepoPath -PathValue $SharedRoot
 $outputAbs = Resolve-RepoPath -PathValue $OutputPath
 $markdownAbs = Resolve-RepoPath -PathValue $MarkdownPath
@@ -210,7 +333,15 @@ $artifactNames = @(
     'TOD_PROACTIVE_AUTONOMY.latest.json',
     'TOD_PROACTIVE_TASK.latest.json',
     'TOD_EXECUTION_LOCK.latest.json',
-    'MIM_READY_TASK_DISPATCHER_STATUS.latest.json'
+    'MIM_READY_TASK_DISPATCHER_STATUS.latest.json',
+    'TOD_EXECUTION_RESULT.latest.json',
+    'TOD_VALIDATION_RESULT.latest.json',
+    'TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json',
+    'TOD_MATERIAL_IMPLEMENTATION_PROOF_STATUS.latest.json',
+    'MIM_OPERATOR_RESPONSE_SYNTHESIS_ENFORCEMENT_STATUS.latest.json',
+    'MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json',
+    'MIM_TOD_CONTINUITY_MEMORY.latest.json',
+    'MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json'
 )
 
 $artifacts = @{}
@@ -244,6 +375,22 @@ $proactive = $artifacts['TOD_PROACTIVE_AUTONOMY.latest.json'].json
 $freshArtifactCount = @($artifacts.Values | Where-Object { $_.fresh }).Count
 $missingArtifactNames = @($artifacts.GetEnumerator() | Where-Object { -not $_.Value.exists } | ForEach-Object { $_.Key })
 $staleArtifactNames = @($artifacts.GetEnumerator() | Where-Object { $_.Value.exists -and -not $_.Value.fresh } | ForEach-Object { $_.Key })
+$freshnessProvenance = @($artifacts.GetEnumerator() | ForEach-Object {
+    New-FreshnessProvenanceItem -Name $_.Key -Info $_.Value -NowUtc (Get-Date).ToUniversalTime()
+})
+$staleWrapperItems = @($freshnessProvenance | Where-Object { [bool]$_.stale_under_fresh_wrapper })
+$wrapperOnlyFreshnessItems = @($freshnessProvenance | Where-Object { [bool]$_.freshness_wrapper_only })
+$truthIntegrityReasonCodes = @()
+if (@($staleWrapperItems).Count -gt 0) { $truthIntegrityReasonCodes += 'stale_under_fresh_wrapper' }
+if (@($wrapperOnlyFreshnessItems).Count -gt 0) { $truthIntegrityReasonCodes += 'freshness_wrapper_only' }
+$materialPolicyArtifact = $artifacts['TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json']
+if (-not $materialPolicyArtifact.exists) { $truthIntegrityReasonCodes += 'material_proof_policy_missing' }
+$materialProofStatusArtifact = $artifacts['TOD_MATERIAL_IMPLEMENTATION_PROOF_STATUS.latest.json']
+if (-not $materialProofStatusArtifact.exists) { $truthIntegrityReasonCodes += 'material_proof_status_missing' }
+$responseSynthesisArtifact = $artifacts['MIM_OPERATOR_RESPONSE_SYNTHESIS_ENFORCEMENT_STATUS.latest.json']
+if (-not $responseSynthesisArtifact.exists) { $truthIntegrityReasonCodes += 'operator_response_synthesis_status_missing' }
+$freshnessPolicyArtifact = $artifacts['MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json']
+if (-not $freshnessPolicyArtifact.exists) { $truthIntegrityReasonCodes += 'freshness_provenance_policy_missing' }
 
 $blockerFollowonHealthy = (@($blocked).Count -eq 0) -or ($followonCount -ge @($blocked).Count)
 $nextObjectiveText = Get-Prop $nextObjective 'objective_id'
@@ -268,6 +415,18 @@ if (-not $blockerFollowonHealthy) {
 }
 if (@($staleArtifactNames).Count -gt 0) {
     $recommendations.Add('Refresh stale reflection inputs: ' + (@($staleArtifactNames) -join ', '))
+}
+if (@($staleWrapperItems).Count -gt 0) {
+    $recommendations.Add('Do not trust fresh wrappers around stale source truth: ' + (@($staleWrapperItems | Select-Object -ExpandProperty name) -join ', '))
+}
+if (@($wrapperOnlyFreshnessItems).Count -gt 0) {
+    $recommendations.Add('Require embedded source provenance for wrapper artifacts: ' + (@($wrapperOnlyFreshnessItems | Select-Object -ExpandProperty name) -join ', '))
+}
+if (-not $materialProofStatusArtifact.exists) {
+    $recommendations.Add('Run scripts/Test-TODMaterialImplementationProof.ps1 so TOD has a live material-proof status, not just a policy.')
+}
+if (-not $responseSynthesisArtifact.exists) {
+    $recommendations.Add('Run scripts/Test-MIMOperatorResponseSynthesis.ps1 against live MIM replies to enforce human-facing response quality.')
 }
 if ([string]::IsNullOrWhiteSpace($nextObjectiveText)) {
     $recommendations.Add('Publish a next objective so MIM/TOD have a single active target.')
@@ -315,6 +474,17 @@ $payload = [ordered]@{
             }
         })
     }
+    freshness_provenance = @($freshnessProvenance)
+    truth_integrity = [ordered]@{
+        status = if (@($truthIntegrityReasonCodes).Count -eq 0) { 'healthy' } else { 'needs_attention' }
+        reason_codes = @($truthIntegrityReasonCodes | Select-Object -Unique)
+        stale_under_fresh_wrapper = @($staleWrapperItems | Select-Object -ExpandProperty name)
+        freshness_wrapper_only = @($wrapperOnlyFreshnessItems | Select-Object -ExpandProperty name)
+        material_proof_policy_available = [bool]$materialPolicyArtifact.exists
+        material_proof_status_available = [bool]$materialProofStatusArtifact.exists
+        operator_response_synthesis_status_available = [bool]$responseSynthesisArtifact.exists
+        freshness_provenance_policy_available = [bool]$freshnessPolicyArtifact.exists
+    }
     current_next_objective = [ordered]@{
         objective_id = $nextObjectiveText
         status = Get-Prop $nextObjective 'status'
@@ -342,6 +512,9 @@ if (@($blocked).Count -gt 0) {
     $firstBlocker = $blockedSummaries[0]
     $summaryBits.Add("Top blocker: $($firstBlocker.reason_code); $($firstBlocker.next_recovery_action)")
 }
+if (@($truthIntegrityReasonCodes).Count -gt 0) {
+    $summaryBits.Add("Truth integrity needs attention: $((@($truthIntegrityReasonCodes | Select-Object -Unique)) -join ', ').")
+}
 $payload.operator_summary = ($summaryBits -join ' ')
 
 $json = ($payload | ConvertTo-Json -Depth 20) -replace "`r`n", "`n"
@@ -357,6 +530,7 @@ $mdLines = @(
     "- Running: $(@($running).Count)",
     "- Blocked: $(@($blocked).Count)",
     "- Blocker follow-ons: $followonCount",
+    "- Truth integrity: $($payload.truth_integrity.status)",
     '',
     '## Next',
     "- Objective: $nextObjectiveText",

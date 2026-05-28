@@ -1,0 +1,33 @@
+{
+    "packet_type":  "tod-material-implementation-proof-status-v1",
+    "generated_at":  "2026-05-28T14:20:59.8540486Z",
+    "source":  "Test-TODMaterialImplementationProof",
+    "input_path":  "E:\\TOD\\runtime\\shared\\TOD_EXECUTION_RESULT.latest.json",
+    "input_last_write_utc":  "2026-05-07T23:55:31.0919142Z",
+    "fresh_minutes":  90,
+    "fresh":  false,
+    "status":  "blocked_with_evidence",
+    "result_status":  "completed",
+    "execution_state":  "",
+    "reason_codes":  [
+                         "result_not_fresh",
+                         "validation_evidence_missing"
+                     ],
+    "files_changed":  [
+                          "scripts/TOD.ps1",
+                          "tests/TOD.BoundedEditMaterialization.Tests.ps1"
+                      ],
+    "material_files_changed":  [
+                                   "scripts/TOD.ps1",
+                                   "tests/TOD.BoundedEditMaterialization.Tests.ps1"
+                               ],
+    "wrapper_only_files_changed":  [
+
+                                   ],
+    "material_diff_present":  true,
+    "validation_evidence_present":  false,
+    "no_change_required":  false,
+    "wrapper_only_success_rejected":  false,
+    "allows_authoritative_completion":  false,
+    "next_recovery_action":  "replay_with_material_diff_or_explicit_no_change_validation"
+}

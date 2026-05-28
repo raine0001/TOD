@@ -6121,7 +6121,16 @@ function Resolve-TaskCategory {
         return ([string]$Task.task_category).ToLowerInvariant()
     }
 
-    $blob = (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
+    $blob = if (Get-Command -Name Get-TaskRoutingText -ErrorAction SilentlyContinue) {
+        (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
+    }
+    else {
+        (@(
+            if ($Task.PSObject.Properties['title']) { [string]$Task.title }
+            if ($Task.PSObject.Properties['scope']) { [string]$Task.scope }
+            if ($Task.PSObject.Properties['description']) { [string]$Task.description }
+        ) -join ' ').ToLowerInvariant()
+    }
     if ($blob -match 'repo index|index-repo|indexing') { return "repo_index" }
     if ($blob -match 'module summary|summar') { return "module_summary" }
     if ($blob -match 'refactor') { return "refactor" }
@@ -6656,7 +6665,16 @@ function Test-TaskAllowsLocalExecutionWithoutMaterialization {
         return $false
     }
 
-    $blob = (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
+    $blob = if (Get-Command -Name Get-TaskRoutingText -ErrorAction SilentlyContinue) {
+        (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
+    }
+    else {
+        (@(
+            if ($Task.PSObject.Properties['title']) { [string]$Task.title }
+            if ($Task.PSObject.Properties['scope']) { [string]$Task.scope }
+            if ($Task.PSObject.Properties['description']) { [string]$Task.description }
+        ) -join ' ').ToLowerInvariant()
+    }
     $mentionsLedger = $blob -match 'message.?ledger|ledger'
     $mentionsCoverage = $blob -match 'coverage|phase.?a|observe.?only|measure'
     return ($mentionsLedger -and $mentionsCoverage)
@@ -13076,7 +13094,16 @@ function Resolve-LocalExecutionTaskClass {
         }
     }
 
-    $blob = (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
+    $blob = if (Get-Command -Name Get-TaskRoutingText -ErrorAction SilentlyContinue) {
+        (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
+    }
+    else {
+        (@(
+            if ($Task.PSObject.Properties['title']) { [string]$Task.title }
+            if ($Task.PSObject.Properties['scope']) { [string]$Task.scope }
+            if ($Task.PSObject.Properties['description']) { [string]$Task.description }
+        ) -join ' ').ToLowerInvariant()
+    }
     if ($blob -match '\binspection[ _-]?only\b') { return 'inspection_only' }
     if ($blob -match '\breport[ _-]?only\b') { return 'report_only' }
     if ($blob -match '\bdiagnostic[ _-]?only\b') { return 'diagnostic_only' }
@@ -13105,7 +13132,16 @@ function Test-LocalExecutionPatchRequired {
         return $true
     }
 
-    $blob = (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
+    $blob = if (Get-Command -Name Get-TaskRoutingText -ErrorAction SilentlyContinue) {
+        (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
+    }
+    else {
+        (@(
+            if ($Task.PSObject.Properties['title']) { [string]$Task.title }
+            if ($Task.PSObject.Properties['scope']) { [string]$Task.scope }
+            if ($Task.PSObject.Properties['description']) { [string]$Task.description }
+        ) -join ' ').ToLowerInvariant()
+    }
     return ($blob -match '\bpatch\b|\bimplement\b|\brefactor\b|\bmodify\b|\bupdate\b|\bchange\b|\bfix\b|\brewrite\b|\badd\b|\bremove\b')
 }
 
@@ -13265,6 +13301,88 @@ function Get-LocalExecutionNoOpAssessment {
     }
 }
 
+function Test-TodWrapperOnlyChangedPath {
+    param([Parameter(Mandatory = $true)][string]$PathValue)
+
+    $normalized = ([string]$PathValue).Trim() -replace '\\', '/'
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return $true
+    }
+
+    $fileName = [System.IO.Path]::GetFileName($normalized)
+    if ($normalized -match '^(runtime/shared|shared_state|tod/out/context-sync|tod/out/training|tod/out/logs)/') {
+        if ($fileName -match '(STATUS|SUMMARY|REFLECTION|RESULT|TRUTH|ACTIVITY|ACTIVE|VALIDATION|LOCK|HEARTBEAT|STATE|LOG|MANIFEST)\.latest\.(json|md)$') {
+            return $true
+        }
+        if ($fileName -match '^(TOD_|MIM_TOD_|MIM_OPERATOR_).*\.(latest\.)?(json|md)$' -and $fileName -notmatch '(POLICY|REGISTRY|OBJECTIVE_DECK|CONTINUITY_MEMORY|CANONICAL_AUTHORITY)') {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Get-TodMaterialImplementationProofAssessment {
+    param(
+        [Parameter(Mandatory = $true)]$Task,
+        [Parameter(Mandatory = $true)]$ResultPayload,
+        [Parameter(Mandatory = $true)]$NoOpAssessment,
+        [object[]]$ValidationResults = @(),
+        [string[]]$CommandsRun = @(),
+        [string]$DiffSummary = ''
+    )
+
+    $taskClass = if ($NoOpAssessment.PSObject.Properties['task_class']) { [string]$NoOpAssessment.task_class } else { Resolve-LocalExecutionTaskClass -Task $Task }
+    $patchRequired = if ($NoOpAssessment.PSObject.Properties['patch_required']) { [bool]$NoOpAssessment.patch_required } else { Test-LocalExecutionPatchRequired -Task $Task -TaskClass $taskClass }
+    $exempt = @('inspection_only', 'report_only', 'diagnostic_only', 'inventory_only') -contains $taskClass
+    $filesChanged = @($ResultPayload.files_changed | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $materialFiles = @($filesChanged | Where-Object { -not (Test-TodWrapperOnlyChangedPath -PathValue ([string]$_)) })
+    $wrapperFiles = @($filesChanged | Where-Object { Test-TodWrapperOnlyChangedPath -PathValue ([string]$_) })
+    $testsRun = if ($ResultPayload.PSObject.Properties['tests_run']) { @($ResultPayload.tests_run | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+    $testResults = if ($ResultPayload.PSObject.Properties['test_results']) { @($ResultPayload.test_results | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+    $validationEvidencePresent = (@($ValidationResults).Count -gt 0) -or (@($testsRun).Count -gt 0) -or (@($CommandsRun).Count -gt 0) -or (-not [string]::IsNullOrWhiteSpace($DiffSummary))
+    $validationLooksPassed = $validationEvidencePresent -and (
+        (@($testResults | Where-Object { ([string]$_).ToLowerInvariant() -match 'fail|blocked|error|not_run' }).Count -eq 0) -or
+        (@($ValidationResults).Count -gt 0)
+    )
+    $noChangeRequired = ($ResultPayload.PSObject.Properties['no_change_required'] -and $null -ne $ResultPayload.no_change_required -and [bool]$ResultPayload.no_change_required)
+    $materialDiffPresent = (@($materialFiles).Count -gt 0) -or (-not [string]::IsNullOrWhiteSpace($DiffSummary) -and $DiffSummary -match '\b(updated|patched|modified|applied|created|inserted|changed|validated)\b')
+    $wrapperOnlySuccess = ($patchRequired -and @($filesChanged).Count -gt 0 -and @($materialFiles).Count -eq 0)
+
+    $reasonCodes = @()
+    if ($wrapperOnlySuccess) { $reasonCodes += 'wrapper_only_success_rejected' }
+    if ($patchRequired -and -not $noChangeRequired -and @($materialFiles).Count -eq 0) { $reasonCodes += 'material_diff_missing' }
+    if ($patchRequired -and -not $validationEvidencePresent) { $reasonCodes += 'validation_evidence_missing' }
+    if ($patchRequired -and $validationEvidencePresent -and -not $validationLooksPassed) { $reasonCodes += 'validation_not_proven_passed' }
+
+    $allowsCompletion = $true
+    if (-not $exempt -and $patchRequired) {
+        $allowsCompletion = (
+            (-not $wrapperOnlySuccess) -and
+            $validationEvidencePresent -and
+            $validationLooksPassed -and
+            ((@($materialFiles).Count -gt 0) -or $noChangeRequired)
+        )
+    }
+
+    return [pscustomobject]@{
+        policy_version = 'tod-material-implementation-proof-v1'
+        task_class = $taskClass
+        patch_required = $patchRequired
+        exempt = $exempt
+        files_changed = @($filesChanged)
+        material_files_changed = @($materialFiles)
+        wrapper_only_files_changed = @($wrapperFiles)
+        material_diff_present = $materialDiffPresent
+        validation_evidence_present = $validationEvidencePresent
+        validation_passed_or_proven = $validationLooksPassed
+        no_change_required = $noChangeRequired
+        wrapper_only_success_rejected = $wrapperOnlySuccess
+        reason_codes = @($reasonCodes | Select-Object -Unique)
+        allows_authoritative_completion = [bool]$allowsCompletion
+    }
+}
+
 function Publish-LocalExecutionArtifacts {
     param(
         [Parameter(Mandatory = $true)]$Task,
@@ -13311,18 +13429,20 @@ function Publish-LocalExecutionArtifacts {
     $commandOutput = if ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stdout'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stdout)) { [string]$commandCapture.stdout } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stderr'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stderr)) { [string]$commandCapture.stderr } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['command']) { [string]$commandCapture.command } else { '' }
     $commandRunnerStatus = if ($null -eq $commandCapture) { 'pending' } elseif ($commandCapture.PSObject.Properties['exit_code'] -and [int]$commandCapture.exit_code -eq 0) { 'completed' } else { 'blocked' }
     $commandRunnerSummary = if ($null -eq $commandCapture) { 'No validation command output was captured.' } elseif (-not [string]::IsNullOrWhiteSpace($commandOutput)) { $commandOutput } else { 'Validation command executed without captured output.' }
-    $passed = ($ReviewDecision -eq 'pass') -and -not [bool]$noOpAssessment.detected -and -not $hasExplicitBlocker
-    $status = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($passed) { 'completed' } else { 'blocked' }
-    $executionState = if ($hasExplicitBlocker) { 'blocked_with_reason' } elseif ([bool]$noOpAssessment.detected) { 'no_op_rejected' } elseif ($passed) { 'completed' } else { 'blocked' }
-    $activityStatus = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($passed) { 'completed' } else { 'blocked' }
-    $currentAction = if ($hasExplicitBlocker) { 'Blocked execution on an explicit engine/runtime blocker and published the blocker evidence.' } elseif ([bool]$noOpAssessment.detected) { 'Rejected completion because the execution did not produce meaningful work evidence.' } elseif ($passed) { 'Completed the bounded local task and published local execution artifacts for TOD.' } else { 'Published the bounded local task outcome and marked the execution slice for review.' }
-    $nextStep = if ($hasExplicitBlocker) { $(if (-not [string]::IsNullOrWhiteSpace($explicitRecoveryState)) { $explicitRecoveryState } else { 'local_fallback_or_replan_required' }) } elseif ([bool]$noOpAssessment.detected) { 'replay_or_replan_required' } elseif ($passed) { 'Continue with the next bounded local objective and its focused validation path.' } else { 'Review the failing checks, repair the bounded slice, and rerun the focused validation path.' }
-    $nextValidation = if ($hasExplicitBlocker) { if (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'explicit_blocker_review' } } elseif ([bool]$noOpAssessment.detected) { 'meaningful_execution_evidence_required' } elseif (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'review_local_execution_artifacts' }
-    $validationStatus = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($passed) { 'passed' } else { 'blocked' }
+    $materialProof = Get-TodMaterialImplementationProofAssessment -Task $Task -ResultPayload $ResultPayload -NoOpAssessment $noOpAssessment -ValidationResults $validationResults -CommandsRun $commandsRun -DiffSummary $diffSummary
+    $materialProofBlocked = -not [bool]$materialProof.allows_authoritative_completion
+    $passed = ($ReviewDecision -eq 'pass') -and -not [bool]$noOpAssessment.detected -and -not $hasExplicitBlocker -and -not $materialProofBlocked
+    $status = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($materialProofBlocked) { 'blocked' } elseif ($passed) { 'completed' } else { 'blocked' }
+    $executionState = if ($hasExplicitBlocker) { 'blocked_with_reason' } elseif ([bool]$noOpAssessment.detected) { 'no_op_rejected' } elseif ($materialProofBlocked) { 'material_implementation_not_proven' } elseif ($passed) { 'completed' } else { 'blocked' }
+    $activityStatus = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($materialProofBlocked) { 'blocked' } elseif ($passed) { 'completed' } else { 'blocked' }
+    $currentAction = if ($hasExplicitBlocker) { 'Blocked execution on an explicit engine/runtime blocker and published the blocker evidence.' } elseif ([bool]$noOpAssessment.detected) { 'Rejected completion because the execution did not produce meaningful work evidence.' } elseif ($materialProofBlocked) { 'Rejected completion because material implementation proof was missing or wrapper-only.' } elseif ($passed) { 'Completed the bounded local task and published local execution artifacts for TOD.' } else { 'Published the bounded local task outcome and marked the execution slice for review.' }
+    $nextStep = if ($hasExplicitBlocker) { $(if (-not [string]::IsNullOrWhiteSpace($explicitRecoveryState)) { $explicitRecoveryState } else { 'local_fallback_or_replan_required' }) } elseif ([bool]$noOpAssessment.detected) { 'replay_or_replan_required' } elseif ($materialProofBlocked) { 'replay_with_material_diff_or_explicit_no_change_validation' } elseif ($passed) { 'Continue with the next bounded local objective and its focused validation path.' } else { 'Review the failing checks, repair the bounded slice, and rerun the focused validation path.' }
+    $nextValidation = if ($hasExplicitBlocker) { if (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'explicit_blocker_review' } } elseif ([bool]$noOpAssessment.detected) { 'meaningful_execution_evidence_required' } elseif ($materialProofBlocked) { 'material_implementation_proof_required' } elseif (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'review_local_execution_artifacts' }
+    $validationStatus = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($materialProofBlocked) { 'blocked' } elseif ($passed) { 'passed' } else { 'blocked' }
     $rollbackState = if ($null -ne $rollback -and $rollback.PSObject.Properties['available'] -and [bool]$rollback.available) { 'available' } else { 'not_needed' }
     $rollbackHint = if ($ResultPayload.PSObject.Properties['rollback_hint']) { [string]$ResultPayload.rollback_hint } elseif ($null -ne $rollback -and $rollback.PSObject.Properties['restore_command']) { [string]$rollback.restore_command } else { '' }
-    $reasonCode = if ($hasExplicitBlocker) { $explicitReasonCode } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.reason_code } else { '' }
-    $recoveryState = if ($hasExplicitBlocker) { $(if (-not [string]::IsNullOrWhiteSpace($explicitRecoveryState)) { $explicitRecoveryState } else { 'required' }) } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.recovery_state } elseif ($passed) { 'not_needed' } else { 'required' }
+    $reasonCode = if ($hasExplicitBlocker) { $explicitReasonCode } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.reason_code } elseif ($materialProofBlocked) { (@($materialProof.reason_codes) -join '+') } else { '' }
+    $recoveryState = if ($hasExplicitBlocker) { $(if (-not [string]::IsNullOrWhiteSpace($explicitRecoveryState)) { $explicitRecoveryState } else { 'required' }) } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.recovery_state } elseif ($materialProofBlocked) { 'material_proof_required' } elseif ($passed) { 'not_needed' } else { 'required' }
     $requestId = [string]$Task.id
     $executionContract = [pscustomobject]@{
         contract_version = 'tod-execution-loop-v1'
@@ -13398,6 +13518,7 @@ function Publish-LocalExecutionArtifacts {
         blockers = @($artifactBlockers)
         confidence = $confidence
         rollback_hint = $rollbackHint
+        material_implementation_proof = $materialProof
     }
 
     $executionEvidence = [ordered]@{
@@ -13422,6 +13543,7 @@ function Publish-LocalExecutionArtifacts {
         validation_results = @($validationResults)
         confidence = $confidence
         rollback_hint = $rollbackHint
+        material_implementation_proof = $materialProof
     }
 
     $activeObjectivePayload = [ordered]@{} + $basePayload + @{
