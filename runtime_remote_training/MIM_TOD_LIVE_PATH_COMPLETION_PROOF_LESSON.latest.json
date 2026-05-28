@@ -1,0 +1,32 @@
+{
+  "generated_at": "2026-05-28T14:03:00Z",
+  "lesson_id": "MIM-TOD-LIVE-PATH-COMPLETION-PROOF-V1",
+  "source_incident": "AgentMIM forum images were still not auto-created on new forum posts even after the forum image auto-QA remediation objective reported local implementation success.",
+  "lesson": "Do not mark an objective complete because a helper, remediation runner, or side path exists. Validate the live operator-facing creation/execution path that produces the outcome Dave actually sees.",
+  "why_it_matters": "The forum image objective built a remediation runner and quality gates, but new post creation could still publish placeholder/local-cover images. The missing validation was the normal create-post publish path.",
+  "reusable_rule": {
+    "name": "live_path_completion_proof_required",
+    "applies_to": [
+      "auto-generation objectives",
+      "UI-visible outcomes",
+      "scheduled/background automation",
+      "dispatcher/executor binding",
+      "remediation or cleanup objectives",
+      "operator-facing product behavior"
+    ],
+    "required_evidence": [
+      "existing helper/remediation path inspected",
+      "live creation/execution path inspected",
+      "operator-facing UI/API behavior tested",
+      "fresh artifact or database evidence confirms the visible outcome",
+      "side-runner success is not used as sole completion proof"
+    ],
+    "blocked_because_code": "live_path_not_validated"
+  },
+  "forum_image_specific_takeaway": {
+    "bad_completion_signal": "Forum image remediation runner exists and local tests pass.",
+    "good_completion_signal": "Creating a fresh forum post automatically produces an image_generation_status of ai_generated or a specific explicit blocker, and the forum UI no longer shows a placeholder card for that new post.",
+    "fix_committed": "E:/comm_app commit 761cafd8 Generate forum editorial images on publish"
+  },
+  "operator_summary": "MIM/TOD should treat this as training: completion requires proving the live path Dave sees, not only proving a cleanup or helper path."
+}
