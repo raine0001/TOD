@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-05-28T01:45:00Z",
+  "created_by": "codex",
+  "objective_id": "MIM-CONTINUOUS-KNOWLEDGE-ACQUISITION-V1",
+  "live_mim_objective_id": 3315,
+  "title": "Continuous book discovery and knowledge ingestion",
+  "priority": "P1",
+  "owner": "MIM_TOD",
+  "status": "queued",
+  "execution_mode": "auto",
+  "auto_continue": true,
+  "goal": "MIM should continuously identify, acquire, catalog, ingest, summarize, and retain useful long-form material from lawful sources such as Project Gutenberg and other operator-authorized/public-domain collections across science, literature, philosophy, engineering, language, and human behavior.",
+  "success": "MIM publishes a durable source registry, acquisition catalog, ingestion batch evidence, summaries/retrieval notes, and explicit blockers/follow-on objectives for failures. At least one approved batch is ingested with verifiable source and summary evidence.",
+  "expected_artifacts": [
+    "runtime/shared/MIM_KNOWLEDGE_SOURCE_REGISTRY.latest.json",
+    "runtime/shared/MIM_KNOWLEDGE_ACQUISITION_CATALOG.latest.json",
+    "runtime/shared/MIM_KNOWLEDGE_INGESTION_BATCH.latest.json",
+    "runtime/shared/MIM_KNOWLEDGE_INGESTION_OPERATOR_SUMMARY.latest.md",
+    "runtime/shared/MIM_KNOWLEDGE_INGESTION_BLOCKERS.latest.json"
+  ],
+  "notes": [
+    "Use lawful/public-domain/operator-authorized sources only.",
+    "Do not treat download as learning.",
+    "Deduplicate by title, author, source identifier, and checksum before ingestion.",
+    "Create follow-on objectives for failed conversion, source-access, metadata, duplicate, or indexing blockers."
+  ]
+}
