@@ -2836,6 +2836,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
     <section class="card" style="margin-top:14px;">
       <h2>UNO Sketch Protocol</h2>
       <p>Current flashed sketch protocol: send one integer from <code>100</code> to <code>650</code>. The sketch applies that raw PCA9685 count to channels 0 and 1 together.</p>
+      <p class="muted" style="margin-top:8px;">Small bursts or choppy movement are expected with the current limit-tester sketch because it jumps directly to each new PWM count. Smooth motion needs a firmware ramp/easing loop on the UNO.</p>
       <p class="muted" style="margin-top:8px;">Use <code>{{pulse}}</code> for the current sketch. Use <code>MOVE {{channel}} {{angle}}</code> or <code>S {{channel}} {{pulse}} {{duration}}</code> only after flashing firmware that supports those command formats.</p>
       <p class="muted" style="margin-top:8px;">Arduino IDE is only needed to flash that sketch onto the UNO R4. After that, this page can connect directly from Chrome with Web Serial.</p>
     </section>
@@ -5825,6 +5826,24 @@ async def studio_mim_chat_api(
                 "com5",
             ]
         )
+        choppy_motion = any(
+            term in prompt_lower
+            for term in [
+                "small bursts",
+                "bursts",
+                "not fluid",
+                "not smooth",
+                "choppy",
+                "jerky",
+                "jitter",
+                "stutter",
+                "rough movement",
+                "smooth movement",
+                "startup",
+                "slow down",
+                "slowdown",
+            ]
+        )
         if serial_open_failure:
             reply = (
                 "MIM should have caught this more directly. That error happens before any servo command is sent.\n\n"
@@ -5839,6 +5858,26 @@ async def studio_mim_chat_api(
             )
             response_mode = "problem_analysis"
             failure_class = "serial_port_open_failed_likely_locked_by_ide"
+            training_lesson = "When Web Serial reports failed_to_open before TX, diagnose port lock before servo protocol or wiring."
+        elif choppy_motion:
+            reply = (
+                "MIM should have diagnosed this as a motion-profile issue.\n\n"
+                "Most likely cause: the current UNO sketch is a limit tester. It reads one number, then immediately calls pwm.setPWM on channels 0 and 1. That creates setpoint jumps, so movement can look like small bursts instead of a smooth ramp.\n\n"
+                "Best fix:\n"
+                "- Flash a smooth-motion UNO sketch that ramps from currentPulse to targetPulse in small steps.\n"
+                "- Keep the browser sending one target value, such as 375 or 420.\n"
+                "- Let the UNO handle timing, startup, and slowdown locally. Do not rely on the browser to stream tiny motion steps over serial.\n\n"
+                "Suggested firmware behavior:\n"
+                "- Store currentPulse.\n"
+                "- When a target pulse arrives, constrain it to 100-650.\n"
+                "- Move one count at a time, or 2-5 counts per step for faster travel.\n"
+                "- Delay 8-20 ms per step for analog-servo smoothness.\n"
+                "- Later, add per-channel commands so channels 0 and 1 can be tested separately.\n\n"
+                "So the next change is not more UI first; it is updating the UNO sketch from a direct limit tester to a ramping servo tester."
+            )
+            response_mode = "recommendation"
+            failure_class = "servo_motion_choppy_requires_firmware_ramp"
+            training_lesson = "When servo is connected but movement is choppy/bursty, diagnose motion profile/direct PWM setpoint jumps before connection or wiring."
         else:
             reply = (
                 "This is a live hardware troubleshooting issue, not a prototype artifact.\n\n"
@@ -5853,6 +5892,7 @@ async def studio_mim_chat_api(
             )
             response_mode = "problem_analysis"
             failure_class = "servo_tester_general_hardware_diagnostic"
+            training_lesson = "For Lab servo tester issues, classify whether the failure is connection, protocol, firmware motion profile, channel selection, power, or wiring before giving a checklist."
         return {
             "ok": True,
             "source": "studio_lab_servo_tester_context",
@@ -5868,7 +5908,7 @@ async def studio_mim_chat_api(
                 "command_template": profile.get("command_template"),
                 "servo_count": len(profile.get("servos") if isinstance(profile.get("servos"), list) else []),
                 "failure_class": failure_class,
-                "training_lesson": "When Web Serial reports failed_to_open before TX, diagnose port lock before servo protocol or wiring.",
+                "training_lesson": training_lesson,
             },
         }
     if "report" in page_context_lower or any(term in prompt_lower for term in ["agentmim", "comm_app", "database", "db", "account owner", "account_owners", "app metrics"]):
