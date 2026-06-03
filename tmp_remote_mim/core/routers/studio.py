@@ -38,6 +38,7 @@ router = APIRouter()
 SHARED_RUNTIME_ROOT = Path("runtime/shared")
 TRAINING_RUNTIME_ROOT = Path("runtime_remote_training")
 MIM_PRESENCE_PATH = SHARED_RUNTIME_ROOT / "MIM_UNIVERSAL_PRESENCE.latest.json"
+LAB_SERVO_TESTER_PROFILE_PATH = SHARED_RUNTIME_ROOT / "MIM_LAB_SERVO_TESTER_PROFILE.latest.json"
 LOS_ANGELES_TZ = ZoneInfo("America/Los_Angeles")
 
 
@@ -2562,6 +2563,26 @@ async def _ensure_first_internal_projects(db: AsyncSession) -> dict[str, StudioP
         next_action="Organize active experiments and prepare the world-model calibration run for the next arm session.",
         metadata_json={"project_key": "mim_lab_exploration", "studio_page": "/studio/lab", "project_type": "exploration"},
     )
+    servo_project = await _ensure_studio_project_record(
+        db,
+        title="LAB Workbench Servo Tester",
+        summary="Build a simple Lab tool for Dave's separate UNO R4 and PWM-driver bench setup to add, configure, save, and test multiple servos before robotic installation.",
+        status="implementation",
+        priority="P1",
+        why_it_matters="Servo behavior should be tested safely on the bench before parts are installed into the MIM arm or other robotics builds.",
+        origin_story="Dave created a separate workbench servo test configuration with its own UNO R4 and PWM driver connected to the PC, independent from the MIM ARM.",
+        next_action="Use the Studio Lab servo tester to connect to the UNO over browser serial, define servo profiles, and validate limits, speed, startup, and slow-down behavior.",
+        metadata_json={
+            "project_key": "lab_workbench_servo_tester",
+            "studio_page": "/studio/lab/servo-tester",
+            "project_type": "lab_tool",
+            "hardware": ["UNO R4", "PWM driver", "multi-servo bench rig"],
+            "separate_from_mim_arm": True,
+            "progress_percent": 35,
+            "work_state": "implementation",
+            "blocker": "needs compatible UNO sketch and first hardware validation",
+        },
+    )
     accounting_project = await _ensure_studio_project_record(
         db,
         title="MIM Operations Accounting",
@@ -2574,7 +2595,7 @@ async def _ensure_first_internal_projects(db: AsyncSession) -> dict[str, StudioP
         metadata_json={"project_key": "mim_operations_accounting", "studio_page": "/studio/accounting", "project_type": "internal_tool"},
     )
     await db.commit()
-    return {"lab": lab_project, "accounting": accounting_project}
+    return {"lab": lab_project, "servo": servo_project, "accounting": accounting_project}
 
 
 async def _studio_lab_state(db: AsyncSession) -> dict[str, Any]:
@@ -2586,6 +2607,7 @@ async def _studio_lab_state(db: AsyncSession) -> dict[str, Any]:
     experiments = [
         ("World Model Calibration", "Ready for next lab session", "Build table coordinate system and safe pose memory before another pickup attempt."),
         ("Autonomous Workspace Mapping", "Planning", "Use base rotation, cameras, RPLIDAR, and marker references to map reachable table zones."),
+        ("Workbench Servo Tester", "Implementation", "Use the dedicated UNO R4 and PWM-driver bench rig to test servo limits, speed, startup, and slow-down before installation."),
         ("Visual Servoing", "Testing", "Teach MIM to move based on object offset from gripper center instead of marker-card confusion."),
         ("Object Grasp Scoring", "Research", "Estimate pickup likelihood before closing the claw."),
         ("Face Memory", "Research", "Keep as a future MIM presence capability, not part of the arm pickup path yet."),
@@ -2607,6 +2629,7 @@ async def _studio_lab_state(db: AsyncSession) -> dict[str, Any]:
     return {
         "generated_at": _utc_now(),
         "project": _studio_project_to_dict(projects["lab"]),
+        "servo_project": _studio_project_to_dict(projects["servo"]),
         "experiments": experiments,
         "builds": builds,
         "tools": [
@@ -2628,6 +2651,7 @@ async def _studio_lab_state(db: AsyncSession) -> dict[str, Any]:
 
 def _lab_body(state: dict[str, Any]) -> str:
     project = state.get("project") if isinstance(state.get("project"), dict) else {}
+    servo_project = state.get("servo_project") if isinstance(state.get("servo_project"), dict) else {}
     experiment_html = "".join(
         f"""
         <div class="project-row">
@@ -2662,12 +2686,306 @@ def _lab_body(state: dict[str, Any]) -> str:
         <div class="label">Rule</div><p>Projects answer what we are building. Lab answers what we are exploring.</p>
       </article>
     </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Workbench Servo Tester</h2>
+      <div class="project-row">
+        <div><strong>{_html(servo_project.get("title", "LAB Workbench Servo Tester"))}</strong><br><span class="muted">{_html(servo_project.get("next_action", "Open the tester and validate the bench rig."))}</span></div>
+        <a class="button primary" href="/studio/lab/servo-tester">Open Tester</a>
+      </div>
+    </section>
     <section class="grid three" style="margin-top:14px;">{build_html}</section>
     <section class="grid three" style="margin-top:14px;">
       <article class="card"><h2>Development Tools</h2><ul class="clean">{tools_html}</ul></article>
       <article class="card"><h2>Publications / News</h2><p>MIM should collect robotics papers, sensor releases, model updates, news, and opportunities here, then link useful items to experiments or projects.</p></article>
       <article class="card"><h2>Opportunities</h2><div class="attention-list">{opportunities_html}</div></article>
     </section>
+    """
+
+
+def _default_servo_tester_profile() -> dict[str, Any]:
+    return {
+        "version": "lab-servo-tester-v1",
+        "updated_at": "",
+        "command_template": "S {channel} {pulse} {duration}",
+        "baud_rate": 115200,
+        "servos": [
+            {
+                "id": "servo-0",
+                "name": "Servo 0",
+                "channel": 0,
+                "min_pulse": 500,
+                "center_pulse": 1500,
+                "max_pulse": 2500,
+                "start_pulse": 1500,
+                "speed_ms": 600,
+                "startup_ms": 250,
+                "slowdown_ms": 250,
+                "notes": "",
+            }
+        ],
+    }
+
+
+def _load_servo_tester_profile() -> dict[str, Any]:
+    if LAB_SERVO_TESTER_PROFILE_PATH.exists():
+        try:
+            loaded = json.loads(LAB_SERVO_TESTER_PROFILE_PATH.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                profile = _default_servo_tester_profile()
+                profile.update(loaded)
+                if not isinstance(profile.get("servos"), list):
+                    profile["servos"] = []
+                return profile
+        except Exception:
+            pass
+    return _default_servo_tester_profile()
+
+
+def _clean_servo_profile(payload: dict[str, Any]) -> dict[str, Any]:
+    def as_int(value: Any, default: int, *, minimum: int, maximum: int) -> int:
+        try:
+            parsed = int(value)
+        except Exception:
+            parsed = default
+        return max(minimum, min(maximum, parsed))
+
+    servos: list[dict[str, Any]] = []
+    for index, row in enumerate(payload.get("servos") if isinstance(payload.get("servos"), list) else []):
+        if not isinstance(row, dict):
+            continue
+        channel = as_int(row.get("channel"), index, minimum=0, maximum=15)
+        min_pulse = as_int(row.get("min_pulse"), 500, minimum=300, maximum=3000)
+        max_pulse = as_int(row.get("max_pulse"), 2500, minimum=300, maximum=3000)
+        if max_pulse < min_pulse:
+            min_pulse, max_pulse = max_pulse, min_pulse
+        center_pulse = as_int(row.get("center_pulse"), 1500, minimum=min_pulse, maximum=max_pulse)
+        start_pulse = as_int(row.get("start_pulse"), center_pulse, minimum=min_pulse, maximum=max_pulse)
+        servos.append(
+            {
+                "id": _first_text(row.get("id"), default=f"servo-{index}"),
+                "name": _first_text(row.get("name"), default=f"Servo {channel}")[:80],
+                "channel": channel,
+                "min_pulse": min_pulse,
+                "center_pulse": center_pulse,
+                "max_pulse": max_pulse,
+                "start_pulse": start_pulse,
+                "speed_ms": as_int(row.get("speed_ms"), 600, minimum=0, maximum=30000),
+                "startup_ms": as_int(row.get("startup_ms"), 250, minimum=0, maximum=30000),
+                "slowdown_ms": as_int(row.get("slowdown_ms"), 250, minimum=0, maximum=30000),
+                "notes": _first_text(row.get("notes"), default="")[:500],
+            }
+        )
+    return {
+        "version": "lab-servo-tester-v1",
+        "updated_at": _utc_now(),
+        "command_template": _first_text(payload.get("command_template"), default="S {channel} {pulse} {duration}")[:160],
+        "baud_rate": as_int(payload.get("baud_rate"), 115200, minimum=9600, maximum=1000000),
+        "servos": servos,
+    }
+
+
+def _servo_tester_body(profile: dict[str, Any]) -> str:
+    profile_json = json.dumps(profile, ensure_ascii=True)
+    return f"""
+    <section class="grid four">
+      {_metric_card("Bench", "UNO R4", "Separate from MIM ARM")}
+      {_metric_card("PWM", "16 channels", "PCA9685-style driver expected")}
+      {_metric_card("Saved Servos", len(profile.get("servos", [])), "Profile-backed")}
+      {_metric_card("Connection", "Browser Serial", "Chrome on Dave's PC")}
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <div class="project-row">
+        <div><strong>Servo Bench Controls</strong><br><span class="muted">Add servo, configure servo, save servo, repeat. Movement commands stay local to the browser serial connection.</span></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button id="connectSerial" class="button primary" type="button">Connect UNO</button>
+          <button id="disconnectSerial" class="button" type="button">Disconnect</button>
+          <button id="addServo" class="button" type="button">Add Servo</button>
+          <button id="saveProfile" class="button primary" type="button">Save Profile</button>
+        </div>
+      </div>
+      <div class="form-grid" style="margin-top:12px;">
+        <label>Baud Rate<input id="baudRate" type="number" min="9600" max="1000000"></label>
+        <label>Serial Command Template<input id="commandTemplate" type="text"></label>
+      </div>
+      <div id="serialStatus" class="muted" style="margin-top:10px;">Serial disconnected.</div>
+    </section>
+    <section id="servoList" class="grid two" style="margin-top:14px;"></section>
+    <section class="card" style="margin-top:14px;">
+      <h2>UNO Sketch Protocol</h2>
+      <p>Default command line: <code>S {{channel}} {{pulse}} {{duration}}</code>. The UNO should parse a newline-terminated command, move the PWM channel to the requested pulse width in microseconds, and optionally ramp over duration milliseconds.</p>
+      <p class="muted" style="margin-top:8px;">Arduino IDE is only needed to flash that sketch onto the UNO R4. After that, this page can connect directly from Chrome with Web Serial.</p>
+    </section>
+    <script>
+      const initialProfile = {profile_json};
+      let profile = JSON.parse(JSON.stringify(initialProfile));
+      let serialPort = null;
+      let serialWriter = null;
+      const servoList = document.getElementById('servoList');
+      const serialStatus = document.getElementById('serialStatus');
+      const baudRate = document.getElementById('baudRate');
+      const commandTemplate = document.getElementById('commandTemplate');
+
+      function esc(value) {{
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[char]));
+      }}
+      function servoById(id) {{
+        return profile.servos.find((servo) => servo.id === id);
+      }}
+      function pulsePercent(servo, pulse) {{
+        const min = Number(servo.min_pulse || 500);
+        const max = Number(servo.max_pulse || 2500);
+        if (max <= min) return 50;
+        return Math.round(((Number(pulse) - min) / (max - min)) * 100);
+      }}
+      function readProfileFromDom() {{
+        profile.baud_rate = Number(baudRate.value || 115200);
+        profile.command_template = String(commandTemplate.value || 'S {{channel}} {{pulse}} {{duration}}');
+        profile.servos = Array.from(document.querySelectorAll('[data-servo-card]')).map((card, index) => {{
+          const id = card.dataset.servoCard || ('servo-' + index);
+          return {{
+            id,
+            name: card.querySelector('[data-field="name"]').value,
+            channel: Number(card.querySelector('[data-field="channel"]').value || index),
+            min_pulse: Number(card.querySelector('[data-field="min_pulse"]').value || 500),
+            center_pulse: Number(card.querySelector('[data-field="center_pulse"]').value || 1500),
+            max_pulse: Number(card.querySelector('[data-field="max_pulse"]').value || 2500),
+            start_pulse: Number(card.querySelector('[data-field="start_pulse"]').value || 1500),
+            speed_ms: Number(card.querySelector('[data-field="speed_ms"]').value || 600),
+            startup_ms: Number(card.querySelector('[data-field="startup_ms"]').value || 250),
+            slowdown_ms: Number(card.querySelector('[data-field="slowdown_ms"]').value || 250),
+            notes: card.querySelector('[data-field="notes"]').value
+          }};
+        }});
+      }}
+      function renderServos() {{
+        baudRate.value = profile.baud_rate || 115200;
+        commandTemplate.value = profile.command_template || 'S {{channel}} {{pulse}} {{duration}}';
+        servoList.innerHTML = '';
+        profile.servos.forEach((servo) => {{
+          const current = Number(servo.start_pulse || servo.center_pulse || 1500);
+          const card = document.createElement('article');
+          card.className = 'card';
+          card.dataset.servoCard = servo.id;
+          card.innerHTML = `
+            <div class="status-head">
+              <h2>${{esc(servo.name || 'Servo')}}</h2>
+              <button class="button danger" type="button" data-action="remove">Remove</button>
+            </div>
+            <div class="form-grid">
+              <label>Name<input data-field="name" value="${{esc(servo.name)}}"></label>
+              <label>Channel<input data-field="channel" type="number" min="0" max="15" value="${{esc(servo.channel)}}"></label>
+              <label>Min Pulse<input data-field="min_pulse" type="number" min="300" max="3000" value="${{esc(servo.min_pulse)}}"></label>
+              <label>Center Pulse<input data-field="center_pulse" type="number" min="300" max="3000" value="${{esc(servo.center_pulse)}}"></label>
+              <label>Max Pulse<input data-field="max_pulse" type="number" min="300" max="3000" value="${{esc(servo.max_pulse)}}"></label>
+              <label>Start Pulse<input data-field="start_pulse" type="number" min="300" max="3000" value="${{esc(servo.start_pulse)}}"></label>
+              <label>Speed ms<input data-field="speed_ms" type="number" min="0" max="30000" value="${{esc(servo.speed_ms)}}"></label>
+              <label>Startup ms<input data-field="startup_ms" type="number" min="0" max="30000" value="${{esc(servo.startup_ms)}}"></label>
+              <label>Slowdown ms<input data-field="slowdown_ms" type="number" min="0" max="30000" value="${{esc(servo.slowdown_ms)}}"></label>
+              <label class="wide">Notes<input data-field="notes" value="${{esc(servo.notes)}}"></label>
+            </div>
+            <div style="margin-top:12px;">
+              <input data-field="pulse_slider" type="range" min="${{esc(servo.min_pulse)}}" max="${{esc(servo.max_pulse)}}" value="${{esc(current)}}">
+              <div class="muted">Pulse: <strong data-pulse-label>${{esc(current)}}</strong> us / ${{pulsePercent(servo, current)}}%</div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+              <button class="button" type="button" data-action="min">Min</button>
+              <button class="button" type="button" data-action="center">Center</button>
+              <button class="button" type="button" data-action="max">Max</button>
+              <button class="button primary" type="button" data-action="move">Move</button>
+              <button class="button" type="button" data-action="sweep">Sweep</button>
+            </div>
+          `;
+          servoList.appendChild(card);
+        }});
+      }}
+      async function sendSerial(line) {{
+        if (!serialWriter) {{
+          serialStatus.textContent = 'Connect UNO first. Command not sent: ' + line;
+          return false;
+        }}
+        await serialWriter.write(new TextEncoder().encode(line + '\\n'));
+        serialStatus.textContent = 'Sent: ' + line;
+        return true;
+      }}
+      function buildCommand(servo, pulse, duration) {{
+        return String(profile.command_template || 'S {{channel}} {{pulse}} {{duration}}')
+          .replaceAll('{{channel}}', String(servo.channel))
+          .replaceAll('{{pulse}}', String(pulse))
+          .replaceAll('{{duration}}', String(duration || servo.speed_ms || 0));
+      }}
+      async function moveServo(servo, pulse, duration) {{
+        readProfileFromDom();
+        const command = buildCommand(servo, pulse, duration);
+        await sendSerial(command);
+      }}
+      document.getElementById('connectSerial').addEventListener('click', async () => {{
+        if (!navigator.serial) {{
+          serialStatus.textContent = 'Web Serial is unavailable. Use Chrome or Edge on HTTPS with the UNO connected to this PC.';
+          return;
+        }}
+        readProfileFromDom();
+        serialPort = await navigator.serial.requestPort();
+        await serialPort.open({{ baudRate: Number(profile.baud_rate || 115200) }});
+        serialWriter = serialPort.writable.getWriter();
+        serialStatus.textContent = 'Connected to UNO serial at ' + profile.baud_rate + ' baud.';
+      }});
+      document.getElementById('disconnectSerial').addEventListener('click', async () => {{
+        if (serialWriter) {{ serialWriter.releaseLock(); serialWriter = null; }}
+        if (serialPort) {{ await serialPort.close(); serialPort = null; }}
+        serialStatus.textContent = 'Serial disconnected.';
+      }});
+      document.getElementById('addServo').addEventListener('click', () => {{
+        readProfileFromDom();
+        const channel = profile.servos.length;
+        profile.servos.push({{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 500, center_pulse: 1500, max_pulse: 2500, start_pulse: 1500, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: '' }});
+        renderServos();
+      }});
+      document.getElementById('saveProfile').addEventListener('click', async () => {{
+        readProfileFromDom();
+        const response = await fetch('/studio/api/lab/servo-tester/profile', {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(profile) }});
+        const data = await response.json();
+        profile = data.profile || profile;
+        renderServos();
+        serialStatus.textContent = 'Profile saved at ' + (profile.updated_at || 'now') + '.';
+      }});
+      servoList.addEventListener('input', (event) => {{
+        const slider = event.target && event.target.matches('[data-field="pulse_slider"]') ? event.target : null;
+        if (!slider) return;
+        const card = slider.closest('[data-servo-card]');
+        const label = card && card.querySelector('[data-pulse-label]');
+        if (label) label.textContent = slider.value;
+      }});
+      servoList.addEventListener('click', async (event) => {{
+        const action = event.target && event.target.dataset ? event.target.dataset.action : '';
+        if (!action) return;
+        readProfileFromDom();
+        const card = event.target.closest('[data-servo-card]');
+        const servo = card ? servoById(card.dataset.servoCard) : null;
+        if (!servo) return;
+        const slider = card.querySelector('[data-field="pulse_slider"]');
+        if (action === 'remove') {{
+          profile.servos = profile.servos.filter((item) => item.id !== servo.id);
+          renderServos();
+          return;
+        }}
+        if (action === 'min') slider.value = servo.min_pulse;
+        if (action === 'center') slider.value = servo.center_pulse;
+        if (action === 'max') slider.value = servo.max_pulse;
+        if (['min', 'center', 'max', 'move'].includes(action)) {{
+          const label = card.querySelector('[data-pulse-label]');
+          if (label) label.textContent = slider.value;
+          await moveServo(servo, Number(slider.value), servo.speed_ms);
+        }}
+        if (action === 'sweep') {{
+          await moveServo(servo, servo.min_pulse, servo.startup_ms);
+          await new Promise((resolve) => setTimeout(resolve, Number(servo.startup_ms || 0) + 120));
+          await moveServo(servo, servo.max_pulse, servo.speed_ms);
+          await new Promise((resolve) => setTimeout(resolve, Number(servo.speed_ms || 0) + 120));
+          await moveServo(servo, servo.center_pulse, servo.slowdown_ms);
+        }}
+      }});
+      renderServos();
+    </script>
     """
 
 
@@ -5180,6 +5498,37 @@ async def studio_legacy_objectives(request: Request) -> HTMLResponse:
     return await studio_training_section(request, "objectives")
 
 
+@router.get("/studio/lab/servo-tester", response_class=HTMLResponse)
+async def studio_lab_servo_tester(request: Request, db: AsyncSession = Depends(get_db)) -> HTMLResponse:
+    auth_redirect = maybe_require_mimtod_page_login(request, next_path="/studio/lab/servo-tester")
+    if auth_redirect is not None:
+        return auth_redirect
+    await _ensure_first_internal_projects(db)
+    profile = _load_servo_tester_profile()
+    return HTMLResponse(
+        _shell(
+            active="lab",
+            title="Lab / Servo Tester",
+            subtitle="",
+            body=_servo_tester_body(profile),
+            page_context="Studio Lab Servo Tester",
+        )
+    )
+
+
+@router.get("/studio/api/lab/servo-tester/profile")
+async def studio_lab_servo_tester_profile() -> dict[str, Any]:
+    return {"ok": True, "profile": _load_servo_tester_profile()}
+
+
+@router.post("/studio/api/lab/servo-tester/profile")
+async def update_studio_lab_servo_tester_profile(payload: dict[str, Any] = Body(default_factory=dict)) -> dict[str, Any]:
+    profile = _clean_servo_profile(payload if isinstance(payload, dict) else {})
+    LAB_SERVO_TESTER_PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LAB_SERVO_TESTER_PROFILE_PATH.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+    return {"ok": True, "profile": profile}
+
+
 def _navigation_terms_match(text: str, terms: list[str]) -> bool:
     return any(term in text for term in terms)
 
@@ -5221,7 +5570,7 @@ async def _studio_navigation_target(db: AsyncSession, prompt: str, page_context:
             break
 
     targets: list[tuple[str, str, list[str], str]] = [
-        ("lab", "/studio/lab", ["lab", "robot", "robotics", "arm", "camera", "lidar", "sensor", "calibration", "pickup"], "Lab"),
+        ("lab", "/studio/lab", ["lab", "robot", "robotics", "arm", "camera", "lidar", "sensor", "calibration", "pickup", "servo", "servos", "uno", "pwm", "pca9685"], "Lab"),
         ("projects", "/studio/projects", ["project", "projects", "ticket", "tickets", "backlog", "queued", "pause", "delete", "forum graphics", "account manager", "twilio", "gmail", "2fa", "double authentication", "social post", "campaign", "mobile login", "ssl issue", "powershell migration"], "Projects"),
         ("reports", "/studio/reports", ["report", "reports", "show me all", "new users", "past month", "dataset", "metrics", "canvas", "agentmim.com app users", "comm_app", "database", "db"], "Reports"),
         ("documents", "/studio/documents", ["document", "documents", "library", "lab documents", "archive", "reference", "notes", "screenshot"], "Documents"),
@@ -5233,6 +5582,8 @@ async def _studio_navigation_target(db: AsyncSession, prompt: str, page_context:
     ]
     for area, href, terms, label in targets:
         if _navigation_terms_match(prompt_lower, terms):
+            if area == "lab" and _navigation_terms_match(prompt_lower, ["servo", "servos", "uno", "pwm", "pca9685"]):
+                href = "/studio/lab/servo-tester"
             if area == "projects":
                 href = await _studio_project_target_href(db, prompt_lower)
             if area == current_area:
