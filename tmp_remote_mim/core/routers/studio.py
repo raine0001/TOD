@@ -2706,17 +2706,21 @@ def _default_servo_tester_profile() -> dict[str, Any]:
     return {
         "version": "lab-servo-tester-v1",
         "updated_at": "",
-        "command_template": "S {channel} {pulse} {duration}",
-        "baud_rate": 115200,
+        "command_template": "MOVE {channel} {angle}",
+        "baud_rate": 9600,
         "servos": [
             {
                 "id": "servo-0",
                 "name": "Servo 0",
                 "channel": 0,
                 "min_pulse": 500,
+                "min_angle": 0,
                 "center_pulse": 1500,
+                "center_angle": 90,
                 "max_pulse": 2500,
+                "max_angle": 180,
                 "start_pulse": 1500,
+                "start_angle": 90,
                 "speed_ms": 600,
                 "startup_ms": 250,
                 "slowdown_ms": 250,
@@ -2760,15 +2764,25 @@ def _clean_servo_profile(payload: dict[str, Any]) -> dict[str, Any]:
             min_pulse, max_pulse = max_pulse, min_pulse
         center_pulse = as_int(row.get("center_pulse"), 1500, minimum=min_pulse, maximum=max_pulse)
         start_pulse = as_int(row.get("start_pulse"), center_pulse, minimum=min_pulse, maximum=max_pulse)
+        min_angle = as_int(row.get("min_angle"), 0, minimum=0, maximum=180)
+        max_angle = as_int(row.get("max_angle"), 180, minimum=0, maximum=180)
+        if max_angle < min_angle:
+            min_angle, max_angle = max_angle, min_angle
+        center_angle = as_int(row.get("center_angle"), 90, minimum=min_angle, maximum=max_angle)
+        start_angle = as_int(row.get("start_angle"), center_angle, minimum=min_angle, maximum=max_angle)
         servos.append(
             {
                 "id": _first_text(row.get("id"), default=f"servo-{index}"),
                 "name": _first_text(row.get("name"), default=f"Servo {channel}")[:80],
                 "channel": channel,
                 "min_pulse": min_pulse,
+                "min_angle": min_angle,
                 "center_pulse": center_pulse,
+                "center_angle": center_angle,
                 "max_pulse": max_pulse,
+                "max_angle": max_angle,
                 "start_pulse": start_pulse,
+                "start_angle": start_angle,
                 "speed_ms": as_int(row.get("speed_ms"), 600, minimum=0, maximum=30000),
                 "startup_ms": as_int(row.get("startup_ms"), 250, minimum=0, maximum=30000),
                 "slowdown_ms": as_int(row.get("slowdown_ms"), 250, minimum=0, maximum=30000),
@@ -2778,8 +2792,8 @@ def _clean_servo_profile(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "version": "lab-servo-tester-v1",
         "updated_at": _utc_now(),
-        "command_template": _first_text(payload.get("command_template"), default="S {channel} {pulse} {duration}")[:160],
-        "baud_rate": as_int(payload.get("baud_rate"), 115200, minimum=9600, maximum=1000000),
+        "command_template": _first_text(payload.get("command_template"), default="MOVE {channel} {angle}")[:160],
+        "baud_rate": as_int(payload.get("baud_rate"), 9600, minimum=9600, maximum=1000000),
         "servos": servos,
     }
 
@@ -2791,7 +2805,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       {_metric_card("Bench", "UNO R4", "Separate from MIM ARM")}
       {_metric_card("PWM", "16 channels", "PCA9685-style driver expected")}
       {_metric_card("Saved Servos", len(profile.get("servos", [])), "Profile-backed")}
-      {_metric_card("Connection", "Browser Serial", "Chrome on Dave's PC")}
+      <article id="connectionMetric" class="card"><div class="label">Connection</div><div class="entity">Disconnected</div><p>Chrome on Dave's PC</p></article>
     </section>
     <section class="card" style="margin-top:14px;">
       <div class="project-row">
@@ -2808,11 +2822,17 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         <label>Serial Command Template<input id="commandTemplate" type="text"></label>
       </div>
       <div id="serialStatus" class="muted" style="margin-top:10px;">Serial disconnected.</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+        <button id="useMoveProtocol" class="button" type="button">Use MOVE Angle Protocol</button>
+        <button id="usePulseProtocol" class="button" type="button">Use Pulse Protocol</button>
+        <button id="sendPing" class="button" type="button">Send Ping</button>
+      </div>
+      <pre id="serialLog" class="card" style="margin-top:10px; min-height:86px; max-height:180px; overflow:auto; white-space:pre-wrap; font-size:12px;">Serial log ready.</pre>
     </section>
     <section id="servoList" class="grid two" style="margin-top:14px;"></section>
     <section class="card" style="margin-top:14px;">
       <h2>UNO Sketch Protocol</h2>
-      <p>Default command line: <code>S {{channel}} {{pulse}} {{duration}}</code>. The UNO should parse a newline-terminated command, move the PWM channel to the requested pulse width in microseconds, and optionally ramp over duration milliseconds.</p>
+      <p>Default command line: <code>MOVE {{channel}} {{angle}}</code>. This matches the older MIM Arduino probe pattern. If your UNO sketch expects microsecond PWM commands instead, switch to <code>S {{channel}} {{pulse}} {{duration}}</code>.</p>
       <p class="muted" style="margin-top:8px;">Arduino IDE is only needed to flash that sketch onto the UNO R4. After that, this page can connect directly from Chrome with Web Serial.</p>
     </section>
     <script>
@@ -2820,8 +2840,12 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       let profile = JSON.parse(JSON.stringify(initialProfile));
       let serialPort = null;
       let serialWriter = null;
+      let serialReader = null;
+      let serialReadActive = false;
       const servoList = document.getElementById('servoList');
       const serialStatus = document.getElementById('serialStatus');
+      const serialLog = document.getElementById('serialLog');
+      const connectionMetric = document.getElementById('connectionMetric');
       const baudRate = document.getElementById('baudRate');
       const commandTemplate = document.getElementById('commandTemplate');
 
@@ -2837,9 +2861,40 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         if (max <= min) return 50;
         return Math.round(((Number(pulse) - min) / (max - min)) * 100);
       }}
+      function angleForPulse(servo, pulse) {{
+        const minPulse = Number(servo.min_pulse || 500);
+        const maxPulse = Number(servo.max_pulse || 2500);
+        const minAngle = Number(servo.min_angle ?? 0);
+        const maxAngle = Number(servo.max_angle ?? 180);
+        if (maxPulse <= minPulse) return Math.round(Number(servo.center_angle ?? 90));
+        const pct = (Number(pulse) - minPulse) / (maxPulse - minPulse);
+        return Math.round(minAngle + Math.max(0, Math.min(1, pct)) * (maxAngle - minAngle));
+      }}
+      function pulseForAngle(servo, angle) {{
+        const minPulse = Number(servo.min_pulse || 500);
+        const maxPulse = Number(servo.max_pulse || 2500);
+        const minAngle = Number(servo.min_angle ?? 0);
+        const maxAngle = Number(servo.max_angle ?? 180);
+        if (maxAngle <= minAngle) return Math.round(Number(servo.center_pulse ?? 1500));
+        const pct = (Number(angle) - minAngle) / (maxAngle - minAngle);
+        return Math.round(minPulse + Math.max(0, Math.min(1, pct)) * (maxPulse - minPulse));
+      }}
+      function logSerial(text) {{
+        const stamp = new Date().toLocaleTimeString();
+        serialLog.textContent += '\\n[' + stamp + '] ' + text;
+        serialLog.scrollTop = serialLog.scrollHeight;
+      }}
+      function setConnectedState(connected, detail) {{
+        connectionMetric.classList.toggle('green', Boolean(connected));
+        const entity = connectionMetric.querySelector('.entity');
+        const copy = connectionMetric.querySelector('p');
+        if (entity) entity.textContent = connected ? 'Connected' : 'Disconnected';
+        if (copy) copy.textContent = detail || (connected ? 'UNO serial open' : 'Chrome on Dave\\'s PC');
+        serialStatus.textContent = detail || (connected ? 'Connected.' : 'Serial disconnected.');
+      }}
       function readProfileFromDom() {{
-        profile.baud_rate = Number(baudRate.value || 115200);
-        profile.command_template = String(commandTemplate.value || 'S {{channel}} {{pulse}} {{duration}}');
+        profile.baud_rate = Number(baudRate.value || 9600);
+        profile.command_template = String(commandTemplate.value || 'MOVE {{channel}} {{angle}}');
         profile.servos = Array.from(document.querySelectorAll('[data-servo-card]')).map((card, index) => {{
           const id = card.dataset.servoCard || ('servo-' + index);
           return {{
@@ -2847,9 +2902,13 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
             name: card.querySelector('[data-field="name"]').value,
             channel: Number(card.querySelector('[data-field="channel"]').value || index),
             min_pulse: Number(card.querySelector('[data-field="min_pulse"]').value || 500),
+            min_angle: Number(card.querySelector('[data-field="min_angle"]').value || 0),
             center_pulse: Number(card.querySelector('[data-field="center_pulse"]').value || 1500),
+            center_angle: Number(card.querySelector('[data-field="center_angle"]').value || 90),
             max_pulse: Number(card.querySelector('[data-field="max_pulse"]').value || 2500),
+            max_angle: Number(card.querySelector('[data-field="max_angle"]').value || 180),
             start_pulse: Number(card.querySelector('[data-field="start_pulse"]').value || 1500),
+            start_angle: Number(card.querySelector('[data-field="start_angle"]').value || 90),
             speed_ms: Number(card.querySelector('[data-field="speed_ms"]').value || 600),
             startup_ms: Number(card.querySelector('[data-field="startup_ms"]').value || 250),
             slowdown_ms: Number(card.querySelector('[data-field="slowdown_ms"]').value || 250),
@@ -2858,11 +2917,12 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         }});
       }}
       function renderServos() {{
-        baudRate.value = profile.baud_rate || 115200;
-        commandTemplate.value = profile.command_template || 'S {{channel}} {{pulse}} {{duration}}';
+        baudRate.value = profile.baud_rate || 9600;
+        commandTemplate.value = profile.command_template || 'MOVE {{channel}} {{angle}}';
         servoList.innerHTML = '';
         profile.servos.forEach((servo) => {{
           const current = Number(servo.start_pulse || servo.center_pulse || 1500);
+          const currentAngle = angleForPulse(servo, current);
           const card = document.createElement('article');
           card.className = 'card';
           card.dataset.servoCard = servo.id;
@@ -2875,9 +2935,13 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
               <label>Name<input data-field="name" value="${{esc(servo.name)}}"></label>
               <label>Channel<input data-field="channel" type="number" min="0" max="15" value="${{esc(servo.channel)}}"></label>
               <label>Min Pulse<input data-field="min_pulse" type="number" min="300" max="3000" value="${{esc(servo.min_pulse)}}"></label>
+              <label>Min Angle<input data-field="min_angle" type="number" min="0" max="180" value="${{esc(servo.min_angle ?? 0)}}"></label>
               <label>Center Pulse<input data-field="center_pulse" type="number" min="300" max="3000" value="${{esc(servo.center_pulse)}}"></label>
+              <label>Center Angle<input data-field="center_angle" type="number" min="0" max="180" value="${{esc(servo.center_angle ?? 90)}}"></label>
               <label>Max Pulse<input data-field="max_pulse" type="number" min="300" max="3000" value="${{esc(servo.max_pulse)}}"></label>
+              <label>Max Angle<input data-field="max_angle" type="number" min="0" max="180" value="${{esc(servo.max_angle ?? 180)}}"></label>
               <label>Start Pulse<input data-field="start_pulse" type="number" min="300" max="3000" value="${{esc(servo.start_pulse)}}"></label>
+              <label>Start Angle<input data-field="start_angle" type="number" min="0" max="180" value="${{esc(servo.start_angle ?? currentAngle)}}"></label>
               <label>Speed ms<input data-field="speed_ms" type="number" min="0" max="30000" value="${{esc(servo.speed_ms)}}"></label>
               <label>Startup ms<input data-field="startup_ms" type="number" min="0" max="30000" value="${{esc(servo.startup_ms)}}"></label>
               <label>Slowdown ms<input data-field="slowdown_ms" type="number" min="0" max="30000" value="${{esc(servo.slowdown_ms)}}"></label>
@@ -2885,7 +2949,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
             </div>
             <div style="margin-top:12px;">
               <input data-field="pulse_slider" type="range" min="${{esc(servo.min_pulse)}}" max="${{esc(servo.max_pulse)}}" value="${{esc(current)}}">
-              <div class="muted">Pulse: <strong data-pulse-label>${{esc(current)}}</strong> us / ${{pulsePercent(servo, current)}}%</div>
+              <div class="muted">Pulse: <strong data-pulse-label>${{esc(current)}}</strong> us / angle: <strong data-angle-label>${{esc(currentAngle)}}</strong> deg / ${{pulsePercent(servo, current)}}%</div>
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
               <button class="button" type="button" data-action="min">Min</button>
@@ -2901,16 +2965,20 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       async function sendSerial(line) {{
         if (!serialWriter) {{
           serialStatus.textContent = 'Connect UNO first. Command not sent: ' + line;
+          logSerial('NOT SENT: ' + line);
           return false;
         }}
         await serialWriter.write(new TextEncoder().encode(line + '\\n'));
         serialStatus.textContent = 'Sent: ' + line;
+        logSerial('TX ' + line);
         return true;
       }}
       function buildCommand(servo, pulse, duration) {{
-        return String(profile.command_template || 'S {{channel}} {{pulse}} {{duration}}')
+        const angle = angleForPulse(servo, pulse);
+        return String(profile.command_template || 'MOVE {{channel}} {{angle}}')
           .replaceAll('{{channel}}', String(servo.channel))
           .replaceAll('{{pulse}}', String(pulse))
+          .replaceAll('{{angle}}', String(angle))
           .replaceAll('{{duration}}', String(duration || servo.speed_ms || 0));
       }}
       async function moveServo(servo, pulse, duration) {{
@@ -2924,20 +2992,67 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
           return;
         }}
         readProfileFromDom();
-        serialPort = await navigator.serial.requestPort();
-        await serialPort.open({{ baudRate: Number(profile.baud_rate || 115200) }});
-        serialWriter = serialPort.writable.getWriter();
-        serialStatus.textContent = 'Connected to UNO serial at ' + profile.baud_rate + ' baud.';
+        try {{
+          serialPort = await navigator.serial.requestPort();
+          await serialPort.open({{ baudRate: Number(profile.baud_rate || 9600) }});
+          serialWriter = serialPort.writable.getWriter();
+          setConnectedState(true, 'Connected to UNO serial at ' + profile.baud_rate + ' baud.');
+          logSerial('Connected. Waiting for UNO replies...');
+          if (serialPort.readable) {{
+            serialReadActive = true;
+            const decoder = new TextDecoder();
+            serialReader = serialPort.readable.getReader();
+            (async () => {{
+              let buffer = '';
+              while (serialReadActive && serialReader) {{
+                try {{
+                  const {{ value, done }} = await serialReader.read();
+                  if (done) break;
+                  if (value) {{
+                    buffer += decoder.decode(value, {{ stream: true }});
+                    const lines = buffer.split(/\\r?\\n/);
+                    buffer = lines.pop() || '';
+                    lines.filter(Boolean).forEach((line) => logSerial('RX ' + line));
+                  }}
+                }} catch (error) {{
+                  logSerial('RX error: ' + (error && error.message ? error.message : 'unknown'));
+                  break;
+                }}
+              }}
+            }})();
+          }}
+        }} catch (error) {{
+          setConnectedState(false, 'Serial connection failed: ' + (error && error.message ? error.message : 'unknown error'));
+          logSerial('CONNECT FAILED: ' + (error && error.message ? error.message : 'unknown error'));
+        }}
       }});
       document.getElementById('disconnectSerial').addEventListener('click', async () => {{
+        serialReadActive = false;
+        if (serialReader) {{ try {{ await serialReader.cancel(); serialReader.releaseLock(); }} catch (error) {{}} serialReader = null; }}
         if (serialWriter) {{ serialWriter.releaseLock(); serialWriter = null; }}
         if (serialPort) {{ await serialPort.close(); serialPort = null; }}
-        serialStatus.textContent = 'Serial disconnected.';
+        setConnectedState(false, 'Serial disconnected.');
+        logSerial('Disconnected.');
+      }});
+      document.getElementById('useMoveProtocol').addEventListener('click', () => {{
+        commandTemplate.value = 'MOVE {{channel}} {{angle}}';
+        baudRate.value = 9600;
+        readProfileFromDom();
+        serialStatus.textContent = 'Protocol set to MOVE channel angle at 9600 baud.';
+      }});
+      document.getElementById('usePulseProtocol').addEventListener('click', () => {{
+        commandTemplate.value = 'S {{channel}} {{pulse}} {{duration}}';
+        baudRate.value = 115200;
+        readProfileFromDom();
+        serialStatus.textContent = 'Protocol set to pulse channel pulse duration at 115200 baud.';
+      }});
+      document.getElementById('sendPing').addEventListener('click', async () => {{
+        await sendSerial('PING');
       }});
       document.getElementById('addServo').addEventListener('click', () => {{
         readProfileFromDom();
         const channel = profile.servos.length;
-        profile.servos.push({{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 500, center_pulse: 1500, max_pulse: 2500, start_pulse: 1500, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: '' }});
+        profile.servos.push({{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 500, min_angle: 0, center_pulse: 1500, center_angle: 90, max_pulse: 2500, max_angle: 180, start_pulse: 1500, start_angle: 90, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: '' }});
         renderServos();
       }});
       document.getElementById('saveProfile').addEventListener('click', async () => {{
@@ -2952,8 +3067,20 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         const slider = event.target && event.target.matches('[data-field="pulse_slider"]') ? event.target : null;
         if (!slider) return;
         const card = slider.closest('[data-servo-card]');
+        readProfileFromDom();
+        const servo = card ? servoById(card.dataset.servoCard) : null;
         const label = card && card.querySelector('[data-pulse-label]');
+        const angleLabel = card && card.querySelector('[data-angle-label]');
         if (label) label.textContent = slider.value;
+        if (angleLabel && servo) angleLabel.textContent = angleForPulse(servo, Number(slider.value));
+      }});
+      servoList.addEventListener('change', async (event) => {{
+        const slider = event.target && event.target.matches('[data-field="pulse_slider"]') ? event.target : null;
+        if (!slider) return;
+        readProfileFromDom();
+        const card = slider.closest('[data-servo-card]');
+        const servo = card ? servoById(card.dataset.servoCard) : null;
+        if (servo) await moveServo(servo, Number(slider.value), servo.speed_ms);
       }});
       servoList.addEventListener('click', async (event) => {{
         const action = event.target && event.target.dataset ? event.target.dataset.action : '';
@@ -2973,7 +3100,9 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         if (action === 'max') slider.value = servo.max_pulse;
         if (['min', 'center', 'max', 'move'].includes(action)) {{
           const label = card.querySelector('[data-pulse-label]');
+          const angleLabel = card.querySelector('[data-angle-label]');
           if (label) label.textContent = slider.value;
+          if (angleLabel) angleLabel.textContent = angleForPulse(servo, Number(slider.value));
           await moveServo(servo, Number(slider.value), servo.speed_ms);
         }}
         if (action === 'sweep') {{
@@ -5623,6 +5752,34 @@ async def studio_mim_chat_api(
             "evidence": {
                 "target_area": navigation.get("target_area"),
                 "href": navigation.get("href"),
+            },
+        }
+    if "servo tester" in page_context_lower or ("lab" in page_context_lower and any(term in prompt_lower for term in ["servo", "uno", "pwm", "serial", "com", "slider"])):
+        profile = _load_servo_tester_profile()
+        reply = (
+            "This is a live hardware troubleshooting issue, not a prototype artifact.\n\n"
+            "What I would check first:\n"
+            "- Confirm the page shows Connected after the browser serial picker closes.\n"
+            "- Use the serial log to verify TX lines are being sent and RX lines come back from the UNO.\n"
+            "- Try the MOVE angle protocol at 9600 baud first: MOVE {channel} {angle}. The older MIM Arduino probe used MOVE 0 90 at 9600.\n"
+            "- If your UNO sketch expects PWM microseconds, switch to pulse protocol: S {channel} {pulse} {duration}.\n"
+            "- If TX appears but there is no servo movement, the likely causes are wrong sketch protocol, wrong PWM channel, servo power/ground, or the PWM driver address/wiring.\n\n"
+            "I updated this page to show connection state, serial logs, angle and pulse values, protocol buttons, ping, and slider-release movement."
+        )
+        return {
+            "ok": True,
+            "source": "studio_lab_servo_tester_context",
+            "response_mode": "problem_analysis",
+            "mim_interface": {
+                "reply_text": reply,
+                "page_context": page_context,
+                "surface": "studio",
+            },
+            "navigation": None,
+            "evidence": {
+                "baud_rate": profile.get("baud_rate"),
+                "command_template": profile.get("command_template"),
+                "servo_count": len(profile.get("servos") if isinstance(profile.get("servos"), list) else []),
             },
         }
     if "report" in page_context_lower or any(term in prompt_lower for term in ["agentmim", "comm_app", "database", "db", "account owner", "account_owners", "app metrics"]):
