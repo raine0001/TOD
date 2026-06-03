@@ -2714,6 +2714,7 @@ def _default_servo_tester_profile() -> dict[str, Any]:
             {
                 "id": "servo-0",
                 "name": "Servo 0",
+                "model": "annimos_ds3245sg_180",
                 "channel": 0,
                 "min_pulse": 102,
                 "min_angle": 0,
@@ -2760,14 +2761,14 @@ def _clean_servo_profile(payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(row, dict):
             continue
         channel = as_int(row.get("channel"), index, minimum=0, maximum=15)
-        min_pulse = as_int(row.get("min_pulse"), 500, minimum=300, maximum=3000)
-        max_pulse = as_int(row.get("max_pulse"), 2500, minimum=300, maximum=3000)
+        min_pulse = as_int(row.get("min_pulse"), 500, minimum=0, maximum=3000)
+        max_pulse = as_int(row.get("max_pulse"), 2500, minimum=0, maximum=3000)
         if max_pulse < min_pulse:
             min_pulse, max_pulse = max_pulse, min_pulse
         center_pulse = as_int(row.get("center_pulse"), 1500, minimum=min_pulse, maximum=max_pulse)
         start_pulse = as_int(row.get("start_pulse"), center_pulse, minimum=min_pulse, maximum=max_pulse)
-        min_angle = as_int(row.get("min_angle"), 0, minimum=0, maximum=180)
-        max_angle = as_int(row.get("max_angle"), 180, minimum=0, maximum=180)
+        min_angle = as_int(row.get("min_angle"), 0, minimum=0, maximum=300)
+        max_angle = as_int(row.get("max_angle"), 180, minimum=0, maximum=300)
         if max_angle < min_angle:
             min_angle, max_angle = max_angle, min_angle
         center_angle = as_int(row.get("center_angle"), 90, minimum=min_angle, maximum=max_angle)
@@ -2776,6 +2777,7 @@ def _clean_servo_profile(payload: dict[str, Any]) -> dict[str, Any]:
             {
                 "id": _first_text(row.get("id"), default=f"servo-{index}"),
                 "name": _first_text(row.get("name"), default=f"Servo {channel}")[:80],
+                "model": _first_text(row.get("model"), default="custom")[:80],
                 "channel": channel,
                 "min_pulse": min_pulse,
                 "min_angle": min_angle,
@@ -2872,12 +2874,64 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       ];
       const sliderMoveTimers = new Map();
       const lastServoCommand = new Map();
+      const servoPresets = {{
+        annimos_ds3245sg_180: {{
+          label: 'ANNIMOS DS3245SG 45kg 180',
+          min_pulse: 102, center_pulse: 307, max_pulse: 512,
+          min_angle: 0, center_angle: 90, max_angle: 180,
+          speed_ms: 1200, startup_ms: 900, slowdown_ms: 900,
+          notes: 'ANNIMOS DS3245SG: 5-8.4V, 500-2500us, 180deg, stall current up to 5.8A.'
+        }},
+        stemedu_bls_hv70mg_270: {{
+          label: 'Stemedu BLS-HV70MG 70kg 270',
+          min_pulse: 102, center_pulse: 307, max_pulse: 512,
+          min_angle: 0, center_angle: 135, max_angle: 270,
+          speed_ms: 1600, startup_ms: 1000, slowdown_ms: 1000,
+          notes: 'Stemedu BLS-HV70MG: 4.8-8.4V, 500-2500us, 270deg, 1520us/333Hz spec. PCA board frequency is shared; use a dedicated PWM driver if this servo requires 333Hz.'
+        }},
+        ds51150_150kg_270: {{
+          label: 'DS51150 150kg 270',
+          min_pulse: 102, center_pulse: 307, max_pulse: 512,
+          min_angle: 0, center_angle: 135, max_angle: 270,
+          speed_ms: 2200, startup_ms: 1400, slowdown_ms: 1400,
+          notes: 'DS51150: 10-12.6V, 500-2500us, 270deg, stall current up to 8.3A. Requires high-current external servo power.'
+        }},
+        custom: {{
+          label: 'Custom',
+          min_pulse: 102, center_pulse: 307, max_pulse: 512,
+          min_angle: 0, center_angle: 90, max_angle: 180,
+          speed_ms: 1200, startup_ms: 900, slowdown_ms: 900,
+          notes: 'Custom servo. Set pulse, angle, voltage, and current limits from the datasheet.'
+        }}
+      }};
 
       function esc(value) {{
         return String(value ?? '').replace(/[&<>"']/g, (char) => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[char]));
       }}
       function servoById(id) {{
         return profile.servos.find((servo) => servo.id === id);
+      }}
+      function presetOptions(selected) {{
+        return Object.entries(servoPresets).map(([key, preset]) => `<option value="${{esc(key)}}" ${{key === selected ? 'selected' : ''}}>${{esc(preset.label)}}</option>`).join('');
+      }}
+      function applyServoPreset(servo, presetKey) {{
+        const preset = servoPresets[presetKey] || servoPresets.custom;
+        return {{
+          ...servo,
+          model: presetKey,
+          min_pulse: preset.min_pulse,
+          center_pulse: preset.center_pulse,
+          max_pulse: preset.max_pulse,
+          start_pulse: preset.center_pulse,
+          min_angle: preset.min_angle,
+          center_angle: preset.center_angle,
+          max_angle: preset.max_angle,
+          start_angle: preset.center_angle,
+          speed_ms: Math.max(Number(servo.speed_ms || 0), preset.speed_ms),
+          startup_ms: Math.max(Number(servo.startup_ms || 0), preset.startup_ms),
+          slowdown_ms: Math.max(Number(servo.slowdown_ms || 0), preset.slowdown_ms),
+          notes: preset.notes
+        }};
       }}
       function pulsePercent(servo, pulse) {{
         const min = Number(servo.min_pulse || 500);
@@ -2963,6 +3017,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
           return {{
             id,
             name: card.querySelector('[data-field="name"]').value,
+            model: card.querySelector('[data-field="model"]').value || 'custom',
             channel: Number(card.querySelector('[data-field="channel"]').value || index),
             min_pulse: Number(card.querySelector('[data-field="min_pulse"]').value || 500),
             min_angle: Number(card.querySelector('[data-field="min_angle"]').value || 0),
@@ -2996,15 +3051,16 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
             </div>
             <div class="form-grid">
               <label>Name<input data-field="name" value="${{esc(servo.name)}}"></label>
+              <label>Model<select data-field="model">${{presetOptions(servo.model || 'custom')}}</select></label>
               <label>Channel<input data-field="channel" type="number" min="0" max="15" value="${{esc(servo.channel)}}"></label>
               <label>Min Pulse<input data-field="min_pulse" type="number" min="0" max="3000" value="${{esc(servo.min_pulse)}}"></label>
-              <label>Min Angle<input data-field="min_angle" type="number" min="0" max="180" value="${{esc(servo.min_angle ?? 0)}}"></label>
+              <label>Min Angle<input data-field="min_angle" type="number" min="0" max="300" value="${{esc(servo.min_angle ?? 0)}}"></label>
               <label>Center Pulse<input data-field="center_pulse" type="number" min="300" max="3000" value="${{esc(servo.center_pulse)}}"></label>
-              <label>Center Angle<input data-field="center_angle" type="number" min="0" max="180" value="${{esc(servo.center_angle ?? 90)}}"></label>
+              <label>Center Angle<input data-field="center_angle" type="number" min="0" max="300" value="${{esc(servo.center_angle ?? 90)}}"></label>
               <label>Max Pulse<input data-field="max_pulse" type="number" min="0" max="3000" value="${{esc(servo.max_pulse)}}"></label>
-              <label>Max Angle<input data-field="max_angle" type="number" min="0" max="180" value="${{esc(servo.max_angle ?? 180)}}"></label>
+              <label>Max Angle<input data-field="max_angle" type="number" min="0" max="300" value="${{esc(servo.max_angle ?? 180)}}"></label>
               <label>Start Pulse<input data-field="start_pulse" type="number" min="0" max="3000" value="${{esc(servo.start_pulse)}}"></label>
-              <label>Start Angle<input data-field="start_angle" type="number" min="0" max="180" value="${{esc(servo.start_angle ?? currentAngle)}}"></label>
+              <label>Start Angle<input data-field="start_angle" type="number" min="0" max="300" value="${{esc(servo.start_angle ?? currentAngle)}}"></label>
               <label>Speed ms<input data-field="speed_ms" type="number" min="0" max="30000" value="${{esc(servo.speed_ms)}}"></label>
               <label>Startup ms<input data-field="startup_ms" type="number" min="0" max="30000" value="${{esc(servo.startup_ms)}}"></label>
               <label>Slowdown ms<input data-field="slowdown_ms" type="number" min="0" max="30000" value="${{esc(servo.slowdown_ms)}}"></label>
@@ -3158,17 +3214,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         baudRate.value = 9600;
         setSelectedProtocol('useSmoothSketchProtocol');
         readProfileFromDom();
-        profile.servos = profile.servos.map((servo) => ({{
-          ...servo,
-          min_pulse: 102,
-          center_pulse: 307,
-          max_pulse: 512,
-          start_pulse: 307,
-          speed_ms: Math.max(Number(servo.speed_ms || 0), 1200),
-          startup_ms: Math.max(Number(servo.startup_ms || 0), 900),
-          slowdown_ms: Math.max(Number(servo.slowdown_ms || 0), 900),
-          notes: servo.notes || 'Smooth UNO sketch uses 20ms frame-paced easing. Increase Speed ms for slower movement.'
-        }}));
+        profile.servos = profile.servos.map((servo) => applyServoPreset(servo, servo.model || 'annimos_ds3245sg_180'));
         renderServos();
         serialStatus.textContent = 'Protocol set for SmoothServoBenchTester at 9600 baud: S channel pulse duration. Default smooth speed is 1200 ms.';
       }});
@@ -3206,8 +3252,8 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         const channel = profile.servos.length;
         const rawPcaMode = String(profile.command_template || '').includes('{{pulse}}') && Number(profile.baud_rate || 9600) === 9600;
         profile.servos.push(rawPcaMode
-          ? {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 102, min_angle: 0, center_pulse: 307, center_angle: 90, max_pulse: 512, max_angle: 180, start_pulse: 307, start_angle: 90, speed_ms: 1200, startup_ms: 900, slowdown_ms: 900, notes: 'DS3245SG-safe raw PCA9685 count profile.' }}
-          : {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 500, min_angle: 0, center_pulse: 1500, center_angle: 90, max_pulse: 2500, max_angle: 180, start_pulse: 1500, start_angle: 90, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: '' }});
+          ? applyServoPreset({{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel }}, 'annimos_ds3245sg_180')
+          : {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, model: 'custom', channel, min_pulse: 500, min_angle: 0, center_pulse: 1500, center_angle: 90, max_pulse: 2500, max_angle: 180, start_pulse: 1500, start_angle: 90, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: '' }});
         renderServos();
       }});
       document.getElementById('saveProfile').addEventListener('click', async () => {{
@@ -3237,6 +3283,17 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
             moveServo(latest, Number(slider.value), latest.speed_ms);
           }}, 140));
         }}
+      }});
+      servoList.addEventListener('change', async (event) => {{
+        const modelSelect = event.target && event.target.matches('[data-field="model"]') ? event.target : null;
+        if (!modelSelect) return;
+        readProfileFromDom();
+        const card = modelSelect.closest('[data-servo-card]');
+        const servo = card ? servoById(card.dataset.servoCard) : null;
+        if (!servo) return;
+        profile.servos = profile.servos.map((item) => item.id === servo.id ? applyServoPreset(item, modelSelect.value) : item);
+        renderServos();
+        serialStatus.textContent = 'Servo preset loaded: ' + (servoPresets[modelSelect.value] || servoPresets.custom).label + '.';
       }});
       servoList.addEventListener('change', async (event) => {{
         const slider = event.target && event.target.matches('[data-field="pulse_slider"]') ? event.target : null;

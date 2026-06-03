@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-06-03T15:40:00-07:00",
+  "artifact_type": "lab-servo-model-presets-v1",
+  "project": "LAB Servo Tester",
+  "pca9685_50hz_mapping": {
+    "raw_min_count": 102,
+    "raw_neutral_count": 307,
+    "raw_max_count": 512,
+    "calculation_note": "At 50Hz, one PCA9685 count is about 4.88us. 500us maps to ~102, 1500us maps to ~307, 2500us maps to ~512."
+  },
+  "models": [
+    {
+      "preset_id": "annimos_ds3245sg_180",
+      "label": "ANNIMOS DS3245SG 45kg 180",
+      "operating_voltage": "5-8.4V",
+      "pulse_width_us": "500-2500",
+      "angle_degrees": 180,
+      "frequency_hz": "50-330",
+      "stall_current_max": "5.8A at 8.4V",
+      "default_speed_ms": 1200,
+      "warning": "Requires external servo power sized for high stall current."
+    },
+    {
+      "preset_id": "stemedu_bls_hv70mg_270",
+      "label": "Stemedu BLS-HV70MG 70kg 270",
+      "operating_voltage": "4.8-8.4V",
+      "pulse_width_us": "500-2500",
+      "angle_degrees": 270,
+      "frequency_hz": "1520us / 333Hz spec",
+      "stall_current_max": "not provided in Dave's pasted spec",
+      "default_speed_ms": 1600,
+      "warning": "PCA9685 frequency is shared across all channels. Use a dedicated driver if this servo needs 333Hz while others use 50Hz."
+    },
+    {
+      "preset_id": "ds51150_150kg_270",
+      "label": "DS51150 150kg 270",
+      "operating_voltage": "10-12.6V",
+      "pulse_width_us": "500-2500",
+      "angle_degrees": 270,
+      "frequency_hz": "50-330",
+      "stall_current_max": "8.3A at 12.6V",
+      "default_speed_ms": 2200,
+      "warning": "Requires separate high-current external servo power. Do not power from UNO or PCA9685 logic VCC."
+    }
+  ],
+  "training_lesson": "LAB servo profiles should be model-specific. Use datasheet pulse width, angle, voltage, current, and frequency constraints before movement testing."
+}
