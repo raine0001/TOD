@@ -2869,6 +2869,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         document.getElementById('useMoveProtocol'),
         document.getElementById('usePulseProtocol')
       ];
+      const sliderMoveTimers = new Map();
 
       function esc(value) {{
         return String(value ?? '').replace(/[&<>"']/g, (char) => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[char]));
@@ -3035,11 +3036,16 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       }}
       function buildCommand(servo, pulse, duration) {{
         const angle = angleForPulse(servo, pulse);
+        const template = String(profile.command_template || '{{pulse}}');
+        let commandDuration = Number(duration || servo.speed_ms || 0);
+        if (template.startsWith('S ') || template.startsWith('MOVE ')) {{
+          commandDuration = Math.max(commandDuration, 1200);
+        }}
         return String(profile.command_template || '{{pulse}}')
           .replaceAll('{{channel}}', String(servo.channel))
           .replaceAll('{{pulse}}', String(pulse))
           .replaceAll('{{angle}}', String(angle))
-          .replaceAll('{{duration}}', String(duration || servo.speed_ms || 0));
+          .replaceAll('{{duration}}', String(commandDuration));
       }}
       async function moveServo(servo, pulse, duration) {{
         readProfileFromDom();
@@ -3210,6 +3216,15 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         const angleLabel = card && card.querySelector('[data-angle-label]');
         if (label) label.textContent = slider.value;
         if (angleLabel && servo) angleLabel.textContent = angleForPulse(servo, Number(slider.value));
+        if (servo && serialWriter) {{
+          const key = servo.id || card.dataset.servoCard;
+          if (sliderMoveTimers.has(key)) clearTimeout(sliderMoveTimers.get(key));
+          sliderMoveTimers.set(key, setTimeout(() => {{
+            readProfileFromDom();
+            const latest = servoById(key) || servo;
+            moveServo(latest, Number(slider.value), latest.speed_ms);
+          }}, 140));
+        }}
       }});
       servoList.addEventListener('change', async (event) => {{
         const slider = event.target && event.target.matches('[data-field="pulse_slider"]') ? event.target : null;

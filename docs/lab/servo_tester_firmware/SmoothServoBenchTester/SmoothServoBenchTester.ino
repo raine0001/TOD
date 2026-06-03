@@ -12,6 +12,11 @@ const int DEFAULT_RAMP_MS = 1200;
 const byte PCA9685_ADDRESS = 0x40;
 
 int currentPulse[SERVO_CHANNELS];
+int motionStartPulse[SERVO_CHANNELS];
+int motionTargetPulse[SERVO_CHANNELS];
+int motionDurationMs[SERVO_CHANNELS];
+unsigned long motionStartAt[SERVO_CHANNELS];
+bool motionActive[SERVO_CHANNELS];
 
 bool i2cAddressPresent(byte address) {
   Wire.beginTransmission(address);
@@ -65,7 +70,7 @@ int easedPulse(int startPulse, int diff, int step, int steps) {
   return startPulse + (int)round((float)diff * eased);
 }
 
-void rampChannel(int channel, int targetPulse, int durationMs) {
+void scheduleChannel(int channel, int targetPulse, int durationMs) {
   if (channel < 0 || channel >= SERVO_CHANNELS) {
     Serial.print("ERR channel ");
     Serial.println(channel);
@@ -73,61 +78,48 @@ void rampChannel(int channel, int targetPulse, int durationMs) {
   }
 
   targetPulse = clampPulse(targetPulse);
-  int startPulse = currentPulse[channel];
-  int diff = targetPulse - startPulse;
-
-  if (diff == 0) {
-    Serial.print("OK channel ");
-    Serial.print(channel);
-    Serial.print(" pulse ");
-    Serial.println(targetPulse);
-    return;
+  motionStartPulse[channel] = currentPulse[channel];
+  motionTargetPulse[channel] = targetPulse;
+  motionDurationMs[channel] = durationMs > 0 ? durationMs : DEFAULT_RAMP_MS;
+  motionStartAt[channel] = millis();
+  motionActive[channel] = motionStartPulse[channel] != motionTargetPulse[channel];
+  if (!motionActive[channel]) {
+    applyPulseImmediate(channel, targetPulse);
   }
-
-  int travelMs = durationMs > 0 ? durationMs : DEFAULT_RAMP_MS;
-  int steps = max(1, travelMs / SERVO_FRAME_MS);
-  for (int step = 1; step <= steps; step++) {
-    int pulse = easedPulse(startPulse, diff, step, steps);
-    pwm.setPWM(channel, 0, pulse);
-    currentPulse[channel] = pulse;
-    delay(SERVO_FRAME_MS);
-  }
-
-  pwm.setPWM(channel, 0, targetPulse);
-  currentPulse[channel] = targetPulse;
-  Serial.print("OK channel ");
+  Serial.print("OK target channel ");
   Serial.print(channel);
   Serial.print(" pulse ");
   Serial.println(targetPulse);
 }
 
-void rampBothBenchChannels(int targetPulse, int durationMs) {
+void scheduleBothBenchChannels(int targetPulse, int durationMs) {
   targetPulse = clampPulse(targetPulse);
-  int start0 = currentPulse[0];
-  int start1 = currentPulse[1];
-  int diff0 = targetPulse - start0;
-  int diff1 = targetPulse - start1;
-
-  if (diff0 == 0 && diff1 == 0) {
-    Serial.print("OK both pulse ");
-    Serial.println(targetPulse);
-    return;
-  }
-
-  int travelMs = durationMs > 0 ? durationMs : DEFAULT_RAMP_MS;
-  int steps = max(1, travelMs / SERVO_FRAME_MS);
-  for (int step = 1; step <= steps; step++) {
-    int pulse0 = easedPulse(start0, diff0, step, steps);
-    int pulse1 = easedPulse(start1, diff1, step, steps);
-    pwm.setPWM(0, 0, pulse0);
-    pwm.setPWM(1, 0, pulse1);
-    currentPulse[0] = pulse0;
-    currentPulse[1] = pulse1;
-    delay(SERVO_FRAME_MS);
-  }
-
-  Serial.print("OK both pulse ");
+  scheduleChannel(0, targetPulse, durationMs);
+  scheduleChannel(1, targetPulse, durationMs);
+  Serial.print("OK target both pulse ");
   Serial.println(targetPulse);
+}
+
+void updateMotion() {
+  unsigned long now = millis();
+  for (int channel = 0; channel < SERVO_CHANNELS; channel++) {
+    if (!motionActive[channel]) continue;
+    unsigned long elapsed = now - motionStartAt[channel];
+    int duration = max(SERVO_FRAME_MS, motionDurationMs[channel]);
+    if (elapsed >= (unsigned long)duration) {
+      applyPulseImmediate(channel, motionTargetPulse[channel]);
+      motionActive[channel] = false;
+      continue;
+    }
+    int steps = max(1, duration / SERVO_FRAME_MS);
+    int step = min(steps, (int)(elapsed / SERVO_FRAME_MS) + 1);
+    int diff = motionTargetPulse[channel] - motionStartPulse[channel];
+    int pulse = clampPulse(easedPulse(motionStartPulse[channel], diff, step, steps));
+    if (pulse != currentPulse[channel]) {
+      pwm.setPWM(channel, 0, pulse);
+      currentPulse[channel] = pulse;
+    }
+  }
 }
 
 void testAllChannels(int lowPulse, int highPulse, int durationMs) {
@@ -192,7 +184,7 @@ void handleCommand(String line) {
     int channel = nextToken(work).toInt();
     int pulse = nextToken(work).toInt();
     int durationMs = nextToken(work).toInt();
-    rampChannel(channel, pulse, durationMs);
+    scheduleChannel(channel, pulse, durationMs);
     return;
   }
 
@@ -200,14 +192,14 @@ void handleCommand(String line) {
     int channel = nextToken(work).toInt();
     int angle = nextToken(work).toInt();
     int durationMs = nextToken(work).toInt();
-    rampChannel(channel, angleToPulse(angle), durationMs);
+    scheduleChannel(channel, angleToPulse(angle), durationMs);
     return;
   }
 
   if (command == "ALL") {
     int pulse = nextToken(work).toInt();
     int durationMs = nextToken(work).toInt();
-    rampBothBenchChannels(pulse, durationMs);
+    scheduleBothBenchChannels(pulse, durationMs);
     return;
   }
 
@@ -228,7 +220,7 @@ void handleCommand(String line) {
   }
 
   if (numericOnly) {
-    rampBothBenchChannels(line.toInt(), 650);
+    scheduleBothBenchChannels(line.toInt(), DEFAULT_RAMP_MS);
     return;
   }
 
@@ -248,6 +240,11 @@ void setup() {
 
   for (int channel = 0; channel < SERVO_CHANNELS; channel++) {
     currentPulse[channel] = SERVO_MID_COUNT;
+    motionStartPulse[channel] = SERVO_MID_COUNT;
+    motionTargetPulse[channel] = SERVO_MID_COUNT;
+    motionDurationMs[channel] = DEFAULT_RAMP_MS;
+    motionStartAt[channel] = 0;
+    motionActive[channel] = false;
   }
   applyPulseImmediate(0, SERVO_MID_COUNT);
   applyPulseImmediate(1, SERVO_MID_COUNT);
@@ -261,6 +258,7 @@ void setup() {
 }
 
 void loop() {
+  updateMotion();
   if (Serial.available() > 0) {
     String line = Serial.readStringUntil('\n');
     handleCommand(line);
