@@ -1,0 +1,33 @@
+{
+  "artifact_id": "MIM-STUDIO-PROJECT-FREEZE-AUDIT-2026-06-03",
+  "created_at": "2026-06-03T13:08:00-07:00",
+  "operator_observation": "Dave reported that all Studio projects appear frozen and progress is not reflected in the apps.",
+  "audit_result": {
+    "finding": "confirmed",
+    "summary": "Most Studio project records had only one event, and that event was project_seeded or project_created. The Projects page was showing backlog intent and seeded progress estimates, not actual implementation movement.",
+    "examples": [
+      "Studio Projects Table Organization had 1 event: project_seeded.",
+      "LAB Workbench Servo Tester had 1 event: project_created, despite later Codex/firmware work occurring outside the project event ledger.",
+      "AgentMIM repair projects had 1 event each: project_seeded.",
+      "MIM Robotics Workspace, AgentMIM Account Manager, and MIM Accounting had no project events."
+    ]
+  },
+  "root_cause": "Studio Projects did not yet have a follow-through/reconciliation layer that binds actual work evidence, Codex commits, TOD execution, MIM decisions, and operator changes back into project events.",
+  "fix": [
+    "Add event-backed movement state to Project rows: frozen, seed only, moving, blocked, or waiting Dave.",
+    "Add event counts and last-event age to the Project Inbox table.",
+    "Make Active/In Process count stricter so it no longer means every non-deleted project.",
+    "Treat project_audit events as non-movement so audits do not falsely advance a project."
+  ],
+  "required_next_objective": {
+    "id": "MIM-PROJECT-FOLLOW-THROUGH-RECONCILIATION-V1",
+    "goal": "Connect Studio project records to actual evidence streams so work cannot happen outside the project ledger.",
+    "minimum_behavior": [
+      "When Codex changes files for a project, MIM records a project event with commit, files, validation, and remaining blocker.",
+      "When TOD accepts or rejects work, MIM records a project event.",
+      "When a project has no movement beyond seed/audit events, Studio marks it frozen or seed only.",
+      "When progress is estimated, planned, or evidence-backed, Studio says so directly."
+    ]
+  },
+  "resolution_status": "ui_truth_fix_in_progress"
+}

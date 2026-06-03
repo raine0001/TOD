@@ -2450,6 +2450,52 @@ def _project_progress_basis(row: StudioProject | dict[str, Any]) -> str:
     return "estimate"
 
 
+def _studio_parse_created_at(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _studio_age_label(value: object) -> str:
+    parsed = _studio_parse_created_at(value)
+    if parsed is None:
+        return "none"
+    seconds = max(0, int((datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds()))
+    if seconds < 90:
+        return "now"
+    minutes = seconds // 60
+    if minutes < 90:
+        return f"{minutes}m"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours}h"
+    days = hours // 24
+    return f"{days}d"
+
+
+PROJECT_NON_MOVEMENT_EVENT_TYPES = {"project_seeded", "project_created", "promoted_from_signal", "project_audit"}
+
+
+def _project_movement_state(row: dict[str, Any]) -> str:
+    follow_up_count = int(row.get("follow_up_event_count") or 0)
+    status = str(row.get("status") or "").strip().lower()
+    if follow_up_count <= 0:
+        if status in {"working", "implementation", "active", "active_experiments", "calibration"}:
+            return "frozen"
+        return "seed only"
+    if row.get("dave_needed"):
+        return "waiting Dave"
+    if status in {"blocked", "stalled"}:
+        return "blocked"
+    return "moving"
+
+
 async def _ensure_studio_project_record(
     db: AsyncSession,
     *,
@@ -3881,14 +3927,51 @@ async def _studio_projects_state(
     signals = (
         await db.execute(select(StudioProjectSignal).order_by(StudioProjectSignal.id.desc()).limit(50))
     ).scalars().all()
+    all_events = (
+        await db.execute(
+            select(StudioProjectEvent)
+            .order_by(StudioProjectEvent.id.desc())
+            .limit(1000)
+        )
+    ).scalars().all()
+    event_summary: dict[int, dict[str, Any]] = {}
+    for event in all_events:
+        summary = event_summary.setdefault(
+            event.project_id,
+            {
+                "event_count": 0,
+                "follow_up_event_count": 0,
+                "last_event_at": "",
+                "last_event_type": "",
+                "last_movement_at": "",
+                "last_movement_type": "",
+            },
+        )
+        summary["event_count"] = int(summary["event_count"]) + 1
+        if not summary["last_event_at"]:
+            summary["last_event_at"] = event.created_at.isoformat() if event.created_at else ""
+            summary["last_event_type"] = event.event_type
+        if event.event_type not in PROJECT_NON_MOVEMENT_EVENT_TYPES:
+            summary["follow_up_event_count"] = int(summary["follow_up_event_count"]) + 1
+            if not summary["last_movement_at"]:
+                summary["last_movement_at"] = event.created_at.isoformat() if event.created_at else ""
+                summary["last_movement_type"] = event.event_type
     signal_rows = [_studio_signal_to_dict(row) for row in signals]
     project_rows = [_studio_project_to_dict(row) for row in projects]
     for index, row in enumerate(project_rows):
+        summary = event_summary.get(int(row.get("id") or 0), {})
         row["progress_percent"] = _project_progress(row)
         row["progress_basis"] = _project_progress_basis(row)
         row["blocker"] = _project_blocker(row)
         row["work_state"] = _project_work_state(row)
         row["project_type"] = _project_category(row)
+        row["event_count"] = int(summary.get("event_count") or 0)
+        row["follow_up_event_count"] = int(summary.get("follow_up_event_count") or 0)
+        row["last_event_at"] = str(summary.get("last_event_at") or row.get("created_at") or "")
+        row["last_event_age"] = _studio_age_label(row["last_event_at"])
+        row["last_movement_at"] = str(summary.get("last_movement_at") or "")
+        row["last_movement_age"] = _studio_age_label(row["last_movement_at"])
+        row["movement_state"] = _project_movement_state(row)
         row["is_deleted"] = str(row.get("status") or "").strip().lower() in {"deleted", "archived", "discarded", "scrapped"}
         project_rows[index] = row
     visible_project_rows = [row for row in project_rows if not row.get("is_deleted")]
@@ -3903,6 +3986,14 @@ async def _studio_projects_state(
             selected_project["blocker"] = _project_blocker(selected)
             selected_project["work_state"] = _project_work_state(selected)
             selected_project["project_type"] = _project_category(selected)
+            selected_summary = event_summary.get(selected.id, {})
+            selected_project["event_count"] = int(selected_summary.get("event_count") or 0)
+            selected_project["follow_up_event_count"] = int(selected_summary.get("follow_up_event_count") or 0)
+            selected_project["last_event_at"] = str(selected_summary.get("last_event_at") or selected_project.get("created_at") or "")
+            selected_project["last_event_age"] = _studio_age_label(selected_project["last_event_at"])
+            selected_project["last_movement_at"] = str(selected_summary.get("last_movement_at") or "")
+            selected_project["last_movement_age"] = _studio_age_label(selected_project["last_movement_at"])
+            selected_project["movement_state"] = _project_movement_state(selected_project)
             events = (
                 await db.execute(
                     select(StudioProjectEvent)
@@ -3929,8 +4020,9 @@ async def _studio_projects_state(
         "active": sum(
             1
             for item in visible_project_rows
-            if item["status"] not in {"archived", "scrapped", "discarded", "deleted"}
+            if item["status"] in {"working", "implementation", "active", "active_experiments", "calibration"}
         ),
+        "frozen": sum(1 for item in visible_project_rows if item.get("movement_state") == "frozen"),
         "dave_needed": sum(1 for item in visible_project_rows if item["dave_needed"]),
     }
     return {
@@ -5054,7 +5146,8 @@ def _projects_body(state: dict[str, Any]) -> str:
     project_stats = [
         ("Signals", counts.get("signals", 0), "signals"),
         ("Candidates", counts.get("candidates", 0), "candidates"),
-        ("Active", counts.get("active", 0), "active"),
+        ("In Process", counts.get("active", 0), "active"),
+        ("Frozen", counts.get("frozen", 0), "frozen"),
         ("Dave Needed", counts.get("dave_needed", 0), "dave_needed"),
     ]
     stats_html = "".join(
@@ -5077,6 +5170,8 @@ def _projects_body(state: dict[str, Any]) -> str:
             return status in {"candidate", "queued"}
         if view == "dave_needed":
             return bool(item.get("dave_needed"))
+        if view == "frozen":
+            return str(item.get("movement_state") or "").strip().lower() in {"frozen", "seed only"}
         return True
 
     project_rows = "".join(
@@ -5086,6 +5181,7 @@ def _projects_body(state: dict[str, Any]) -> str:
           <td><span class="health-pill yellow">{_html(item.get("status", ""))}</span><div class="muted">{_html(item.get("work_state", ""))}</div></td>
           <td>{_html(item.get("owner", ""))}</td>
           <td><div class="progress-track"><div class="progress-fill" style="width:{_html(item.get("progress_percent", 0))}%;"></div></div><div class="muted">{_html(item.get("progress_percent", 0))}% / {_html(item.get("progress_basis", "estimate"))}</div></td>
+          <td><span class="health-pill {'red' if str(item.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(item.get("movement_state", ""))}</span><div class="muted">events {_html(item.get("follow_up_event_count", 0))}/{_html(item.get("event_count", 0))} / {_html(item.get("last_event_age", "none"))}</div></td>
           <td>{_html(item.get("blocker", "none"))}</td>
           <td>{_html(item.get("next_action", ""))}</td>
           <td>{'yes' if item.get("dave_needed") else 'no'}</td>
@@ -5095,7 +5191,7 @@ def _projects_body(state: dict[str, Any]) -> str:
         if view != "signals" and project_visible(item)
     )
     if not project_rows and view != "signals":
-        project_rows = '<tr><td colspan="7">No projects in this view.</td></tr>'
+        project_rows = '<tr><td colspan="8">No projects in this view.</td></tr>'
 
     signal_rows = "".join(
         f"""
@@ -5155,6 +5251,10 @@ def _projects_body(state: dict[str, Any]) -> str:
         selected_html = f"""
         <section class="card" style="margin-bottom:14px;">
           <h2>{_html(selected_project.get("title", "Project"))}</h2>
+          <div class="project-row" style="margin-bottom:12px;">
+            <div><strong>{_html(selected_project.get("movement_state", ""))}</strong><br><span class="muted">events {_html(selected_project.get("follow_up_event_count", 0))}/{_html(selected_project.get("event_count", 0))} / last {_html(selected_project.get("last_event_age", "none"))}</span></div>
+            <span class="health-pill {'red' if str(selected_project.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(selected_project.get("progress_percent", 0))}% / {_html(selected_project.get("progress_basis", ""))}</span>
+          </div>
           <form method="post" action="/studio/projects/{_html(selected_project.get("id", ""))}/update" class="form-grid">
             <label>Status<input name="status" value="{_html(selected_project.get("status", ""))}"></label>
             <label>Owner<input name="owner" value="{_html(selected_project.get("owner", ""))}"></label>
@@ -5183,7 +5283,7 @@ def _projects_body(state: dict[str, Any]) -> str:
         """
 
     return f"""
-    <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>
+    <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{stats_html}</section>
     <section class="card" style="margin-bottom:14px;">
       <h2>Project Actions</h2>
       <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
@@ -5197,7 +5297,7 @@ def _projects_body(state: dict[str, Any]) -> str:
     <section class="card" style="margin-bottom:14px;">
       <h2>Project Inbox</h2>
       <table class="score-table">
-        <thead><tr><th>Project</th><th>Status</th><th>Owner</th><th>Done</th><th>Blocker</th><th>Next Action</th><th>Dave</th></tr></thead>
+        <thead><tr><th>Project</th><th>Status</th><th>Owner</th><th>Done</th><th>Movement</th><th>Blocker</th><th>Next Action</th><th>Dave</th></tr></thead>
         <tbody>{project_rows}</tbody>
       </table>
     </section>
