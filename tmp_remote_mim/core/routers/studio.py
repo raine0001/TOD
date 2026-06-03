@@ -5132,6 +5132,9 @@ def _training_section_body(section: dict[str, str]) -> str:
 
 def _embed_body(tab: dict[str, str]) -> str:
     source = tab.get("source", "/mim")
+    if tab.get("key") in {"mim", "tod"}:
+        separator = "&" if "?" in source else "?"
+        source = f"{source}{separator}studio_embed=1"
     return f"""<iframe class="embed-frame" src="{_html(source)}" title="{_html(tab["label"])}"></iframe>"""
 
 

@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
 
 from core.config import PROJECT_ROOT, settings
@@ -8566,8 +8566,10 @@ async def tod_ui_execution_state() -> dict[str, Any]:
 
 
 @router.get("/tod", response_class=HTMLResponse)
-async def tod_console() -> HTMLResponse:
+async def tod_console(request: Request) -> HTMLResponse:
     title = f"TOD Console | {settings.app_name}"
+    studio_embed = str(request.query_params.get("studio_embed") or "").strip().lower() in {"1", "true", "yes", "on"}
+    body_class = "studio-embed" if studio_embed else ""
     return HTMLResponse(
         f"""
 <!doctype html>
@@ -8791,6 +8793,10 @@ async def tod_console() -> HTMLResponse:
                 .system-details-copy {{ color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; margin-left: auto; }}
                 .system-details-body {{ border-top: 1px solid rgba(97,219,191,0.14); }}
                 .footer {{ padding: 0 24px 24px; color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }}
+                body.studio-embed .console-nav {{ display: none !important; }}
+                body.studio-embed .page {{ max-width: none; padding: 16px; }}
+                body.studio-embed .shell {{ border-radius: 10px; }}
+                body.studio-embed .hero {{ padding: 18px 20px; }}
                 @media (max-width: 1100px) {{
                     .facts {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
                     .grid {{ grid-template-columns: 1fr; }}
@@ -8804,7 +8810,7 @@ async def tod_console() -> HTMLResponse:
                 }}
                         </style>
 </head>
-<body>
+<body class="{body_class}">
     <div id="todSettingsBackdrop" class="settings-backdrop" hidden></div>
     <div id="todSettingsPanel" class="settings-panel" role="dialog" aria-modal="true" aria-label="TOD settings" hidden>
         <div class="settings-header">

@@ -5872,6 +5872,8 @@ def _build_camera_state_prompt(
 
 @router.get("/mim", response_class=HTMLResponse)
 async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
+  studio_embed = str(request.query_params.get("studio_embed") or "").strip().lower() in {"1", "true", "yes", "on"}
+  body_class = "studio-embed" if studio_embed else ""
   dedicated_redirect = _dedicated_public_mim_redirect_target(request)
   if dedicated_redirect:
     return RedirectResponse(url=dedicated_redirect, status_code=307)
@@ -7462,6 +7464,53 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     body.operator-mode .chat-summary-row {
       margin-bottom: 0;
     }
+    body.studio-embed {
+      align-items: stretch;
+      padding: 14px;
+      background: var(--bg);
+    }
+    body.studio-embed .app-shell {
+      width: 100%;
+      max-width: none;
+    }
+    body.studio-embed .console-nav,
+    body.studio-embed #operatorStatusCard,
+    body.studio-embed .debug-only,
+    body.studio-embed .hero-copy .summary,
+    body.studio-embed .hero-status-cluster,
+    body.studio-embed .mode-toggle,
+    body.studio-embed #threadStatusChip,
+    body.studio-embed #voiceHintChip,
+    body.studio-embed .chat-meta-title span {
+      display: none !important;
+    }
+    body.studio-embed .hero {
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    body.studio-embed .hero-row {
+      align-items: center;
+    }
+    body.studio-embed .hero-toolbar {
+      justify-content: flex-end;
+    }
+    body.studio-embed .primary-chat-panel {
+      padding: 14px 0 0;
+    }
+    body.studio-embed .primary-chat-panel .panel {
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    body.studio-embed .primary-chat-panel .chat-log {
+      min-height: calc(100vh - 285px);
+      max-height: calc(100vh - 285px);
+    }
+    body.studio-embed .chat-shell {
+      min-height: calc(100vh - 190px);
+    }
     body.debug-mode .operator-mode-note {
       display: none !important;
     }
@@ -7727,7 +7776,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
     }
   </style>
 </head>
-<body>
+<body class="__MIM_BODY_CLASS__">
   <div class="top-right">
     <div hidden></div>
   </div>
@@ -15600,7 +15649,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
   </script>
 </body>
 </html>
-""".replace("__MIM_PRELOADED_CHAT_THREAD__", json.dumps(preloaded_chat_thread, default=str))
+""".replace("__MIM_PRELOADED_CHAT_THREAD__", json.dumps(preloaded_chat_thread, default=str)).replace("__MIM_BODY_CLASS__", body_class)
 
 @router.get("/mim/ui/review/{asset_name}")
 async def mim_ui_review_artifact(request: Request, asset_name: str) -> FileResponse:
