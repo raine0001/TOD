@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -924,6 +924,13 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
     .score-table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
     .score-table th, .score-table td {{ text-align: left; border-top: 1px solid var(--line); padding: 8px 6px; color: var(--soft); vertical-align: top; }}
     .score-table th {{ color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0; }}
+    .score-table tr.row-link {{ cursor: pointer; }}
+    .score-table tr.row-link:hover {{ background: rgba(117,183,255,.08); }}
+    .progress-track {{ width: 100%; min-width: 96px; height: 8px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); border: 1px solid var(--line); }}
+    .progress-fill {{ height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }}
+    input, select {{ width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #0b111a; color: var(--text); padding: 10px 11px; font: inherit; }}
+    .form-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }}
+    .form-grid .wide {{ grid-column: 1 / -1; }}
     .embed-frame {{ width: 100%; height: calc(100vh - 210px); min-height: 620px; border: 1px solid var(--line); border-radius: 8px; background: #0a0f17; }}
     .placeholder-sections {{ margin-top: 16px; }}
     .chat-panel {{ border-left: 1px solid var(--line); background: rgba(9,14,22,.96); min-width: 0; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }}
@@ -2217,6 +2224,47 @@ def _studio_signal_to_dict(row: StudioProjectSignal) -> dict[str, Any]:
     }
 
 
+def _project_metadata(row: StudioProject | dict[str, Any]) -> dict[str, Any]:
+    value = row.metadata_json if isinstance(row, StudioProject) else row.get("metadata_json")
+    return value if isinstance(value, dict) else {}
+
+
+def _project_progress(row: StudioProject | dict[str, Any]) -> int:
+    metadata = _project_metadata(row)
+    raw = metadata.get("progress_percent")
+    try:
+        return max(0, min(100, int(float(raw))))
+    except Exception:
+        status = str(row.status if isinstance(row, StudioProject) else row.get("status") or "").strip().lower()
+        if status in {"done", "complete", "completed", "deployed"}:
+            return 100
+        if status in {"implementation", "active", "active_experiments", "working"}:
+            return 45
+        if status in {"planning", "discovery", "calibration"}:
+            return 20
+        if status in {"queued", "candidate"}:
+            return 5
+        if status in {"paused", "stalled", "blocked"}:
+            return 10
+        return 0
+
+
+def _project_blocker(row: StudioProject | dict[str, Any]) -> str:
+    metadata = _project_metadata(row)
+    value = metadata.get("blocker") or metadata.get("action_needed") or ""
+    return _first_text(value, default="none")
+
+
+def _project_work_state(row: StudioProject | dict[str, Any]) -> str:
+    metadata = _project_metadata(row)
+    return _first_text(metadata.get("work_state"), default=_plain_status(row.status if isinstance(row, StudioProject) else row.get("status"), default="queued"))
+
+
+def _project_category(row: StudioProject | dict[str, Any]) -> str:
+    metadata = _project_metadata(row)
+    return _first_text(metadata.get("project_type"), metadata.get("category"), default="project")
+
+
 async def _ensure_studio_project_record(
     db: AsyncSession,
     *,
@@ -2273,6 +2321,73 @@ async def _ensure_studio_project_record(
         )
     )
     return project
+
+
+async def _upsert_studio_project_record(
+    db: AsyncSession,
+    *,
+    title: str,
+    summary: str,
+    status: str,
+    priority: str,
+    owner: str,
+    health: str,
+    why_it_matters: str,
+    origin_story: str,
+    next_action: str,
+    dave_needed: bool,
+    metadata_json: dict[str, Any],
+) -> StudioProject:
+    matches = (
+        await db.execute(
+            select(StudioProject)
+            .where(StudioProject.title == title)
+            .order_by(StudioProject.id.desc())
+        )
+    ).scalars().all()
+    existing = matches[0] if matches else None
+    for duplicate in matches[1:]:
+        duplicate.status = "deleted"
+        duplicate.health = "deleted"
+        duplicate_metadata = duplicate.metadata_json if isinstance(duplicate.metadata_json, dict) else {}
+        duplicate_metadata = dict(duplicate_metadata)
+        duplicate_metadata["work_state"] = "deleted"
+        duplicate_metadata["duplicate_of_project_id"] = existing.id if existing else None
+        duplicate.metadata_json = duplicate_metadata
+    existing_metadata = existing.metadata_json if existing and isinstance(existing.metadata_json, dict) else {}
+    if existing is None:
+        existing = StudioProject(title=title)
+        db.add(existing)
+        await db.flush()
+        db.add(
+            StudioProjectEvent(
+                project_id=existing.id,
+                event_type="project_seeded",
+                actor="MIM Studio",
+                title="Project added to Studio",
+                detail=origin_story or summary,
+                metadata_json={"source": "studio_project_backlog_seed_v1"},
+            )
+        )
+    elif existing_metadata.get("user_modified"):
+        merged_metadata = dict(existing_metadata)
+        for key, value in metadata_json.items():
+            merged_metadata.setdefault(key, value)
+        existing.metadata_json = merged_metadata
+        return existing
+    existing.summary = summary
+    existing.status = status
+    existing.priority = priority
+    existing.owner = owner
+    existing.health = health
+    existing.why_it_matters = why_it_matters
+    existing.origin_story = origin_story
+    existing.next_action = next_action
+    existing.dave_needed = dave_needed
+    merged_metadata = dict(existing.metadata_json) if isinstance(existing.metadata_json, dict) else {}
+    merged_metadata.update(metadata_json)
+    existing.metadata_json = merged_metadata
+    return existing
 
 
 async def _ensure_first_internal_projects(db: AsyncSession) -> dict[str, StudioProject]:
@@ -2562,8 +2677,187 @@ async def _ensure_studio_project_seed(db: AsyncSession) -> None:
     await db.commit()
 
 
-async def _studio_projects_state(db: AsyncSession) -> dict[str, Any]:
+async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
+    seed_version = "2026-06-03-project-backlog-v1"
+    requested_projects = [
+        {
+            "title": "AgentMIM Account Manager Roles",
+            "summary": "Add account manager as an AgentMIM role with scoped access for carriers, contacts, agents, owner account data, commissions, and reports.",
+            "status": "queued",
+            "priority": "P0",
+            "owner": "TOD",
+            "health": "needs_scope",
+            "why_it_matters": "Account-owner and account-manager permissions need to protect confidential commission data while still supporting real broker operations.",
+            "origin_story": "Dave requested account manager as an add-agent assignment option with restricted access areas and pre-approval for sensitive commission data.",
+            "next_action": "Define permission matrix and sensitive commission/report access rules before implementation.",
+            "dave_needed": True,
+            "metadata_json": {
+                "project_type": "application_feature",
+                "progress_percent": 5,
+                "work_state": "queued",
+                "blocker": "Dave approval needed for confidential commission access rules.",
+                "acceptance": "Account manager role can be assigned and scoped without exposing confidential rep payout data unless pre-approved.",
+                "requested_by": "Dave",
+            },
+        },
+        {
+            "title": "AgentMIM Forum Graphics Quality",
+            "summary": "Fix daily forum post graphics generation so images are consistently created, on-brand, readable, and usable.",
+            "status": "queued",
+            "priority": "P0",
+            "owner": "TOD",
+            "health": "needs_repair",
+            "why_it_matters": "Forum graphics affect AgentMIM quality, engagement, and daily content reliability.",
+            "origin_story": "Dave reported daily forum post graphics are hit or miss: sometimes missing, sometimes created poorly, sometimes acceptable.",
+            "next_action": "Load prior forum graphics decisions and run the image QA path before changing prompt or generation logic.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "application_error",
+                "progress_percent": 10,
+                "work_state": "queued",
+                "blocker": "Needs continuity brief from prior forum graphics work.",
+                "acceptance": "Daily forum graphics generate reliably with QA evidence and no text-rendering regression.",
+                "requested_by": "Dave",
+            },
+        },
+        {
+            "title": "AgentMIM Carrier Login MFA Codes",
+            "summary": "Use account-owner Twilio and Gmail integrations to receive, display, and assist with carrier-site MFA codes during commission report upload workflows.",
+            "status": "queued",
+            "priority": "P1",
+            "owner": "TOD",
+            "health": "needs_design",
+            "why_it_matters": "Carrier commission report collection often requires email/SMS verification codes, and account managers need a secure workflow.",
+            "origin_story": "Dave described carrier website login from the upload commission page where MFA codes should appear in real time and possibly stage to clipboard or auto-enter.",
+            "next_action": "Design secure inbound code capture, display, clipboard staging, permissions, and audit controls.",
+            "dave_needed": True,
+            "metadata_json": {
+                "project_type": "application_feature",
+                "progress_percent": 0,
+                "work_state": "queued",
+                "blocker": "Security and account-owner permission model must be approved.",
+                "acceptance": "Authorized users can retrieve MFA codes safely without exposing messages outside the approved account context.",
+                "requested_by": "Dave",
+            },
+        },
+        {
+            "title": "AgentMIM Social Campaign Feeds Repair",
+            "summary": "Repair AgentMIM social post management and monitoring around /campaigns, /feeds, and the keywords tab.",
+            "status": "queued",
+            "priority": "P1",
+            "owner": "TOD",
+            "health": "broken",
+            "why_it_matters": "Social campaign monitoring needs to work before AgentMIM can manage posting and feed intelligence reliably.",
+            "origin_story": "Dave reported /campaigns /feeds and keywords tab do not appear to work.",
+            "next_action": "Inspect routes, frontend tab state, feed data source, keyword persistence, and current error logs.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "application_error",
+                "progress_percent": 0,
+                "work_state": "queued",
+                "blocker": "Needs code/log inspection.",
+                "acceptance": "Campaign feeds and keyword tab load, save, and display monitored data with a passing smoke check.",
+                "requested_by": "Dave",
+            },
+        },
+        {
+            "title": "MIM Wall Mobile Full Assistant",
+            "summary": "Expand the MIM Wall mobile app from call management into full LIVE MIM assistant capabilities.",
+            "status": "queued",
+            "priority": "P1",
+            "owner": "MIM + TOD",
+            "health": "large_scope",
+            "why_it_matters": "The mobile MIM Wall should become a useful assistant surface, not only a call-management tool.",
+            "origin_story": "Dave listed full assistant capabilities including call screening, translation, scheduling, search, on-screen interaction, device control, travel, security, and diagnostics.",
+            "next_action": "Split into capability phases and identify which features require phone OS permissions or native app work.",
+            "dave_needed": True,
+            "metadata_json": {
+                "project_type": "product_expansion",
+                "progress_percent": 0,
+                "work_state": "queued",
+                "blocker": "Needs phased scope and platform permission decisions.",
+                "acceptance": "A phased roadmap exists with first shippable assistant capability selected and validated.",
+                "requested_by": "Dave",
+            },
+        },
+        {
+            "title": "MIM Mobile Login SSL Loop",
+            "summary": "Fix mimtod.com/mim/login on mobile where login returns to the login page and initial load may show an unsafe-site SSL warning.",
+            "status": "queued",
+            "priority": "P0",
+            "owner": "TOD",
+            "health": "broken",
+            "why_it_matters": "Mobile access to MIM is a core operator path and SSL/auth loops undermine trust and usability.",
+            "origin_story": "Dave reported mobile login submit returns to the login page and initial load shows an unsafe-site error.",
+            "next_action": "Inspect certificate chain, domain routing, cookie/session settings, redirect target, and mobile browser behavior.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "application_error",
+                "progress_percent": 0,
+                "work_state": "queued",
+                "blocker": "Needs live mobile/auth verification.",
+                "acceptance": "Mobile login succeeds over valid HTTPS without unsafe-site warning or login loop.",
+                "requested_by": "Dave",
+            },
+        },
+        {
+            "title": "Studio Static Text Cleanup",
+            "summary": "Review every Studio page and remove space-killing static descriptive text, leaving short titles, action areas, and dynamic results.",
+            "status": "working",
+            "priority": "P1",
+            "owner": "Codex",
+            "health": "active",
+            "why_it_matters": "Studio is Dave's operating console and should show data/actions instead of documentation blocks.",
+            "origin_story": "Dave requested removal of subtitles, what-this-page-does text, and static descriptive content across Studio.",
+            "next_action": "Audit all Studio pages and remove static copy page by page, starting with Projects.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "studio_ui",
+                "progress_percent": 15,
+                "work_state": "working",
+                "blocker": "none",
+                "acceptance": "Each Studio page uses short titles, action areas, and dynamic data/results only.",
+                "requested_by": "Dave",
+            },
+        },
+        {
+            "title": "TOD Local PowerShell Migration",
+            "summary": "Move, quiet, or reschedule TOD local PowerShell tasks that interrupt Dave's shared PC workflow.",
+            "status": "queued",
+            "priority": "P0",
+            "owner": "TOD",
+            "health": "needs_repair",
+            "why_it_matters": "TOD and Dave share the PC, so frequent visible automation interrupts Dave's work and should move to the MIM BOX or run invisibly.",
+            "origin_story": "Dave reported TOD runs PowerShell prompts every 10 minutes or more and thought these were moved to the MIM BOX.",
+            "next_action": "Audit scheduled tasks, hide local tasks that must remain, and move eligible daemon/watchdog work to the MIM BOX.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "operations_repair",
+                "progress_percent": 20,
+                "work_state": "queued",
+                "blocker": "TOD-Elevated-Watchdog runs every 5 minutes without WindowStyle Hidden.",
+                "acceptance": "No visible scheduled PowerShell windows interrupt Dave during normal PC use.",
+                "requested_by": "Dave",
+            },
+        },
+    ]
+    for spec in requested_projects:
+        metadata = spec.setdefault("metadata_json", {})
+        metadata.setdefault("seed_source", "studio_project_backlog_seed_v1")
+        metadata.setdefault("seed_version", seed_version)
+        await _upsert_studio_project_record(db, **spec)
+    await db.commit()
+
+
+async def _studio_projects_state(
+    db: AsyncSession,
+    *,
+    selected_project_id: int | None = None,
+    view: str = "all",
+    new_project: bool = False,
+) -> dict[str, Any]:
     await _ensure_studio_project_seed(db)
+    await _ensure_requested_project_backlog(db)
     projects = (
         await db.execute(select(StudioProject).order_by(StudioProject.id.desc()).limit(50))
     ).scalars().all()
@@ -2572,17 +2866,63 @@ async def _studio_projects_state(db: AsyncSession) -> dict[str, Any]:
     ).scalars().all()
     signal_rows = [_studio_signal_to_dict(row) for row in signals]
     project_rows = [_studio_project_to_dict(row) for row in projects]
+    for index, row in enumerate(project_rows):
+        row["progress_percent"] = _project_progress(row)
+        row["blocker"] = _project_blocker(row)
+        row["work_state"] = _project_work_state(row)
+        row["project_type"] = _project_category(row)
+        row["is_deleted"] = str(row.get("status") or "").strip().lower() in {"deleted", "archived", "discarded", "scrapped"}
+        project_rows[index] = row
+    visible_project_rows = [row for row in project_rows if not row.get("is_deleted")]
+    selected_project = None
+    selected_events: list[dict[str, Any]] = []
+    if selected_project_id:
+        selected = await db.get(StudioProject, selected_project_id)
+        if selected:
+            selected_project = _studio_project_to_dict(selected)
+            selected_project["progress_percent"] = _project_progress(selected)
+            selected_project["blocker"] = _project_blocker(selected)
+            selected_project["work_state"] = _project_work_state(selected)
+            selected_project["project_type"] = _project_category(selected)
+            events = (
+                await db.execute(
+                    select(StudioProjectEvent)
+                    .where(StudioProjectEvent.project_id == selected.id)
+                    .order_by(StudioProjectEvent.id.desc())
+                    .limit(20)
+                )
+            ).scalars().all()
+            selected_events = [
+                {
+                    "id": event.id,
+                    "event_type": event.event_type,
+                    "actor": event.actor,
+                    "title": event.title,
+                    "detail": event.detail,
+                    "created_at": event.created_at.isoformat() if event.created_at else "",
+                }
+                for event in events
+            ]
     counts = {
         "signals": len(signal_rows),
-        "candidates": sum(1 for item in signal_rows if item["status"] in {"candidate", "discovery"}),
+        "candidates": sum(1 for item in signal_rows if item["status"] in {"candidate", "discovery"})
+        + sum(1 for item in visible_project_rows if item["status"] in {"candidate", "queued"}),
         "active": sum(
             1
-            for item in project_rows
-            if item["status"] not in {"archived", "scrapped", "discarded"}
+            for item in visible_project_rows
+            if item["status"] not in {"archived", "scrapped", "discarded", "deleted"}
         ),
-        "dave_needed": sum(1 for item in project_rows if item["dave_needed"]),
+        "dave_needed": sum(1 for item in visible_project_rows if item["dave_needed"]),
     }
-    return {"projects": project_rows, "signals": signal_rows, "counts": counts}
+    return {
+        "projects": visible_project_rows,
+        "signals": signal_rows,
+        "counts": counts,
+        "selected_project": selected_project,
+        "selected_events": selected_events,
+        "view": view,
+        "new_project": new_project,
+    }
 
 
 async def _studio_apps_state(db: AsyncSession) -> dict[str, Any]:
@@ -3481,73 +3821,166 @@ async def _studio_reports_state(
 
 def _projects_body(state: dict[str, Any]) -> str:
     counts = state.get("counts") if isinstance(state.get("counts"), dict) else {}
+    view = str(state.get("view") or "all").strip().lower()
+    selected_project = state.get("selected_project") if isinstance(state.get("selected_project"), dict) else None
+    selected_events = state.get("selected_events") if isinstance(state.get("selected_events"), list) else []
+    new_project = bool(state.get("new_project"))
     project_stats = [
-        ("Signals", counts.get("signals", 0)),
-        ("Candidates", counts.get("candidates", 0)),
-        ("Active", counts.get("active", 0)),
-        ("Dave Needed", counts.get("dave_needed", 0)),
+        ("Signals", counts.get("signals", 0), "signals"),
+        ("Candidates", counts.get("candidates", 0), "candidates"),
+        ("Active", counts.get("active", 0), "active"),
+        ("Dave Needed", counts.get("dave_needed", 0), "dave_needed"),
     ]
     stats_html = "".join(
         f"""
-        <article class="card">
+        <a class="card" href="/studio/projects?view={_html(key)}">
           <div class="label">{_html(label)}</div>
           <div class="entity">{_html(value)}</div>
-        </article>
-        """
-        for label, value in project_stats
-    )
-    active_examples = state.get("projects") if isinstance(state.get("projects"), list) else []
-    inbox_examples = state.get("signals") if isinstance(state.get("signals"), list) else []
-    inbox_html = "".join(
-        f"""
-        <article class="attention-item">
-          <small>{_html(item.get("status", "observation"))}</small>
-          <strong>{_html(item.get("title", ""))}</strong>
-          <div class="muted">Origin: {_html(item.get("source_text", ""))}</div>
-          <div class="muted">Why it matters: {_html(item.get("why_it_matters", ""))}</div>
-        </article>
-        """
-        for item in inbox_examples[:8]
-    )
-    examples_html = "".join(
-        f"""
-        <a class="project-row" href="/studio/projects?project_id={_html(item.get("id", ""))}">
-          <div>
-            <strong>{_html(item.get("title", ""))}</strong>
-            <div class="muted">{_html(item.get("next_action", ""))}</div>
-          </div>
-          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-            <span class="health-pill yellow">{_html(item.get("status", ""))}</span>
-            <span class="health-pill">{_html(item.get("priority", ""))}</span>
-          </div>
         </a>
         """
-        for item in active_examples[:8]
+        for label, value, key in project_stats
     )
-    if not inbox_html:
-        inbox_html = '<article class="attention-item"><strong>No signals yet</strong></article>'
-    if not examples_html:
-        examples_html = '<article class="attention-item"><strong>No projects yet</strong></article>'
+    projects = state.get("projects") if isinstance(state.get("projects"), list) else []
+    inbox_examples = state.get("signals") if isinstance(state.get("signals"), list) else []
+
+    def project_visible(item: dict[str, Any]) -> bool:
+        status = str(item.get("status") or "").strip().lower()
+        if view == "active":
+            return status not in {"archived", "scrapped", "discarded", "deleted"}
+        if view == "candidates":
+            return status in {"candidate", "queued"}
+        if view == "dave_needed":
+            return bool(item.get("dave_needed"))
+        return True
+
+    project_rows = "".join(
+        f"""
+        <tr class="row-link" onclick="window.location.href='/studio/projects?project_id={_html(item.get("id", ""))}&view={_html(view)}'">
+          <td><strong>{_html(item.get("title", ""))}</strong><div class="muted">{_html(item.get("project_type", ""))}</div></td>
+          <td><span class="health-pill yellow">{_html(item.get("status", ""))}</span><div class="muted">{_html(item.get("work_state", ""))}</div></td>
+          <td>{_html(item.get("owner", ""))}</td>
+          <td><div class="progress-track"><div class="progress-fill" style="width:{_html(item.get("progress_percent", 0))}%;"></div></div><div class="muted">{_html(item.get("progress_percent", 0))}%</div></td>
+          <td>{_html(item.get("blocker", "none"))}</td>
+          <td>{_html(item.get("next_action", ""))}</td>
+          <td>{'yes' if item.get("dave_needed") else 'no'}</td>
+        </tr>
+        """
+        for item in projects
+        if view != "signals" and project_visible(item)
+    )
+    if not project_rows and view != "signals":
+        project_rows = '<tr><td colspan="7">No projects in this view.</td></tr>'
+
+    signal_rows = "".join(
+        f"""
+        <tr>
+          <td><strong>{_html(item.get("title", ""))}</strong><div class="muted">{_html(item.get("source_surface", ""))}</div></td>
+          <td><span class="health-pill yellow">{_html(item.get("status", ""))}</span></td>
+          <td>{_html(item.get("priority", ""))}</td>
+          <td>{_html(item.get("suggested_action", ""))}</td>
+          <td>{_html(item.get("source_text", ""))}</td>
+          <td>
+            <form method="post" action="/studio/projects/signals/{_html(item.get("id", ""))}/promote" style="display:inline;">
+              <button class="button" type="submit">Promote</button>
+            </form>
+          </td>
+        </tr>
+        """
+        for item in inbox_examples
+        if view in {"all", "signals", "candidates"}
+    )
+    if not signal_rows:
+        signal_rows = '<tr><td colspan="6">No signals in this view.</td></tr>'
+
+    new_project_html = ""
+    if new_project:
+        new_project_html = """
+        <section class="card" style="margin-bottom:14px;">
+          <h2>New Project</h2>
+          <form method="post" action="/studio/projects/create" class="form-grid">
+            <label>Title<input name="title" required maxlength="220"></label>
+            <label>Owner<input name="owner" value="TOD"></label>
+            <label>Status<input name="status" value="queued"></label>
+            <label>Priority<input name="priority" value="P1"></label>
+            <label>Progress %<input name="progress_percent" type="number" min="0" max="100" value="0"></label>
+            <label>Dave Needed<select name="dave_needed"><option value="false">no</option><option value="true">yes</option></select></label>
+            <label class="wide">Summary<textarea name="summary"></textarea></label>
+            <label class="wide">Next Action<textarea name="next_action"></textarea></label>
+            <label class="wide">Blocker / Action Needed<textarea name="blocker">none</textarea></label>
+            <div class="actions wide"><button class="button primary" type="submit">Save Project</button><a class="button" href="/studio/projects">Cancel</a></div>
+          </form>
+        </section>
+        """
+
+    selected_html = ""
+    if selected_project:
+        event_rows = "".join(
+            f"""
+            <article class="attention-item">
+              <small>{_html(event.get("event_type", ""))} / {_html(event.get("actor", ""))}</small>
+              <strong>{_html(event.get("title", ""))}</strong>
+              <div class="muted">{_html(event.get("detail", ""))}</div>
+            </article>
+            """
+            for event in selected_events
+        )
+        if not event_rows:
+            event_rows = '<article class="attention-item"><strong>No events yet</strong></article>'
+        selected_html = f"""
+        <section class="card" style="margin-bottom:14px;">
+          <h2>{_html(selected_project.get("title", "Project"))}</h2>
+          <form method="post" action="/studio/projects/{_html(selected_project.get("id", ""))}/update" class="form-grid">
+            <label>Status<input name="status" value="{_html(selected_project.get("status", ""))}"></label>
+            <label>Owner<input name="owner" value="{_html(selected_project.get("owner", ""))}"></label>
+            <label>Priority<input name="priority" value="{_html(selected_project.get("priority", ""))}"></label>
+            <label>Progress %<input name="progress_percent" type="number" min="0" max="100" value="{_html(selected_project.get("progress_percent", 0))}"></label>
+            <label>Health<input name="health" value="{_html(selected_project.get("health", ""))}"></label>
+            <label>Dave Needed<select name="dave_needed"><option value="false" {'selected' if not selected_project.get("dave_needed") else ''}>no</option><option value="true" {'selected' if selected_project.get("dave_needed") else ''}>yes</option></select></label>
+            <label class="wide">Summary<textarea name="summary">{_html(selected_project.get("summary", ""))}</textarea></label>
+            <label class="wide">Next Action<textarea name="next_action">{_html(selected_project.get("next_action", ""))}</textarea></label>
+            <label class="wide">Blocker / Action Needed<textarea name="blocker">{_html(selected_project.get("blocker", "none"))}</textarea></label>
+            <div class="actions wide">
+              <button class="button primary" type="submit">Save Changes</button>
+              <button class="button" type="submit" formaction="/studio/projects/{_html(selected_project.get("id", ""))}/pause">Pause</button>
+              <button class="button danger" type="submit" formaction="/studio/projects/{_html(selected_project.get("id", ""))}/delete">Delete</button>
+              <a class="button" href="/studio/projects">Close</a>
+            </div>
+          </form>
+          <form method="post" action="/studio/projects/{_html(selected_project.get("id", ""))}/events" class="form-grid" style="margin-top:14px;">
+            <label>Event Title<input name="title" maxlength="220"></label>
+            <label>Actor<input name="actor" value="Dave"></label>
+            <label class="wide">Note<textarea name="detail"></textarea></label>
+            <div class="actions wide"><button class="button" type="submit">Add Note</button></div>
+          </form>
+          <div class="attention-list" style="margin-top:12px;">{event_rows}</div>
+        </section>
+        """
+
     return f"""
     <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>
     <section class="card" style="margin-bottom:14px;">
       <h2>Project Actions</h2>
       <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
-        <a class="button primary" href="/studio/projects">Start Project</a>
-        <a class="button" href="/studio/projects">Open Project</a>
-        <a class="button" href="/studio/projects">Review Signal Inbox</a>
-        <a class="button" href="/mim">Talk To MIM</a>
+        <a class="button primary" href="/studio/projects?new_project=1">Start Project</a>
+        <a class="button" href="/studio/projects?view=active">Open Project</a>
+        <a class="button" href="/studio/projects?view=signals">Review Signal Inbox</a>
       </div>
     </section>
-    <section class="grid two">
-      <article class="card">
-        <h2>Project Inbox</h2>
-        <div class="attention-list" style="margin-top:12px;">{inbox_html}</div>
-      </article>
-      <article class="card">
-        <h2>Active Project Examples</h2>
-        {examples_html}
-      </article>
+    {new_project_html}
+    {selected_html}
+    <section class="card" style="margin-bottom:14px;">
+      <h2>Project Inbox</h2>
+      <table class="score-table">
+        <thead><tr><th>Project</th><th>Status</th><th>Owner</th><th>Done</th><th>Blocker</th><th>Next Action</th><th>Dave</th></tr></thead>
+        <tbody>{project_rows}</tbody>
+      </table>
+    </section>
+    <section class="card">
+      <h2>Signals</h2>
+      <table class="score-table">
+        <thead><tr><th>Signal</th><th>Status</th><th>Priority</th><th>Action</th><th>Origin</th><th></th></tr></thead>
+        <tbody>{signal_rows}</tbody>
+      </table>
     </section>
     """
 
@@ -4366,6 +4799,218 @@ async def studio_projects_state_api(db: AsyncSession = Depends(get_db)) -> dict[
     return await _studio_projects_state(db)
 
 
+def _form_bool(value: str | bool | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+@router.post("/studio/projects/create")
+async def create_studio_project_form(
+    title: str = Form(...),
+    summary: str = Form(""),
+    status: str = Form("queued"),
+    priority: str = Form("P1"),
+    owner: str = Form("TOD"),
+    next_action: str = Form(""),
+    blocker: str = Form("none"),
+    progress_percent: int = Form(0),
+    dave_needed: str = Form("false"),
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    metadata = {
+        "progress_percent": max(0, min(100, int(progress_percent or 0))),
+        "blocker": blocker.strip() or "none",
+        "work_state": status.strip() or "queued",
+        "project_type": "manual",
+        "created_from": "studio_projects_form",
+        "user_modified": True,
+    }
+    row = StudioProject(
+        title=title.strip(),
+        summary=summary,
+        status=status.strip() or "queued",
+        priority=priority.strip() or "P1",
+        owner=owner.strip() or "TOD",
+        health="new",
+        next_action=next_action,
+        dave_needed=_form_bool(dave_needed),
+        metadata_json=metadata,
+    )
+    db.add(row)
+    await db.flush()
+    db.add(
+        StudioProjectEvent(
+            project_id=row.id,
+            event_type="created",
+            actor="Dave",
+            title="Project created",
+            detail=summary or next_action,
+            metadata_json={"source": "studio_projects_form"},
+        )
+    )
+    await db.commit()
+    return RedirectResponse(url=f"/studio/projects?project_id={row.id}", status_code=303)
+
+
+@router.post("/studio/projects/{project_id}/update")
+async def update_studio_project_form(
+    project_id: int,
+    summary: str = Form(""),
+    status: str = Form("queued"),
+    priority: str = Form("P1"),
+    owner: str = Form("TOD"),
+    health: str = Form("good"),
+    next_action: str = Form(""),
+    blocker: str = Form("none"),
+    progress_percent: int = Form(0),
+    dave_needed: str = Form("false"),
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    row = await db.get(StudioProject, project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="studio_project_not_found")
+    row.summary = summary
+    row.status = status.strip() or "queued"
+    row.priority = priority.strip() or "P1"
+    row.owner = owner.strip() or "TOD"
+    row.health = health.strip() or "good"
+    row.next_action = next_action
+    row.dave_needed = _form_bool(dave_needed)
+    metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+    metadata.update(
+        {
+            "progress_percent": max(0, min(100, int(progress_percent or 0))),
+            "blocker": blocker.strip() or "none",
+            "work_state": row.status,
+            "updated_from": "studio_projects_form",
+            "user_modified": True,
+        }
+    )
+    row.metadata_json = metadata
+    db.add(
+        StudioProjectEvent(
+            project_id=row.id,
+            event_type="updated",
+            actor="Dave",
+            title="Project updated",
+            detail=next_action or summary,
+            metadata_json={"source": "studio_projects_form"},
+        )
+    )
+    await db.commit()
+    return RedirectResponse(url=f"/studio/projects?project_id={row.id}", status_code=303)
+
+
+@router.post("/studio/projects/{project_id}/pause")
+async def pause_studio_project_form(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    row = await db.get(StudioProject, project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="studio_project_not_found")
+    row.status = "paused"
+    metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+    metadata["work_state"] = "paused"
+    metadata["user_modified"] = True
+    row.metadata_json = metadata
+    db.add(StudioProjectEvent(project_id=row.id, event_type="paused", actor="Dave", title="Project paused"))
+    await db.commit()
+    return RedirectResponse(url=f"/studio/projects?project_id={row.id}", status_code=303)
+
+
+@router.post("/studio/projects/{project_id}/delete")
+async def delete_studio_project_form(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    row = await db.get(StudioProject, project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="studio_project_not_found")
+    row.status = "deleted"
+    row.health = "deleted"
+    metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+    metadata["work_state"] = "deleted"
+    metadata["user_modified"] = True
+    row.metadata_json = metadata
+    db.add(StudioProjectEvent(project_id=row.id, event_type="deleted", actor="Dave", title="Project deleted"))
+    await db.commit()
+    return RedirectResponse(url="/studio/projects", status_code=303)
+
+
+@router.post("/studio/projects/{project_id}/events")
+async def create_studio_project_event_form(
+    project_id: int,
+    title: str = Form(""),
+    actor: str = Form("Dave"),
+    detail: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    project = await db.get(StudioProject, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="studio_project_not_found")
+    metadata = project.metadata_json if isinstance(project.metadata_json, dict) else {}
+    metadata["user_modified"] = True
+    project.metadata_json = metadata
+    db.add(
+        StudioProjectEvent(
+            project_id=project.id,
+            event_type="note",
+            actor=actor.strip() or "Dave",
+            title=title.strip() or "Project note",
+            detail=detail,
+            metadata_json={"source": "studio_projects_form"},
+        )
+    )
+    await db.commit()
+    return RedirectResponse(url=f"/studio/projects?project_id={project.id}", status_code=303)
+
+
+@router.post("/studio/projects/signals/{signal_id}/promote")
+async def promote_studio_project_signal_form(
+    signal_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    signal = await db.get(StudioProjectSignal, signal_id)
+    if not signal:
+        raise HTTPException(status_code=404, detail="studio_project_signal_not_found")
+    project = StudioProject(
+        title=signal.title.strip(),
+        summary=signal.source_text,
+        status="queued",
+        priority=signal.priority.strip() or "normal",
+        owner="TOD",
+        health="new",
+        why_it_matters=signal.why_it_matters,
+        origin_story=f"Promoted from signal #{signal.id}: {signal.source_text}",
+        next_action="Define scope and first acceptance check.",
+        dave_needed=False,
+        metadata_json={
+            "promoted_from_signal_id": signal.id,
+            "progress_percent": 0,
+            "work_state": "queued",
+            "blocker": "none",
+            "project_type": "promoted_signal",
+        },
+    )
+    db.add(project)
+    await db.flush()
+    signal.status = "promoted"
+    signal.project_id = project.id
+    db.add(
+        StudioProjectEvent(
+            project_id=project.id,
+            event_type="promoted_from_signal",
+            actor="Dave",
+            title="Signal promoted to project",
+            detail=signal.source_text,
+            evidence_json={"signal_id": signal.id},
+            metadata_json={"source": "studio_projects_form"},
+        )
+    )
+    await db.commit()
+    return RedirectResponse(url=f"/studio/projects?project_id={project.id}", status_code=303)
+
+
 @router.post("/studio/api/project-signals")
 async def create_studio_project_signal(
     payload: StudioProjectSignalCreate,
@@ -4728,7 +5373,19 @@ async def studio_tab(
         body = _embed_body(tab)
         subtitle = f"Studio wrapper for the existing {tab.get('source')} console."
     elif key == "projects":
-        state = await _studio_projects_state(db)
+        selected_project_id = None
+        raw_project_id = request.query_params.get("project_id")
+        if raw_project_id:
+            try:
+                selected_project_id = int(raw_project_id)
+            except ValueError:
+                selected_project_id = None
+        state = await _studio_projects_state(
+            db,
+            selected_project_id=selected_project_id,
+            view=request.query_params.get("view", "all"),
+            new_project=request.query_params.get("new_project", "") in {"1", "true", "yes"},
+        )
         body = _projects_body(state)
         subtitle = str(PLACEHOLDERS[key]["subtitle"])
     elif key == "documents":
