@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-06-03T15:18:00-07:00",
+  "artifact_type": "lab-servo-reference-v1",
+  "project": "LAB Servo Tester",
+  "manufacturer": "ANNIMOS",
+  "model": "DS3245SG 45kg 180 degree servo",
+  "electrical": {
+    "operating_voltage": "5-8.4V",
+    "stall_current": {
+      "5v": "3.5A",
+      "7_4v": "5.2A",
+      "8_4v": "5.8A"
+    },
+    "idle_current": "5mA"
+  },
+  "control": {
+    "pulse_width_us": {
+      "min": 500,
+      "neutral": 1500,
+      "max": 2500
+    },
+    "running_degree": 180,
+    "dead_band_us": 2,
+    "frequency_hz": "50-330"
+  },
+  "pca9685_50hz_mapping": {
+    "raw_min_count": 102,
+    "raw_neutral_count": 307,
+    "raw_max_count": 512,
+    "calculation_note": "At 50Hz, one PCA9685 count is about 4.88us. 500us maps to ~102, 1500us maps to ~307, 2500us maps to ~512."
+  },
+  "training_lesson": "Do not use broad PCA9685 exploratory ranges for a known servo. Convert the servo's published microsecond pulse range to raw PCA counts and constrain UI/firmware defaults before movement testing."
+}

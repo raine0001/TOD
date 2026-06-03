@@ -2715,13 +2715,13 @@ def _default_servo_tester_profile() -> dict[str, Any]:
                 "id": "servo-0",
                 "name": "Servo 0",
                 "channel": 0,
-                "min_pulse": 100,
+                "min_pulse": 102,
                 "min_angle": 0,
-                "center_pulse": 375,
+                "center_pulse": 307,
                 "center_angle": 90,
-                "max_pulse": 650,
+                "max_pulse": 512,
                 "max_angle": 180,
-                "start_pulse": 375,
+                "start_pulse": 307,
                 "start_angle": 90,
                 "speed_ms": 600,
                 "startup_ms": 250,
@@ -2843,7 +2843,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
     <section class="card" style="margin-top:14px;">
       <h2>UNO Sketch Protocol</h2>
       <p>Smooth firmware is uploaded to the UNO R4 on COM5. Reconnect, select <code>Use Smooth UNO Sketch</code>, then send <code>PING</code> and expect <code>PONG SmoothServoBenchTester</code>.</p>
-      <p class="muted" style="margin-top:8px;">Firmware source: <code>docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino</code>. It supports <code>PING</code>, <code>VERSION</code>, <code>STATUS</code>, <code>SCAN</code>, <code>TESTALL {{low}} {{high}} {{duration}}</code>, <code>100-650</code>, <code>ALL {{pulse}} {{duration}}</code>, <code>S {{channel}} {{pulse}} {{duration}}</code>, and <code>MOVE {{channel}} {{angle}} {{duration}}</code> at 9600 baud.</p>
+      <p class="muted" style="margin-top:8px;">Firmware source: <code>docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino</code>. DS3245SG defaults: <code>102-512</code> raw PCA9685 counts, about <code>500-2500us</code> at 50Hz. It supports <code>PING</code>, <code>VERSION</code>, <code>STATUS</code>, <code>SCAN</code>, <code>TESTALL {{low}} {{high}} {{duration}}</code>, <code>ALL {{pulse}} {{duration}}</code>, <code>S {{channel}} {{pulse}} {{duration}}</code>, and <code>MOVE {{channel}} {{angle}} {{duration}}</code>.</p>
       <p class="muted" style="margin-top:8px;">If upload says the serial port is busy, disconnect this page from COM5 and close Arduino IDE Serial Monitor/Plotter before flashing.</p>
       <p class="muted" style="margin-top:8px;">Arduino IDE is only needed to flash that sketch onto the UNO R4. After that, this page can connect directly from Chrome with Web Serial.</p>
     </section>
@@ -3144,14 +3144,14 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         readProfileFromDom();
         profile.servos = profile.servos.map((servo) => ({{
           ...servo,
-          min_pulse: 100,
-          center_pulse: 375,
-          max_pulse: 650,
-          start_pulse: 375,
-          notes: servo.notes || 'Current UNO sketch reads one integer 100-650 and applies it to channels 0 and 1.'
+          min_pulse: 102,
+          center_pulse: 307,
+          max_pulse: 512,
+          start_pulse: 307,
+          notes: servo.notes || 'DS3245SG-safe PCA9685 range: 102-512 raw counts, about 500-2500us at 50Hz.'
         }}));
         renderServos();
-        serialStatus.textContent = 'Protocol set for the currently flashed sketch: send one raw PCA9685 count, 100-650, at 9600 baud.';
+        serialStatus.textContent = 'Protocol set for DS3245SG-safe raw PCA9685 counts, 102-512, at 9600 baud.';
       }});
       document.getElementById('useSmoothSketchProtocol').addEventListener('click', () => {{
         commandTemplate.value = 'S {{channel}} {{pulse}} {{duration}}';
@@ -3160,10 +3160,10 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         readProfileFromDom();
         profile.servos = profile.servos.map((servo) => ({{
           ...servo,
-          min_pulse: 100,
-          center_pulse: 375,
-          max_pulse: 650,
-          start_pulse: 375,
+          min_pulse: 102,
+          center_pulse: 307,
+          max_pulse: 512,
+          start_pulse: 307,
           speed_ms: Math.max(Number(servo.speed_ms || 0), 1200),
           startup_ms: Math.max(Number(servo.startup_ms || 0), 900),
           slowdown_ms: Math.max(Number(servo.slowdown_ms || 0), 900),
@@ -3199,14 +3199,14 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         await sendSerial('SCAN');
       }});
       document.getElementById('testAllChannels').addEventListener('click', async () => {{
-        await sendSerial('TESTALL 300 650 450');
+        await sendSerial('TESTALL 220 395 650');
       }});
       document.getElementById('addServo').addEventListener('click', () => {{
         readProfileFromDom();
         const channel = profile.servos.length;
         const rawPcaMode = String(profile.command_template || '').includes('{{pulse}}') && Number(profile.baud_rate || 9600) === 9600;
         profile.servos.push(rawPcaMode
-          ? {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 100, min_angle: 0, center_pulse: 375, center_angle: 90, max_pulse: 650, max_angle: 180, start_pulse: 375, start_angle: 90, speed_ms: 1200, startup_ms: 900, slowdown_ms: 900, notes: 'Raw PCA9685 count profile for SmoothServoBenchTester.' }}
+          ? {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 102, min_angle: 0, center_pulse: 307, center_angle: 90, max_pulse: 512, max_angle: 180, start_pulse: 307, start_angle: 90, speed_ms: 1200, startup_ms: 900, slowdown_ms: 900, notes: 'DS3245SG-safe raw PCA9685 count profile.' }}
           : {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 500, min_angle: 0, center_pulse: 1500, center_angle: 90, max_pulse: 2500, max_angle: 180, start_pulse: 1500, start_angle: 90, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: '' }});
         renderServos();
       }});

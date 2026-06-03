@@ -4,9 +4,9 @@
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 const char FIRMWARE_VERSION[] = "SmoothServoBenchTester nonblocking-v2";
-const int SERVO_MIN_COUNT = 100;
-const int SERVO_MAX_COUNT = 650;
-const int SERVO_MID_COUNT = 375;
+const int SERVO_MIN_COUNT = 102;
+const int SERVO_MAX_COUNT = 512;
+const int SERVO_MID_COUNT = 307;
 const int SERVO_CHANNELS = 16;
 const int SERVO_FRAME_MS = 20;
 const int DEFAULT_RAMP_MS = 1200;
@@ -214,7 +214,7 @@ void handleCommand(String line) {
     int lowPulse = nextToken(work).toInt();
     int highPulse = nextToken(work).toInt();
     int durationMs = nextToken(work).toInt();
-    testAllChannels(lowPulse > 0 ? lowPulse : 300, highPulse > 0 ? highPulse : 650, durationMs);
+    testAllChannels(lowPulse > 0 ? lowPulse : 220, highPulse > 0 ? highPulse : 395, durationMs);
     return;
   }
 
@@ -259,7 +259,7 @@ void setup() {
   Serial.print("=== ");
   Serial.print(FIRMWARE_VERSION);
   Serial.println(" ===");
-  Serial.println("Raw input: 100-650 moves channels 0 and 1 smoothly.");
+  Serial.println("Raw input: 102-512 maps to about 500-2500us at 50Hz.");
   Serial.println("Commands: PING | VERSION | STATUS | SCAN | S channel pulse durationMs | MOVE channel angle durationMs | ALL pulse durationMs | TESTALL low high durationMs");
   Serial.print("Starting at midpoint pulse: ");
   Serial.println(SERVO_MID_COUNT);
