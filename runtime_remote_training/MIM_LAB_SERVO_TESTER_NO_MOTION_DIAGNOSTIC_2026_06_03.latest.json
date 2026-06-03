@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-06-03T14:10:00-07:00",
+  "artifact_type": "lab-servo-tester-no-motion-diagnostic-v1",
+  "project": "LAB Servo Tester",
+  "observed_log_pattern": [
+    "TX S 0 pulse duration",
+    "RX OK channel 0 pulse",
+    "TX PING",
+    "RX PONG SmoothServoBenchTester",
+    "servo does not move"
+  ],
+  "diagnosis": "Browser serial and UNO firmware loop are working. Failure is downstream of serial: PCA9685 I2C detection, channel mapping, servo V+ power, or shared ground.",
+  "studio_update": {
+    "status": "deployed",
+    "changes": [
+      "Connect is disabled while the page already owns a serial connection.",
+      "Disconnect explicitly releases reader, writer, and serial port handles.",
+      "Forget Port attempts to forget active and browser-granted serial ports.",
+      "Protocol buttons now show selected state.",
+      "New raw PCA9685 servo profiles inherit 100-650 range after smooth protocol selection.",
+      "Added PCA Status, I2C Scan, and Test All Channels controls."
+    ]
+  },
+  "firmware_update": {
+    "status": "compiled_but_upload_blocked",
+    "path": "docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino",
+    "new_commands": [
+      "STATUS",
+      "SCAN",
+      "TESTALL low high durationMs"
+    ],
+    "compile_result": "passed for arduino:renesas_uno:unor4wifi",
+    "upload_result": "blocked because COM5 is busy",
+    "next_action": "Release COM5 from the Lab page or any other serial owner, then upload the compiled diagnostic firmware."
+  },
+  "mim_training_lesson": "When RX OK and PONG are present but no servo moves, MIM must stop asking about browser serial and move directly to PCA9685 presence, channel mapping, servo power, and shared ground."
+}

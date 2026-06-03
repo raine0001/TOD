@@ -953,6 +953,8 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
     .actions {{ display: flex; gap: 10px; align-items: center; }}
     .button {{ border: 1px solid var(--line); background: #101925; color: var(--text); border-radius: 8px; padding: 10px 12px; font-weight: 700; cursor: pointer; }}
     .button.primary {{ background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #061019; border: 0; }}
+    .button.selected {{ background: rgba(107, 225, 255, .16); color: var(--accent); border-color: rgba(107, 225, 255, .65); box-shadow: inset 0 0 0 1px rgba(107, 225, 255, .18); }}
+    .button:disabled {{ opacity: .5; cursor: not-allowed; }}
     .button.danger {{ background: rgba(255, 107, 122, .12); color: #ffd6dc; border-color: rgba(255, 107, 122, .35); }}
     .button.bat {{ background: linear-gradient(135deg, #ff5c70, #ff9b6b); color: #20070b; border: 0; box-shadow: 0 12px 30px rgba(255, 92, 112, .24); }}
     .icon-button {{ width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 24px; line-height: 1; border: 0; background: transparent; box-shadow: none; color: var(--muted); }}
@@ -2830,6 +2832,9 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         <button id="useMoveProtocol" class="button" type="button">Use MOVE Angle Protocol</button>
         <button id="usePulseProtocol" class="button" type="button">Use Pulse Protocol</button>
         <button id="sendPing" class="button" type="button">Send Ping</button>
+        <button id="sendStatus" class="button" type="button">PCA Status</button>
+        <button id="sendScan" class="button" type="button">I2C Scan</button>
+        <button id="testAllChannels" class="button" type="button">Test All Channels</button>
       </div>
       <pre id="serialLog" class="card" style="margin-top:10px; min-height:86px; max-height:180px; overflow:auto; white-space:pre-wrap; font-size:12px;">Serial log ready.</pre>
     </section>
@@ -2837,7 +2842,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
     <section class="card" style="margin-top:14px;">
       <h2>UNO Sketch Protocol</h2>
       <p>Smooth firmware is uploaded to the UNO R4 on COM5. Reconnect, select <code>Use Smooth UNO Sketch</code>, then send <code>PING</code> and expect <code>PONG SmoothServoBenchTester</code>.</p>
-      <p class="muted" style="margin-top:8px;">Firmware source: <code>docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino</code>. It supports <code>PING</code>, <code>100-650</code>, <code>ALL {{pulse}} {{duration}}</code>, <code>S {{channel}} {{pulse}} {{duration}}</code>, and <code>MOVE {{channel}} {{angle}} {{duration}}</code> at 9600 baud.</p>
+      <p class="muted" style="margin-top:8px;">Firmware source: <code>docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino</code>. It supports <code>PING</code>, <code>STATUS</code>, <code>SCAN</code>, <code>TESTALL {{low}} {{high}} {{duration}}</code>, <code>100-650</code>, <code>ALL {{pulse}} {{duration}}</code>, <code>S {{channel}} {{pulse}} {{duration}}</code>, and <code>MOVE {{channel}} {{angle}} {{duration}}</code> at 9600 baud.</p>
       <p class="muted" style="margin-top:8px;">If upload says the serial port is busy, disconnect this page from COM5 and close Arduino IDE Serial Monitor/Plotter before flashing.</p>
       <p class="muted" style="margin-top:8px;">Arduino IDE is only needed to flash that sketch onto the UNO R4. After that, this page can connect directly from Chrome with Web Serial.</p>
     </section>
@@ -2855,6 +2860,15 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       const connectionMetric = document.getElementById('connectionMetric');
       const baudRate = document.getElementById('baudRate');
       const commandTemplate = document.getElementById('commandTemplate');
+      const connectSerialButton = document.getElementById('connectSerial');
+      const disconnectSerialButton = document.getElementById('disconnectSerial');
+      const forgetSerialButton = document.getElementById('forgetSerial');
+      const protocolButtons = [
+        document.getElementById('useCurrentSketchProtocol'),
+        document.getElementById('useSmoothSketchProtocol'),
+        document.getElementById('useMoveProtocol'),
+        document.getElementById('usePulseProtocol')
+      ];
 
       function esc(value) {{
         return String(value ?? '').replace(/[&<>"']/g, (char) => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[char]));
@@ -2898,6 +2912,32 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         if (entity) entity.textContent = connected ? 'Connected' : 'Disconnected';
         if (copy) copy.textContent = detail || (connected ? 'UNO serial open' : 'Chrome on Dave\\'s PC');
         serialStatus.textContent = detail || (connected ? 'Connected.' : 'Serial disconnected.');
+        connectSerialButton.disabled = Boolean(connected);
+        disconnectSerialButton.disabled = !connected;
+      }}
+      function setSelectedProtocol(buttonId) {{
+        protocolButtons.forEach((button) => {{
+          if (!button) return;
+          button.classList.toggle('selected', button.id === buttonId);
+          button.setAttribute('aria-pressed', button.id === buttonId ? 'true' : 'false');
+        }});
+      }}
+      async function closeSerialConnection(detail) {{
+        serialReadActive = false;
+        if (serialReader) {{
+          try {{ await serialReader.cancel(); }} catch (error) {{}}
+          try {{ serialReader.releaseLock(); }} catch (error) {{}}
+          serialReader = null;
+        }}
+        if (serialWriter) {{
+          try {{ serialWriter.releaseLock(); }} catch (error) {{}}
+          serialWriter = null;
+        }}
+        if (serialPort) {{
+          try {{ await serialPort.close(); }} catch (error) {{ logSerial('CLOSE NOTE: ' + (error && error.message ? error.message : 'unknown')); }}
+          serialPort = null;
+        }}
+        setConnectedState(false, detail || 'Serial disconnected.');
       }}
       function setSerialHelp(text) {{
         if (!serialHelp) return;
@@ -2954,13 +2994,13 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
             <div class="form-grid">
               <label>Name<input data-field="name" value="${{esc(servo.name)}}"></label>
               <label>Channel<input data-field="channel" type="number" min="0" max="15" value="${{esc(servo.channel)}}"></label>
-              <label>Min Pulse<input data-field="min_pulse" type="number" min="300" max="3000" value="${{esc(servo.min_pulse)}}"></label>
+              <label>Min Pulse<input data-field="min_pulse" type="number" min="0" max="3000" value="${{esc(servo.min_pulse)}}"></label>
               <label>Min Angle<input data-field="min_angle" type="number" min="0" max="180" value="${{esc(servo.min_angle ?? 0)}}"></label>
               <label>Center Pulse<input data-field="center_pulse" type="number" min="300" max="3000" value="${{esc(servo.center_pulse)}}"></label>
               <label>Center Angle<input data-field="center_angle" type="number" min="0" max="180" value="${{esc(servo.center_angle ?? 90)}}"></label>
-              <label>Max Pulse<input data-field="max_pulse" type="number" min="300" max="3000" value="${{esc(servo.max_pulse)}}"></label>
+              <label>Max Pulse<input data-field="max_pulse" type="number" min="0" max="3000" value="${{esc(servo.max_pulse)}}"></label>
               <label>Max Angle<input data-field="max_angle" type="number" min="0" max="180" value="${{esc(servo.max_angle ?? 180)}}"></label>
-              <label>Start Pulse<input data-field="start_pulse" type="number" min="300" max="3000" value="${{esc(servo.start_pulse)}}"></label>
+              <label>Start Pulse<input data-field="start_pulse" type="number" min="0" max="3000" value="${{esc(servo.start_pulse)}}"></label>
               <label>Start Angle<input data-field="start_angle" type="number" min="0" max="180" value="${{esc(servo.start_angle ?? currentAngle)}}"></label>
               <label>Speed ms<input data-field="speed_ms" type="number" min="0" max="30000" value="${{esc(servo.speed_ms)}}"></label>
               <label>Startup ms<input data-field="startup_ms" type="number" min="0" max="30000" value="${{esc(servo.startup_ms)}}"></label>
@@ -3011,6 +3051,12 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
           serialStatus.textContent = 'Web Serial is unavailable. Use Chrome or Edge on HTTPS with the UNO connected to this PC.';
           return;
         }}
+        if (serialPort || serialWriter) {{
+          setSerialHelp('UNO serial is already open in this page. Use Disconnect before connecting again.');
+          logSerial('CONNECT SKIPPED: port already open in this page.');
+          setConnectedState(true, 'Connected to UNO serial at ' + profile.baud_rate + ' baud.');
+          return;
+        }}
         readProfileFromDom();
         try {{
           serialPort = await navigator.serial.requestPort();
@@ -3051,24 +3097,23 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         }}
       }});
       document.getElementById('disconnectSerial').addEventListener('click', async () => {{
-        serialReadActive = false;
-        if (serialReader) {{ try {{ await serialReader.cancel(); serialReader.releaseLock(); }} catch (error) {{}} serialReader = null; }}
-        if (serialWriter) {{ serialWriter.releaseLock(); serialWriter = null; }}
-        if (serialPort) {{ await serialPort.close(); serialPort = null; }}
-        setConnectedState(false, 'Serial disconnected.');
+        await closeSerialConnection('Serial disconnected. COM5 released from this page.');
         setSerialHelp('');
         logSerial('Disconnected.');
       }});
       document.getElementById('forgetSerial').addEventListener('click', async () => {{
         try {{
-          serialReadActive = false;
-          if (serialReader) {{ try {{ await serialReader.cancel(); serialReader.releaseLock(); }} catch (error) {{}} serialReader = null; }}
-          if (serialWriter) {{ serialWriter.releaseLock(); serialWriter = null; }}
-          if (serialPort) {{
-            try {{ await serialPort.close(); }} catch (error) {{}}
-            if (serialPort.forget) await serialPort.forget();
+          const activePort = serialPort;
+          await closeSerialConnection('Serial disconnected before forgetting port permission.');
+          if (activePort && activePort.forget) await activePort.forget();
+          if (navigator.serial && navigator.serial.getPorts) {{
+            const ports = await navigator.serial.getPorts();
+            for (const port of ports) {{
+              if (port.forget) {{
+                try {{ await port.forget(); }} catch (error) {{}}
+              }}
+            }}
           }}
-          serialPort = null;
           setConnectedState(false, 'Port permission cleared. Click Connect UNO and select COM5 again.');
           setSerialHelp('If COM5 still fails to open, close Arduino IDE Serial Monitor/Plotter or any other program using COM5, then unplug/replug the UNO.');
           logSerial('Port forgotten.');
@@ -3080,6 +3125,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       document.getElementById('useCurrentSketchProtocol').addEventListener('click', () => {{
         commandTemplate.value = '{{pulse}}';
         baudRate.value = 9600;
+        setSelectedProtocol('useCurrentSketchProtocol');
         readProfileFromDom();
         profile.servos = profile.servos.map((servo) => ({{
           ...servo,
@@ -3095,6 +3141,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       document.getElementById('useSmoothSketchProtocol').addEventListener('click', () => {{
         commandTemplate.value = 'S {{channel}} {{pulse}} {{duration}}';
         baudRate.value = 9600;
+        setSelectedProtocol('useSmoothSketchProtocol');
         readProfileFromDom();
         profile.servos = profile.servos.map((servo) => ({{
           ...servo,
@@ -3111,22 +3158,36 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       document.getElementById('useMoveProtocol').addEventListener('click', () => {{
         commandTemplate.value = 'MOVE {{channel}} {{angle}} {{duration}}';
         baudRate.value = 9600;
+        setSelectedProtocol('useMoveProtocol');
         readProfileFromDom();
         serialStatus.textContent = 'Protocol set to MOVE channel angle duration at 9600 baud.';
       }});
       document.getElementById('usePulseProtocol').addEventListener('click', () => {{
         commandTemplate.value = 'S {{channel}} {{pulse}} {{duration}}';
         baudRate.value = 9600;
+        setSelectedProtocol('usePulseProtocol');
         readProfileFromDom();
         serialStatus.textContent = 'Protocol set to S channel pulse duration at 9600 baud.';
       }});
       document.getElementById('sendPing').addEventListener('click', async () => {{
         await sendSerial('PING');
       }});
+      document.getElementById('sendStatus').addEventListener('click', async () => {{
+        await sendSerial('STATUS');
+      }});
+      document.getElementById('sendScan').addEventListener('click', async () => {{
+        await sendSerial('SCAN');
+      }});
+      document.getElementById('testAllChannels').addEventListener('click', async () => {{
+        await sendSerial('TESTALL 300 650 450');
+      }});
       document.getElementById('addServo').addEventListener('click', () => {{
         readProfileFromDom();
         const channel = profile.servos.length;
-        profile.servos.push({{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 500, min_angle: 0, center_pulse: 1500, center_angle: 90, max_pulse: 2500, max_angle: 180, start_pulse: 1500, start_angle: 90, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: '' }});
+        const rawPcaMode = String(profile.command_template || '').includes('{{pulse}}') && Number(profile.baud_rate || 9600) === 9600;
+        profile.servos.push(rawPcaMode
+          ? {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 100, min_angle: 0, center_pulse: 375, center_angle: 90, max_pulse: 650, max_angle: 180, start_pulse: 375, start_angle: 90, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: 'Raw PCA9685 count profile for SmoothServoBenchTester.' }}
+          : {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 500, min_angle: 0, center_pulse: 1500, center_angle: 90, max_pulse: 2500, max_angle: 180, start_pulse: 1500, start_angle: 90, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: '' }});
         renderServos();
       }});
       document.getElementById('saveProfile').addEventListener('click', async () => {{
@@ -3188,6 +3249,10 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         }}
       }});
       renderServos();
+      setConnectedState(false, 'Serial disconnected.');
+      if ((profile.command_template || '').startsWith('S ')) setSelectedProtocol('useSmoothSketchProtocol');
+      else if ((profile.command_template || '').startsWith('MOVE ')) setSelectedProtocol('useMoveProtocol');
+      else setSelectedProtocol('useCurrentSketchProtocol');
     </script>
     """
 
@@ -5861,6 +5926,20 @@ async def studio_mim_chat_api(
                 "slowdown",
             ]
         )
+        serial_ok_no_servo_motion = any(
+            term in prompt_lower
+            for term in [
+                "rx ok",
+                "pong smoothservobenchtester",
+                "serial is working",
+                "uno replies",
+                "not responding to any inputs",
+                "servo is not responding",
+                "no servo movement",
+                "no movement",
+                "does not move",
+            ]
+        )
         firmware_update_request = any(
             term in prompt_lower
             for term in [
@@ -5901,6 +5980,20 @@ async def studio_mim_chat_api(
             response_mode = "demonstration"
             failure_class = "servo_firmware_update_requires_local_serial_executor"
             training_lesson = "When Dave asks to update UNO firmware, route to a bounded local executor workflow: compile, upload, diagnose COM port lock, then update Studio evidence."
+        elif serial_ok_no_servo_motion:
+            reply = (
+                "The serial lane is working. RX OK and PONG prove Chrome is talking to the UNO and the smooth sketch is running.\n\n"
+                "The next diagnosis is downstream of serial:\n"
+                "- Send STATUS. Expected good result: PCA9685 FOUND 0x40.\n"
+                "- Send SCAN. Expected good result includes 0x40.\n"
+                "- Send TESTALL to pulse all 16 PCA9685 channels, in case the top port is not channel 0.\n"
+                "- If STATUS or SCAN does not show 0x40, check SDA/SCL, PCA9685 VCC/GND, address jumpers, and shared ground.\n"
+                "- If 0x40 is found but TESTALL produces no movement, check servo V+ power on the PWM board and shared ground between servo supply, PCA9685, and UNO.\n\n"
+                "This is not a browser connection problem anymore. It is channel mapping, I2C/PCA9685 detection, or servo power/ground."
+            )
+            response_mode = "problem_analysis"
+            failure_class = "serial_ok_servo_no_motion_downstream_pwm_or_power"
+            training_lesson = "When RX OK/PONG exists but no servo moves, stop diagnosing browser serial and test PCA9685 I2C presence, channel mapping, and servo power/ground."
         elif choppy_motion:
             reply = (
                 "MIM should have diagnosed this as a motion-profile issue.\n\n"
