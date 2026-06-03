@@ -7,6 +7,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -34,6 +35,7 @@ router = APIRouter()
 SHARED_RUNTIME_ROOT = Path("runtime/shared")
 TRAINING_RUNTIME_ROOT = Path("runtime_remote_training")
 MIM_PRESENCE_PATH = SHARED_RUNTIME_ROOT / "MIM_UNIVERSAL_PRESENCE.latest.json"
+LOS_ANGELES_TZ = ZoneInfo("America/Los_Angeles")
 
 
 TRAINING_EVIDENCE_DOCS: list[dict[str, str]] = [
@@ -561,6 +563,44 @@ PLACEHOLDERS: dict[str, dict[str, object]] = {
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    text_value = str(value or "").strip()
+    if not text_value:
+        return None
+    try:
+        normalized = text_value.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _la_time(value: object, default: str = "unknown") -> str:
+    parsed = _parse_datetime(value)
+    if not parsed:
+        return default
+    local = parsed.astimezone(LOS_ANGELES_TZ)
+    return local.strftime("%Y-%m-%d %I:%M:%S %p %Z")
+
+
+def _age_label(value: object) -> str:
+    parsed = _parse_datetime(value)
+    if not parsed:
+        return "age unknown"
+    seconds = max(0, int((datetime.now(timezone.utc) - parsed).total_seconds()))
+    if seconds < 90:
+        return f"{seconds}s old"
+    minutes = seconds // 60
+    if minutes < 90:
+        return f"{minutes}m old"
+    hours = round(minutes / 60, 1)
+    if hours < 48:
+        return f"{hours}h old"
+    return f"{round(hours / 24, 1)}d old"
 
 
 def _load_json(name: str) -> dict[str, Any]:
@@ -3321,12 +3361,27 @@ async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
     )
     mim_pass_rate = judgment.get("pass_rate_percent", "baseline needed")
     typo_summary = typo_smoke.get("summary") if isinstance(typo_smoke.get("summary"), dict) else {}
+    artifact_generated_at = _first_text(scoreboard.get("generated_at"), reflection.get("generated_at"), directive.get("updated_at"), default=_utc_now())
+    page_loaded_at = _utc_now()
+    attention_items = _training_attention_items(
+        assessment=assessment,
+        are_improving=are_improving,
+        judgment=judgment,
+        reflection=reflection,
+        tod_score=tod_score,
+    )
     return {
-        "generated_at": _first_text(scoreboard.get("generated_at"), reflection.get("generated_at"), directive.get("updated_at"), default=_utc_now()),
+        "generated_at": artifact_generated_at,
+        "generated_at_la": _la_time(artifact_generated_at),
+        "generated_age": _age_label(artifact_generated_at),
+        "page_loaded_at": page_loaded_at,
+        "page_loaded_at_la": _la_time(page_loaded_at),
         "directive_status": _first_text(directive.get("status"), default="unknown"),
         "assessment": assessment,
         "are_improving": are_improving,
         "outcome_verdict": outcome_verdict,
+        "attention_items": attention_items,
+        "resolution_owner_model": "MIM owns the training objective, TOD implements and validates, Codex assists only after stall/failure, Dave is asked only for decisions or access.",
         "mim": {
             "focus": _first_text(mim_training.get("current_topic"), default="Project-manager communication and judgment-mode selection"),
             "status": _first_text(mim_training.get("status"), default="unknown"),
@@ -3387,6 +3442,96 @@ def _format_percent(value: object, default: str = "baseline needed") -> str:
 def _scoreboard_metric(score: dict[str, Any], key: str, default: str = "baseline needed") -> str:
     value = score.get(key) if isinstance(score, dict) else None
     return _format_percent(value, default=default)
+
+
+def _training_attention_items(
+    *,
+    assessment: str,
+    are_improving: object,
+    judgment: dict[str, Any],
+    reflection: dict[str, Any],
+    tod_score: dict[str, Any],
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    pass_rate = judgment.get("pass_rate_percent")
+    try:
+        pass_rate_number = int(pass_rate)
+    except Exception:
+        pass_rate_number = None
+    weakness = _first_text(
+        judgment.get("current_weakness"),
+        default="MIM judgment-mode weakness has not been summarized yet.",
+    )
+    if pass_rate_number is None or pass_rate_number < 80:
+        items.append(
+            {
+                "key": "mim_judgment_mode",
+                "title": "MIM judgment-mode selection",
+                "status": "needs_attention",
+                "owner": "MIM",
+                "href": "/studio/training#mim_judgment_mode",
+                "what_needs_attention": weakness,
+                "why_it_matters": "MIM must choose recommendation, explanation, demonstration, consultative discovery, or problem analysis instead of dumping status.",
+                "mim_action": "Create a focused judgment repair drill from the failed smoke cases and run another narrow sample set.",
+                "tod_action": "Validate the new drill with pass/fail evidence and publish the updated smoke artifact.",
+                "resolution_process": "MIM diagnoses failed mode choice, TOD validates the repaired behavior, Codex is called only if the routing logic or tests stall.",
+            }
+        )
+
+    freshness = reflection.get("freshness") if isinstance(reflection.get("freshness"), dict) else {}
+    stale_artifacts = freshness.get("stale_artifacts") if isinstance(freshness.get("stale_artifacts"), list) else reflection.get("stale_artifacts", [])
+    if are_improving is not True or stale_artifacts:
+        stale_count = len(stale_artifacts) if isinstance(stale_artifacts, list) else _first_text(reflection.get("stale_artifact_count"), default="unknown")
+        items.append(
+            {
+                "key": "outcome_reflection_gap",
+                "title": "Outcome reflection gap",
+                "status": _plain_status(assessment, default="needs_attention"),
+                "owner": "MIM + TOD",
+                "href": "/studio/training#outcome_reflection_gap",
+                "what_needs_attention": f"Outcome improvement is not proven and stale artifact count is {stale_count}.",
+                "why_it_matters": "Training should not claim success until current evidence proves behavior improved.",
+                "mim_action": "Open a resolution objective that lists stale artifacts, expected fresh replacements, and the proof required to mark improvement true.",
+                "tod_action": "Refresh or retire stale execution and validation artifacts, then rerun the hourly reflection.",
+                "resolution_process": "MIM owns the resolution objective, TOD clears evidence freshness, MIM re-assesses outcome improvement, Codex steps in if the refresh path stalls.",
+                "details": stale_artifacts[:12] if isinstance(stale_artifacts, list) else [],
+            }
+        )
+
+    metrics = tod_score.get("metrics") if isinstance(tod_score.get("metrics"), dict) else {}
+    validated = metrics.get("validated_edits") if isinstance(metrics.get("validated_edits"), dict) else {}
+    no_ops = metrics.get("no_op_rejections") if isinstance(metrics.get("no_op_rejections"), dict) else {}
+    validated_today = validated.get("today") if isinstance(validated, dict) else None
+    no_ops_today = no_ops.get("today") if isinstance(no_ops, dict) else None
+    tod_score_text = json.dumps(tod_score, sort_keys=True).lower() if isinstance(tod_score, dict) else ""
+    validated_baseline = (
+        validated_today is None
+        or (isinstance(validated_today, dict) and _plain_status(validated_today.get("status")) == "baseline_needed")
+        or _plain_status(validated.get("source") if isinstance(validated, dict) else "") == "baseline_needed"
+        or ("validated_edits" in tod_score_text and "baseline_needed" in tod_score_text)
+    )
+    no_ops_baseline = (
+        no_ops_today is None
+        or (isinstance(no_ops_today, dict) and _plain_status(no_ops_today.get("status")) == "baseline_needed")
+        or _plain_status(no_ops.get("source") if isinstance(no_ops, dict) else "") == "baseline_needed"
+        or ("no_op_rejections" in tod_score_text and "baseline_needed" in tod_score_text)
+    )
+    if validated_baseline or no_ops_baseline:
+        items.append(
+            {
+                "key": "tod_validation_baselines",
+                "title": "TOD validation baselines",
+                "status": "baseline_needed",
+                "owner": "TOD",
+                "href": "/studio/training#tod_validation_baselines",
+                "what_needs_attention": "Validated edits and no-op rejections are still baseline-needed metrics.",
+                "why_it_matters": "TOD is training toward Codex-level performance, so it needs evidence that repairs changed files and rejected useless work.",
+                "mim_action": "Keep this visible as a training objective until the metrics publish daily counts.",
+                "tod_action": "Aggregate task results into daily validated-edit and no-op-rejection counters.",
+                "resolution_process": "TOD implements the metric artifact, MIM checks it on each training page load, Codex assists only if aggregation fails repeatedly.",
+            }
+        )
+    return items
 
 
 def _compose_training_attention_reply(prompt: str, state: dict[str, Any]) -> str:
@@ -4553,6 +4698,8 @@ def _training_body(state: dict[str, Any]) -> str:
     mim = state["mim"]
     tod = state["tod"]
     judgment = state.get("judgment") if isinstance(state.get("judgment"), dict) else {}
+    mim_score = state.get("mim_score") if isinstance(state.get("mim_score"), dict) else {}
+    tod_score = state.get("tod_score") if isinstance(state.get("tod_score"), dict) else {}
     reflection = state.get("reflection") if isinstance(state.get("reflection"), dict) else {}
     typo = state.get("typo") if isinstance(state.get("typo"), dict) else {}
     objective_counts = reflection.get("objective_counts") if isinstance(reflection.get("objective_counts"), dict) else {}
@@ -4584,19 +4731,48 @@ def _training_body(state: dict[str, Any]) -> str:
         for group, values in group_summary.items()
         if isinstance(values, dict)
     )
+    attention_items = state.get("attention_items") if isinstance(state.get("attention_items"), list) else []
+    attention_html = "".join(
+        f"""
+        <article class="attention-item" id="{_html(item.get("key", ""))}">
+          <small>{_html(item.get("status", ""))} / owner: {_html(item.get("owner", ""))}</small>
+          <strong><a href="{_html(item.get("href", "#"))}">{_html(item.get("title", ""))}</a></strong>
+          <div class="muted"><strong>What needs attention:</strong> {_html(item.get("what_needs_attention", ""))}</div>
+          <div class="muted"><strong>MIM:</strong> {_html(item.get("mim_action", ""))}</div>
+          <div class="muted"><strong>TOD:</strong> {_html(item.get("tod_action", ""))}</div>
+          <div class="muted"><strong>Resolution:</strong> {_html(item.get("resolution_process", ""))}</div>
+        </article>
+        """
+        for item in attention_items
+    ) or '<article class="attention-item"><strong>No current attention item.</strong><div class="muted">Training evidence currently has no active attention flag.</div></article>'
+    mim_metrics_source = mim_score.get("metrics") if isinstance(mim_score.get("metrics"), dict) else {}
+    tod_metrics_source = tod_score.get("metrics") if isinstance(tod_score.get("metrics"), dict) else {}
+
+    def today_metric(metrics: dict[str, Any], key: str, default: str = "baseline needed") -> str:
+        row = metrics.get(key) if isinstance(metrics.get(key), dict) else {}
+        value = row.get("today") if isinstance(row, dict) else None
+        unit = row.get("unit") if isinstance(row, dict) else ""
+        if isinstance(value, dict):
+            return _first_text(value.get("status"), default=default)
+        if value is None:
+            yesterday = row.get("yesterday") if isinstance(row.get("yesterday"), dict) else {}
+            return _first_text(yesterday.get("status"), default=default)
+        suffix = "%" if "percent" in str(unit) else ""
+        return f"{value}{suffix}"
+
     mim_metrics = [
-        ("Intent Understood", "baseline needed", "100", "live_gateway_eval"),
-        ("Answered Question", "baseline needed", "100", "live_gateway_eval"),
-        ("Internal Jargon", "baseline needed", "0", "live_gateway_eval"),
-        ("Recommendation Quality", "baseline needed", "100", "live_gateway_eval"),
+        ("Intent Understood", "baseline needed", today_metric(mim_metrics_source, "intent_understood"), "live_gateway_eval"),
+        ("Answered Question", "baseline needed", today_metric(mim_metrics_source, "answered_question"), "live_gateway_eval"),
+        ("Internal Jargon", "baseline needed", today_metric(mim_metrics_source, "internal_jargon"), "live_gateway_eval"),
+        ("Recommendation Quality", "baseline needed", today_metric(mim_metrics_source, "recommendation_quality"), "live_gateway_eval"),
         ("Judgment Mode", "baseline needed", f"{judgment.get('pass_rate_percent', 'unknown')}%", "durability_smoke_v2"),
         ("Typo Tolerance", "baseline needed", typo.get("pass_rate_percent", "unknown"), "typo_smoke"),
     ]
     tod_metrics = [
-        ("Blockers Cleared", "baseline needed", "3", "blocker_drill_artifacts"),
-        ("False Completions Prevented", "baseline needed", "1", "drill_004_self_correction"),
-        ("Validated Edits", "baseline needed", "baseline needed", "baseline_needed"),
-        ("No-op Rejections", "baseline needed", "baseline needed", "baseline_needed"),
+        ("Blockers Cleared", "baseline needed", today_metric(tod_metrics_source, "blockers_cleared"), "blocker_drill_artifacts"),
+        ("False Completions Prevented", "baseline needed", today_metric(tod_metrics_source, "false_completions_prevented"), "drill_004_self_correction"),
+        ("Validated Edits", "baseline needed", today_metric(tod_metrics_source, "validated_edits"), "baseline_needed"),
+        ("No-op Rejections", "baseline needed", today_metric(tod_metrics_source, "no_op_rejections"), "baseline_needed"),
         ("Evidence Quality", "baseline needed", "needs proof", "blocker_resolution"),
     ]
     return f"""
@@ -4608,8 +4784,14 @@ def _training_body(state: dict[str, Any]) -> str:
         </div>
         <span class="badge"><span class="dot {'green' if state.get('are_improving') is True else 'yellow'}"></span>{_html(state["assessment"])}</span>
       </div>
-      <div class="label">Generated Fresh On Page Load</div>
-      <p>Updated: {_html(state["generated_at"])} / Directive: {_html(state["directive_status"])} / Reflection says improving: {_html(state.get("are_improving"))}</p>
+      <div class="label">Page Load / Evidence Time</div>
+      <p>Loaded: {_html(state["page_loaded_at_la"])} / Evidence updated: {_html(state["generated_at_la"])} ({_html(state["generated_age"])}) / Directive: {_html(state["directive_status"])} / Improving: {_html(state.get("are_improving"))}</p>
+      <div class="label">Resolution Ownership</div>
+      <p>{_html(state.get("resolution_owner_model", ""))}</p>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>What Needs Attention</h2>
+      <div class="attention-list" style="margin-top:10px;">{attention_html}</div>
     </section>
     <section class="grid two" style="margin-top:14px;">
       <article class="card">
