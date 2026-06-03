@@ -3,6 +3,7 @@
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
+const char FIRMWARE_VERSION[] = "SmoothServoBenchTester nonblocking-v2";
 const int SERVO_MIN_COUNT = 100;
 const int SERVO_MAX_COUNT = 650;
 const int SERVO_MID_COUNT = 375;
@@ -166,7 +167,13 @@ void handleCommand(String line) {
   command.toUpperCase();
 
   if (command == "PING") {
-    Serial.println("PONG SmoothServoBenchTester");
+    Serial.print("PONG ");
+    Serial.println(FIRMWARE_VERSION);
+    return;
+  }
+
+  if (command == "VERSION") {
+    Serial.println(FIRMWARE_VERSION);
     return;
   }
 
@@ -249,9 +256,11 @@ void setup() {
   applyPulseImmediate(0, SERVO_MID_COUNT);
   applyPulseImmediate(1, SERVO_MID_COUNT);
 
-  Serial.println("=== Smooth PCA9685 Servo Bench Tester ===");
+  Serial.print("=== ");
+  Serial.print(FIRMWARE_VERSION);
+  Serial.println(" ===");
   Serial.println("Raw input: 100-650 moves channels 0 and 1 smoothly.");
-  Serial.println("Commands: PING | STATUS | SCAN | S channel pulse durationMs | MOVE channel angle durationMs | ALL pulse durationMs | TESTALL low high durationMs");
+  Serial.println("Commands: PING | VERSION | STATUS | SCAN | S channel pulse durationMs | MOVE channel angle durationMs | ALL pulse durationMs | TESTALL low high durationMs");
   Serial.print("Starting at midpoint pulse: ");
   Serial.println(SERVO_MID_COUNT);
   printPcaStatus();

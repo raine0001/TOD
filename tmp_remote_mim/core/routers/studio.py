@@ -2832,6 +2832,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         <button id="useMoveProtocol" class="button" type="button">Use MOVE Angle Protocol</button>
         <button id="usePulseProtocol" class="button" type="button">Use Pulse Protocol</button>
         <button id="sendPing" class="button" type="button">Send Ping</button>
+        <button id="sendVersion" class="button" type="button">Version</button>
         <button id="sendStatus" class="button" type="button">PCA Status</button>
         <button id="sendScan" class="button" type="button">I2C Scan</button>
         <button id="testAllChannels" class="button" type="button">Test All Channels</button>
@@ -2842,7 +2843,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
     <section class="card" style="margin-top:14px;">
       <h2>UNO Sketch Protocol</h2>
       <p>Smooth firmware is uploaded to the UNO R4 on COM5. Reconnect, select <code>Use Smooth UNO Sketch</code>, then send <code>PING</code> and expect <code>PONG SmoothServoBenchTester</code>.</p>
-      <p class="muted" style="margin-top:8px;">Firmware source: <code>docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino</code>. It supports <code>PING</code>, <code>STATUS</code>, <code>SCAN</code>, <code>TESTALL {{low}} {{high}} {{duration}}</code>, <code>100-650</code>, <code>ALL {{pulse}} {{duration}}</code>, <code>S {{channel}} {{pulse}} {{duration}}</code>, and <code>MOVE {{channel}} {{angle}} {{duration}}</code> at 9600 baud.</p>
+      <p class="muted" style="margin-top:8px;">Firmware source: <code>docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino</code>. It supports <code>PING</code>, <code>VERSION</code>, <code>STATUS</code>, <code>SCAN</code>, <code>TESTALL {{low}} {{high}} {{duration}}</code>, <code>100-650</code>, <code>ALL {{pulse}} {{duration}}</code>, <code>S {{channel}} {{pulse}} {{duration}}</code>, and <code>MOVE {{channel}} {{angle}} {{duration}}</code> at 9600 baud.</p>
       <p class="muted" style="margin-top:8px;">If upload says the serial port is busy, disconnect this page from COM5 and close Arduino IDE Serial Monitor/Plotter before flashing.</p>
       <p class="muted" style="margin-top:8px;">Arduino IDE is only needed to flash that sketch onto the UNO R4. After that, this page can connect directly from Chrome with Web Serial.</p>
     </section>
@@ -2870,6 +2871,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         document.getElementById('usePulseProtocol')
       ];
       const sliderMoveTimers = new Map();
+      const lastServoCommand = new Map();
 
       function esc(value) {{
         return String(value ?? '').replace(/[&<>"']/g, (char) => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[char]));
@@ -3050,6 +3052,13 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       async function moveServo(servo, pulse, duration) {{
         readProfileFromDom();
         const command = buildCommand(servo, pulse, duration);
+        const key = String(servo.id || servo.channel || 'servo');
+        const last = lastServoCommand.get(key);
+        const now = Date.now();
+        if (last && last.command === command && now - last.at < 600) {{
+          return false;
+        }}
+        lastServoCommand.set(key, {{ command, at: now }});
         await sendSerial(command);
       }}
       document.getElementById('connectSerial').addEventListener('click', async () => {{
@@ -3179,6 +3188,9 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       }});
       document.getElementById('sendPing').addEventListener('click', async () => {{
         await sendSerial('PING');
+      }});
+      document.getElementById('sendVersion').addEventListener('click', async () => {{
+        await sendSerial('VERSION');
       }});
       document.getElementById('sendStatus').addEventListener('click', async () => {{
         await sendSerial('STATUS');
