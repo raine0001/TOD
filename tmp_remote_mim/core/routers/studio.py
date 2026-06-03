@@ -13,8 +13,11 @@ from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.db import get_db
 from core.mim_ui_auth import maybe_require_mimtod_page_login
 from core.models import (
@@ -2801,6 +2804,26 @@ async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
             },
         },
         {
+            "title": "AgentMIM Reports DB Binding",
+            "summary": "Bind MIM Studio Reports to the true AgentMIM/comm_app database so app metrics use account_owners, representatives, commissions, carriers, and related production tables instead of Studio fallback portal rows.",
+            "status": "queued",
+            "priority": "P0",
+            "owner": "TOD",
+            "health": "blocked_on_config",
+            "why_it_matters": "Reports cannot answer AgentMIM user/account/revenue questions truthfully until Studio can read the comm_app database source of truth.",
+            "origin_story": "Dave asked the Reports side MIM chat why it cannot pull data from comm_app / AgentMIM.com DB. Diagnosis: Studio has no COMM_APP_DATABASE_URL binding and only sees fallback MIM portal tables.",
+            "next_action": "Register COMM_APP_DATABASE_URL on the MIM Studio service with the AgentMIM Render Postgres URL, restart Studio, and verify account_owners and representatives counts.",
+            "dave_needed": True,
+            "metadata_json": {
+                "project_type": "application_error",
+                "progress_percent": 20,
+                "work_state": "queued",
+                "blocker": "Needs AgentMIM/comm_app Render database URL or service-level secret binding.",
+                "acceptance": "Studio Reports app_metrics connects to the comm_app DB and reports account_owners and representatives counts without using project_portal_accounts as fallback.",
+                "requested_by": "Dave",
+            },
+        },
+        {
             "title": "MIM Wall Mobile Full Assistant",
             "summary": "Expand the MIM Wall mobile app from call management into full LIVE MIM assistant capabilities.",
             "status": "queued",
@@ -3633,6 +3656,35 @@ def _compose_training_page_reply(prompt: str, state: dict[str, Any]) -> str:
     )
 
 
+def _compose_reports_page_reply(prompt: str, dataset: dict[str, Any]) -> str:
+    label = _first_text(dataset.get("label"), default="Reports")
+    summary = _first_text(dataset.get("summary"), default="I could not load a report summary yet.")
+    findings = dataset.get("findings") if isinstance(dataset.get("findings"), list) else []
+    actions = dataset.get("actions") if isinstance(dataset.get("actions"), list) else []
+    rows = dataset.get("rows") if isinstance(dataset.get("rows"), list) else []
+    finding_lines = []
+    for item in findings[:4]:
+        if isinstance(item, dict):
+            finding_lines.append(f"- {_first_text(item.get('title'), default='Finding')}: {_first_text(item.get('detail'), default='')}")
+    action_lines = []
+    for item in actions[:4]:
+        if isinstance(item, dict):
+            action_lines.append(f"- {_first_text(item.get('title'), default='Action')}: {_first_text(item.get('detail'), default='')}")
+    if not finding_lines:
+        finding_lines.append("- No findings were generated for this report yet.")
+    if not action_lines:
+        action_lines.append("- Ask a narrower report question or select a dataset.")
+    return (
+        f"Report mode: {label}.\n\n"
+        f"{summary}\n\n"
+        "What I found:\n"
+        + "\n".join(finding_lines)
+        + "\n\nResolution path:\n"
+        + "\n".join(action_lines)
+        + f"\n\nRows loaded: {len(rows)}. I should stay in Reports mode for this kind of request, not answer with the training scoreboard."
+    )
+
+
 def _studio_report_canvas_to_dict(row: StudioReportCanvas) -> dict[str, Any]:
     return {
         "id": row.id,
@@ -3667,6 +3719,28 @@ def _app_source_for_prompt(prompt: str) -> dict[str, Any]:
     if "studio" in text_value:
         return APP_SOURCE_REGISTRY[1]
     return APP_SOURCE_REGISTRY[0]
+
+
+def _async_database_url(raw_url: str) -> str:
+    value = str(raw_url or "").strip()
+    if value.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + value[len("postgresql://") :]
+    if value.startswith("postgres://"):
+        return "postgresql+asyncpg://" + value[len("postgres://") :]
+    return value
+
+
+def _redacted_db_location(raw_url: str) -> str:
+    value = str(raw_url or "").strip()
+    if not value:
+        return "not configured"
+    try:
+        url = make_url(value)
+        host = url.host or "unknown-host"
+        database = (url.database or "").strip("/")
+        return f"{url.drivername}://{host}/{database or 'unknown-db'}"
+    except Exception:
+        return "configured but not parseable"
 
 
 def _infer_report_dataset(prompt: str, requested_dataset: str = "") -> tuple[str, str]:
@@ -3842,18 +3916,44 @@ async def _studio_report_dataset(
     elif key == "app_metrics":
         app_source = _app_source_for_prompt(prompt)
         app_name = str(app_source.get("display_name", "MIM Apps"))
-        async def scalar_sql(sql: str) -> int:
+        app_db_url = str(settings.comm_app_database_url or "").strip()
+        app_db_engine = None
+        app_db_session: AsyncSession | None = None
+        app_db_error = ""
+        app_db_configured = bool(app_db_url)
+        app_db_location = _redacted_db_location(app_db_url)
+        app_db_connected = False
+        if app_db_configured:
             try:
-                value = (await db.execute(text(sql))).scalar()
+                app_db_engine = create_async_engine(_async_database_url(app_db_url), echo=False, future=True)
+                app_db_session = AsyncSession(app_db_engine)
+                await app_db_session.execute(text("select 1"))
+                app_db_connected = True
+            except Exception as exc:
+                app_db_error = str(exc)
+                if app_db_session is not None:
+                    await app_db_session.close()
+                    app_db_session = None
+                if app_db_engine is not None:
+                    await app_db_engine.dispose()
+                    app_db_engine = None
+
+        primary_db = app_db_session if app_db_session is not None else db
+
+        async def scalar_sql(sql: str, session: AsyncSession | None = None) -> int:
+            active_session = session or primary_db
+            try:
+                value = (await active_session.execute(text(sql))).scalar()
                 return int(value or 0)
             except Exception:
                 return 0
 
-        async def table_exists(table_name: str) -> bool:
+        async def table_exists(table_name: str, session: AsyncSession | None = None) -> bool:
+            active_session = session or primary_db
             try:
                 return bool(
                     (
-                        await db.execute(
+                        await active_session.execute(
                             text(
                                 "select exists (select 1 from information_schema.tables where table_schema='public' and table_name=:table)"
                             ),
@@ -3870,15 +3970,22 @@ async def _studio_report_dataset(
         secondary_connected = await table_exists(secondary_table)
         primary_count = await scalar_sql(f'select count(*) from "{primary_table}"') if primary_connected else 0
         secondary_count = await scalar_sql(f'select count(*) from "{secondary_table}"') if secondary_connected else 0
-        portal_accounts = await scalar_sql('select count(*) from "project_portal_accounts"')
-        portal_projects = await scalar_sql('select count(*) from "project_portal_projects"')
-        sessions_total = await scalar_sql('select count(*) from "workspace_interface_sessions"')
-        sessions_30d = await scalar_sql("select count(*) from workspace_interface_sessions where coalesce(last_input_at, created_at) >= now() - interval '30 days'")
-        messages_total = await scalar_sql('select count(*) from "workspace_interface_messages"')
-        messages_30d = await scalar_sql("select count(*) from workspace_interface_messages where created_at >= now() - interval '30 days'")
-        input_events_30d = await scalar_sql("select count(*) from input_events where created_at >= now() - interval '30 days'")
+        portal_accounts = await scalar_sql('select count(*) from "project_portal_accounts"', db)
+        portal_projects = await scalar_sql('select count(*) from "project_portal_projects"', db)
+        sessions_total = await scalar_sql('select count(*) from "workspace_interface_sessions"', db)
+        sessions_30d = await scalar_sql("select count(*) from workspace_interface_sessions where coalesce(last_input_at, created_at) >= now() - interval '30 days'", db)
+        messages_total = await scalar_sql('select count(*) from "workspace_interface_messages"', db)
+        messages_30d = await scalar_sql("select count(*) from workspace_interface_messages where created_at >= now() - interval '30 days'", db)
+        input_events_30d = await scalar_sql("select count(*) from input_events where created_at >= now() - interval '30 days'", db)
         known_account_count = primary_count if primary_connected else portal_accounts
         account_source = primary_table if primary_connected else "project_portal_accounts fallback"
+        db_status = (
+            f"connected to {app_db_location}"
+            if app_db_connected
+            else f"not configured; set COMM_APP_DATABASE_URL for {app_name}"
+            if not app_db_configured
+            else f"connection failed for {app_db_location}: {app_db_error[:220]}"
+        )
         stats = [
             {"label": "Requested App", "value": app_name},
             {"label": "Known Accounts", "value": known_account_count},
@@ -3888,6 +3995,7 @@ async def _studio_report_dataset(
         columns = ["data_needed", "current_status", "next_step"]
         rows = [
             {"data_needed": "App source", "current_status": f"{app_source.get('app_key')} | {app_source.get('ecosystem_role')} | {app_source.get('runtime')}", "next_step": "Keep app-source registry current for MIM and TOD"},
+            {"data_needed": "comm_app DB binding", "current_status": db_status, "next_step": "Set COMM_APP_DATABASE_URL on the MIM Studio service to the AgentMIM/comm_app Render Postgres URL, then restart Studio."},
             {"data_needed": f"Primary account table: {primary_table}", "current_status": f"{'connected' if primary_connected else 'missing from current DB connection'}; count={primary_count}", "next_step": "Use this as the true app account count once the comm_app Render DB is bound"},
             {"data_needed": f"Secondary user table: {secondary_table}", "current_status": f"{'connected' if secondary_connected else 'missing from current DB connection'}; count={secondary_count}", "next_step": "Use this for representative/user counts once connected"},
             {"data_needed": "Fallback account records", "current_status": f"{portal_accounts} rows in project_portal_accounts", "next_step": "Use only as MIM/portal fallback when app-specific table is unavailable"},
@@ -3900,10 +4008,11 @@ async def _studio_report_dataset(
         if primary_connected:
             summary = f"I understand the question is about {app_name}. The app-source registry identifies {primary_table} as the primary account table, and the connected database currently shows {primary_count} account records there."
         else:
-            summary = f"I understand the question is about {app_name}. The app-source registry identifies {primary_table} as the real comm_app account table, but that table is not present in the database connection currently used by Studio Reports. I can see {portal_accounts} fallback MIM/portal account records in project_portal_accounts, but the true comm_app Render DB binding still needs to be registered or verified."
+            summary = f"I understand the question is about {app_name}. The app-source registry identifies {primary_table} as the real comm_app account table, but Studio cannot read the AgentMIM database yet. Current binding status: {db_status}. I can see {portal_accounts} fallback MIM/portal account records in project_portal_accounts, but those are not the true comm_app account-owner records."
         findings = [
             {"title": "Correct dataset identified", "detail": "This is an app metrics question, not a Studio Projects report."},
             {"title": "App source registered", "detail": f"{app_name} is mapped as {app_source.get('ecosystem_role')} at {app_source.get('local_root')}."},
+            {"title": "Database binding status", "detail": db_status},
             {"title": "Primary app table status", "detail": f"{primary_table}: {'connected' if primary_connected else 'missing from current DB connection'}."},
             {"title": "Fallback accounts available", "detail": f"{portal_accounts} records are available from project_portal_accounts."},
             {"title": "Usage telemetry exists", "detail": f"{sessions_30d} sessions and {messages_30d} messages are available for the last 30 days, but source grouping needs normalization."},
@@ -3913,6 +4022,10 @@ async def _studio_report_dataset(
             {"title": "Add subscription adapter", "detail": "Connect Stripe/accounting subscription data before reporting paid users or income."},
             {"title": "Normalize telemetry source names", "detail": "Group sessions/messages by app so Reports can answer app-specific usage questions cleanly."},
         ]
+        if app_db_session is not None:
+            await app_db_session.close()
+        if app_db_engine is not None:
+            await app_db_engine.dispose()
     else:
         overview = _studio_snapshot()
         stats = [
@@ -5000,7 +5113,28 @@ async def studio_mim_chat_api(
 ) -> dict[str, Any]:
     page_context = _first_text(payload.studio_page_context, payload.page_context, default="Studio")
     prompt = payload.prompt.strip()
-    if "training" in page_context.lower():
+    page_context_lower = page_context.lower()
+    prompt_lower = prompt.lower()
+    if "report" in page_context_lower or any(term in prompt_lower for term in ["agentmim", "comm_app", "database", "db", "account owner", "account_owners", "app metrics"]):
+        dataset = await _studio_report_dataset(db, "auto", prompt=prompt)
+        reply = _compose_reports_page_reply(prompt, dataset)
+        return {
+            "ok": True,
+            "source": "studio_reports_context",
+            "response_mode": "problem_analysis" if any(term in prompt_lower for term in ["error", "fix", "unable", "resolve", "broken", "can't", "cannot"]) else "report_summary",
+            "mim_interface": {
+                "reply_text": reply,
+                "page_context": page_context,
+                "surface": "studio",
+            },
+            "evidence": {
+                "dataset": dataset.get("key"),
+                "label": dataset.get("label"),
+                "generated_at": dataset.get("generated_at"),
+                "row_count": len(dataset.get("rows") if isinstance(dataset.get("rows"), list) else []),
+            },
+        }
+    if "training" in page_context_lower:
         state = await _studio_training_state(db)
         reply = _compose_training_page_reply(prompt, state)
         return {
