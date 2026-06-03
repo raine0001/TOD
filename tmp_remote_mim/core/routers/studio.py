@@ -2828,6 +2828,18 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       </div>
       <div id="serialStatus" class="muted" style="margin-top:10px;">Serial disconnected.</div>
       <div id="serialHelp" class="attention-item" style="display:none; margin-top:10px;"></div>
+      <details class="attention-item" style="margin-top:10px;">
+        <summary><strong>Setup New Servo</strong></summary>
+        <div class="form-grid" style="margin-top:10px;">
+          <label>Name<input id="newServoName" placeholder="Servo model name"></label>
+          <label>Channel<input id="newServoChannel" type="number" min="0" max="15" value="0"></label>
+          <label class="wide">Specs<textarea id="newServoSpecs" rows="7" placeholder="Paste servo specs here..."></textarea></label>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+          <button id="setupServoFromSpecs" class="button primary" type="button">Create From Specs</button>
+        </div>
+        <div id="setupServoResult" class="muted" style="margin-top:8px;"></div>
+      </details>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
         <button id="useCurrentSketchProtocol" class="button primary" type="button">Use Current UNO Sketch</button>
         <button id="useSmoothSketchProtocol" class="button" type="button">Use Smooth UNO Sketch</button>
@@ -2866,6 +2878,10 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       const connectSerialButton = document.getElementById('connectSerial');
       const disconnectSerialButton = document.getElementById('disconnectSerial');
       const forgetSerialButton = document.getElementById('forgetSerial');
+      const newServoName = document.getElementById('newServoName');
+      const newServoChannel = document.getElementById('newServoChannel');
+      const newServoSpecs = document.getElementById('newServoSpecs');
+      const setupServoResult = document.getElementById('setupServoResult');
       const protocolButtons = [
         document.getElementById('useCurrentSketchProtocol'),
         document.getElementById('useSmoothSketchProtocol'),
@@ -2931,6 +2947,65 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
           startup_ms: Math.max(Number(servo.startup_ms || 0), preset.startup_ms),
           slowdown_ms: Math.max(Number(servo.slowdown_ms || 0), preset.slowdown_ms),
           notes: preset.notes
+        }};
+      }}
+      function usToPcaCount(microseconds) {{
+        return Math.round(Number(microseconds || 1500) / 1000000 * 50 * 4096);
+      }}
+      function parseNumberList(text) {{
+        return Array.from(String(text || '').matchAll(/\\d+(?:\\.\\d+)?/g)).map((match) => Number(match[0])).filter((value) => Number.isFinite(value));
+      }}
+      function extractSpecNumber(spec, patterns, fallback) {{
+        for (const pattern of patterns) {{
+          const match = spec.match(pattern);
+          if (match) {{
+            const values = parseNumberList(match[0]);
+            if (values.length) return values[values.length - 1];
+          }}
+        }}
+        return fallback;
+      }}
+      function parseServoSpecsToProfile(specText, name, channel) {{
+        const spec = String(specText || '');
+        const pulseMatch = spec.match(/(?:pulse\\s*width\\s*range|pulse\\s*width|pulse).*?(\\d{{3,4}})\\s*(?:-|~|～|to|–|—)\\s*(\\d{{3,4}})\\s*(?:us|μs|μsec|microseconds)?/i);
+        const minUs = pulseMatch ? Number(pulseMatch[1]) : 500;
+        const maxUs = pulseMatch ? Number(pulseMatch[2]) : 2500;
+        const neutralUs = extractSpecNumber(spec, [/neutral[^\\n\\r]{{0,60}}(?:position)?[^\\n\\r]*/i, /1520\\s*(?:us|μs|μsec)/i], 1500);
+        const angle = extractSpecNumber(spec, [/\\d+\\s*(?:degree|degrees|deg|°)/i, /running\\s*degree[^\\n\\r]*/i, /control\\s*angle[^\\n\\r]*/i], 180);
+        const voltageLine = (spec.match(/(?:operating\\s*voltage|voltage)[^\\n\\r]*/i) || [''])[0].trim();
+        const currentLine = (spec.match(/(?:stall\\s*current|current)[^\\n\\r]*/i) || [''])[0].trim();
+        const frequencyLine = (spec.match(/(?:frequency|frequence|hz)[^\\n\\r]*/i) || [''])[0].trim();
+        const safeName = String(name || '').trim() || 'Spec Servo ' + (profile.servos.length + 1);
+        const minPulse = usToPcaCount(Math.min(minUs, maxUs));
+        const maxPulse = usToPcaCount(Math.max(minUs, maxUs));
+        const centerPulse = Math.max(minPulse, Math.min(maxPulse, usToPcaCount(neutralUs)));
+        const maxAngle = Math.max(1, Math.min(300, Math.round(angle || 180)));
+        const speed = maxAngle > 180 ? 1800 : 1200;
+        const notes = [
+          'Spec-derived profile.',
+          voltageLine ? 'Voltage: ' + voltageLine : '',
+          currentLine ? 'Current: ' + currentLine : '',
+          frequencyLine ? 'Frequency: ' + frequencyLine : '',
+          'Pulse: ' + Math.min(minUs, maxUs) + '-' + Math.max(minUs, maxUs) + 'us -> raw ' + minPulse + '-' + maxPulse + '.',
+          'Source spec: ' + spec.slice(0, 260)
+        ].filter(Boolean).join(' ');
+        return {{
+          id: 'servo-' + Date.now(),
+          name: safeName,
+          model: 'custom',
+          channel: Math.max(0, Math.min(15, Number(channel || profile.servos.length || 0))),
+          min_pulse: minPulse,
+          min_angle: 0,
+          center_pulse: centerPulse,
+          center_angle: Math.round(maxAngle / 2),
+          max_pulse: maxPulse,
+          max_angle: maxAngle,
+          start_pulse: centerPulse,
+          start_angle: Math.round(maxAngle / 2),
+          speed_ms: speed,
+          startup_ms: Math.max(900, Math.round(speed * 0.65)),
+          slowdown_ms: Math.max(900, Math.round(speed * 0.65)),
+          notes
         }};
       }}
       function pulsePercent(servo, pulse) {{
@@ -3255,6 +3330,18 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
           ? applyServoPreset({{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel }}, 'annimos_ds3245sg_180')
           : {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, model: 'custom', channel, min_pulse: 500, min_angle: 0, center_pulse: 1500, center_angle: 90, max_pulse: 2500, max_angle: 180, start_pulse: 1500, start_angle: 90, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: '' }});
         renderServos();
+      }});
+      document.getElementById('setupServoFromSpecs').addEventListener('click', () => {{
+        readProfileFromDom();
+        const servo = parseServoSpecsToProfile(newServoSpecs.value, newServoName.value, newServoChannel.value);
+        profile.servos.push(servo);
+        commandTemplate.value = 'S {{channel}} {{pulse}} {{duration}}';
+        baudRate.value = 9600;
+        profile.command_template = commandTemplate.value;
+        profile.baud_rate = 9600;
+        setSelectedProtocol('useSmoothSketchProtocol');
+        renderServos();
+        setupServoResult.textContent = 'Created ' + servo.name + ': raw ' + servo.min_pulse + '-' + servo.max_pulse + ', ' + servo.max_angle + ' deg, channel ' + servo.channel + '. Save Profile when ready.';
       }});
       document.getElementById('saveProfile').addEventListener('click', async () => {{
         readProfileFromDom();
@@ -6047,7 +6134,23 @@ async def studio_mim_chat_api(
                 "directly to uno",
             ]
         )
-        if serial_open_failure:
+        servo_spec_setup_request = any(term in prompt_lower for term in ["pulse width", "stall torque", "operating voltage", "dead band", "control angle", "running degree", "kg-cm", "kg.cm", "servo specs"])
+        if servo_spec_setup_request:
+            reply = (
+                "Yes. Treat that as a servo setup input.\n\n"
+                "Use the Lab page's Setup New Servo panel:\n"
+                "- Paste the full specs.\n"
+                "- Add the model name and channel.\n"
+                "- Click Create From Specs.\n"
+                "- Review the generated pulse range, angle range, timing, and notes.\n"
+                "- Save Profile.\n\n"
+                "MIM should extract pulse width, neutral pulse, angle, voltage range, stall current, operating frequency, and warnings. If pulse width is 500-2500us at 50Hz, the PCA9685 range is about 102-512 raw counts with center about 307.\n\n"
+                "For very high-current servos, setup is not complete until external servo power and shared ground are recorded."
+            )
+            response_mode = "demonstration"
+            failure_class = "servo_datasheet_to_profile_setup"
+            training_lesson = "When Dave pastes servo specs, MIM should create or route to a servo profile setup, not generic hardware troubleshooting."
+        elif serial_open_failure:
             reply = (
                 "MIM should have caught this more directly. That error happens before any servo command is sent.\n\n"
                 "Most likely cause: the COM port is locked by another program, usually Arduino IDE Serial Monitor/Plotter, Arduino IDE itself after opening the monitor, or another browser/app session.\n\n"
