@@ -2826,6 +2826,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       <div id="serialHelp" class="attention-item" style="display:none; margin-top:10px;"></div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
         <button id="useCurrentSketchProtocol" class="button primary" type="button">Use Current UNO Sketch</button>
+        <button id="useSmoothSketchProtocol" class="button" type="button">Use Smooth UNO Sketch</button>
         <button id="useMoveProtocol" class="button" type="button">Use MOVE Angle Protocol</button>
         <button id="usePulseProtocol" class="button" type="button">Use Pulse Protocol</button>
         <button id="sendPing" class="button" type="button">Send Ping</button>
@@ -2836,8 +2837,8 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
     <section class="card" style="margin-top:14px;">
       <h2>UNO Sketch Protocol</h2>
       <p>Current flashed sketch protocol: send one integer from <code>100</code> to <code>650</code>. The sketch applies that raw PCA9685 count to channels 0 and 1 together.</p>
-      <p class="muted" style="margin-top:8px;">Small bursts or choppy movement are expected with the current limit-tester sketch because it jumps directly to each new PWM count. Smooth motion needs a firmware ramp/easing loop on the UNO.</p>
-      <p class="muted" style="margin-top:8px;">Use <code>{{pulse}}</code> for the current sketch. Use <code>MOVE {{channel}} {{angle}}</code> or <code>S {{channel}} {{pulse}} {{duration}}</code> only after flashing firmware that supports those command formats.</p>
+      <p class="muted" style="margin-top:8px;">Smooth firmware source: <code>docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino</code>. It compiles for UNO R4 WiFi and supports <code>PING</code>, <code>100-650</code>, <code>ALL {{pulse}} {{duration}}</code>, <code>S {{channel}} {{pulse}} {{duration}}</code>, and <code>MOVE {{channel}} {{angle}} {{duration}}</code>.</p>
+      <p class="muted" style="margin-top:8px;">If upload says the serial port is busy, disconnect this page from COM5 and close Arduino IDE Serial Monitor/Plotter before flashing.</p>
       <p class="muted" style="margin-top:8px;">Arduino IDE is only needed to flash that sketch onto the UNO R4. After that, this page can connect directly from Chrome with Web Serial.</p>
     </section>
     <script>
@@ -3091,17 +3092,33 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         renderServos();
         serialStatus.textContent = 'Protocol set for the currently flashed sketch: send one raw PCA9685 count, 100-650, at 9600 baud.';
       }});
-      document.getElementById('useMoveProtocol').addEventListener('click', () => {{
-        commandTemplate.value = 'MOVE {{channel}} {{angle}}';
+      document.getElementById('useSmoothSketchProtocol').addEventListener('click', () => {{
+        commandTemplate.value = 'S {{channel}} {{pulse}} {{duration}}';
         baudRate.value = 9600;
         readProfileFromDom();
-        serialStatus.textContent = 'Protocol set to MOVE channel angle at 9600 baud.';
+        profile.servos = profile.servos.map((servo) => ({{
+          ...servo,
+          min_pulse: 100,
+          center_pulse: 375,
+          max_pulse: 650,
+          start_pulse: 375,
+          speed_ms: servo.speed_ms || 650,
+          notes: servo.notes || 'Smooth UNO sketch supports PING, raw 100-650, ALL pulse duration, S channel pulse duration, and MOVE channel angle duration.'
+        }}));
+        renderServos();
+        serialStatus.textContent = 'Protocol set for SmoothServoBenchTester at 9600 baud: S channel pulse duration.';
+      }});
+      document.getElementById('useMoveProtocol').addEventListener('click', () => {{
+        commandTemplate.value = 'MOVE {{channel}} {{angle}} {{duration}}';
+        baudRate.value = 9600;
+        readProfileFromDom();
+        serialStatus.textContent = 'Protocol set to MOVE channel angle duration at 9600 baud.';
       }});
       document.getElementById('usePulseProtocol').addEventListener('click', () => {{
         commandTemplate.value = 'S {{channel}} {{pulse}} {{duration}}';
-        baudRate.value = 115200;
+        baudRate.value = 9600;
         readProfileFromDom();
-        serialStatus.textContent = 'Protocol set to pulse channel pulse duration at 115200 baud.';
+        serialStatus.textContent = 'Protocol set to S channel pulse duration at 9600 baud.';
       }});
       document.getElementById('sendPing').addEventListener('click', async () => {{
         await sendSerial('PING');
@@ -5844,6 +5861,18 @@ async def studio_mim_chat_api(
                 "slowdown",
             ]
         )
+        firmware_update_request = any(
+            term in prompt_lower
+            for term in [
+                "update the sketch",
+                "flash the sketch",
+                "flash firmware",
+                "upload sketch",
+                "upload firmware",
+                "directly to the uno",
+                "directly to uno",
+            ]
+        )
         if serial_open_failure:
             reply = (
                 "MIM should have caught this more directly. That error happens before any servo command is sent.\n\n"
@@ -5859,6 +5888,19 @@ async def studio_mim_chat_api(
             response_mode = "problem_analysis"
             failure_class = "serial_port_open_failed_likely_locked_by_ide"
             training_lesson = "When Web Serial reports failed_to_open before TX, diagnose port lock before servo protocol or wiring."
+        elif firmware_update_request:
+            reply = (
+                "Yes. MIM should route this as a local hardware execution task through TOD/Codex, not as a static prototype answer.\n\n"
+                "Execution path:\n"
+                "- Use the smooth firmware at docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino.\n"
+                "- Compile it for Arduino UNO R4 WiFi with Arduino CLI.\n"
+                "- Upload it to COM5.\n"
+                "- If upload reports Serial port busy, disconnect the Lab servo tester page from COM5 and close Arduino IDE Serial Monitor/Plotter, then retry.\n\n"
+                "The compiled smooth sketch supports PING, raw 100-650, ALL pulse duration, S channel pulse duration, and MOVE channel angle duration at 9600 baud."
+            )
+            response_mode = "demonstration"
+            failure_class = "servo_firmware_update_requires_local_serial_executor"
+            training_lesson = "When Dave asks to update UNO firmware, route to a bounded local executor workflow: compile, upload, diagnose COM port lock, then update Studio evidence."
         elif choppy_motion:
             reply = (
                 "MIM should have diagnosed this as a motion-profile issue.\n\n"
@@ -5872,8 +5914,8 @@ async def studio_mim_chat_api(
                 "- When a target pulse arrives, constrain it to 100-650.\n"
                 "- Move one count at a time, or 2-5 counts per step for faster travel.\n"
                 "- Delay 8-20 ms per step for analog-servo smoothness.\n"
-                "- Later, add per-channel commands so channels 0 and 1 can be tested separately.\n\n"
-                "So the next change is not more UI first; it is updating the UNO sketch from a direct limit tester to a ramping servo tester."
+                "- Support per-channel commands so channels 0 and 1 can be tested separately.\n\n"
+                "The smooth firmware has been prepared at docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino and should be flashed when COM5 is free."
             )
             response_mode = "recommendation"
             failure_class = "servo_motion_choppy_requires_firmware_ramp"
