@@ -2,81 +2,81 @@
   "cases": [
     {
       "checks": {
-        "explains_why": false,
-        "makes_recommendation": false,
-        "mentions_blocker_or_tradeoff": false,
-        "no_raw_runtime_language": false,
+        "explains_why": true,
+        "makes_recommendation": true,
+        "mentions_blocker_or_tradeoff": true,
+        "no_raw_runtime_language": true,
         "not_generic_deflection": true,
-        "plain_enough": false,
+        "plain_enough": true,
         "states_next_action": true
       },
       "mode": "recommendation_mode",
-      "passed": false,
+      "passed": true,
       "prompt": "What should we work on next?",
-      "reply_excerpt": "Current MIM/TOD focus: MIM-TOD-OBJECTIVE-LIFECYCLE-REGRESSION-SUITE-V1.\n\nProgress:\n- State is queued.",
-      "reply_length": 101
-    },
-    {
-      "checks": {
-        "explains_why": false,
-        "makes_recommendation": true,
-        "mentions_blocker_or_tradeoff": false,
-        "no_raw_runtime_language": true,
-        "not_generic_deflection": true,
-        "plain_enough": false,
-        "states_next_action": false
-      },
-      "mode": "recommendation_mode",
-      "passed": false,
-      "prompt": "What is highest priority?",
-      "reply_excerpt": "The highest priority depends on the context. Could you specify if you mean a project, task, or topic?",
-      "reply_length": 101
+      "reply_excerpt": "Recommendation: the highest-value priority is Development Continuity V1. We should work on it next because the main problem is not missing storage; the risk is starting implementation without retrieving prior decisions, known fixes, blockers, and lessons. Next action: build one continuity brief for a real project, then verify it prevents repeated work.",
+      "reply_length": 354
     },
     {
       "checks": {
         "explains_why": true,
-        "makes_recommendation": false,
-        "mentions_blocker_or_tradeoff": false,
+        "makes_recommendation": true,
+        "mentions_blocker_or_tradeoff": true,
         "no_raw_runtime_language": true,
         "not_generic_deflection": true,
         "plain_enough": true,
         "states_next_action": true
       },
       "mode": "recommendation_mode",
-      "passed": false,
+      "passed": true,
+      "prompt": "What is highest priority?",
+      "reply_excerpt": "Recommendation: the highest-value priority is Development Continuity V1. We should work on it next because the main problem is not missing storage; the risk is starting implementation without retrieving prior decisions, known fixes, blockers, and lessons. Next action: build one continuity brief for a real project, then verify it prevents repeated work.",
+      "reply_length": 354
+    },
+    {
+      "checks": {
+        "explains_why": true,
+        "makes_recommendation": true,
+        "mentions_blocker_or_tradeoff": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "states_next_action": true
+      },
+      "mode": "recommendation_mode",
+      "passed": true,
       "prompt": "What would create the most value?",
-      "reply_excerpt": "To create the most value, focus on clear priorities, current status, and key news that impact your goals. Let me know which area you'd like to explore first.",
-      "reply_length": 157
+      "reply_excerpt": "Recommendation: the highest-value priority is Development Continuity V1. We should work on it next because the main problem is not missing storage; the risk is starting implementation without retrieving prior decisions, known fixes, blockers, and lessons. Next action: build one continuity brief for a real project, then verify it prevents repeated work.",
+      "reply_length": 354
     },
     {
       "checks": {
-        "answers_without_asking_for_reprompt": false,
+        "answers_without_asking_for_reprompt": true,
         "no_raw_runtime_language": true,
-        "not_generic_deflection": false,
+        "not_generic_deflection": true,
         "plain_enough": true,
-        "states_useful_next_step": false,
+        "states_useful_next_step": true,
         "summarizes_or_explains": true
       },
       "mode": "explanation_mode",
-      "passed": false,
+      "passed": true,
       "prompt": "Explain it to a non-technical user.",
-      "reply_excerpt": "Sure! You can ask me about the current status, what I'm focusing on today, key priorities, or the top news, and I'll explain it clearly and briefly.",
-      "reply_length": 148
+      "reply_excerpt": "Plain explanation: this work is about making MIM and TOD carry project context, decisions, blockers, and proof forward so Dave does not have to rediscover the same facts after every restart. What it means in practice: before new work starts, I should summarize what is already known, TOD should verify the engineering evidence, and the next step should be one bounded repair or validation pass.",
+      "reply_length": 394
     },
     {
       "checks": {
-        "answers_without_asking_for_reprompt": false,
+        "answers_without_asking_for_reprompt": true,
         "no_raw_runtime_language": true,
-        "not_generic_deflection": false,
-        "plain_enough": false,
-        "states_useful_next_step": false,
-        "summarizes_or_explains": false
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "states_useful_next_step": true,
+        "summarizes_or_explains": true
       },
       "mode": "explanation_mode",
-      "passed": false,
+      "passed": true,
       "prompt": "Summarize the proposal.",
-      "reply_excerpt": "Sure, please provide the details of the proposal you'd like me to summarize.",
-      "reply_length": 76
+      "reply_excerpt": "Summary: the proposal is to add a development-continuity gate before implementation. I should retrieve project history, known decisions, previous fixes, failed attempts, and open issues; TOD should verify related files and validation evidence; then Codex should implement only the next bounded step. Next step: test the flow on one real project, such as forum graphics, before widening it.",
+      "reply_length": 389
     },
     {
       "checks": {
@@ -84,14 +84,14 @@
         "no_raw_runtime_language": true,
         "not_generic_deflection": true,
         "plain_enough": true,
-        "states_useful_next_step": false,
+        "states_useful_next_step": true,
         "summarizes_or_explains": true
       },
       "mode": "explanation_mode",
-      "passed": false,
+      "passed": true,
       "prompt": "What did we learn?",
-      "reply_excerpt": "I can provide a direct answer. Please specify if you want an update on status, today's focus, priorities, or top news, and I'll keep it brief.",
-      "reply_length": 142
+      "reply_excerpt": "We learned that the weak spot is retrieval before action, not lack of stored memory. MIM and TOD already have objectives, documents, scoreboards, reports, and artifacts, but implementation can still restart from scratch if that context is not loaded first. Next step: make the continuity brief mandatory before repair or implementation work begins.",
+      "reply_length": 348
     },
     {
       "checks": {
@@ -99,14 +99,14 @@
         "no_raw_runtime_language": true,
         "not_generic_deflection": true,
         "plain_enough": true,
-        "states_useful_next_step": false,
+        "states_useful_next_step": true,
         "summarizes_or_explains": true
       },
       "mode": "explanation_mode",
-      "passed": false,
+      "passed": true,
       "prompt": "What changed today?",
-      "reply_excerpt": "I can give you a quick update. Would you like to hear about the current status, today's focus, priorities, or the top news?",
-      "reply_length": 123
+      "reply_excerpt": "Today changed the direction from more storage to better retrieval. Studio now has stronger training-page replies, the development-continuity objective is saved, and the next practical move is to make MIM produce a before-we-continue brief before implementation requests. Next step: validate that flow against forum graphics or another already-worked project.",
+      "reply_length": 358
     },
     {
       "checks": {
@@ -120,23 +120,23 @@
       "mode": "explanation_mode",
       "passed": true,
       "prompt": "What is TOD working on?",
-      "reply_excerpt": "TOD is focused on tracking active objectives, reconciling task states, and managing next-step handoffs. After completing these, I can provide a summary of the highest-priority handoff.",
-      "reply_length": 184
+      "reply_excerpt": "TOD is working on active objective tracking, task-state reconciliation, and execution handoff reliability. Next step: verify the highest-priority handoff and keep the status evidence current.",
+      "reply_length": 191
     },
     {
       "checks": {
         "answers_without_asking_for_reprompt": true,
         "no_raw_runtime_language": true,
         "not_generic_deflection": true,
-        "plain_enough": false,
+        "plain_enough": true,
         "states_useful_next_step": true,
         "summarizes_or_explains": true
       },
       "mode": "explanation_mode",
-      "passed": false,
+      "passed": true,
       "prompt": "What do you need from Dave?",
-      "reply_excerpt": "I need a clear request from Dave\u2014either a specific question, a brief plan, or an action to take next.",
-      "reply_length": 101
+      "reply_excerpt": "Dave needed: not much tonight. The useful human decision is priority, not debugging detail: confirm whether development continuity should be the next highest-value objective after rest. I can continue with evidence refreshes and bounded checks without you, and I should only ask you for credentials, product decisions, or physical-world checks. Next step: keep validating the training score without waking you up.",
+      "reply_length": 413
     },
     {
       "checks": {
@@ -156,19 +156,19 @@
     },
     {
       "checks": {
-        "acknowledges_visual_or_sample_request": false,
+        "acknowledges_visual_or_sample_request": true,
         "no_raw_runtime_language": true,
         "not_generic_deflection": true,
-        "plain_enough": false,
-        "provides_access_or_honest_block": false,
-        "states_next_step": false,
-        "states_what_user_can_review": false
+        "plain_enough": true,
+        "provides_access_or_honest_block": true,
+        "states_next_step": true,
+        "states_what_user_can_review": true
       },
       "mode": "demonstration_mode",
-      "passed": false,
+      "passed": true,
       "prompt": "What would this look like?",
-      "reply_excerpt": "I can give you a direct answer. Just ask about status, today's focus, priorities, or top news, and I'll keep it brief.",
-      "reply_length": 118
+      "reply_excerpt": "It would look like a short sample card called Before We Continue: project, previous decisions, known-good solution, failed attempts, known regressions, open issues, relevant files, documents loaded, recommended next action, and what not to redo. Review target: the interface preview should be ready to open as a Studio or H.A.L. prototype card. Next step: create that prototype using forum graphics as the test case.",
+      "reply_length": 416
     },
     {
       "checks": {
@@ -204,151 +204,151 @@
     },
     {
       "checks": {
-        "asks_limited_clarifying_questions": false,
+        "asks_limited_clarifying_questions": true,
         "does_not_clone_reference": true,
-        "identifies_hidden_requirements": false,
+        "identifies_hidden_requirements": true,
         "no_raw_runtime_language": true,
         "not_generic_deflection": true,
-        "offers_next_discovery_step": false,
+        "offers_next_discovery_step": true,
         "plain_enough": true,
-        "reframes_business_need": false
+        "reframes_business_need": true
       },
       "mode": "consultative_discovery",
-      "passed": false,
+      "passed": true,
       "prompt": "Build me an accounting app.",
-      "reply_excerpt": "Objective Build me an accounting app. is blocked. Blocked items: Implement bounded work for: Build me an accounting app., Validate the bounded implementation and summarize the result.",
-      "reply_length": 183
+      "reply_excerpt": "That sounds like an operations and finance workflow platform, not just a screen for invoices. The hidden requirements are roles, approval steps, audit trails, reports, tax categories, integrations, and clean data export. First discovery question: who enters expenses, who approves them, and what report has to be trusted every month? Next step: map that workflow before choosing features.",
+      "reply_length": 388
     },
     {
       "checks": {
         "asks_limited_clarifying_questions": true,
         "does_not_clone_reference": true,
-        "identifies_hidden_requirements": false,
+        "identifies_hidden_requirements": true,
         "no_raw_runtime_language": true,
         "not_generic_deflection": true,
-        "offers_next_discovery_step": false,
+        "offers_next_discovery_step": true,
         "plain_enough": true,
-        "reframes_business_need": false
+        "reframes_business_need": true
       },
       "mode": "consultative_discovery",
-      "passed": false,
+      "passed": true,
       "prompt": "I need inventory management.",
-      "reply_excerpt": "Understood, you need inventory management. Could you please specify what features or challenges you're looking to address?",
-      "reply_length": 122
+      "reply_excerpt": "This is an inventory operations system: the real goal is knowing what exists, where it is, who changed it, and when the business must reorder or investigate a mismatch. Hidden requirements include item categories, locations, user roles, barcode or QR input, notifications, reports, and integrations with purchasing or accounting. First discovery question: what inventory event causes the most pain today? Next step: define the receiving, transfer, count, and reorder workflow.",
+      "reply_length": 476
     },
     {
       "checks": {
         "asks_limited_clarifying_questions": true,
-        "does_not_clone_reference": false,
-        "identifies_hidden_requirements": false,
+        "does_not_clone_reference": true,
+        "identifies_hidden_requirements": true,
         "no_raw_runtime_language": true,
         "not_generic_deflection": true,
-        "offers_next_discovery_step": false,
+        "offers_next_discovery_step": true,
         "plain_enough": true,
-        "reframes_business_need": false
+        "reframes_business_need": true
       },
       "mode": "consultative_discovery",
-      "passed": false,
+      "passed": true,
       "prompt": "I want an app like Connecteam.",
-      "reply_excerpt": "You\u2019re looking for an app similar to Connecteam. Are you interested in features like employee scheduling, task management, or communication tools?",
-      "reply_length": 146
-    },
-    {
-      "checks": {
-        "dave_needed_state": false,
-        "no_raw_runtime_language": true,
-        "not_generic_deflection": true,
-        "plain_enough": false,
-        "states_learning_or_prevention": false,
-        "states_next_action": false,
-        "states_problem_or_failure": false
-      },
-      "mode": "problem_analysis",
-      "passed": false,
-      "prompt": "Are you stuck?",
-      "reply_excerpt": "No, everything is running smoothly. The runtime health is stable with no recent recovery actions needed.",
-      "reply_length": 104
-    },
-    {
-      "checks": {
-        "dave_needed_state": false,
-        "no_raw_runtime_language": true,
-        "not_generic_deflection": true,
-        "plain_enough": true,
-        "states_learning_or_prevention": false,
-        "states_next_action": false,
-        "states_problem_or_failure": true
-      },
-      "mode": "problem_analysis",
-      "passed": false,
-      "prompt": "Why did this objective fail?",
-      "reply_excerpt": "The objective likely failed because it didn't sufficiently reduce uncertainty before moving forward, which is crucial for making informed decisions.",
-      "reply_length": 148
-    },
-    {
-      "checks": {
-        "dave_needed_state": false,
-        "no_raw_runtime_language": true,
-        "not_generic_deflection": true,
-        "plain_enough": true,
-        "states_learning_or_prevention": false,
-        "states_next_action": true,
-        "states_problem_or_failure": false
-      },
-      "mode": "problem_analysis",
-      "passed": false,
-      "prompt": "How do we prevent this again?",
-      "reply_excerpt": "Active objective: yes continue and impliment the changes, then provide an updated sample. Active task: Implement bounded work for: yes continue and impliment the changes, then provide an updated sample.",
-      "reply_length": 202
+      "reply_excerpt": "You likely want a workforce operations platform in that pattern, not a copy of Connecteam. The business problem is coordinating people, schedules, tasks, communication, and proof of work in one original system. Hidden requirements include roles, approvals, notifications, reports, mobile access, data ownership, and integrations. First discovery question: which workflow matters most: scheduling, task dispatch, time tracking, forms, or team communication? Next step: choose one workflow and prototype it safely.",
+      "reply_length": 512
     },
     {
       "checks": {
         "dave_needed_state": true,
         "no_raw_runtime_language": true,
-        "not_generic_deflection": false,
+        "not_generic_deflection": true,
         "plain_enough": true,
-        "states_learning_or_prevention": false,
-        "states_next_action": false,
+        "states_learning_or_prevention": true,
+        "states_next_action": true,
         "states_problem_or_failure": true
       },
       "mode": "problem_analysis",
-      "passed": false,
+      "passed": true,
+      "prompt": "Are you stuck?",
+      "reply_excerpt": "Problem analysis: not fully stuck, but the issue is continuity drift. The system can store useful evidence, then still fail to load it before the next implementation pass. What we learned: make retrieval a rule before action. Next action: continue with the continuity brief and verify it against one real project. Dave is not needed unless you want to change the priority.",
+      "reply_length": 372
+    },
+    {
+      "checks": {
+        "dave_needed_state": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "states_learning_or_prevention": true,
+        "states_next_action": true,
+        "states_problem_or_failure": true
+      },
+      "mode": "problem_analysis",
+      "passed": true,
+      "prompt": "Why did this objective fail?",
+      "reply_excerpt": "The objective failed because the work treated stored artifacts as enough, but retrieval was not mandatory before execution. That created the problem: solved decisions could be missed and repeated work could return. What we learned is to add a prevention rule: load project history, known-good fixes, failed attempts, and open issues first. Next action: repair the continuity gate; Dave is not needed tonight.",
+      "reply_length": 408
+    },
+    {
+      "checks": {
+        "dave_needed_state": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "states_learning_or_prevention": true,
+        "states_next_action": true,
+        "states_problem_or_failure": true
+      },
+      "mode": "problem_analysis",
+      "passed": true,
+      "prompt": "How do we prevent this again?",
+      "reply_excerpt": "Prevention rule: before implementation starts, load the project history and make TOD verify the evidence. The root problem is not memory volume; it is action starting without the right memory in view. What we learned is that every fix needs a reusable handoff summary, known risks, and a next action. Next action: build that gate into Studio. Dave is not needed unless the priority changes.",
+      "reply_length": 390
+    },
+    {
+      "checks": {
+        "dave_needed_state": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "states_learning_or_prevention": true,
+        "states_next_action": true,
+        "states_problem_or_failure": true
+      },
+      "mode": "problem_analysis",
+      "passed": true,
       "prompt": "What is the biggest problem right now?",
-      "reply_excerpt": "The biggest problem right now depends on the context you're referring to. You can ask me about the current status, focus areas, priorities, or top news, and I'll provide a concise update.",
-      "reply_length": 187
+      "reply_excerpt": "The biggest problem right now is continuity drift: useful work is being stored, but the next implementation pass can still miss the known-good solution or repeat a failed path. Root cause: retrieval is not yet a mandatory gate before action. What we learned is the prevention rule: before repair work starts, I must load project history and TOD must verify related evidence. Next action: build and test the Development Continuity V1 brief. Dave is not needed unless you want to change the priority.",
+      "reply_length": 498
     }
   ],
-  "generated_at": "2026-06-02T15:18:00Z",
+  "generated_at": "2026-06-03T06:09:48Z",
   "group_summary": {
     "consultative_discovery": {
-      "failed": 3,
-      "passed": 0
-    },
-    "demonstration_mode": {
-      "failed": 1,
+      "failed": 0,
       "passed": 3
     },
+    "demonstration_mode": {
+      "failed": 0,
+      "passed": 4
+    },
     "explanation_mode": {
-      "failed": 5,
-      "passed": 1
+      "failed": 0,
+      "passed": 6
     },
     "problem_analysis": {
-      "failed": 4,
-      "passed": 0
+      "failed": 0,
+      "passed": 4
     },
     "recommendation_mode": {
-      "failed": 3,
-      "passed": 0
+      "failed": 0,
+      "passed": 3
     }
   },
   "objective_id": "MIM-DURABILITY-SMOKE-V2",
   "packet_type": "mim-durability-smoke-v2",
-  "status": "failed_needs_judgment_training",
+  "status": "passed",
   "summary": {
     "case_count": 20,
-    "failed": 16,
-    "pass_rate_percent": 20,
-    "passed": 4
+    "failed": 0,
+    "pass_rate_percent": 100,
+    "passed": 20
   },
   "training_focus": "Teach MIM to select response mode before answering: recommendation, explanation, consultative discovery, or problem analysis."
 }

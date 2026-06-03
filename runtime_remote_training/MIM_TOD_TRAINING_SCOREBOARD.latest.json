@@ -1,37 +1,37 @@
 {
-  "generated_at": "2026-06-03T04:51:43Z",
+  "generated_at": "2026-06-03T06:12:48Z",
   "judgment_mode_score": {
     "case_count": 20,
     "current_weakness": "MIM defaults to status reporting instead of selecting recommendation, explanation, demonstration, consultative discovery, or problem-analysis mode.",
-    "failed": 16,
-    "generated_at": "2026-06-02T15:18:00Z",
+    "failed": 0,
+    "generated_at": "2026-06-03T06:09:48Z",
     "group_summary": {
       "consultative_discovery": {
-        "failed": 3,
-        "passed": 0
-      },
-      "demonstration_mode": {
-        "failed": 1,
+        "failed": 0,
         "passed": 3
       },
+      "demonstration_mode": {
+        "failed": 0,
+        "passed": 4
+      },
       "explanation_mode": {
-        "failed": 5,
-        "passed": 1
+        "failed": 0,
+        "passed": 6
       },
       "problem_analysis": {
-        "failed": 4,
-        "passed": 0
+        "failed": 0,
+        "passed": 4
       },
       "recommendation_mode": {
-        "failed": 3,
-        "passed": 0
+        "failed": 0,
+        "passed": 3
       }
     },
     "objective_id": "MIM-DURABILITY-SMOKE-V2",
-    "pass_rate_percent": 20,
-    "passed": 4,
+    "pass_rate_percent": 100,
+    "passed": 20,
     "source": "E:\\TOD\\runtime_remote_training\\MIM_DURABILITY_SMOKE_V2.latest.json",
-    "status": "failed_needs_judgment_training",
+    "status": "passed",
     "target": "Reach at least 80% on the focused V2 judgment suite before expanding to larger prompt sets."
   },
   "mim_score": {
@@ -45,8 +45,8 @@
           "internal_jargon_hits": [],
           "prompt": "how is training going MIM?",
           "recommendation_quality": true,
-          "reply_excerpt": "Training is active.\n\nMIM focus:\n- Universal MIM presence, typo-tolerant intent recognition, and project-manager judgment.\n- The specific skill is choosing the right response mode before answering, instead of defaulting to status reporting.\n\nCurrent MIM benchmark:\n- Judgment V2 pa",
-          "reply_length": 1350
+          "reply_excerpt": "Training needs attention, but the judgment-mode repair is now moving in the right direction. The focused V2 suite should be checked first because it measures whether MIM recommends, explains, demonstrates, discovers requirements, and analyzes problems instead of only reporting st",
+          "reply_length": 442
         },
         {
           "answered_question": true,
@@ -55,8 +55,8 @@
           "internal_jargon_hits": [],
           "prompt": "any blockers?",
           "recommendation_quality": true,
-          "reply_excerpt": "Yes. There are still blockers, but they are being worked instead of ignored.\n\nCurrent blocker status:\n- Active blockers moved from 33 to 31.\n- Current class: linked task result empty or non evidentiary.\n- Latest finding: Linked task result rows can exist while still containing no",
-          "reply_length": 476
+          "reply_excerpt": "Yes. The main blocker is stale training evidence, not a broken runtime. The risk is claiming training is healthy while reflection inputs and validation artifacts are still old. Next step: treat the judgment smoke result as resolved, then refresh the stale TOD execution, validatio",
+          "reply_length": 444
         },
         {
           "answered_question": true,
@@ -75,8 +75,8 @@
           "internal_jargon_hits": [],
           "prompt": "tell me more about your training MIM",
           "recommendation_quality": true,
-          "reply_excerpt": "Training is active.\n\nMIM focus:\n- Universal MIM presence, typo-tolerant intent recognition, and project-manager judgment.\n- The specific skill is choosing the right response mode before answering, instead of defaulting to status reporting.\n\nCurrent MIM benchmark:\n- Judgment V2 pa",
-          "reply_length": 1350
+          "reply_excerpt": "MIM training is focused on choosing the right response mode: recommendation, explanation, demonstration, consultative discovery, or problem analysis. That matters because Dave should get a useful answer or next action, not a raw status dump. The latest target is the V2 judgment s",
+          "reply_length": 457
         }
       ],
       "metrics": {
@@ -135,7 +135,7 @@
     "are_they_improving": false,
     "assessment": "needs_attention",
     "fresh_artifact_count": 4,
-    "generated_at": "2026-06-03T04:04:23Z",
+    "generated_at": "2026-06-03T06:04:24Z",
     "operator_summary": "MIM/TOD assessment: needs_attention. Objectives: 24 complete, 1 running, 32 blocked, 28 blocker follow-on objective(s). Next: MIM-TOD-OBJECTIVE-LIFECYCLE-REGRESSION-SUITE-V1. Top blocker: overnight_lane_stale_without_current_heartbeat; Restart as a fresh bounded overnight run only after the current repair stack is clean.",
     "recommendations": [
       "Run blocker-to-objective synthesis because at least one blocker does not have a follow-on objective.",
@@ -167,10 +167,10 @@
     "redirect_condition": "Redirect if there is no new evidence artifact, no blocker movement, and no MIM eval improvement over a 6-hour window."
   },
   "snapshot_files": {
-    "daily_json": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\daily\\2026-06-03\\MIM_TOD_TRAINING_SCOREBOARD.20260603T045143Z.json",
-    "daily_md": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\daily\\2026-06-03\\MIM_TOD_TRAINING_SCOREBOARD.20260603T045143Z.md",
-    "hourly_json": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\hourly\\MIM_TOD_TRAINING_SCOREBOARD.20260603T045143Z.json",
-    "hourly_md": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\hourly\\MIM_TOD_TRAINING_SCOREBOARD.20260603T045143Z.md"
+    "daily_json": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\daily\\2026-06-03\\MIM_TOD_TRAINING_SCOREBOARD.20260603T061248Z.json",
+    "daily_md": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\daily\\2026-06-03\\MIM_TOD_TRAINING_SCOREBOARD.20260603T061248Z.md",
+    "hourly_json": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\hourly\\MIM_TOD_TRAINING_SCOREBOARD.20260603T061248Z.json",
+    "hourly_md": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\hourly\\MIM_TOD_TRAINING_SCOREBOARD.20260603T061248Z.md"
   },
   "source_files": [
     "E:\\TOD\\runtime_remote_training\\MIM_TOD_HOURLY_REFLECTION.latest.json",

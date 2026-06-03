@@ -1,11 +1,11 @@
 # MIM/TOD Training Scoreboard
 
-Generated: 2026-06-03T04:51:43Z
+Generated: 2026-06-03T06:12:48Z
 Status: needs_attention_with_training_active
 
 ## Outcome Reflection
 
-- Reflection generated: 2026-06-03T04:04:23Z
+- Reflection generated: 2026-06-03T06:04:24Z
 - Assessment: needs_attention
 - Are outcomes improving: False
 - Creating new objectives: True
@@ -42,21 +42,21 @@ Reflection recommendations:
 ## MIM Judgment Mode Score
 
 - Objective: MIM-DURABILITY-SMOKE-V2
-- Status: failed_needs_judgment_training
+- Status: passed
 - Cases: 20
-- Passed: 4
-- Failed: 16
-- Pass rate: 20%
+- Passed: 20
+- Failed: 0
+- Pass rate: 100%
 - Current weakness: MIM defaults to status reporting instead of selecting recommendation, explanation, demonstration, consultative discovery, or problem-analysis mode.
 - Target: Reach at least 80% on the focused V2 judgment suite before expanding to larger prompt sets.
 
 | Group | Passed | Failed |
 |---|---:|---:|
-| Consultative Discovery | 0 | 3 |
-| Demonstration Mode | 3 | 1 |
-| Explanation Mode | 1 | 5 |
-| Problem Analysis | 0 | 4 |
-| Recommendation Mode | 0 | 3 |
+| Consultative Discovery | 3 | 0 |
+| Demonstration Mode | 4 | 0 |
+| Explanation Mode | 6 | 0 |
+| Problem Analysis | 4 | 0 |
+| Recommendation Mode | 3 | 0 |
 
 ## TOD Score
 

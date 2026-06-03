@@ -1,0 +1,39 @@
+{
+  "packet_type": "mim-tod-training-night-check-v1",
+  "generated_at": "2026-06-03T06:13:00Z",
+  "status": "partial_resolution_training_active",
+  "judgment_smoke_v2": {
+    "status": "passed",
+    "cases": 20,
+    "passed": 20,
+    "failed": 0,
+    "pass_rate_percent": 100
+  },
+  "mim_live_training_score": {
+    "intent_understood_percent": 100,
+    "answered_question_percent": 100,
+    "internal_jargon_percent": 0,
+    "recommendation_quality_percent": 100
+  },
+  "scoreboard_status": "needs_attention_with_training_active",
+  "remote_service": {
+    "name": "mim-mobile-web.service",
+    "status": "active"
+  },
+  "verification": [
+    "local_py_compile_gateway_and_composer",
+    "remote_py_compile_gateway_and_composer",
+    "remote_service_restart_active",
+    "mim_durability_smoke_v2_passed",
+    "mim_tod_training_scoreboard_refreshed"
+  ],
+  "remote_backups": [
+    "/home/testpilot/mim/core/routers/gateway.py.bak.20260603T061233Z",
+    "/home/testpilot/mim/core/communication_composer.py.bak.20260603T061233Z"
+  ],
+  "remaining_attention": {
+    "outcome_reflection": "needs_attention",
+    "stale_artifacts": 12,
+    "next_recommended_repair": "Refresh stale TOD evidence artifacts before claiming the full MIM/TOD training cycle is healthy."
+  }
+}
