@@ -1,0 +1,65 @@
+{
+  "generated_at": "2026-06-03T06:05:00Z",
+  "objective_id": "MIM-DEVELOPMENT-CONTINUITY-V1",
+  "status": "planned",
+  "target_planning_window": "before next likely Codex restart around 2026-06-05",
+  "goal": "Prevent solved development problems from becoming unsolved problems after Codex thread loss, compaction, freeze, or restart.",
+  "problem_statement": "MIM/TOD have enough stored documentation, but implementation often starts without retrieving project history, known-good solutions, failed attempts, decisions, and regressions.",
+  "role_split": {
+    "mim": "Project Manager: find project history, summarize decisions, identify known-good solutions and failures, recommend next action.",
+    "tod": "Engineering Lead: inspect related files/objectives/artifacts, check regressions and validation evidence, gate execution against duplicate or stale work.",
+    "codex": "Specialist Engineer: implement after the continuity brief is loaded."
+  },
+  "required_gate_questions": [
+    "Has this project or problem been worked on before?",
+    "Is there a Studio Project record, objective, document, report, or artifact for it?",
+    "What decisions were already made?",
+    "What solutions worked?",
+    "What solutions failed?",
+    "What regressions are known?",
+    "What files, scripts, routes, or services were previously changed?",
+    "What validation proved success or exposed failure?",
+    "What should Codex avoid reintroducing?",
+    "What is the recommended next bounded action?"
+  ],
+  "retrieval_bundle": [
+    "project_history",
+    "recent_decisions",
+    "known_good_solutions",
+    "known_failures",
+    "previous_attempts",
+    "open_issues",
+    "related_objectives",
+    "related_documents",
+    "related_conversations_or_session_notes",
+    "relevant_files",
+    "previous_validation_commands"
+  ],
+  "operator_brief_template_fields": [
+    "project",
+    "previous_decisions",
+    "known_good_solution",
+    "failed_attempts",
+    "known_regressions",
+    "open_issues",
+    "relevant_files",
+    "documents_loaded",
+    "recommended_next_action",
+    "avoid_reintroducing",
+    "dave_needed"
+  ],
+  "first_real_validation_case": "forum graphics",
+  "first_implementation_slice": [
+    "create objective artifacts",
+    "build continuity lookup helper or endpoint",
+    "add Before We Continue summary shape",
+    "wire Studio chat or H.A.L. triage to run it before implementation-style requests",
+    "validate against forum graphics project history"
+  ],
+  "success_criteria": [
+    "new thread receives a continuity brief before implementation begins",
+    "brief includes previous fixes, known regressions, open issues, recommended next action, loaded documents/artifacts, and what not to redo",
+    "Codex starts from accumulated project knowledge instead of rediscovery"
+  ],
+  "extends_policy": "MIM-TOD-CONTINUITY-GATE-POLICY-V1"
+}
