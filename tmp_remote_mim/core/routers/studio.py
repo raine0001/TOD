@@ -2706,20 +2706,20 @@ def _default_servo_tester_profile() -> dict[str, Any]:
     return {
         "version": "lab-servo-tester-v1",
         "updated_at": "",
-        "command_template": "MOVE {channel} {angle}",
+        "command_template": "{pulse}",
         "baud_rate": 9600,
         "servos": [
             {
                 "id": "servo-0",
                 "name": "Servo 0",
                 "channel": 0,
-                "min_pulse": 500,
+                "min_pulse": 100,
                 "min_angle": 0,
-                "center_pulse": 1500,
+                "center_pulse": 375,
                 "center_angle": 90,
-                "max_pulse": 2500,
+                "max_pulse": 650,
                 "max_angle": 180,
-                "start_pulse": 1500,
+                "start_pulse": 375,
                 "start_angle": 90,
                 "speed_ms": 600,
                 "startup_ms": 250,
@@ -2792,7 +2792,7 @@ def _clean_servo_profile(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "version": "lab-servo-tester-v1",
         "updated_at": _utc_now(),
-        "command_template": _first_text(payload.get("command_template"), default="MOVE {channel} {angle}")[:160],
+        "command_template": _first_text(payload.get("command_template"), default="{pulse}")[:160],
         "baud_rate": as_int(payload.get("baud_rate"), 9600, minimum=9600, maximum=1000000),
         "servos": servos,
     }
@@ -2823,6 +2823,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       </div>
       <div id="serialStatus" class="muted" style="margin-top:10px;">Serial disconnected.</div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+        <button id="useCurrentSketchProtocol" class="button primary" type="button">Use Current UNO Sketch</button>
         <button id="useMoveProtocol" class="button" type="button">Use MOVE Angle Protocol</button>
         <button id="usePulseProtocol" class="button" type="button">Use Pulse Protocol</button>
         <button id="sendPing" class="button" type="button">Send Ping</button>
@@ -2832,7 +2833,8 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
     <section id="servoList" class="grid two" style="margin-top:14px;"></section>
     <section class="card" style="margin-top:14px;">
       <h2>UNO Sketch Protocol</h2>
-      <p>Default command line: <code>MOVE {{channel}} {{angle}}</code>. This matches the older MIM Arduino probe pattern. If your UNO sketch expects microsecond PWM commands instead, switch to <code>S {{channel}} {{pulse}} {{duration}}</code>.</p>
+      <p>Current flashed sketch protocol: send one integer from <code>100</code> to <code>650</code>. The sketch applies that raw PCA9685 count to channels 0 and 1 together.</p>
+      <p class="muted" style="margin-top:8px;">Use <code>{{pulse}}</code> for the current sketch. Use <code>MOVE {{channel}} {{angle}}</code> or <code>S {{channel}} {{pulse}} {{duration}}</code> only after flashing firmware that supports those command formats.</p>
       <p class="muted" style="margin-top:8px;">Arduino IDE is only needed to flash that sketch onto the UNO R4. After that, this page can connect directly from Chrome with Web Serial.</p>
     </section>
     <script>
@@ -2894,7 +2896,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       }}
       function readProfileFromDom() {{
         profile.baud_rate = Number(baudRate.value || 9600);
-        profile.command_template = String(commandTemplate.value || 'MOVE {{channel}} {{angle}}');
+        profile.command_template = String(commandTemplate.value || '{{pulse}}');
         profile.servos = Array.from(document.querySelectorAll('[data-servo-card]')).map((card, index) => {{
           const id = card.dataset.servoCard || ('servo-' + index);
           return {{
@@ -2918,7 +2920,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       }}
       function renderServos() {{
         baudRate.value = profile.baud_rate || 9600;
-        commandTemplate.value = profile.command_template || 'MOVE {{channel}} {{angle}}';
+        commandTemplate.value = profile.command_template || '{{pulse}}';
         servoList.innerHTML = '';
         profile.servos.forEach((servo) => {{
           const current = Number(servo.start_pulse || servo.center_pulse || 1500);
@@ -2975,7 +2977,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       }}
       function buildCommand(servo, pulse, duration) {{
         const angle = angleForPulse(servo, pulse);
-        return String(profile.command_template || 'MOVE {{channel}} {{angle}}')
+        return String(profile.command_template || '{{pulse}}')
           .replaceAll('{{channel}}', String(servo.channel))
           .replaceAll('{{pulse}}', String(pulse))
           .replaceAll('{{angle}}', String(angle))
@@ -3033,6 +3035,21 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         if (serialPort) {{ await serialPort.close(); serialPort = null; }}
         setConnectedState(false, 'Serial disconnected.');
         logSerial('Disconnected.');
+      }});
+      document.getElementById('useCurrentSketchProtocol').addEventListener('click', () => {{
+        commandTemplate.value = '{{pulse}}';
+        baudRate.value = 9600;
+        readProfileFromDom();
+        profile.servos = profile.servos.map((servo) => ({{
+          ...servo,
+          min_pulse: 100,
+          center_pulse: 375,
+          max_pulse: 650,
+          start_pulse: 375,
+          notes: servo.notes || 'Current UNO sketch reads one integer 100-650 and applies it to channels 0 and 1.'
+        }}));
+        renderServos();
+        serialStatus.textContent = 'Protocol set for the currently flashed sketch: send one raw PCA9685 count, 100-650, at 9600 baud.';
       }});
       document.getElementById('useMoveProtocol').addEventListener('click', () => {{
         commandTemplate.value = 'MOVE {{channel}} {{angle}}';
@@ -5761,10 +5778,11 @@ async def studio_mim_chat_api(
             "What I would check first:\n"
             "- Confirm the page shows Connected after the browser serial picker closes.\n"
             "- Use the serial log to verify TX lines are being sent and RX lines come back from the UNO.\n"
-            "- Try the MOVE angle protocol at 9600 baud first: MOVE {channel} {angle}. The older MIM Arduino probe used MOVE 0 90 at 9600.\n"
-            "- If your UNO sketch expects PWM microseconds, switch to pulse protocol: S {channel} {pulse} {duration}.\n"
+            "- For Dave's current sketch, use the current UNO sketch protocol at 9600 baud. It sends one number only, such as 375.\n"
+            "- That firmware applies the same PCA9685 count to channels 0 and 1 together, so the page channel field will not matter until firmware supports per-channel commands.\n"
+            "- Use MOVE {channel} {angle} or S {channel} {pulse} {duration} only after flashing firmware that supports those formats.\n"
             "- If TX appears but there is no servo movement, the likely causes are wrong sketch protocol, wrong PWM channel, servo power/ground, or the PWM driver address/wiring.\n\n"
-            "I updated this page to show connection state, serial logs, angle and pulse values, protocol buttons, ping, and slider-release movement."
+            "I updated this page to include a Current UNO Sketch protocol button, connection state, serial logs, raw count range, ping, and slider-release movement."
         )
         return {
             "ok": True,
