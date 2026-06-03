@@ -1,0 +1,359 @@
+{
+  "cases": [
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "monthly_update",
+      "passed": true,
+      "prompt": "can you give me a montly update on your progress?",
+      "reply_excerpt": "MIM / TOD Development Update\nPast Month\n\nExecutive summary:\nMIM and TOD have been moving from a collection of AI-assisted tools toward an orchestrated autonomous operating environment. The main work this month was not simply adding more features. It was making the system more reliable, coordinated, traceable, measurable, and understandable.\n\nMajor improvements:\n- MIM and TOD moved further beyond simple prompt/response into planning, memory, reasoning, execution, collaboration, workspace awareness, and autonomous task coordination.\n- Continuity improved through state snapshots, decision recording, objective persistence, replay patterns, and shared runtime artifacts.\n- TOD began real blocker-r",
+      "reply_length": 2870,
+      "required": [
+        "past month",
+        "improvement",
+        "barrier"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "training_focus",
+      "passed": true,
+      "prompt": "wat are you trainign on rite now mim?",
+      "reply_excerpt": "Training is active.\n\nMIM focus:\n- Typo-tolerant operator intent recognition plus project-manager judgment.\n- The specific skill is choosing the right response mode before answering, instead of defaulting to status reporting.\n\nCurrent MIM benchmark:\n- Judgment V2 pass rate: 20%. 4 passed, 16 failed across 20 prompts.\n- Recommendation Mode: 0 passed, 3 failed.\n- Explanation Mode: 1 passed, 5 failed.\n- Demonstration Mode: 3 passed, 1 failed.\n- Consultative Discovery: 0 passed, 3 failed.\n- Problem Analysis: 0 passed, 4 failed.\n\nWhat this means:\n- Demonstration Mode is currently the strongest area.\n- Recommendation, Consultative Discovery, and Problem Analysis are the main weak spots.\n- The next ",
+      "reply_length": 1335,
+      "required": [
+        "training",
+        "mim",
+        "tod"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "training_focus",
+      "passed": true,
+      "prompt": "can u be more specific?",
+      "reply_excerpt": "Training is active.\n\nMIM focus:\n- Typo-tolerant operator intent recognition plus project-manager judgment.\n- The specific skill is choosing the right response mode before answering, instead of defaulting to status reporting.\n\nCurrent MIM benchmark:\n- Judgment V2 pass rate: 20%. 4 passed, 16 failed across 20 prompts.\n- Recommendation Mode: 0 passed, 3 failed.\n- Explanation Mode: 1 passed, 5 failed.\n- Demonstration Mode: 3 passed, 1 failed.\n- Consultative Discovery: 0 passed, 3 failed.\n- Problem Analysis: 0 passed, 4 failed.\n\nWhat this means:\n- Demonstration Mode is currently the strongest area.\n- Recommendation, Consultative Discovery, and Problem Analysis are the main weak spots.\n- The next ",
+      "reply_length": 1335,
+      "required": [
+        "training",
+        "mim",
+        "tod"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "demonstration",
+      "passed": true,
+      "prompt": "show me teh sample",
+      "reply_excerpt": "Yes. I have a reviewable html prototype ready. Open it from the card below. If this is not the exact sample you meant, tell me which project or screen and I will pull that artifact instead.",
+      "reply_length": 189,
+      "required": [
+        "sample",
+        "review"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "demonstration",
+      "passed": true,
+      "prompt": "can i see teh interace",
+      "reply_excerpt": "Yes. I have a reviewable html prototype ready. Open it from the card below. If this is not the exact sample you meant, tell me which project or screen and I will pull that artifact instead.",
+      "reply_length": 189,
+      "required": [
+        "interface",
+        "review"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "recommendation",
+      "passed": true,
+      "prompt": "what shoud we werk on next",
+      "reply_excerpt": "My recommendation is to keep training MIM on project-manager judgment before expanding the prompt suite.\n\nWhy:\n- The latest tests show I'm better at avoiding raw task/objective jargon, but still weak at choosing the right response mode.\n- Recommendation Mode, Consultative Discovery, and Problem Analysis are the highest-value weak spots.\n- Improving those skills helps every project conversation, demo flow, and operator update.\n\nNext action:\n- Focus the next training pass on the failed judgment cases instead of adding more new prompts.\n\nDave is not needed unless you want to redirect the training priority.",
+      "reply_length": 610,
+      "required": [
+        "recommend",
+        "next"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "recommendation",
+      "passed": true,
+      "prompt": "whats highest priorty",
+      "reply_excerpt": "My recommendation is to keep training MIM on project-manager judgment before expanding the prompt suite.\n\nWhy:\n- The latest tests show I'm better at avoiding raw task/objective jargon, but still weak at choosing the right response mode.\n- Recommendation Mode, Consultative Discovery, and Problem Analysis are the highest-value weak spots.\n- Improving those skills helps every project conversation, demo flow, and operator update.\n\nNext action:\n- Focus the next training pass on the failed judgment cases instead of adding more new prompts.\n\nDave is not needed unless you want to redirect the training priority.",
+      "reply_length": 610,
+      "required": [
+        "priority",
+        "next"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "recommendation",
+      "passed": true,
+      "prompt": "what wuld create the most valyu",
+      "reply_excerpt": "My recommendation is to keep training MIM on project-manager judgment before expanding the prompt suite.\n\nWhy:\n- The latest tests show I'm better at avoiding raw task/objective jargon, but still weak at choosing the right response mode.\n- Recommendation Mode, Consultative Discovery, and Problem Analysis are the highest-value weak spots.\n- Improving those skills helps every project conversation, demo flow, and operator update.\n\nNext action:\n- Focus the next training pass on the failed judgment cases instead of adding more new prompts.\n\nDave is not needed unless you want to redirect the training priority.",
+      "reply_length": 610,
+      "required": [
+        "value",
+        "recommend"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "consultative_discovery",
+      "passed": true,
+      "prompt": "build me an acounting app",
+      "reply_excerpt": "I think you are describing an expense intelligence platform, not just a basic accounting app.\n\nThe likely first version would include:\n- Receipt capture from a folder, email, uploads, or scans.\n- OCR extraction for payee, date, category, amount, and payment source.\n- Expense reports by category, vendor, amount, month, and account.\n- Recurring subscription tracking and possible duplicate or unused-service alerts.\n\nA few questions:\n- Are receipts mostly PDFs, images, emails, or all of the above?\n- Do you currently use QuickBooks, Xero, spreadsheets, or nothing formal?\n- Should MIM only flag possible savings, or automatically recommend actions?\n\nNext action:\n- I would map the receipt workflow a",
+      "reply_length": 754,
+      "required": [
+        "accounting",
+        "workflow"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "consultative_discovery",
+      "passed": true,
+      "prompt": "i need invintory managment",
+      "reply_excerpt": "I think this is an inventory operations problem, not just an inventory screen.\n\nThe likely first version would cover:\n- Current counts and item locations.\n- Count workflows and approvals.\n- Variance reports and exception alerts.\n- Import/export or integration with the system that currently stores inventory.\n\nA few questions:\n- How are counts collected today: spreadsheet, POS, QuickBooks, manual forms, or another system?\n- How often do counts happen?\n- Who reviews and approves changes?\n\nNext action:\n- I would build a process map before designing the app.",
+      "reply_length": 559,
+      "required": [
+        "inventory",
+        "process"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "consultative_discovery",
+      "passed": true,
+      "prompt": "i want an app lik connecteam",
+      "reply_excerpt": "I would treat that as consultative discovery, not cloning.\n\nWhat I think you mean:\n- You like the workforce-operations idea: scheduling, tasks, training, communication, checklists, and manager visibility.\n\nSafe direction:\n- Build an original workforce operations platform designed around your users and workflows.\n- Use the reference only to identify useful patterns, not to copy branding, UI, text, or proprietary behavior.\n\nA few questions:\n- Who are the primary users: managers, employees, executives, or customers?\n- Which workflow hurts most today: scheduling, communication, tasks, training, or compliance?\n- Do you want a simple internal tool first, or a full mobile-ready platform?\n\nNext acti",
+      "reply_length": 801,
+      "required": [
+        "workforce",
+        "original"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "problem_analysis",
+      "passed": true,
+      "prompt": "why did this objetive fail",
+      "reply_excerpt": "The prevention plan is to turn the failure into an accountable repair loop, not just a note.\n\nWhat failed:\n- MIM/TOD sometimes report progress before the work is proven by fresh evidence.\n\nHow we prevent it:\n- Detect the failure class.\n- Inspect the linked objective, task, artifact, and operator status.\n- Create a repair task or narrow the blocker with evidence.\n- Validate the result before marking anything complete.\n- Record the prevention rule so the same failure routes automatically next time.\n\nNext action:\n- TOD should apply the blocker-clearing drill to the next linked-task blocker and publish matching evidence.\n\nDave is not needed unless the repair requires a credential, decision, or p",
+      "reply_length": 720,
+      "required": [
+        "failed",
+        "next"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "problem_analysis",
+      "passed": true,
+      "prompt": "how do we preven this again",
+      "reply_excerpt": "The prevention plan is to turn the failure into an accountable repair loop, not just a note.\n\nWhat failed:\n- MIM/TOD sometimes report progress before the work is proven by fresh evidence.\n\nHow we prevent it:\n- Detect the failure class.\n- Inspect the linked objective, task, artifact, and operator status.\n- Create a repair task or narrow the blocker with evidence.\n- Validate the result before marking anything complete.\n- Record the prevention rule so the same failure routes automatically next time.\n\nNext action:\n- TOD should apply the blocker-clearing drill to the next linked-task blocker and publish matching evidence.\n\nDave is not needed unless the repair requires a credential, decision, or p",
+      "reply_length": 720,
+      "required": [
+        "prevent",
+        "next"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "blocker_status",
+      "passed": true,
+      "prompt": "are you stuk",
+      "reply_excerpt": "The prevention plan is to turn the failure into an accountable repair loop, not just a note.\n\nWhat failed:\n- MIM/TOD sometimes report progress before the work is proven by fresh evidence.\n\nHow we prevent it:\n- Detect the failure class.\n- Inspect the linked objective, task, artifact, and operator status.\n- Create a repair task or narrow the blocker with evidence.\n- Validate the result before marking anything complete.\n- Record the prevention rule so the same failure routes automatically next time.\n\nNext action:\n- TOD should apply the blocker-clearing drill to the next linked-task blocker and publish matching evidence.\n\nDave is not needed unless the repair requires a credential, decision, or p",
+      "reply_length": 720,
+      "required": [
+        "blocked",
+        "next"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "blocker_status",
+      "passed": true,
+      "prompt": "any blokers",
+      "reply_excerpt": "Yes. There are still blockers, but they are being worked instead of ignored.\n\nCurrent blocker status:\n- Active blockers moved from 33 to 31.\n- Current class: linked task result empty or non evidentiary.\n- Latest finding: Linked task result rows can exist while still containing no meaningful evidence.\n\nNext action:\n- repair one linked-task empty-evidence blocker end-to-end.\n\nDave is not needed unless a blocker requires a human decision, credential, or physical-world check.",
+      "reply_length": 476,
+      "required": [
+        "blocker",
+        "next"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "status",
+      "passed": true,
+      "prompt": "what changed tody",
+      "reply_excerpt": "Today changed in three useful ways.\n\nMIM:\n- Training now includes typo-tolerant intent recognition, so rough typed input can still route to the right response mode.\n- The current weak spots are still recommendation, consultative discovery, and problem-analysis answers.\n\nTOD:\n- TOD continues training on blocker cleanup and Codex-style implementation habits: inspect, plan, edit, validate, and report evidence.\n\nNext action:\n- Run the noisy-input smoke test and use the failures to tune MIM's response-mode selection.\n\nDave is not needed right now unless you want to change the training focus.",
+      "reply_length": 593,
+      "required": [
+        "changed",
+        "next"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "tod_status",
+      "passed": true,
+      "prompt": "what is tod werkign on",
+      "reply_excerpt": "TOD is currently focused on continuing and implementing the requested changes, then providing an updated sample reflecting those updates.",
+      "reply_length": 137,
+      "required": [
+        "tod",
+        "working"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "monthly_update",
+      "passed": true,
+      "prompt": "can you give me a developmnt update frm the past mnth",
+      "reply_excerpt": "MIM / TOD Development Update\nPast Month\n\nExecutive summary:\nMIM and TOD have been moving from a collection of AI-assisted tools toward an orchestrated autonomous operating environment. The main work this month was not simply adding more features. It was making the system more reliable, coordinated, traceable, measurable, and understandable.\n\nMajor improvements:\n- MIM and TOD moved further beyond simple prompt/response into planning, memory, reasoning, execution, collaboration, workspace awareness, and autonomous task coordination.\n- Continuity improved through state snapshots, decision recording, objective persistence, replay patterns, and shared runtime artifacts.\n- TOD began real blocker-r",
+      "reply_length": 2870,
+      "required": [
+        "past month",
+        "improvement",
+        "barrier"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "status",
+      "passed": true,
+      "prompt": "wat are mim and tod working on",
+      "reply_excerpt": "Training is active.\n\nMIM focus:\n- Typo-tolerant operator intent recognition plus project-manager judgment.\n- The specific skill is choosing the right response mode before answering, instead of defaulting to status reporting.\n\nCurrent MIM benchmark:\n- Judgment V2 pass rate: 20%. 4 passed, 16 failed across 20 prompts.\n- Recommendation Mode: 0 passed, 3 failed.\n- Explanation Mode: 1 passed, 5 failed.\n- Demonstration Mode: 3 passed, 1 failed.\n- Consultative Discovery: 0 passed, 3 failed.\n- Problem Analysis: 0 passed, 4 failed.\n\nWhat this means:\n- Demonstration Mode is currently the strongest area.\n- Recommendation, Consultative Discovery, and Problem Analysis are the main weak spots.\n- The next ",
+      "reply_length": 1335,
+      "required": [
+        "mim",
+        "tod"
+      ]
+    },
+    {
+      "checks": {
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "required_terms_present": true,
+        "substantial_reply": true
+      },
+      "mode": "consultative_discovery",
+      "passed": true,
+      "prompt": "i dropped recipts in a folder and need expence reports",
+      "reply_excerpt": "I think you are describing an expense intelligence platform, not just a basic accounting app.\n\nThe likely first version would include:\n- Receipt capture from a folder, email, uploads, or scans.\n- OCR extraction for payee, date, category, amount, and payment source.\n- Expense reports by category, vendor, amount, month, and account.\n- Recurring subscription tracking and possible duplicate or unused-service alerts.\n\nA few questions:\n- Are receipts mostly PDFs, images, emails, or all of the above?\n- Do you currently use QuickBooks, Xero, spreadsheets, or nothing formal?\n- Should MIM only flag possible savings, or automatically recommend actions?\n\nNext action:\n- I would map the receipt workflow a",
+      "reply_length": 754,
+      "required": [
+        "receipt",
+        "report"
+      ]
+    }
+  ],
+  "generated_at": "2026-06-02T18:36:22Z",
+  "objective_id": "MIM-TYPO-TOLERANT-INTENT-RECOGNITION-V1",
+  "packet_type": "mim-typo-tolerant-intent-smoke",
+  "status": "passed",
+  "summary": {
+    "case_count": 20,
+    "failed": 0,
+    "pass_rate_percent": 100,
+    "passed": 20
+  },
+  "training_focus": "Normalize noisy typed operator input for routing while preserving the original user text."
+}

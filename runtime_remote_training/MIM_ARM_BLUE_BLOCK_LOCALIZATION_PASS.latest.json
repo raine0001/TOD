@@ -1,0 +1,34 @@
+﻿{
+    "packet_type":  "mim-arm-blue-block-localization-pass-v1",
+    "generated_at":  "2026-05-31T20:55:29Z",
+    "objective_id":  "3404",
+    "status":  "blocked_with_evidence",
+    "reason_code":  "blue_block_not_visible_from_current_hand_camera",
+    "operator_facing_summary":  "MIM bound the blue-block pickup executor and verified the ARM resources, then ran a fresh hand-camera localization pass. The grip and table are visible, but the blue block is not confidently visible, so MIM should not move toward a guessed target.",
+    "resources_used":  [
+                           "hand_camera_frame",
+                           "c12_distance_sensor",
+                           "rplidar_status_and_scan",
+                           "arm_state",
+                           "movement_trace",
+                           "latest_detections"
+                       ],
+    "hand_camera_frame":  "runtime_remote_training/MIM_ARM_BLUE_BLOCK_CURRENT_HAND_CAMERA.jpg",
+    "visual_result":  {
+                          "frame_width":  1280,
+                          "frame_height":  960,
+                          "observed":  "table surface and grip/claw are visible; target blue block is not visible in current hand-camera frame",
+                          "false_positive_warning":  "blue/cyan threshold components correspond to claw/hand edges and reflections, not a block-shaped target",
+                          "confident_blue_block_visible":  false
+                      },
+    "latest_detections_result":  {
+                                     "endpoint":  "/latest_detections",
+                                     "usable_for_current_pickup":  false,
+                                     "reason":  "detections are stale March/April records, not current May 31 live target evidence"
+                                 },
+    "motion_decision":  {
+                            "motion_allowed_now":  false,
+                            "reason":  "no confirmed current target location",
+                            "next_safe_action":  "Refresh another camera view or place the blue block into the hand-camera field of view, then rerun localization before any approach movement."
+                        }
+}

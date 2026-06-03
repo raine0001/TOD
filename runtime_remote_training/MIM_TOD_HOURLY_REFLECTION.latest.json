@@ -1,28 +1,36 @@
 {
     "packet_type":  "mim-tod-hourly-reflection-v1",
-    "generated_at":  "2026-05-28T14:29:17Z",
+    "generated_at":  "2026-06-03T04:04:23Z",
     "source":  "Invoke-MIMTODHourlyReflection",
     "cadence":  "hourly",
-    "assessment":  "improving_with_known_blockers",
-    "are_they_improving":  true,
+    "assessment":  "needs_attention",
+    "are_they_improving":  false,
     "are_they_creating_new_objectives":  true,
     "objective_counts":  {
-                             "total":  10,
-                             "completed":  6,
-                             "running":  3,
-                             "blocked":  1,
-                             "blocker_followons":  1
+                             "total":  58,
+                             "completed":  24,
+                             "running":  1,
+                             "blocked":  32,
+                             "blocker_followons":  28
                          },
     "freshness":  {
                       "fresh_minutes":  90,
-                      "fresh_artifact_count":  12,
+                      "fresh_artifact_count":  4,
                       "missing_artifacts":  [
 
                                             ],
                       "stale_artifacts":  [
                                               "TOD_EXECUTION_RESULT.latest.json",
                                               "TOD_VALIDATION_RESULT.latest.json",
+                                              "MIM_TOD_NEXT_OBJECTIVE.latest.json",
+                                              "MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json",
+                                              "TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json",
+                                              "MIM_TOD_CONTINUITY_MEMORY.latest.json",
+                                              "MIM_OPERATOR_RESPONSE_SYNTHESIS_ENFORCEMENT_STATUS.latest.json",
+                                              "TOD_MATERIAL_IMPLEMENTATION_PROOF_STATUS.latest.json",
+                                              "MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json",
                                               "MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json",
+                                              "MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json",
                                               "MIM_TOD_MORNING_OPERATOR_SUMMARY.latest.json"
                                           ],
                       "sources":  [
@@ -36,13 +44,13 @@
                                           "name":  "TOD_EXECUTION_RESULT.latest.json",
                                           "source":  "remote_mim",
                                           "fresh":  false,
-                                          "age_minutes":  9802
+                                          "age_minutes":  17817.1
                                       },
                                       {
                                           "name":  "TOD_VALIDATION_RESULT.latest.json",
                                           "source":  "remote_mim",
                                           "fresh":  false,
-                                          "age_minutes":  9802
+                                          "age_minutes":  17817.1
                                       },
                                       {
                                           "name":  "MIM_READY_TASK_DISPATCHER_STATUS.latest.json",
@@ -53,20 +61,20 @@
                                       {
                                           "name":  "MIM_TOD_NEXT_OBJECTIVE.latest.json",
                                           "source":  "remote_mim",
-                                          "fresh":  true,
-                                          "age_minutes":  0
+                                          "fresh":  false,
+                                          "age_minutes":  6370.9
                                       },
                                       {
                                           "name":  "MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json",
                                           "source":  "remote_mim",
-                                          "fresh":  true,
-                                          "age_minutes":  16.1
+                                          "fresh":  false,
+                                          "age_minutes":  8031.2
                                       },
                                       {
                                           "name":  "TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json",
                                           "source":  "remote_mim",
-                                          "fresh":  true,
-                                          "age_minutes":  16.9
+                                          "fresh":  false,
+                                          "age_minutes":  8032
                                       },
                                       {
                                           "name":  "TOD_PROACTIVE_AUTONOMY.latest.json",
@@ -78,49 +86,49 @@
                                           "name":  "TOD_EXECUTION_LOCK.latest.json",
                                           "source":  "remote_mim",
                                           "fresh":  true,
-                                          "age_minutes":  0.4
+                                          "age_minutes":  5.5
                                       },
                                       {
                                           "name":  "MIM_TOD_CONTINUITY_MEMORY.latest.json",
                                           "source":  "remote_mim",
-                                          "fresh":  true,
-                                          "age_minutes":  16.5
+                                          "fresh":  false,
+                                          "age_minutes":  8031.6
                                       },
                                       {
                                           "name":  "MIM_OPERATOR_RESPONSE_SYNTHESIS_ENFORCEMENT_STATUS.latest.json",
                                           "source":  "remote_mim",
-                                          "fresh":  true,
-                                          "age_minutes":  8.3
+                                          "fresh":  false,
+                                          "age_minutes":  3523.2
                                       },
                                       {
                                           "name":  "TOD_MATERIAL_IMPLEMENTATION_PROOF_STATUS.latest.json",
                                           "source":  "remote_mim",
-                                          "fresh":  true,
-                                          "age_minutes":  8.3
+                                          "fresh":  false,
+                                          "age_minutes":  8023.4
                                       },
                                       {
                                           "name":  "MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json",
                                           "source":  "remote_mim",
-                                          "fresh":  true,
-                                          "age_minutes":  0
+                                          "fresh":  false,
+                                          "age_minutes":  2053.1
                                       },
                                       {
                                           "name":  "MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json",
                                           "source":  "remote_mim",
                                           "fresh":  false,
-                                          "age_minutes":  814.9
+                                          "age_minutes":  1937.7
                                       },
                                       {
                                           "name":  "MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json",
                                           "source":  "remote_mim",
-                                          "fresh":  true,
-                                          "age_minutes":  16.6
+                                          "fresh":  false,
+                                          "age_minutes":  8031.8
                                       },
                                       {
                                           "name":  "MIM_TOD_MORNING_OPERATOR_SUMMARY.latest.json",
                                           "source":  "remote_mim",
                                           "fresh":  false,
-                                          "age_minutes":  815
+                                          "age_minutes":  2056.2
                                       }
                                   ]
                   },
@@ -130,9 +138,9 @@
                                      "source":  "remote_mim",
                                      "exists":  true,
                                      "wrapper_age_minutes":  0,
-                                     "artifact_generated_at":  "2026-05-28T14:29:18Z",
+                                     "artifact_generated_at":  "2026-06-03T04:04:24Z",
                                      "artifact_age_minutes":  0,
-                                     "source_generated_at":  "2026-05-28T14:29:18Z",
+                                     "source_generated_at":  "2026-06-03T04:04:24Z",
                                      "source_age_minutes":  0,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "tod-proactive-bounded-task-v1",
@@ -144,11 +152,11 @@
                                      "name":  "TOD_EXECUTION_RESULT.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  9802,
+                                     "wrapper_age_minutes":  17817.1,
                                      "artifact_generated_at":  "2026-05-21T19:07:20Z",
-                                     "artifact_age_minutes":  9802,
+                                     "artifact_age_minutes":  17817.1,
                                      "source_generated_at":  "2026-05-21T19:07:20Z",
-                                     "source_age_minutes":  9802,
+                                     "source_age_minutes":  17817.1,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "tod-execution-result-v1",
                                      "evidence_trust_rank":  "execution_evidence",
@@ -159,11 +167,11 @@
                                      "name":  "TOD_VALIDATION_RESULT.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  9802,
+                                     "wrapper_age_minutes":  17817.1,
                                      "artifact_generated_at":  "2026-05-21T19:07:20Z",
-                                     "artifact_age_minutes":  9802,
+                                     "artifact_age_minutes":  17817.1,
                                      "source_generated_at":  "2026-05-21T19:07:20Z",
-                                     "source_age_minutes":  9802,
+                                     "source_age_minutes":  17817.1,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "tod-validation-result-v1",
                                      "evidence_trust_rank":  "execution_evidence",
@@ -175,10 +183,10 @@
                                      "source":  "remote_mim",
                                      "exists":  true,
                                      "wrapper_age_minutes":  0,
-                                     "artifact_generated_at":  "2026-05-28T14:29:17Z",
-                                     "artifact_age_minutes":  0,
-                                     "source_generated_at":  "2026-05-28T14:29:17Z",
-                                     "source_age_minutes":  0,
+                                     "artifact_generated_at":  "2026-06-03T04:04:23Z",
+                                     "artifact_age_minutes":  0.1,
+                                     "source_generated_at":  "2026-06-03T04:04:23Z",
+                                     "source_age_minutes":  0.1,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "mim-ready-task-dispatcher-status-v1",
                                      "evidence_trust_rank":  "summary_wrapper",
@@ -189,11 +197,11 @@
                                      "name":  "MIM_TOD_NEXT_OBJECTIVE.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  0,
-                                     "artifact_generated_at":  "2026-05-28T14:29:17Z",
-                                     "artifact_age_minutes":  0,
-                                     "source_generated_at":  "2026-05-28T14:29:17Z",
-                                     "source_age_minutes":  0,
+                                     "wrapper_age_minutes":  6370.9,
+                                     "artifact_generated_at":  "2026-05-29T17:53:34Z",
+                                     "artifact_age_minutes":  6370.9,
+                                     "source_generated_at":  "2026-05-29T17:53:34Z",
+                                     "source_age_minutes":  6370.9,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "mim-tod-next-objective-v1",
                                      "evidence_trust_rank":  "unknown",
@@ -204,26 +212,26 @@
                                      "name":  "MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  16.1,
+                                     "wrapper_age_minutes":  8031.2,
                                      "artifact_generated_at":  "2026-05-26T07:40:00Z",
-                                     "artifact_age_minutes":  3289.3,
+                                     "artifact_age_minutes":  11304.4,
                                      "source_generated_at":  "2026-05-26T07:40:00Z",
-                                     "source_age_minutes":  3289.3,
+                                     "source_age_minutes":  11304.4,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "",
                                      "evidence_trust_rank":  "unknown",
-                                     "stale_under_fresh_wrapper":  true,
+                                     "stale_under_fresh_wrapper":  false,
                                      "freshness_wrapper_only":  false
                                  },
                                  {
                                      "name":  "TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  16.9,
+                                     "wrapper_age_minutes":  8032,
                                      "artifact_generated_at":  "2026-05-28T14:10:00Z",
-                                     "artifact_age_minutes":  19.3,
+                                     "artifact_age_minutes":  8034.4,
                                      "source_generated_at":  "2026-05-28T14:10:00Z",
-                                     "source_age_minutes":  19.3,
+                                     "source_age_minutes":  8034.4,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "",
                                      "evidence_trust_rank":  "unknown",
@@ -235,9 +243,9 @@
                                      "source":  "remote_mim",
                                      "exists":  true,
                                      "wrapper_age_minutes":  0,
-                                     "artifact_generated_at":  "2026-05-28T14:29:18Z",
+                                     "artifact_generated_at":  "2026-06-03T04:04:24Z",
                                      "artifact_age_minutes":  0,
-                                     "source_generated_at":  "2026-05-28T14:29:18Z",
+                                     "source_generated_at":  "2026-06-03T04:04:24Z",
                                      "source_age_minutes":  0,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "tod-proactive-autonomy-v1",
@@ -249,11 +257,11 @@
                                      "name":  "TOD_EXECUTION_LOCK.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  0.4,
-                                     "artifact_generated_at":  "2026-05-28T14:28:57Z",
-                                     "artifact_age_minutes":  0.4,
-                                     "source_generated_at":  "2026-05-28T14:28:57Z",
-                                     "source_age_minutes":  0.4,
+                                     "wrapper_age_minutes":  5.5,
+                                     "artifact_generated_at":  "2026-06-03T03:58:57Z",
+                                     "artifact_age_minutes":  5.5,
+                                     "source_generated_at":  "2026-06-03T03:58:57Z",
+                                     "source_age_minutes":  5.5,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "tod-execution-lock-v1",
                                      "evidence_trust_rank":  "unknown",
@@ -264,28 +272,28 @@
                                      "name":  "MIM_TOD_CONTINUITY_MEMORY.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  16.5,
+                                     "wrapper_age_minutes":  8031.6,
                                      "artifact_generated_at":  "2026-05-26T07:22:00Z",
-                                     "artifact_age_minutes":  3307.3,
+                                     "artifact_age_minutes":  11322.4,
                                      "source_generated_at":  "2026-05-26T07:22:00Z",
-                                     "source_age_minutes":  3307.3,
+                                     "source_age_minutes":  11322.4,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "",
                                      "evidence_trust_rank":  "unknown",
-                                     "stale_under_fresh_wrapper":  true,
+                                     "stale_under_fresh_wrapper":  false,
                                      "freshness_wrapper_only":  false
                                  },
                                  {
                                      "name":  "MIM_OPERATOR_RESPONSE_SYNTHESIS_ENFORCEMENT_STATUS.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  8.3,
-                                     "artifact_generated_at":  "2026-05-28T14:20:59Z",
-                                     "artifact_age_minutes":  8.3,
-                                     "source_generated_at":  "2026-05-28T14:20:59Z",
-                                     "source_age_minutes":  8.3,
+                                     "wrapper_age_minutes":  3523.2,
+                                     "artifact_generated_at":  "2026-05-31T17:21:17Z",
+                                     "artifact_age_minutes":  3523.2,
+                                     "source_generated_at":  "2026-05-31T17:21:17Z",
+                                     "source_age_minutes":  3523.2,
                                      "source_field":  "artifact_generated_at",
-                                     "evidence_kind":  "mim-operator-response-synthesis-enforcement-status-v1",
+                                     "evidence_kind":  "mim-operator-response-synthesis-enforcement-status-v2",
                                      "evidence_trust_rank":  "summary_wrapper",
                                      "stale_under_fresh_wrapper":  false,
                                      "freshness_wrapper_only":  false
@@ -294,11 +302,11 @@
                                      "name":  "TOD_MATERIAL_IMPLEMENTATION_PROOF_STATUS.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  8.3,
+                                     "wrapper_age_minutes":  8023.4,
                                      "artifact_generated_at":  "2026-05-28T14:20:59Z",
-                                     "artifact_age_minutes":  8.3,
+                                     "artifact_age_minutes":  8023.4,
                                      "source_generated_at":  "2026-05-28T14:20:59Z",
-                                     "source_age_minutes":  8.3,
+                                     "source_age_minutes":  8023.4,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "tod-material-implementation-proof-status-v1",
                                      "evidence_trust_rank":  "summary_wrapper",
@@ -309,11 +317,11 @@
                                      "name":  "MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  0,
-                                     "artifact_generated_at":  "2026-05-28T14:29:17Z",
-                                     "artifact_age_minutes":  0.1,
-                                     "source_generated_at":  "2026-05-28T14:29:17Z",
-                                     "source_age_minutes":  0.1,
+                                     "wrapper_age_minutes":  2053.1,
+                                     "artifact_generated_at":  "2026-06-01T17:51:21Z",
+                                     "artifact_age_minutes":  2053.1,
+                                     "source_generated_at":  "2026-06-01T17:51:21Z",
+                                     "source_age_minutes":  2053.1,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "mim-tod-blocker-followon-objectives-v1",
                                      "evidence_trust_rank":  "unknown",
@@ -324,11 +332,11 @@
                                      "name":  "MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  814.9,
-                                     "artifact_generated_at":  "2026-05-28T00:54:22Z",
-                                     "artifact_age_minutes":  815,
-                                     "source_generated_at":  "2026-05-28T00:54:22Z",
-                                     "source_age_minutes":  815,
+                                     "wrapper_age_minutes":  1937.7,
+                                     "artifact_generated_at":  "2026-06-01T19:46:41Z",
+                                     "artifact_age_minutes":  1937.8,
+                                     "source_generated_at":  "2026-06-01T19:46:41Z",
+                                     "source_age_minutes":  1937.8,
                                      "source_field":  "embedded_source",
                                      "evidence_kind":  "mim-tod-objective-execution-status-v1",
                                      "evidence_trust_rank":  "summary_wrapper",
@@ -339,11 +347,11 @@
                                      "name":  "MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  16.6,
+                                     "wrapper_age_minutes":  8031.8,
                                      "artifact_generated_at":  "2026-05-28T14:10:00Z",
-                                     "artifact_age_minutes":  19.3,
+                                     "artifact_age_minutes":  8034.4,
                                      "source_generated_at":  "2026-05-28T14:10:00Z",
-                                     "source_age_minutes":  19.3,
+                                     "source_age_minutes":  8034.4,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "",
                                      "evidence_trust_rank":  "unknown",
@@ -354,11 +362,11 @@
                                      "name":  "MIM_TOD_MORNING_OPERATOR_SUMMARY.latest.json",
                                      "source":  "remote_mim",
                                      "exists":  true,
-                                     "wrapper_age_minutes":  815,
-                                     "artifact_generated_at":  "2026-05-28T00:54:22Z",
-                                     "artifact_age_minutes":  815,
-                                     "source_generated_at":  "2026-05-28T00:54:22Z",
-                                     "source_age_minutes":  815,
+                                     "wrapper_age_minutes":  2056.2,
+                                     "artifact_generated_at":  "2026-06-01T17:48:15Z",
+                                     "artifact_age_minutes":  2056.2,
+                                     "source_generated_at":  "2026-06-01T17:48:15Z",
+                                     "source_age_minutes":  2056.2,
                                      "source_field":  "artifact_generated_at",
                                      "evidence_kind":  "mim-tod-morning-operator-summary-v1",
                                      "evidence_trust_rank":  "summary_wrapper",
@@ -367,13 +375,12 @@
                                  }
                              ],
     "truth_integrity":  {
-                            "status":  "needs_attention",
+                            "status":  "healthy",
                             "reason_codes":  [
-                                                 "stale_under_fresh_wrapper"
+
                                              ],
                             "stale_under_fresh_wrapper":  [
-                                                              "MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json",
-                                                              "MIM_TOD_CONTINUITY_MEMORY.latest.json"
+
                                                           ],
                             "freshness_wrapper_only":  [
 
@@ -384,29 +391,246 @@
                             "freshness_provenance_policy_available":  true
                         },
     "current_next_objective":  {
-                                   "objective_id":  "MIM-DAVE-CALENDAR-PHONE-EMAILS-V1-UNBLOCK-EMAIL-READ-SUMMARY-EXECUTOR-NOT-BOUND-V1",
-                                   "status":  "active",
-                                   "next_action":  "Bind the email read summary executor next; keep outbound email/text/call actions confirmation-gated.",
-                                   "problem_class":  "email_read_summary_executor_not_bound"
+                                   "objective_id":  "MIM-TOD-OBJECTIVE-LIFECYCLE-REGRESSION-SUITE-V1",
+                                   "status":  "queued",
+                                   "next_action":  "",
+                                   "problem_class":  ""
                                },
     "blockers":  [
                      {
-                         "objective_id":  "MIM-DAVE-CALENDAR-PHONE-EMAILS-V1",
-                         "title":  "Dave calendar, phone, and email assistant integration",
-                         "status":  "blocked_with_one_remaining_binding",
-                         "reason_code":  "email_read_summary_executor_not_bound",
-                         "next_recovery_action":  "Bind the email read summary executor next; keep outbound email/text/call actions confirmation-gated."
+                         "objective_id":  "3",
+                         "title":  "",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "overnight_lane_stale_without_current_heartbeat",
+                         "next_recovery_action":  "Restart as a fresh bounded overnight run only after the current repair stack is clean."
+                     },
+                     {
+                         "objective_id":  "3323",
+                         "title":  "Overnight autonomous objective execution and reporting",
+                         "status":  "narrowed_blocked_with_inspection",
+                         "reason_code":  "deferred_not_current_reliability_stack_execution_lane",
+                         "next_recovery_action":  "Do not replay this old overnight task blindly. Resume only after lane arbitration says overnight reporting is current, or supersede it with the active reliability stack objective."
+                     },
+                     {
+                         "objective_id":  "3324",
+                         "title":  "MIM Voice Reliability V2",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3325",
+                         "title":  "Voice Debug Evidence Surface",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3326",
+                         "title":  "Audible Playback Calibration",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3327",
+                         "title":  "Voice Response Synthesis Policy",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3328",
+                         "title":  "Streaming STT Migration",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3329",
+                         "title":  "Voice responsiveness and audible routing repair",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3330",
+                         "title":  "AgentMIM graphics capability parity for forum and marketing tools",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3332",
+                         "title":  "Progress MIM from visible blue-block detection to a safe verified pickup.",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3333",
+                         "title":  "Bind camera pixels, table reference points, simulation coordinates, and arm poses into one verified calibration layer.",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3334",
+                         "title":  "MIM uses arm-mounted and fixed observer cameras to verify arm actions and perceive table objects.",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3335",
+                         "title":  "Develop MIM into a capable arm development, perception, safety, and manipulation assistant.",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3336",
+                         "title":  "MIM acts as Dave\u0027s voice assistant while developing and testing the MIM arm.",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3337",
+                         "title":  "Calibrate the MIM arm top-of-hand IR proximity sensor before using it for approach or grip safety.",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3338",
+                         "title":  "Verify that each arm joint accepts a tiny bounded move and can return to its starting pose.",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3339",
+                         "title":  "Coordinate MIM with the simulation sync space so MIM can move the real arm using the same pose authority as the simulation.",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3340",
+                         "title":  "MIM learns to safely identify, reason about, pick up, and place table blocks using arm camera evidence and simulation-sync safety.",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3341",
+                         "title":  "MIM distinguishes table exploration from room exploration, detects colored blocks and numbered pads, answers table object questions, and only attempts manipulation after perception, calibration, and g",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3342",
+                         "title":  "Create a camera-derived table reference map without pretending unlabeled pads are numbered.",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3344",
+                         "title":  "Create a repeatable learning loop for mechanical systems, starting with the MIM arm.",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3345",
+                         "title":  "OBJECTIVE: MIM-TOD-HANDOFF-MIM-TOD-EXECUTION-MIM-TOD-DIAGNOSTIC-STATE TOD, execute this MIM handoff as bounded edit bounded work. OBJECTIVE_ID: mim-tod-execution-mim-tod-diagnos...",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "",
+                         "next_recovery_action":  "Inspect linked task evidence before creating any replacement objective."
+                     },
+                     {
+                         "objective_id":  "3404",
+                         "title":  "Pick up Blue Block",
+                         "status":  "running",
+                         "reason_code":  "mim_arm_blue_block_executor_bound",
+                         "next_recovery_action":  "Refresh camera-based blue-block localization, then execute the first small bounded approach step with C12 and camera verification after the step."
+                     },
+                     {
+                         "objective_id":  "AGENTMIM-GRAPHICS-COMM-APP-V1",
+                         "title":  "AgentMIM graphics capability parity for forum and marketing tools",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "agentmim_graphics_executor_not_bound",
+                         "next_recovery_action":  "Locate AgentMIM graphics/forum/marketing code, run existing capability check, and bind the canonical graphics executor."
+                     },
+                     {
+                         "objective_id":  "MIM-CONTINUOUS-KNOWLEDGE-ACQUISITION-V1",
+                         "title":  "Continuous book discovery and knowledge ingestion",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "no_executor_bound",
+                         "next_recovery_action":  "Bind a concrete executor for this objective or produce a narrower implementation request."
+                     },
+                     {
+                         "objective_id":  "MIM-OPERATOR-RESPONSE-SYNTHESIS-ENFORCEMENT-V2",
+                         "title":  "MIM conversational synthesis enforcement",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "no_executor_bound",
+                         "next_recovery_action":  "Bind a concrete executor for this objective or produce a narrower implementation request."
+                     },
+                     {
+                         "objective_id":  "MIM-TOD-BLOCKER-SYNTHESIS-ALL-SOURCES-V1",
+                         "title":  "All-source blocker synthesis and follow-on objectives",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "no_executor_bound",
+                         "next_recovery_action":  "Bind a concrete executor for this objective or produce a narrower implementation request."
+                     },
+                     {
+                         "objective_id":  "MIM-TOD-FRESHNESS-PROVENANCE-TRUST-V1",
+                         "title":  "Freshness provenance and evidence trust ranking",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "no_executor_bound",
+                         "next_recovery_action":  "Bind a concrete executor for this objective or produce a narrower implementation request."
+                     },
+                     {
+                         "objective_id":  "MIM-TOD-LANE-OWNERSHIP-ARBITRATION-V1",
+                         "title":  "Lane ownership and stale truth arbitration",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "no_executor_bound",
+                         "next_recovery_action":  "Bind a concrete executor for this objective or produce a narrower implementation request."
+                     },
+                     {
+                         "objective_id":  "MIM-TOD-OBJECTIVE-LIFECYCLE-REGRESSION-SUITE-V1",
+                         "title":  "Objective lifecycle regression suite",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "no_executor_bound",
+                         "next_recovery_action":  "Bind a concrete executor for this objective or produce a narrower implementation request."
+                     },
+                     {
+                         "objective_id":  "MIM-TOD-OPERATOR-STATUS-SURFACE-V1",
+                         "title":  "Single operator status surface for objectives and tasks",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "no_executor_bound",
+                         "next_recovery_action":  "Bind a concrete executor for this objective or produce a narrower implementation request."
+                     },
+                     {
+                         "objective_id":  "MIM-VOICE-DEBUG-PANEL-V1",
+                         "title":  "",
+                         "status":  "blocked_with_evidence",
+                         "reason_code":  "dedicated_voice_debug_surface_artifact_missing",
+                         "next_recovery_action":  "Either recreate the debug surface as a bounded objective or mark it superseded by the operator dashboard."
                      }
                  ],
-    "blocker_followon_healthy":  true,
+    "blocker_followon_healthy":  false,
     "proactive_autonomy":  {
                                "status":  "completed_with_evidence",
                                "selected_task":  "rank_idle_maintenance_candidates",
                                "idle_autonomy_triggered":  true
                            },
     "recommendations":  [
-                            "Refresh stale reflection inputs: TOD_EXECUTION_RESULT.latest.json, TOD_VALIDATION_RESULT.latest.json, MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json, MIM_TOD_MORNING_OPERATOR_SUMMARY.latest.json",
-                            "Do not trust fresh wrappers around stale source truth: MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json, MIM_TOD_CONTINUITY_MEMORY.latest.json"
+                            "Run blocker-to-objective synthesis because at least one blocker does not have a follow-on objective.",
+                            "Refresh stale reflection inputs: TOD_EXECUTION_RESULT.latest.json, TOD_VALIDATION_RESULT.latest.json, MIM_TOD_NEXT_OBJECTIVE.latest.json, MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json, TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json, MIM_TOD_CONTINUITY_MEMORY.latest.json, MIM_OPERATOR_RESPONSE_SYNTHESIS_ENFORCEMENT_STATUS.latest.json, TOD_MATERIAL_IMPLEMENTATION_PROOF_STATUS.latest.json, MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json, MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json, MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json, MIM_TOD_MORNING_OPERATOR_SUMMARY.latest.json"
                         ],
-    "operator_summary":  "MIM/TOD assessment: improving_with_known_blockers. Objectives: 6 complete, 3 running, 1 blocked, 1 blocker follow-on objective(s). Next: MIM-DAVE-CALENDAR-PHONE-EMAILS-V1-UNBLOCK-EMAIL-READ-SUMMARY-EXECUTOR-NOT-BOUND-V1. Top blocker: email_read_summary_executor_not_bound; Bind the email read summary executor next; keep outbound email/text/call actions confirmation-gated. Truth integrity needs attention: stale_under_fresh_wrapper."
+    "operator_summary":  "MIM/TOD assessment: needs_attention. Objectives: 24 complete, 1 running, 32 blocked, 28 blocker follow-on objective(s). Next: MIM-TOD-OBJECTIVE-LIFECYCLE-REGRESSION-SUITE-V1. Top blocker: overnight_lane_stale_without_current_heartbeat; Restart as a fresh bounded overnight run only after the current repair stack is clean."
 }

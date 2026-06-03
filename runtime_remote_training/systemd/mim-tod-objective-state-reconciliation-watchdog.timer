@@ -1,0 +1,12 @@
+[Unit]
+Description=Run MIM/TOD objective state reconciliation hourly
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+Persistent=true
+RandomizedDelaySec=120
+Unit=mim-tod-objective-state-reconciliation-watchdog.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,462 @@
+{
+  "packet_type": "tod-blocked-objective-triage-v1",
+  "objective_id": "TOD-BLOCKED-OBJECTIVE-CLEARING-COMPETENCY-V1",
+  "drill_id": "TOD-BLOCKER-CLEARING-DRILL-001",
+  "generated_at": "2026-06-01T11:10:29Z",
+  "mode": "read_only",
+  "inputs": [
+    "runtime/shared/MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json",
+    "runtime/shared/MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json"
+  ],
+  "blocked_total": 33,
+  "classes": {
+    "artifact_missing_or_superseded": 1,
+    "linked_task_blocked_needs_evidence_inspection": 21,
+    "missing_executor": 8,
+    "parked_followup_not_currently_executing": 2,
+    "stale_heartbeat_or_recovery": 1
+  },
+  "ranked_groups": [
+    {
+      "class": "parked_followup_not_currently_executing",
+      "count": 2,
+      "why_ranked_here": "safe cleanup: can park/supersede without code changes",
+      "recommended_action": "mark parked_until_needed or materialize one specific follow-up task",
+      "objectives": [
+        {
+          "objective_id": "MIM-STREAMING-STT-MIGRATION-V1",
+          "title": "MIM-STREAMING-STT-MIGRATION-V1",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "streaming_stt_followup_not_currently_executing",
+          "class": "parked_followup_not_currently_executing",
+          "recommended_action": "mark parked_until_needed or materialize one specific follow-up task",
+          "operator_summary": "Streaming STT migration is not backed by a current task heartbeat on this surface.",
+          "next_recovery_action": "Create or promote a specific STT task only after the voice conversation layer needs it."
+        },
+        {
+          "objective_id": "MIM-VOICE-RESPONSIVENESS-AUDIBLE-ROUTING-REPAIR-20260528",
+          "title": "MIM-VOICE-RESPONSIVENESS-AUDIBLE-ROUTING-REPAIR-20260528",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "objective_orchestration_followup_remaining",
+          "class": "parked_followup_not_currently_executing",
+          "recommended_action": "mark parked_until_needed or materialize one specific follow-up task",
+          "operator_summary": "Voice responsiveness improved, but the objective orchestration follow-up was not a live executable task.",
+          "next_recovery_action": "Use the completed synthesis/freshness/escalation objectives as current evidence and create a fresh voice calibration task only when needed."
+        }
+      ]
+    },
+    {
+      "class": "artifact_missing_or_superseded",
+      "count": 1,
+      "why_ranked_here": "safe cleanup: verify replacement dashboard/artifact first",
+      "recommended_action": "verify whether artifact is still needed; recreate or mark superseded with replacement evidence",
+      "objectives": [
+        {
+          "objective_id": "MIM-VOICE-DEBUG-PANEL-V1",
+          "title": "MIM-VOICE-DEBUG-PANEL-V1",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "dedicated_voice_debug_surface_artifact_missing",
+          "class": "artifact_missing_or_superseded",
+          "recommended_action": "verify whether artifact is still needed; recreate or mark superseded with replacement evidence",
+          "operator_summary": "The old voice debug evidence surface is labeled running, but its dedicated artifact is missing.",
+          "next_recovery_action": "Either recreate the debug surface as a bounded objective or mark it superseded by the operator dashboard."
+        }
+      ]
+    },
+    {
+      "class": "linked_task_blocked_needs_evidence_inspection",
+      "count": 21,
+      "why_ranked_here": "read-only evidence inspection before mutation",
+      "recommended_action": "inspect linked task evidence before creating replacement work",
+      "objectives": [
+        {
+          "objective_id": "3323",
+          "title": "Overnight autonomous objective execution and reporting",
+          "status": "blocked_with_evidence",
+          "task_id": 7972,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7972 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3324",
+          "title": "MIM Voice Reliability V2",
+          "status": "blocked_with_evidence",
+          "task_id": 7973,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7973 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3325",
+          "title": "Voice Debug Evidence Surface",
+          "status": "blocked_with_evidence",
+          "task_id": 7974,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7974 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3326",
+          "title": "Audible Playback Calibration",
+          "status": "blocked_with_evidence",
+          "task_id": 7975,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7975 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3327",
+          "title": "Voice Response Synthesis Policy",
+          "status": "blocked_with_evidence",
+          "task_id": 7976,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7976 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3328",
+          "title": "Streaming STT Migration",
+          "status": "blocked_with_evidence",
+          "task_id": 7977,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7977 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3329",
+          "title": "Voice responsiveness and audible routing repair",
+          "status": "blocked_with_evidence",
+          "task_id": 7978,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7978 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3330",
+          "title": "AgentMIM graphics capability parity for forum and marketing tools",
+          "status": "blocked_with_evidence",
+          "task_id": 7979,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7979 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3332",
+          "title": "Progress MIM from visible blue-block detection to a safe verified pickup.",
+          "status": "blocked_with_evidence",
+          "task_id": 7981,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7981 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3333",
+          "title": "Bind camera pixels, table reference points, simulation coordinates, and arm poses into one verified calibration layer.",
+          "status": "blocked_with_evidence",
+          "task_id": 7982,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7982 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3334",
+          "title": "MIM uses arm-mounted and fixed observer cameras to verify arm actions and perceive table objects.",
+          "status": "blocked_with_evidence",
+          "task_id": 7983,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7983 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3335",
+          "title": "Develop MIM into a capable arm development, perception, safety, and manipulation assistant.",
+          "status": "blocked_with_evidence",
+          "task_id": 7984,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7984 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3336",
+          "title": "MIM acts as Dave's voice assistant while developing and testing the MIM arm.",
+          "status": "blocked_with_evidence",
+          "task_id": 7985,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7985 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3337",
+          "title": "Calibrate the MIM arm top-of-hand IR proximity sensor before using it for approach or grip safety.",
+          "status": "blocked_with_evidence",
+          "task_id": 7986,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7986 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3338",
+          "title": "Verify that each arm joint accepts a tiny bounded move and can return to its starting pose.",
+          "status": "blocked_with_evidence",
+          "task_id": 7987,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7987 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3339",
+          "title": "Coordinate MIM with the simulation sync space so MIM can move the real arm using the same pose authority as the simulation.",
+          "status": "blocked_with_evidence",
+          "task_id": 7988,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7988 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3340",
+          "title": "MIM learns to safely identify, reason about, pick up, and place table blocks using arm camera evidence and simulation-sync safety.",
+          "status": "blocked_with_evidence",
+          "task_id": 7989,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7989 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3341",
+          "title": "MIM distinguishes table exploration from room exploration, detects colored blocks and numbered pads, answers table object questions, and only attempts manipulation after perception, calibration, and g",
+          "status": "blocked_with_evidence",
+          "task_id": 7990,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7990 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3342",
+          "title": "Create a camera-derived table reference map without pretending unlabeled pads are numbered.",
+          "status": "blocked_with_evidence",
+          "task_id": 7991,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7991 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3344",
+          "title": "Create a repeatable learning loop for mechanical systems, starting with the MIM arm.",
+          "status": "blocked_with_evidence",
+          "task_id": 7993,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7993 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        },
+        {
+          "objective_id": "3345",
+          "title": "OBJECTIVE: MIM-TOD-HANDOFF-MIM-TOD-EXECUTION-MIM-TOD-DIAGNOSTIC-STATE TOD, execute this MIM handoff as bounded edit bounded work. OBJECTIVE_ID: mim-tod-execution-mim-tod-diagnos...",
+          "status": "blocked_with_evidence",
+          "task_id": 7994,
+          "reason_code": "blocked_with_evidence",
+          "class": "linked_task_blocked_needs_evidence_inspection",
+          "recommended_action": "inspect linked task evidence before creating replacement work",
+          "operator_summary": "Objective state reconciled from linked task 7994 (blocked_with_evidence).",
+          "next_recovery_action": "Inspect linked task evidence before creating any replacement objective."
+        }
+      ]
+    },
+    {
+      "class": "stale_heartbeat_or_recovery",
+      "count": 1,
+      "why_ranked_here": "requires reconciliation/restart judgment",
+      "recommended_action": "run read-only heartbeat reconciliation; mark blocked_with_inspection or restart as fresh bounded run",
+      "objectives": [
+        {
+          "objective_id": "3",
+          "title": "3",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "overnight_lane_stale_without_current_heartbeat",
+          "class": "stale_heartbeat_or_recovery",
+          "recommended_action": "run read-only heartbeat reconciliation; mark blocked_with_inspection or restart as fresh bounded run",
+          "operator_summary": "The overnight autonomous objective is labeled running but has no current DB/task heartbeat.",
+          "next_recovery_action": "Restart as a fresh bounded overnight run only after the current repair stack is clean."
+        }
+      ]
+    },
+    {
+      "class": "missing_executor",
+      "count": 8,
+      "why_ranked_here": "may require code/executor binding",
+      "recommended_action": "check executor registry/capabilities; bind existing executor or create narrow executor-binding task",
+      "objectives": [
+        {
+          "objective_id": "AGENTMIM-GRAPHICS-COMM-APP-V1",
+          "title": "AgentMIM graphics capability parity for forum and marketing tools",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "agentmim_graphics_executor_not_bound",
+          "class": "missing_executor",
+          "recommended_action": "check executor registry/capabilities; bind existing executor or create narrow executor-binding task",
+          "operator_summary": "AgentMIM graphics capability parity for forum and marketing tools is not silently idle anymore. It is blocked because agentmim graphics executor not bound.",
+          "next_recovery_action": "Locate AgentMIM graphics/forum/marketing code, run existing capability check, and bind the canonical graphics executor."
+        },
+        {
+          "objective_id": "MIM-CONTINUOUS-KNOWLEDGE-ACQUISITION-V1",
+          "title": "Continuous book discovery and knowledge ingestion",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "no_executor_bound",
+          "class": "missing_executor",
+          "recommended_action": "check executor registry/capabilities; bind existing executor or create narrow executor-binding task",
+          "operator_summary": "Continuous book discovery and knowledge ingestion is not silently idle anymore. It is blocked because no executor bound.",
+          "next_recovery_action": "Bind a concrete executor for this objective or produce a narrower implementation request."
+        },
+        {
+          "objective_id": "MIM-OPERATOR-RESPONSE-SYNTHESIS-ENFORCEMENT-V2",
+          "title": "MIM conversational synthesis enforcement",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "no_executor_bound",
+          "class": "missing_executor",
+          "recommended_action": "check executor registry/capabilities; bind existing executor or create narrow executor-binding task",
+          "operator_summary": "MIM conversational synthesis enforcement is not silently idle anymore. It is blocked because no executor bound.",
+          "next_recovery_action": "Bind a concrete executor for this objective or produce a narrower implementation request."
+        },
+        {
+          "objective_id": "MIM-TOD-BLOCKER-SYNTHESIS-ALL-SOURCES-V1",
+          "title": "All-source blocker synthesis and follow-on objectives",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "no_executor_bound",
+          "class": "missing_executor",
+          "recommended_action": "check executor registry/capabilities; bind existing executor or create narrow executor-binding task",
+          "operator_summary": "All-source blocker synthesis and follow-on objectives is not silently idle anymore. It is blocked because no executor bound.",
+          "next_recovery_action": "Bind a concrete executor for this objective or produce a narrower implementation request."
+        },
+        {
+          "objective_id": "MIM-TOD-FRESHNESS-PROVENANCE-TRUST-V1",
+          "title": "Freshness provenance and evidence trust ranking",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "no_executor_bound",
+          "class": "missing_executor",
+          "recommended_action": "check executor registry/capabilities; bind existing executor or create narrow executor-binding task",
+          "operator_summary": "Freshness provenance and evidence trust ranking is not silently idle anymore. It is blocked because no executor bound.",
+          "next_recovery_action": "Bind a concrete executor for this objective or produce a narrower implementation request."
+        },
+        {
+          "objective_id": "MIM-TOD-LANE-OWNERSHIP-ARBITRATION-V1",
+          "title": "Lane ownership and stale truth arbitration",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "no_executor_bound",
+          "class": "missing_executor",
+          "recommended_action": "check executor registry/capabilities; bind existing executor or create narrow executor-binding task",
+          "operator_summary": "Lane ownership and stale truth arbitration is not silently idle anymore. It is blocked because no executor bound.",
+          "next_recovery_action": "Bind a concrete executor for this objective or produce a narrower implementation request."
+        },
+        {
+          "objective_id": "MIM-TOD-OBJECTIVE-LIFECYCLE-REGRESSION-SUITE-V1",
+          "title": "Objective lifecycle regression suite",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "no_executor_bound",
+          "class": "missing_executor",
+          "recommended_action": "check executor registry/capabilities; bind existing executor or create narrow executor-binding task",
+          "operator_summary": "Objective lifecycle regression suite is not silently idle anymore. It is blocked because no executor bound.",
+          "next_recovery_action": "Bind a concrete executor for this objective or produce a narrower implementation request."
+        },
+        {
+          "objective_id": "MIM-TOD-OPERATOR-STATUS-SURFACE-V1",
+          "title": "Single operator status surface for objectives and tasks",
+          "status": "blocked_with_evidence",
+          "task_id": null,
+          "reason_code": "no_executor_bound",
+          "class": "missing_executor",
+          "recommended_action": "check executor registry/capabilities; bind existing executor or create narrow executor-binding task",
+          "operator_summary": "Single operator status surface for objectives and tasks is not silently idle anymore. It is blocked because no executor bound.",
+          "next_recovery_action": "Bind a concrete executor for this objective or produce a narrower implementation request."
+        }
+      ]
+    }
+  ],
+  "top_3_safest_candidates": [
+    {
+      "objective_id": "MIM-STREAMING-STT-MIGRATION-V1",
+      "title": "MIM-STREAMING-STT-MIGRATION-V1",
+      "status": "blocked_with_evidence",
+      "task_id": null,
+      "reason_code": "streaming_stt_followup_not_currently_executing",
+      "class": "parked_followup_not_currently_executing",
+      "recommended_action": "mark parked_until_needed or materialize one specific follow-up task",
+      "operator_summary": "Streaming STT migration is not backed by a current task heartbeat on this surface.",
+      "next_recovery_action": "Create or promote a specific STT task only after the voice conversation layer needs it."
+    },
+    {
+      "objective_id": "MIM-VOICE-RESPONSIVENESS-AUDIBLE-ROUTING-REPAIR-20260528",
+      "title": "MIM-VOICE-RESPONSIVENESS-AUDIBLE-ROUTING-REPAIR-20260528",
+      "status": "blocked_with_evidence",
+      "task_id": null,
+      "reason_code": "objective_orchestration_followup_remaining",
+      "class": "parked_followup_not_currently_executing",
+      "recommended_action": "mark parked_until_needed or materialize one specific follow-up task",
+      "operator_summary": "Voice responsiveness improved, but the objective orchestration follow-up was not a live executable task.",
+      "next_recovery_action": "Use the completed synthesis/freshness/escalation objectives as current evidence and create a fresh voice calibration task only when needed."
+    },
+    {
+      "objective_id": "MIM-VOICE-DEBUG-PANEL-V1",
+      "title": "MIM-VOICE-DEBUG-PANEL-V1",
+      "status": "blocked_with_evidence",
+      "task_id": null,
+      "reason_code": "dedicated_voice_debug_surface_artifact_missing",
+      "class": "artifact_missing_or_superseded",
+      "recommended_action": "verify whether artifact is still needed; recreate or mark superseded with replacement evidence",
+      "operator_summary": "The old voice debug evidence surface is labeled running, but its dedicated artifact is missing.",
+      "next_recovery_action": "Either recreate the debug surface as a bounded objective or mark it superseded by the operator dashboard."
+    }
+  ],
+  "hard_rule": "No objective may be marked complete until linked evidence, DB/task state, dispatcher state, and operator-facing status agree.",
+  "next_training_action": "Run drill 002 on one safe group only, preferably parked_followup_not_currently_executing or artifact_missing_or_superseded.",
+  "status": "completed_with_read_only_evidence"
+}

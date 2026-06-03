@@ -1,0 +1,94 @@
+﻿{
+    "objective_id":  "MIM-WORLD-MODEL-CALIBRATION-V1",
+    "title":  "MIM World Model Calibration",
+    "owner":  "MIM",
+    "priority":  "P0",
+    "status":  "ready_for_tomorrow",
+    "created_at":  "2026-06-01T06:51:50.6669887Z",
+    "goal":  "Teach MIM where things are in the workspace by building a temporary table/world coordinate model before attempting object pickup.",
+    "why":  "MIM can see objects and move the arm, but she does not yet reliably connect camera pixels, table coordinates, sensor readings, and joint movements into a usable world model.",
+    "current_learning_source":  "MIM_ARM_SAFE_TABLE_EXPLORATION_POSE.latest.json",
+    "boundary_rules":  [
+                           "Do not start with pickup/grip attempts.",
+                           "Do not treat marker positions as permanent; they are calibration references only.",
+                           "Use slow, reversible movements from the saved safe exploration pose.",
+                           "Capture visual/sensor evidence after each movement.",
+                           "If camera view is occluded or C12/lidar status is unhealthy, pause and report what is missing."
+                       ],
+    "phases":  [
+                   {
+                       "phase":  "Phase 1 - Table Coordinate Frame",
+                       "goal":  "Use four known table markers/corners to create a temporary coordinate frame.",
+                       "actions":  [
+                                       "Place four visible markers on the table in a rectangle/square pattern",
+                                       "Capture hand camera, room camera, C12, and RPLIDAR from safe exploration pose",
+                                       "Label marker positions as A/B/C/D or equivalent",
+                                       "Record approximate pixel locations in hand camera and room camera"
+                                   ],
+                       "success":  "MIM can describe table orientation and reference points without moving toward objects."
+                   },
+                   {
+                       "phase":  "Phase 2 - Arm Pose To Workspace Mapping",
+                       "goal":  "Move gripper view toward each reference marker and record joint poses.",
+                       "actions":  [
+                                       "Start from safe exploration pose",
+                                       "Move base in small increments",
+                                       "Record pose and image at each marker alignment",
+                                       "Record how base/shoulder/elbow/hand changes affect image position"
+                                   ],
+                       "success":  "MIM can explain which joints move the gripper left/right, nearer/farther, and up/down in the visible workspace."
+                   },
+                   {
+                       "phase":  "Phase 3 - Hand Camera Visual Servo Baseline",
+                       "goal":  "Learn pixel offset between gripper center/tips and visible targets.",
+                       "actions":  [
+                                       "Define gripper centerline in hand-camera image",
+                                       "Measure marker/object pixel offset from centerline",
+                                       "Make one small correction move",
+                                       "Verify expected direction of image change"
+                                   ],
+                       "success":  "MIM can say target is left/right/near/far of gripper and choose a small correction move before contact."
+                   },
+                   {
+                       "phase":  "Phase 4 - Object/Reference Separation",
+                       "goal":  "Separate reference cards/markers/table edges from real interactable objects.",
+                       "actions":  [
+                                       "Compare marker cards vs cube/block/ball visual traits",
+                                       "Record common false targets",
+                                       "Create basic object candidate scoring: shape, height, color, contrast, marker exclusion"
+                                   ],
+                       "success":  "MIM stops selecting marker cards as pickup objects unless the operator explicitly asks for a marker."
+                   },
+                   {
+                       "phase":  "Phase 5 - Pre-Grasp Readiness Scoring",
+                       "goal":  "Score whether a grasp attempt is likely before closing the claw.",
+                       "actions":  [
+                                       "Estimate object centeredness between claw tips",
+                                       "Check C12 distance context",
+                                       "Check camera occlusion and table clearance",
+                                       "Predict likely success/failure and explain why"
+                                   ],
+                       "success":  "MIM can refuse a bad close attempt and request/perform more alignment instead."
+                   }
+               ],
+    "acceptance_criteria":  [
+                                "MIM produces a workspace calibration artifact with table reference points and evidence images.",
+                                "MIM records at least 8 movement samples from the safe exploration pose.",
+                                "MIM explains observed movement effects in plain language.",
+                                "MIM identifies at least one object candidate and at least one non-object reference/marker candidate.",
+                                "MIM does not mark complete from a pickup attempt; completion requires calibration evidence."
+                            ],
+    "expected_artifacts":  [
+                               "MIM_WORLD_MODEL_CALIBRATION.latest.json",
+                               "MIM_WORLD_MODEL_CALIBRATION_OPERATOR_SUMMARY.latest.md",
+                               "hand camera samples",
+                               "room camera samples",
+                               "RPLIDAR scan snapshot",
+                               "C12 distance snapshots"
+                           ],
+    "next_objectives":  [
+                            "MIM-VISUAL-SERVOING-V1",
+                            "MIM-OBJECT-GRASP-SCORING-V1",
+                            "MIM-GENERIC-OBJECT-INTERACTION-V1"
+                        ]
+}

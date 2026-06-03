@@ -20,3 +20,4 @@ Domain references:
 - dependency_reduction: Lower Codex dependency by forcing local probes, local diagnosis, and local repair planning first.
 - entropy_reduction: Track and reduce duplicate paths, stale fallbacks, helper drift, wrapper layering, and authority confusion.
 - governance_integrity: Keep autonomy bounded, proportional, non-circular, and evidence-backed.
+- robotics_obstacle_aware_planning: Teach MIM to convert robotics papers into practical bounded motion policies for the MIM ARM. Current source reference: E:\MIM Robotics\08718327.pdf, "Semi-Autonomous Robot Teleoperation with Obstacle Avoidance via Model Predictive Control." Use it as MPC-inspired planning logic, not direct UR5 kinematics.

@@ -87,6 +87,16 @@ shared_state/test_run_after_ci_fix_v2.txt
 shared_state/voice_adapter_status.json
 shared_state/voice_conversation_provider_status.json
 
+# Local MIM mirror and sync outputs
+.remote_mim/
+out/
+
+# Generated MIM/TOD training snapshots and bulky robot media
+runtime_remote_training/training_scoreboard_snapshots/
+runtime_remote_training/**/*.jpg
+runtime_remote_training/**/*.jpeg
+runtime_remote_training/**/*.png
+
 # Local inbox and avatar intake artifacts
 tod/inbox/
 tod/data/avatars/uploads/

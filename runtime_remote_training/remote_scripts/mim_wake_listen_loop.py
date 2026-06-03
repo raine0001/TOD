@@ -37,6 +37,7 @@ VOICE_TRANSCRIPT_LOG_PATH = SHARED / "MIM_VOICE_TRANSCRIPT_LOG.latest.jsonl"
 VOICE_TRANSCRIPT_SUMMARY_PATH = SHARED / "MIM_VOICE_TRANSCRIPT_LOG_STATUS.latest.json"
 VOICE_FRAGMENT_SUPPRESSION_PATH = SHARED / "MIM_VOICE_FRAGMENT_SUPPRESSION_STATUS.latest.json"
 VOICE_CONTROL_OBJECTIVE_PATH = SHARED / "MIM_LAB_CONVERSATION_CONTROL_LAYER_OBJECTIVE.latest.json"
+VOICE_CONTROL_TURN_PATH = SHARED / "MIM_LAB_CONVERSATION_CONTROL_LAYER_TURN.latest.json"
 VOICE_ADDRESSING_DECISION_PATH = SHARED / "MIM_VOICE_ADDRESSING_DECISION.latest.json"
 LAB_CONVERSATION_SCENE_PATH = SHARED / "MIM_LAB_CONVERSATION_SCENE.latest.json"
 VOICE_INTERACTION_LEARNING_PATH = SHARED / "MIM_VOICE_INTERACTION_LEARNING.latest.json"
@@ -64,13 +65,7 @@ DEFAULT_DEVICES = [
 ]
 
 DEFAULT_PLAYBACK_DEVICES = [
-    "plughw:1,0",
-    "plughw:4,3",
-    "default",
-    "plughw:3,0",
-    "plughw:4,7",
-    "plughw:4,8",
-    "plughw:4,9",
+    "dmix:CARD=UACDemoV10,DEV=0",
 ]
 
 WAKE_PATTERNS = [
@@ -189,6 +184,27 @@ ACTIONABLE_TOKENS = {
     "why",
     "working",
     "would",
+}
+
+FILLER_ONLY_TOKENS = {
+    "all",
+    "alright",
+    "good",
+    "great",
+    "have",
+    "holiday",
+    "nice",
+    "night",
+    "now",
+    "ok",
+    "okay",
+    "right",
+    "slide",
+    "so",
+    "thank",
+    "thanks",
+    "the",
+    "you",
 }
 
 WAKE_GRAMMAR = json.dumps(
@@ -1239,6 +1255,28 @@ def is_assistant_shaped(transcript: str) -> bool:
     )
 
 
+def is_low_content_filler(transcript: str) -> bool:
+    words = transcript_words(transcript)
+    if not words or has_mim_reference(transcript) or is_assistant_shaped(transcript):
+        return False
+    if len(words) <= 2 and not set(words).intersection(ACTIONABLE_TOKENS):
+        return True
+    filler_count = sum(1 for word in words if word in FILLER_ONLY_TOKENS or word in LOW_CONTENT_TOKENS)
+    return len(words) >= 3 and filler_count / max(1, len(words)) >= 0.72
+
+
+def is_ambient_self_narration(transcript: str) -> bool:
+    normalized = re.sub(r"[^a-zA-Z0-9.' ]+", " ", str(transcript or "")).strip().lower()
+    if has_mim_reference(transcript):
+        return False
+    patterns = [
+        r"\b(so\s+)?(we'?ll|we will|i'?ll|i will)\s+go ahead and\b",
+        r"\b(so\s+)?(we'?re|we are|i'?m|i am)\s+going to\b",
+        r"\blet'?s go ahead and\b",
+    ]
+    return any(re.search(pattern, normalized) for pattern in patterns)
+
+
 def classify_voice_fragment(transcript: str) -> dict[str, Any]:
     words = transcript_words(transcript)
     if not words:
@@ -1501,12 +1539,17 @@ def save_interaction_feedback(transcript: str, feedback: dict[str, Any]) -> dict
 
 def learning_suppresses_active_session(learning: dict[str, Any]) -> tuple[bool, str, str]:
     overrides = learning.get("active_overrides") if isinstance(learning.get("active_overrides"), dict) else {}
+    now = datetime.now(timezone.utc)
+    until = parse_utc_timestamp(overrides.get("suppress_active_session_until"))
     if bool(overrides.get("do_not_disturb_mode")):
         return True, "do_not_disturb_mode", str(overrides.get("do_not_disturb_started_at") or "")
-    if bool(overrides.get("phone_quiet_mode")):
-        return True, "phone_quiet_mode", str(overrides.get("phone_quiet_started_at") or "")
-    until = parse_utc_timestamp(overrides.get("suppress_active_session_until"))
-    if until and until > datetime.now(timezone.utc):
+    if bool(overrides.get("phone_quiet_mode")) and (until is None or until > now):
+        return True, "phone_quiet_mode", (
+            until.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            if until
+            else str(overrides.get("phone_quiet_started_at") or "")
+        )
+    if until and until > now:
         return True, str(overrides.get("suppress_reason") or "operator_feedback"), until.replace(microsecond=0).isoformat().replace("+00:00", "Z")
     return False, "", ""
 
@@ -1568,12 +1611,26 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
     active_session = bool(active_until and active_until > datetime.now(timezone.utc) and not suppress_active)
     followup_reference = bool(set(words).intersection(FOLLOWUP_REFERENCE_TOKENS))
     short_followup = bool(previous_topic and 1 <= len(words) <= 5 and followup_reference and not mim_reference)
-    actionable_followup = assistant_shape or short_followup
+    explicit_mim_work_question = mim_reference
+    actionable_followup = assistant_shape or short_followup or explicit_mim_work_question
     if feedback.get("is_feedback"):
         addressed = True
         confidence = 0.99
         reason = f"operator_feedback_{feedback.get('feedback_type')}"
         action = "learn_from_feedback"
+    elif explicit_mim_work_question or (assistant_shape and actionable_followup):
+        addressed = True
+        confidence = 0.995 if mim_reference else 0.92 if explicit_mim_work_question else 0.86
+        if suppress_active:
+            reason = "direct_or_assistant_request_overrides_quiet_suppression"
+        else:
+            reason = "explicit_mim_work_question" if explicit_mim_work_question else "assistant_shaped_actionable_request"
+        action = "respond"
+    elif scene.get("conversation_mode") == "multiple_humans_uncertain" and not mim_reference:
+        addressed = False
+        confidence = 0.55
+        reason = "multiple_humans_without_mim_reference"
+        action = "ask_if_addressed"
     elif suppress_active:
         addressed = False
         confidence = 0.98
@@ -1593,6 +1650,16 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
         addressed = False
         confidence = 0.62
         reason = "active_session_ambient_or_low_intent_speech"
+        action = "observe"
+    elif is_ambient_self_narration(transcript):
+        addressed = False
+        confidence = 0.82
+        reason = "ambient_self_narration"
+        action = "observe"
+    elif is_low_content_filler(transcript):
+        addressed = False
+        confidence = 0.84
+        reason = "low_content_filler_ambient"
         action = "observe"
     elif assistant_shape:
         addressed = True
@@ -1643,12 +1710,53 @@ def decide_voice_addressing(transcript: str, *, scene: dict[str, Any], source: s
         "short_followup": short_followup,
         "followup_reference": followup_reference,
         "actionable_followup": actionable_followup,
+        "explicit_mim_work_question": explicit_mim_work_question,
         "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)),
         "policy": "MIM-like words are treated as direct address; in a single-speaker lab context, non-fragment speech is treated as MIM-directed unless scene evidence shows humans talking to each other.",
         "no_audio_retained": True,
     }
     write_json(VOICE_ADDRESSING_DECISION_PATH, decision)
     return decision
+
+
+def publish_conversation_control_turn(result: dict[str, Any], *, addressing: dict[str, Any], response_text: str) -> None:
+    transcript = str(result.get("transcript") or "")
+    route_reason = str(addressing.get("reason_code") or result.get("intent") or "")
+    route_action = str(result.get("action") or addressing.get("recommended_action") or "")
+    response_decision = "respond" if response_text else "observe_without_response"
+    leak_patterns = [
+        r"\bMIM_TOD_[A-Z0-9_]+",
+        r"\bruntime/shared/",
+        r"\bpacket_type\b",
+        r"\bobjective_id\b",
+        r"\bdispatch_status\b",
+        r"\bTaskResult\b",
+    ]
+    lifecycle_leak_detected = any(re.search(pattern, response_text) for pattern in leak_patterns)
+    payload = {
+        "packet_type": "mim-lab-conversation-control-layer-turn-v1",
+        "generated_at": now_iso(),
+        "objective_id": "MIM-LAB-CONVERSATION-CONTROL-LAYER-V1",
+        "status": "classified_before_response",
+        "success": True,
+        "heard_phrase": transcript,
+        "confidence": addressing.get("confidence"),
+        "addressed_decision": "addressed" if addressing.get("addressed_to_mim") else "ambient",
+        "addressed_to_mim": bool(addressing.get("addressed_to_mim")),
+        "routing_reason": route_reason,
+        "routing_action": route_action,
+        "response_decision": response_decision,
+        "response_generated": bool(response_text),
+        "response_text_sanitized": response_text,
+        "lifecycle_leak_detected": lifecycle_leak_detected,
+        "raw_lifecycle_garbage_blocked": not lifecycle_leak_detected,
+        "scene_artifact": str(LAB_CONVERSATION_SCENE_PATH.relative_to(ROOT)),
+        "addressing_artifact": str(VOICE_ADDRESSING_DECISION_PATH.relative_to(ROOT)),
+        "turn_artifact": str(FOLLOWUP_PATH.relative_to(ROOT)),
+        "policy": "Every lab utterance is classified by the conversation control layer before any response is generated or spoken.",
+        "no_audio_retained": True,
+    }
+    write_json(VOICE_CONTROL_TURN_PATH, payload)
 
 
 def publish_conversation_control_objective() -> None:
@@ -1663,6 +1771,7 @@ def publish_conversation_control_objective() -> None:
             "goal": "Route lab speech through a conversation control layer before response generation.",
             "required_outputs": [
                 "MIM_VOICE_ADDRESSING_DECISION.latest.json",
+                "MIM_LAB_CONVERSATION_CONTROL_LAYER_TURN.latest.json",
                 "MIM_LAB_CONVERSATION_SCENE.latest.json",
                 "MIM_VOICE_INTERACTION_LEARNING.latest.json",
                 "MIM_WAKE_FOLLOWUP.latest.json",
@@ -3349,6 +3458,7 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
             "policy": "Fresh arm movement confirmations are routed before ambient-addressing suppression.",
         }
         save_turn_state(transcript=transcript, route=pending_confirmation, response_text=response_text)
+        publish_conversation_control_turn(result, addressing=addressing, response_text=response_text)
         write_json(FOLLOWUP_PATH, result)
         return result
     if not addressing.get("addressed_to_mim"):
@@ -3379,6 +3489,7 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
             "no_audio_retained": True,
             "policy": "MIM observes ambient lab speech that is not addressed to MIM and does not send it to UI chat.",
         }
+        publish_conversation_control_turn(result, addressing=addressing, response_text="")
         write_json(FOLLOWUP_PATH, result)
         return result
     fragment = classify_voice_fragment(transcript)
@@ -3418,6 +3529,7 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
             "no_audio_retained": True,
             "policy": "MIM listens continuously, but low-content STT fragments are evidence only and do not trigger a spoken clarification.",
         }
+        publish_conversation_control_turn(result, addressing=addressing, response_text="")
         write_json(FOLLOWUP_PATH, result)
         return result
     quality = classify_transcript_quality(transcript)
@@ -3459,11 +3571,12 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
             "no_audio_retained": True,
             "policy": "Suppress likely ASR hallucinations unless MIM is clearly addressed.",
         }
+        publish_conversation_control_turn(result, addressing=addressing, response_text="")
         write_json(FOLLOWUP_PATH, result)
         return result
     route = route_followup(transcript)
     should_respond = route["intent"] != "unknown" or should_clarify_unknown(transcript)
-    response_text = route["response_text"] if should_respond else ""
+    response_text = sanitize_voice_reply_text(route["response_text"]) if should_respond else ""
     voice_response = play_voice_response(response_text) if response_text else {}
     result = {
         "packet_type": "mim-lab-conversation-turn-v1",
@@ -3491,6 +3604,7 @@ def handle_lab_conversation(transcript: str) -> dict[str, Any]:
     }
     if transcript:
         save_turn_state(transcript=transcript, route=route, response_text=response_text)
+    publish_conversation_control_turn(result, addressing=addressing, response_text=response_text)
     write_json(FOLLOWUP_PATH, result)
     return result
 

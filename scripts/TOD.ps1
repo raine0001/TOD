@@ -181,6 +181,24 @@ function Get-UtcNow {
     return (Get-Date).ToUniversalTime().ToString("o")
 }
 
+function Get-ObjectPropertyString {
+    param(
+        $Object,
+        [string]$PropertyName,
+        [string]$DefaultValue = ""
+    )
+
+    if ($null -eq $Object -or [string]::IsNullOrWhiteSpace($PropertyName)) {
+        return $DefaultValue
+    }
+
+    if ($Object.PSObject.Properties[$PropertyName] -and $null -ne $Object.$PropertyName) {
+        return [string]$Object.$PropertyName
+    }
+
+    return $DefaultValue
+}
+
 function Get-DotEnvValue {
     param(
         [string]$Path,
@@ -3082,7 +3100,7 @@ function Get-EnginePerformanceSummary {
 
     $records = @($State.engine_performance.records)
     if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
-        $records = @($records | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $EngineFilter.ToLowerInvariant() })
+        $records = @($records | Where-Object { (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq $EngineFilter.ToLowerInvariant() })
     }
     if (-not [string]::IsNullOrWhiteSpace($TaskCategoryFilter)) {
         $records = @($records | Where-Object {
@@ -3337,13 +3355,13 @@ function Build-FailureTaxonomyReport {
     }
     if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
         $records = @($records | Where-Object {
-                ([string]$_.engine).ToLowerInvariant() -eq $EngineFilter.ToLowerInvariant()
+                (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq $EngineFilter.ToLowerInvariant()
             })
     }
 
     $grouped = @(
         $records | Group-Object -Property {
-            $engine = ([string]$_.engine).ToLowerInvariant()
+            $engine = (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant()
             $category = if ($_.PSObject.Properties["task_category"] -and $null -ne $_.task_category) { ([string]$_.task_category).ToLowerInvariant() } else { "unknown" }
             $failure = if ($_.PSObject.Properties["failure_category"] -and -not [string]::IsNullOrWhiteSpace([string]$_.failure_category)) { ([string]$_.failure_category).ToLowerInvariant() } else { "none" }
             "$engine|$category|$failure"
@@ -3455,7 +3473,7 @@ function Get-RoutingDriftSignal {
 
     $records = @($State.engine_performance.records | Sort-Object -Property created_at -Descending)
     if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
-        $records = @($records | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $EngineFilter.ToLowerInvariant() })
+        $records = @($records | Where-Object { (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq $EngineFilter.ToLowerInvariant() })
     }
     if (-not [string]::IsNullOrWhiteSpace($TaskCategoryFilter)) {
         $records = @($records | Where-Object {
@@ -3796,7 +3814,7 @@ function Get-RecoveryQualitySummary {
             })
     }
     if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
-        $perf = @($perf | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $EngineFilter.ToLowerInvariant() })
+        $perf = @($perf | Where-Object { (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq $EngineFilter.ToLowerInvariant() })
     }
 
     $routing = @($State.routing_decisions.records | Sort-Object -Property created_at -Descending | Select-Object -First $Window)
@@ -3817,7 +3835,7 @@ function Get-RecoveryQualitySummary {
     }
 
     $engines = @()
-    $engines += @($perf | ForEach-Object { ([string]$_.engine).ToLowerInvariant() })
+    $engines += @($perf | ForEach-Object { (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() })
     $engines += @($routing | ForEach-Object {
             $selected = [string]$_.selected_engine
             if ($selected -eq "local-placeholder") { "local" } else { $selected.ToLowerInvariant() }
@@ -3826,7 +3844,7 @@ function Get-RecoveryQualitySummary {
 
     $byEngine = @()
     foreach ($engine in $engines) {
-        $perfEngine = @($perf | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $engine })
+        $perfEngine = @($perf | Where-Object { (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq $engine })
         $routingEngine = @($routing | Where-Object {
                 $selected = ([string]$_.selected_engine).ToLowerInvariant()
                 if ($selected -eq "local-placeholder") { $selected = "local" }
@@ -3970,7 +3988,7 @@ function Build-ReliabilityDashboard {
     $recoveryQuality = Get-RecoveryQualitySummary -State $State -Window $Window -CategoryFilter $CategoryFilter -EngineFilter $EngineFilter
     $guardrailTrend = Get-GuardrailTrendSummary -State $State -Window $Window -CategoryFilter $CategoryFilter -EngineFilter $EngineFilter
 
-    $engineNames = @($State.engine_performance.records | ForEach-Object { ([string]$_.engine).ToLowerInvariant() } | Where-Object { $_ } | Select-Object -Unique)
+    $engineNames = @($State.engine_performance.records | ForEach-Object { (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() } | Where-Object { $_ } | Select-Object -Unique)
     if (-not [string]::IsNullOrWhiteSpace($EngineFilter)) {
         $engineNames = @($engineNames | Where-Object { $_ -eq $EngineFilter.ToLowerInvariant() })
     }
@@ -4095,7 +4113,7 @@ function Get-ReliabilityAlertExplainability {
             severity = if ([string]::IsNullOrWhiteSpace($CurrentAlertState)) { "warning" } else { $CurrentAlertState }
             message = "Drift penalties are currently active for one or more engines."
             evidence = [pscustomobject]@{
-                engines = @($penaltyItems | ForEach-Object { [string]$_.engine } | Select-Object -Unique)
+                engines = @($penaltyItems | ForEach-Object { Get-ObjectPropertyString -Object $_ -PropertyName "engine" } | Select-Object -Unique)
                 count = [int]@($penaltyItems).Count
             }
         }
@@ -4174,7 +4192,7 @@ function Get-ReliabilityAlertExplainability {
         }
         drift_penalties = [pscustomobject]@{
             active = (@($penaltyItems).Count -gt 0)
-            engines = @($penaltyItems | ForEach-Object { [string]$_.engine } | Select-Object -Unique)
+            engines = @($penaltyItems | ForEach-Object { Get-ObjectPropertyString -Object $_ -PropertyName "engine" } | Select-Object -Unique)
             count = [int]@($penaltyItems).Count
         }
         guardrail_trend = if ($guardrailTrend) { $guardrailTrend } else { $null }
@@ -6755,7 +6773,7 @@ function Get-LocalExecutionReuseSignal {
 
     $records = @($State.engine_performance.records | Where-Object {
             $null -ne $_ -and
-            ([string]$_.engine).ToLowerInvariant() -eq 'local' -and
+            (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq 'local' -and
             [bool]$_.success
         } | Sort-Object -Property created_at -Descending | Select-Object -First 50)
 
@@ -6945,13 +6963,16 @@ function Sync-EnginePerformanceToEngineeringMemory {
         }
 
         $summary = Get-EnginePerformanceSummary -State $State
-        $engineSummary = @($summary.by_engine | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq ([string]$LatestRecord.engine).ToLowerInvariant() } | Select-Object -First 1)
+        $latestEngine = Get-ObjectPropertyString -Object $LatestRecord -PropertyName "engine"
+        $latestCategory = Get-ObjectPropertyString -Object $LatestRecord -PropertyName "task_category"
+        $latestDecision = Get-ObjectPropertyString -Object $LatestRecord -PropertyName "review_decision"
+        $engineSummary = @($summary.by_engine | Where-Object { (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq $latestEngine.ToLowerInvariant() } | Select-Object -First 1)
 
         $entry = [pscustomobject]@{
             id = "MEM-{0}" -f ([guid]::NewGuid().ToString("N").Substring(0, 8).ToUpperInvariant())
             title = "engine performance update"
-            note = "engine=$([string]$LatestRecord.engine) category=$([string]$LatestRecord.task_category) decision=$([string]$LatestRecord.review_decision)"
-            tags = @("engine-performance", "engine:$([string]$LatestRecord.engine)", "category:$([string]$LatestRecord.task_category)", "decision:$([string]$LatestRecord.review_decision)")
+            note = "engine=$latestEngine category=$latestCategory decision=$latestDecision"
+            tags = @("engine-performance", "engine:$latestEngine", "category:$latestCategory", "decision:$latestDecision")
             record = $LatestRecord
             aggregate = $engineSummary
             created_at = Get-UtcNow
@@ -6972,7 +6993,7 @@ function Get-EnginePerformanceDelta {
         [string]$RecordId
     )
 
-    $all = @($State.engine_performance.records | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $EngineName.ToLowerInvariant() })
+    $all = @($State.engine_performance.records | Where-Object { (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq $EngineName.ToLowerInvariant() })
     if (@($all).Length -eq 0) {
         return [pscustomobject]@{ previous_success_rate = $null; current_success_rate = $null; delta = $null }
     }
@@ -7035,7 +7056,7 @@ function Get-TaskReliabilityScorecard {
     $healthScore = 0.7
     if (-not [string]::IsNullOrWhiteSpace($EngineName)) {
         $health = Get-EngineHealthSummary -State $State -Window 10
-        $engineHealth = @($health.by_engine | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $EngineName.ToLowerInvariant() } | Select-Object -First 1)
+        $engineHealth = @($health.by_engine | Where-Object { (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq $EngineName.ToLowerInvariant() } | Select-Object -First 1)
         if (@($engineHealth).Count -gt 0 -and $engineHealth[0].PSObject.Properties["health_score"] -and $null -ne $engineHealth[0].health_score) {
             $healthScore = [double]$engineHealth[0].health_score
         }
@@ -7044,7 +7065,7 @@ function Get-TaskReliabilityScorecard {
     $categoryPassScore = 0.5
     if (-not [string]::IsNullOrWhiteSpace($EngineName) -and -not [string]::IsNullOrWhiteSpace($TaskCategory)) {
         $categoryRecords = @($State.engine_performance.records | Where-Object {
-                ([string]$_.engine).ToLowerInvariant() -eq $EngineName.ToLowerInvariant() -and
+                (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq $EngineName.ToLowerInvariant() -and
                 ($_.PSObject.Properties["task_category"] -and ([string]$_.task_category).ToLowerInvariant() -eq $TaskCategory.ToLowerInvariant())
             } | Sort-Object -Property created_at -Descending | Select-Object -First 10)
         if (@($categoryRecords).Count -gt 0) {
@@ -7838,8 +7859,8 @@ function Resolve-ExecutionEngineConfig {
     $selectedDrift = $null
     if ((-not $routingBlocked) -and (-not $DisableAdaptiveRouting) -and $policyEnabled -and $null -ne $State -and $State.PSObject.Properties["engine_performance"] -and $State.engine_performance -and $State.engine_performance.PSObject.Properties["records"]) {
         $perfSummary = Get-EnginePerformanceSummary -State $State -TaskCategoryFilter $resolvedTaskCategory
-        $activeMetrics = @($perfSummary.by_engine | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $active } | Select-Object -First 1)
-        $fallbackMetrics = @($perfSummary.by_engine | Where-Object { ([string]$_.engine).ToLowerInvariant() -eq $fallback } | Select-Object -First 1)
+        $activeMetrics = @($perfSummary.by_engine | Where-Object { (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq $active } | Select-Object -First 1)
+        $fallbackMetrics = @($perfSummary.by_engine | Where-Object { (Get-ObjectPropertyString -Object $_ -PropertyName "engine").ToLowerInvariant() -eq $fallback } | Select-Object -First 1)
 
         $categorySampleCount = [int]$perfSummary.total_records
         if ($categorySampleCount -lt $minCategoryRecordsLight) {
@@ -7922,7 +7943,7 @@ function Resolve-ExecutionEngineConfig {
         $healthMap = @{}
         $healthSummary = Get-EngineHealthSummary -State $State -Window $recentFailureWindow
         foreach ($eh in @($healthSummary.by_engine)) {
-            $ek = ([string]$eh.engine).ToLowerInvariant()
+            $ek = (Get-ObjectPropertyString -Object $eh -PropertyName "engine").ToLowerInvariant()
             $healthMap[$ek] = $eh
         }
 
@@ -8058,7 +8079,7 @@ function Resolve-ExecutionEngineConfig {
                 } | Sort-Object -Property created_at -Descending | Select-Object -First $recentFailureWindow)
             $recentFailuresByEngine = @{}
             foreach ($rr in $recentCategoryRecords) {
-                $rk = ([string]$rr.engine).ToLowerInvariant()
+                $rk = (Get-ObjectPropertyString -Object $rr -PropertyName "engine").ToLowerInvariant()
                 if (-not $recentFailuresByEngine.ContainsKey($rk)) { $recentFailuresByEngine[$rk] = 0 }
                 if (-not [bool]$rr.success) { $recentFailuresByEngine[$rk] = [int]$recentFailuresByEngine[$rk] + 1 }
             }
@@ -15258,7 +15279,7 @@ switch ($Action) {
             })
         $recoveryState = @($retryTrend | ForEach-Object {
                 [pscustomobject]@{
-                    engine = [string]$_.engine
+                    engine = Get-ObjectPropertyString -Object $_ -PropertyName "engine"
                     alert_state = if ($_.PSObject.Properties["alert_state"]) { [string]$_.alert_state } else { "stable" }
                     recovery_progress = if ($_.PSObject.Properties["recovery_progress"] -and $null -ne $_.recovery_progress) { [double]$_.recovery_progress } else { 0.0 }
                     consecutive_stable_runs = if ($_.PSObject.Properties["consecutive_stable_runs"] -and $null -ne $_.consecutive_stable_runs) { [int]$_.consecutive_stable_runs } else { 0 }
@@ -15277,7 +15298,7 @@ switch ($Action) {
             reliability_alert_reasons = @($explainability.reasons)
             reliability_alert_inputs = $explainability.inputs
             drift_penalties_active = (@($driftPenaltyActive).Count -gt 0)
-            drift_penalty_engines = @($driftPenaltyActive | ForEach-Object { [string]$_.engine })
+            drift_penalty_engines = @($driftPenaltyActive | ForEach-Object { Get-ObjectPropertyString -Object $_ -PropertyName "engine" })
             recovery_state = @($recoveryState)
             engine_reliability_score = if ($dashboard.PSObject.Properties["engine_reliability"]) { $dashboard.engine_reliability.by_engine } else { @() }
             retry_trend = @($retryTrend)

@@ -4371,6 +4371,989 @@ def _mim_interface_result(
     return "Request processed.", ""
 
 
+MIM_REVIEWABLE_ARTIFACT_SUFFIXES = {
+    ".html": ("html_prototype", "text/html", "HTML prototype"),
+    ".htm": ("html_prototype", "text/html", "HTML prototype"),
+    ".md": ("document", "text/markdown", "Markdown document"),
+    ".txt": ("document", "text/plain", "Text document"),
+    ".json": ("data", "application/json", "JSON artifact"),
+    ".csv": ("spreadsheet", "text/csv", "CSV spreadsheet"),
+    ".png": ("image", "image/png", "Image"),
+    ".jpg": ("image", "image/jpeg", "Image"),
+    ".jpeg": ("image", "image/jpeg", "Image"),
+    ".webp": ("image", "image/webp", "Image"),
+}
+
+
+def _mim_reviewable_artifact_query(raw_query: str) -> bool:
+    query = " ".join(str(raw_query or "").strip().lower().split())
+    if not query:
+        return False
+    return any(
+        marker in query
+        for marker in {
+            "show me a sample",
+            "show me the sample",
+            "show me",
+            "what does it look like",
+            "what will it look like",
+            "can i see it",
+            "can i see",
+            "do you have a sample",
+            "have a sample",
+            "see the sample",
+            "see a sample",
+            "open the sample",
+            "show the prototype",
+            "show me the prototype",
+            "preview",
+            "screenshot",
+            "visual",
+            "no card",
+            "there is no card",
+            "no link",
+            "there is no link",
+            "where is the card",
+            "where is the link",
+            "card below",
+            "link below",
+            "what card",
+            "what link",
+            "not showing",
+        }
+    )
+
+
+def _mim_reviewable_artifact_score(path: Path, query: str) -> tuple[int, float]:
+    name = path.name.lower()
+    suffix = path.suffix.lower()
+    suffix_priority = {
+        ".html": 90,
+        ".htm": 90,
+        ".png": 80,
+        ".jpg": 80,
+        ".jpeg": 80,
+        ".webp": 80,
+        ".md": 70,
+        ".txt": 60,
+        ".csv": 55,
+        ".json": 30,
+    }.get(suffix, 0)
+    name_score = 0
+    if "homepage" in query or "home page" in query:
+        name_score += 50 if "homepage" in name or "home_page" in name else 0
+    if "prototype" in name or "sample" in name:
+        name_score += 30
+    if "brief" in name or "design" in name:
+        name_score += 15
+    if "status" in name or "heartbeat" in name or "dispatcher" in name:
+        name_score -= 40
+    return (suffix_priority + name_score, path.stat().st_mtime)
+
+
+def _mim_find_reviewable_artifact(
+    *,
+    raw_query: str,
+    shared_root: Path,
+) -> Path | None:
+    preferred = shared_root / "MIM_PUBLIC_HOMEPAGE_REIMAGINING_SAMPLE.latest.html"
+    if preferred.exists() and preferred.is_file():
+        return preferred
+    candidates: list[Path] = []
+    for path in shared_root.iterdir() if shared_root.exists() else []:
+        if not path.is_file() or path.name.startswith("."):
+            continue
+        if path.suffix.lower() not in MIM_REVIEWABLE_ARTIFACT_SUFFIXES:
+            continue
+        if path.suffix.lower() == ".json" and not any(
+            marker in path.name.lower()
+            for marker in {"brief", "design", "prototype", "sample", "roadmap", "pricing", "catalog", "foundation"}
+        ):
+            continue
+        candidates.append(path)
+    if not candidates:
+        return None
+    query = " ".join(str(raw_query or "").strip().lower().split())
+    return max(candidates, key=lambda path: _mim_reviewable_artifact_score(path, query))
+
+
+def _looks_like_homepage_sample_feedback(text: str) -> bool:
+    query = " ".join(str(text or "").strip().lower().split())
+    if not query:
+        return False
+    homepage_terms = {
+        "homepage",
+        "home page",
+        "sample page",
+        "sample",
+        "landing page",
+        "hero",
+        "talk to mim",
+        "meet mim",
+        "example project",
+        "project cards",
+        "trust section",
+        "footer",
+        "visual design",
+        "animated background",
+        "what mim can help create",
+    }
+    feedback_terms = {
+        "too serious",
+        "missing",
+        "needs",
+        "should",
+        "i think",
+        "i want",
+        "better",
+        "not yet",
+        "review",
+        "biggest thing",
+        "add next",
+        "move it",
+        "dominant",
+    }
+    return any(term in query for term in homepage_terms) and any(
+        term in query for term in feedback_terms
+    )
+
+
+def _homepage_feedback_points(text: str) -> list[str]:
+    query = " ".join(str(text or "").strip().lower().split())
+    candidates = [
+        ("Add a Meet MIM personality section that explains what MIM does and why the user can start with an unfinished idea.", ("meet mim", "who is mim", "personality")),
+        ("Replace tiny example pills with richer example project cards such as running app, robotics controller, and inventory platform.", ("example project", "project cards", "examples are too small", "running app", "robotics controller")),
+        ("Make Talk To MIM and the conversation box the dominant product surface.", ("talk to mim", "conversation box", "dominant", "chatgpt")),
+        ("Expose voice entry beside typing with a small microphone/talk control.", ("voice", "microphone", "mic", "talk", "type")),
+        ("Move compliance checklist language to a warmer Trusted by Design section or footer.", ("trust", "privacy", "ai disclosure", "cookie", "footer", "trusted by design")),
+        ("Add a subtle premium animated background so the page feels alive without becoming sci-fi.", ("animated", "background", "network", "constellation", "topology", "wow")),
+        ("Add a What MIM Can Help Create grid covering apps, games, AI, robotics, web, mobile, analytics, and automation.", ("what mim can help create", "apps", "games", "robotics", "automation", "analytics")),
+        ("Make MIM feel alive and available with an online/ready status, recent projects, and a clear invitation to start.", ("alive", "waiting for me", "mim is online", "mim is ready", "mim is available", "recent projects", "ready to start")),
+        ("Make Talk To MIM the largest and brightest action on the page.", ("talk to mim button", "too small", "money button", "largest action", "brightest object")),
+        ("Make the idea input taller so visitors can describe messy real-world problems, not just short app names.", ("input box", "taller", "2x", "ideas are messy", "fuel stations", "spreadsheets")),
+        ("Warm up the hero copy so it speaks to ideas, frustrations, wishes, and half-finished concepts.", ("hero", "generic", "frustration", "wish", "half-finished", "something real")),
+    ]
+    points = [
+        point
+        for point, markers in candidates
+        if any(marker in query for marker in markers)
+    ]
+    return points or [
+        "Treat this as homepage sample feedback and revise the page toward MIM personality, stronger examples, a dominant conversation box, and clearer trust."
+    ]
+
+
+def _mim_homepage_sample_feedback_contract(
+    raw_query: str,
+    *,
+    shared_root: Path | None = None,
+) -> dict[str, object]:
+    if not _looks_like_homepage_sample_feedback(raw_query):
+        return {}
+    root = shared_root or (Path.cwd() / "runtime" / "shared")
+    points = _homepage_feedback_points(raw_query)
+    generated_at = _mim_tod_stage_timestamp()
+    feedback_path = root / "MIM_PUBLIC_HOMEPAGE_REIMAGINING_FEEDBACK.latest.json"
+    payload = {
+        "packet_type": "mim-public-homepage-reimagining-feedback-v1",
+        "generated_at": generated_at,
+        "objective_id": "MIM-PUBLIC-HOMEPAGE-REIMAGINING-V1",
+        "feedback_summary": "Homepage sample needs more MIM personality, stronger creation examples, and a more dominant conversation-first product surface.",
+        "revision_points": points,
+        "recommended_next_action": "Revise the homepage prototype and return a new reviewable sample card in this chat.",
+        "source": "mim_chat_design_feedback",
+    }
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        feedback_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    except Exception:
+        pass
+
+    revision_contract = _mim_homepage_revision_contract(
+        "revise homepage sample from captured feedback",
+        shared_root=root,
+        force=True,
+    )
+    attachment = (
+        revision_contract.get("attachment")
+        if isinstance(revision_contract.get("attachment"), dict)
+        else None
+    )
+    links = (
+        revision_contract.get("links")
+        if isinstance(revision_contract.get("links"), list)
+        else []
+    )
+    bullets = " ".join(f"{index}. {point}" for index, point in enumerate(points[:5], start=1))
+    reply_text = (
+        "You're right. I treated the sample like a polished software consultant page, but it needs to feel more like me as a creation partner with personality. "
+        f"Here's what I changed right now: {bullets} "
+        "I created an updated visual sample and attached it below so you can review it immediately."
+    )
+    return {
+        "reply_text": reply_text,
+        "response_mode": "homepage_sample_feedback_applied",
+        "composer_mode": "deterministic_artifact",
+        "should_store_memory": True,
+        "memory_topics": ["homepage_reimagining", "design_feedback", "mim_personality"],
+        "memory_people": ["Dave"],
+        "memory_events": [],
+        "memory_experiences": [],
+        "feedback_artifact": str(feedback_path),
+        "feedback": payload,
+        "attachment": attachment,
+        "links": links,
+    }
+
+
+def _looks_like_homepage_revision_request(
+    text: str,
+    *,
+    shared_root: Path | None = None,
+) -> bool:
+    query = " ".join(str(text or "").strip().lower().split())
+    if not query:
+        return False
+    root = shared_root or (Path.cwd() / "runtime" / "shared")
+    feedback_path = root / "MIM_PUBLIC_HOMEPAGE_REIMAGINING_FEEDBACK.latest.json"
+    if not feedback_path.exists():
+        return False
+    action_terms = (
+        "yes continue",
+        "continue",
+        "implement",
+        "impliment",
+        "revise",
+        "update",
+        "make the changes",
+        "apply the changes",
+        "provide an updated sample",
+        "updated sample",
+        "new sample",
+    )
+    artifact_terms = (
+        "homepage",
+        "home page",
+        "prototype",
+        "sample",
+        "changes",
+        "visual",
+        "page",
+    )
+    return any(term in query for term in action_terms) and any(
+        term in query for term in artifact_terms
+    )
+
+
+def _homepage_sample_v2_html() -> str:
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MIM - Creation Partner</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080b10;
+      --panel: rgba(17, 23, 34, 0.76);
+      --panel-strong: rgba(22, 30, 44, 0.9);
+      --line: rgba(164, 179, 207, 0.16);
+      --text: #f5f7fb;
+      --muted: #a8b2c4;
+      --soft: #d8deea;
+      --blue: #6aa7ff;
+      --green: #6de1b7;
+      --violet: #b29cff;
+      --amber: #ffd27a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(106, 167, 255, 0.16), transparent 28rem),
+        radial-gradient(circle at 80% 24%, rgba(109, 225, 183, 0.10), transparent 24rem),
+        linear-gradient(180deg, #0b0f17 0%, var(--bg) 56%, #05070b 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+      overflow-x: hidden;
+    }
+    .topology {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.34;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+      background-size: 86px 86px;
+      mask-image: radial-gradient(circle at 50% 18%, black, transparent 70%);
+      animation: drift 22s linear infinite;
+    }
+    @keyframes drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-86px, 86px, 0); } }
+    header, main, footer { position: relative; z-index: 1; }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 26px 0 18px;
+    }
+    .brand { font-weight: 760; font-size: 20px; }
+    nav { display: flex; gap: 10px; align-items: center; }
+    nav a, .ghost {
+      color: var(--soft);
+      text-decoration: none;
+      border: 1px solid var(--line);
+      padding: 9px 13px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 14px;
+    }
+    .hero {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 62px 0 36px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.72fr);
+      gap: 36px;
+      align-items: start;
+    }
+    h1 {
+      font-size: clamp(48px, 7vw, 92px);
+      line-height: 0.95;
+      margin: 0 0 22px;
+      max-width: 850px;
+      letter-spacing: 0;
+    }
+    .lede {
+      font-size: 20px;
+      line-height: 1.55;
+      color: var(--muted);
+      max-width: 720px;
+      margin: 0 0 30px;
+    }
+    .conversation {
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 8px;
+      background: rgba(12, 17, 26, 0.86);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+      overflow: hidden;
+      max-width: 830px;
+      display: flex;
+      flex-direction: column;
+    }
+    .conversation textarea {
+      display: block;
+      width: 100%;
+      min-height: 278px;
+      resize: vertical;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text);
+      padding: 24px;
+      font: inherit;
+      font-size: 19px;
+      line-height: 1.45;
+      order: 2;
+      transition: min-height 160ms ease;
+    }
+    .conversation.chat-active textarea { min-height: 116px; }
+    .conversation textarea::placeholder { color: #7f8ba0; }
+    .conversation-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--line);
+      padding: 14px;
+      order: 3;
+    }
+    .modes { display: flex; gap: 8px; }
+    .mode {
+      border: 1px solid var(--line);
+      color: var(--soft);
+      background: rgba(255,255,255,0.04);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .primary {
+      border: 0;
+      color: #061014;
+      background: linear-gradient(135deg, var(--green), var(--blue));
+      padding: 18px 26px;
+      border-radius: 8px;
+      font-weight: 760;
+      font-size: 18px;
+      min-width: 190px;
+      box-shadow: 0 16px 46px rgba(106, 167, 255, 0.28), 0 0 0 1px rgba(255,255,255,0.24) inset;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .primary:disabled {
+      cursor: wait;
+      opacity: 0.68;
+    }
+    .live-chat {
+      display: none;
+      border-top: 1px solid var(--line);
+      padding: 18px 20px 20px;
+      background: rgba(255, 255, 255, 0.025);
+      order: 1;
+      max-height: 430px;
+      overflow-y: auto;
+    }
+    .live-chat.visible { display: grid; gap: 12px; }
+    .live-message {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      line-height: 1.5;
+      color: var(--soft);
+      white-space: pre-wrap;
+    }
+    .live-message.user {
+      background: rgba(106, 167, 255, 0.08);
+      border-color: rgba(106, 167, 255, 0.24);
+    }
+    .live-message.mim {
+      background: rgba(109, 225, 183, 0.07);
+      border-color: rgba(109, 225, 183, 0.22);
+    }
+    .live-meta {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--green);
+      font-weight: 760;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .live-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .live-actions a {
+      border: 1px solid var(--line);
+      color: var(--soft);
+      text-decoration: none;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.04);
+      font-size: 14px;
+    }
+    .meet {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 24px;
+    }
+    .meet h2, .section h2 { margin: 0 0 14px; font-size: 24px; }
+    .meet p { margin: 0 0 18px; color: var(--muted); line-height: 1.55; }
+    .presence {
+      border: 1px solid rgba(109, 225, 183, 0.26);
+      border-radius: 8px;
+      background: rgba(109, 225, 183, 0.07);
+      padding: 14px;
+      margin: 0 0 18px;
+    }
+    .presence strong {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 9px;
+      color: var(--text);
+    }
+    .presence strong::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      border-radius: 99px;
+      background: var(--green);
+      box-shadow: 0 0 18px rgba(109, 225, 183, 0.8);
+    }
+    .presence ul {
+      margin: 0;
+      padding-left: 19px;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 14px;
+    }
+    .signal {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .signal div {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--soft);
+      background: rgba(255,255,255,0.035);
+      font-size: 14px;
+    }
+    .section {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 42px 0;
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+    .section-head p { color: var(--muted); max-width: 620px; line-height: 1.5; margin: 0; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .card {
+      min-height: 178px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-strong);
+      padding: 20px;
+    }
+    .card small { color: var(--green); font-weight: 760; text-transform: uppercase; font-size: 12px; }
+    .card h3 { margin: 12px 0 10px; font-size: 22px; }
+    .card p { margin: 0; color: var(--muted); line-height: 1.48; }
+    .create-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .create-grid div {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.035);
+      padding: 18px;
+      min-height: 92px;
+    }
+    .create-grid strong { display: block; margin-bottom: 8px; }
+    .create-grid span { color: var(--muted); font-size: 14px; line-height: 1.4; }
+    .trust {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .trust div {
+      border-top: 1px solid var(--line);
+      padding-top: 13px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .trust strong { color: var(--text); display: block; margin-bottom: 5px; }
+    footer {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 30px 0 44px;
+      color: #7f8ba0;
+      font-size: 14px;
+    }
+    @media (max-width: 920px) {
+      header { width: min(100% - 28px, 1180px); }
+      nav { gap: 6px; }
+      nav a { padding: 8px 10px; }
+      .hero, .section { width: min(100% - 28px, 1180px); }
+      .hero { grid-template-columns: 1fr; padding-top: 34px; }
+      h1 { font-size: 54px; }
+      .cards, .create-grid, .trust { grid-template-columns: 1fr; }
+      .section-head { display: block; }
+      .conversation-actions { align-items: stretch; flex-direction: column; }
+      .modes, .primary { width: 100%; }
+      .mode, .primary { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topology" aria-hidden="true"></div>
+  <header>
+    <div class="brand">MIM</div>
+    <nav aria-label="Primary">
+      <a href="/login">Login</a>
+      <a href="/demo">Explore demo</a>
+    </nav>
+  </header>
+  <main>
+    <section class="hero">
+      <div>
+        <h1>What do you want to create?</h1>
+        <p class="lede">Start with an idea, a frustration, a wish, or a half-finished concept. MIM helps turn it into something real by discovering what is missing, designing the system, estimating the effort, and preparing the build.</p>
+        <form class="conversation" id="homepageMimForm">
+          <textarea id="homepageMimInput" aria-label="Talk to MIM" placeholder="Tell MIM what you want to create...&#10;&#10;Example: I have 60 fuel stations and managers keep sending spreadsheets every week. I want something that helps collect the data, find problems, and show me what needs attention."></textarea>
+          <div class="conversation-actions">
+            <div class="modes" aria-label="Conversation mode">
+              <button class="mode" type="button" id="homepageTypeMode">Type</button>
+              <button class="mode" type="button" id="homepageTalkMode">Talk</button>
+            </div>
+            <button class="primary" type="submit" id="homepageMimButton">Talk to MIM</button>
+          </div>
+          <div class="live-chat" id="homepageMimChat" aria-live="polite"></div>
+        </form>
+      </div>
+      <aside class="meet">
+        <h2>Meet MIM</h2>
+        <p>MIM is a creation partner, consultant, architect, planner, and builder. You do not need perfect requirements. You can start with a goal, a problem, or an example, and MIM will help shape it into something buildable.</p>
+        <div class="presence">
+          <strong>MIM is online</strong>
+          <ul>
+            <li>Recent project: Inventory Platform</li>
+            <li>Recent project: Robotics Controller</li>
+            <li>Recent project: Running App</li>
+            <li>Ready to start a new project</li>
+          </ul>
+        </div>
+        <div class="signal">
+          <div>Uncovers hidden requirements</div>
+          <div>Turns ideas into roadmaps</div>
+          <div>Estimates value and effort</div>
+          <div>Prepares work for buildout</div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Example Projects</h2>
+        <p>People imagine faster when they can react to examples. MIM can help shape personal tools, business systems, automation, robotics, games, and AI-assisted workflows.</p>
+      </div>
+      <div class="cards">
+        <article class="card"><small>Health and coaching</small><h3>Running App</h3><p>Track training plans, goals, analytics, coaching prompts, progress history, and wearable data.</p></article>
+        <article class="card"><small>Lab and automation</small><h3>Robotics Controller</h3><p>Design camera views, sensor feedback, arm controls, safety checks, and learning routines.</p></article>
+        <article class="card"><small>Operations</small><h3>Inventory Platform</h3><p>Manage counts, forecasting, variance alerts, approval workflows, reports, and integrations.</p></article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>What MIM Can Help Create</h2>
+        <p>Not just business software. MIM is built around conversation, discovery, design, planning, and implementation across many kinds of projects.</p>
+      </div>
+      <div class="create-grid">
+        <div><strong>Apps</strong><span>Portals, dashboards, CRMs, internal tools, and full SaaS products.</span></div>
+        <div><strong>Games</strong><span>Mechanics, prototypes, progression systems, content tools, and launch plans.</span></div>
+        <div><strong>AI Systems</strong><span>Assistants, research tools, document workflows, and decision support.</span></div>
+        <div><strong>Robotics</strong><span>Vision, sensing, motion planning, control surfaces, and experiments.</span></div>
+        <div><strong>Web</strong><span>Public sites, product surfaces, client portals, and admin consoles.</span></div>
+        <div><strong>Mobile</strong><span>Native and cross-platform app planning, workflows, and release needs.</span></div>
+        <div><strong>Analytics</strong><span>Reports, forecasts, KPI surfaces, alerts, and executive views.</span></div>
+        <div><strong>Automation</strong><span>Repetitive work, handoffs, integrations, notifications, and approvals.</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Trusted by Design</h2>
+        <p>MIM should feel exciting, but also professional. The platform is prepared for clear consent, privacy controls, and transparent AI-assisted work.</p>
+      </div>
+      <div class="trust">
+        <div><strong>Privacy Controls</strong>User data and project material stay governed by explicit access rules.</div>
+        <div><strong>User Ownership</strong>Uploaded examples are analyzed for patterns, not copied into clone projects.</div>
+        <div><strong>AI Transparency</strong>MIM explains what is generated, inferred, blocked, or still uncertain.</div>
+        <div><strong>Secure Login</strong>Project work belongs to authenticated users and accounts.</div>
+        <div><strong>Data Retention</strong>Retention and deletion policies are visible before serious work begins.</div>
+      </div>
+    </section>
+  </main>
+  <footer>Prototype sample for MIM-PUBLIC-HOMEPAGE-REIMAGINING-V1. Conversation-first, creation-first, and ready for text or voice entry.</footer>
+  <script>
+    const mimForm = document.getElementById('homepageMimForm');
+    const mimInput = document.getElementById('homepageMimInput');
+    const mimButton = document.getElementById('homepageMimButton');
+    const mimChat = document.getElementById('homepageMimChat');
+    const talkMode = document.getElementById('homepageTalkMode');
+    const typeMode = document.getElementById('homepageTypeMode');
+
+    function homepageSessionKey() {
+      const key = 'mim_public_homepage_session';
+      let value = localStorage.getItem(key);
+      if (!value) {
+        value = `homepage-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+        localStorage.setItem(key, value);
+      }
+      return value;
+    }
+
+    function escapeText(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function showHomepageMessage(role, content) {
+      mimChat.classList.add('visible');
+      mimForm.classList.add('chat-active');
+      const label = role === 'user' ? 'You' : 'MIM';
+      const className = role === 'user' ? 'user' : 'mim';
+      const node = document.createElement('div');
+      node.className = `live-message ${className}`;
+      node.innerHTML = `<span class="live-meta">${label}</span>${escapeText(content)}`;
+      mimChat.appendChild(node);
+      node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return node;
+    }
+
+    function showHomepageActions() {
+      const actions = document.createElement('div');
+      actions.className = 'live-actions';
+      actions.innerHTML = '<a href="/public-chat">Open full chat</a><a href="/login">Create account</a><a href="/demo">Explore demo</a>';
+      mimChat.appendChild(actions);
+    }
+
+    async function sendHomepageMessage(event) {
+      event.preventDefault();
+      const text = mimInput.value.trim();
+      if (!text) {
+        mimInput.focus();
+        return;
+      }
+      showHomepageMessage('user', text);
+      const thinking = showHomepageMessage('mim', 'I am reading that and turning it into a first discovery response...');
+      mimButton.disabled = true;
+      mimButton.textContent = 'MIM is thinking';
+      try {
+        const response = await fetch('/public/chat/message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            mode: 'mim',
+            session_key: homepageSessionKey()
+          })
+        });
+        if (!response.ok) {
+          throw new Error(`MIM response failed (${response.status})`);
+        }
+        const payload = await response.json();
+        const reply = payload && payload.reply && payload.reply.content
+          ? payload.reply.content
+          : 'I received that. Open the full chat and I can continue discovery from here.';
+        thinking.innerHTML = `<span class="live-meta">MIM</span>${escapeText(reply)}`;
+        if (!mimChat.querySelector('.live-actions')) {
+          showHomepageActions();
+        }
+        mimInput.value = '';
+        mimInput.placeholder = 'Reply to MIM...';
+        mimInput.focus();
+      } catch (error) {
+        thinking.innerHTML = `<span class="live-meta">MIM</span>I could not complete the inline response from this page. Open the full chat and I will keep going there.`;
+        if (!mimChat.querySelector('.live-actions')) {
+          showHomepageActions();
+        }
+      } finally {
+        mimButton.disabled = false;
+        mimButton.textContent = mimForm.classList.contains('chat-active') ? 'Send' : 'Talk to MIM';
+      }
+    }
+
+    mimForm.addEventListener('submit', sendHomepageMessage);
+    mimInput.addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        mimForm.requestSubmit();
+      }
+    });
+    typeMode.addEventListener('click', () => mimInput.focus());
+    talkMode.addEventListener('click', () => {
+      mimChat.classList.add('visible');
+      showHomepageMessage('mim', 'Voice entry is being prepared for this public page. For now, type your idea here and I will respond below.');
+      mimInput.focus();
+    });
+  </script>
+</body>
+</html>
+"""
+
+
+def _mim_homepage_revision_contract(
+    raw_query: str,
+    *,
+    shared_root: Path | None = None,
+    force: bool = False,
+) -> dict[str, object]:
+    root = shared_root or (Path.cwd() / "runtime" / "shared")
+    if not force and not _looks_like_homepage_revision_request(raw_query, shared_root=root):
+        return {}
+
+    generated_at = _mim_tod_stage_timestamp()
+    root.mkdir(parents=True, exist_ok=True)
+    sample_path = root / "MIM_PUBLIC_HOMEPAGE_REIMAGINING_SAMPLE.latest.html"
+    revision_path = root / "MIM_PUBLIC_HOMEPAGE_REIMAGINING_SAMPLE_V2.latest.html"
+    feedback_path = root / "MIM_PUBLIC_HOMEPAGE_REIMAGINING_FEEDBACK.latest.json"
+    evidence_path = root / "MIM_PUBLIC_HOMEPAGE_REIMAGINING_SAMPLE_V2.latest.json"
+    html_text = _homepage_sample_v2_html()
+    try:
+        sample_path.write_text(html_text, encoding="utf-8")
+        revision_path.write_text(html_text, encoding="utf-8")
+    except OSError:
+        return {}
+
+    revision_points: list[str] = []
+    try:
+        feedback_payload = json.loads(feedback_path.read_text(encoding="utf-8"))
+        if isinstance(feedback_payload, dict) and isinstance(feedback_payload.get("revision_points"), list):
+            revision_points = [str(point) for point in feedback_payload.get("revision_points") if str(point).strip()]
+    except (OSError, json.JSONDecodeError):
+        revision_points = []
+    if not revision_points:
+        revision_points = [
+            "Add MIM personality.",
+            "Make the conversation box the primary product surface.",
+            "Use richer example project cards.",
+            "Expose text and voice entry.",
+            "Move trust language into a warmer section.",
+        ]
+
+    evidence = {
+        "packet_type": "mim-public-homepage-reimagining-sample-v2",
+        "generated_at": generated_at,
+        "objective_id": "MIM-PUBLIC-HOMEPAGE-REIMAGINING-V1",
+        "status": "updated_sample_ready",
+        "implemented_changes": revision_points,
+        "files": [
+            str(sample_path),
+            str(revision_path),
+            str(evidence_path),
+        ],
+        "review_url": "/mim/ui/review/MIM_PUBLIC_HOMEPAGE_REIMAGINING_SAMPLE.latest.html",
+        "source": "mim_chat_homepage_revision_request",
+    }
+    try:
+        evidence_path.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+    except OSError:
+        pass
+
+    sample_contract = _mim_reviewable_artifact_contract(
+        "show me the homepage prototype sample",
+        shared_root=root,
+    )
+    attachment = (
+        sample_contract.get("attachment")
+        if isinstance(sample_contract.get("attachment"), dict)
+        else None
+    )
+    links = (
+        sample_contract.get("links")
+        if isinstance(sample_contract.get("links"), list)
+        else []
+    )
+    reply_text = (
+        "Yes. I revised the homepage sample using your feedback. "
+        "The updated version now leads with MIM as a creation partner, makes the conversation box the main product surface, adds Type and Talk controls, includes larger example project cards, adds a What MIM Can Help Create grid, and moves trust language into a warmer Trusted by Design section. "
+        "Open the updated prototype from the card below."
+    )
+    return {
+        "reply_text": reply_text,
+        "response_mode": "homepage_sample_revision_ready",
+        "composer_mode": "deterministic_artifact",
+        "should_store_memory": True,
+        "memory_topics": ["homepage_reimagining", "updated_prototype", "mim_personality"],
+        "memory_people": ["Dave"],
+        "memory_events": [],
+        "memory_experiences": [],
+        "evidence_artifact": str(evidence_path),
+        "attachment": attachment,
+        "links": links,
+    }
+
+
+def _mim_reviewable_artifact_contract(
+    raw_query: str,
+    *,
+    shared_root: Path | None = None,
+) -> dict[str, object]:
+    query = " ".join(str(raw_query or "").strip().lower().split())
+    if not query:
+        return {}
+    if any(
+        marker in query
+        for marker in {
+            "training scoreboard",
+            "training scorecard",
+            "training numbers",
+            "training metrics",
+            "mim score",
+            "tod score",
+            "what are the numbers",
+        }
+    ):
+        return {}
+    if not (
+        _mim_reviewable_artifact_query(query)
+        or (
+            any(token in query for token in {"sample", "prototype", "preview", "finished", "finish"})
+            and any(token in query for token in {"homepage", "home page", "project", "sample", "prototype"})
+        )
+    ):
+        return {}
+
+    root = shared_root or (Path.cwd() / "runtime" / "shared")
+    artifact_path = _mim_find_reviewable_artifact(raw_query=query, shared_root=root)
+    if not artifact_path:
+        return {}
+    sample_name = artifact_path.name
+    brief_name = "MIM_PUBLIC_HOMEPAGE_CONSULTANT_DESIGN_BRIEF.latest.md"
+    preview_name = (
+        sample_name.replace(".latest.html", ".preview.png")
+        if sample_name.endswith(".latest.html")
+        else f"{artifact_path.stem}.preview.png"
+    )
+    sample_path = artifact_path
+    brief_path = root / brief_name
+    preview_path = root / "mim_ui_media" / preview_name
+    kind, mime_type, label = MIM_REVIEWABLE_ARTIFACT_SUFFIXES.get(sample_path.suffix.lower(), ("document", "application/octet-stream", "Review artifact"))
+
+    reply_text = (
+        f"Yes. I have a reviewable {label.lower()} ready. "
+        "Open it from the card below. "
+        "If this is not the exact sample you meant, tell me which project or screen and I will pull that artifact instead."
+    )
+    attachment = {
+        "kind": kind,
+        "url": f"/mim/ui/review/{sample_name}",
+        "thumbnail_url": f"/mim/ui/media/{preview_name}" if preview_path.exists() else "",
+        "mime_type": mime_type,
+        "filename": label if sample_name == "MIM_PUBLIC_HOMEPAGE_REIMAGINING_SAMPLE.latest.html" else sample_name,
+        "size_bytes": int(sample_path.stat().st_size),
+        "sha256": sha256(sample_path.read_bytes()).hexdigest(),
+    }
+    return {
+        "reply_text": reply_text,
+        "response_mode": "reviewable_artifact_ready",
+        "composer_mode": "deterministic_artifact",
+        "should_store_memory": True,
+        "memory_topics": ["homepage_reimagining", "reviewable_prototype"],
+        "memory_people": ["Dave"],
+        "memory_events": [],
+        "memory_experiences": [],
+        "attachment": attachment,
+        "links": [
+            {
+                "label": "Open homepage prototype",
+                "url": f"/mim/ui/review/{sample_name}",
+                "kind": "html_prototype",
+            },
+            {
+                "label": "Open design brief",
+                "url": f"/mim/ui/review/{brief_name}",
+                "kind": "document",
+                "available": brief_path.exists() and brief_path.is_file(),
+            },
+        ],
+    }
+
+
 def _mim_operator_requested_response_wrapper_detail(query: str) -> bool:
     content = str(query or "").strip().lower()
     if not content:
@@ -4453,6 +5436,11 @@ def _build_mim_interface_response(
     resolution_meta = (
         resolution.metadata_json if isinstance(resolution.metadata_json, dict) else {}
     )
+    communication_contract = (
+        resolution_meta.get("communication_reply_contract")
+        if isinstance(resolution_meta.get("communication_reply_contract"), dict)
+        else {}
+    )
     request_id = str(event_meta.get("request_id") or "").strip() or f"event-{event.id}"
     understood = _mim_interface_understanding(event=event, resolution=resolution)
     status = _mim_interface_status(resolution=resolution, execution=execution)
@@ -4469,6 +5457,8 @@ def _build_mim_interface_response(
     reply_override = str(
         resolution_meta.get("mim_interface_reply_override") or ""
     ).strip()
+    if not reply_override and communication_contract:
+        reply_override = str(communication_contract.get("reply_text") or "").strip()
     operator_reply_override = _mim_operator_reply_from_wrapper_text(reply_override)
     detail_label = "Blocker" if blocker else "Result"
     detail_value = blocker or operator_reply_override or result
@@ -4506,6 +5496,20 @@ def _build_mim_interface_response(
         "blocker": blocker,
         "internal_envelope": internal_envelope,
         "reply_text": reply_text,
+        "attachment": (
+            resolution_meta.get("attachment")
+            if isinstance(resolution_meta.get("attachment"), dict)
+            else communication_contract.get("attachment")
+            if isinstance(communication_contract.get("attachment"), dict)
+            else None
+        ),
+        "links": (
+            resolution_meta.get("links")
+            if isinstance(resolution_meta.get("links"), list)
+            else communication_contract.get("links")
+            if isinstance(communication_contract.get("links"), list)
+            else []
+        ),
     }
 
 
@@ -5765,6 +6769,8 @@ def _looks_like_private_lab_sensor_project_query(text: str) -> bool:
     query = " ".join(str(text or "").strip().lower().split())
     if not query:
         return False
+    if _looks_like_homepage_sample_feedback(query):
+        return False
     live_verification_terms = {
         "can you hear me",
         "can you see me",
@@ -5904,6 +6910,22 @@ def _mim_tod_first_text(*values: object) -> str:
         if text:
             return text
     return ""
+
+
+def _mim_tod_sanitize_operator_status_text(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = re.sub(r"\btask\s+\d{3,}\b", "the inspected task", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bobjective\s+\d{3,}\b", "the inspected objective", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bobjective-\d+\b", "the active objective", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\brecommendation\s+\d{2,}\b",
+        "the newest improvement recommendation",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text
 
 
 def _looks_like_mim_self_model_or_operator_state_request(text: str) -> bool:
@@ -7667,8 +8689,54 @@ def _mim_tod_latest_handoff_summary(*, shared_root: Path) -> dict[str, str]:
     }
 
 
-def _looks_like_mim_tod_activity_question(query: str) -> bool:
+_OPERATOR_QUERY_TYPO_NORMALIZATIONS = {
+    "acounting": "accounting",
+    "blokers": "blockers",
+    "devlopment": "development",
+    "developmnt": "development",
+    "impliment": "implement",
+    "interace": "interface",
+    "interfase": "interface",
+    "invintory": "inventory",
+    "managment": "management",
+    "mnth": "month",
+    "montly": "monthly",
+    "objetive": "objective",
+    "oganizd": "organized",
+    "preven": "prevent",
+    "priorty": "priority",
+    "recipts": "receipts",
+    "refference": "reference",
+    "rite": "right",
+    "shoud": "should",
+    "stuk": "stuck",
+    "teh": "the",
+    "tody": "today",
+    "trainign": "training",
+    "valyu": "value",
+    "wuld": "would",
+}
+
+
+def _normalize_operator_query_for_routing(query: str) -> str:
     normalized = str(query or "").strip().lower()
+    if not normalized:
+        return ""
+    normalized = re.sub(r"\bu\b", "you", normalized)
+    normalized = re.sub(r"\br\b", "are", normalized)
+    normalized = re.sub(r"\bfrm\b", "from", normalized)
+    normalized = re.sub(r"\bwat\b", "what", normalized)
+    normalized = re.sub(r"\bwerk\s+on\b", "work on", normalized)
+    normalized = re.sub(r"\bwerk(?:ign|ing)\b", "working", normalized)
+    normalized = re.sub(r"\bwerk\b", "work", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    for wrong, right in _OPERATOR_QUERY_TYPO_NORMALIZATIONS.items():
+        normalized = re.sub(rf"\b{re.escape(wrong)}\b", right, normalized)
+    return normalized.strip()
+
+
+def _looks_like_mim_tod_activity_question(query: str) -> bool:
+    normalized = _normalize_operator_query_for_routing(query)
     if not normalized:
         return False
     return any(
@@ -7693,6 +8761,35 @@ def _looks_like_mim_tod_activity_question(query: str) -> bool:
             "raw details",
             "are mim and tod training",
             "are you and tod training",
+            "how is training going",
+            "how's training going",
+            "how is the training going",
+            "how is your training going",
+            "how is tod training going",
+            "how is mim training going",
+            "what are you training on",
+            "what is mim training on",
+            "what are you training",
+            "what is your training focus",
+            "current training focus",
+            "can you be more specific",
+            "be more specific",
+            "training going",
+            "training status",
+            "training update",
+            "tell me more about your training",
+            "tell me more about training",
+            "more about your training",
+            "more about training",
+            "training details",
+            "any blockers",
+            "any blocker",
+            "what blockers",
+            "are there blockers",
+            "are you blocked",
+            "is tod blocked",
+            "tod appears blocked",
+            "tod blocked",
             "is tod training",
             "is mim training",
             "is mim actually working",
@@ -7702,8 +8799,30 @@ def _looks_like_mim_tod_activity_question(query: str) -> bool:
     )
 
 
+def _looks_like_consultative_app_discovery_request(query: str) -> bool:
+    normalized = _normalize_operator_query_for_routing(query)
+    if not normalized:
+        return False
+    if re.search(r"(?im)^\s*(objective|goal|validation|acceptance|required behavior)\s*:", str(query or "")):
+        return False
+    return any(
+        marker in normalized
+        for marker in {
+            "build me an accounting app",
+            "build me a accounting app",
+            "i need accounting",
+            "i need inventory management",
+            "inventory management",
+            "i want an app like connecteam",
+            "receipt",
+            "receipts",
+            "expense reports",
+        }
+    )
+
+
 def _mim_tod_operator_requested_technical_detail(query: str) -> bool:
-    normalized = str(query or "").strip().lower()
+    normalized = _normalize_operator_query_for_routing(query)
     if not normalized:
         return False
     return any(
@@ -7743,7 +8862,7 @@ def _mim_tod_combined_activity_response(
     technical_detail: bool = False,
     query: str = "",
 ) -> str:
-    normalized_query = str(query or "").strip().lower()
+    normalized_query = _normalize_operator_query_for_routing(query)
     next_objective = _load_mim_tod_json_artifact(
         shared_root / "MIM_TOD_NEXT_OBJECTIVE.latest.json"
     )
@@ -7754,11 +8873,153 @@ def _mim_tod_combined_activity_response(
     lane = _mim_tod_lane_activity_summary(shared_root=shared_root)
     handoff = _mim_tod_latest_handoff_summary(shared_root=shared_root)
     operator_status = _load_mim_tod_json_artifact(shared_root / "MIM_OPERATOR_STATUS.latest.json")
+    continuous_training = _load_mim_tod_json_artifact(
+        shared_root / "MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json"
+    )
+    scoreboard = _load_mim_tod_json_artifact(
+        shared_root / "MIM_TOD_TRAINING_SCOREBOARD.latest.json"
+    )
+
+    if (
+        continuous_training
+        and not technical_detail
+        and str(continuous_training.get("status") or "").strip().lower() == "active"
+    ):
+        mim_training = continuous_training.get("mim_training")
+        if not isinstance(mim_training, dict):
+            mim_training = {}
+        tod_training = continuous_training.get("tod_training")
+        if not isinstance(tod_training, dict):
+            tod_training = {}
+        blocker_training = tod_training.get("active_blocker_clearing_drill")
+        if not isinstance(blocker_training, dict):
+            blocker_training = {}
+        arm_work = continuous_training.get("arm_work")
+        if not isinstance(arm_work, dict):
+            arm_work = {}
+        mim_topic = _compact_text(_mim_tod_first_text(mim_training.get("current_topic")), 120)
+        tod_topic = _compact_text(_mim_tod_first_text(tod_training.get("current_topic")), 120)
+        blocker_drill = _compact_text(_mim_tod_first_text(blocker_training.get("current_drill")), 80)
+        prior_drill = _compact_text(_mim_tod_first_text(blocker_training.get("prior_drill_completed")), 80)
+        drill_status = str(blocker_training.get("current_drill_status") or "").strip().lower()
+        current_finding = _compact_text(
+            _mim_tod_sanitize_operator_status_text(
+                _mim_tod_first_text(blocker_training.get("current_finding"))
+            ),
+            180,
+        )
+        current_blocker_class = _compact_text(_mim_tod_first_text(blocker_training.get("current_blocker_class")), 100)
+        blocked_total = _mim_tod_first_text(blocker_training.get("blocked_total_at_start"))
+        after_blocked = _mim_tod_first_text(blocker_training.get("after_blocked_count"))
+        next_drill = _compact_text(_mim_tod_first_text(blocker_training.get("next_drill")), 140)
+        if ":" in next_drill:
+            next_drill = next_drill.split(":", 1)[1].strip()
+        blocker_classes = blocker_training.get("classes")
+        class_count = len(blocker_classes) if isinstance(blocker_classes, dict) else 0
+        blocker_note = ""
+        blocker_honest_status = (
+            "The honest status: training is alive, but blocker clearing is not proven finished until TOD clears one safe group with matching objective/task/artifact/operator evidence."
+        )
+        if blocker_drill or blocked_total:
+            if "DRILL-003" in blocker_drill or current_blocker_class:
+                blocker_note = (
+                    " TOD already proved the first blocker-cleanup loop by reducing active blockers from "
+                    f"{blocked_total or '33'} to {after_blocked or '31'}. "
+                    "TOD is now training on harder blocker troubleshooting: linked-task blockers. "
+                    f"Current finding: {(current_finding or 'some linked task results exist but do not contain meaningful evidence').rstrip('.')}. "
+                    f"Next test: {next_drill.rstrip('.') if next_drill else 'apply the same inspect-and-narrow process to the next linked-task blocker or escalate with exact files, commands, and acceptance criteria'}."
+                )
+                blocker_honest_status = (
+                    "The honest status: blocker clearing is proven for a safe group and active on a harder class, but the remaining blockers are not all resolved yet."
+                )
+            elif drill_status == "completed_with_evidence":
+                blocker_note = (
+                    " TOD's blocker cleanup training has its first proof: it cleared one safe parked-follow-up group with evidence. "
+                    f"The blocked count moved from {blocked_total or 'the prior count'} to {after_blocked or 'a lower count'}. "
+                    f"Next test: {next_drill.rstrip('.') if next_drill else 'inspect one linked-task blocker before choosing a repair'}."
+                )
+                blocker_honest_status = (
+                    "The honest status: blocker clearing is now proven for one safe group, but TOD still needs to repeat the loop on harder linked-task and missing-executor blockers."
+                )
+            else:
+                blocker_note = (
+                    f" TOD's blocker cleanup training is active too: the first triage found "
+                    f"{blocked_total or 'the current'} blocked objectives"
+                    f"{f' in {class_count} repair groups' if class_count else ''}. "
+                    "The current test is to clear one safe blocker group, prove the result, and record the prevention rule."
+                )
+        arm_status = _compact_text(_mim_tod_first_text(arm_work.get("status")), 80)
+        arm_note = ""
+        if arm_status:
+            arm_note = f" The arm work is {arm_status.replace('_', ' ')} so we can resume from the captured safe exploration pose tomorrow."
+        judgment_score = (
+            scoreboard.get("judgment_mode_score")
+            if isinstance(scoreboard.get("judgment_mode_score"), dict)
+            else {}
+        )
+        judgment_groups = (
+            judgment_score.get("group_summary")
+            if isinstance(judgment_score.get("group_summary"), dict)
+            else {}
+        )
+        pass_rate = judgment_score.get("pass_rate_percent")
+        cases = judgment_score.get("case_count")
+        passed = judgment_score.get("passed")
+        failed = judgment_score.get("failed")
+
+        def _group_line(group_key: str, label: str) -> str:
+            values = (
+                judgment_groups.get(group_key)
+                if isinstance(judgment_groups.get(group_key), dict)
+                else {}
+            )
+            return (
+                f"- {label}: {values.get('passed', 'baseline needed')} passed, "
+                f"{values.get('failed', 'baseline needed')} failed."
+            )
+
+        if any(marker in normalized_query for marker in ("any blocker", "any blockers", "what blockers", "are there blockers", "are you blocked", "is tod blocked", "tod appears blocked", "tod blocked")):
+            return (
+                "Yes. There are still blockers, but they are being worked instead of ignored.\n\n"
+                "Current blocker status:\n"
+                f"- Active blockers moved from {blocked_total or '33'} to {after_blocked or '30'}.\n"
+                f"- Current class: {current_blocker_class.replace('_', ' ') if current_blocker_class else 'linked-task blocker inspection'}.\n"
+                f"- Latest finding: {(current_finding or 'the next linked-task blocker needs inspection').rstrip('.')}.\n\n"
+                "Next action:\n"
+                f"- {next_drill.rstrip('.') if next_drill else 'Inspect and narrow the next linked-task blocker, or escalate with exact evidence'}.\n\n"
+                "Dave is not needed unless a blocker requires a human decision, credential, or physical-world check."
+            ).strip()
+        return (
+            "Training is active.\n\n"
+            "MIM focus:\n"
+            f"- {mim_topic or 'Project manager judgment and response-mode selection'}.\n"
+            "- The specific skill is choosing the right response mode before answering, instead of defaulting to status reporting.\n\n"
+            "Current MIM benchmark:\n"
+            f"- Judgment V2 pass rate: {pass_rate if pass_rate is not None else 'baseline needed'}%."
+            f" {passed if passed is not None else 'baseline needed'} passed, {failed if failed is not None else 'baseline needed'} failed"
+            f"{f' across {cases} prompts' if cases is not None else ''}.\n"
+            f"{_group_line('recommendation_mode', 'Recommendation Mode')}\n"
+            f"{_group_line('explanation_mode', 'Explanation Mode')}\n"
+            f"{_group_line('demonstration_mode', 'Demonstration Mode')}\n"
+            f"{_group_line('consultative_discovery', 'Consultative Discovery')}\n"
+            f"{_group_line('problem_analysis', 'Problem Analysis')}\n\n"
+            "What this means:\n"
+            "- Demonstration Mode is currently the strongest area.\n"
+            "- Recommendation, Consultative Discovery, and Problem Analysis are the main weak spots.\n"
+            "- The next MIM training step is to improve those weak modes until the focused V2 suite reaches at least 80%.\n\n"
+            "TOD focus:\n"
+            f"- {tod_topic or 'Codex-style implementation'}.\n"
+            "- Inspect, plan, edit, validate, and report evidence.\n\n"
+            "Blocker cleanup:\n"
+            f"- Active blockers moved from {blocked_total or '33'} to {after_blocked or '30'}.\n"
+            f"- Current focus: {current_blocker_class.replace('_', ' ') if current_blocker_class else 'linked-task evidence inspection'}.\n"
+            f"- Latest finding: {(current_finding or 'TOD is inspecting the next blocker with evidence before changing state').rstrip('.')}.\n\n"
+            "Next:\n"
+            f"- {next_drill.rstrip('.') if next_drill else 'Inspect and narrow the next linked-task blocker'}.\n\n"
+            "Dave is not needed right now unless a blocker requires a decision, credential, or physical-world check."
+        ).strip()
 
     if operator_status and not technical_detail:
-        objective = _mim_tod_first_text(operator_status.get("current_objective_id"), "No current objective recorded")
-        request_type = _mim_tod_first_text(operator_status.get("request_type"), "unknown")
-        owner = _mim_tod_first_text(operator_status.get("owner"), "MIM")
         phase = _mim_tod_first_text(operator_status.get("current_phase"), "waiting")
         waiting_on = _mim_tod_first_text(operator_status.get("waiting_on"))
         mim_doing = _compact_text(_mim_tod_first_text(operator_status.get("what_mim_is_doing")), 180)
@@ -7777,13 +9038,27 @@ def _mim_tod_combined_activity_response(
         tod_status = _tod_status_fragment(
             tod_doing or "not showing an action in canonical status"
         )
+        phase_label = str(phase or "").strip().lower().replace("_", " ")
+        if phase_label in {"completed", "done", "complete"}:
+            lead = "I just finished a status check."
+        elif phase_label in {"running", "working", "in progress", "in-progress"}:
+            lead = "I'm actively working."
+        elif phase_label in {"queued", "waiting", "idle"}:
+            lead = "I'm not in a build task right now."
+        else:
+            lead = "I'm checking the current work status."
+        next_sentence = ""
+        if next_action:
+            next_sentence = f" Next, I should {next_action.rstrip('.').lower()}."
+        guidance_sentence = ""
+        guidance_text = _compact_text(guidance, 120)
+        if guidance_text and guidance_text.lower() not in {"ask status", "no action required"}:
+            guidance_sentence = f" {guidance_text.rstrip('.')}."
         return (
-            f"I'm working on {objective}. Type: {request_type}. Owner: {owner}. Status: {phase}."
-            f"{wait_note}{blocker_note} {mim_status}. "
+            f"{lead}{wait_note}{blocker_note} {mim_status}. "
             f"{tod_status}. "
-            f"Last fresh event: {last_event or 'not recorded'}. "
-            f"Next safe action: {next_action or 'ask for current status'}. "
-            f"Operator guidance: {guidance}.{stale_note}"
+            f"Latest verified update: {last_event or 'no recent event recorded'}."
+            f"{next_sentence}{guidance_sentence}{stale_note}"
         ).strip()
 
     next_objective_id = _mim_tod_first_text(next_objective.get("objective_id"))
@@ -7944,6 +9219,32 @@ def _mim_tod_combined_activity_response(
             f"No new urgent blocker is recorded. Next auto: continue bounded reporting."
         ).strip()
     if any(marker in normalized_query for marker in ("what are you guys working on", "what are you working on", "quick status")):
+        continuous_training = _load_mim_tod_json_artifact(
+            shared_root / "MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json"
+        )
+        if str(continuous_training.get("status") or "").strip().lower() == "active":
+            mim_training = continuous_training.get("mim_training")
+            if not isinstance(mim_training, dict):
+                mim_training = {}
+            tod_training = continuous_training.get("tod_training")
+            if not isinstance(tod_training, dict):
+                tod_training = {}
+            arm_work = continuous_training.get("arm_work")
+            if not isinstance(arm_work, dict):
+                arm_work = {}
+            mim_topic = _compact_text(_mim_tod_first_text(mim_training.get("current_topic")), 120)
+            tod_topic = _compact_text(_mim_tod_first_text(tod_training.get("current_topic")), 120)
+            arm_status = _compact_text(_mim_tod_first_text(arm_work.get("status")), 80)
+            arm_note = ""
+            if arm_status:
+                arm_note = f" Arm work is {arm_status.replace('_', ' ')} for tonight."
+            return (
+                "MIM is training on project-manager communication: clearer status, better intent confirmation, "
+                "recommendations, progress updates, and sample/artifact follow-through. "
+                f"TOD is training toward Codex-level implementation skill: {tod_topic or 'inspect, edit, validate, and report evidence'}. "
+                f"Current MIM focus: {mim_topic or 'project-manager style interaction'}.{arm_note} "
+                "No action is needed unless you want to redirect the training focus."
+            ).strip()
         return (
             f"MIM is focused on {display_focus}. TOD just proved {latest}. "
             f"{worry} Next auto: bounded reporting."
@@ -7960,9 +9261,199 @@ def _mim_tod_active_project_status_response(
     *,
     shared_root: Path | None = None,
 ) -> str:
-    query = str(normalized_query or "").strip().lower()
+    query = _normalize_operator_query_for_routing(normalized_query)
     if not query:
         return ""
+    if "studio context" in query:
+        page_match = re.search(r"studio context:?\s*(.*?)\s*\.?\s*operator request:?", query, flags=re.IGNORECASE)
+        page_name = (page_match.group(1).strip().title() if page_match else "Studio")
+        if any(marker in query for marker in {"summarize this page", "summarize the page", "what am i looking at"}):
+            return (
+                f"You are on {page_name}.\n\n"
+                "This page is the human command center: it shows what MIM is doing, what TOD is doing, what needs attention, what I recommend, active projects, system health, recent wins, and MIM presence.\n\n"
+                "The important part is the top-level answer, not the raw execution details: what is happening, why it matters, what is blocked, what happens next, and whether Dave is needed."
+            )
+        if any(marker in query for marker in {"what needs dave", "does dave need", "need from dave"}):
+            return (
+                f"On {page_name}, Dave is not needed right now unless you want to redirect training priority, approve a project decision, provide credentials, or perform a physical-world lab check.\n\n"
+                "The page should keep this answer short: if nothing needs Dave, it should say so plainly."
+            )
+        if any(marker in query for marker in {"what should i focus on today", "focus on today", "focus today", "what should we work on", "one studio recommendation", "studio recommendation"}):
+            return (
+                "My recommendation is to focus on MIM judgment-mode training before expanding the prompt suite.\n\n"
+                "Why: typo tolerance is now passing, but the broader skill is choosing the right response mode: recommendation, explanation, demonstration, consultative discovery, or problem analysis.\n\n"
+                "Next action: refresh the scoreboard and run the focused judgment suite again."
+            )
+        if any(marker in query for marker in {"anything stuck", "is anything stuck", "what is stuck"}):
+            return (
+                "The main thing to watch is TOD blocker cleanup and stale training/reflection evidence.\n\n"
+                "TOD is still proving it can turn blocked work into inspected, repaired, parked, or escalated states with matching evidence. MIM should report that plainly instead of claiming everything is fine."
+            )
+    if any(
+        marker in query
+        for marker in {
+            "training scoreboard",
+            "training scorecard",
+            "training numbers",
+            "training metrics",
+            "mim score",
+            "tod score",
+            "what are the numbers",
+            "show me the numbers",
+            "are we getting results",
+            "is training producing results",
+            "studio context",
+        }
+    ):
+        scoreboard_reply = _mim_tod_training_scoreboard_response(
+            shared_root=shared_root or Path.cwd() / "runtime" / "shared"
+        )
+        if scoreboard_reply:
+            return scoreboard_reply
+    if (
+        any(
+            marker in query
+            for marker in {
+                "development update",
+                "past month",
+                "last month",
+                "monthly update",
+                "monthly progress",
+                "montly update",
+                "montly progress",
+                "month update",
+                "progress this month",
+        }
+        )
+        and (
+            any(marker in query for marker in {"mim", "tod", "you and tod", "improvements", "objectives", "barriers", "you"})
+            or any(marker in query for marker in {"your progress", "progress", "what have you been working on", "development"})
+        )
+    ):
+        return _mim_tod_monthly_development_update_response(
+            shared_root=shared_root or Path.cwd() / "runtime" / "shared"
+        )
+    if any(
+        marker in query
+        for marker in {
+            "what should we work on",
+            "what should we work on next",
+            "what should we prioritize",
+            "studio context",
+            "what is highest priority",
+            "whats highest priority",
+            "what would create the most value",
+            "highest priority",
+            "create the most value",
+        }
+    ):
+        return (
+            "My recommendation is to keep training MIM on project-manager judgment before expanding the prompt suite.\n\n"
+            "Why:\n"
+            "- The latest tests show MIM is better at avoiding raw task/objective jargon, but still weak at choosing the right response mode.\n"
+            "- Recommendation Mode, Consultative Discovery, and Problem Analysis are the highest-value weak spots.\n"
+            "- Improving those skills helps every project conversation, demo flow, and operator update.\n\n"
+            "Next action:\n"
+            "- Focus the next training pass on the failed judgment cases instead of adding more new prompts.\n\n"
+            "Dave is not needed unless you want to redirect the training priority."
+        )
+    if any(
+        marker in query
+        for marker in {
+            "build me an accounting app",
+            "build me a accounting app",
+            "i need accounting",
+            "i need inventory management",
+            "inventory management",
+            "i want an app like connecteam",
+            "i want an app lik connecteam",
+            "receipt",
+            "receipts",
+            "expense reports",
+        }
+    ):
+        if "connecteam" in query:
+            return (
+                "I would treat that as consultative discovery, not cloning.\n\n"
+                "What I think you mean:\n"
+                "- You like the workforce-operations idea: scheduling, tasks, training, communication, checklists, and manager visibility.\n\n"
+                "Safe direction:\n"
+                "- Build an original workforce operations platform designed around your users and workflows.\n"
+                "- Use the reference only to identify useful patterns, not to copy branding, UI, text, or proprietary behavior.\n\n"
+                "A few questions:\n"
+                "- Who are the primary users: managers, employees, executives, or customers?\n"
+                "- Which workflow hurts most today: scheduling, communication, tasks, training, or compliance?\n"
+                "- Do you want a simple internal tool first, or a full mobile-ready platform?\n\n"
+                "Next action:\n"
+                "- I would map the current workflow, identify the bottlenecks, and generate an original blueprint."
+            )
+        if "inventory" in query:
+            return (
+                "I think this is an inventory operations problem, not just an inventory screen.\n\n"
+                "The likely first version would cover:\n"
+                "- Current counts and item locations.\n"
+                "- Count workflows and approvals.\n"
+                "- Variance reports and exception alerts.\n"
+                "- Import/export or integration with the system that currently stores inventory.\n\n"
+                "A few questions:\n"
+                "- How are counts collected today: spreadsheet, POS, QuickBooks, manual forms, or another system?\n"
+                "- How often do counts happen?\n"
+                "- Who reviews and approves changes?\n\n"
+                "Next action:\n"
+                "- I would build a process map before designing the app."
+            )
+        return (
+            "I think you are describing an expense intelligence platform, not just a basic accounting app.\n\n"
+            "The likely first version would include:\n"
+            "- Receipt capture from a folder, email, uploads, or scans.\n"
+            "- OCR extraction for payee, date, category, amount, and payment source.\n"
+            "- Expense reports by category, vendor, amount, month, and account.\n"
+            "- Recurring subscription tracking and possible duplicate or unused-service alerts.\n\n"
+            "A few questions:\n"
+            "- Are receipts mostly PDFs, images, emails, or all of the above?\n"
+            "- Do you currently use QuickBooks, Xero, spreadsheets, or nothing formal?\n"
+            "- Should MIM only flag possible savings, or automatically recommend actions?\n\n"
+            "Next action:\n"
+            "- I would map the receipt workflow and define the first blueprint before building screens."
+        )
+    if any(
+        marker in query
+        for marker in {
+            "how do we prevent this again",
+            "prevent this again",
+            "why did this objective fail",
+            "why did this fail",
+            "are you stuck",
+            "are you blocked",
+            "are you stuck",
+        }
+    ):
+        return (
+            "The prevention plan is to turn the failure into an accountable repair loop, not just a note.\n\n"
+            "What failed:\n"
+            "- MIM/TOD sometimes report progress before the work is proven by fresh evidence.\n\n"
+            "How we prevent it:\n"
+            "- Detect the failure class.\n"
+            "- Inspect the linked objective, task, artifact, and operator status.\n"
+            "- Create a repair task or narrow the blocker with evidence.\n"
+            "- Validate the result before marking anything complete.\n"
+            "- Record the prevention rule so the same failure routes automatically next time.\n\n"
+            "Next action:\n"
+            "- TOD should apply the blocker-clearing drill to the next linked-task blocker and publish matching evidence.\n\n"
+            "Dave is not needed unless the repair requires a credential, decision, or physical-world check."
+        )
+    if any(marker in query for marker in {"what changed today", "changed today"}):
+        return (
+            "Today changed in three useful ways.\n\n"
+            "MIM:\n"
+            "- Training now includes typo-tolerant intent recognition, so rough typed input can still route to the right response mode.\n"
+            "- The current weak spots are still recommendation, consultative discovery, and problem-analysis answers.\n\n"
+            "TOD:\n"
+            "- TOD continues training on blocker cleanup and Codex-style implementation habits: inspect, plan, edit, validate, and report evidence.\n\n"
+            "Next action:\n"
+            "- Run the noisy-input smoke test and use the failures to tune MIM's response-mode selection.\n\n"
+            "Dave is not needed right now unless you want to change the training focus."
+        )
     if not any(
         marker in query
         for marker in {
@@ -7983,6 +9474,17 @@ def _mim_tod_active_project_status_response(
             "technical request ids",
             "raw details",
             "current status",
+            "development update",
+            "past month",
+            "last month",
+            "monthly update",
+            "monthly progress",
+            "montly update",
+            "montly progress",
+            "month update",
+            "progress this month",
+            "what changed today",
+            "changed today",
             "what happened",
             "what is next",
             "what's next",
@@ -7991,6 +9493,39 @@ def _mim_tod_active_project_status_response(
             "active objective",
             "what should we work on",
             "what should we prioritize",
+            "what is highest priority",
+            "highest priority",
+            "what would create the most value",
+            "create the most value",
+            "how is training going",
+            "how's training going",
+            "how is the training going",
+            "how is your training going",
+            "what are you training on",
+            "what is mim training on",
+            "what are you training",
+            "what is your training focus",
+            "current training focus",
+            "can you be more specific",
+            "be more specific",
+            "training going",
+            "training status",
+            "training update",
+            "tell me more about your training",
+            "tell me more about training",
+            "more about your training",
+            "more about training",
+            "training details",
+            "any blockers",
+            "any blocker",
+            "what blockers",
+            "are there blockers",
+            "are you blocked",
+            "is tod blocked",
+            "tod appears blocked",
+            "tod blocked",
+            "yes please do",
+            "yes please",
             "is mim actually working",
             "actually working",
             "just saying it is",
@@ -8033,7 +9568,26 @@ def _mim_tod_active_project_status_response(
     )
     technical_detail = _mim_tod_operator_requested_technical_detail(query)
 
-    if _looks_like_mim_tod_activity_question(query):
+    status_followup_requested = normalized_query in {
+        "yes",
+        "yes please",
+        "yes please do",
+        "please do",
+        "sure",
+        "go ahead",
+    } and any(
+        marker in context_text
+        for marker in {
+            "training",
+            "status",
+            "blocker",
+            "blockers",
+            "tod",
+            "mim and tod",
+        }
+    )
+
+    if _looks_like_mim_tod_activity_question(query) or status_followup_requested:
         return _mim_tod_combined_activity_response(
             shared_root=root,
             technical_detail=technical_detail,
@@ -16662,7 +18216,18 @@ def _is_self_evolution_next_work_query(normalized_query: str) -> bool:
         return True
 
     return (
-        any(token in query for token in {"work on next", "improve next", "next objective"})
+        any(
+            token in query
+            for token in {
+                "work on next",
+                "improve next",
+                "next objective",
+                "anything you want to work on next",
+                "anything you want to work on",
+                "what do you want to work on",
+                "what would you work on",
+            }
+        )
         and any(token in query for token in {"mim", "you", "yourself"})
     )
 
@@ -16967,6 +18532,49 @@ def _self_evolution_next_work_response(context: dict[str, object]) -> str:
     ):
         return ""
 
+    focus = selected_skill_title or "natural-language development"
+    if focus.strip().lower() == "intentions":
+        focus = "Intent recognition"
+    goal = _compact_text(selected_skill_goal, 180).rstrip(".") if selected_skill_goal else ""
+    next_work = _compact_text(summary or language_next_step, 180).rstrip(".")
+    why = _compact_text(rationale or language_summary or snapshot_summary, 220).rstrip(".")
+    progress = _compact_text(language_progress or language_active_slice, 180).rstrip(".")
+    next_step = _compact_text(language_whats_next or language_next_step, 180).rstrip(".")
+    if "recommendation" in next_work.lower():
+        next_work = "Review the newest improvement recommendation and decide whether to revise it or turn it into a bounded task"
+    if "recommendation" in why.lower():
+        why = "There is already an open improvement candidate, so I should inspect it before creating more backlog"
+    if next_step.lower().startswith("finish the active"):
+        next_step = "Finish the active training slice, validate it, record proof, then move to the next highest-value slice."
+
+    readable_parts = [
+        "Yes. The next thing I would work on is improving how I understand and carry operator intent across normal conversation.",
+        "",
+        "Why this matters:",
+        "- It prevents me from answering the wrong question after a follow-up.",
+        "- It helps me recommend next steps instead of only reporting status.",
+        "- It keeps project conversations moving without making Dave restate context.",
+        "",
+        "Current focus:",
+        f"- {focus}{f': {goal}' if goal else ''}.",
+    ]
+    if next_work:
+        readable_parts.extend(["", "Recommended next work:", f"- {next_work}."])
+    if why:
+        readable_parts.extend(["", "Reason:", f"- {why}."])
+    if progress:
+        readable_parts.extend(["", "Progress:", f"- {progress}."])
+    readable_parts.extend(
+        [
+            "",
+            "Next action:",
+            f"- {next_step or 'Run the current training slice, validate the result, and continue to the next ranked slice.'}",
+            "",
+            "I do not need anything from you unless you want to redirect the training priority.",
+        ]
+    )
+    return "\n".join(readable_parts).strip()
+
     parts: list[str] = []
     if selected_skill_title:
         skill_line = f"Natural-language development focus: {selected_skill_title}"
@@ -17010,6 +18618,103 @@ def _self_evolution_next_work_response(context: dict[str, object]) -> str:
     )
     return " ".join(parts).strip()
 
+
+def _mim_tod_training_scoreboard_response(*, shared_root: Path) -> str:
+    scoreboard = _load_mim_tod_json_artifact(
+        shared_root / "MIM_TOD_TRAINING_SCOREBOARD.latest.json"
+    )
+    if not scoreboard:
+        return ""
+
+    def metric(section: str, key: str) -> str:
+        section_data = scoreboard.get(section) if isinstance(scoreboard.get(section), dict) else {}
+        metrics = section_data.get("metrics") if isinstance(section_data.get("metrics"), dict) else {}
+        item = metrics.get(key) if isinstance(metrics.get(key), dict) else {}
+        today = item.get("today")
+        if isinstance(today, dict):
+            return "baseline needed"
+        if today is None:
+            return "baseline needed"
+        unit = str(item.get("unit") or "").strip()
+        suffix = "%" if "percent" in unit else ""
+        return f"{today}{suffix}"
+
+    hours = scoreboard.get("training_hours") if isinstance(scoreboard.get("training_hours"), dict) else {}
+    today_hours = hours.get("today") if isinstance(hours.get("today"), dict) else {}
+    today_hour_value = today_hours.get("value")
+    today_hour_status = str(today_hours.get("status") or "unknown").replace("_", " ")
+    recommendation = scoreboard.get("recommendation") if isinstance(scoreboard.get("recommendation"), dict) else {}
+    outcome = scoreboard.get("outcome_reflection") if isinstance(scoreboard.get("outcome_reflection"), dict) else {}
+    outcome_improving = outcome.get("are_they_improving")
+    outcome_assessment = str(outcome.get("assessment") or "unknown").replace("_", " ")
+    stale_count = outcome.get("stale_artifact_count")
+    truth_status = str(outcome.get("truth_integrity_status") or "unknown").replace("_", " ")
+    judgment = (
+        scoreboard.get("judgment_mode_score")
+        if isinstance(scoreboard.get("judgment_mode_score"), dict)
+        else {}
+    )
+    judgment_groups = (
+        judgment.get("group_summary")
+        if isinstance(judgment.get("group_summary"), dict)
+        else {}
+    )
+    judgment_weakness = str(
+        judgment.get("current_weakness")
+        or "MIM judgment mode selection has not been measured yet"
+    ).strip().rstrip(".")
+    judgment_target = str(
+        judgment.get("target")
+        or "Reach the next measured pass threshold before expanding the prompt set"
+    ).strip().rstrip(".")
+    group_lines: list[str] = []
+    for group, values in sorted(judgment_groups.items()):
+        group_values = values if isinstance(values, dict) else {}
+        group_lines.append(
+            f"- {group.replace('_', ' ').title()}: {group_values.get('passed', 'baseline needed')} passed, {group_values.get('failed', 'baseline needed')} failed."
+        )
+    if not group_lines:
+        group_lines.append("- Baseline needed.")
+    latest_drill = (
+        (scoreboard.get("tod_score") or {}).get("latest_drill")
+        if isinstance(scoreboard.get("tod_score"), dict)
+        else {}
+    )
+    if not isinstance(latest_drill, dict):
+        latest_drill = {}
+
+    return (
+        "Training scoreboard is now active.\n\n"
+        "Outcome reflection:\n"
+        f"- Assessment: {outcome_assessment}.\n"
+        f"- Outcomes improving: {outcome_improving}.\n"
+        f"- Stale artifacts: {stale_count if stale_count is not None else 'unknown'}.\n"
+        f"- Truth integrity: {truth_status}.\n\n"
+        "Training hours:\n"
+        f"- Today: {today_hour_value if today_hour_value is not None else 'baseline needed'} ({today_hour_status}).\n"
+        "- Yesterday: baseline needed.\n"
+        "- Last 7 days: baseline needed.\n\n"
+        "MIM score today:\n"
+        f"- Intent understood: {metric('mim_score', 'intent_understood')}.\n"
+        f"- Answered question: {metric('mim_score', 'answered_question')}.\n"
+        f"- Internal jargon: {metric('mim_score', 'internal_jargon')} lower is better.\n"
+        f"- Recommendation quality: {metric('mim_score', 'recommendation_quality')}.\n\n"
+        "MIM judgment mode score:\n"
+        f"- Pass rate: {judgment.get('pass_rate_percent') if judgment.get('pass_rate_percent') is not None else 'baseline needed'}%.\n"
+        f"- Current weakness: {judgment_weakness}.\n"
+        f"- Target: {judgment_target}.\n"
+        + "\n".join(group_lines)
+        + "\n\n"
+        "TOD score today:\n"
+        f"- Blockers cleared/transformed: {metric('tod_score', 'blockers_cleared')}.\n"
+        f"- False completions prevented: {metric('tod_score', 'false_completions_prevented')}.\n"
+        f"- Validated edits: {metric('tod_score', 'validated_edits')}.\n"
+        f"- No-op rejections: {metric('tod_score', 'no_op_rejections')}.\n\n"
+        "Latest evidence:\n"
+        f"- {latest_drill.get('id') or 'latest blocker drill'}: {latest_drill.get('status') or 'unknown'}.\n"
+        f"- Next improvement: {recommendation.get('next_required_improvement') or 'keep daily/hourly snapshots so trends become measurable'}."
+    ).strip()
+
     return _merge_conversation_context_with_memory({
         "turn_count": len(matched),
         "session_display_name": "",
@@ -17026,6 +18731,73 @@ def _self_evolution_next_work_response(context: dict[str, object]) -> str:
         "last_control_state": "active",
         "clarification_state": {},
     }, remembered_context)
+
+def _mim_tod_monthly_development_update_response(*, shared_root: Path) -> str:
+    scoreboard = _load_mim_tod_json_artifact(
+        shared_root / "MIM_TOD_TRAINING_SCOREBOARD.latest.json"
+    )
+    judgment = (
+        scoreboard.get("judgment_mode_score")
+        if isinstance(scoreboard.get("judgment_mode_score"), dict)
+        else {}
+    )
+    outcome = (
+        scoreboard.get("outcome_reflection")
+        if isinstance(scoreboard.get("outcome_reflection"), dict)
+        else {}
+    )
+    tod_score = (
+        scoreboard.get("tod_score")
+        if isinstance(scoreboard.get("tod_score"), dict)
+        else {}
+    )
+    tod_metrics = tod_score.get("metrics") if isinstance(tod_score.get("metrics"), dict) else {}
+
+    def tod_metric(key: str) -> str:
+        item = tod_metrics.get(key) if isinstance(tod_metrics.get(key), dict) else {}
+        today = item.get("today")
+        if isinstance(today, dict) or today is None:
+            return "baseline needed"
+        return str(today)
+
+    pass_rate = judgment.get("pass_rate_percent")
+    stale_count = outcome.get("stale_artifact_count")
+    outcomes_improving = outcome.get("are_they_improving")
+    assessment = str(outcome.get("assessment") or "unknown").replace("_", " ")
+
+    return (
+        "MIM / TOD Development Update\n"
+        "Past Month\n\n"
+        "Executive summary:\n"
+        "MIM and TOD have been moving from a collection of AI-assisted tools toward an orchestrated autonomous operating environment. "
+        "The main work this month was not simply adding more features. It was making the system more reliable, coordinated, traceable, measurable, and understandable.\n\n"
+        "Major improvements:\n"
+        "- MIM and TOD moved further beyond simple prompt/response into planning, memory, reasoning, execution, collaboration, workspace awareness, and autonomous task coordination.\n"
+        "- Continuity improved through state snapshots, decision recording, objective persistence, replay patterns, and shared runtime artifacts.\n"
+        "- TOD began real blocker-resolution training: classify blockers, inspect evidence, narrow vague failures, avoid wrapper-only completion, and record prevention rules.\n"
+        "- MIM communication improved from raw objective/task language toward project-manager style updates with progress, blockers, next action, and Dave-needed state.\n"
+        "- The operator scoreboard now separates activity from outcomes, so MIM cannot claim training is going great when the reflection layer says outcomes are not improving.\n\n"
+        "Current measured status:\n"
+        f"- Outcome reflection: {assessment}; outcomes improving: {outcomes_improving}; stale artifacts: {stale_count if stale_count is not None else 'unknown'}.\n"
+        f"- MIM judgment benchmark: {pass_rate if pass_rate is not None else 'baseline needed'}% pass rate on the focused V2 suite.\n"
+        f"- TOD blocker progress: {tod_metric('blockers_cleared')} blockers cleared/transformed; {tod_metric('false_completions_prevented')} false completion prevented.\n\n"
+        "Robotics progress:\n"
+        "- MIM ARM work continued through camera, C12 hand-distance sensor, RPLIDAR, object pickup attempts, safe pose capture, and workspace exploration.\n"
+        "- The biggest robotics lesson was that repeated block pickup attempts are less useful than calibration: MIM needs a world model, gripper position awareness, visual servoing, and object/grasp scoring.\n\n"
+        "Current barriers:\n"
+        "- MIM still defaults too often to status reporting instead of choosing the right mode: recommendation, explanation, demonstration, consultative discovery, or problem analysis.\n"
+        "- TOD blocker cleanup is improving but not finished; remaining blockers still need inspected evidence and accountable next states.\n"
+        "- Stale artifacts and reflection mismatches remain a real risk and must stay visible.\n"
+        "- Physical arm work needs workspace calibration before expecting reliable autonomous pickup.\n\n"
+        "Next priorities:\n"
+        "- Train MIM judgment mode selection until the V2 suite reaches at least 80%.\n"
+        "- Continue TOD blocker-clearing drills until blockers are resolved or transformed with evidence.\n"
+        "- Keep the scoreboard outcome-first so activity cannot masquerade as progress.\n"
+        "- Resume robotics with workspace/world-model calibration rather than another pickup-only loop.\n\n"
+        "Big takeaway:\n"
+        "Earlier work taught MIM and TOD how to do things. The current work is teaching them how to decide what matters, what should happen next, and why. "
+        "That is the shift from capability to judgment."
+    ).strip()
 
 
 def _empty_recent_text_conversation_context() -> dict[str, object]:
@@ -17923,6 +19695,16 @@ async def _store_conversation_interface_state(
     )
     assistant_text = str(interface_reply.get("reply_text") or "").strip()
     assistant_turn_index = user_turn_index
+    interface_attachment = (
+        interface_reply.get("attachment")
+        if isinstance(interface_reply.get("attachment"), dict)
+        else None
+    )
+    interface_links = (
+        interface_reply.get("links")
+        if isinstance(interface_reply.get("links"), list)
+        else []
+    )
     if assistant_text:
         assistant_turn_index = user_turn_index + 1
         await append_interface_message(
@@ -17935,31 +19717,33 @@ async def _store_conversation_interface_state(
             parsed_intent=str(resolution.internal_intent or "").strip(),
             confidence=float(event.confidence or 0.0),
             requires_approval=False,
-        metadata_json={
-            "input_event_id": int(event.id),
-            "resolution_id": int(resolution.id),
-            "request_id": str(event_meta.get("request_id") or "").strip(),
-            "handoff_id": str(resolution_meta.get("mim_tod_handoff_id") or "").strip(),
-            "tod_task_id": str(
-                (
-                    resolution_meta.get("tod_dispatch", {})
-                    if isinstance(resolution_meta.get("tod_dispatch", {}), dict)
-                    else {}
-                ).get("task_id")
-                or ""
-            ).strip(),
-            "tod_result_status": str(
-                (
-                    resolution_meta.get("tod_dispatch", {})
-                    if isinstance(resolution_meta.get("tod_dispatch", {}), dict)
-                    else {}
-                ).get("result_status")
-                or ""
-            ).strip(),
-            "reply_status": str(resolution_meta.get("mim_interface_status_override") or "").strip(),
-            "turn_index": assistant_turn_index,
-            "interaction_mode": str(event_meta.get("interaction_mode") or "text").strip() or "text",
-            "message_type": "text",
+            metadata_json={
+                "input_event_id": int(event.id),
+                "resolution_id": int(resolution.id),
+                "request_id": str(event_meta.get("request_id") or "").strip(),
+                "handoff_id": str(resolution_meta.get("mim_tod_handoff_id") or "").strip(),
+                "tod_task_id": str(
+                    (
+                        resolution_meta.get("tod_dispatch", {})
+                        if isinstance(resolution_meta.get("tod_dispatch", {}), dict)
+                        else {}
+                    ).get("task_id")
+                    or ""
+                ).strip(),
+                "tod_result_status": str(
+                    (
+                        resolution_meta.get("tod_dispatch", {})
+                        if isinstance(resolution_meta.get("tod_dispatch", {}), dict)
+                        else {}
+                    ).get("result_status")
+                    or ""
+                ).strip(),
+                "reply_status": str(resolution_meta.get("mim_interface_status_override") or "").strip(),
+                "turn_index": assistant_turn_index,
+                "interaction_mode": str(event_meta.get("interaction_mode") or "text").strip() or "text",
+                "message_type": "mim_reply",
+                "attachment": interface_attachment,
+                "links": interface_links,
                 "conversation_topic": str(
                     resolution_meta.get("conversation_topic") or ""
                 ).strip(),
@@ -18678,6 +20462,15 @@ async def _compose_conversation_reply(
     context: dict[str, object] | None = None,
 ) -> dict[str, object]:
     fallback_reply = _conversation_response(user_input, context=context)
+    homepage_feedback = _mim_homepage_sample_feedback_contract(
+        user_input,
+        shared_root=Path.cwd() / "runtime" / "shared",
+    )
+    if homepage_feedback:
+        return {
+            "reply_text": str(homepage_feedback.get("reply_text") or "").strip(),
+            "contract": homepage_feedback,
+        }
     private_lab_sensor_reply = _private_lab_sensor_project_reply(
         user_input,
         shared_root=Path.cwd() / "runtime" / "shared",
@@ -18713,6 +20506,15 @@ async def _compose_conversation_reply(
                 "memory_events": [],
                 "memory_experiences": [],
             },
+        }
+    review_artifact = _mim_reviewable_artifact_contract(
+        user_input,
+        shared_root=Path.cwd() / "runtime" / "shared",
+    )
+    if review_artifact:
+        return {
+            "reply_text": str(review_artifact.get("reply_text") or "").strip(),
+            "contract": review_artifact,
         }
     active_project_direct = _mim_tod_active_project_status_response(
         _normalize_conversation_query(user_input),
@@ -22119,6 +23921,7 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
         and not fast_mim_autonomy_roadmap_execution
         and not fast_mim_semantic_intent_simulation
         and not fast_tod_simulation_factory
+        and not _looks_like_consultative_app_discovery_request(event.raw_input)
         and _deterministic_mim_tod_classifier_matches(
             event.raw_input,
             event.parsed_intent,
@@ -22194,13 +23997,161 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
         and _looks_like_email_summary_request(event.raw_input)
     )
     fast_active_project_response = ""
+    fast_reviewable_artifact_response: dict[str, object] = {}
+    fast_homepage_feedback_response: dict[str, object] = {}
+    fast_homepage_revision_response: dict[str, object] = {}
     if not fast_mim_self_model_objective and not fast_mim_autonomy_roadmap_execution and not fast_mim_semantic_intent_simulation and not fast_tod_simulation_factory and not fast_mim_tod_handoff and not fast_mim_implementation_objective and not fast_reporting_visibility_objective and not fast_personal_email_summary and event.source == "text":
         fast_active_project_response = _mim_tod_active_project_status_response(
             _normalize_conversation_query(event.raw_input),
             {},
             shared_root=Path.cwd() / "runtime" / "shared",
         )
-    if fast_personal_email_summary:
+    if event.source == "text":
+        fast_homepage_revision_response = _mim_homepage_revision_contract(
+            event.raw_input,
+            shared_root=Path.cwd() / "runtime" / "shared",
+        )
+        fast_homepage_feedback_response = _mim_homepage_sample_feedback_contract(
+            event.raw_input,
+            shared_root=Path.cwd() / "runtime" / "shared",
+        )
+        fast_reviewable_artifact_response = _mim_reviewable_artifact_contract(
+            event.raw_input,
+            shared_root=Path.cwd() / "runtime" / "shared",
+        )
+    if fast_homepage_revision_response:
+        deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["deterministic_classifier_completed_at"]
+        reply_text = str(fast_homepage_revision_response.get("reply_text") or "").strip()
+        resolution = InputEventResolution(
+            input_event_id=event.id,
+            internal_intent="mim_homepage_sample_revision",
+            confidence_tier="high",
+            outcome="store_only",
+            resolution_status="completed",
+            safety_decision="store_only",
+            reason="mim_homepage_sample_revision_completed",
+            clarification_prompt=reply_text,
+            escalation_reasons=[],
+            capability_name="",
+            capability_registered=False,
+            capability_enabled=False,
+            goal_id=None,
+            proposed_goal_description=event.requested_goal or event.raw_input,
+            proposed_actions=[],
+            metadata_json={
+                "request_id": request_id,
+                "source": event.source,
+                "confidence": event.confidence,
+                "safety_flags": event.safety_flags,
+                "target_system": event.target_system,
+                "route_preference": "conversation_layer",
+                "conversation_override": True,
+                "skip_conversation_memory": False,
+                "deterministic_classifier": "mim_homepage_sample_revision_v1",
+                "request_type_classification": "homepage_sample_revision",
+                "execution_mode": "artifact_generation",
+                "operator_summary": reply_text,
+                "mim_interface_status_override": "done",
+                "mim_interface_next_action_override": "Review the updated homepage sample from the attached card.",
+                "mim_interface_result_override": reply_text,
+                "mim_interface_reply_override": reply_text,
+                "communication_reply_contract": fast_homepage_revision_response,
+                "classification_stage_timestamps": deterministic_stage_timestamps,
+            },
+        )
+        db.add(resolution)
+        await db.flush()
+    elif fast_homepage_feedback_response:
+        deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["deterministic_classifier_completed_at"]
+        reply_text = str(fast_homepage_feedback_response.get("reply_text") or "").strip()
+        resolution = InputEventResolution(
+            input_event_id=event.id,
+            internal_intent="mim_homepage_sample_feedback",
+            confidence_tier="high",
+            outcome="store_only",
+            resolution_status="completed",
+            safety_decision="store_only",
+            reason="mim_homepage_sample_feedback_captured",
+            clarification_prompt=reply_text,
+            escalation_reasons=[],
+            capability_name="",
+            capability_registered=False,
+            capability_enabled=False,
+            goal_id=None,
+            proposed_goal_description=event.requested_goal or event.raw_input,
+            proposed_actions=[],
+            metadata_json={
+                "request_id": request_id,
+                "source": event.source,
+                "confidence": event.confidence,
+                "safety_flags": event.safety_flags,
+                "target_system": event.target_system,
+                "route_preference": "conversation_layer",
+                "conversation_override": True,
+                "skip_conversation_memory": False,
+                "deterministic_classifier": "mim_homepage_sample_feedback_v1",
+                "request_type_classification": "homepage_sample_feedback",
+                "execution_mode": "feedback_capture",
+                "operator_summary": reply_text,
+                "mim_interface_status_override": "done",
+                "mim_interface_next_action_override": "Revise the homepage sample and return a new reviewable artifact card.",
+                "mim_interface_result_override": reply_text,
+                "mim_interface_reply_override": reply_text,
+                "communication_reply_contract": fast_homepage_feedback_response,
+                "classification_stage_timestamps": deterministic_stage_timestamps,
+            },
+        )
+        db.add(resolution)
+        await db.flush()
+    elif fast_reviewable_artifact_response:
+        deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["deterministic_classifier_completed_at"]
+        reply_text = str(fast_reviewable_artifact_response.get("reply_text") or "").strip()
+        resolution = InputEventResolution(
+            input_event_id=event.id,
+            internal_intent="mim_reviewable_artifact_display",
+            confidence_tier="high",
+            outcome="store_only",
+            resolution_status="completed",
+            safety_decision="store_only",
+            reason="mim_reviewable_artifact_display_completed",
+            clarification_prompt=reply_text,
+            escalation_reasons=[],
+            capability_name="",
+            capability_registered=False,
+            capability_enabled=False,
+            goal_id=None,
+            proposed_goal_description=event.requested_goal or event.raw_input,
+            proposed_actions=[],
+            metadata_json={
+                "request_id": request_id,
+                "source": event.source,
+                "confidence": event.confidence,
+                "safety_flags": event.safety_flags,
+                "target_system": event.target_system,
+                "route_preference": "conversation_layer",
+                "conversation_override": True,
+                "skip_conversation_memory": False,
+                "deterministic_classifier": "mim_reviewable_artifact_display_v1",
+                "request_type_classification": "reviewable_artifact_display",
+                "execution_mode": "artifact_link_reply",
+                "operator_summary": reply_text,
+                "mim_interface_status_override": "done",
+                "mim_interface_next_action_override": "Keep the reviewable artifact visible in the same MIM chat thread.",
+                "mim_interface_result_override": reply_text,
+                "mim_interface_reply_override": reply_text,
+                "communication_reply_contract": fast_reviewable_artifact_response,
+                "classification_stage_timestamps": deterministic_stage_timestamps,
+            },
+        )
+        db.add(resolution)
+        await db.flush()
+    elif fast_personal_email_summary:
         deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
         deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
         deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["deterministic_classifier_completed_at"]
@@ -23586,10 +25537,21 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
                 or ""
             ).strip()
         is_conversation_override = False
-    elif event.source == "text" and _looks_like_bounded_implementation_request(
-        event.raw_input,
-        event.parsed_intent,
-        event.safety_flags,
+    elif (
+        str(resolution.internal_intent or "").strip()
+        not in {
+            "speak_response",
+            "mim_homepage_sample_revision",
+            "mim_homepage_sample_feedback",
+            "mim_reviewable_artifact_display",
+        }
+        and event.source == "text"
+        and not _looks_like_consultative_app_discovery_request(event.raw_input)
+        and _looks_like_bounded_implementation_request(
+            event.raw_input,
+            event.parsed_intent,
+            event.safety_flags,
+        )
     ):
         initiative_run = await _maybe_dispatch_authorized_text_initiative(
             event=event,

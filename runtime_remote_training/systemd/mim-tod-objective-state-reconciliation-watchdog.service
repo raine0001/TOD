@@ -1,0 +1,11 @@
+[Unit]
+Description=MIM/TOD Objective State Reconciliation Watchdog
+After=default.target postgresql.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/testpilot/mim
+Environment=MIM_TOD_RECONCILE_MIN_OBJECTIVE_ID=3316
+Environment=MIM_TOD_RECONCILE_STALE_TASK_SECONDS=86400
+Environment=MIM_TOD_RECONCILE_FRESH_ACTIVE_SECONDS=1800
+ExecStart=/home/testpilot/mim/.venv/bin/python /home/testpilot/mim/scripts/mim_tod_objective_state_reconciliation_watchdog.py

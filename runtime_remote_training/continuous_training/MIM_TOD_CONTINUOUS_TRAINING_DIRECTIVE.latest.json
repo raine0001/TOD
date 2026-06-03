@@ -1,0 +1,72 @@
+﻿{
+    "packet_type":  "mim-tod-continuous-training-directive-v1",
+    "updated_at":  "2026-06-01T04:30:58.3536957Z",
+    "operator_directive":  "Pause arm work for tonight. Continue MIM/TOD training. MIM trains project management language and interaction skills. TOD trains toward Codex-level implementation proficiency.",
+    "status":  "active",
+    "mim_training":  {
+                         "objective_id":  "MIM-PROJECT-MANAGEMENT-LANGUAGE-AND-INTERACTION-SKILLS-V1",
+                         "status":  "training_active",
+                         "current_topic":  "Project management language and interaction skills",
+                         "goal":  "MIM speaks like a competent project manager and consultant: confirms understanding, states plan, gives expectations, recommends next work, reports progress plainly, and asks only useful questions.",
+                         "skills":  [
+                                        "confirm operator intent in plain language",
+                                        "explain what MIM will do next and what artifact/result will be provided",
+                                        "switch into recommendation mode when asked what to work on",
+                                        "avoid objective IDs/task IDs unless explicitly requested",
+                                        "use project-manager language: status, progress, blockers, next action, Dave needed yes/no",
+                                        "translate technical work into user-visible value",
+                                        "handle project-development phrases like show me a sample, what does it look like, can I see it",
+                                        "proactively provide reviewable material links/screenshots/documents when work creates artifacts"
+                                    ],
+                         "validation_prompts":  [
+                                                    "What are you and TOD working on?",
+                                                    "What do you think we should work on next?",
+                                                    "Did you finish the project and do you have a sample?",
+                                                    "Show me what it looks like.",
+                                                    "Why is this blocked and what happens next?"
+                                                ],
+                         "success_criteria":  [
+                                                  "response starts with plain-English status, not IDs",
+                                                  "response includes what is happening, why it matters, progress, next step, and whether Dave is needed",
+                                                  "recommendation questions produce recommendations, not generic status offers",
+                                                  "artifact/sample requests produce accessible links or honest blocked reason",
+                                                  "no raw lifecycle/request/packet language in operator-facing replies"
+                                              ]
+                     },
+    "tod_training":  {
+                         "objective_id":  "TOD-CODEX-PROFICIENCY-ROADMAP-AUTORUN-V1",
+                         "status":  "training_active",
+                         "current_topic":  "Codex-level software implementation proficiency",
+                         "goal":  "TOD progresses from task router to implementation-capable agent: inspect code, plan bounded changes, edit safely, validate, report evidence, and learn from failures.",
+                         "roadmap":  [
+                                         "codebase orientation and file discovery",
+                                         "requirements-to-implementation planning",
+                                         "safe edit discipline and patch scoping",
+                                         "frontend implementation and browser validation",
+                                         "backend route/service/database implementation",
+                                         "testing and regression proof",
+                                         "debugging failed tasks and replay recovery",
+                                         "artifact/result reporting with changed files and validation evidence"
+                                     ],
+                         "current_drills":  [
+                                                "read existing code before proposing edits",
+                                                "distinguish attempted work from completed work",
+                                                "reject wrapper-only/no-op completions",
+                                                "produce changed-file evidence for implementation tasks",
+                                                "run targeted validation and explain failures honestly",
+                                                "escalate to Codex only with precise missing capability or permission reason"
+                                            ],
+                         "success_criteria":  [
+                                                  "TOD can materialize a small UI/backend objective into a runnable task",
+                                                  "TOD identifies files to inspect before editing",
+                                                  "TOD produces changed files or blocked_with_inspection evidence",
+                                                  "TOD runs a validation step matched to the change",
+                                                  "TOD reports result in plain operator language and technical evidence separately"
+                                              ]
+                     },
+    "arm_work":  {
+                     "status":  "parked_for_tomorrow",
+                     "latest_memory":  "MIM_ARM_SAFE_TABLE_EXPLORATION_POSE.latest.json",
+                     "note":  "Arm work paused after capturing safe table exploration pose; resume tomorrow with exploratory spatial interaction rather than marker-specific memorization."
+                 }
+}

@@ -1,0 +1,143 @@
+{
+  "packet_type": "mim-tod-continuous-training-directive-v1",
+  "updated_at": "2026-06-02T19:20:00Z",
+  "operator_directive": "Continue idle training. MIM trains project-management communication, judgment-mode selection, typo-tolerant intent recognition, and universal presence continuity across surfaces. TOD actively trains blocker resolution autonomy: identify, troubleshoot, repair, validate, update MIM, and escalate only with exact evidence when needed. All blockers must be resolved or transformed into an accountable next state.",
+  "status": "active",
+  "mim_training": {
+    "objective_id": "MIM-UNIVERSAL-PRESENCE-CONTEXT-V1",
+    "status": "training_active",
+    "current_topic": "Universal MIM presence, typo-tolerant intent recognition, and project-manager judgment",
+    "goal": "MIM behaves as one continuous presence across Studio, /mim, MIM Wall, phone, project portal, and lab surfaces while still speaking like a competent project manager and consultant. MIM preserves original text, normalizes only for routing, remembers the active context, and chooses recommendation, explanation, demonstration, consultative discovery, or problem-analysis mode before answering.",
+    "skills": [
+      "confirm operator intent in plain language",
+      "explain what MIM will do next and what artifact/result will be provided",
+      "switch into recommendation mode when asked what to work on",
+      "avoid objective IDs/task IDs unless explicitly requested",
+      "use project-manager language: status, progress, blockers, next action, Dave needed yes/no",
+      "translate technical work into user-visible value",
+      "handle project-development phrases like show me a sample, what does it look like, can I see it",
+      "proactively provide reviewable material links/screenshots/documents when work creates artifacts",
+      "select recommendation mode when asked priority, value, or what to work on next",
+      "select explanation mode when asked to summarize, explain, or review plain meaning",
+      "select demonstration mode when asked for a sample, example, interface, screenshot, prototype, or visual",
+      "select consultative discovery mode when a user names an app category or reference product",
+      "select problem-analysis mode when asked what failed, what is stuck, or how to prevent recurrence",
+      "interpret noisy typed input with common typos such as montly, trainign, teh, acounting, invintory, managment, blokers, and objektive-like errors",
+      "preserve the operator's original words while routing through normalized intent",
+      "do not require perfect spelling before answering the actual question",
+      "maintain one primary Dave/MIM conversation identity across Studio pages",
+      "track MIM presence: current conversation, active project, last surface, current focus, memory context, and pending follow-up",
+      "treat /mim as deep conversation mode and /tod as focused execution mode"
+    ],
+    "validation_prompts": [
+      "What are you and TOD working on?",
+      "What do you think we should work on next?",
+      "Did you finish the project and do you have a sample?",
+      "Show me what it looks like.",
+      "Why is this blocked and what happens next?"
+      ,"wat are you trainign on rite now mim?"
+      ,"what shoud we werk on next"
+      ,"build me an acounting app"
+      ,"continue where we left off"
+    ],
+    "success_criteria": [
+      "response starts with plain-English status, not IDs",
+      "response includes what is happening, why it matters, progress, next step, and whether Dave is needed",
+      "recommendation questions produce recommendations, not generic status offers",
+      "artifact/sample requests produce accessible links or honest blocked reason",
+      "no raw lifecycle/request/packet language in operator-facing replies",
+      "MIM-DURABILITY-SMOKE-V2 reaches at least 80% before expanding to larger operator prompt suites",
+      "MIM-TYPO-TOLERANT-INTENT-SMOKE reaches at least 80% before noisy-input handling is considered reliable",
+      "MIM_UNIVERSAL_PRESENCE.latest.json exists and identifies one primary Dave/MIM conversation identity"
+    ]
+  },
+  "tod_training": {
+    "objective_id": "TOD-CODEX-PROFICIENCY-ROADMAP-AUTORUN-V1",
+    "status": "training_active",
+    "current_topic": "Codex-level implementation proficiency plus active blocker resolution autonomy",
+    "goal": "TOD progresses from task router to implementation-capable agent: inspect code, plan bounded changes, edit safely, validate, report evidence, and learn from failures.",
+    "roadmap": [
+      "codebase orientation and file discovery",
+      "requirements-to-implementation planning",
+      "safe edit discipline and patch scoping",
+      "frontend implementation and browser validation",
+      "backend route/service/database implementation",
+      "testing and regression proof",
+      "debugging failed tasks and replay recovery",
+      "artifact/result reporting with changed files and validation evidence"
+    ],
+    "current_drills": [
+      "read existing code before proposing edits",
+      "distinguish attempted work from completed work",
+      "reject wrapper-only/no-op completions",
+      "produce changed-file evidence for implementation tasks",
+      "run targeted validation and explain failures honestly",
+      "escalate to Codex only with precise missing capability or permission reason",
+      "classify blocked objectives before creating new objectives",
+      "clear one safe blocker group end-to-end with evidence",
+      "validate objective/task/artifact/operator status agree before completion",
+      "record a prevention rule for each repaired blocker class",
+      "repeat blocker-clearing loop on linked-task blocked objectives",
+      "separate parked follow-up work from real broken work",
+      "identify and troubleshoot blockers from objective/task/artifact/log/code evidence",
+      "reject empty/null task results as non-evidence",
+      "apply a repair, parking, superseding, narrowing, or escalation resolution to every blocker",
+      "update MIM operator status after every blocker resolution action",
+      "escalate to Codex with exact files/commands/acceptance criteria when TOD cannot repair directly",
+      "use current official docs or online research when external API/tool facts may have changed"
+    ],
+    "success_criteria": [
+      "TOD can materialize a small UI/backend objective into a runnable task",
+      "TOD identifies files to inspect before editing",
+      "TOD produces changed files or blocked_with_inspection evidence",
+      "TOD runs a validation step matched to the change",
+      "TOD reports result in plain operator language and technical evidence separately",
+      "TOD can turn a blocked objective into a narrower repair task or an evidence-backed superseded/parked state",
+      "TOD never marks a blocked objective complete from wrapper-only evidence",
+      "TOD publishes blocker class, repair action, validation result, and prevention lesson",
+      "Every blocker has an owner, inspected evidence, next action, and accountable end state.",
+      "No empty task result row can satisfy evidence requirements.",
+      "MIM receives a plain-language status update after blocker repair, narrowing, parking, or escalation."
+    ],
+    "active_blocker_clearing_drill": {
+      "objective_id": "TOD-BLOCKED-OBJECTIVE-CLEARING-COMPETENCY-V1",
+      "current_drill": "TOD-BLOCKER-CLEARING-DRILL-003",
+      "prior_drill_completed": "TOD-BLOCKER-CLEARING-DRILL-001",
+      "prior_drill_artifact": "runtime/shared/TOD_BLOCKED_OBJECTIVE_TRIAGE.latest.json",
+      "operator_summary": "runtime/shared/TOD_BLOCKER_RESOLUTION_OPERATOR_SUMMARY.latest.md",
+      "goal": "Clear one safe blocker group with evidence, then record the prevention rule.",
+      "start_with": [
+        "parked_followup_not_currently_executing",
+        "artifact_missing_or_superseded"
+      ],
+      "blocked_total_at_start": 33,
+      "classes": {
+        "artifact_missing_or_superseded": 1,
+        "linked_task_blocked_needs_evidence_inspection": 21,
+        "missing_executor": 8,
+        "parked_followup_not_currently_executing": 2,
+        "stale_heartbeat_or_recovery": 1
+      },
+      "hard_rule": "No objective may be marked complete until linked evidence, DB/task state, dispatcher state, and operator-facing status agree.",
+      "current_drill_status": "active_with_initial_inspection",
+      "latest_result_artifact": "runtime/shared/TOD_BLOCKER_RESOLUTION_DRILL_003.latest.json",
+      "after_blocked_count": 31,
+      "blocked_count_delta": -2,
+      "cleared_group": "parked_followup_not_currently_executing",
+      "cleared_objectives": [
+        "MIM-STREAMING-STT-MIGRATION-V1",
+        "MIM-VOICE-RESPONSIVENESS-AUDIBLE-ROUTING-REPAIR-20260528"
+      ],
+      "next_drill": "TOD-BLOCKER-CLEARING-DRILL-004: repair one linked-task empty-evidence blocker end-to-end",
+      "proof_summary": "TOD cleared one safe parked-follow-up blocker group with matching execution status, objective index, managed objectives, follow-on list, and operator status evidence.",
+      "current_finding": "Linked task result rows can exist while still containing no meaningful evidence.",
+      "current_blocker_class": "linked_task_result_empty_or_non_evidentiary",
+      "all_blockers_rule": "All blockers must be resolved or transformed into an accountable next state. A blocker may not remain as vague blocked_with_evidence without inspected evidence and a next owner/action."
+    }
+  },
+  "arm_work": {
+    "status": "parked_for_tomorrow",
+    "latest_memory": "MIM_ARM_SAFE_TABLE_EXPLORATION_POSE.latest.json",
+    "note": "Arm work paused after capturing safe table exploration pose; resume tomorrow with exploratory spatial interaction rather than marker-specific memorization."
+  }
+}

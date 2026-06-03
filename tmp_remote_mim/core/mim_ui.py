@@ -7597,6 +7597,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         <a class="console-link utility" href="/"><span>Public Home</span></a>
         <a class="console-link active" href="/mim"><span id="mimConsoleLight" class="console-nav-light"></span><span>MIM Coordination Console</span></a>
         <a class="console-link" href="/tod"><span id="todConsoleLight" class="console-nav-light"></span><span>TOD Execution Console</span></a>
+        <a class="console-link utility" href="/objectives"><span>Objectives</span></a>
         <a class="console-link utility" href="/chat"><span>Direct Chat</span></a>
         <button id="settingsBtn" class="console-link utility" type="button"><span>Settings</span></button>
         <a class="console-link utility" href="/mim/logout"><span>Logout</span></a>

@@ -1,0 +1,38 @@
+﻿{
+    "objective":  "MIM_ARM_WHITE_BLOCK_TO_MARKER_3_CHALLENGE",
+    "owner":  "MIM",
+    "status":  "paused_needs_operator_position_adjustment_or_confirmation",
+    "updated_at":  "2026-06-01T02:35:54.9695086Z",
+    "current_pose":  [
+                         35,
+                         100,
+                         50,
+                         88,
+                         50,
+                         125
+                     ],
+    "sensors":  {
+                    "arm":  "ok",
+                    "c12_distance":  "ok",
+                    "rplidar":  "ok",
+                    "hand_camera":  "ok",
+                    "room_camera":  "ok"
+                },
+    "findings":  [
+                     "MIM placed the arm in safe open/lifted posture after pickup probes.",
+                     "Marker 3 is reachable and visible from the hand camera.",
+                     "White cube is visible from the room camera at the back-left table area.",
+                     "Multiple base/hand/shoulder probes did not produce a safe hand-camera pickup alignment.",
+                     "At the deeper shoulder pose the hand camera looked off-table/floor, so MIM did not close the gripper."
+                 ],
+    "best_evidence":  [
+                          "grid_white_cube_zoom_candidates.jpg",
+                          "depth_base35_hand65_shoulder_contact_sheet.jpg",
+                          "hand_reacquire_shoulder_contact_sheet.jpg",
+                          "hand50_reacquire_shoulder_contact_sheet.jpg",
+                          "white_pickup_attempt4_lift_elbow50.jpg",
+                          "white_pickup_attempt5_base35_hand65_sh70_elbow39_open_hand.jpg"
+                      ],
+    "next_required":  "Move or confirm the white block is within the arm pickup corridor: roughly between marker 3 and marker 2, at least one gripper-width away from the back/left table edge. Then MIM should continue with pickup and place onto marker 3.",
+    "reason":  "MIM can reach marker 3, but current white cube placement appears too far back-left for safe closed-loop pickup with the hand camera and gripper geometry."
+}

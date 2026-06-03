@@ -1,0 +1,170 @@
+{
+  "before_scan": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\rplidar_table_height_scan_latest.json",
+  "after_scan": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\rplidar_table_height_after_moved_blocks_scan_latest.json",
+  "before_raw_points": 2000,
+  "after_raw_points": 2000,
+  "before_filtered": 1211,
+  "after_filtered": 1172,
+  "removed_or_shifted_clusters": [
+    {
+      "id": 1,
+      "points": 23,
+      "min_m": 0.175,
+      "max_m": 0.216,
+      "mean_m": 0.191,
+      "width_m": 0.112,
+      "centroid_x_m": 0.155,
+      "centroid_y_m": 0.111,
+      "angle_start": 26.4,
+      "angle_end": 44.8
+    },
+    {
+      "id": 2,
+      "points": 24,
+      "min_m": 0.155,
+      "max_m": 0.185,
+      "mean_m": 0.168,
+      "width_m": 0.083,
+      "centroid_x_m": 0.113,
+      "centroid_y_m": -0.124,
+      "angle_start": 303.9,
+      "angle_end": 320.9
+    }
+  ],
+  "added_or_shifted_clusters": [
+    {
+      "id": 1,
+      "points": 23,
+      "min_m": 0.173,
+      "max_m": 0.202,
+      "mean_m": 0.182,
+      "width_m": 0.096,
+      "centroid_x_m": 0.08,
+      "centroid_y_m": 0.163,
+      "angle_start": 55.1,
+      "angle_end": 72.5
+    },
+    {
+      "id": 2,
+      "points": 10,
+      "min_m": 0.2,
+      "max_m": 0.224,
+      "mean_m": 0.209,
+      "width_m": 0.036,
+      "centroid_x_m": 0.093,
+      "centroid_y_m": -0.187,
+      "angle_start": 293.6,
+      "angle_end": 299.7
+    },
+    {
+      "id": 3,
+      "points": 7,
+      "min_m": 0.213,
+      "max_m": 0.221,
+      "mean_m": 0.218,
+      "width_m": 0.02,
+      "centroid_x_m": 0.128,
+      "centroid_y_m": -0.176,
+      "angle_start": 303.8,
+      "angle_end": 308.0
+    }
+  ],
+  "after_clusters": [
+    {
+      "id": 1,
+      "points": 28,
+      "min_m": 0.117,
+      "max_m": 0.134,
+      "mean_m": 0.122,
+      "width_m": 0.08,
+      "centroid_x_m": 0.12,
+      "centroid_y_m": -0.014,
+      "angle_start": 0.2,
+      "angle_end": 359.8
+    },
+    {
+      "id": 2,
+      "points": 23,
+      "min_m": 0.173,
+      "max_m": 0.202,
+      "mean_m": 0.182,
+      "width_m": 0.096,
+      "centroid_x_m": 0.08,
+      "centroid_y_m": 0.163,
+      "angle_start": 55.1,
+      "angle_end": 72.5
+    },
+    {
+      "id": 3,
+      "points": 5,
+      "min_m": 0.827,
+      "max_m": 0.837,
+      "mean_m": 0.833,
+      "width_m": 0.041,
+      "centroid_x_m": -0.257,
+      "centroid_y_m": 0.792,
+      "angle_start": 106.8,
+      "angle_end": 109.2
+    },
+    {
+      "id": 4,
+      "points": 8,
+      "min_m": 0.178,
+      "max_m": 0.203,
+      "mean_m": 0.183,
+      "width_m": 0.04,
+      "centroid_x_m": -0.078,
+      "centroid_y_m": 0.166,
+      "angle_start": 112.8,
+      "angle_end": 119.2
+    },
+    {
+      "id": 5,
+      "points": 12,
+      "min_m": 0.938,
+      "max_m": 0.956,
+      "mean_m": 0.946,
+      "width_m": 0.129,
+      "centroid_x_m": -0.541,
+      "centroid_y_m": 0.775,
+      "angle_start": 121.1,
+      "angle_end": 128.8
+    },
+    {
+      "id": 6,
+      "points": 97,
+      "min_m": 0.047,
+      "max_m": 0.085,
+      "mean_m": 0.058,
+      "width_m": 0.175,
+      "centroid_x_m": -0.053,
+      "centroid_y_m": 0.011,
+      "angle_start": 131.9,
+      "angle_end": 203.9
+    },
+    {
+      "id": 7,
+      "points": 69,
+      "min_m": 0.755,
+      "max_m": 0.997,
+      "mean_m": 0.84,
+      "width_m": 0.853,
+      "centroid_x_m": -0.48,
+      "centroid_y_m": -0.654,
+      "angle_start": 207.3,
+      "angle_end": 258.3
+    },
+    {
+      "id": 8,
+      "points": 21,
+      "min_m": 0.2,
+      "max_m": 0.224,
+      "mean_m": 0.211,
+      "width_m": 0.076,
+      "centroid_x_m": 0.108,
+      "centroid_y_m": -0.181,
+      "angle_start": 293.6,
+      "angle_end": 308.0
+    }
+  ]
+}

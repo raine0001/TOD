@@ -1,0 +1,58 @@
+{
+  "after_blocked_count": 31,
+  "before_blocked_count": 33,
+  "blocked_count_delta": -2,
+  "changed_files": [
+    "runtime/shared/MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json",
+    "runtime/shared/MIM_TOD_MANAGED_OBJECTIVES.latest.json",
+    "runtime/shared/MIM_TOD_OBJECTIVE_INDEX.latest.json",
+    "runtime/shared/MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json"
+  ],
+  "changed_objectives": [
+    {
+      "artifact": "runtime/shared/MIM_TOD_OBJECTIVE_EVIDENCE.MIM-STREAMING-STT-MIGRATION-V1.latest.json",
+      "evidence_artifact": "runtime/shared/MIM_SPEECH_TURN_ENGINE_STATUS.latest.json",
+      "generated_at": "2026-06-01T17:51:21Z",
+      "next_recovery_action": "Re-open when voice latency, clipped utterances, or partial-transcript requirements become the active voice objective.",
+      "objective_id": "MIM-STREAMING-STT-MIGRATION-V1",
+      "operator_facing_summary": "Streaming STT is future enhancement work, not a live failed task. Current voice work can continue without treating this as an active blocker.",
+      "reason_code": "not_currently_executing_parked_until_needed",
+      "source": "tod_blocker_clearing_drill_002",
+      "status": "parked_until_needed_with_evidence",
+      "title": "Streaming STT Migration",
+      "validation_state": "tested_done_for_parking_cleanup"
+    },
+    {
+      "artifact": "runtime/shared/MIM_TOD_OBJECTIVE_EVIDENCE.MIM-VOICE-RESPONSIVENESS-AUDIBLE-ROUTING-REPAIR-20260528.latest.json",
+      "evidence_artifact": "runtime/shared/MIM_TOD_BAT_PHONE_RECOVERY.latest.json",
+      "generated_at": "2026-06-01T17:51:21Z",
+      "next_recovery_action": "Re-open if MIM again hears Dave but fails to respond audibly or routes direct voice as ambient speech.",
+      "objective_id": "MIM-VOICE-RESPONSIVENESS-AUDIBLE-ROUTING-REPAIR-20260528",
+      "operator_facing_summary": "The live audible-output blocker was already improved and confirmed by Dave; remaining voice orchestration follow-up should be a fresh bounded task only when needed.",
+      "reason_code": "not_currently_executing_parked_until_needed",
+      "source": "tod_blocker_clearing_drill_002",
+      "status": "parked_until_needed_with_evidence",
+      "title": "Voice responsiveness and audible routing repair",
+      "validation_state": "tested_done_for_parking_cleanup"
+    }
+  ],
+  "drill_id": "TOD-BLOCKER-CLEARING-DRILL-002",
+  "generated_at": "2026-06-01T17:51:21Z",
+  "objective_id": "TOD-BLOCKED-OBJECTIVE-CLEARING-COMPETENCY-V1",
+  "packet_type": "tod-blocked-objective-clearing-drill-002-result-v1",
+  "repair_group": "parked_followup_not_currently_executing",
+  "status": "completed_with_evidence",
+  "tod_lesson": {
+    "failure_class": "parked_followup_not_currently_executing",
+    "prevention_rule": "If an objective is blocked only because it is not current executable work, TOD should park it with a resume trigger instead of leaving it as an active blocker.",
+    "repair_class": "park_until_needed_with_evidence",
+    "tested_done_rule": "Verify execution status, objective index, managed objective status, follow-on repair list, and operator summary agree before calling the blocker cleared."
+  },
+  "validation": {
+    "blocked_count_reduced_by_two": true,
+    "execution_targets_parked": true,
+    "followon_repairs_resolved": true,
+    "index_targets_parked": true,
+    "managed_targets_parked": true
+  }
+}

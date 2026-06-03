@@ -1,0 +1,48 @@
+{
+  "artifact": "MIM_ARM_MPC_OBSTACLE_AWARE_PLANNING_REFERENCE",
+  "generated_at": "2026-05-31",
+  "source_pdf": "E:\\MIM Robotics\\08718327.pdf",
+  "source_title": "Semi-Autonomous Robot Teleoperation with Obstacle Avoidance via Model Predictive Control",
+  "classification": "robotics_learning_reference",
+  "use_as": "mpc_inspired_obstacle_aware_planning_logic",
+  "do_not_use_as": "direct_ur5_kinematics_for_mim_arm",
+  "transferable_ideas": [
+    "continuous_replanning",
+    "candidate_motion_prediction",
+    "obstacle_constraints",
+    "multi_point_robot_body_collision_awareness",
+    "smooth_motion_preference",
+    "bounded_step_execution",
+    "post_move_validation"
+  ],
+  "mim_arm_translation": {
+    "observe": [
+      "camera_object_identity",
+      "rplidar_table_height_surface_clusters",
+      "c12_claw_distance",
+      "movement_memory_prior_pose"
+    ],
+    "decide": [
+      "generate_candidate_next_moves",
+      "reject_unsafe_candidates",
+      "rank_by_target_progress_and_smoothness",
+      "prefer_known_good_motion_memory"
+    ],
+    "act": [
+      "execute_one_bounded_move",
+      "rescan_after_move",
+      "record_success_or_failure_as_learning"
+    ]
+  },
+  "recommended_objective": {
+    "name": "MIM-ARM-MPC-INSPIRED-OBSTACLE-AWARE-PLANNING-V1",
+    "goal": "Use MPC-inspired candidate motion ranking for safe arm exploration and block manipulation.",
+    "acceptance": [
+      "reference_read_and_registered",
+      "ur5_math_not_copied_as_direct_mim_arm_kinematics",
+      "candidate_motion_planner_uses_cameras_c12_rplidar_and_movement_memory",
+      "bounded_moves_have_post_move_validation",
+      "failed_moves_are_recorded_as_motion_lessons"
+    ]
+  }
+}

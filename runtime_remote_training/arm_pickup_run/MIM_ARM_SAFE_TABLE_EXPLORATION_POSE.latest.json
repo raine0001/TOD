@@ -1,0 +1,55 @@
+{
+  "objective": "MIM_ARM_EXPLORATORY_SPATIAL_INTERACTION_V1",
+  "memory_name": "operator_demonstrated_safe_table_exploration_pose",
+  "owner": "MIM",
+  "created_at_utc": "2026-06-01T02:45:24.542024+00:00",
+  "purpose": "Reusable safe posture for MIM to turn the base, observe table objects, and begin exploratory object interaction without starting blind.",
+  "operator_note": "Dave positioned MIM in a safe posture where the base can turn and the hand camera can view table objects.",
+  "captured_pose": [
+    2,
+    71,
+    3,
+    88,
+    66,
+    125
+  ],
+  "sensor_status": {
+    "arm_status": "ok",
+    "serial_status": "ok",
+    "distance_ok": true,
+    "distance_source": "arduino_i2c_0x10",
+    "distance_mm": 300,
+    "lidar_ok": true,
+    "lidar_model": 65
+  },
+  "visual_evidence": {
+    "hand_camera": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\exploratory_spatial_interaction_20260531\\safe_table_exploration_pose_hand_camera.jpg",
+    "mim_box_lab_camera": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\exploratory_spatial_interaction_20260531\\mim_box_video2_safe_exploration_pose.jpg",
+    "mim_box_secondary_camera": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\exploratory_spatial_interaction_20260531\\mim_box_video0_safe_exploration_pose.jpg",
+    "lidar_scan": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\exploratory_spatial_interaction_20260531\\safe_table_exploration_pose_lidar_scan.json"
+  },
+  "observed_in_hand_camera": [
+    "marker 3 visible",
+    "marker 2 partially visible",
+    "white block visible",
+    "both gripper tips visible",
+    "table surface visible"
+  ],
+  "why_this_matters": [
+    "This posture gives MIM a local visual frame for object discovery instead of relying only on room-camera guesses.",
+    "It supports exploratory base rotation while retaining a close hand-camera view of objects and markers.",
+    "It can seed future spatial calibration between base angle, hand-camera image, and object position."
+  ],
+  "recommended_use": [
+    "Return to this posture before exploratory object search.",
+    "Use small base rotations from this posture while capturing hand-camera frames.",
+    "Build a temporary workspace map from changing object positions in the hand camera.",
+    "Do not treat marker numbers as fixed; use them only as temporary visual references."
+  ],
+  "safety_notes": [
+    "Claw is open in the captured pose.",
+    "C12 distance source is live and should be checked before lowering toward table/object contact.",
+    "Use slow base movements and capture a frame after each movement."
+  ],
+  "status": "captured_with_evidence"
+}

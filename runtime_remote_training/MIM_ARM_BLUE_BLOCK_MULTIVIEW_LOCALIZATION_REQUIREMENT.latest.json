@@ -1,0 +1,32 @@
+{
+  "camera_asset_registry": "runtime/shared/MIM_LAB_CAMERA_ASSET_REGISTRY.latest.json",
+  "currently_verified_live": [
+    "mim_box_lab_camera",
+    "mim_box_operator_camera",
+    "pi_hand_camera"
+  ],
+  "generated_at": "2026-05-31T21:43:34Z",
+  "hard_assets": [
+    "dave_pc_arm_camera",
+    "mim_box_lab_camera",
+    "mim_box_operator_camera",
+    "pi_arm_observer_camera",
+    "pi_hand_camera"
+  ],
+  "next_actions": [
+    "Use MIM Box whole-lab camera as the first external observer if it sees the table/arm.",
+    "Bind Dave PC camera bridge for operator-PC arm view.",
+    "Discover/bind the Pi set-back arm camera endpoint.",
+    "Run fresh frame capture and object localization before any bounded motion."
+  ],
+  "operator_facing_summary": "MIM now has a hard camera registry. Verified live in the MIM runtime: mim_box_lab_camera, mim_box_operator_camera, pi_hand_camera. Still needs bridge/endpoint work: dave_pc_arm_camera, pi_arm_observer_camera. The blue-block pickup should proceed only after a fresh multi-camera localization pass uses these verified feeds or records exact blocked evidence.",
+  "packet_type": "mim-arm-blue-block-multiview-localization-requirement-v1",
+  "pending_live_verification": [
+    "dave_pc_arm_camera",
+    "pi_arm_observer_camera"
+  ],
+  "pickup_rule": "Before motion, MIM must use hand-camera plus at least one external arm/table view, C12 distance, RPLIDAR, and movement memory. No motion toward guessed targets.",
+  "previous_single_view_blocker": "runtime/shared/MIM_ARM_BLUE_BLOCK_LOCALIZATION_PASS.latest.json",
+  "reason_code": "multi_camera_localization_required_before_motion",
+  "status": "blocked_with_evidence"
+}

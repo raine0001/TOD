@@ -1,0 +1,117 @@
+{
+  "scan_file": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\rplidar_table_height_scan_latest.json",
+  "raw_points": 2000,
+  "filtered_points": 1211,
+  "binned_points": 264,
+  "cluster_count": 9,
+  "clusters": [
+    {
+      "id": 1,
+      "points": 13,
+      "min_m": 0.119,
+      "max_m": 0.131,
+      "mean_m": 0.123,
+      "width_m": 0.031,
+      "centroid_x_m": 0.123,
+      "centroid_y_m": 0.001,
+      "angle_start": 0.4,
+      "angle_end": 359.4
+    },
+    {
+      "id": 2,
+      "points": 23,
+      "min_m": 0.175,
+      "max_m": 0.216,
+      "mean_m": 0.191,
+      "width_m": 0.112,
+      "centroid_x_m": 0.155,
+      "centroid_y_m": 0.111,
+      "angle_start": 26.4,
+      "angle_end": 44.8
+    },
+    {
+      "id": 3,
+      "points": 4,
+      "min_m": 0.826,
+      "max_m": 0.834,
+      "mean_m": 0.831,
+      "width_m": 0.029,
+      "centroid_x_m": -0.254,
+      "centroid_y_m": 0.792,
+      "angle_start": 106.8,
+      "angle_end": 108.7
+    },
+    {
+      "id": 4,
+      "points": 7,
+      "min_m": 0.178,
+      "max_m": 0.203,
+      "mean_m": 0.184,
+      "width_m": 0.038,
+      "centroid_x_m": -0.08,
+      "centroid_y_m": 0.166,
+      "angle_start": 113.6,
+      "angle_end": 119.2
+    },
+    {
+      "id": 5,
+      "points": 11,
+      "min_m": 0.936,
+      "max_m": 0.956,
+      "mean_m": 0.946,
+      "width_m": 0.116,
+      "centroid_x_m": -0.546,
+      "centroid_y_m": 0.772,
+      "angle_start": 121.8,
+      "angle_end": 128.7
+    },
+    {
+      "id": 6,
+      "points": 95,
+      "min_m": 0.048,
+      "max_m": 0.08,
+      "mean_m": 0.057,
+      "width_m": 0.173,
+      "centroid_x_m": -0.052,
+      "centroid_y_m": 0.011,
+      "angle_start": 132.3,
+      "angle_end": 203.0
+    },
+    {
+      "id": 7,
+      "points": 70,
+      "min_m": 0.755,
+      "max_m": 0.999,
+      "mean_m": 0.84,
+      "width_m": 0.86,
+      "centroid_x_m": -0.475,
+      "centroid_y_m": -0.658,
+      "angle_start": 207.2,
+      "angle_end": 258.6
+    },
+    {
+      "id": 8,
+      "points": 28,
+      "min_m": 0.155,
+      "max_m": 0.185,
+      "mean_m": 0.17,
+      "width_m": 0.096,
+      "centroid_x_m": 0.111,
+      "centroid_y_m": -0.127,
+      "angle_start": 300.8,
+      "angle_end": 320.9
+    },
+    {
+      "id": 9,
+      "points": 12,
+      "min_m": 0.115,
+      "max_m": 0.124,
+      "mean_m": 0.12,
+      "width_m": 0.029,
+      "centroid_x_m": 0.117,
+      "centroid_y_m": -0.027,
+      "angle_start": 342.9,
+      "angle_end": 351.6
+    }
+  ]
+}

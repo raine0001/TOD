@@ -116,6 +116,40 @@ MIM_TRAINING_FOCUS_ARTIFACT = Path("runtime/shared/MIM_EVOLUTION_TRAINING_FOCUS.
 runtime_recovery_service = RuntimeRecoveryService(SHARED_RUNTIME_ROOT)
 MIM_PRIMARY_THREAD_KEY = "primary_operator"
 MIM_UI_MEDIA_ROOT = SHARED_RUNTIME_ROOT / "mim_ui_media"
+MIM_UI_REVIEWABLE_ARTIFACTS = {
+  "MIM_PUBLIC_HOMEPAGE_REIMAGINING_SAMPLE.latest.html": {
+    "kind": "html_prototype",
+    "mime_type": "text/html",
+    "label": "Homepage prototype",
+  },
+  "MIM_PUBLIC_HOMEPAGE_CONSULTANT_DESIGN_BRIEF.latest.md": {
+    "kind": "document",
+    "mime_type": "text/markdown",
+    "label": "Homepage design brief",
+  },
+  "MIM_PUBLIC_HOMEPAGE_CONSULTANT_DESIGN_BRIEF.latest.json": {
+    "kind": "data",
+    "mime_type": "application/json",
+    "label": "Homepage design packet",
+  },
+  "MIM_HOMEPAGE_OBJECTIVE_COMPLETION_GATE.latest.json": {
+    "kind": "data",
+    "mime_type": "application/json",
+    "label": "Homepage completion gate",
+  },
+}
+MIM_UI_REVIEWABLE_SUFFIXES = {
+  ".html": {"kind": "html_prototype", "mime_type": "text/html", "label": "HTML prototype"},
+  ".htm": {"kind": "html_prototype", "mime_type": "text/html", "label": "HTML prototype"},
+  ".md": {"kind": "document", "mime_type": "text/markdown", "label": "Markdown document"},
+  ".txt": {"kind": "document", "mime_type": "text/plain", "label": "Text document"},
+  ".json": {"kind": "data", "mime_type": "application/json", "label": "JSON artifact"},
+  ".csv": {"kind": "spreadsheet", "mime_type": "text/csv", "label": "CSV spreadsheet"},
+  ".png": {"kind": "image", "mime_type": "image/png", "label": "Image"},
+  ".jpg": {"kind": "image", "mime_type": "image/jpeg", "label": "Image"},
+  ".jpeg": {"kind": "image", "mime_type": "image/jpeg", "label": "Image"},
+  ".webp": {"kind": "image", "mime_type": "image/webp", "label": "Image"},
+}
 MIM_UI_ALLOWED_IMAGE_TYPES = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
@@ -555,6 +589,33 @@ def _mim_ui_media_url(asset_name: str) -> str:
   return f"/mim/ui/media/{asset_name}"
 
 
+def _mim_ui_review_artifact_url(asset_name: str) -> str:
+  return f"/mim/ui/review/{asset_name}"
+
+
+def _reviewable_artifact_info(asset_name: str) -> dict[str, str]:
+  safe_name = Path(str(asset_name or "")).name
+  if not safe_name or safe_name != str(asset_name or "") or safe_name.startswith("."):
+    return {}
+  if safe_name in MIM_UI_REVIEWABLE_ARTIFACTS:
+    return dict(MIM_UI_REVIEWABLE_ARTIFACTS[safe_name])
+  suffix = Path(safe_name).suffix.lower()
+  if suffix not in MIM_UI_REVIEWABLE_SUFFIXES:
+    return {}
+  if not (SHARED_RUNTIME_ROOT / safe_name).exists():
+    return {}
+  return dict(MIM_UI_REVIEWABLE_SUFFIXES[suffix])
+
+
+def _safe_reviewable_artifact_name(asset_name: str) -> str:
+  safe_name = Path(str(asset_name or "")).name
+  if not safe_name or safe_name != str(asset_name or ""):
+    raise HTTPException(status_code=404, detail="review_artifact_not_found")
+  if not _reviewable_artifact_info(safe_name):
+    raise HTTPException(status_code=404, detail="review_artifact_not_found")
+  return safe_name
+
+
 def _parse_mim_ui_multipart_form(
   *,
   content_type: str,
@@ -625,6 +686,7 @@ def _interface_message_attachment(metadata_json: object) -> dict[str, object] | 
 MIM_UI_MESSAGE_TYPES = {
   "user",
   "mim_reply",
+  "thinking",
   "system_execution",
   "system_summary",
 }
@@ -853,6 +915,7 @@ def _serialize_chat_message(message: dict[str, object]) -> dict[str, object]:
     "message_type": normalized_type,
     "interaction_mode": str(metadata.get("interaction_mode") or "text").strip() or "text",
     "attachment": _interface_message_attachment(metadata),
+    "links": metadata.get("links") if isinstance(metadata.get("links"), list) else [],
     "summary_text": summary_text,
     "inline_text": execution_payload["inline_text"] if normalized_type == "system_execution" else content,
     "execution_text": execution_payload["execution_text"],
@@ -869,7 +932,114 @@ def _serialize_chat_message(message: dict[str, object]) -> dict[str, object]:
   }
 
 
+def _homepage_review_artifact_announcement() -> dict[str, object] | None:
+  sample_name = "MIM_PUBLIC_HOMEPAGE_REIMAGINING_SAMPLE.latest.html"
+  brief_name = "MIM_PUBLIC_HOMEPAGE_CONSULTANT_DESIGN_BRIEF.latest.md"
+  preview_name = "MIM_PUBLIC_HOMEPAGE_REIMAGINING_SAMPLE.preview.png"
+  sample_path = SHARED_RUNTIME_ROOT / sample_name
+  brief_path = SHARED_RUNTIME_ROOT / brief_name
+  if not sample_path.exists() or not sample_path.is_file():
+    return None
+
+  sample_stat = sample_path.stat()
+  preview_path = _ensure_mim_ui_media_root() / preview_name
+  generated_at = datetime.fromtimestamp(sample_stat.st_mtime, timezone.utc).isoformat()
+  metadata = {
+    "message_type": "mim_reply",
+    "interaction_mode": "artifact_ready",
+    "artifact_event_key": "mim_public_homepage_reimagining_sample_ready_v1",
+    "artifact_ready": True,
+    "links": [
+      {
+        "label": "Open homepage prototype",
+        "url": _mim_ui_review_artifact_url(sample_name),
+        "kind": "html_prototype",
+      },
+      {
+        "label": "Open design brief",
+        "url": _mim_ui_review_artifact_url(brief_name),
+        "kind": "document",
+      },
+    ],
+    "attachment": {
+      "kind": "html_prototype",
+      "url": _mim_ui_review_artifact_url(sample_name),
+      "thumbnail_url": _mim_ui_media_url(preview_name) if preview_path.exists() else "",
+      "mime_type": "text/html",
+      "filename": "MIM homepage prototype",
+      "size_bytes": int(sample_stat.st_size),
+      "sha256": sha256(sample_path.read_bytes()).hexdigest(),
+    },
+  }
+  content = (
+    "Hi Dave, I finished the reviewable homepage sample. "
+    "Open the prototype from this card and use the design brief if you want to inspect the thinking behind it. "
+    "This is a sample for review, not the live homepage deployment yet."
+  )
+  if brief_path.exists() and brief_path.is_file():
+    metadata["brief_size_bytes"] = int(brief_path.stat().st_size)
+  return _serialize_chat_message(
+    {
+      "message_id": "artifact-mim-public-homepage-reimagining-sample-ready-v1",
+      "session_id": 0,
+      "source": "mim_ui_artifact_announcement",
+      "actor": "MIM",
+      "direction": "outbound",
+      "role": "mim",
+      "content": content,
+      "parsed_intent": "artifact_ready",
+      "confidence": 1.0,
+      "requires_approval": False,
+      "delivery_status": "accepted",
+      "metadata_json": metadata,
+      "created_at": generated_at,
+      "client_message_id": "artifact-mim-public-homepage-reimagining-sample-ready-v1",
+    }
+  )
+
+
+async def _ensure_homepage_review_artifact_chat_message(*, db: AsyncSession) -> None:
+  announcement = _homepage_review_artifact_announcement()
+  if not announcement:
+    return
+  session_key = _mim_ui_primary_thread_key()
+  await upsert_interface_session(
+    session_key=session_key,
+    actor="operator",
+    source="mim_ui",
+    channel="chat",
+    status="active",
+    context_json={"primary_thread": True},
+    metadata_json={"conversation_session_id": session_key},
+    db=db,
+  )
+  try:
+    _, rows = await list_interface_messages(session_key=session_key, limit=120, db=db)
+  except ValueError:
+    rows = []
+  for row in rows:
+    metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+    if str(metadata.get("artifact_event_key") or "") == "mim_public_homepage_reimagining_sample_ready_v1":
+      return
+  metadata_json = announcement.get("metadata_json") if isinstance(announcement.get("metadata_json"), dict) else {}
+  await append_interface_message(
+    session_key=session_key,
+    actor="MIM",
+    source="mim_ui_artifact_announcement",
+    direction="outbound",
+    role="mim",
+    content=str(announcement.get("content") or ""),
+    parsed_intent="artifact_ready",
+    confidence=1.0,
+    requires_approval=False,
+    metadata_json=metadata_json,
+    db=db,
+  )
+  await db.commit()
+
+
 async def _load_mim_ui_chat_thread(*, db: AsyncSession) -> dict[str, object]:
+  await _ensure_homepage_review_artifact_chat_message(db=db)
   session_key = _mim_ui_primary_thread_key()
   try:
     session, rows = await list_interface_messages(
@@ -4220,6 +4390,11 @@ def _build_mim_ui_fast_state(*, reason: str = "artifact fast path") -> dict[str,
     operator_reasoning=operator_reasoning,
     generated_at=now.isoformat(),
   )
+  artifact_announcements = [
+    item
+    for item in [_homepage_review_artifact_announcement()]
+    if isinstance(item, dict)
+  ]
   return {
     "speaking": False,
     "camera_last_label": "",
@@ -4260,6 +4435,7 @@ def _build_mim_ui_fast_state(*, reason: str = "artifact fast path") -> dict[str,
     "mim_arm_dispatch_telemetry": {},
     "primitive_request": load_authoritative_request_status(shared_root=SHARED_RUNTIME_ROOT),
     "chat_thread": chat_thread,
+    "artifact_announcements": artifact_announcements,
     "frontend_media": _frontend_media_snapshot(now),
     "voice_do_not_disturb": _load_voice_do_not_disturb_state(),
     "conversation_context": {
@@ -6933,6 +7109,58 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       font-size: 12px;
       color: #a8d4e5;
     }
+    .bubble-attachment.artifact-card {
+      max-width: 520px;
+    }
+    .artifact-link {
+      display: grid;
+      gap: 5px;
+      padding: 13px 14px;
+      border: 1px solid rgba(125, 211, 252, 0.34);
+      border-radius: 12px;
+      background: rgba(12, 33, 46, 0.78);
+      color: #effbff;
+      text-decoration: none;
+    }
+    .artifact-link:hover {
+      border-color: rgba(125, 211, 252, 0.68);
+      background: rgba(16, 46, 63, 0.92);
+    }
+    .artifact-link strong {
+      font-size: 14px;
+      color: #ffffff;
+    }
+    .artifact-link span {
+      font-size: 12px;
+      color: #a8d4e5;
+    }
+    .artifact-preview {
+      width: min(100%, 520px);
+      border-radius: 12px;
+      border: 1px solid #1c516d;
+      display: block;
+    }
+    .bubble-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .bubble-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 7px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(125, 211, 252, 0.34);
+      background: rgba(12, 33, 46, 0.72);
+      color: #e9f8ff;
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .bubble-link:hover {
+      border-color: rgba(125, 211, 252, 0.68);
+      background: rgba(16, 46, 63, 0.92);
+    }
     .empty-thread {
       display: grid;
       gap: 10px;
@@ -7597,6 +7825,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         <a class="console-link utility" href="/"><span>Public Home</span></a>
         <a class="console-link active" href="/mim"><span id="mimConsoleLight" class="console-nav-light"></span><span>MIM Coordination Console</span></a>
         <a class="console-link" href="/tod"><span id="todConsoleLight" class="console-nav-light"></span><span>TOD Execution Console</span></a>
+        <a class="console-link utility" href="/objectives"><span>Objectives</span></a>
         <a class="console-link utility" href="/chat"><span>Direct Chat</span></a>
         <button id="settingsBtn" class="console-link utility" type="button"><span>Settings</span></button>
         <a class="console-link utility" href="/mim/logout"><span>Logout</span></a>
@@ -9696,18 +9925,66 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       if (!url) return null;
       const figure = document.createElement('figure');
       figure.className = 'bubble-attachment';
-      const image = document.createElement('img');
-      image.src = url;
-      image.alt = safeText(attachment.filename, 'Attached image');
-      figure.appendChild(image);
+      const mimeType = safeText(attachment.mime_type).toLowerCase();
+      const kind = safeText(attachment.kind).toLowerCase();
+      const isImage = mimeType.startsWith('image/') || kind === 'image';
+      if (isImage) {
+        const image = document.createElement('img');
+        image.src = url;
+        image.alt = safeText(attachment.filename, 'Attached image');
+        figure.appendChild(image);
+      } else {
+        figure.classList.add('artifact-card');
+        const previewUrl = safeText(attachment.thumbnail_url);
+        if (previewUrl) {
+          const preview = document.createElement('img');
+          preview.className = 'artifact-preview';
+          preview.src = previewUrl;
+          preview.alt = `${safeText(attachment.filename, 'Artifact')} preview`;
+          figure.appendChild(preview);
+        }
+        const link = document.createElement('a');
+        link.className = 'artifact-link';
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        const title = document.createElement('strong');
+        title.textContent = safeText(attachment.filename, 'Open artifact');
+        const description = document.createElement('span');
+        description.textContent = kind === 'html_prototype'
+          ? 'Review the live prototype in a new tab'
+          : 'Open the review artifact';
+        link.appendChild(title);
+        link.appendChild(description);
+        figure.appendChild(link);
+      }
       const caption = document.createElement('figcaption');
       const size = Number(attachment.size_bytes || 0);
       caption.textContent = [
-        safeText(attachment.filename, 'Image attachment'),
+        safeText(attachment.filename, isImage ? 'Image attachment' : 'Review artifact'),
         size > 0 ? `${Math.max(1, Math.round(size / 1024))} KB` : '',
       ].filter(Boolean).join(' · ');
       figure.appendChild(caption);
       return figure;
+    }
+
+    function buildMessageLinks(links = []) {
+      const availableLinks = (Array.isArray(links) ? links : [])
+        .filter((link) => link && typeof link === 'object')
+        .filter((link) => safeText(link.url) && safeText(link.available, 'true') !== 'false');
+      if (!availableLinks.length) return null;
+      const wrap = document.createElement('div');
+      wrap.className = 'bubble-links';
+      availableLinks.slice(0, 5).forEach((link) => {
+        const anchor = document.createElement('a');
+        anchor.className = 'bubble-link';
+        anchor.href = safeText(link.url);
+        anchor.target = '_blank';
+        anchor.rel = 'noopener';
+        anchor.textContent = safeText(link.label, 'Open artifact');
+        wrap.appendChild(anchor);
+      });
+      return wrap;
     }
 
     function buildChatBubble(message = {}, index = -1, messages = []) {
@@ -9751,6 +10028,8 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         const figure = buildAttachmentFigure(attachment);
         if (figure) bubble.appendChild(figure);
       }
+      const links = buildMessageLinks(message && Array.isArray(message.links) ? message.links : []);
+      if (links) bubble.appendChild(links);
 
       if (messageType === 'system_execution') {
         const execution = normalizeExecutionPayload(message);
@@ -9793,7 +10072,9 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         const attachment = message && message.attachment && typeof message.attachment === 'object'
           ? message.attachment
           : null;
-        return Boolean(attachment && safeText(attachment.url));
+        const mimeType = safeText(attachment && attachment.mime_type).toLowerCase();
+        const kind = safeText(attachment && attachment.kind).toLowerCase();
+        return Boolean(attachment && safeText(attachment.url) && (mimeType.startsWith('image/') || kind === 'image'));
       });
       if (!imageMessages.length) {
         const empty = document.createElement('div');
@@ -9852,6 +10133,29 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
       renderMediaGrid(visibleMessages);
     }
 
+    function chatMessageIdentity(message = {}) {
+      const metadata = message && typeof message.metadata_json === 'object' ? message.metadata_json : {};
+      return safeText(
+        message.client_message_id
+        || message.message_id
+        || metadata.artifact_event_key
+        || `${message.role || ''}:${message.created_at || ''}:${message.content || ''}`.slice(0, 180)
+      );
+    }
+
+    function mergeChatMessages(baseMessages = [], extraMessages = []) {
+      const merged = Array.isArray(baseMessages) ? [...baseMessages] : [];
+      const seen = new Set(merged.map((message) => chatMessageIdentity(message)).filter(Boolean));
+      (Array.isArray(extraMessages) ? extraMessages : []).forEach((message) => {
+        if (!message || typeof message !== 'object') return;
+        const identity = chatMessageIdentity(message);
+        if (identity && seen.has(identity)) return;
+        if (identity) seen.add(identity);
+        merged.push(message);
+      });
+      return merged;
+    }
+
     function appendChatMessage(role, text, options = {}) {
       const clean = safeText(text);
       if (!clean) return '';
@@ -9864,6 +10168,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         interaction_mode: safeText(options.interactionMode, role === 'user' ? 'text' : ''),
         message_type: safeText(options.messageType, role === 'user' ? 'user' : 'mim_reply'),
         attachment: options.attachment || null,
+        links: Array.isArray(options.links) ? options.links : [],
       };
       chatThreadMessages = [...chatThreadMessages, tempMessage];
       renderChatThread(chatThreadMessages, { force: true });
@@ -10086,7 +10391,12 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 
         const result = await response.json();
         removeChatMessageByClientId(thinkingMessageId);
-        appendChatMessage('mim', summarizeTextResolution(result));
+        const interfaceReply = result && typeof result.mim_interface === 'object' ? result.mim_interface : {};
+        appendChatMessage('mim', summarizeTextResolution(result), {
+          interactionMode: safeText(interfaceReply.response_mode || interfaceReply.status || 'text'),
+          attachment: interfaceReply.attachment || null,
+          links: Array.isArray(interfaceReply.links) ? interfaceReply.links : [],
+        });
         await refreshFreshnessState();
         refreshState().catch(() => {});
       } catch (error) {
@@ -14162,6 +14472,7 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
         const operatorReasoning = (data && typeof data.operator_reasoning === 'object') ? data.operator_reasoning : {};
         const chatThread = data && typeof data.chat_thread === 'object' ? data.chat_thread : {};
         const threadMessages = Array.isArray(chatThread.messages) ? chatThread.messages : [];
+        const artifactAnnouncements = Array.isArray(data.artifact_announcements) ? data.artifact_announcements : [];
         const syntheticFastThread = safeText(data.state_mode) === 'artifact_fast_path'
           && threadMessages.length <= 3
           && threadMessages.every((message) => safeText(message && message.message_type) === 'system_summary');
@@ -14175,12 +14486,14 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
           && chatThreadMessages.length > threadMessages.length
           && (textChatInFlight || hasLocalPendingMessages || syntheticFastThread);
         if (!preserveLocalThread) {
-          chatThreadMessages = threadMessages;
+          chatThreadMessages = mergeChatMessages(threadMessages, artifactAnnouncements);
+        } else if (artifactAnnouncements.length) {
+          chatThreadMessages = mergeChatMessages(chatThreadMessages, artifactAnnouncements);
         }
         if (threadStatusChip) {
           threadStatusChip.textContent = `Primary thread: ${safeText(chatThread.primary_thread, textChatSessionId)}`;
         }
-        renderChatThread(preserveLocalThread ? chatThreadMessages : threadMessages);
+        renderChatThread(chatThreadMessages);
         renderPrimaryStatus(data);
         renderObjectMemoryPanel(conversationContext);
         renderSystemReasoningPanel(operatorReasoning);
@@ -15288,6 +15601,18 @@ async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
 </body>
 </html>
 """.replace("__MIM_PRELOADED_CHAT_THREAD__", json.dumps(preloaded_chat_thread, default=str))
+
+@router.get("/mim/ui/review/{asset_name}")
+async def mim_ui_review_artifact(request: Request, asset_name: str) -> FileResponse:
+  ensure_authenticated_mimtod_api_request(request)
+  safe_name = _safe_reviewable_artifact_name(asset_name)
+  path = SHARED_RUNTIME_ROOT / safe_name
+  if not path.exists() or not path.is_file():
+    raise HTTPException(status_code=404, detail="review_artifact_not_found")
+  info = _reviewable_artifact_info(safe_name)
+  media_type = str(info.get("mime_type") or mimetypes.guess_type(safe_name)[0] or "application/octet-stream")
+  return FileResponse(path, media_type=media_type)
+
 
 @router.get("/mim/ui/media/{asset_name}")
 async def mim_ui_media(request: Request, asset_name: str) -> FileResponse:
@@ -16675,6 +17000,11 @@ async def _build_live_mim_ui_state(request: Request, db: AsyncSession) -> dict:
         "mim_arm_dispatch_telemetry": dispatch_telemetry,
         "primitive_request": authoritative_request,
         "chat_thread": chat_thread,
+        "artifact_announcements": [
+          item
+          for item in [_homepage_review_artifact_announcement()]
+          if isinstance(item, dict)
+        ],
         "frontend_media": frontend_media,
         "voice_do_not_disturb": _load_voice_do_not_disturb_state(),
         "conversation_context": {

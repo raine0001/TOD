@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import time
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SHARED = ROOT / "runtime" / "shared"
+STATUS_PATH = SHARED / "MIM_ARM_BLUE_BLOCK_FULL_CLOSE_RETRY.latest.json"
+ARM_HOST = "http://192.168.1.90:5000"
+
+STEP_DEGREES = 2
+SETTLE_SECONDS = 0.28
+OBJECTIVE_ID = "MIM-ARM-BLUE-BLOCK-FULL-CLOSE-RETRY-V1"
+
+LIFT_OPEN_POSE = [90, 78, 60, 90, 90, 90]
+APPROACH_POSE = [90, 101, 2, 90, 90, 90]
+LOWER_POSE = [90, 112, 14, 90, 90, 90]
+FULL_CLOSE_TARGET = 0
+LIFT_CLOSED_POSE = [90, 78, 60, 90, 90, 0]
+VERIFY_HELD_MAX_MM = 520
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def request_json(endpoint: str, payload: dict[str, Any] | None = None, timeout: float = 10.0) -> dict[str, Any]:
+    if payload is None:
+        request = urllib.request.Request(f"{ARM_HOST}{endpoint}", method="GET")
+    else:
+        request = urllib.request.Request(
+            f"{ARM_HOST}{endpoint}",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return {"ok": True, "data": json.loads(response.read().decode("utf-8"))}
+    except Exception as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def clamp(angle: int) -> int:
+    return max(0, min(180, int(angle)))
+
+
+def current_pose() -> list[int]:
+    result = request_json("/get_current_position", timeout=6.0)
+    data = result.get("data") if isinstance(result.get("data"), dict) else {}
+    angles = data.get("angles")
+    if isinstance(angles, list) and len(angles) >= 6:
+        return [int(value) for value in angles[:6]]
+    return []
+
+
+def slow_move_servo(servo: int, target: int, source: str) -> dict[str, Any]:
+    pose = current_pose()
+    if len(pose) < 6:
+        return {"ok": False, "servo": servo, "target": target, "reason": "current_pose_unavailable"}
+    start = clamp(pose[servo])
+    target = clamp(target)
+    if start == target:
+        return {"ok": True, "servo": servo, "start": start, "target": target, "commands": [], "skipped": True}
+    step = STEP_DEGREES if target > start else -STEP_DEGREES
+    angle = start
+    commands: list[dict[str, Any]] = []
+    while angle != target:
+        next_angle = angle + step
+        if (step > 0 and next_angle > target) or (step < 0 and next_angle < target):
+            next_angle = target
+        result = request_json(
+            "/move",
+            {
+                "servo": servo,
+                "angle": next_angle,
+                "source": source,
+                "page": "mim_arm_blue_block_full_close_retry",
+                "motion_profile": "known_good_block_pose_full_close_slow",
+                "step_degrees": STEP_DEGREES,
+            },
+            timeout=8.0,
+        )
+        commands.append({"angle": next_angle, "result": result})
+        if not result.get("ok"):
+            return {"ok": False, "servo": servo, "start": start, "target": target, "failed_at": next_angle, "commands": commands}
+        angle = next_angle
+        time.sleep(SETTLE_SECONDS)
+    return {"ok": True, "servo": servo, "start": start, "target": target, "commands": commands}
+
+
+def move_pose(target: list[int], source: str, order: list[int] | None = None) -> dict[str, Any]:
+    moves: list[dict[str, Any]] = []
+    for servo in order or [0, 1, 2, 3, 4, 5]:
+        result = slow_move_servo(servo, target[servo], source)
+        moves.append({"servo": servo, "target": target[servo], "result": result})
+        if not result.get("ok"):
+            return {"ok": False, "target_pose": target, "moves": moves}
+        time.sleep(0.18)
+    return {"ok": True, "target_pose": target, "moves": moves}
+
+
+def distance(label: str) -> dict[str, Any]:
+    readings = []
+    for _ in range(5):
+        readings.append(request_json("/distance/status", timeout=8.0))
+        time.sleep(0.18)
+    values = []
+    for item in readings:
+        data = item.get("data") if isinstance(item.get("data"), dict) else {}
+        if item.get("ok") and data.get("distance_mm") is not None:
+            values.append(int(data["distance_mm"]))
+    return {
+        "label": label,
+        "readings": readings,
+        "distance_mm_values": values,
+        "min_mm": min(values) if values else None,
+        "median_mm": sorted(values)[len(values) // 2] if values else None,
+    }
+
+
+def capture(label: str) -> dict[str, Any]:
+    return {
+        "label": label,
+        "camera": request_json("/capture_frame", {}, timeout=12.0),
+        "distance": distance(label),
+        "pose": current_pose(),
+    }
+
+
+def main() -> int:
+    started_at = now_iso()
+    start_pose = current_pose()
+    blockers: list[str] = []
+    actions: list[dict[str, Any]] = []
+    evidence: list[dict[str, Any]] = []
+    state = request_json("/arm_state")
+    data = state.get("data") if isinstance(state.get("data"), dict) else {}
+    serial = data.get("serial") if isinstance(data.get("serial"), dict) else {}
+    if not state.get("ok") or not serial.get("serial_ready"):
+        blockers.append("arm_or_serial_not_ready")
+    if len(start_pose) < 6:
+        blockers.append("current_pose_unavailable")
+
+    if not blockers:
+        evidence.append(capture("start_before_full_close_retry"))
+        actions.append({"action": "open_at_lift", "result": move_pose(LIFT_OPEN_POSE, "mim_full_close_retry_open_at_lift", [5, 1, 2, 0, 3, 4])})
+        actions.append({"action": "approach_known_good", "result": move_pose(APPROACH_POSE, "mim_full_close_retry_approach", [0, 1, 2, 3, 4, 5])})
+        actions.append({"action": "lower_known_good", "result": move_pose(LOWER_POSE, "mim_full_close_retry_lower", [1, 2, 0, 3, 4, 5])})
+        evidence.append(capture("known_good_lower_before_full_close"))
+        actions.append({"action": "full_close_claw", "result": slow_move_servo(5, FULL_CLOSE_TARGET, "mim_full_close_retry_full_close")})
+        evidence.append(capture("after_full_close_before_lift"))
+        actions.append({"action": "lift_verify", "result": move_pose(LIFT_CLOSED_POSE, "mim_full_close_retry_lift_verify", [1, 2, 0, 3, 4, 5])})
+        evidence.append(capture("after_lift_verify"))
+
+    for action in actions:
+        result = action.get("result")
+        if isinstance(result, dict) and not result.get("ok"):
+            blockers.append(f"{action.get('action')}_failed")
+
+    final_pose = current_pose()
+    final_distance = distance("final_full_close_retry")
+    verified = bool(not blockers and isinstance(final_distance.get("min_mm"), int) and final_distance["min_mm"] <= VERIFY_HELD_MAX_MM)
+    payload = {
+        "packet_type": "mim-arm-blue-block-full-close-retry-v1",
+        "generated_at": now_iso(),
+        "started_at": started_at,
+        "objective_id": OBJECTIVE_ID,
+        "learning_owner": "MIM",
+        "status": "completed_with_verified_pickup_evidence" if verified else ("blocked_with_evidence" if blockers else "motion_completed_pickup_not_verified"),
+        "success": verified,
+        "goal": "Retry the known-good block-hole pickup using the newly calibrated full claw close limit.",
+        "motion_policy": {
+            "known_good_pose": LOWER_POSE,
+            "full_close_target": FULL_CLOSE_TARGET,
+            "verified_held_max_mm": VERIFY_HELD_MAX_MM,
+            "no_transport_after_lift": True,
+        },
+        "start_pose": start_pose,
+        "final_pose": final_pose,
+        "actions": actions,
+        "evidence": evidence,
+        "final_distance": final_distance,
+        "blockers": blockers,
+        "next_recovery_action": "If not verified, compare lower/close images and bias the base/right-claw hook point before another retry.",
+    }
+    write_json(STATUS_PATH, payload)
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0 if verified else (2 if blockers else 1)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

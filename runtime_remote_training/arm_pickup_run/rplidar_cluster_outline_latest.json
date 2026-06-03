@@ -1,0 +1,342 @@
+{
+  "generated_at": "2026-05-31T22:37:19Z",
+  "status": "completed",
+  "source": "rplidar_close_range_scan_latest.json",
+  "filtered_returns": 1487,
+  "cluster_count": 22,
+  "image": "runtime_remote_training/arm_pickup_run/rplidar_cluster_outline_latest.png",
+  "clusters": "runtime_remote_training/arm_pickup_run/rplidar_cluster_outline_latest.json",
+  "interpretation_note": "These are surface segments intersecting the 2D lidar plane, not object labels. Block/arm identification requires calibration to camera/arm coordinates and a known sensor height.",
+  "clusters_summary": [
+    {
+      "cluster_id": 1,
+      "samples": 138,
+      "angle_start": 343.48,
+      "angle_end": 8.45,
+      "range_min_m": 0.9722000000000001,
+      "range_max_m": 1.456,
+      "centroid_m": {
+        "x": 1.1396040959338416,
+        "y": -0.06601482065063176,
+        "r": 1.1415145430587923
+      },
+      "approx_surface_length_m": 0.9795907129613488,
+      "median_quality": 20.0
+    },
+    {
+      "cluster_id": 2,
+      "samples": 17,
+      "angle_start": 10.7,
+      "angle_end": 15.41,
+      "range_min_m": 0.943,
+      "range_max_m": 1.062,
+      "centroid_m": {
+        "x": 0.9625530539998431,
+        "y": 0.21697210941920544,
+        "r": 0.9867042505382475
+      },
+      "approx_surface_length_m": 0.16495589652022724,
+      "median_quality": 17.0
+    },
+    {
+      "cluster_id": 3,
+      "samples": 10,
+      "angle_start": 17.62,
+      "angle_end": 20.09,
+      "range_min_m": 0.954,
+      "range_max_m": 1.0797999999999999,
+      "centroid_m": {
+        "x": 0.921908157341418,
+        "y": 0.3087255619951555,
+        "r": 0.9722274030296992
+      },
+      "approx_surface_length_m": 0.15248171237708838,
+      "median_quality": 32.0
+    },
+    {
+      "cluster_id": 4,
+      "samples": 23,
+      "angle_start": 21.48,
+      "angle_end": 24.42,
+      "range_min_m": 0.796,
+      "range_max_m": 0.814,
+      "centroid_m": {
+        "x": 0.7402089328495614,
+        "y": 0.3129814260023288,
+        "r": 0.8036582839072448
+      },
+      "approx_surface_length_m": 0.08195586509423361,
+      "median_quality": 13.0
+    },
+    {
+      "cluster_id": 5,
+      "samples": 16,
+      "angle_start": 29.22,
+      "angle_end": 31.42,
+      "range_min_m": 1.1562000000000001,
+      "range_max_m": 1.172,
+      "centroid_m": {
+        "x": 1.006889677142568,
+        "y": 0.5915370992911112,
+        "r": 1.167794057946009
+      },
+      "approx_surface_length_m": 0.05547775602035276,
+      "median_quality": 36.5
+    },
+    {
+      "cluster_id": 6,
+      "samples": 142,
+      "angle_start": 32.44,
+      "angle_end": 51.25,
+      "range_min_m": 0.8977999999999999,
+      "range_max_m": 0.928,
+      "centroid_m": {
+        "x": 0.6717340918753663,
+        "y": 0.604501805481173,
+        "r": 0.9036864074542789
+      },
+      "approx_surface_length_m": 0.3636435111548654,
+      "median_quality": 36.0
+    },
+    {
+      "cluster_id": 7,
+      "samples": 154,
+      "angle_start": 86.33,
+      "angle_end": 114.77,
+      "range_min_m": 0.04,
+      "range_max_m": 0.046,
+      "centroid_m": {
+        "x": -0.008930790181947718,
+        "y": 0.04259270758742553,
+        "r": 0.04351893556719776
+      },
+      "approx_surface_length_m": 0.14352813841134116,
+      "median_quality": 53.0
+    },
+    {
+      "cluster_id": 8,
+      "samples": 513,
+      "angle_start": 123.67,
+      "angle_end": 185.73,
+      "range_min_m": 0.6892,
+      "range_max_m": 1.069,
+      "centroid_m": {
+        "x": -0.6842064425545727,
+        "y": 0.31523913999376985,
+        "r": 0.7533353645071997
+      },
+      "approx_surface_length_m": 1.39002140348434,
+      "median_quality": 34.0
+    },
+    {
+      "cluster_id": 9,
+      "samples": 19,
+      "angle_start": 204.69,
+      "angle_end": 207.42,
+      "range_min_m": 2.3225,
+      "range_max_m": 2.496,
+      "centroid_m": {
+        "x": -2.1381193634641544,
+        "y": -1.0582616024790998,
+        "r": 2.3856806223176634
+      },
+      "approx_surface_length_m": 0.2615218602306673,
+      "median_quality": 26.0
+    },
+    {
+      "cluster_id": 10,
+      "samples": 70,
+      "angle_start": 208.55,
+      "angle_end": 216.89,
+      "range_min_m": 1.719,
+      "range_max_m": 1.8065,
+      "centroid_m": {
+        "x": -1.4686458856627738,
+        "y": -0.9415635846449109,
+        "r": 1.7445522982712691
+      },
+      "approx_surface_length_m": 0.3913095984047599,
+      "median_quality": 22.0
+    },
+    {
+      "cluster_id": 11,
+      "samples": 87,
+      "angle_start": 218.19,
+      "angle_end": 229.88,
+      "range_min_m": 2.1358,
+      "range_max_m": 2.1708000000000003,
+      "centroid_m": {
+        "x": -1.5534643314550796,
+        "y": -1.4898537604641107,
+        "r": 2.1524208827904054
+      },
+      "approx_surface_length_m": 0.587326747184083,
+      "median_quality": 33.0
+    },
+    {
+      "cluster_id": 12,
+      "samples": 3,
+      "angle_start": 233.22,
+      "angle_end": 233.23,
+      "range_min_m": 0.294,
+      "range_max_m": 0.298,
+      "centroid_m": {
+        "x": -0.1775735996715504,
+        "y": -0.2375693079982879,
+        "r": 0.2965999989937583
+      },
+      "approx_surface_length_m": 0.004006647789748626,
+      "median_quality": 11.0
+    },
+    {
+      "cluster_id": 13,
+      "samples": 14,
+      "angle_start": 234.52,
+      "angle_end": 237.02,
+      "range_min_m": 2.2001999999999997,
+      "range_max_m": 2.2272,
+      "centroid_m": {
+        "x": -1.2449592608480098,
+        "y": -1.8270964170169663,
+        "r": 2.2109285104334466
+      },
+      "approx_surface_length_m": 0.10316008194831378,
+      "median_quality": 20.5
+    },
+    {
+      "cluster_id": 14,
+      "samples": 9,
+      "angle_start": 237.98,
+      "angle_end": 238.98,
+      "range_min_m": 0.278,
+      "range_max_m": 0.2845,
+      "centroid_m": {
+        "x": -0.14747696483575712,
+        "y": -0.23946941281240866,
+        "r": 0.28123843057072934
+      },
+      "approx_surface_length_m": 0.017262488594132396,
+      "median_quality": 12.0
+    },
+    {
+      "cluster_id": 15,
+      "samples": 72,
+      "angle_start": 240.31,
+      "angle_end": 251.72,
+      "range_min_m": 2.2725,
+      "range_max_m": 2.495,
+      "centroid_m": {
+        "x": -0.9285514242565951,
+        "y": -2.2002081736079058,
+        "r": 2.388121386089909
+      },
+      "approx_surface_length_m": 0.5785817461098235,
+      "median_quality": 26.0
+    },
+    {
+      "cluster_id": 16,
+      "samples": 128,
+      "angle_start": 256.19,
+      "angle_end": 275.39,
+      "range_min_m": 1.1212,
+      "range_max_m": 1.4212,
+      "centroid_m": {
+        "x": -0.11921592107327136,
+        "y": -1.2463702893609496,
+        "r": 1.252058838089906
+      },
+      "approx_surface_length_m": 0.7508409172679509,
+      "median_quality": 34.0
+    },
+    {
+      "cluster_id": 17,
+      "samples": 17,
+      "angle_start": 278.61,
+      "angle_end": 280.92,
+      "range_min_m": 1.3982,
+      "range_max_m": 1.4848,
+      "centroid_m": {
+        "x": 0.24187047639679338,
+        "y": -1.4189293060318349,
+        "r": 1.4393962980598485
+      },
+      "approx_surface_length_m": 0.1453908225822081,
+      "median_quality": 14.0
+    },
+    {
+      "cluster_id": 18,
+      "samples": 16,
+      "angle_start": 309.84,
+      "angle_end": 313.94,
+      "range_min_m": 2.4452,
+      "range_max_m": 2.4735,
+      "centroid_m": {
+        "x": 1.6354909688743235,
+        "y": -1.831997784653787,
+        "r": 2.455818924971028
+      },
+      "approx_surface_length_m": 0.19360045907901588,
+      "median_quality": 5.0
+    },
+    {
+      "cluster_id": 19,
+      "samples": 7,
+      "angle_start": 315.72,
+      "angle_end": 316.42,
+      "range_min_m": 1.8915,
+      "range_max_m": 1.9002000000000001,
+      "centroid_m": {
+        "x": 1.365228318257545,
+        "y": -1.3162803006361143,
+        "r": 1.896428799300154
+      },
+      "approx_surface_length_m": 0.03428439922928578,
+      "median_quality": 6.0
+    },
+    {
+      "cluster_id": 20,
+      "samples": 14,
+      "angle_start": 323.91,
+      "angle_end": 328.0,
+      "range_min_m": 1.88,
+      "range_max_m": 1.956,
+      "centroid_m": {
+        "x": 1.5870146973381465,
+        "y": -1.0863651320039804,
+        "r": 1.923227716522751
+      },
+      "approx_surface_length_m": 0.1736550690701118,
+      "median_quality": 23.5
+    },
+    {
+      "cluster_id": 21,
+      "samples": 6,
+      "angle_start": 332.05,
+      "angle_end": 333.78,
+      "range_min_m": 2.2578,
+      "range_max_m": 2.3802,
+      "centroid_m": {
+        "x": 2.063986320579333,
+        "y": -1.0556545866310372,
+        "r": 2.3182851718056083
+      },
+      "approx_surface_length_m": 0.1672847778874157,
+      "median_quality": 16.0
+    },
+    {
+      "cluster_id": 22,
+      "samples": 11,
+      "angle_start": 338.03,
+      "angle_end": 339.75,
+      "range_min_m": 1.6188,
+      "range_max_m": 1.692,
+      "centroid_m": {
+        "x": 1.5403889685676155,
+        "y": -0.5931216984214239,
+        "r": 1.6506336733579372
+      },
+      "approx_surface_length_m": 0.10924881437985819,
+      "median_quality": 10.0
+    }
+  ]
+}

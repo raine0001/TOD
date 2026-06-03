@@ -1,0 +1,34 @@
+{
+  "packet_type": "tod-blocker-resolution-drill-003-v1",
+  "objective_id": "TOD-BLOCKER-RESOLUTION-AUTONOMY-V1",
+  "drill_id": "TOD-BLOCKER-CLEARING-DRILL-003",
+  "status": "active_with_initial_inspection",
+  "generated_at": "2026-06-01T18:14:01Z",
+  "goal": "Inspect one linked-task blocked objective before choosing repair or narrower blocker.",
+  "inspected_blocker_class": "linked_task_blocked_needs_evidence_inspection",
+  "sampled_tasks": [
+    7972,
+    7973,
+    7974,
+    7975,
+    7976
+  ],
+  "finding": "The sampled linked tasks exist, but their task result rows have null status, null summary, and null metadata. That is not meaningful evidence.",
+  "root_cause_hypothesis": "Earlier reconciliation treated presence of a task result row as evidence, even when the result content was empty.",
+  "blocker_class_refinement": "linked_task_result_empty_or_non_evidentiary",
+  "required_resolution": [
+    "Stop accepting empty/null task_result rows as blocked_with_evidence.",
+    "For each affected objective, inspect expected artifact or rerun/replay a bounded repair task.",
+    "If no executor can replay it, create Codex escalation packet with exact objective/task/artifact gap.",
+    "Update MIM operator status with plain-language blocker summary."
+  ],
+  "next_action": "Create DRILL-004 to repair the linked-task empty-evidence class, starting with one objective and validating that no empty task result counts as evidence.",
+  "dave_needed": false,
+  "codex_escalation_needed": "only if TOD cannot locate executor/replay path after registry and codebase inspection",
+  "evidence": {
+    "sample_task_rows": "remote DB tasks 7972-7976 inspected",
+    "sample_result_rows": "task_results 26-30 inspected; result/status/summary/metadata empty or unavailable",
+    "prior_proof_artifact": "runtime/shared/TOD_BLOCKED_OBJECTIVE_CLEARING_DRILL_002.latest.json"
+  },
+  "training_lesson": "TOD must inspect the substance of evidence, not just the existence of a row or artifact. Empty task results are blockers, not proof."
+}

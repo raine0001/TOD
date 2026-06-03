@@ -1,0 +1,115 @@
+{
+  "assets": [
+    {
+      "access_level": "hard_asset_full_mim_lab_access",
+      "asset_id": "dave_pc_arm_camera",
+      "current_openability": "openable_on_operator_pc_bridge_required",
+      "endpoint": "",
+      "expected_view": "Pointed at the MIM arm and work table from the operator PC.",
+      "host": "Dave PC",
+      "label": "Dave PC camera",
+      "role": "external_arm_observer",
+      "verification_rule": "The operator PC reports a usable camera, but remote MIM may use it as current visual evidence only after a PC camera bridge or capture endpoint provides a fresh frame."
+    },
+    {
+      "access_level": "hard_asset_full_mim_lab_access",
+      "asset_id": "mim_box_lab_camera",
+      "current_openability": "openable",
+      "endpoint": "/dev/video0",
+      "expected_view": "Wide room view for object, table, arm, and human context.",
+      "host": "MIM Box",
+      "label": "MIM Box whole-lab camera",
+      "last_checked_at": "2026-05-31T21:43:10Z",
+      "last_probe": {
+        "device": "/dev/video0",
+        "error": "",
+        "method": "gst-launch-1.0 v4l2src one-frame probe",
+        "ok": true,
+        "returncode": 0
+      },
+      "role": "whole_lab_observer",
+      "verification_rule": "Use as a current external lab/table view after confirming its physical aim for the active task."
+    },
+    {
+      "access_level": "hard_asset_full_mim_lab_access",
+      "asset_id": "mim_box_operator_camera",
+      "current_openability": "openable",
+      "endpoint": "/dev/video2",
+      "expected_view": "Operator-facing camera for identity/context, not primary object localization.",
+      "host": "MIM Box",
+      "label": "MIM Box operator camera",
+      "last_checked_at": "2026-05-31T21:43:10Z",
+      "last_probe": {
+        "device": "/dev/video2",
+        "error": "",
+        "method": "gst-launch-1.0 v4l2src one-frame probe",
+        "ok": true,
+        "returncode": 0
+      },
+      "role": "operator_context_observer",
+      "verification_rule": "Use for operator context after confirming physical aim; do not use as object-location truth unless it sees the work surface."
+    },
+    {
+      "access_level": "hard_asset_full_mim_lab_access",
+      "asset_id": "pi_arm_observer_camera",
+      "current_openability": "endpoint_discovery_required",
+      "endpoint": "",
+      "expected_view": "Set-back view of the arm and table for pickup alignment.",
+      "host": "MIM ARM Pi",
+      "label": "Pi set-back arm camera",
+      "role": "external_arm_observer",
+      "verification_rule": "MIM must discover/open this feed before citing it as external arm-view evidence."
+    },
+    {
+      "access_level": "hard_asset_full_mim_lab_access",
+      "asset_id": "pi_hand_camera",
+      "current_openability": "openable",
+      "endpoint": "http://192.168.1.90:5000/camera_feed",
+      "expected_view": "Camera mounted on the hand, upright, wide view; moves with the grip.",
+      "host": "MIM ARM Pi",
+      "label": "Pi hand camera",
+      "last_checked_at": "2026-05-31T21:43:10Z",
+      "last_probe": {
+        "bytes_sampled": 4096,
+        "endpoint": "http://192.168.1.90:5000/camera_feed",
+        "error": "",
+        "ok": true,
+        "status": 200
+      },
+      "role": "hand_and_grip_observer",
+      "verification_rule": "Use for close alignment and grip contact, but never as the only localization source when the target is outside its frame."
+    }
+  ],
+  "bridge_required": [
+    "dave_pc_arm_camera"
+  ],
+  "generated_at": "2026-05-31T21:43:10Z",
+  "hard_asset_policy": {
+    "access": "MIM has full lab access to these assets for learning, perception, and interaction.",
+    "arm_object_interaction_rule": "For table approach, cube proximity, or object pickup, MIM must use multi-view localization: hand camera plus at least one external observer camera when available, with C12 distance and RPLIDAR as supporting sensors.",
+    "staleness_rule": "Stale detections or old camera artifacts cannot be used as current target-location truth.",
+    "truth_rule": "MIM must not claim a camera is live, current, or used until a fresh frame/openability check succeeds."
+  },
+  "operator_facing_summary": "MIM has five declared hard lab camera assets. Currently verified in the MIM runtime: mim_box_lab_camera, mim_box_operator_camera, pi_hand_camera. Bridge or endpoint work still needed: dave_pc_arm_camera, pi_arm_observer_camera.",
+  "packet_type": "mim-lab-camera-asset-registry-v1",
+  "pending_live_verification": [
+    "dave_pc_arm_camera",
+    "pi_arm_observer_camera"
+  ],
+  "required_for_blue_block_pickup": {
+    "completion_gate": "MIM cannot complete pickup from resource binding alone; completion requires fresh multi-view localization, bounded motion evidence, contact/grip evidence, and operator-facing result.",
+    "minimum_before_motion": [
+      "fresh hand-camera frame",
+      "fresh external arm-observer frame or explicit blocked_with_evidence for every external camera path",
+      "fresh C12 distance status",
+      "fresh RPLIDAR status/scan",
+      "movement memory inspection"
+    ]
+  },
+  "status": "active",
+  "verified_live_now": [
+    "mim_box_lab_camera",
+    "mim_box_operator_camera",
+    "pi_hand_camera"
+  ]
+}

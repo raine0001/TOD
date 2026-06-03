@@ -1,0 +1,16 @@
+{
+  "address": "0x10",
+  "connected": true,
+  "distance_cm": 13,
+  "distance_mm": 130,
+  "last_distance_mm": 130,
+  "ok": true,
+  "raw_lines": [
+    "DIST:ADDR=0x10,CM=13,MM=130,STRENGTH=1270,TEMP_RAW=4900,REG0_7=0D00F60424132BF9"
+  ],
+  "registers_0_7": "0D00F60424132BF9",
+  "signal_strength": 1270,
+  "source": "arduino_i2c_0x10",
+  "status": "ok",
+  "temperature_raw": 4900
+}

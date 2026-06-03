@@ -1,0 +1,657 @@
+{
+  "source": "tod-local-env-key-inventory-v1",
+  "generated_at": "2026-06-03T02:20:00Z",
+  "secret_values_included": false,
+  "key_count": 105,
+  "present_count": 105,
+  "categories": [
+    "AI Models",
+    "App Runtime",
+    "Billing",
+    "Compute / GPU",
+    "Database",
+    "Email",
+    "MIM Access",
+    "Marketing",
+    "Other",
+    "PythonAnywhere",
+    "Search / Research",
+    "Social / OAuth",
+    "Voice / Calls"
+  ],
+  "keys": [
+    {
+      "key": "MIM_SSH_USER",
+      "present": true,
+      "value_length": 9,
+      "category": "MIM Access"
+    },
+    {
+      "key": "MIM_SSH_PORT",
+      "present": true,
+      "value_length": 2,
+      "category": "MIM Access"
+    },
+    {
+      "key": "MIM_SSH_PASSWORD",
+      "present": true,
+      "value_length": 9,
+      "category": "MIM Access"
+    },
+    {
+      "key": "MIM_ARM_SSH_HOST",
+      "present": true,
+      "value_length": 12,
+      "category": "MIM Access"
+    },
+    {
+      "key": "MIM_ARM_SSH_USER",
+      "present": true,
+      "value_length": 9,
+      "category": "MIM Access"
+    },
+    {
+      "key": "MIM_ARM_SSH_PORT",
+      "present": true,
+      "value_length": 2,
+      "category": "MIM Access"
+    },
+    {
+      "key": "MIM_ARM_SSH_HOST_PASS",
+      "present": true,
+      "value_length": 9,
+      "category": "MIM Access"
+    },
+    {
+      "key": "MIM_ARM_SSH_REMOTE_ROOT",
+      "present": true,
+      "value_length": 38,
+      "category": "MIM Access"
+    },
+    {
+      "key": "MIM_ARM_SSH_TOOLS_ROOT",
+      "present": true,
+      "value_length": 37,
+      "category": "MIM Access"
+    },
+    {
+      "key": "DATABASE_URI",
+      "present": true,
+      "value_length": 97,
+      "category": "Database"
+    },
+    {
+      "key": "DEFAULT_CALL_PROVIDER",
+      "present": true,
+      "value_length": 6,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "DID_API_KEY",
+      "present": true,
+      "value_length": 45,
+      "category": "AI Models"
+    },
+    {
+      "key": "FACEBOOK_CLIENT_ID",
+      "present": true,
+      "value_length": 16,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "FACEBOOK_CLIENT_SECRET",
+      "present": true,
+      "value_length": 32,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "FACEBOOK_REDIRECT_URI",
+      "present": true,
+      "value_length": 49,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "FLASK_APP",
+      "present": true,
+      "value_length": 6,
+      "category": "App Runtime"
+    },
+    {
+      "key": "FLASK_ENV",
+      "present": true,
+      "value_length": 10,
+      "category": "App Runtime"
+    },
+    {
+      "key": "GEMINI_API_KEY",
+      "present": true,
+      "value_length": 39,
+      "category": "AI Models"
+    },
+    {
+      "key": "GEMINI_API_VERSION",
+      "present": true,
+      "value_length": 6,
+      "category": "AI Models"
+    },
+    {
+      "key": "GEMINI_SEARCH_MODEL",
+      "present": true,
+      "value_length": 16,
+      "category": "AI Models"
+    },
+    {
+      "key": "GEMINI_SEARCH_TOOL",
+      "present": true,
+      "value_length": 13,
+      "category": "AI Models"
+    },
+    {
+      "key": "GOOGLE_CALENDAR_CLIENT_ID",
+      "present": true,
+      "value_length": 72,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "GOOGLE_CALENDAR_CLIENT_SECRET",
+      "present": true,
+      "value_length": 35,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "GOOGLE_CALENDAR_REDIRECT_URI",
+      "present": true,
+      "value_length": 53,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "GOOGLE_CSE_API_KEY",
+      "present": true,
+      "value_length": 39,
+      "category": "Search / Research"
+    },
+    {
+      "key": "GOOGLE_CSE_ID",
+      "present": true,
+      "value_length": 17,
+      "category": "Search / Research"
+    },
+    {
+      "key": "INBOUND_EMAIL_HOST",
+      "present": true,
+      "value_length": 14,
+      "category": "Email"
+    },
+    {
+      "key": "INBOUND_EMAIL_PASSWORD",
+      "present": true,
+      "value_length": 16,
+      "category": "Email"
+    },
+    {
+      "key": "INBOUND_EMAIL_PORT",
+      "present": true,
+      "value_length": 3,
+      "category": "Email"
+    },
+    {
+      "key": "INBOUND_EMAIL_USERNAME",
+      "present": true,
+      "value_length": 17,
+      "category": "Email"
+    },
+    {
+      "key": "LEAD_RESEARCH_SEARCH_PROVIDER",
+      "present": true,
+      "value_length": 6,
+      "category": "Search / Research"
+    },
+    {
+      "key": "LINKEDIN_CLIENT_ID",
+      "present": true,
+      "value_length": 14,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "LINKEDIN_CLIENT_SECRET",
+      "present": true,
+      "value_length": 33,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "LINKEDIN_REDIRECT_URI",
+      "present": true,
+      "value_length": 49,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "LINKEDIN_SCOPES",
+      "present": true,
+      "value_length": 36,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "MARKETING_WORKER_TOKEN",
+      "present": true,
+      "value_length": 8,
+      "category": "Marketing"
+    },
+    {
+      "key": "MARKETING_WORKER_URL",
+      "present": true,
+      "value_length": 74,
+      "category": "Marketing"
+    },
+    {
+      "key": "MIM_MARKETING_WORKER",
+      "present": true,
+      "value_length": 50,
+      "category": "Marketing"
+    },
+    {
+      "key": "OPENAI_API_KEY",
+      "present": true,
+      "value_length": 164,
+      "category": "AI Models"
+    },
+    {
+      "key": "OPENAI_IMAGE_MODEL",
+      "present": true,
+      "value_length": 8,
+      "category": "AI Models"
+    },
+    {
+      "key": "OPENAI_MODEL_NAME",
+      "present": true,
+      "value_length": 6,
+      "category": "AI Models"
+    },
+    {
+      "key": "OPENAI_RESPONSES_WS_ENABLED",
+      "present": true,
+      "value_length": 4,
+      "category": "AI Models"
+    },
+    {
+      "key": "PAPERSPACE_API",
+      "present": true,
+      "value_length": 30,
+      "category": "Compute / GPU"
+    },
+    {
+      "key": "PM_PASSWORD",
+      "present": true,
+      "value_length": 36,
+      "category": "Other"
+    },
+    {
+      "key": "PM_SMTP_HOST",
+      "present": true,
+      "value_length": 20,
+      "category": "Email"
+    },
+    {
+      "key": "PM_SMTP_PORT",
+      "present": true,
+      "value_length": 3,
+      "category": "Email"
+    },
+    {
+      "key": "PM_SMTP_USERNAME",
+      "present": true,
+      "value_length": 36,
+      "category": "Email"
+    },
+    {
+      "key": "POSTMARK_FROM_DOMAIN",
+      "present": true,
+      "value_length": 16,
+      "category": "Email"
+    },
+    {
+      "key": "POSTMARK_INBOUND_TOKEN",
+      "present": true,
+      "value_length": 32,
+      "category": "Email"
+    },
+    {
+      "key": "POSTMARK_MESSAGE_STREAM",
+      "present": true,
+      "value_length": 8,
+      "category": "Email"
+    },
+    {
+      "key": "POSTMARK_SERVER_TOKEN",
+      "present": true,
+      "value_length": 36,
+      "category": "Email"
+    },
+    {
+      "key": "PUBLIC_APP_URL",
+      "present": true,
+      "value_length": 24,
+      "category": "App Runtime"
+    },
+    {
+      "key": "PYTHON_VERSION",
+      "present": true,
+      "value_length": 6,
+      "category": "App Runtime"
+    },
+    {
+      "key": "REPLY_EMAIL_DOMAIN",
+      "present": true,
+      "value_length": 18,
+      "category": "Email"
+    },
+    {
+      "key": "REPLY_EMAIL_PREFIX",
+      "present": true,
+      "value_length": 5,
+      "category": "Email"
+    },
+    {
+      "key": "RUNPOD_API_KEY",
+      "present": true,
+      "value_length": 50,
+      "category": "Compute / GPU"
+    },
+    {
+      "key": "RUNPOD_API_URL",
+      "present": true,
+      "value_length": 24,
+      "category": "Compute / GPU"
+    },
+    {
+      "key": "RUNPOD_ENDPOINT_ID",
+      "present": true,
+      "value_length": 14,
+      "category": "Compute / GPU"
+    },
+    {
+      "key": "RUNPOD_SSH_HOST",
+      "present": true,
+      "value_length": 13,
+      "category": "Compute / GPU"
+    },
+    {
+      "key": "RUNPOD_SSH_USER",
+      "present": true,
+      "value_length": 4,
+      "category": "Compute / GPU"
+    },
+    {
+      "key": "RUNPOD_SSH_PORT",
+      "present": true,
+      "value_length": 5,
+      "category": "Compute / GPU"
+    },
+    {
+      "key": "RUNPOD_SSH_KEY",
+      "present": true,
+      "value_length": 29,
+      "category": "Compute / GPU"
+    },
+    {
+      "key": "RUNPOD_REPO_PATH",
+      "present": true,
+      "value_length": 14,
+      "category": "Compute / GPU"
+    },
+    {
+      "key": "RUNPOD_SADTALKER_PATH",
+      "present": true,
+      "value_length": 20,
+      "category": "Compute / GPU"
+    },
+    {
+      "key": "SECRET_KEY",
+      "present": true,
+      "value_length": 32,
+      "category": "App Runtime"
+    },
+    {
+      "key": "SMTP_HOST",
+      "present": true,
+      "value_length": 14,
+      "category": "Email"
+    },
+    {
+      "key": "SMTP_PASSWORD",
+      "present": true,
+      "value_length": 19,
+      "category": "Email"
+    },
+    {
+      "key": "SMTP_PORT",
+      "present": true,
+      "value_length": 3,
+      "category": "Email"
+    },
+    {
+      "key": "SMTP_SENDER",
+      "present": true,
+      "value_length": 21,
+      "category": "Email"
+    },
+    {
+      "key": "SMTP_SERVER",
+      "present": true,
+      "value_length": 14,
+      "category": "Email"
+    },
+    {
+      "key": "SMTP_USERNAME",
+      "present": true,
+      "value_length": 21,
+      "category": "Email"
+    },
+    {
+      "key": "SMTP_USE_TLS",
+      "present": true,
+      "value_length": 4,
+      "category": "Email"
+    },
+    {
+      "key": "STRIPE_PRICE_ADDON_SEAT",
+      "present": true,
+      "value_length": 30,
+      "category": "Billing"
+    },
+    {
+      "key": "STRIPE_PRICE_ADDON_STORAGE",
+      "present": true,
+      "value_length": 30,
+      "category": "Billing"
+    },
+    {
+      "key": "STRIPE_PRICE_AGENCY",
+      "present": true,
+      "value_length": 30,
+      "category": "Billing"
+    },
+    {
+      "key": "STRIPE_PRICE_STANDARD",
+      "present": true,
+      "value_length": 30,
+      "category": "Billing"
+    },
+    {
+      "key": "STRIPE_PRICE_TOKENS",
+      "present": true,
+      "value_length": 30,
+      "category": "Billing"
+    },
+    {
+      "key": "STRIPE_PUBLISHABLE_KEY",
+      "present": true,
+      "value_length": 32,
+      "category": "Billing"
+    },
+    {
+      "key": "STRIPE_SECRET_KEY",
+      "present": true,
+      "value_length": 32,
+      "category": "Billing"
+    },
+    {
+      "key": "STRIPE_WEBHOOK_SECRET",
+      "present": true,
+      "value_length": 38,
+      "category": "Billing"
+    },
+    {
+      "key": "SUPER_USER",
+      "present": true,
+      "value_length": 9,
+      "category": "MIM Access"
+    },
+    {
+      "key": "SUPER_USER_EMAIL",
+      "present": true,
+      "value_length": 18,
+      "category": "MIM Access"
+    },
+    {
+      "key": "SUPER_USER_PASS",
+      "present": true,
+      "value_length": 7,
+      "category": "MIM Access"
+    },
+    {
+      "key": "TWILIO_ACCOUNT_SID",
+      "present": true,
+      "value_length": 34,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "TWILIO_AUTH_TOKEN",
+      "present": true,
+      "value_length": 32,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "TWILIO_CALLER_ID",
+      "present": true,
+      "value_length": 12,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "TWILIO_MESSAGING_NUMBER",
+      "present": true,
+      "value_length": 12,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "TWILIO_VOICE_API_KEY",
+      "present": true,
+      "value_length": 34,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "TWILIO_VOICE_API_SECRET",
+      "present": true,
+      "value_length": 32,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "TWILIO_VOICE_APP_SID",
+      "present": true,
+      "value_length": 34,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "UPLOAD_FOLDER",
+      "present": true,
+      "value_length": 9,
+      "category": "App Runtime"
+    },
+    {
+      "key": "X_CLIENT_ID",
+      "present": true,
+      "value_length": 34,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "X_CLIENT_SECRET",
+      "present": true,
+      "value_length": 50,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "X_REDIRECT_URI",
+      "present": true,
+      "value_length": 42,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "ZOOM_PHONE_ACCOUNT_ID",
+      "present": true,
+      "value_length": 22,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "ZOOM_PHONE_CALLER_ID",
+      "present": true,
+      "value_length": 12,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "ZOOM_PHONE_CLIENT_ID",
+      "present": true,
+      "value_length": 20,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "ZOOM_PHONE_CLIENT_SECRET",
+      "present": true,
+      "value_length": 32,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "ZOOM_PHONE_USER_ID",
+      "present": true,
+      "value_length": 17,
+      "category": "Voice / Calls"
+    },
+    {
+      "key": "RUNPOD_PYTHON_EXE",
+      "present": true,
+      "value_length": 25,
+      "category": "Compute / GPU"
+    },
+    {
+      "key": "MIM_ARM_SSH_HOST_PASS",
+      "present": true,
+      "value_length": 9,
+      "category": "MIM Access"
+    },
+    {
+      "key": "GOOGLE_CALENDAR_REFRESH_TOKEN",
+      "present": true,
+      "value_length": 103,
+      "category": "Social / OAuth"
+    },
+    {
+      "key": "PYTHONANYWHERE_API_KEY",
+      "present": true,
+      "value_length": 40,
+      "category": "PythonAnywhere"
+    },
+    {
+      "key": "PYTHONANYWHERE_USERNAME",
+      "present": true,
+      "value_length": 9,
+      "category": "PythonAnywhere"
+    },
+    {
+      "key": "PYTHONANYWHERE_DOMAIN",
+      "present": true,
+      "value_length": 17,
+      "category": "PythonAnywhere"
+    }
+  ],
+  "notes": [
+    "Key names and presence only. Secret values are intentionally excluded."
+  ]
+}

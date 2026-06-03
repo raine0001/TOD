@@ -1,0 +1,65 @@
+{
+  "artifact": "MIM_ARM_BLUE_BLOCK_PICKUP_SUCCESS_2026_05_31",
+  "generated_at": "2026-05-31T17:18:30-0700",
+  "status": "completed_with_evidence",
+  "objective": "Pick up the blue block using all available resources and learning from operator demonstration.",
+  "success_statement": "MIM picked up and retained the blue block after Dave demonstrated the correct pre-grab position.",
+  "final_pose": [
+    90,
+    100,
+    50,
+    88,
+    80,
+    0
+  ],
+  "learned_pre_grab_pose": [
+    90,
+    100,
+    39,
+    88,
+    80,
+    125
+  ],
+  "successful_close_sequence": [
+    100,
+    75,
+    50,
+    25,
+    0
+  ],
+  "successful_lift_sequence": [
+    "elbow 44",
+    "elbow 50",
+    "base 94 retention check",
+    "base 90 return check"
+  ],
+  "resources_used": [
+    "operator demonstration",
+    "hand camera visual alignment",
+    "C12 distance sensor with 123mm sensor-to-tip baseline",
+    "movement memory / servo pose capture",
+    "incremental bounded arm movement"
+  ],
+  "evidence": {
+    "pre_grab_frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\pre_pickup_continue_current_view.jpg",
+    "operator_demonstration_frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\operator_demonstrated_perfect_grab_position.jpg",
+    "closed_grip_frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\demonstrated_pose_close_0.jpg",
+    "lift_frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\demonstrated_pose_lift_elbow44.jpg",
+    "retention_frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\demonstrated_pose_retention_base90.jpg",
+    "run_log": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\learning_run_log.json"
+  },
+  "what_worked": [
+    "Dave provided a correct physical demonstration instead of holding the block in the claw path.",
+    "MIM saved the demonstrated visual/servo pose as a movement-memory seed.",
+    "Closing from the demonstrated pose produced symmetric contact on both sides of the blue block.",
+    "Small lift and base-retention movements kept the block captured."
+  ],
+  "learned_rules": [
+    "Do not ask the operator to hold the block during gripper movement.",
+    "Use the demonstrated pose as the preferred blue-block pre-grab alignment target.",
+    "Close in stages and inspect each stage before lifting.",
+    "Lift incrementally and validate retention after each movement.",
+    "For this block shape, symmetric side capture from a correct demonstrated pose is more reliable than blind center-hole hooking."
+  ],
+  "next_recommended_action": "Ask Dave what to do next with the block, or propose a simple place-down target and learn controlled release."
+}

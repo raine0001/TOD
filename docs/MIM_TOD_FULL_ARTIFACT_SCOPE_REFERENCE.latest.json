@@ -1,0 +1,43 @@
+{
+    "artifact_key":  "MIM_TOD_FULL_ARTIFACT_SCOPE_REFERENCE",
+    "version":  "2026-05-29",
+    "status":  "completed_with_evidence",
+    "generated_at":  "2026-05-29T21:08:56.3212498Z",
+    "human_reference":  "docs/MIM_TOD_FULL_ARTIFACT_SCOPE_REFERENCE_2026_05_29.md",
+    "remote_markdown":  "runtime/shared/MIM_TOD_FULL_ARTIFACT_SCOPE_REFERENCE.latest.md",
+    "scope":  [
+                  "dependables",
+                  "data_flow",
+                  "services",
+                  "policies",
+                  "MIM_resources",
+                  "TOD_resources",
+                  "project_portal",
+                  "application_generation",
+                  "objective_execution",
+                  "current_verified_state"
+              ],
+    "primary_urls":  {
+                         "projects":  "https://mim.mimtod.com/projects",
+                         "login":  "https://mim.mimtod.com/login"
+                     },
+    "verified_services":  {
+                              "mim-mobile-web.service":  "active",
+                              "mim-ready-task-dispatcher.service":  "active",
+                              "mim-box-tod-packet-listener.service":  "active",
+                              "mim-speech-turn-engine.service":  "active",
+                              "mim-tod-objective-state-reconciliation-watchdog.timer":  "active",
+                              "mim-box-tod-runtime-watchdog.service":  "active"
+                          },
+    "latest_product_objectives":  [
+                                      3390,
+                                      3389,
+                                      3388,
+                                      3387,
+                                      3386,
+                                      3385,
+                                      3384,
+                                      3382
+                                  ],
+    "source_doc_sha256":  "83099a1411146b7dc1582b6be8af6e265151c9a70f06461e2a4faa411dd7ba8f"
+}

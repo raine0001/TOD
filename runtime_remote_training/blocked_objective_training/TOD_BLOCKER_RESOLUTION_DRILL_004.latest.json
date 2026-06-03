@@ -1,0 +1,67 @@
+{
+  "after_blocked_count": 30,
+  "before_blocked_count": 30,
+  "codex_escalation_packet": "runtime/shared/TOD_CODEX_ESCALATION.linked-task-empty-evidence-7972.latest.json",
+  "codex_escalation_packet_status": "superseded_by_tod_inspection",
+  "correction": "Initial empty-evidence hypothesis was wrong. Task 7972 result contains meaningful deferred-lane evidence, so TOD narrowed the blocker instead of treating it as empty evidence.",
+  "drill_id": "TOD-BLOCKER-CLEARING-DRILL-004",
+  "generated_at": "2026-06-01T19:46:41Z",
+  "inspected_evidence": {
+    "results": [
+      {
+        "created_at": "2026-05-28 19:17:32.466763+00:00",
+        "failures": [
+          "deferred_not_current_stack_lane"
+        ],
+        "files_changed": [],
+        "has_meaningful_evidence": true,
+        "id": 26,
+        "recommendations": "Do not execute older ledger objectives until the current reliability stack has materialization ordering and lane arbitration.",
+        "result": "{\"canonical_objective_id\": \"3\", \"generated_at\": \"2026-05-28T19:17:32Z\", \"reason_code\": \"deferred_not_current_reliability_stack_execution_lane\", \"status\": \"blocked_with_evidence\", \"task_id\": 7972}",
+        "test_results": "blocked_with_evidence",
+        "tests_run": [
+          "codex_materializer_containment"
+        ]
+      }
+    ],
+    "task": {
+      "created_at": "2026-05-28 19:16:34.427524+00:00",
+      "dispatch_status": "blocked_with_inspection",
+      "expected_outputs_json": [
+        "result artifact",
+        "inspected files",
+        "changed files or blocked reason",
+        "validation results"
+      ],
+      "id": 7972,
+      "objective_id": 3323,
+      "readiness": "blocked",
+      "state": "blocked_with_inspection",
+      "title": "Execute Overnight autonomous objective execution and reporting",
+      "verification_commands_json": [
+        "mim_ready_task_dispatcher_process_once"
+      ]
+    }
+  },
+  "meaningful_evidence_found": true,
+  "objective_id": "TOD-BLOCKER-RESOLUTION-AUTONOMY-V1",
+  "packet_type": "tod-blocker-resolution-drill-004-result-v1",
+  "repair_action": "narrowed_blocked_with_inspection",
+  "status": "completed_with_evidence",
+  "target_objective_id": "3323",
+  "target_task_id": 7972,
+  "tod_lesson": {
+    "failure_class": "linked_task_blocked_needs_evidence_inspection",
+    "prevention_rule": "TOD must inspect the actual TaskResult fields before classifying a linked-task blocker as empty evidence. Meaningful blocked evidence should be narrowed, not treated as fake proof.",
+    "repair_class": "narrow_with_inspection_when_evidence_is_meaningful_but_not_resolved",
+    "tested_done_rule": "A blocker is transformed when the vague state is replaced by a specific inspected reason and next action."
+  },
+  "validation": {
+    "codex_empty_evidence_packet_superseded": true,
+    "empty_result_hypothesis_rejected": true,
+    "linked_task_inspected": true,
+    "meaningful_result_detected": true,
+    "objective_state_narrowed": true,
+    "task_result_substance_checked": true
+  }
+}

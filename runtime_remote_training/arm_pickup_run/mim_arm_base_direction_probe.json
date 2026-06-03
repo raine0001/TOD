@@ -1,0 +1,310 @@
+{
+  "started_at": "2026-05-31T21:58:30Z",
+  "start_pose": [
+    100,
+    90,
+    40,
+    108,
+    95,
+    157
+  ],
+  "probes": [
+    {
+      "target_base": 92,
+      "move": {
+        "servo": 0,
+        "angle": 92,
+        "res": {
+          "audit": {
+            "angle": 92,
+            "client_timestamp": null,
+            "page": "codex_probe",
+            "request_id": "mim-probe-3be2eab5",
+            "requested_angle": 92,
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 92,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 92,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "server_timestamp": "2026-05-31T21:58:34.136297+00:00",
+            "servo": 0,
+            "source": "mim_blue_block_direction_probe"
+          },
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 92,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 92,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "sent": "MOVE 0 92",
+          "status": "ok"
+        },
+        "distance_after": {
+          "address": "0x10",
+          "connected": true,
+          "distance_cm": 73,
+          "distance_mm": 730,
+          "last_distance_mm": 730,
+          "ok": true,
+          "raw_lines": [
+            "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12653,TEMP_RAW=5000,REG0_7=49006D3188139E8F"
+          ],
+          "registers_0_7": "49006D3188139E8F",
+          "signal_strength": 12653,
+          "source": "arduino_i2c_0x10",
+          "status": "ok",
+          "temperature_raw": 5000
+        }
+      },
+      "frame": "runtime_remote_training\\arm_pickup_run\\hand_probe_base_92.jpg",
+      "detect": {
+        "candidates": [
+          {
+            "x": 431,
+            "y": 742,
+            "w": 308,
+            "h": 218,
+            "area": 53249.5,
+            "cx": 585.0,
+            "cy": 851.0,
+            "aspect": 1.4128440366972477
+          }
+        ],
+        "annotated": "runtime_remote_training\\arm_pickup_run\\hand_probe_base_92_direction_annotated.jpg"
+      },
+      "pose": [
+        92,
+        90,
+        40,
+        108,
+        95,
+        157
+      ],
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12639,TEMP_RAW=5000,REG0_7=49005F318813E999"
+        ],
+        "registers_0_7": "49005F318813E999",
+        "signal_strength": 12639,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5000
+      }
+    },
+    {
+      "target_base": 108,
+      "move": {
+        "servo": 0,
+        "angle": 108,
+        "res": {
+          "audit": {
+            "angle": 108,
+            "client_timestamp": null,
+            "page": "codex_probe",
+            "request_id": "mim-probe-dd15decb",
+            "requested_angle": 108,
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 108,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 108,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "server_timestamp": "2026-05-31T21:58:37.533449+00:00",
+            "servo": 0,
+            "source": "mim_blue_block_direction_probe"
+          },
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 108,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 108,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "sent": "MOVE 0 108",
+          "status": "ok"
+        },
+        "distance_after": {
+          "address": "0x10",
+          "connected": true,
+          "distance_cm": 73,
+          "distance_mm": 730,
+          "last_distance_mm": 730,
+          "ok": true,
+          "raw_lines": [
+            "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=13064,TEMP_RAW=5000,REG0_7=490008338813E99C"
+          ],
+          "registers_0_7": "490008338813E99C",
+          "signal_strength": 13064,
+          "source": "arduino_i2c_0x10",
+          "status": "ok",
+          "temperature_raw": 5000
+        }
+      },
+      "frame": "runtime_remote_training\\arm_pickup_run\\hand_probe_base_108.jpg",
+      "detect": {
+        "candidates": [
+          {
+            "x": 978,
+            "y": 650,
+            "w": 302,
+            "h": 310,
+            "area": 60996.0,
+            "cx": 1129.0,
+            "cy": 805.0,
+            "aspect": 0.9741935483870968
+          }
+        ],
+        "annotated": "runtime_remote_training\\arm_pickup_run\\hand_probe_base_108_direction_annotated.jpg"
+      },
+      "pose": [
+        108,
+        90,
+        40,
+        108,
+        95,
+        157
+      ],
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12541,TEMP_RAW=5000,REG0_7=4900FD308813D9A6"
+        ],
+        "registers_0_7": "4900FD308813D9A6",
+        "signal_strength": 12541,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5000
+      }
+    },
+    {
+      "target_base": 100,
+      "move": {
+        "servo": 0,
+        "angle": 100,
+        "res": {
+          "audit": {
+            "angle": 100,
+            "client_timestamp": null,
+            "page": "codex_probe",
+            "request_id": "mim-probe-bc9ff826",
+            "requested_angle": 100,
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 100,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 100,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "server_timestamp": "2026-05-31T21:58:40.830183+00:00",
+            "servo": 0,
+            "source": "mim_blue_block_direction_probe"
+          },
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 100,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 100,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "sent": "MOVE 0 100",
+          "status": "ok"
+        },
+        "distance_after": {
+          "address": "0x10",
+          "connected": true,
+          "distance_cm": 73,
+          "distance_mm": 730,
+          "last_distance_mm": 730,
+          "ok": true,
+          "raw_lines": [
+            "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=13029,TEMP_RAW=5000,REG0_7=4900E5328813D0A9"
+          ],
+          "registers_0_7": "4900E5328813D0A9",
+          "signal_strength": 13029,
+          "source": "arduino_i2c_0x10",
+          "status": "ok",
+          "temperature_raw": 5000
+        }
+      },
+      "frame": "runtime_remote_training\\arm_pickup_run\\hand_probe_base_100.jpg",
+      "detect": {
+        "candidates": [
+          {
+            "x": 683,
+            "y": 672,
+            "w": 361,
+            "h": 288,
+            "area": 78295.0,
+            "cx": 863.5,
+            "cy": 816.0,
+            "aspect": 1.2534722222222223
+          }
+        ],
+        "annotated": "runtime_remote_training\\arm_pickup_run\\hand_probe_base_100_direction_annotated.jpg"
+      },
+      "pose": [
+        100,
+        90,
+        40,
+        108,
+        95,
+        157
+      ],
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12998,TEMP_RAW=5000,REG0_7=4900C632881338B4"
+        ],
+        "registers_0_7": "4900C632881338B4",
+        "signal_strength": 12998,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5000
+      }
+    }
+  ]
+}

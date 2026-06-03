@@ -1,0 +1,273 @@
+{
+  "generated_at": "2026-06-03T04:51:43Z",
+  "judgment_mode_score": {
+    "case_count": 20,
+    "current_weakness": "MIM defaults to status reporting instead of selecting recommendation, explanation, demonstration, consultative discovery, or problem-analysis mode.",
+    "failed": 16,
+    "generated_at": "2026-06-02T15:18:00Z",
+    "group_summary": {
+      "consultative_discovery": {
+        "failed": 3,
+        "passed": 0
+      },
+      "demonstration_mode": {
+        "failed": 1,
+        "passed": 3
+      },
+      "explanation_mode": {
+        "failed": 5,
+        "passed": 1
+      },
+      "problem_analysis": {
+        "failed": 4,
+        "passed": 0
+      },
+      "recommendation_mode": {
+        "failed": 3,
+        "passed": 0
+      }
+    },
+    "objective_id": "MIM-DURABILITY-SMOKE-V2",
+    "pass_rate_percent": 20,
+    "passed": 4,
+    "source": "E:\\TOD\\runtime_remote_training\\MIM_DURABILITY_SMOKE_V2.latest.json",
+    "status": "failed_needs_judgment_training",
+    "target": "Reach at least 80% on the focused V2 judgment suite before expanding to larger prompt sets."
+  },
+  "mim_score": {
+    "evaluation": {
+      "case_count": 4,
+      "cases": [
+        {
+          "answered_question": true,
+          "id": "training_status",
+          "intent_understood": true,
+          "internal_jargon_hits": [],
+          "prompt": "how is training going MIM?",
+          "recommendation_quality": true,
+          "reply_excerpt": "Training is active.\n\nMIM focus:\n- Universal MIM presence, typo-tolerant intent recognition, and project-manager judgment.\n- The specific skill is choosing the right response mode before answering, instead of defaulting to status reporting.\n\nCurrent MIM benchmark:\n- Judgment V2 pa",
+          "reply_length": 1350
+        },
+        {
+          "answered_question": true,
+          "id": "blockers",
+          "intent_understood": true,
+          "internal_jargon_hits": [],
+          "prompt": "any blockers?",
+          "recommendation_quality": true,
+          "reply_excerpt": "Yes. There are still blockers, but they are being worked instead of ignored.\n\nCurrent blocker status:\n- Active blockers moved from 33 to 31.\n- Current class: linked task result empty or non evidentiary.\n- Latest finding: Linked task result rows can exist while still containing no",
+          "reply_length": 476
+        },
+        {
+          "answered_question": true,
+          "id": "next_work",
+          "intent_understood": true,
+          "internal_jargon_hits": [],
+          "prompt": "is there anything you want to work on next?",
+          "recommendation_quality": true,
+          "reply_excerpt": "Yes. The next thing I would work on is improving how I understand and carry operator intent across normal conversation.\n\nWhy this matters:\n- It prevents me from answering the wrong question after a follow-up.\n- It helps me recommend next steps instead of only reporting status.\n- ",
+          "reply_length": 1109
+        },
+        {
+          "answered_question": true,
+          "id": "more_training",
+          "intent_understood": true,
+          "internal_jargon_hits": [],
+          "prompt": "tell me more about your training MIM",
+          "recommendation_quality": true,
+          "reply_excerpt": "Training is active.\n\nMIM focus:\n- Universal MIM presence, typo-tolerant intent recognition, and project-manager judgment.\n- The specific skill is choosing the right response mode before answering, instead of defaulting to status reporting.\n\nCurrent MIM benchmark:\n- Judgment V2 pa",
+          "reply_length": 1350
+        }
+      ],
+      "metrics": {
+        "answered_question_percent": 100,
+        "intent_understood_percent": 100,
+        "internal_jargon_rate_percent": 0,
+        "recommendation_quality_percent": 100
+      },
+      "status": "measured"
+    },
+    "metrics": {
+      "answered_question": {
+        "source": "live_gateway_eval",
+        "today": 100,
+        "unit": "percent",
+        "yesterday": {
+          "reason": "no prior daily MIM communication eval",
+          "status": "baseline_needed",
+          "value": null
+        }
+      },
+      "intent_understood": {
+        "source": "live_gateway_eval",
+        "today": 100,
+        "unit": "percent",
+        "yesterday": {
+          "reason": "no prior daily MIM communication eval",
+          "status": "baseline_needed",
+          "value": null
+        }
+      },
+      "internal_jargon": {
+        "source": "live_gateway_eval",
+        "today": 0,
+        "unit": "percent_rate_lower_is_better",
+        "yesterday": {
+          "reason": "no prior daily MIM communication eval",
+          "status": "baseline_needed",
+          "value": null
+        }
+      },
+      "recommendation_quality": {
+        "source": "live_gateway_eval",
+        "today": 100,
+        "unit": "percent",
+        "yesterday": {
+          "reason": "no prior daily MIM communication eval",
+          "status": "baseline_needed",
+          "value": null
+        }
+      }
+    }
+  },
+  "outcome_reflection": {
+    "are_they_creating_new_objectives": true,
+    "are_they_improving": false,
+    "assessment": "needs_attention",
+    "fresh_artifact_count": 4,
+    "generated_at": "2026-06-03T04:04:23Z",
+    "operator_summary": "MIM/TOD assessment: needs_attention. Objectives: 24 complete, 1 running, 32 blocked, 28 blocker follow-on objective(s). Next: MIM-TOD-OBJECTIVE-LIFECYCLE-REGRESSION-SUITE-V1. Top blocker: overnight_lane_stale_without_current_heartbeat; Restart as a fresh bounded overnight run only after the current repair stack is clean.",
+    "recommendations": [
+      "Run blocker-to-objective synthesis because at least one blocker does not have a follow-on objective.",
+      "Refresh stale reflection inputs: TOD_EXECUTION_RESULT.latest.json, TOD_VALIDATION_RESULT.latest.json, MIM_TOD_NEXT_OBJECTIVE.latest.json, MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json, TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json, MIM_TOD_CONTINUITY_MEMORY.latest.json, MIM_OPERATOR_RESPONSE_SYNTHESIS_ENFORCEMENT_STATUS.latest.json, TOD_MATERIAL_IMPLEMENTATION_PROOF_STATUS.latest.json, MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json, MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json, MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json, MIM_TOD_MORNING_OPERATOR_SUMMARY.latest.json"
+    ],
+    "source": "E:\\TOD\\runtime_remote_training\\MIM_TOD_HOURLY_REFLECTION.latest.json",
+    "stale_artifact_count": 12,
+    "stale_artifacts": [
+      "TOD_EXECUTION_RESULT.latest.json",
+      "TOD_VALIDATION_RESULT.latest.json",
+      "MIM_TOD_NEXT_OBJECTIVE.latest.json",
+      "MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json",
+      "TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json",
+      "MIM_TOD_CONTINUITY_MEMORY.latest.json",
+      "MIM_OPERATOR_RESPONSE_SYNTHESIS_ENFORCEMENT_STATUS.latest.json",
+      "TOD_MATERIAL_IMPLEMENTATION_PROOF_STATUS.latest.json",
+      "MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json",
+      "MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json",
+      "MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json",
+      "MIM_TOD_MORNING_OPERATOR_SUMMARY.latest.json"
+    ],
+    "truth_integrity_status": "healthy"
+  },
+  "packet_type": "mim-tod-training-scoreboard-v1",
+  "recommendation": {
+    "continue_condition": "Continue while blocker count, MIM communication score, or TOD validation evidence improves every 4-6 hours.",
+    "continue_training": true,
+    "next_required_improvement": "Resolve the reflection outcome gap before claiming training is going great.",
+    "redirect_condition": "Redirect if there is no new evidence artifact, no blocker movement, and no MIM eval improvement over a 6-hour window."
+  },
+  "snapshot_files": {
+    "daily_json": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\daily\\2026-06-03\\MIM_TOD_TRAINING_SCOREBOARD.20260603T045143Z.json",
+    "daily_md": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\daily\\2026-06-03\\MIM_TOD_TRAINING_SCOREBOARD.20260603T045143Z.md",
+    "hourly_json": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\hourly\\MIM_TOD_TRAINING_SCOREBOARD.20260603T045143Z.json",
+    "hourly_md": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\hourly\\MIM_TOD_TRAINING_SCOREBOARD.20260603T045143Z.md"
+  },
+  "source_files": [
+    "E:\\TOD\\runtime_remote_training\\MIM_TOD_HOURLY_REFLECTION.latest.json",
+    "E:\\TOD\\runtime_remote_training\\MIM_DURABILITY_SMOKE_V2.latest.json",
+    "E:\\TOD\\runtime_remote_training\\MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json",
+    "E:\\TOD\\runtime_remote_training\\blocked_objective_training\\TOD_BLOCKED_OBJECTIVE_CLEARING_DRILL_002.latest.json",
+    "E:\\TOD\\runtime_remote_training\\blocked_objective_training\\TOD_BLOCKER_RESOLUTION_DRILL_003.latest.json",
+    "E:\\TOD\\runtime_remote_training\\blocked_objective_training\\TOD_BLOCKER_RESOLUTION_DRILL_004.latest.json",
+    "E:\\TOD\\runtime_remote_training\\blocked_objective_training\\TOD_BLOCKED_OBJECTIVE_TRIAGE.latest.json"
+  ],
+  "status": "needs_attention_with_training_active",
+  "tod_score": {
+    "blocker_classes": {
+      "artifact_missing_or_superseded": 1,
+      "linked_task_blocked_needs_evidence_inspection": 21,
+      "missing_executor": 8,
+      "parked_followup_not_currently_executing": 2,
+      "stale_heartbeat_or_recovery": 1
+    },
+    "latest_drill": {
+      "finding": "Initial empty-evidence hypothesis was wrong. the inspected task result contains meaningful deferred-lane evidence, so TOD narrowed the blocker instead of treating it as empty evidence.",
+      "generated_at": "2026-06-01T19:46:41Z",
+      "id": "TOD-BLOCKER-CLEARING-DRILL-004",
+      "lesson": {
+        "failure_class": "linked_task_blocked_needs_evidence_inspection",
+        "prevention_rule": "TOD must inspect the actual TaskResult fields before classifying a linked-task blocker as empty evidence. Meaningful blocked evidence should be narrowed, not treated as fake proof.",
+        "repair_class": "narrow_with_inspection_when_evidence_is_meaningful_but_not_resolved",
+        "tested_done_rule": "A blocker is transformed when the vague state is replaced by a specific inspected reason and next action."
+      },
+      "status": "completed_with_evidence"
+    },
+    "metrics": {
+      "blockers_cleared": {
+        "source": "blocker_drill_artifacts",
+        "today": 3,
+        "unit": "count",
+        "yesterday": {
+          "reason": "no prior daily blocker scoreboard",
+          "status": "baseline_needed",
+          "value": null
+        }
+      },
+      "false_completions_prevented": {
+        "source": "drill_004_meaningful_evidence_self_correction",
+        "today": 1,
+        "unit": "count",
+        "yesterday": {
+          "reason": "no prior daily false-completion scoreboard",
+          "status": "baseline_needed",
+          "value": null
+        }
+      },
+      "no_op_rejections": {
+        "source": "baseline_needed",
+        "today": {
+          "reason": "no-op rejection events are not yet counted in a daily metric artifact",
+          "status": "baseline_needed",
+          "value": null
+        },
+        "unit": "count",
+        "yesterday": {
+          "reason": "no prior daily no-op rejection scoreboard",
+          "status": "baseline_needed",
+          "value": null
+        }
+      },
+      "validated_edits": {
+        "source": "baseline_needed",
+        "today": {
+          "reason": "validated edit count needs task-result aggregation by day",
+          "status": "baseline_needed",
+          "value": null
+        },
+        "unit": "count",
+        "yesterday": {
+          "reason": "no prior daily validated-edit scoreboard",
+          "status": "baseline_needed",
+          "value": null
+        }
+      }
+    }
+  },
+  "training_hours": {
+    "last_7_days": {
+      "reason": "hourly training snapshots start with this scoreboard; prior exact hours are not reconstructable from latest-only files",
+      "status": "baseline_needed",
+      "value": null
+    },
+    "today": {
+      "reason": "operator reported approximate continuous run; exact tracking begins with scoreboard v1",
+      "status": "baseline_needed",
+      "value": null
+    },
+    "yesterday": {
+      "reason": "daily training-hour snapshot did not exist yesterday",
+      "status": "baseline_needed",
+      "value": null
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "before": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_now_20260531\\lidar_before_pickup.json",
+  "after": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_now_20260531\\lidar_after_pickup_attempt.json",
+  "removed_or_shifted": [],
+  "added_or_shifted": []
+}

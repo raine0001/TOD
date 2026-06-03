@@ -1,0 +1,31 @@
+﻿{
+    "objective_id":  "TOD-CODEX-PROFICIENCY-ROADMAP-AUTORUN-V1",
+    "status":  "training_active",
+    "current_topic":  "Codex-level software implementation proficiency",
+    "goal":  "TOD progresses from task router to implementation-capable agent: inspect code, plan bounded changes, edit safely, validate, report evidence, and learn from failures.",
+    "roadmap":  [
+                    "codebase orientation and file discovery",
+                    "requirements-to-implementation planning",
+                    "safe edit discipline and patch scoping",
+                    "frontend implementation and browser validation",
+                    "backend route/service/database implementation",
+                    "testing and regression proof",
+                    "debugging failed tasks and replay recovery",
+                    "artifact/result reporting with changed files and validation evidence"
+                ],
+    "current_drills":  [
+                           "read existing code before proposing edits",
+                           "distinguish attempted work from completed work",
+                           "reject wrapper-only/no-op completions",
+                           "produce changed-file evidence for implementation tasks",
+                           "run targeted validation and explain failures honestly",
+                           "escalate to Codex only with precise missing capability or permission reason"
+                       ],
+    "success_criteria":  [
+                             "TOD can materialize a small UI/backend objective into a runnable task",
+                             "TOD identifies files to inspect before editing",
+                             "TOD produces changed files or blocked_with_inspection evidence",
+                             "TOD runs a validation step matched to the change",
+                             "TOD reports result in plain operator language and technical evidence separately"
+                         ]
+}

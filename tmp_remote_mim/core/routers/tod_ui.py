@@ -8890,6 +8890,7 @@ async def tod_console() -> HTMLResponse:
           <a class=\"console-link utility\" href=\"/\"><span>Public Home</span></a>
           <a class=\"console-link\" href=\"/mim\"><span id=\"mimConsoleLight\" class=\"console-link-light\"></span><span>MIM Coordination Console</span></a>
           <a class=\"console-link active\" href=\"/tod\"><span id=\"todConsoleLight\" class=\"console-link-light\"></span><span>TOD Execution Console</span></a>
+                    <a class=\"console-link utility\" href=\"/objectives\"><span>Objectives</span></a>
                     <a class=\"console-link utility\" href=\"/chat\"><span>Direct Chat</span></a>
                     <button id=\"todSettingsBtn\" class=\"console-link utility\" type=\"button\"><span>Settings</span></button>
           <a class=\"console-link utility\" href=\"/mim/logout\"><span>Logout</span></a>
@@ -9370,6 +9371,7 @@ async def chat_console() -> HTMLResponse:
                     <a class=\"console-link utility\" href=\"/\">Public Home</a>
                     <a class=\"console-link utility\" href=\"/mim\">MIM Codex Chat</a>
                     <a class=\"console-link utility\" href=\"/tod\">TOD Console</a>
+                    <a class=\"console-link utility\" href=\"/objectives\">Objectives</a>
                     <a class=\"console-link active\" href=\"/chat\">Direct Chat</a>
                     <a class=\"console-link utility\" href=\"/mim/logout\">Logout</a>
                 </div>

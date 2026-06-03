@@ -1,0 +1,105 @@
+﻿{
+    "packet_type":  "tod-blocked-objective-clearing-training-v1",
+    "objective_id":  "TOD-BLOCKED-OBJECTIVE-CLEARING-COMPETENCY-V1",
+    "title":  "Teach TOD to clear blocked objectives with evidence",
+    "owner":  "TOD",
+    "priority":  "P0",
+    "status":  "training_ready",
+    "created_at":  "2026-06-01T11:09:48.8155671Z",
+    "goal":  "TOD learns to inspect, classify, group, repair, validate, and close blocked objectives without creating more stale paperwork.",
+    "current_problem":  "The system has many blocked objectives. TOD can report them, but needs a repeatable skill loop for clearing them safely with evidence.",
+    "observed_blocker_counts":  {
+                                    "blocked_total":  33,
+                                    "completed_total":  24,
+                                    "running_total":  1,
+                                    "blocker_followon_objectives":  28,
+                                    "reasons":  {
+                                                    "linked_task_blocked_with_evidence":  21,
+                                                    "no_executor_bound":  7,
+                                                    "overnight_lane_stale_without_current_heartbeat":  1,
+                                                    "agentmim_graphics_executor_not_bound":  1,
+                                                    "streaming_stt_followup_not_currently_executing":  1,
+                                                    "dedicated_voice_debug_surface_artifact_missing":  1,
+                                                    "objective_orchestration_followup_remaining":  1
+                                                }
+                                },
+    "training_loop":  [
+                          {
+                              "step":  "Inspect",
+                              "rule":  "Read the objective row, linked task row, evidence artifact, dispatcher status, and UI/operator status before deciding anything.",
+                              "output":  "inspection_record"
+                          },
+                          {
+                              "step":  "Classify",
+                              "rule":  "Assign exactly one primary blocker class: missing_executor, stale_heartbeat, linked_task_blocked, superseded, needs_human_decision, needs_codex_escalation, or already_resolved_stale_truth.",
+                              "output":  "blocker_class"
+                          },
+                          {
+                              "step":  "Group",
+                              "rule":  "Group objectives by shared root cause so TOD fixes one cause once instead of making 28 separate repair objectives.",
+                              "output":  "blocker_group"
+                          },
+                          {
+                              "step":  "Choose repair action",
+                              "rule":  "Choose from rebind_executor, inspect_task_evidence, reconcile_state, mark_superseded_with_evidence, create_narrow_task, request_human_input, or escalate_to_codex_with_reason.",
+                              "output":  "repair_plan"
+                          },
+                          {
+                              "step":  "Act",
+                              "rule":  "Perform the smallest bounded action. Do not mark complete without fresh evidence.",
+                              "output":  "changed_state_or_blocked_with_inspection"
+                          },
+                          {
+                              "step":  "Validate",
+                              "rule":  "Confirm objective row, task row, dispatcher status, artifact, and operator UI agree.",
+                              "output":  "validation_result"
+                          },
+                          {
+                              "step":  "Immunize",
+                              "rule":  "Record a prevention rule so the same blocker class is auto-handled next time.",
+                              "output":  "lesson_or_regression"
+                          }
+                      ],
+    "blocker_class_rules":  {
+                                "linked_task_blocked":  "If objective has a linked task already blocked_with_evidence, inspect that task evidence first. Do not create a replacement objective until the linked evidence is read.",
+                                "missing_executor":  "If no executor is bound, check whether an existing executor can handle the objective. If yes, bind/route. If no, create a narrow executor-binding task or escalate to Codex with exact target file/capability.",
+                                "stale_heartbeat":  "If objective is running but has no heartbeat, reconcile state to blocked_with_inspection unless a live child task exists.",
+                                "superseded":  "If a newer artifact or dashboard replaced the objective, mark superseded_with_evidence and link replacement.",
+                                "followup_not_currently_executing":  "Do not keep as active. Either materialize a specific task or mark parked_until_needed with evidence.",
+                                "artifact_missing":  "Recreate artifact only if still needed; otherwise mark superseded by current dashboard/evidence surface."
+                            },
+    "first_drill":  {
+                        "drill_id":  "TOD-BLOCKER-CLEARING-DRILL-001",
+                        "goal":  "Classify all current blocked objectives into repair groups without mutating DB state.",
+                        "inputs":  [
+                                       "runtime/shared/MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json",
+                                       "runtime/shared/MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json",
+                                       "runtime/shared/MIM_TOD_HOURLY_REFLECTION.latest.md"
+                                   ],
+                        "expected_output":  "TOD_BLOCKED_OBJECTIVE_TRIAGE.latest.json",
+                        "success_criteria":  [
+                                                 "all blocked objectives have one primary class",
+                                                 "every class has a recommended repair action",
+                                                 "no code or DB mutation performed",
+                                                 "top 3 safest cleanup candidates are ranked"
+                                             ]
+                    },
+    "second_drill":  {
+                         "drill_id":  "TOD-BLOCKER-CLEARING-DRILL-002",
+                         "goal":  "Clear one safe blocker group end-to-end with evidence.",
+                         "recommended_start":  "superseded/parked/followup-not-currently-executing items before executor-binding work",
+                         "success_criteria":  [
+                                                  "source evidence inspected",
+                                                  "state changed or narrower blocker published",
+                                                  "operator summary updated",
+                                                  "dashboard/objective/task/artifact truth agrees"
+                                              ]
+                     },
+    "hard_rules":  [
+                       "No wrapper-only completion.",
+                       "No new objective when linked task evidence has not been inspected.",
+                       "No executor-binding claim without registry/capability evidence.",
+                       "No mass state mutation without dry-run reconciliation first.",
+                       "If blocked remains blocked, publish a narrower blocked_with_inspection reason."
+                   ]
+}

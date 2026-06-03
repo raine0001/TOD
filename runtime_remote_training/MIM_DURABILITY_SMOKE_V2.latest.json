@@ -1,0 +1,354 @@
+{
+  "cases": [
+    {
+      "checks": {
+        "explains_why": false,
+        "makes_recommendation": false,
+        "mentions_blocker_or_tradeoff": false,
+        "no_raw_runtime_language": false,
+        "not_generic_deflection": true,
+        "plain_enough": false,
+        "states_next_action": true
+      },
+      "mode": "recommendation_mode",
+      "passed": false,
+      "prompt": "What should we work on next?",
+      "reply_excerpt": "Current MIM/TOD focus: MIM-TOD-OBJECTIVE-LIFECYCLE-REGRESSION-SUITE-V1.\n\nProgress:\n- State is queued.",
+      "reply_length": 101
+    },
+    {
+      "checks": {
+        "explains_why": false,
+        "makes_recommendation": true,
+        "mentions_blocker_or_tradeoff": false,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": false,
+        "states_next_action": false
+      },
+      "mode": "recommendation_mode",
+      "passed": false,
+      "prompt": "What is highest priority?",
+      "reply_excerpt": "The highest priority depends on the context. Could you specify if you mean a project, task, or topic?",
+      "reply_length": 101
+    },
+    {
+      "checks": {
+        "explains_why": true,
+        "makes_recommendation": false,
+        "mentions_blocker_or_tradeoff": false,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "states_next_action": true
+      },
+      "mode": "recommendation_mode",
+      "passed": false,
+      "prompt": "What would create the most value?",
+      "reply_excerpt": "To create the most value, focus on clear priorities, current status, and key news that impact your goals. Let me know which area you'd like to explore first.",
+      "reply_length": 157
+    },
+    {
+      "checks": {
+        "answers_without_asking_for_reprompt": false,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": false,
+        "plain_enough": true,
+        "states_useful_next_step": false,
+        "summarizes_or_explains": true
+      },
+      "mode": "explanation_mode",
+      "passed": false,
+      "prompt": "Explain it to a non-technical user.",
+      "reply_excerpt": "Sure! You can ask me about the current status, what I'm focusing on today, key priorities, or the top news, and I'll explain it clearly and briefly.",
+      "reply_length": 148
+    },
+    {
+      "checks": {
+        "answers_without_asking_for_reprompt": false,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": false,
+        "plain_enough": false,
+        "states_useful_next_step": false,
+        "summarizes_or_explains": false
+      },
+      "mode": "explanation_mode",
+      "passed": false,
+      "prompt": "Summarize the proposal.",
+      "reply_excerpt": "Sure, please provide the details of the proposal you'd like me to summarize.",
+      "reply_length": 76
+    },
+    {
+      "checks": {
+        "answers_without_asking_for_reprompt": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "states_useful_next_step": false,
+        "summarizes_or_explains": true
+      },
+      "mode": "explanation_mode",
+      "passed": false,
+      "prompt": "What did we learn?",
+      "reply_excerpt": "I can provide a direct answer. Please specify if you want an update on status, today's focus, priorities, or top news, and I'll keep it brief.",
+      "reply_length": 142
+    },
+    {
+      "checks": {
+        "answers_without_asking_for_reprompt": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "states_useful_next_step": false,
+        "summarizes_or_explains": true
+      },
+      "mode": "explanation_mode",
+      "passed": false,
+      "prompt": "What changed today?",
+      "reply_excerpt": "I can give you a quick update. Would you like to hear about the current status, today's focus, priorities, or the top news?",
+      "reply_length": 123
+    },
+    {
+      "checks": {
+        "answers_without_asking_for_reprompt": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "states_useful_next_step": true,
+        "summarizes_or_explains": true
+      },
+      "mode": "explanation_mode",
+      "passed": true,
+      "prompt": "What is TOD working on?",
+      "reply_excerpt": "TOD is focused on tracking active objectives, reconciling task states, and managing next-step handoffs. After completing these, I can provide a summary of the highest-priority handoff.",
+      "reply_length": 184
+    },
+    {
+      "checks": {
+        "answers_without_asking_for_reprompt": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": false,
+        "states_useful_next_step": true,
+        "summarizes_or_explains": true
+      },
+      "mode": "explanation_mode",
+      "passed": false,
+      "prompt": "What do you need from Dave?",
+      "reply_excerpt": "I need a clear request from Dave\u2014either a specific question, a brief plan, or an action to take next.",
+      "reply_length": 101
+    },
+    {
+      "checks": {
+        "acknowledges_visual_or_sample_request": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "provides_access_or_honest_block": true,
+        "states_next_step": true,
+        "states_what_user_can_review": true
+      },
+      "mode": "demonstration_mode",
+      "passed": true,
+      "prompt": "Show me a sample.",
+      "reply_excerpt": "Yes. I have a reviewable html prototype ready. Open it from the card below. If this is not the exact sample you meant, tell me which project or screen and I will pull that artifact instead.",
+      "reply_length": 189
+    },
+    {
+      "checks": {
+        "acknowledges_visual_or_sample_request": false,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": false,
+        "provides_access_or_honest_block": false,
+        "states_next_step": false,
+        "states_what_user_can_review": false
+      },
+      "mode": "demonstration_mode",
+      "passed": false,
+      "prompt": "What would this look like?",
+      "reply_excerpt": "I can give you a direct answer. Just ask about status, today's focus, priorities, or top news, and I'll keep it brief.",
+      "reply_length": 118
+    },
+    {
+      "checks": {
+        "acknowledges_visual_or_sample_request": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "provides_access_or_honest_block": true,
+        "states_next_step": true,
+        "states_what_user_can_review": true
+      },
+      "mode": "demonstration_mode",
+      "passed": true,
+      "prompt": "Can I see an example?",
+      "reply_excerpt": "Yes. I have a reviewable html prototype ready. Open it from the card below. If this is not the exact sample you meant, tell me which project or screen and I will pull that artifact instead.",
+      "reply_length": 189
+    },
+    {
+      "checks": {
+        "acknowledges_visual_or_sample_request": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "provides_access_or_honest_block": true,
+        "states_next_step": true,
+        "states_what_user_can_review": true
+      },
+      "mode": "demonstration_mode",
+      "passed": true,
+      "prompt": "Show me the interface.",
+      "reply_excerpt": "Yes. I have a reviewable html prototype ready. Open it from the card below. If this is not the exact sample you meant, tell me which project or screen and I will pull that artifact instead.",
+      "reply_length": 189
+    },
+    {
+      "checks": {
+        "asks_limited_clarifying_questions": false,
+        "does_not_clone_reference": true,
+        "identifies_hidden_requirements": false,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "offers_next_discovery_step": false,
+        "plain_enough": true,
+        "reframes_business_need": false
+      },
+      "mode": "consultative_discovery",
+      "passed": false,
+      "prompt": "Build me an accounting app.",
+      "reply_excerpt": "Objective Build me an accounting app. is blocked. Blocked items: Implement bounded work for: Build me an accounting app., Validate the bounded implementation and summarize the result.",
+      "reply_length": 183
+    },
+    {
+      "checks": {
+        "asks_limited_clarifying_questions": true,
+        "does_not_clone_reference": true,
+        "identifies_hidden_requirements": false,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "offers_next_discovery_step": false,
+        "plain_enough": true,
+        "reframes_business_need": false
+      },
+      "mode": "consultative_discovery",
+      "passed": false,
+      "prompt": "I need inventory management.",
+      "reply_excerpt": "Understood, you need inventory management. Could you please specify what features or challenges you're looking to address?",
+      "reply_length": 122
+    },
+    {
+      "checks": {
+        "asks_limited_clarifying_questions": true,
+        "does_not_clone_reference": false,
+        "identifies_hidden_requirements": false,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "offers_next_discovery_step": false,
+        "plain_enough": true,
+        "reframes_business_need": false
+      },
+      "mode": "consultative_discovery",
+      "passed": false,
+      "prompt": "I want an app like Connecteam.",
+      "reply_excerpt": "You\u2019re looking for an app similar to Connecteam. Are you interested in features like employee scheduling, task management, or communication tools?",
+      "reply_length": 146
+    },
+    {
+      "checks": {
+        "dave_needed_state": false,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": false,
+        "states_learning_or_prevention": false,
+        "states_next_action": false,
+        "states_problem_or_failure": false
+      },
+      "mode": "problem_analysis",
+      "passed": false,
+      "prompt": "Are you stuck?",
+      "reply_excerpt": "No, everything is running smoothly. The runtime health is stable with no recent recovery actions needed.",
+      "reply_length": 104
+    },
+    {
+      "checks": {
+        "dave_needed_state": false,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "states_learning_or_prevention": false,
+        "states_next_action": false,
+        "states_problem_or_failure": true
+      },
+      "mode": "problem_analysis",
+      "passed": false,
+      "prompt": "Why did this objective fail?",
+      "reply_excerpt": "The objective likely failed because it didn't sufficiently reduce uncertainty before moving forward, which is crucial for making informed decisions.",
+      "reply_length": 148
+    },
+    {
+      "checks": {
+        "dave_needed_state": false,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": true,
+        "plain_enough": true,
+        "states_learning_or_prevention": false,
+        "states_next_action": true,
+        "states_problem_or_failure": false
+      },
+      "mode": "problem_analysis",
+      "passed": false,
+      "prompt": "How do we prevent this again?",
+      "reply_excerpt": "Active objective: yes continue and impliment the changes, then provide an updated sample. Active task: Implement bounded work for: yes continue and impliment the changes, then provide an updated sample.",
+      "reply_length": 202
+    },
+    {
+      "checks": {
+        "dave_needed_state": true,
+        "no_raw_runtime_language": true,
+        "not_generic_deflection": false,
+        "plain_enough": true,
+        "states_learning_or_prevention": false,
+        "states_next_action": false,
+        "states_problem_or_failure": true
+      },
+      "mode": "problem_analysis",
+      "passed": false,
+      "prompt": "What is the biggest problem right now?",
+      "reply_excerpt": "The biggest problem right now depends on the context you're referring to. You can ask me about the current status, focus areas, priorities, or top news, and I'll provide a concise update.",
+      "reply_length": 187
+    }
+  ],
+  "generated_at": "2026-06-02T15:18:00Z",
+  "group_summary": {
+    "consultative_discovery": {
+      "failed": 3,
+      "passed": 0
+    },
+    "demonstration_mode": {
+      "failed": 1,
+      "passed": 3
+    },
+    "explanation_mode": {
+      "failed": 5,
+      "passed": 1
+    },
+    "problem_analysis": {
+      "failed": 4,
+      "passed": 0
+    },
+    "recommendation_mode": {
+      "failed": 3,
+      "passed": 0
+    }
+  },
+  "objective_id": "MIM-DURABILITY-SMOKE-V2",
+  "packet_type": "mim-durability-smoke-v2",
+  "status": "failed_needs_judgment_training",
+  "summary": {
+    "case_count": 20,
+    "failed": 16,
+    "pass_rate_percent": 20,
+    "passed": 4
+  },
+  "training_focus": "Teach MIM to select response mode before answering: recommendation, explanation, consultative discovery, or problem analysis."
+}

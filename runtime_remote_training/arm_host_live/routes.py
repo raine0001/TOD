@@ -421,6 +421,189 @@ def sensor_i2c_scan():
         SERIAL_MOVE_LOCK.release()
 
 
+def parse_tfmini_line(line):
+    if not line.startswith("TFMINI:"):
+        return None
+    if line == "TFMINI:NO_FRAME":
+        return {"ok": False, "raw_line": line, "reason": "no_frame"}
+    payload = {"ok": True, "raw_line": line}
+    for part in line.split(":", 1)[1].split(","):
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        key = key.strip().lower()
+        value = value.strip()
+        if key in {"cm", "mm", "strength", "temp_raw"}:
+            try:
+                payload[key] = int(value)
+            except ValueError:
+                payload[key] = value
+        elif key == "frame":
+            payload[key] = value
+    return payload
+
+
+def parse_i2c_distance_line(line):
+    if not line.startswith("DIST:"):
+        return None
+    if line == "DIST:NO_READ":
+        return {"ok": False, "raw_line": line, "reason": "no_read"}
+    payload = {"ok": True, "raw_line": line}
+    for part in line.split(":", 1)[1].split(","):
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        key = key.strip().lower()
+        value = value.strip()
+        if key in {"cm", "mm", "strength", "temp_raw"}:
+            try:
+                payload[key] = int(value)
+            except ValueError:
+                payload[key] = value
+        elif key in {"addr", "reg0_7"}:
+            payload[key] = value
+    return payload
+
+
+@routes.route('/sensor/i2c_distance_read', methods=['GET'])
+def sensor_i2c_distance_read():
+    """Read one distance sample from the Arduino-side I2C sensor at 0x10."""
+    serial_connection = get_serial_connection()
+    if not serial_connection or not serial_connection.is_open:
+        update_serial_runtime("i2c_distance_serial_unavailable", error="Serial port unavailable")
+        return jsonify({"status": "error", "message": "Serial port unavailable"}), 500
+
+    acquired = SERIAL_MOVE_LOCK.acquire(timeout=5)
+    if not acquired:
+        update_serial_runtime("i2c_distance_serial_busy", error="Serial command lane busy")
+        return jsonify({"status": "busy", "message": "Serial command lane busy; retry the read."}), 429
+
+    try:
+        command = "I2C_DIST_READ\n"
+        update_serial_runtime("i2c_distance_command_sent", command=command.strip())
+        serial_connection.reset_input_buffer()
+        serial_connection.write(command.encode("utf-8"))
+        serial_connection.flush()
+
+        timeout = time.time() + 2.0
+        lines = []
+        reading = None
+        while time.time() < timeout:
+            if serial_connection.in_waiting > 0:
+                line = serial_connection.readline().decode("utf-8", errors="replace").strip()
+                if line:
+                    lines.append(line)
+                    reading = parse_i2c_distance_line(line)
+                    if reading is not None:
+                        break
+            time.sleep(0.01)
+
+        if not reading:
+            update_serial_runtime("i2c_distance_no_response", error="No I2C distance response from Arduino")
+            return jsonify({
+                "status": "error",
+                "sent": command.strip(),
+                "message": "No I2C distance response from Arduino",
+                "raw_lines": lines,
+            }), 504
+
+        if not reading.get("ok"):
+            update_serial_runtime("i2c_distance_no_read", ack=True)
+            return jsonify({
+                "status": "no_read",
+                "sent": command.strip(),
+                "raw_lines": lines,
+                "reading": reading,
+            }), 200
+
+        update_serial_runtime("i2c_distance_read_complete", ack=True)
+        return jsonify({
+            "status": "ok",
+            "sent": command.strip(),
+            "address": reading.get("addr", "0x10"),
+            "distance_cm": reading.get("cm"),
+            "distance_mm": reading.get("mm"),
+            "strength": reading.get("strength"),
+            "temperature_raw": reading.get("temp_raw"),
+            "registers_0_7": reading.get("reg0_7"),
+            "raw_lines": lines,
+        }), 200
+    except Exception as e:
+        update_serial_runtime("i2c_distance_exception", error=str(e))
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        SERIAL_MOVE_LOCK.release()
+
+
+@routes.route('/sensor/tfmini_read', methods=['GET'])
+def sensor_tfmini_read():
+    """Read one TFMini-S frame through the Arduino controller serial lane."""
+    serial_connection = get_serial_connection()
+    if not serial_connection or not serial_connection.is_open:
+        update_serial_runtime("tfmini_serial_unavailable", error="Serial port unavailable")
+        return jsonify({"status": "error", "message": "Serial port unavailable"}), 500
+
+    acquired = SERIAL_MOVE_LOCK.acquire(timeout=5)
+    if not acquired:
+        update_serial_runtime("tfmini_serial_busy", error="Serial command lane busy")
+        return jsonify({"status": "busy", "message": "Serial command lane busy; retry the read."}), 429
+
+    try:
+        command = "TFMINI_READ\n"
+        update_serial_runtime("tfmini_command_sent", command=command.strip())
+        serial_connection.reset_input_buffer()
+        serial_connection.write(command.encode("utf-8"))
+        serial_connection.flush()
+
+        timeout = time.time() + 2.0
+        lines = []
+        reading = None
+        while time.time() < timeout:
+            if serial_connection.in_waiting > 0:
+                line = serial_connection.readline().decode("utf-8", errors="replace").strip()
+                if line:
+                    lines.append(line)
+                    reading = parse_tfmini_line(line)
+                    if reading is not None:
+                        break
+            time.sleep(0.01)
+
+        if not reading:
+            update_serial_runtime("tfmini_no_response", error="No TFMini response from Arduino")
+            return jsonify({
+                "status": "error",
+                "sent": command.strip(),
+                "message": "No TFMini response from Arduino",
+                "raw_lines": lines,
+            }), 504
+
+        if not reading.get("ok"):
+            update_serial_runtime("tfmini_no_frame", ack=True)
+            return jsonify({
+                "status": "no_frame",
+                "sent": command.strip(),
+                "raw_lines": lines,
+                "reading": reading,
+            }), 200
+
+        update_serial_runtime("tfmini_read_complete", ack=True)
+        return jsonify({
+            "status": "ok",
+            "sent": command.strip(),
+            "distance_cm": reading.get("cm"),
+            "distance_mm": reading.get("mm"),
+            "strength": reading.get("strength"),
+            "temperature_raw": reading.get("temp_raw"),
+            "frame": reading.get("frame"),
+            "raw_lines": lines,
+        }), 200
+    except Exception as e:
+        update_serial_runtime("tfmini_exception", error=str(e))
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        SERIAL_MOVE_LOCK.release()
+
+
 #site pages
 
 

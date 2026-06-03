@@ -1,0 +1,71 @@
+{
+  "acceptance_criteria": [
+    "Empty/null task_result rows are not accepted as evidence.",
+    "Objective 3323 has a non-vague accountable state: resolved, parked, superseded, narrowed, repair task created, or escalated.",
+    "Operator status explains the blocker in plain language.",
+    "Objective/task/artifact/dispatcher/operator status agree.",
+    "A prevention rule is recorded for linked_task_result_empty_or_non_evidentiary."
+  ],
+  "dave_needed": false,
+  "generated_at": "2026-06-01T19:45:24Z",
+  "objective_id": "3323",
+  "observed_evidence": {
+    "results": [
+      {
+        "created_at": "2026-05-28 19:17:32.466763+00:00",
+        "failures": [
+          "deferred_not_current_stack_lane"
+        ],
+        "files_changed": [],
+        "has_meaningful_evidence": true,
+        "id": 26,
+        "recommendations": "Do not execute older ledger objectives until the current reliability stack has materialization ordering and lane arbitration.",
+        "result": "{\"canonical_objective_id\": \"3\", \"generated_at\": \"2026-05-28T19:17:32Z\", \"reason_code\": \"deferred_not_current_reliability_stack_execution_lane\", \"status\": \"blocked_with_evidence\", \"task_id\": 7972}",
+        "test_results": "blocked_with_evidence",
+        "tests_run": [
+          "codex_materializer_containment"
+        ]
+      }
+    ],
+    "task": {
+      "created_at": "2026-05-28 19:16:34.427524+00:00",
+      "dispatch_status": "blocked_with_inspection",
+      "expected_outputs_json": [
+        "result artifact",
+        "inspected files",
+        "changed files or blocked reason",
+        "validation results"
+      ],
+      "id": 7972,
+      "objective_id": 3323,
+      "readiness": "blocked",
+      "state": "blocked_with_inspection",
+      "title": "Execute Overnight autonomous objective execution and reporting",
+      "verification_commands_json": [
+        "mim_ready_task_dispatcher_process_once"
+      ]
+    }
+  },
+  "packet_type": "codex-escalation-packet-v1",
+  "problem": "Task 7972 and task_result row exist, but the result has no meaningful evidence. The objective must not remain blocked_with_evidence based only on an empty result row.",
+  "replacement_artifact": "runtime/shared/TOD_BLOCKER_RESOLUTION_DRILL_004.latest.json",
+  "replacement_resolution": "narrowed_blocked_with_inspection",
+  "requested_action": "Inspect the overnight objective execution/reporting path and either replay a bounded overnight reporting task with real evidence or mark the objective as superseded/parked/narrowed with inspected evidence.",
+  "source": "TOD-BLOCKER-CLEARING-DRILL-004",
+  "status": "superseded_by_tod_inspection",
+  "suggested_code_paths": [
+    "scripts/mim_ready_task_dispatcher.py",
+    "scripts/start_tod_idle_training_if_idle.py",
+    "core/routers/objectives.py"
+  ],
+  "superseded_at": "2026-06-01T19:46:41Z",
+  "superseded_reason": "Task 7972 contained meaningful deferred-lane evidence, so this is not an empty-evidence Codex escalation.",
+  "target_artifacts": [
+    "runtime/shared/MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json",
+    "runtime/shared/MIM_TOD_OBJECTIVE_INDEX.latest.json",
+    "runtime/shared/MIM_TOD_MANAGED_OBJECTIVES.latest.json",
+    "runtime/shared/MIM_TOD_MORNING_OPERATOR_SUMMARY.latest.json"
+  ],
+  "task_id": 7972,
+  "title": "Repair linked-task empty evidence for Overnight autonomous objective execution and reporting"
+}

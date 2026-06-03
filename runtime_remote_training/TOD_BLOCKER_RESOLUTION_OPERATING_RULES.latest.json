@@ -1,0 +1,87 @@
+{
+  "packet_type": "tod-blocker-resolution-operating-rules-v1",
+  "objective_id": "TOD-BLOCKER-RESOLUTION-AUTONOMY-V1",
+  "title": "TOD blocker resolution operating rules",
+  "status": "active",
+  "updated_at": "2026-06-01T18:14:01Z",
+  "goal": "TOD must turn every blocker into a resolved, parked, narrowed, or escalated state with evidence and a prevention rule.",
+  "operator_rule": "All blockers must be resolved or transformed into an accountable next state. A blocker may not remain as vague blocked_with_evidence without inspected evidence and a next owner/action.",
+  "allowed_blocker_end_states": [
+    "resolved_with_evidence",
+    "parked_until_needed_with_evidence",
+    "superseded_with_evidence",
+    "narrowed_blocked_with_inspection",
+    "repair_task_created_and_dispatched",
+    "escalated_to_codex_with_exact_packet",
+    "needs_human_decision_with_question"
+  ],
+  "forbidden_states": [
+    "blocked_with_evidence_without_readable_evidence",
+    "wrapper_only_completion",
+    "no_executor_bound_without_registry_check",
+    "stale_running_without_heartbeat_decision",
+    "generic_escalation_without_target_file_or_capability"
+  ],
+  "resolution_loop": [
+    {
+      "step": "detect",
+      "requirement": "Identify blocker from objective, task, dispatcher, artifact, logs, or operator report."
+    },
+    {
+      "step": "inspect",
+      "requirement": "Read linked objective row, task row, task result, evidence artifact, dispatcher status, and relevant logs/code."
+    },
+    {
+      "step": "classify",
+      "requirement": "Assign one primary blocker class and one confidence score."
+    },
+    {
+      "step": "troubleshoot",
+      "requirement": "Check codebase, existing executors, prior repairs, continuity memory, and current docs/research when the blocker depends on external services or current APIs."
+    },
+    {
+      "step": "decide",
+      "requirement": "Choose repair, park, supersede, narrow, create repair task, escalate to Codex, or ask Dave only if needed."
+    },
+    {
+      "step": "act",
+      "requirement": "Execute the smallest safe action. If code change is needed and TOD lacks executor authority, create a Codex escalation packet with exact files and acceptance criteria."
+    },
+    {
+      "step": "validate",
+      "requirement": "Prove objective/task/artifact/dispatcher/operator status agree. If not, keep it open."
+    },
+    {
+      "step": "teach",
+      "requirement": "Record prevention rule and regression check so the same blocker class is handled faster next time."
+    }
+  ],
+  "help_escalation_ladder": [
+    "self_repair_using_existing_runtime_capability",
+    "codebase_search_and_executor_registry_check",
+    "inspect_logs_and_artifacts",
+    "official_docs_or_current_online_research_when external tool/API/provider facts are unstable",
+    "create_codex_escalation_packet_with_exact blocker, files, commands, and acceptance criteria",
+    "ask_Dave_only_for human preference, credentials, physical-world state, or business decision"
+  ],
+  "mim_reporting_contract": {
+    "must_update": [
+      "MIM_OPERATOR_STATUS.latest.json",
+      "TOD_IDLE_TRAINING_STATUS.latest.json",
+      "MIM_READY_TASK_DISPATCHER_STATUS.latest.json"
+    ],
+    "plain_language_fields": [
+      "what is blocked",
+      "what TOD inspected",
+      "what changed",
+      "what remains",
+      "next action",
+      "Dave needed yes/no"
+    ]
+  },
+  "current_training_state": {
+    "drill_001": "completed read-only triage of 33 blockers into 5 classes",
+    "drill_002": "completed with evidence; parked 2 non-current voice followups; blocked count 33 to 31",
+    "drill_003": "active; inspect linked-task blockers and reject empty/null task results as not evidence"
+  }
+}

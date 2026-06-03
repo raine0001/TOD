@@ -1,0 +1,50 @@
+{
+  "api": {
+    "cpu_status": 200,
+    "webapps_status": 200
+  },
+  "app_key": "mim_robotics",
+  "cpu": {
+    "daily_cpu_limit_seconds": 4000,
+    "daily_cpu_total_usage_seconds": 0.0,
+    "next_reset_time": "2026-06-03T14:44:39"
+  },
+  "display_name": "MIM Robotics",
+  "domain": "www.mimrobots.com",
+  "env_keys": [
+    "PYTHONANYWHERE_USERNAME",
+    "PYTHONANYWHERE_API_KEY",
+    "PYTHONANYWHERE_DOMAIN",
+    "DATABASE_URI",
+    "OPENAI_API_KEY"
+  ],
+  "generated_at": "2026-06-03T00:27:31Z",
+  "homepage": {
+    "sample_bytes": 5178,
+    "status": 200,
+    "title_present": true
+  },
+  "local_runtime": "Flask app with MIMWebsiteAgent resource embeddings path",
+  "local_source_root": "E:\\MIM Robotics\\mimrobots.com",
+  "provider": "PythonAnywhere",
+  "source": "mim-robotics-pythonanywhere-status-v1",
+  "token_recorded": false,
+  "webapps": [
+    {
+      "domain_name": "www.mimrobots.com",
+      "enabled": true,
+      "python_version": "3.10",
+      "source_directory": "/home/raine0001/mimrobots/MIMweb",
+      "virtualenv_path": "/home/raine0001/mimrobots/MIMweb/mimenv",
+      "working_directory": "/home/raine0001/"
+    },
+    {
+      "domain_name": "www.doach.app",
+      "enabled": true,
+      "python_version": "3.11",
+      "source_directory": "/home/raine0001/doach_app",
+      "virtualenv_path": "/home/raine0001/.venvs/doach311",
+      "working_directory": "/home/raine0001/"
+    }
+  ]
+}

@@ -1,0 +1,272 @@
+{
+  "apps": [
+    {
+      "app_key": "comm_app",
+      "branch": "main",
+      "commit": "761cafd8",
+      "dirty_count": 0,
+      "exists": true,
+      "git_repo": true,
+      "local_root": "E:\\comm_app",
+      "root_files": [
+        ".dockerignore",
+        ".flaskenv",
+        ".gitignore",
+        ".pre-commit-config.yaml",
+        ".secrets.baseline",
+        "alembic.ini",
+        "config.py",
+        "Dockerfile",
+        "login.html",
+        "mim_joke_library.json",
+        "package-lock.json",
+        "package.json",
+        "playwright.config.js",
+        "prices.csv",
+        "products.csv",
+        "pytest.ini",
+        "README.md",
+        "remove_migrations.py",
+        "render.yaml",
+        "requirements.txt"
+      ],
+      "scanned_at": "2026-06-03T00:27:55Z",
+      "status_sample": []
+    },
+    {
+      "app_key": "mim_wall",
+      "branch": "main",
+      "commit": "6a63663",
+      "dirty_count": 0,
+      "exists": true,
+      "git_repo": true,
+      "local_root": "E:\\mim_wall",
+      "root_files": [
+        ".gitignore",
+        "build.gradle.kts",
+        "DEVELOPMENT_PLAN.md",
+        "gradle.properties",
+        "gradlew",
+        "gradlew.bat",
+        "local.properties",
+        "MIM_ASSIST_SPEC.md",
+        "README.md",
+        "settings.gradle.kts",
+        "SPRINT_1_PLAN.md",
+        "TOD.md"
+      ],
+      "scanned_at": "2026-06-03T00:27:56Z",
+      "status_sample": []
+    },
+    {
+      "app_key": "coachMIM",
+      "branch": "main",
+      "commit": "a4e0241",
+      "dirty_count": 1,
+      "exists": true,
+      "git_repo": true,
+      "local_root": "E:\\coachMIM",
+      "root_files": [
+        ".env.example",
+        ".gitignore",
+        "gunicorn.conf.py",
+        "public_key.pem",
+        "README.md",
+        "render.yaml",
+        "requirements.txt",
+        "TOD.md",
+        "wsgi.py"
+      ],
+      "scanned_at": "2026-06-03T00:27:56Z",
+      "status_sample": [
+        "?? TOD.md"
+      ]
+    },
+    {
+      "app_key": "Mimir",
+      "branch": "",
+      "commit": "",
+      "dirty_count": null,
+      "exists": true,
+      "git_repo": false,
+      "local_root": "E:\\Mimir",
+      "root_files": [
+        ".env",
+        ".gitignore",
+        "audio_monitoring.py",
+        "database.py",
+        "duckduck.py",
+        "mim_core.py",
+        "mim_prompts.py",
+        "my_speech_recognition.py",
+        "obs.py",
+        "obs_assistant.py",
+        "requirements.txt",
+        "routes.py",
+        "schedule_assistant.py",
+        "search.py",
+        "start_mim.bat",
+        "test_db.py",
+        "test_obs_assistant.py",
+        "TOD.md",
+        "voice.py",
+        "web_results.html"
+      ],
+      "scanned_at": "2026-06-03T00:27:56Z",
+      "status_sample": []
+    },
+    {
+      "app_key": "mim_pulz",
+      "branch": "main",
+      "commit": "031d2da",
+      "dirty_count": 57,
+      "exists": true,
+      "git_repo": true,
+      "local_root": "E:\\mim_pulz",
+      "root_files": [
+        ".env",
+        ".gitattributes",
+        ".gitignore",
+        "AUTHORS.md",
+        "block.txt",
+        "Cuneiform_tablet.jpg",
+        "favcon.jpg",
+        "HELP.md",
+        "LICENSE",
+        "make_submission.py",
+        "public_resources.txt",
+        "README.md",
+        "RELEASE_NOTES.md",
+        "requirements.app.txt",
+        "requirements.kaggle.txt",
+        "requirements.lock.txt",
+        "requirements.txt",
+        "rules.txt",
+        "submission.csv",
+        "submission_probe.csv"
+      ],
+      "scanned_at": "2026-06-03T00:27:56Z",
+      "status_sample": [
+        " M README.md",
+        " M release/kaggle/README.md",
+        " M release/kaggle/src/make_submission.py",
+        " M src/make_submission.py",
+        "?? TOD.md",
+        "?? artifacts/analysis/ensemble_conf3_gate_sweep_full.json",
+        "?? artifacts/analysis/ensemble_conf3_sweep_full.json",
+        "?? artifacts/analysis/ensemble_conf3_sweep_quick.json",
+        "?? artifacts/analysis/ensemble_oracle_gap_quick.json",
+        "?? artifacts/analysis/ensemble_router_margin_sweep.json",
+        "?? artifacts/analysis/ensemble_router_minprob_sweep_m0.json",
+        "?? artifacts/analysis/ensemble_router_ml3_train_oof.json"
+      ]
+    },
+    {
+      "app_key": "mim_robotics",
+      "branch": "",
+      "commit": "",
+      "dirty_count": null,
+      "exists": true,
+      "git_repo": false,
+      "local_root": "E:\\MIM Robotics\\mimrobots.com",
+      "pythonanywhere_status": {
+        "api": {
+          "cpu_status": 200,
+          "webapps_status": 200
+        },
+        "app_key": "mim_robotics",
+        "cpu": {
+          "daily_cpu_limit_seconds": 4000,
+          "daily_cpu_total_usage_seconds": 0.0,
+          "next_reset_time": "2026-06-03T14:44:39"
+        },
+        "display_name": "MIM Robotics",
+        "domain": "www.mimrobots.com",
+        "env_keys": [
+          "PYTHONANYWHERE_USERNAME",
+          "PYTHONANYWHERE_API_KEY",
+          "PYTHONANYWHERE_DOMAIN",
+          "DATABASE_URI",
+          "OPENAI_API_KEY"
+        ],
+        "generated_at": "2026-06-03T00:27:31Z",
+        "homepage": {
+          "sample_bytes": 5178,
+          "status": 200,
+          "title_present": true
+        },
+        "local_runtime": "Flask app with MIMWebsiteAgent resource embeddings path",
+        "local_source_root": "E:\\MIM Robotics\\mimrobots.com",
+        "provider": "PythonAnywhere",
+        "source": "mim-robotics-pythonanywhere-status-v1",
+        "token_recorded": false,
+        "webapps": [
+          {
+            "domain_name": "www.mimrobots.com",
+            "enabled": true,
+            "python_version": "3.10",
+            "source_directory": "/home/raine0001/mimrobots/MIMweb",
+            "virtualenv_path": "/home/raine0001/mimrobots/MIMweb/mimenv",
+            "working_directory": "/home/raine0001/"
+          },
+          {
+            "domain_name": "www.doach.app",
+            "enabled": true,
+            "python_version": "3.11",
+            "source_directory": "/home/raine0001/doach_app",
+            "virtualenv_path": "/home/raine0001/.venvs/doach311",
+            "working_directory": "/home/raine0001/"
+          }
+        ]
+      },
+      "root_files": [
+        ".env",
+        "config.py",
+        "requirements.txt",
+        "reset_resource_table.py",
+        "run.py",
+        "setup_db.py",
+        "test_db.py"
+      ],
+      "scanned_at": "2026-06-03T00:27:56Z",
+      "status_sample": []
+    },
+    {
+      "app_key": "mim_station",
+      "branch": "",
+      "commit": "",
+      "dirty_count": null,
+      "exists": true,
+      "git_repo": false,
+      "local_root": "E:\\MIM_Station",
+      "root_files": [
+        "MIM Client Reporting Platform.docx",
+        "Optima_FuelOperator_Pitch_Deck.pptx"
+      ],
+      "scanned_at": "2026-06-03T00:27:56Z",
+      "status_sample": []
+    },
+    {
+      "app_key": "mim_devl",
+      "branch": "",
+      "commit": "",
+      "dirty_count": null,
+      "exists": true,
+      "git_repo": false,
+      "local_root": "E:\\mim_devl",
+      "root_files": [
+        "12 project MIM devl.docx",
+        "agneteams.docx",
+        "MIM robots tasking.docx",
+        "mim_arm_devl.docx",
+        "requirements.txt",
+        "TOD.md",
+        "Who or what is MIM.docx"
+      ],
+      "scanned_at": "2026-06-03T00:27:56Z",
+      "status_sample": []
+    }
+  ],
+  "generated_at": "2026-06-03T00:27:56Z",
+  "source": "tod-app-source-scan-v1"
+}
