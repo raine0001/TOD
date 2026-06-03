@@ -5812,21 +5812,51 @@ async def studio_mim_chat_api(
         }
     if "servo tester" in page_context_lower or ("lab" in page_context_lower and any(term in prompt_lower for term in ["servo", "uno", "pwm", "serial", "com", "slider"])):
         profile = _load_servo_tester_profile()
-        reply = (
-            "This is a live hardware troubleshooting issue, not a prototype artifact.\n\n"
-            "What I would check first:\n"
-            "- Confirm the page shows Connected after the browser serial picker closes.\n"
-            "- Use the serial log to verify TX lines are being sent and RX lines come back from the UNO.\n"
-            "- For Dave's current sketch, use the current UNO sketch protocol at 9600 baud. It sends one number only, such as 375.\n"
-            "- That firmware applies the same PCA9685 count to channels 0 and 1 together, so the page channel field will not matter until firmware supports per-channel commands.\n"
-            "- Use MOVE {channel} {angle} or S {channel} {pulse} {duration} only after flashing firmware that supports those formats.\n"
-            "- If TX appears but there is no servo movement, the likely causes are wrong sketch protocol, wrong PWM channel, servo power/ground, or the PWM driver address/wiring.\n\n"
-            "I updated this page to include a Current UNO Sketch protocol button, connection state, serial logs, raw count range, ping, and slider-release movement."
+        serial_open_failure = any(
+            term in prompt_lower
+            for term in [
+                "failed to open serial port",
+                "failed to execute 'open'",
+                "connect failed",
+                "connection failed",
+                "could not open",
+                "access denied",
+                "port busy",
+                "com5",
+            ]
         )
+        if serial_open_failure:
+            reply = (
+                "MIM should have caught this more directly. That error happens before any servo command is sent.\n\n"
+                "Most likely cause: the COM port is locked by another program, usually Arduino IDE Serial Monitor/Plotter, Arduino IDE itself after opening the monitor, or another browser/app session.\n\n"
+                "Do this first:\n"
+                "- Close Arduino IDE Serial Monitor and Serial Plotter.\n"
+                "- If it still fails, close Arduino IDE entirely.\n"
+                "- Unplug/replug the UNO.\n"
+                "- Click Forget Port on the Lab tester.\n"
+                "- Click Connect UNO and select COM5 again.\n\n"
+                "Only after the page shows Connected should we test protocol, channel, PWM driver wiring, servo power, or limits."
+            )
+            response_mode = "problem_analysis"
+            failure_class = "serial_port_open_failed_likely_locked_by_ide"
+        else:
+            reply = (
+                "This is a live hardware troubleshooting issue, not a prototype artifact.\n\n"
+                "What I would check first:\n"
+                "- Confirm the page shows Connected after the browser serial picker closes.\n"
+                "- Use the serial log to verify TX lines are being sent and RX lines come back from the UNO.\n"
+                "- For Dave's current sketch, use the current UNO sketch protocol at 9600 baud. It sends one number only, such as 375.\n"
+                "- That firmware applies the same PCA9685 count to channels 0 and 1 together, so the page channel field will not matter until firmware supports per-channel commands.\n"
+                "- Use MOVE {channel} {angle} or S {channel} {pulse} {duration} only after flashing firmware that supports those formats.\n"
+                "- If TX appears but there is no servo movement, the likely causes are wrong sketch protocol, wrong PWM channel, servo power/ground, or the PWM driver address/wiring.\n\n"
+                "I updated this page to include a Current UNO Sketch protocol button, connection state, serial logs, raw count range, ping, and slider-release movement."
+            )
+            response_mode = "problem_analysis"
+            failure_class = "servo_tester_general_hardware_diagnostic"
         return {
             "ok": True,
             "source": "studio_lab_servo_tester_context",
-            "response_mode": "problem_analysis",
+            "response_mode": response_mode,
             "mim_interface": {
                 "reply_text": reply,
                 "page_context": page_context,
@@ -5837,6 +5867,8 @@ async def studio_mim_chat_api(
                 "baud_rate": profile.get("baud_rate"),
                 "command_template": profile.get("command_template"),
                 "servo_count": len(profile.get("servos") if isinstance(profile.get("servos"), list) else []),
+                "failure_class": failure_class,
+                "training_lesson": "When Web Serial reports failed_to_open before TX, diagnose port lock before servo protocol or wiring.",
             },
         }
     if "report" in page_context_lower or any(term in prompt_lower for term in ["agentmim", "comm_app", "database", "db", "account owner", "account_owners", "app metrics"]):
