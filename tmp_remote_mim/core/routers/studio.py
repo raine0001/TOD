@@ -884,7 +884,38 @@ def _tab_nav(active: str) -> str:
     return "\n".join(links)
 
 
-def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: str) -> str:
+def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: str, show_mim_panel: bool = True) -> str:
+    shell_chat_class = "" if show_mim_panel else " no-chat"
+    restore_chat_html = (
+        '<button id="restoreChat" class="chat-restore" type="button" hidden>MIM</button>'
+        if show_mim_panel
+        else ""
+    )
+    chat_panel_html = ""
+    if show_mim_panel:
+        chat_panel_html = f"""
+    <aside id="studioMimPanel" class="chat-panel" data-page-context="{_html(page_context)}">
+      <div id="chatResizer" class="chat-resizer" title="Resize MIM chat" aria-hidden="true"></div>
+      <div class="chat-head">
+        <div>
+          <div class="chat-title">MIM</div>
+          <div class="muted" style="font-size:12px;">Page-aware assistant</div>
+        </div>
+        <button id="toggleChat" class="button" type="button" aria-label="Collapse MIM panel">Hide</button>
+      </div>
+      <div class="chat-context">Context: {_html(page_context)}</div>
+      <div id="chatBody" class="chat-body"></div>
+      <div class="chat-composer">
+        <div class="quick">
+          <button type="button" data-prompt="Summarize this page.">Summarize this page</button>
+          <button type="button" data-prompt="What needs Dave?">What needs Dave?</button>
+          <button type="button" data-prompt="Give me one Studio recommendation for today.">Focus today</button>
+          <button type="button" data-prompt="Is anything stuck?">Anything stuck?</button>
+        </div>
+        <textarea id="chatInput" placeholder="Ask MIM about this page..."></textarea>
+        <button id="sendChat" class="button primary" type="button">Ask MIM</button>
+      </div>
+    </aside>"""
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -911,7 +942,8 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
     * {{ box-sizing: border-box; }}
     body {{ margin: 0; min-height: 100vh; background: radial-gradient(circle at 25% 0%, rgba(117,183,255,.13), transparent 34%), var(--bg); color: var(--text); }}
     a {{ color: inherit; text-decoration: none; }}
-    .studio-shell {{ min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); }}
+    .studio-shell {{ min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) var(--studio-mim-chat-width, 420px); }}
+    .studio-shell.no-chat, .studio-shell.chat-collapsed {{ grid-template-columns: minmax(0, 1fr); }}
     .main {{ min-width: 0; padding: 22px; }}
     .topbar {{ display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 8px; }}
     .brand {{ display: flex; flex-direction: column; gap: 4px; }}
@@ -976,9 +1008,11 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
     .form-grid .wide {{ grid-column: 1 / -1; }}
     .embed-frame {{ width: 100%; height: calc(100vh - 210px); min-height: 620px; border: 1px solid var(--line); border-radius: 8px; background: #0a0f17; }}
     .placeholder-sections {{ margin-top: 16px; }}
-    .chat-panel {{ border-left: 1px solid var(--line); background: rgba(9,14,22,.96); min-width: 0; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }}
-    .chat-panel.collapsed {{ width: 54px; min-width: 54px; }}
-    .chat-panel.collapsed .chat-body, .chat-panel.collapsed .chat-composer, .chat-panel.collapsed .chat-context {{ display: none; }}
+    .chat-panel {{ border-left: 1px solid var(--line); background: rgba(9,14,22,.96); min-width: 300px; max-width: 760px; width: var(--studio-mim-chat-width, 420px); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }}
+    .studio-shell.chat-collapsed .chat-panel {{ display: none; }}
+    .chat-resizer {{ position: absolute; left: -5px; top: 0; bottom: 0; width: 10px; cursor: col-resize; z-index: 5; }}
+    .chat-resizer:hover {{ background: rgba(110,231,216,.16); }}
+    .chat-restore {{ position: fixed; right: 14px; top: 14px; z-index: 35; border: 1px solid var(--line); background: #101925; color: var(--text); border-radius: 8px; padding: 9px 11px; font-weight: 900; cursor: pointer; box-shadow: 0 14px 32px rgba(0,0,0,.28); }}
     .chat-head {{ padding: 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; }}
     .chat-title {{ font-weight: 900; }}
     .chat-context {{ padding: 10px 14px; color: var(--muted); border-bottom: 1px solid var(--line); font-size: 13px; }}
@@ -1001,7 +1035,8 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
     .modal-actions {{ display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }}
     @media (max-width: 1180px) {{
       .studio-shell {{ grid-template-columns: minmax(0, 1fr); }}
-      .chat-panel {{ position: relative; height: 560px; border-left: 0; border-top: 1px solid var(--line); }}
+      .chat-panel {{ position: relative; height: 560px; border-left: 0; border-top: 1px solid var(--line); width: 100%; max-width: none; min-width: 0; }}
+      .chat-resizer {{ display: none; }}
     }}
     @media (max-width: 820px) {{
       .main {{ padding: 14px; }}
@@ -1013,7 +1048,7 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
   </style>
 </head>
 <body>
-  <div class="studio-shell">
+  <div id="studioShell" class="studio-shell{shell_chat_class}">
     <main class="main">
       <header class="topbar">
         <div class="brand">
@@ -1029,30 +1064,9 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
       <div class="page-label">{_html(title)}</div>
       {body}
     </main>
-    <aside id="studioMimPanel" class="chat-panel" data-page-context="{_html(page_context)}">
-      <div class="chat-head">
-        <div>
-          <div class="chat-title">MIM</div>
-          <div class="muted" style="font-size:12px;">Page-aware assistant</div>
-        </div>
-        <button id="toggleChat" class="button" type="button" aria-label="Collapse MIM panel">Hide</button>
-      </div>
-      <div class="chat-context">Context: {_html(page_context)}</div>
-      <div id="chatBody" class="chat-body">
-        <div class="msg mim">Hi Dave. I am watching this Studio page with you. Ask what matters, what is stuck, what changed, or what I recommend next.</div>
-      </div>
-      <div class="chat-composer">
-        <div class="quick">
-          <button type="button" data-prompt="Summarize this page.">Summarize this page</button>
-          <button type="button" data-prompt="What needs Dave?">What needs Dave?</button>
-          <button type="button" data-prompt="Give me one Studio recommendation for today.">Focus today</button>
-          <button type="button" data-prompt="Is anything stuck?">Anything stuck?</button>
-        </div>
-        <textarea id="chatInput" placeholder="Ask MIM about this page..."></textarea>
-        <button id="sendChat" class="button primary" type="button">Ask MIM</button>
-      </div>
-    </aside>
+    {chat_panel_html}
   </div>
+  {restore_chat_html}
   <div id="batPhoneModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="batPhoneTitle">
     <div class="modal">
       <div class="modal-head">
@@ -1076,29 +1090,89 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
     </div>
   </div>
   <script>
+    const shell = document.getElementById('studioShell');
     const panel = document.getElementById('studioMimPanel');
     const chatBody = document.getElementById('chatBody');
     const chatInput = document.getElementById('chatInput');
     const sendChat = document.getElementById('sendChat');
     const toggleChat = document.getElementById('toggleChat');
+    const restoreChat = document.getElementById('restoreChat');
+    const chatResizer = document.getElementById('chatResizer');
     const pageContext = panel ? panel.dataset.pageContext || 'Studio' : 'Studio';
+    const threadKey = 'studioMimThreadV1';
+    const widthKey = 'studioMimChatWidth';
+    const collapsedKey = 'studioMimChatCollapsed';
+    const greeting = 'Hi Dave. I am watching this Studio page with you. Ask what matters, what is stuck, what changed, or what I recommend next.';
+    function clampChatWidth(value) {{
+      const maxByViewport = Math.max(320, Math.floor(window.innerWidth * 0.56));
+      return Math.min(Math.max(Number(value) || 420, 300), Math.min(760, maxByViewport));
+    }}
+    function setChatWidth(value) {{
+      const width = clampChatWidth(value);
+      if (shell) shell.style.setProperty('--studio-mim-chat-width', width + 'px');
+      try {{ localStorage.setItem(widthKey, String(width)); }} catch (error) {{}}
+    }}
+    function loadThread() {{
+      try {{
+        const raw = localStorage.getItem(threadKey);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.filter((item) => item && item.role && item.text).slice(-80) : [];
+      }} catch (error) {{
+        return [];
+      }}
+    }}
+    function saveThread(messages) {{
+      try {{ localStorage.setItem(threadKey, JSON.stringify(messages.slice(-80))); }} catch (error) {{}}
+    }}
+    let studioMimMessages = loadThread();
+    function renderThread() {{
+      if (!chatBody) return;
+      chatBody.innerHTML = '';
+      const messages = studioMimMessages.length ? studioMimMessages : [{{ role: 'mim', text: greeting }}];
+      messages.forEach((message) => {{
+        const node = document.createElement('div');
+        node.className = 'msg ' + (message.role === 'user' ? 'user' : 'mim');
+        node.textContent = String(message.text || '');
+        chatBody.appendChild(node);
+      }});
+      chatBody.scrollTop = chatBody.scrollHeight;
+    }}
     function appendMessage(role, text) {{
+      if (!chatBody) return null;
       const node = document.createElement('div');
       node.className = 'msg ' + role;
       node.textContent = text;
       chatBody.appendChild(node);
       chatBody.scrollTop = chatBody.scrollHeight;
+      if (role === 'user' || role === 'mim') {{
+        studioMimMessages.push({{ role: role, text: String(text || ''), at: new Date().toISOString(), page_context: pageContext }});
+        saveThread(studioMimMessages);
+      }}
+      return node;
+    }}
+    function replaceMimMessage(node, text) {{
+      if (!node) return;
+      node.textContent = text;
+      const last = studioMimMessages[studioMimMessages.length - 1];
+      if (last && last.role === 'mim') {{
+        last.text = String(text || '');
+        saveThread(studioMimMessages);
+      }}
+    }}
+    function maybeNavigate(navigation) {{
+      if (!navigation || !navigation.href || !navigation.auto_redirect) return;
+      const target = String(navigation.href);
+      const current = window.location.pathname + window.location.search;
+      if (target === current) return;
+      setTimeout(() => {{ window.location.href = target; }}, 650);
     }}
     async function askMim(prompt) {{
+      if (!chatInput || !sendChat || !chatBody) return;
       const text = String(prompt || '').trim();
       if (!text) return;
       appendMessage('user', text);
       chatInput.value = '';
-      const thinking = document.createElement('div');
-      thinking.className = 'msg mim';
-      thinking.textContent = 'Thinking with this page context...';
-      chatBody.appendChild(thinking);
-      chatBody.scrollTop = chatBody.scrollHeight;
+      const thinking = appendMessage('mim', 'Thinking with this page context...');
       try {{
         const contextualText = 'Studio context: ' + pageContext + '. Operator request: ' + text;
         const studioResponse = await fetch('/studio/api/mim/chat', {{
@@ -1118,7 +1192,8 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
           const studioData = await studioResponse.json();
           const studioReply = studioData && studioData.mim_interface && studioData.mim_interface.reply_text;
           if (studioReply) {{
-            thinking.textContent = studioReply;
+            replaceMimMessage(thinking, studioReply);
+            maybeNavigate(studioData.navigation);
             if ((studioData.source === 'studio_reports_context') && pageContext.toLowerCase().includes('report')) {{
               const evidence = studioData.evidence || {{}};
               const dataset = evidence.dataset || 'auto';
@@ -1153,22 +1228,58 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
         const reply = (data && data.mim_interface && data.mim_interface.reply_text)
           || (data && data.resolution && data.resolution.clarification_prompt)
           || 'I received that, but I do not have a clean reply yet.';
-        thinking.textContent = reply;
+        replaceMimMessage(thinking, reply);
       }} catch (error) {{
-        thinking.textContent = 'MIM chat failed from Studio: ' + (error && error.message ? error.message : 'unknown error');
+        replaceMimMessage(thinking, 'MIM chat failed from Studio: ' + (error && error.message ? error.message : 'unknown error'));
       }}
     }}
-    sendChat.addEventListener('click', () => askMim(chatInput.value));
-    chatInput.addEventListener('keydown', (event) => {{
-      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) askMim(chatInput.value);
-    }});
-    document.querySelectorAll('[data-prompt]').forEach((button) => {{
-      button.addEventListener('click', () => askMim(button.dataset.prompt || ''));
-    }});
-    toggleChat.addEventListener('click', () => {{
-      panel.classList.toggle('collapsed');
-      toggleChat.textContent = panel.classList.contains('collapsed') ? 'Show' : 'Hide';
-    }});
+    if (panel && shell && chatBody && chatInput && sendChat && toggleChat) {{
+      const savedWidth = localStorage.getItem(widthKey);
+      if (savedWidth) setChatWidth(savedWidth);
+      if (localStorage.getItem(collapsedKey) === 'true') {{
+        shell.classList.add('chat-collapsed');
+        restoreChat && (restoreChat.hidden = false);
+      }}
+      renderThread();
+      sendChat.addEventListener('click', () => askMim(chatInput.value));
+      chatInput.addEventListener('keydown', (event) => {{
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) askMim(chatInput.value);
+      }});
+      document.querySelectorAll('[data-prompt]').forEach((button) => {{
+        button.addEventListener('click', () => askMim(button.dataset.prompt || ''));
+      }});
+      toggleChat.addEventListener('click', () => {{
+        shell.classList.add('chat-collapsed');
+        restoreChat && (restoreChat.hidden = false);
+        try {{ localStorage.setItem(collapsedKey, 'true'); }} catch (error) {{}}
+      }});
+      restoreChat && restoreChat.addEventListener('click', () => {{
+        shell.classList.remove('chat-collapsed');
+        restoreChat.hidden = true;
+        try {{ localStorage.setItem(collapsedKey, 'false'); }} catch (error) {{}}
+      }});
+      if (chatResizer) {{
+        let resizing = false;
+        chatResizer.addEventListener('pointerdown', (event) => {{
+          resizing = true;
+          chatResizer.setPointerCapture(event.pointerId);
+          document.body.style.userSelect = 'none';
+        }});
+        chatResizer.addEventListener('pointermove', (event) => {{
+          if (!resizing) return;
+          setChatWidth(window.innerWidth - event.clientX);
+        }});
+        chatResizer.addEventListener('pointerup', (event) => {{
+          resizing = false;
+          try {{ chatResizer.releasePointerCapture(event.pointerId); }} catch (error) {{}}
+          document.body.style.userSelect = '';
+        }});
+        chatResizer.addEventListener('pointercancel', () => {{
+          resizing = false;
+          document.body.style.userSelect = '';
+        }});
+      }}
+    }}
     const batPhoneModal = document.getElementById('batPhoneModal');
     const batPhoneSymptom = document.getElementById('batPhoneSymptom');
     function openBatPhoneModal() {{
@@ -5066,6 +5177,73 @@ async def studio_legacy_objectives(request: Request) -> HTMLResponse:
     return await studio_training_section(request, "objectives")
 
 
+def _navigation_terms_match(text: str, terms: list[str]) -> bool:
+    return any(term in text for term in terms)
+
+
+async def _studio_project_target_href(db: AsyncSession, prompt_lower: str) -> str:
+    try:
+        result = await db.execute(select(StudioProject.id, StudioProject.title).order_by(StudioProject.updated_at.desc()).limit(80))
+        rows = result.all()
+    except Exception:
+        return "/studio/projects"
+    prompt_tokens = {token for token in prompt_lower.replace("/", " ").replace("-", " ").split() if len(token) >= 4}
+    best_id: int | None = None
+    best_score = 0
+    for project_id, title in rows:
+        title_text = str(title or "").lower()
+        title_tokens = {token for token in title_text.replace("/", " ").replace("-", " ").split() if len(token) >= 4}
+        score = len(prompt_tokens & title_tokens)
+        if "forum graphics" in prompt_lower and "forum graphics" in title_text:
+            score += 8
+        if "account manager" in prompt_lower and "account manager" in title_text:
+            score += 8
+        if "mobile" in prompt_lower and "login" in prompt_lower and "login" in title_text:
+            score += 6
+        if score > best_score:
+            best_score = score
+            best_id = int(project_id)
+    if best_id and best_score >= 2:
+        return f"/studio/projects?project_id={best_id}"
+    return "/studio/projects"
+
+
+async def _studio_navigation_target(db: AsyncSession, prompt: str, page_context: str) -> dict[str, Any] | None:
+    prompt_lower = str(prompt or "").lower()
+    context_lower = str(page_context or "").lower()
+    current_area = "home"
+    for area in ["projects", "training", "documents", "reports", "systems", "lab", "apps", "accounting", "settings", "mim", "tod"]:
+        if area in context_lower:
+            current_area = area
+            break
+
+    targets: list[tuple[str, str, list[str], str]] = [
+        ("lab", "/studio/lab", ["lab", "robot", "robotics", "arm", "camera", "lidar", "sensor", "calibration", "pickup"], "Lab"),
+        ("projects", "/studio/projects", ["project", "projects", "ticket", "tickets", "backlog", "queued", "pause", "delete", "forum graphics", "account manager", "twilio", "gmail", "2fa", "double authentication", "social post", "campaign", "mobile login", "ssl issue", "powershell migration"], "Projects"),
+        ("reports", "/studio/reports", ["report", "reports", "show me all", "new users", "past month", "dataset", "metrics", "canvas", "agentmim.com app users", "comm_app", "database", "db"], "Reports"),
+        ("documents", "/studio/documents", ["document", "documents", "library", "lab documents", "archive", "reference", "notes", "screenshot"], "Documents"),
+        ("training", "/studio/training", ["training", "scoreboard", "smoke test", "judgment", "objective", "continuity", "tod training", "mim training"], "Training"),
+        ("systems", "/studio/systems", ["system", "systems", "health", "runtime", "service", "provider", "sync", "dirty", "watchdog"], "Systems"),
+        ("apps", "/studio/apps", ["apps", "agentmim", "mim wall", "mobile app", "commissions", "carriers", "contacts", "agents"], "Apps"),
+        ("accounting", "/studio/accounting", ["accounting", "commission", "commissions", "rep totals", "paid to reps", "carrier reports"], "Accounting"),
+        ("settings", "/studio/settings", ["settings", "configuration", "credentials", "twilio number", "gmail setup", "access"], "Settings"),
+    ]
+    for area, href, terms, label in targets:
+        if _navigation_terms_match(prompt_lower, terms):
+            if area == "projects":
+                href = await _studio_project_target_href(db, prompt_lower)
+            if area == current_area:
+                return None
+            return {
+                "href": href,
+                "label": label,
+                "target_area": area,
+                "auto_redirect": True,
+                "reason": f"This request belongs on the Studio {label} page.",
+            }
+    return None
+
+
 @router.post("/studio/api/mim/chat")
 async def studio_mim_chat_api(
     payload: StudioMimChatRequest,
@@ -5075,6 +5253,24 @@ async def studio_mim_chat_api(
     prompt = payload.prompt.strip()
     page_context_lower = page_context.lower()
     prompt_lower = prompt.lower()
+    navigation = await _studio_navigation_target(db, prompt, page_context)
+    if navigation is not None:
+        label = str(navigation.get("label") or "that Studio page")
+        return {
+            "ok": True,
+            "source": "studio_navigation_context",
+            "response_mode": "navigation",
+            "mim_interface": {
+                "reply_text": f"That belongs on {label}. I am opening the right Studio area so the work lands where it can be managed.",
+                "page_context": page_context,
+                "surface": "studio",
+            },
+            "navigation": navigation,
+            "evidence": {
+                "target_area": navigation.get("target_area"),
+                "href": navigation.get("href"),
+            },
+        }
     if "report" in page_context_lower or any(term in prompt_lower for term in ["agentmim", "comm_app", "database", "db", "account owner", "account_owners", "app metrics"]):
         dataset = await _studio_report_dataset(db, "auto", prompt=prompt)
         reply = _compose_reports_page_reply(prompt, dataset)
@@ -5087,6 +5283,7 @@ async def studio_mim_chat_api(
                 "page_context": page_context,
                 "surface": "studio",
             },
+            "navigation": None,
             "evidence": {
                 "dataset": dataset.get("key"),
                 "label": dataset.get("label"),
@@ -5106,6 +5303,7 @@ async def studio_mim_chat_api(
                 "page_context": page_context,
                 "surface": "studio",
             },
+            "navigation": None,
             "evidence": {
                 "generated_at": state.get("generated_at", ""),
                 "assessment": state.get("assessment", ""),
@@ -5778,5 +5976,6 @@ async def studio_tab(
             subtitle=subtitle,
             body=body,
             page_context=f"Studio {tab['label']}",
+            show_mim_panel=key not in {"mim", "tod"},
         )
     )
