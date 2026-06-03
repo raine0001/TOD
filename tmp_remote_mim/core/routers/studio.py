@@ -2836,8 +2836,8 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
     <section id="servoList" class="grid two" style="margin-top:14px;"></section>
     <section class="card" style="margin-top:14px;">
       <h2>UNO Sketch Protocol</h2>
-      <p>Current flashed sketch protocol: send one integer from <code>100</code> to <code>650</code>. The sketch applies that raw PCA9685 count to channels 0 and 1 together.</p>
-      <p class="muted" style="margin-top:8px;">Smooth firmware source: <code>docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino</code>. It compiles for UNO R4 WiFi and supports <code>PING</code>, <code>100-650</code>, <code>ALL {{pulse}} {{duration}}</code>, <code>S {{channel}} {{pulse}} {{duration}}</code>, and <code>MOVE {{channel}} {{angle}} {{duration}}</code>.</p>
+      <p>Smooth firmware is uploaded to the UNO R4 on COM5. Reconnect, select <code>Use Smooth UNO Sketch</code>, then send <code>PING</code> and expect <code>PONG SmoothServoBenchTester</code>.</p>
+      <p class="muted" style="margin-top:8px;">Firmware source: <code>docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino</code>. It supports <code>PING</code>, <code>100-650</code>, <code>ALL {{pulse}} {{duration}}</code>, <code>S {{channel}} {{pulse}} {{duration}}</code>, and <code>MOVE {{channel}} {{angle}} {{duration}}</code> at 9600 baud.</p>
       <p class="muted" style="margin-top:8px;">If upload says the serial port is busy, disconnect this page from COM5 and close Arduino IDE Serial Monitor/Plotter before flashing.</p>
       <p class="muted" style="margin-top:8px;">Arduino IDE is only needed to flash that sketch onto the UNO R4. After that, this page can connect directly from Chrome with Web Serial.</p>
     </section>
@@ -5896,7 +5896,7 @@ async def studio_mim_chat_api(
                 "- Compile it for Arduino UNO R4 WiFi with Arduino CLI.\n"
                 "- Upload it to COM5.\n"
                 "- If upload reports Serial port busy, disconnect the Lab servo tester page from COM5 and close Arduino IDE Serial Monitor/Plotter, then retry.\n\n"
-                "The compiled smooth sketch supports PING, raw 100-650, ALL pulse duration, S channel pulse duration, and MOVE channel angle duration at 9600 baud."
+                "Current evidence: the smooth sketch compiled and uploaded to COM5. Reconnect the Lab page, select Use Smooth UNO Sketch, send PING, and verify PONG SmoothServoBenchTester in the serial log."
             )
             response_mode = "demonstration"
             failure_class = "servo_firmware_update_requires_local_serial_executor"
@@ -5915,7 +5915,7 @@ async def studio_mim_chat_api(
                 "- Move one count at a time, or 2-5 counts per step for faster travel.\n"
                 "- Delay 8-20 ms per step for analog-servo smoothness.\n"
                 "- Support per-channel commands so channels 0 and 1 can be tested separately.\n\n"
-                "The smooth firmware has been prepared at docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino and should be flashed when COM5 is free."
+                "The smooth firmware has been uploaded to COM5. Reconnect the Lab page, select Use Smooth UNO Sketch, send PING, and then test movement with S channel pulse duration."
             )
             response_mode = "recommendation"
             failure_class = "servo_motion_choppy_requires_firmware_ramp"

@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-06-03T13:41:00-07:00",
+  "artifact_type": "lab-servo-tester-firmware-upload-evidence-v1",
+  "project": "LAB Servo Tester",
+  "firmware": {
+    "path": "docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino",
+    "board": "Arduino UNO R4 WiFi",
+    "fqbn": "arduino:renesas_uno:unor4wifi",
+    "port": "COM5",
+    "baud_rate": 9600,
+    "protocols": [
+      "PING",
+      "raw 100-650",
+      "ALL pulse durationMs",
+      "S channel pulse durationMs",
+      "MOVE channel angle durationMs"
+    ]
+  },
+  "compile": {
+    "status": "passed",
+    "program_storage_bytes": 66564,
+    "program_storage_percent": 25,
+    "dynamic_memory_bytes": 9308,
+    "dynamic_memory_percent": 28
+  },
+  "upload": {
+    "status": "completed",
+    "port": "COM5",
+    "pages_written": 17,
+    "bytes_written": 66572,
+    "note": "Initial upload attempt failed because COM5 was busy. Upload succeeded after the Lab page disconnected from the serial port."
+  },
+  "post_upload_serial_ping": {
+    "status": "pending",
+    "reason": "COM5 was denied on a follow-up ping attempt, indicating another port handle was active again.",
+    "next_action": "Use the Lab page after reconnecting to COM5, select Use Smooth UNO Sketch, Send Ping, and verify PONG SmoothServoBenchTester in the serial log."
+  },
+  "training_lesson": "If a Studio page owns a hardware connection, MIM should manage or route the in-app Disconnect action before escalating to Dave. Dave should not be the manual fallback for controls that already exist in Studio."
+}

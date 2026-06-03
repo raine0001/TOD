@@ -1,0 +1,178 @@
+{
+  "generated_at": "2026-06-03T13:35:00-07:00",
+  "objective_id": "MIM-PROACTIVE-RESOLUTION-AND-FOLLOW-THROUGH-V1",
+  "status": "planned",
+  "priority": "top_after_studio_foundation",
+  "goal": "No project, objective, blocker, commitment, approval, or required operator action is allowed to silently rot.",
+  "problem_statement": "MIM/TOD can detect stale, stuck, blocked, or below-threshold work, but detected items still risk becoming passive status text unless every item is assigned a resolution lane, next action, aging policy, and terminal outcome.",
+  "allowed_terminal_states": [
+    "complete",
+    "superseded",
+    "cancelled",
+    "escalated",
+    "waiting_on_dave",
+    "waiting_on_external_dependency"
+  ],
+  "resolution_hierarchy": [
+    {
+      "level": 1,
+      "owner": "MIM",
+      "lane": "self_resolution",
+      "examples": [
+        "missing document",
+        "project summary",
+        "continuity lookup",
+        "requirements clarification",
+        "project organization",
+        "Studio page action available to MIM"
+      ],
+      "rule": "Resolve automatically when MIM has enough context and app/tool permission."
+    },
+    {
+      "level": 2,
+      "owner": "TOD",
+      "lane": "engineering_resolution",
+      "examples": [
+        "implementation task",
+        "code change",
+        "validation",
+        "blocker investigation",
+        "local service or sync repair"
+      ],
+      "rule": "Dispatch TOD with bounded acceptance criteria and required validation evidence."
+    },
+    {
+      "level": 3,
+      "owner": "Codex",
+      "lane": "specialist_engineering_escalation",
+      "examples": [
+        "difficult engineering",
+        "architecture change",
+        "framework unknown",
+        "TOD failed or stalled after evidence-backed attempt"
+      ],
+      "rule": "Escalate with a continuity brief, failed attempts, files touched, commands run, and exact blocker."
+    },
+    {
+      "level": 4,
+      "owner": "External",
+      "lane": "external_dependency",
+      "examples": [
+        "Render credential",
+        "Twilio setup",
+        "Gmail OAuth",
+        "customer response",
+        "carrier approval"
+      ],
+      "rule": "Track the dependency with source, requested action, age, reminder schedule, and fallback path."
+    },
+    {
+      "level": 5,
+      "owner": "Dave",
+      "lane": "operator_decision",
+      "examples": [
+        "sensitive commission access approval",
+        "business priority decision",
+        "physical-world confirmation",
+        "credential or account-owner approval"
+      ],
+      "rule": "Ask Dave only after MIM/TOD/Codex/external lanes cannot resolve it, or when policy requires Dave's approval."
+    }
+  ],
+  "operator_action_contract": {
+    "required_fields": [
+      "what_needs_dave",
+      "reason",
+      "choices",
+      "impact_if_no_action",
+      "affected_project",
+      "current_owner",
+      "age",
+      "reminder_schedule"
+    ],
+    "example": {
+      "what_needs_dave": "Approve account manager access to commission totals.",
+      "reason": "Rep commission totals are confidential and require owner-level approval.",
+      "choices": [
+        "approve",
+        "reject",
+        "delegate"
+      ],
+      "impact_if_no_action": "Account Manager project remains blocked.",
+      "reminder_schedule": [
+        "24h",
+        "72h",
+        "7d"
+      ]
+    }
+  },
+  "aging_rules": [
+    {
+      "age": "day_1",
+      "behavior": "visible_in_studio"
+    },
+    {
+      "age": "day_3",
+      "behavior": "reminder"
+    },
+    {
+      "age": "day_7",
+      "behavior": "escalated"
+    },
+    {
+      "age": "day_14",
+      "behavior": "persistent_nag"
+    },
+    {
+      "age": "day_30",
+      "behavior": "high_priority_alert"
+    },
+    {
+      "age": "day_60",
+      "behavior": "dashboard_red_flag"
+    }
+  ],
+  "studio_follow_through_surface": {
+    "counts": [
+      "needs_dave",
+      "needs_mim",
+      "needs_tod",
+      "needs_codex",
+      "needs_external",
+      "aging_over_30_days"
+    ],
+    "row_fields": [
+      "item",
+      "project",
+      "owner",
+      "state",
+      "age",
+      "next_action",
+      "blocker",
+      "resolution_lane",
+      "reminder_due",
+      "open_link"
+    ]
+  },
+  "success_criteria": [
+    "Every open item has owner, state, next action, age, and reminder policy.",
+    "No item remains in passive needs_attention or blocked status without a resolution lane.",
+    "MIM tries self-resolution first when it has app control or sufficient context.",
+    "TOD receives implementation/blocker work before Codex unless policy or capability evidence says otherwise.",
+    "Codex escalation packets include continuity brief and failed lower-lane attempts.",
+    "Dave-needed items always include reason, choices, impact, and reminder schedule.",
+    "A daily digest can be generated from the follow-through queue."
+  ],
+  "relationship_to_development_continuity": {
+    "depends_on": "MIM-DEVELOPMENT-CONTINUITY-V1",
+    "reason": "Continuity answers what was learned. Follow-through answers what still needs to happen."
+  },
+  "first_implementation_slice": [
+    "Create follow-through objective artifact and operator summary.",
+    "Add or extend Studio Projects/Training data model so each item has owner, state, next action, age, resolution lane, and Dave-needed contract.",
+    "Create a Follow Through queue or dashboard section.",
+    "Wire MIM chat responses so needs_attention/stuck/blocked replies include actionable resolution steps.",
+    "Validate on live cases: Lab servo COM5 lock, Studio reports data request, Account Manager approval, AgentMIM forum graphics, TOD local PowerShell interruptions."
+  ],
+  "training_assertion": "MIM should treat in-app controls as actions it can manage or route, not as manual chores for Dave, unless authentication, browser security, physical hardware safety, or policy prevents autonomous action."
+}

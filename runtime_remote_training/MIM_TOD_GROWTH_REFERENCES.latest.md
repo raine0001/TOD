@@ -14,6 +14,7 @@ Domain references:
 - communication_usefulness: Make responses useful, compressed, risk-aware, and action-first.
 - autonomous_debugging: Move first-pass diagnosis into MIM/TOD local symptom, hypothesis, probe, evidence, repair, rollback, validation loops.
 - project_continuity: Prevent active work from becoming stale, forgotten, duplicated, or silently dead.
+- proactive_resolution_follow_through: Ensure every project, blocker, approval, dependency, and promised action has an owner, resolution lane, next action, age, reminder policy, and terminal state.
 - self_health_maintenance: Act as an operational immune system against drift, circular governance, entropy, overconfidence, and repeated repair loops.
 - strategic_prioritization: Choose what matters most when everything cannot improve at once.
 - reality_grounding: Keep claims tied to live services, repo state, deployed behavior, hardware/vision observation, or explicit uncertainty.
