@@ -85,6 +85,7 @@ $startupShortcutPath = Join-Path $startupDir ($ShortcutName + '.lnk')
 $launcherArguments = '"' + $resolvedWorkspacePath + '"'
 $currentUser = "$env:USERDOMAIN\$env:USERNAME"
 $actionArgs = @(
+    '-WindowStyle', 'Hidden',
     '-NoProfile',
     '-ExecutionPolicy', 'Bypass',
     '-File', ('"' + (Join-Path $repoRoot 'scripts\Start-TOD-Elevated.ps1') + '"'),
@@ -102,6 +103,7 @@ catch {
 }
 
 $watchdogArgs = @(
+    '-WindowStyle', 'Hidden',
     '-NoProfile',
     '-ExecutionPolicy', 'Bypass',
     '-File', ('"' + $resolvedWatchdogScriptPath + '"'),

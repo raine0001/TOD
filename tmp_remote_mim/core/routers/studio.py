@@ -2869,14 +2869,35 @@ async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
             "health": "needs_repair",
             "why_it_matters": "TOD and Dave share the PC, so frequent visible automation interrupts Dave's work and should move to the MIM BOX or run invisibly.",
             "origin_story": "Dave reported TOD runs PowerShell prompts every 10 minutes or more and thought these were moved to the MIM BOX.",
-            "next_action": "Audit scheduled tasks, hide local tasks that must remain, and move eligible daemon/watchdog work to the MIM BOX.",
+            "next_action": "Re-register TOD-Elevated-Watchdog from an elevated shell with -WindowStyle Hidden, then move eligible daemon/watchdog work to the MIM BOX.",
             "dave_needed": False,
             "metadata_json": {
                 "project_type": "operations_repair",
                 "progress_percent": 20,
                 "work_state": "queued",
-                "blocker": "TOD-Elevated-Watchdog runs every 5 minutes without WindowStyle Hidden.",
+                "blocker": "TOD-Elevated-Watchdog still runs every 5 minutes without WindowStyle Hidden; Windows denied non-admin modification of the elevated task.",
                 "acceptance": "No visible scheduled PowerShell windows interrupt Dave during normal PC use.",
+                "requested_by": "Dave",
+            },
+        },
+        {
+            "title": "MIM Development Continuity V1",
+            "summary": "Make MIM load project history, decisions, known-good fixes, failed attempts, open issues, and validation evidence before implementation work begins.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "MIM + TOD",
+            "health": "top_training_objective",
+            "why_it_matters": "Continuity is the shortest path from better judgment to better outcomes: it prevents solved development problems from becoming unsolved after Codex restarts or context is lost.",
+            "origin_story": "Dave identified retrieval, not storage, as the missing layer after Codex freeze/restart pain. MIM should become Project Manager, TOD Engineering Lead, and Codex Specialist Engineer.",
+            "next_action": "Validate the continuity gate against the AgentMIM forum graphics project before widening it.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "objective_id": "MIM-DEVELOPMENT-CONTINUITY-V1",
+                "progress_percent": 25,
+                "work_state": "working",
+                "blocker": "Needs first real continuity lookup/brief validation against forum graphics.",
+                "acceptance": "Before implementation begins, MIM produces a continuity brief with prior decisions, known fixes, failed attempts, open issues, relevant files, loaded documents, and recommended next action.",
                 "requested_by": "Dave",
             },
         },
@@ -3381,6 +3402,18 @@ async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
         "are_improving": are_improving,
         "outcome_verdict": outcome_verdict,
         "attention_items": attention_items,
+        "top_training_objective": {
+            "id": "MIM-DEVELOPMENT-CONTINUITY-V1",
+            "title": "MIM Development Continuity V1",
+            "status": "next_top_training_objective",
+            "owner": "MIM + TOD",
+            "href": "/studio/projects?view=active",
+            "why_now": "MIM communication and judgment are improving; continuity is the shortest route to proving those improvements change outcomes.",
+            "mim_action": "Create the Before We Continue continuity brief before implementation-style requests.",
+            "tod_action": "Verify related files, prior fixes, regressions, and validation evidence before execution starts.",
+            "codex_gate": "Codex implements only after MIM/TOD provide the continuity brief or after the continuity process stalls.",
+            "first_validation": "AgentMIM forum graphics",
+        },
         "resolution_owner_model": "MIM owns the training objective, TOD implements and validates, Codex assists only after stall/failure, Dave is asked only for decisions or access.",
         "mim": {
             "focus": _first_text(mim_training.get("current_topic"), default="Project-manager communication and judgment-mode selection"),
@@ -4732,6 +4765,7 @@ def _training_body(state: dict[str, Any]) -> str:
         if isinstance(values, dict)
     )
     attention_items = state.get("attention_items") if isinstance(state.get("attention_items"), list) else []
+    top_objective = state.get("top_training_objective") if isinstance(state.get("top_training_objective"), dict) else {}
     attention_html = "".join(
         f"""
         <article class="attention-item" id="{_html(item.get("key", ""))}">
@@ -4745,6 +4779,24 @@ def _training_body(state: dict[str, Any]) -> str:
         """
         for item in attention_items
     ) or '<article class="attention-item"><strong>No current attention item.</strong><div class="muted">Training evidence currently has no active attention flag.</div></article>'
+    top_objective_html = ""
+    if top_objective:
+        top_objective_html = f"""
+        <section class="card" style="margin-top:14px;">
+          <h2>Next Top Training Objective</h2>
+          <div class="attention-list" style="margin-top:10px;">
+            <article class="attention-item" id="{_html(top_objective.get("id", ""))}">
+              <small>{_html(top_objective.get("status", ""))} / owner: {_html(top_objective.get("owner", ""))}</small>
+              <strong><a href="{_html(top_objective.get("href", "/studio/projects"))}">{_html(top_objective.get("title", ""))}</a></strong>
+              <div class="muted"><strong>Why now:</strong> {_html(top_objective.get("why_now", ""))}</div>
+              <div class="muted"><strong>MIM:</strong> {_html(top_objective.get("mim_action", ""))}</div>
+              <div class="muted"><strong>TOD:</strong> {_html(top_objective.get("tod_action", ""))}</div>
+              <div class="muted"><strong>Codex gate:</strong> {_html(top_objective.get("codex_gate", ""))}</div>
+              <div class="muted"><strong>First validation:</strong> {_html(top_objective.get("first_validation", ""))}</div>
+            </article>
+          </div>
+        </section>
+        """
     mim_metrics_source = mim_score.get("metrics") if isinstance(mim_score.get("metrics"), dict) else {}
     tod_metrics_source = tod_score.get("metrics") if isinstance(tod_score.get("metrics"), dict) else {}
 
@@ -4793,6 +4845,7 @@ def _training_body(state: dict[str, Any]) -> str:
       <h2>What Needs Attention</h2>
       <div class="attention-list" style="margin-top:10px;">{attention_html}</div>
     </section>
+    {top_objective_html}
     <section class="grid two" style="margin-top:14px;">
       <article class="card">
         <h2>MIM</h2>
