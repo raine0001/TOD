@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-06-03T14:58:00-07:00",
+  "artifact_type": "lab-servo-tester-smoothing-update-v1",
+  "project": "LAB Servo Tester",
+  "observed_state": {
+    "servo_movement": "present",
+    "motion_quality": "bursty",
+    "serial_path": "working",
+    "pca9685": "found_at_0x40",
+    "power_ground_branch": "resolved_enough_for_movement"
+  },
+  "diagnosis": "Movement exists but is not smooth, so the remaining issue is motion-profile timing. The previous firmware updated raw PWM counts faster than a normal servo frame and the Studio preset sent 600ms moves.",
+  "studio_update": {
+    "status": "deployed",
+    "changes": [
+      "Use Smooth UNO Sketch now sets Speed ms to at least 1200.",
+      "Startup and slowdown defaults are raised to at least 900.",
+      "New smooth-mode servo profiles default to 1200/900/900 timing."
+    ]
+  },
+  "firmware_update": {
+    "status": "compiled_upload_blocked",
+    "path": "docs/lab/servo_tester_firmware/SmoothServoBenchTester/SmoothServoBenchTester.ino",
+    "changes": [
+      "20ms servo-frame-paced ramp updates",
+      "smoothstep ease-in/ease-out interpolation",
+      "1200ms default ramp duration when command duration is omitted"
+    ],
+    "compile_result": "passed for arduino:renesas_uno:unor4wifi",
+    "upload_result": "blocked because COM5 is currently busy",
+    "next_action": "Disconnect/release the Lab page serial connection, then upload the compiled easing firmware to COM5."
+  },
+  "mim_training_lesson": "When physical movement exists but is bursty, classify as motion-profile tuning. Prefer firmware-side frame-paced easing and longer durations before changing browser serial or hardware wiring."
+}

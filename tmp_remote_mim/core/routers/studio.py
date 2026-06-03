@@ -3149,11 +3149,13 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
           center_pulse: 375,
           max_pulse: 650,
           start_pulse: 375,
-          speed_ms: servo.speed_ms || 650,
-          notes: servo.notes || 'Smooth UNO sketch supports PING, raw 100-650, ALL pulse duration, S channel pulse duration, and MOVE channel angle duration.'
+          speed_ms: Math.max(Number(servo.speed_ms || 0), 1200),
+          startup_ms: Math.max(Number(servo.startup_ms || 0), 900),
+          slowdown_ms: Math.max(Number(servo.slowdown_ms || 0), 900),
+          notes: servo.notes || 'Smooth UNO sketch uses 20ms frame-paced easing. Increase Speed ms for slower movement.'
         }}));
         renderServos();
-        serialStatus.textContent = 'Protocol set for SmoothServoBenchTester at 9600 baud: S channel pulse duration.';
+        serialStatus.textContent = 'Protocol set for SmoothServoBenchTester at 9600 baud: S channel pulse duration. Default smooth speed is 1200 ms.';
       }});
       document.getElementById('useMoveProtocol').addEventListener('click', () => {{
         commandTemplate.value = 'MOVE {{channel}} {{angle}} {{duration}}';
@@ -3186,7 +3188,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         const channel = profile.servos.length;
         const rawPcaMode = String(profile.command_template || '').includes('{{pulse}}') && Number(profile.baud_rate || 9600) === 9600;
         profile.servos.push(rawPcaMode
-          ? {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 100, min_angle: 0, center_pulse: 375, center_angle: 90, max_pulse: 650, max_angle: 180, start_pulse: 375, start_angle: 90, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: 'Raw PCA9685 count profile for SmoothServoBenchTester.' }}
+          ? {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 100, min_angle: 0, center_pulse: 375, center_angle: 90, max_pulse: 650, max_angle: 180, start_pulse: 375, start_angle: 90, speed_ms: 1200, startup_ms: 900, slowdown_ms: 900, notes: 'Raw PCA9685 count profile for SmoothServoBenchTester.' }}
           : {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel, min_pulse: 500, min_angle: 0, center_pulse: 1500, center_angle: 90, max_pulse: 2500, max_angle: 180, start_pulse: 1500, start_angle: 90, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: '' }});
         renderServos();
       }});
@@ -6023,23 +6025,20 @@ async def studio_mim_chat_api(
             training_lesson = "When RX OK/PONG exists but no servo moves, stop diagnosing browser serial and test PCA9685 I2C presence, channel mapping, and servo power/ground."
         elif choppy_motion:
             reply = (
-                "MIM should have diagnosed this as a motion-profile issue.\n\n"
-                "Most likely cause: the current UNO sketch is a limit tester. It reads one number, then immediately calls pwm.setPWM on channels 0 and 1. That creates setpoint jumps, so movement can look like small bursts instead of a smooth ramp.\n\n"
+                "This is now a motion-profile tuning issue, not a connection or PCA9685 detection issue.\n\n"
+                "What changed:\n"
+                "- The servo moves again, so power and command path are alive.\n"
+                "- Bursty movement means the ramp timing needs to be paced to the servo frame and slowed down.\n\n"
                 "Best fix:\n"
-                "- Flash a smooth-motion UNO sketch that ramps from currentPulse to targetPulse in small steps.\n"
-                "- Keep the browser sending one target value, such as 375 or 420.\n"
-                "- Let the UNO handle timing, startup, and slowdown locally. Do not rely on the browser to stream tiny motion steps over serial.\n\n"
-                "Suggested firmware behavior:\n"
-                "- Store currentPulse.\n"
-                "- When a target pulse arrives, constrain it to 100-650.\n"
-                "- Move one count at a time, or 2-5 counts per step for faster travel.\n"
-                "- Delay 8-20 ms per step for analog-servo smoothness.\n"
-                "- Support per-channel commands so channels 0 and 1 can be tested separately.\n\n"
-                "The smooth firmware has been uploaded to COM5. Reconnect the Lab page, select Use Smooth UNO Sketch, send PING, and then test movement with S channel pulse duration."
+                "- Use firmware-side easing at a 20ms servo-frame cadence.\n"
+                "- Increase the Smooth Sketch default Speed ms from 600 to about 1200.\n"
+                "- Keep the browser sending one target command, such as S 0 426 1200.\n"
+                "- Let the UNO handle interpolation; do not stream many browser commands.\n\n"
+                "If motion is still too bursty after the update, increase Speed ms to 1800-2500 for that servo and retest."
             )
             response_mode = "recommendation"
-            failure_class = "servo_motion_choppy_requires_firmware_ramp"
-            training_lesson = "When servo is connected but movement is choppy/bursty, diagnose motion profile/direct PWM setpoint jumps before connection or wiring."
+            failure_class = "servo_motion_choppy_requires_frame_paced_easing"
+            training_lesson = "When servo movement exists but is bursty, tune firmware-side frame-paced easing and command duration before revisiting serial, PCA9685 detection, or power."
         else:
             reply = (
                 "This is a live hardware troubleshooting issue, not a prototype artifact.\n\n"

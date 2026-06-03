@@ -7,7 +7,8 @@ const int SERVO_MIN_COUNT = 100;
 const int SERVO_MAX_COUNT = 650;
 const int SERVO_MID_COUNT = 375;
 const int SERVO_CHANNELS = 16;
-const int DEFAULT_STEP_DELAY_MS = 12;
+const int SERVO_FRAME_MS = 20;
+const int DEFAULT_RAMP_MS = 1200;
 const byte PCA9685_ADDRESS = 0x40;
 
 int currentPulse[SERVO_CHANNELS];
@@ -57,6 +58,13 @@ void applyPulseImmediate(int channel, int pulse) {
   currentPulse[channel] = pulse;
 }
 
+int easedPulse(int startPulse, int diff, int step, int steps) {
+  if (steps <= 0) return startPulse + diff;
+  float t = (float)step / (float)steps;
+  float eased = t * t * (3.0 - 2.0 * t);
+  return startPulse + (int)round((float)diff * eased);
+}
+
 void rampChannel(int channel, int targetPulse, int durationMs) {
   if (channel < 0 || channel >= SERVO_CHANNELS) {
     Serial.print("ERR channel ");
@@ -67,9 +75,8 @@ void rampChannel(int channel, int targetPulse, int durationMs) {
   targetPulse = clampPulse(targetPulse);
   int startPulse = currentPulse[channel];
   int diff = targetPulse - startPulse;
-  int distance = abs(diff);
 
-  if (distance == 0) {
+  if (diff == 0) {
     Serial.print("OK channel ");
     Serial.print(channel);
     Serial.print(" pulse ");
@@ -77,17 +84,13 @@ void rampChannel(int channel, int targetPulse, int durationMs) {
     return;
   }
 
-  int stepDirection = diff > 0 ? 1 : -1;
-  int stepCount = distance;
-  int stepDelay = DEFAULT_STEP_DELAY_MS;
-  if (durationMs > 0 && stepCount > 0) {
-    stepDelay = max(2, durationMs / stepCount);
-  }
-
-  for (int pulse = startPulse; pulse != targetPulse; pulse += stepDirection) {
+  int travelMs = durationMs > 0 ? durationMs : DEFAULT_RAMP_MS;
+  int steps = max(1, travelMs / SERVO_FRAME_MS);
+  for (int step = 1; step <= steps; step++) {
+    int pulse = easedPulse(startPulse, diff, step, steps);
     pwm.setPWM(channel, 0, pulse);
     currentPulse[channel] = pulse;
-    delay(stepDelay);
+    delay(SERVO_FRAME_MS);
   }
 
   pwm.setPWM(channel, 0, targetPulse);
@@ -102,27 +105,25 @@ void rampBothBenchChannels(int targetPulse, int durationMs) {
   targetPulse = clampPulse(targetPulse);
   int start0 = currentPulse[0];
   int start1 = currentPulse[1];
-  int distance = max(abs(targetPulse - start0), abs(targetPulse - start1));
+  int diff0 = targetPulse - start0;
+  int diff1 = targetPulse - start1;
 
-  if (distance == 0) {
+  if (diff0 == 0 && diff1 == 0) {
     Serial.print("OK both pulse ");
     Serial.println(targetPulse);
     return;
   }
 
-  int stepDelay = DEFAULT_STEP_DELAY_MS;
-  if (durationMs > 0) {
-    stepDelay = max(2, durationMs / distance);
-  }
-
-  for (int i = 1; i <= distance; i++) {
-    int pulse0 = start0 + ((targetPulse - start0) * i) / distance;
-    int pulse1 = start1 + ((targetPulse - start1) * i) / distance;
+  int travelMs = durationMs > 0 ? durationMs : DEFAULT_RAMP_MS;
+  int steps = max(1, travelMs / SERVO_FRAME_MS);
+  for (int step = 1; step <= steps; step++) {
+    int pulse0 = easedPulse(start0, diff0, step, steps);
+    int pulse1 = easedPulse(start1, diff1, step, steps);
     pwm.setPWM(0, 0, pulse0);
     pwm.setPWM(1, 0, pulse1);
     currentPulse[0] = pulse0;
     currentPulse[1] = pulse1;
-    delay(stepDelay);
+    delay(SERVO_FRAME_MS);
   }
 
   Serial.print("OK both pulse ");
