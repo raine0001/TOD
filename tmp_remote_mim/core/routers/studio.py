@@ -674,7 +674,7 @@ def _plain_status(value: object, default: str = "unknown") -> str:
 
 
 def _html(value: object) -> str:
-    return html.escape(str(value or ""), quote=True)
+    return html.escape("" if value is None else str(value), quote=True)
 
 
 def _mim_presence_snapshot(*, mim_focus: str, active_project: str = "MIM Project Studio") -> dict[str, Any]:
@@ -2428,6 +2428,28 @@ def _project_category(row: StudioProject | dict[str, Any]) -> str:
     return _first_text(metadata.get("project_type"), metadata.get("category"), default="project")
 
 
+def _project_progress_basis(row: StudioProject | dict[str, Any]) -> str:
+    metadata = _project_metadata(row)
+    status = str(row.status if isinstance(row, StudioProject) else row.get("status") or "").strip().lower()
+    progress = _project_progress(row)
+    evidence = _first_text(
+        metadata.get("completion_evidence"),
+        metadata.get("validation_evidence"),
+        metadata.get("validated_at"),
+        metadata.get("deployed_at"),
+        default="",
+    )
+    if evidence:
+        return "evidence"
+    if progress <= 0:
+        return "not started"
+    if status in {"queued", "candidate", "planning", "discovery"}:
+        return "planned"
+    if status in {"done", "complete", "completed", "deployed"}:
+        return "unverified"
+    return "estimate"
+
+
 async def _ensure_studio_project_record(
     db: AsyncSession,
     *,
@@ -3814,7 +3836,7 @@ async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
             "metadata_json": {
                 "project_type": "studio_ui",
                 "progress_percent": 0,
-                "work_state": "queued",
+                "work_state": "not_started",
                 "blocker": "none",
                 "acceptance": "Projects table supports click sorting by each column, quick filters for finished/in process/queued/blockers/Dave needed/all, and boolean text search across title, status, owner, blocker, next action, type, and Dave-needed fields.",
                 "requested_by": "Dave",
@@ -3863,6 +3885,7 @@ async def _studio_projects_state(
     project_rows = [_studio_project_to_dict(row) for row in projects]
     for index, row in enumerate(project_rows):
         row["progress_percent"] = _project_progress(row)
+        row["progress_basis"] = _project_progress_basis(row)
         row["blocker"] = _project_blocker(row)
         row["work_state"] = _project_work_state(row)
         row["project_type"] = _project_category(row)
@@ -3876,6 +3899,7 @@ async def _studio_projects_state(
         if selected:
             selected_project = _studio_project_to_dict(selected)
             selected_project["progress_percent"] = _project_progress(selected)
+            selected_project["progress_basis"] = _project_progress_basis(selected)
             selected_project["blocker"] = _project_blocker(selected)
             selected_project["work_state"] = _project_work_state(selected)
             selected_project["project_type"] = _project_category(selected)
@@ -5061,7 +5085,7 @@ def _projects_body(state: dict[str, Any]) -> str:
           <td><strong>{_html(item.get("title", ""))}</strong><div class="muted">{_html(item.get("project_type", ""))}</div></td>
           <td><span class="health-pill yellow">{_html(item.get("status", ""))}</span><div class="muted">{_html(item.get("work_state", ""))}</div></td>
           <td>{_html(item.get("owner", ""))}</td>
-          <td><div class="progress-track"><div class="progress-fill" style="width:{_html(item.get("progress_percent", 0))}%;"></div></div><div class="muted">{_html(item.get("progress_percent", 0))}%</div></td>
+          <td><div class="progress-track"><div class="progress-fill" style="width:{_html(item.get("progress_percent", 0))}%;"></div></div><div class="muted">{_html(item.get("progress_percent", 0))}% / {_html(item.get("progress_basis", "estimate"))}</div></td>
           <td>{_html(item.get("blocker", "none"))}</td>
           <td>{_html(item.get("next_action", ""))}</td>
           <td>{'yes' if item.get("dave_needed") else 'no'}</td>

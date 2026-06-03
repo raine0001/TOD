@@ -1,0 +1,14 @@
+{
+  "artifact_id": "MIM-STUDIO-PROJECT-PROGRESS-TRUTH-FIX-2026-06-03",
+  "created_at": "2026-06-03T12:34:00-07:00",
+  "objective": "Keep Studio Projects progress display honest and tied to actual work evidence.",
+  "operator_observation": "Projects page showed full-looking progress bars and bare '%' labels for items that were not implemented or done.",
+  "root_cause": "The shared HTML escaping helper converted numeric zero to an empty string, causing progress_percent 0 to render as an invalid width:% style and a missing percentage label.",
+  "fix": [
+    "Preserve numeric 0 in the HTML escaping helper while still rendering None as blank.",
+    "Add progress_basis labels so the Done column distinguishes not started, planned, estimate, evidence, and unverified progress.",
+    "Mark the Studio Projects Table Organization project as not_started instead of queued work with a misleading blank progress display."
+  ],
+  "training_lesson": "MIM and TOD must not display progress as completion unless there is validation evidence. If progress is a plan, estimate, or backlog placeholder, the UI must say so directly.",
+  "resolution_status": "implemented_pending_live_verification"
+}
