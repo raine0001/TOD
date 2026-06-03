@@ -1,6 +1,6 @@
 # MIM/TOD Training Scoreboard
 
-Generated: 2026-06-03T06:12:48Z
+Generated: 2026-06-03T06:21:49Z
 Status: needs_attention_with_training_active
 
 ## Outcome Reflection

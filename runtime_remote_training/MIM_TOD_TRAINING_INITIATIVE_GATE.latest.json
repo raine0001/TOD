@@ -1,0 +1,62 @@
+{
+  "auto_initiative": {
+    "acceptance": "Next scoreboard has no below-threshold MIM metrics, judgment smoke remains >=80%, and reflection stale artifacts are reduced or converted into owned follow-on actions.",
+    "action": "Refresh stale TOD evidence artifacts and rerun scoreboard/reflection until needs_attention clears.",
+    "objective_id": "MIM-TOD-TRAINING-AUTO-RECOVERY-GATE-V1",
+    "owner": "MIM_TOD_peer_recovery"
+  },
+  "escalation": {
+    "codex_next_if_unresolved": true,
+    "current_target": "MIM_TOD_peer_recovery",
+    "dave_needed": false,
+    "dave_needed_reason": "none"
+  },
+  "generated_at": "2026-06-03T06:21:50Z",
+  "next_check": "Run after every scoreboard refresh and publish this gate beside the scoreboard so drops cannot remain passive findings.",
+  "packet_type": "mim-tod-training-initiative-gate-v1",
+  "recovery_ladder": [
+    {
+      "action": "MIM names the training gap in plain language; TOD refreshes or repairs the evidence lane with validation.",
+      "order": 1,
+      "owner": "MIM+TOD",
+      "status": "active"
+    },
+    {
+      "action": "Implement or debug the failing gate with exact files, commands, failing checks, and acceptance criteria.",
+      "order": 2,
+      "owner": "Codex",
+      "status": "next_if_peer_recovery_does_not_clear"
+    },
+    {
+      "action": "Decide priority, provide credentials/physical-world confirmation, or override safety/product direction.",
+      "order": 3,
+      "owner": "Dave",
+      "status": "only_if_machine_lanes_blocked"
+    }
+  ],
+  "source_files": [
+    "E:\\TOD\\runtime_remote_training\\MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+    "E:\\TOD\\runtime_remote_training\\TOD_CODEX_PROFICIENCY_TRAINING_STATUS.latest.json"
+  ],
+  "status": "peer_recovery_triggered",
+  "thresholds": {
+    "mim_answered_question_min_percent": 80,
+    "mim_intent_understood_min_percent": 80,
+    "mim_internal_jargon_max_percent": 5,
+    "mim_judgment_mode_min_percent": 80,
+    "mim_recommendation_quality_min_percent": 80,
+    "stale_artifacts_codex_next_threshold": 5,
+    "stale_artifacts_peer_recovery_threshold": 1
+  },
+  "tod_codex_training": {
+    "current_topic": "Codex-level software implementation proficiency",
+    "goal": "TOD progresses from task router to implementation-capable agent: inspect code, plan bounded changes, edit safely, validate, report evidence, and learn from failures.",
+    "objective_id": "TOD-CODEX-PROFICIENCY-ROADMAP-AUTORUN-V1",
+    "status": "training_active"
+  },
+  "trigger_reasons": [
+    "scoreboard_needs_attention",
+    "stale_reflection_artifacts:12",
+    "reflection_not_improving"
+  ]
+}

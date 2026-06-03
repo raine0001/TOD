@@ -1,6 +1,6 @@
 # MIM Durability Smoke V2
 
-Generated: 2026-06-03T06:09:48Z
+Generated: 2026-06-03T06:21:37Z
 Status: passed
 
 ## Summary

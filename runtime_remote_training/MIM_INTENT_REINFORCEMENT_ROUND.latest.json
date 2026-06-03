@@ -1,0 +1,119 @@
+{
+  "cases": [
+    {
+      "checks": {
+        "bad_fallback_absent": true,
+        "expected_terms_present": true,
+        "no_raw_runtime_language": true,
+        "plain_enough": true
+      },
+      "id": "dave_needed_direct",
+      "passed": true,
+      "prompt": "What do you need from Dave?",
+      "reply_excerpt": "Dave needed: not much tonight. The useful human decision is priority, not debugging detail: confirm whether development continuity should be the next highest-value objective after rest. I can continue with evidence refreshes and bounded checks without you, and I should only ask you for credentials, product decisions, or physical-world checks. Next step: keep validating the training score without waking you up.",
+      "reply_length": 413
+    },
+    {
+      "checks": {
+        "bad_fallback_absent": true,
+        "expected_terms_present": true,
+        "no_raw_runtime_language": true,
+        "plain_enough": true
+      },
+      "id": "training_blocker",
+      "passed": true,
+      "prompt": "Any blockers?",
+      "reply_excerpt": "Yes. The main blocker is stale training evidence, not a broken runtime. The risk is claiming training is healthy while reflection inputs and validation artifacts are still old. Next step: treat the judgment smoke result as resolved, then refresh the stale TOD execution, validation, continuity, and objective-status artifacts before calling the whole training cycle healthy. Dave is not needed unless you want to redirect the training priority.",
+      "reply_length": 444
+    },
+    {
+      "checks": {
+        "bad_fallback_absent": true,
+        "expected_terms_present": true,
+        "no_raw_runtime_language": true,
+        "plain_enough": true
+      },
+      "id": "stuck_analysis",
+      "passed": true,
+      "prompt": "Are you stuck?",
+      "reply_excerpt": "Problem analysis: not fully stuck, but the issue is continuity drift. The system can store useful evidence, then still fail to load it before the next implementation pass. What we learned: make retrieval a rule before action. Next action: continue with the continuity brief and verify it against one real project. Dave is not needed unless you want to change the priority.",
+      "reply_length": 372
+    },
+    {
+      "checks": {
+        "bad_fallback_absent": true,
+        "expected_terms_present": true,
+        "no_raw_runtime_language": true,
+        "plain_enough": true
+      },
+      "id": "priority_intent",
+      "passed": true,
+      "prompt": "What should we work on next?",
+      "reply_excerpt": "Recommendation: the highest-value priority is Development Continuity V1. We should work on it next because the main problem is not missing storage; the risk is starting implementation without retrieving prior decisions, known fixes, blockers, and lessons. Next action: build one continuity brief for a real project, then verify it prevents repeated work.",
+      "reply_length": 354
+    },
+    {
+      "checks": {
+        "bad_fallback_absent": true,
+        "expected_terms_present": true,
+        "no_raw_runtime_language": true,
+        "plain_enough": true
+      },
+      "id": "value_intent",
+      "passed": true,
+      "prompt": "What would create the most value?",
+      "reply_excerpt": "Recommendation: the highest-value priority is Development Continuity V1. We should work on it next because the main problem is not missing storage; the risk is starting implementation without retrieving prior decisions, known fixes, blockers, and lessons. Next action: build one continuity brief for a real project, then verify it prevents repeated work.",
+      "reply_length": 354
+    },
+    {
+      "checks": {
+        "bad_fallback_absent": true,
+        "expected_terms_present": true,
+        "no_raw_runtime_language": true,
+        "plain_enough": true
+      },
+      "id": "typo_priority",
+      "passed": true,
+      "prompt": "what shoud we werk on next",
+      "reply_excerpt": "Recommendation: the highest-value priority is Development Continuity V1. We should work on it next because the main problem is not missing storage; the risk is starting implementation without retrieving prior decisions, known fixes, blockers, and lessons. Next action: build one continuity brief for a real project, then verify it prevents repeated work.",
+      "reply_length": 354
+    },
+    {
+      "checks": {
+        "bad_fallback_absent": true,
+        "expected_terms_present": true,
+        "no_raw_runtime_language": true,
+        "plain_enough": true
+      },
+      "id": "training_status",
+      "passed": true,
+      "prompt": "how is training going MIM?",
+      "reply_excerpt": "Training needs attention, but the judgment-mode repair is now moving in the right direction. The focused V2 suite should be checked first because it measures whether MIM recommends, explains, demonstrates, discovers requirements, and analyzes problems instead of only reporting status. Current blocker: stale reflection inputs still make the overall scoreboard cautious. Next step: keep the V2 pass green, then refresh the stale TOD evidence.",
+      "reply_length": 442
+    },
+    {
+      "checks": {
+        "bad_fallback_absent": true,
+        "expected_terms_present": true,
+        "no_raw_runtime_language": true,
+        "plain_enough": true
+      },
+      "id": "more_training",
+      "passed": true,
+      "prompt": "tell me more about your training MIM",
+      "reply_excerpt": "MIM training is focused on choosing the right response mode: recommendation, explanation, demonstration, consultative discovery, or problem analysis. That matters because Dave should get a useful answer or next action, not a raw status dump. The latest target is the V2 judgment suite, with the blocker being stale reflection evidence around TOD validation and objective state. Next step: keep judgment-mode scoring above target and refresh stale artifacts.",
+      "reply_length": 457
+    }
+  ],
+  "generated_at": "2026-06-03T06:20:23Z",
+  "objective_id": "MIM-CONVERSATIONAL-INTENT-REINFORCEMENT-V1",
+  "packet_type": "mim-intent-reinforcement-round-v1",
+  "status": "passed",
+  "summary": {
+    "case_count": 8,
+    "failed": 0,
+    "pass_rate_percent": 100,
+    "passed": 8
+  },
+  "training_lesson": "MIM must infer the operator's intent from short conversational prompts before answering. When Dave asks what is needed, what is blocked, what is next, or whether MIM/TOD are stuck, the reply must name the situation, the next action, and whether Dave is needed."
+}

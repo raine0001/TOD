@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $EnvPath = Join-Path $Root ".env"
 $ScoreboardScript = Join-Path $Root "scripts\generate_mim_tod_training_scoreboard.py"
+$InitiativeGateScript = Join-Path $Root "scripts\generate_mim_tod_training_initiative_gate.py"
 $OutDir = Join-Path $Root "runtime_remote_training"
 $LatestScoreboard = Join-Path $OutDir "MIM_TOD_TRAINING_SCOREBOARD.latest.json"
 $LogDir = Join-Path $Root "runtime\logs"
@@ -71,6 +72,12 @@ if ($LASTEXITCODE -ne 0) {
   throw "Scoreboard generation failed: $pythonOutput"
 }
 
+$gateOutput = & python $InitiativeGateScript "--out-dir" $OutDir 2>&1
+$gateOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_tod_training_initiative_gate.last.log") | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw "Training initiative gate generation failed: $gateOutput"
+}
+
 if ($SkipPublish) {
   return
 }
@@ -83,7 +90,9 @@ $sec = ConvertTo-SecureString $password -AsPlainText -Force
 $cred = New-Object System.Management.Automation.PSCredential($userName, $sec)
 $files = @(
   (Join-Path $OutDir "MIM_TOD_TRAINING_SCOREBOARD.latest.json"),
-  (Join-Path $OutDir "MIM_TOD_TRAINING_SCOREBOARD.latest.md")
+  (Join-Path $OutDir "MIM_TOD_TRAINING_SCOREBOARD.latest.md"),
+  (Join-Path $OutDir "MIM_TOD_TRAINING_INITIATIVE_GATE.latest.json"),
+  (Join-Path $OutDir "MIM_TOD_TRAINING_INITIATIVE_GATE.latest.md")
 )
 foreach ($file in $files) {
   $published = $false

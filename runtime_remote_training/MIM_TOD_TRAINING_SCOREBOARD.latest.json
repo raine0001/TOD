@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-06-03T06:12:48Z",
+  "generated_at": "2026-06-03T06:21:49Z",
   "judgment_mode_score": {
     "case_count": 20,
     "current_weakness": "MIM defaults to status reporting instead of selecting recommendation, explanation, demonstration, consultative discovery, or problem-analysis mode.",
     "failed": 0,
-    "generated_at": "2026-06-03T06:09:48Z",
+    "generated_at": "2026-06-03T06:21:37Z",
     "group_summary": {
       "consultative_discovery": {
         "failed": 0,
@@ -167,10 +167,10 @@
     "redirect_condition": "Redirect if there is no new evidence artifact, no blocker movement, and no MIM eval improvement over a 6-hour window."
   },
   "snapshot_files": {
-    "daily_json": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\daily\\2026-06-03\\MIM_TOD_TRAINING_SCOREBOARD.20260603T061248Z.json",
-    "daily_md": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\daily\\2026-06-03\\MIM_TOD_TRAINING_SCOREBOARD.20260603T061248Z.md",
-    "hourly_json": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\hourly\\MIM_TOD_TRAINING_SCOREBOARD.20260603T061248Z.json",
-    "hourly_md": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\hourly\\MIM_TOD_TRAINING_SCOREBOARD.20260603T061248Z.md"
+    "daily_json": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\daily\\2026-06-03\\MIM_TOD_TRAINING_SCOREBOARD.20260603T062149Z.json",
+    "daily_md": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\daily\\2026-06-03\\MIM_TOD_TRAINING_SCOREBOARD.20260603T062149Z.md",
+    "hourly_json": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\hourly\\MIM_TOD_TRAINING_SCOREBOARD.20260603T062149Z.json",
+    "hourly_md": "E:\\TOD\\runtime_remote_training\\training_scoreboard_snapshots\\hourly\\MIM_TOD_TRAINING_SCOREBOARD.20260603T062149Z.md"
   },
   "source_files": [
     "E:\\TOD\\runtime_remote_training\\MIM_TOD_HOURLY_REFLECTION.latest.json",

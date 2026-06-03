@@ -23194,7 +23194,11 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
                     or str(metadata.get("adapter") or "").strip().lower()
                     == "conversation_eval_runner"
                     or str(metadata.get("test") or "").strip().lower()
-                    in {"mim_durability_smoke_v2", "training_scoreboard_eval"}
+                    in {
+                        "mim_durability_smoke_v2",
+                        "training_scoreboard_eval",
+                        "mim_intent_reinforcement_round",
+                    }
                 ),
                 **camera_context,
                 **object_memory_context,
@@ -24087,6 +24091,7 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
     skip_fast_active_project_for_eval = str(event_metadata.get("test") or "").strip().lower() in {
         "mim_durability_smoke_v2",
         "training_scoreboard_eval",
+        "mim_intent_reinforcement_round",
     }
     if not skip_fast_active_project_for_eval and not fast_mim_self_model_objective and not fast_mim_autonomy_roadmap_execution and not fast_mim_semantic_intent_simulation and not fast_tod_simulation_factory and not fast_mim_tod_handoff and not fast_mim_implementation_objective and not fast_reporting_visibility_objective and not fast_personal_email_summary and event.source == "text":
         fast_active_project_response = _mim_tod_active_project_status_response(

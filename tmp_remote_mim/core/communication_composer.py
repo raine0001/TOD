@@ -304,6 +304,7 @@ def _contextual_answer_first_reply(
         "what should we work on next",
         "what is highest priority",
         "what would create the most value",
+        "what shoud we werk on next",
     }:
         return (
             "Recommendation: the highest-value priority is Development Continuity V1. "
