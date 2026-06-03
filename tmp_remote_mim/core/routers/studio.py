@@ -1119,6 +1119,12 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
           const studioReply = studioData && studioData.mim_interface && studioData.mim_interface.reply_text;
           if (studioReply) {{
             thinking.textContent = studioReply;
+            if ((studioData.source === 'studio_reports_context') && pageContext.toLowerCase().includes('report')) {{
+              const evidence = studioData.evidence || {{}};
+              const dataset = evidence.dataset || 'auto';
+              const target = '/studio/reports?dataset=' + encodeURIComponent(dataset) + '&prompt=' + encodeURIComponent(text);
+              setTimeout(() => {{ window.location.href = target; }}, 450);
+            }}
             return;
           }}
         }}
@@ -4643,25 +4649,11 @@ def _apps_body(state: dict[str, Any], selected_app_key: str = "") -> str:
     """
 
 def _reports_body(state: dict[str, Any]) -> str:
-    datasets = state.get("datasets") if isinstance(state.get("datasets"), list) else []
     dataset = state.get("dataset") if isinstance(state.get("dataset"), dict) else {}
     canvases = state.get("canvases") if isinstance(state.get("canvases"), list) else []
     prompt = str(state.get("prompt") or "")
     dataset_key = str(dataset.get("key") or "studio_overview")
-    options_html = "".join(
-        f'<option value="{_html(item.get("key", ""))}" {"selected" if item.get("key") == dataset_key else ""}>{_html(item.get("label", ""))}</option>'
-        for item in datasets
-    )
-    options_html = f'<option value="auto" {"selected" if not prompt and dataset_key == "studio_overview" else ""}>Auto - let MIM choose</option>' + options_html
-    dataset_cards = "".join(
-        f"""
-        <a class="card" href="/studio/reports?dataset={_html(item.get("key", ""))}">
-          <h3>{_html(item.get("label", ""))}</h3>
-          <p>{_html(item.get("description", ""))}</p>
-        </a>
-        """
-        for item in datasets
-    )
+    has_report = bool(prompt or state.get("selected_canvas") or dataset_key != "studio_overview")
     stats_html = "".join(
         f"""
         <article class="card">
@@ -4671,8 +4663,6 @@ def _reports_body(state: dict[str, Any]) -> str:
         """
         for item in (dataset.get("stats") if isinstance(dataset.get("stats"), list) else [])[:4]
     )
-    if not stats_html:
-        stats_html = '<article class="card"><div class="label">No data loaded</div><div class="entity">Ask MIM</div></article>'
     findings_html = "".join(
         f"""
         <article class="attention-item">
@@ -4683,8 +4673,6 @@ def _reports_body(state: dict[str, Any]) -> str:
         """
         for item in (dataset.get("findings") if isinstance(dataset.get("findings"), list) else [])
     )
-    if not findings_html:
-        findings_html = '<article class="attention-item"><strong>No findings yet</strong><div class="muted">Ask a question or load a dataset to let MIM form the report.</div></article>'
     actions_html = "".join(
         f"""
         <article class="attention-item">
@@ -4695,8 +4683,6 @@ def _reports_body(state: dict[str, Any]) -> str:
         """
         for item in (dataset.get("actions") if isinstance(dataset.get("actions"), list) else [])
     )
-    if not actions_html:
-        actions_html = '<article class="attention-item"><strong>No actions yet</strong><div class="muted">MIM will suggest actions when the dataset reveals something worth doing.</div></article>'
     columns = dataset.get("columns") if isinstance(dataset.get("columns"), list) else []
     rows = dataset.get("rows") if isinstance(dataset.get("rows"), list) else []
     table_headers = "".join(f"<th>{_html(column)}</th>" for column in columns)
@@ -4706,8 +4692,6 @@ def _reports_body(state: dict[str, Any]) -> str:
             continue
         cells = "".join(f"<td>{_html(row.get(column, ''))}</td>" for column in columns)
         table_rows += f"<tr>{cells}</tr>"
-    if not table_rows:
-        table_rows = f'<tr><td colspan="{max(len(columns), 1)}">No rows loaded yet. Start with a question, pick a dataset, or ask MIM to build the view.</td></tr>'
     canvas_html = "".join(
         f"""
         <a class="project-row" href="/studio/reports?canvas_id={_html(item.get("id", ""))}">
@@ -4720,91 +4704,67 @@ def _reports_body(state: dict[str, Any]) -> str:
         """
         for item in canvases[:8]
     )
-    if not canvas_html:
-        canvas_html = '<p>No saved canvases yet.</p>'
-    starting_questions = [
-        "How is MIM/TOD training going this week?",
-        "What objectives are unfinished or stale?",
-        "What documents are not connected to anything?",
-        "What changed today that matters?",
-        "Where are blockers repeating?",
-        "What data should I look at before deciding what to work on?",
-    ]
-    questions_html = "".join(
-        f'<a class="button" href="/studio/reports?prompt={_html(question)}">{_html(question)}</a>'
-        for question in starting_questions
-    )
-    return f"""
-    <section class="card hero-card" style="margin-bottom:14px;">
-      <div class="label">Data Whiteboard</div>
-      <h2>What do you want to understand?</h2>
-      <p>Reports start as a conversation. Ask the question first. MIM will choose the dataset when it can, or ask for the missing source when it cannot.</p>
-      <form method="get" action="/studio/reports" style="margin-top:16px; display:grid; gap:12px;">
-        <textarea name="prompt" rows="4" placeholder="Ask MIM something like: How is training doing over the last week? What objectives are stuck? What changed today that matters?">{_html(prompt)}</textarea>
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-          <select name="dataset" style="min-width:240px;">{options_html}</select>
-          <button class="button primary" type="submit">Ask MIM</button>
-          <a class="button" href="/studio/reports">Clear Canvas</a>
-        </div>
-      </form>
-    </section>
-    <section class="grid two" style="margin-bottom:14px;">
-      <article class="card">
-        <div class="label">You Asked</div>
-        <p>{_html(prompt or "Nothing yet. Start with a question and MIM will build the report canvas around it.")}</p>
-      </article>
-      <article class="card">
-        <div class="label">MIM Chose</div>
-        <h3>{_html(dataset.get("label", "Studio Overview"))}</h3>
-        <p>{_html(dataset.get("selection_reason", "MIM has not selected a dataset yet."))}</p>
-      </article>
-    </section>
-    <section class="card" style="margin-bottom:14px;">
-      <div class="label">MIM Summary</div>
-      <h2>{_html(dataset.get("label", "Report Canvas"))}</h2>
-      <p>{_html(dataset.get("summary", "No data loaded yet."))}</p>
-      <div class="muted">Generated: {_html(dataset.get("generated_at", ""))}</div>
-    </section>
-    <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>
-    <section class="grid two">
+    if not has_report:
+        saved_section = f"""
+        <section class="card">
+          <h2>Saved Canvases</h2>
+          <div style="margin-top:12px;">{canvas_html}</div>
+        </section>
+        """ if canvas_html else ""
+        return f"""
+        <section class="card">
+          <h2>Report Canvas</h2>
+        </section>
+        {saved_section}
+        """
+
+    stats_section = f'<section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>' if stats_html else ""
+    findings_section = f"""
       <article class="card">
         <h2>Findings</h2>
         <div class="attention-list" style="margin-top:12px;">{findings_html}</div>
       </article>
+    """ if findings_html else ""
+    actions_section = f"""
       <article class="card">
         <h2>Actions</h2>
         <div class="attention-list" style="margin-top:12px;">{actions_html}</div>
       </article>
-    </section>
+    """ if actions_html else ""
+    findings_actions_section = f'<section class="grid two">{findings_section}{actions_section}</section>' if findings_section or actions_section else ""
+    table_section = ""
+    if table_headers and table_rows:
+        table_section = f"""
+        <section class="card" style="margin-top:14px;">
+          <h2>Data</h2>
+          <div class="actions" style="margin-top:10px; flex-wrap:wrap;">
+            <a class="button" href="/studio/api/reports/dataset?dataset={_html(dataset_key)}&prompt={_html(prompt)}">JSON</a>
+            <a class="button" href="/studio/api/reports/dataset?dataset={_html(dataset_key)}&prompt={_html(prompt)}&format=csv">CSV</a>
+            <a class="button" href="/studio/projects">Action</a>
+          </div>
+          <table class="score-table" style="margin-top:12px;">
+            <thead><tr>{table_headers}</tr></thead>
+            <tbody>{table_rows}</tbody>
+          </table>
+        </section>
+        """
+    saved_section = f"""
     <section class="card" style="margin-top:14px;">
-      <h2>Loaded Data</h2>
-      <p>Columns are clickable visually for now; the backend already returns structured rows for sorting, exporting, and MIM drill-down tooling.</p>
-      <div class="actions" style="margin-top:10px; flex-wrap:wrap;">
-        <a class="button" href="/studio/api/reports/dataset?dataset={_html(dataset_key)}">Open JSON</a>
-        <a class="button" href="/studio/api/reports/dataset?dataset={_html(dataset_key)}&format=csv">Download CSV</a>
-        <a class="button" href="/mim">Ask MIM About This</a>
-        <a class="button" href="/studio/projects">Create Action From Finding</a>
-      </div>
-      <table class="score-table" style="margin-top:12px;">
-        <thead><tr>{table_headers}</tr></thead>
-        <tbody>{table_rows}</tbody>
-      </table>
+      <h2>Saved Canvases</h2>
+      <div style="margin-top:12px;">{canvas_html}</div>
     </section>
-    <section class="grid two" style="margin-top:14px;">
-      <article class="card">
-        <h2>Starting Questions</h2>
-        <div class="actions" style="margin-top:12px; flex-wrap:wrap;">{questions_html}</div>
-      </article>
-      <article class="card">
-        <h2>Saved Canvases</h2>
-        <div style="margin-top:12px;">{canvas_html}</div>
-      </article>
+    """ if canvas_html else ""
+    return f"""
+    <section class="card" style="margin-bottom:14px;">
+      <div class="label">{_html(dataset.get("label", "Report"))}</div>
+      <h2>{_html(prompt or dataset.get("label", "Report Canvas"))}</h2>
+      <p>{_html(dataset.get("summary", ""))}</p>
+      <div class="muted">{_html(dataset.get("generated_at", ""))}</div>
     </section>
-    <section class="card" style="margin-top:14px;">
-      <h2>Available Datasets</h2>
-      <p>This is the current source map. Future app reports can add AgentMIM users, MIM Wall subscribers, social posts, accounting vendors, and app-specific telemetry without changing the report canvas model.</p>
-    </section>
-    <section class="grid three placeholder-sections">{dataset_cards}</section>
+    {stats_section}
+    {findings_actions_section}
+    {table_section}
+    {saved_section}
     """
 
 
