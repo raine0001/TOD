@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-06-03T13:42:00-07:00",
+  "objective_id": "MIM-PROJECT-FOLLOW-THROUGH-RECONCILIATION-V1",
+  "status": "active",
+  "priority": "P0",
+  "goal": "Connect Studio project records to actual work evidence so projects cannot silently freeze or falsely appear complete.",
+  "problem_statement": "Studio project rows were seeded with useful backlog intent, but actual Codex commits, runtime artifacts, TOD execution, MIM decisions, and operator validation were not being written back to the project event ledger.",
+  "implemented_v1": [
+    "Projects page computes movement from real project events.",
+    "Audit and seed events are non-movement and do not hide frozen work.",
+    "A bounded reconciler scans recent git commits and runtime training artifacts.",
+    "Matched evidence becomes evidence_reconciled project events.",
+    "Evidence-backed project progress cannot be downgraded by backlog seed refresh.",
+    "Project rows expose movement state, event counts, and progress basis."
+  ],
+  "truth_rules": [
+    "Seeded backlog is not work progress.",
+    "Audit events are not movement.",
+    "Only implementation, artifact, validation, operator update, or reconciled evidence events make a project moving.",
+    "Progress must say whether it is not started, planned, estimate, evidence, or unverified.",
+    "Seed refresh may add missing defaults but must not overwrite reconciled evidence."
+  ],
+  "minimum_next_step": "Extend reconciliation beyond git/artifacts into TOD task results, Codex final summaries, MIM chat decisions, operator approvals, and external dependency reminders.",
+  "owner_model": {
+    "mim": "project manager and reconciler",
+    "tod": "engineering implementation and validation source",
+    "codex": "specialist engineer and escalation source",
+    "dave": "operator decision source only when policy or external reality requires it"
+  }
+}

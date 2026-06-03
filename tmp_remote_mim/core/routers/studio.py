@@ -4,6 +4,7 @@ import html
 import json
 import os
 import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -2496,6 +2497,263 @@ def _project_movement_state(row: dict[str, Any]) -> str:
     return "moving"
 
 
+PROJECT_RECONCILIATION_RULES: list[dict[str, Any]] = [
+    {
+        "title": "LAB Workbench Servo Tester",
+        "tokens": ["servo", "servobenchtester", "pca9685", "uno", "pwm", "smoothservobenchtester", "lab servo"],
+        "min_progress": 55,
+        "status": "implementation",
+        "blocker": "hardware smoothness, power supply, and servo-profile validation still in progress",
+        "next_action": "Continue hardware validation: confirm smooth movement under the correct servo power supply, profile limits, and firmware version evidence.",
+    },
+    {
+        "title": "Studio Projects Table Organization",
+        "tokens": ["projects table", "project progress", "studio project", "project inbox", "sortable", "filter", "search"],
+        "min_progress": 25,
+        "status": "working",
+        "blocker": "none",
+        "next_action": "Implement sortable headers, quick filters, and search controls, then validate against the current project rows.",
+    },
+    {
+        "title": "Studio Static Text Cleanup",
+        "tokens": ["static text", "studio reports canvas", "studio mim", "studio tod", "reports canvas", "clean studio"],
+        "min_progress": 35,
+        "status": "working",
+        "blocker": "page-by-page verification required",
+        "next_action": "Continue page-by-page Studio cleanup and validate that pages contain action areas and dynamic results instead of filler text.",
+    },
+    {
+        "title": "AgentMIM Reports DB Binding",
+        "tokens": ["reports db", "comm_app", "comm app", "database url", "agentmim reports", "db binding"],
+        "min_progress": 25,
+        "status": "queued",
+        "blocker": "Needs AgentMIM/comm_app Render database URL or service-level secret binding.",
+        "next_action": "Bind COMM_APP_DATABASE_URL on the MIM Studio service and verify live AgentMIM tables from the Reports canvas.",
+    },
+    {
+        "title": "MIM Development Continuity V1",
+        "tokens": ["development continuity", "continuity", "project freeze", "follow-through", "follow through", "project movement"],
+        "min_progress": 40,
+        "status": "working",
+        "blocker": "Needs first real continuity lookup/brief validation against forum graphics.",
+        "next_action": "Use the project ledger as the first continuity lookup source before implementation work starts.",
+    },
+    {
+        "title": "TOD Local PowerShell Migration",
+        "tokens": ["powershell", "watchdog", "sync cleanliness", "elevated-watchdog", "mim box"],
+        "min_progress": 20,
+        "status": "queued",
+        "blocker": "Elevated Windows task change still requires elevated local registration or MIM BOX migration.",
+        "next_action": "Re-register the elevated watchdog hidden from an elevated shell, then move eligible automation to the MIM BOX.",
+    },
+    {
+        "title": "MIM Mobile Login SSL Loop",
+        "tokens": ["mobile login", "ssl", "unsafe site", "login loop", "cookie", "session"],
+        "min_progress": 10,
+        "status": "queued",
+        "blocker": "Needs live mobile/auth verification.",
+        "next_action": "Inspect mobile SSL chain, cookies, redirect target, and session persistence from a real mobile browser.",
+    },
+    {
+        "title": "AgentMIM Forum Graphics Quality",
+        "tokens": ["forum graphics", "graphics quality", "image qa", "daily forum"],
+        "min_progress": 15,
+        "status": "queued",
+        "blocker": "Needs continuity brief from prior forum graphics work.",
+        "next_action": "Load the continuity brief and image QA path before changing generation prompts or scoring.",
+    },
+]
+
+
+def _project_reconciliation_rule_for_title(title: str) -> dict[str, Any] | None:
+    normalized = title.strip().lower()
+    for rule in PROJECT_RECONCILIATION_RULES:
+        if str(rule.get("title") or "").strip().lower() == normalized:
+            return rule
+    return None
+
+
+def _project_text_matches_rule(text_value: object, rule: dict[str, Any]) -> bool:
+    text_lower = str(text_value or "").strip().lower()
+    if not text_lower:
+        return False
+    return any(str(token).lower() in text_lower for token in rule.get("tokens", []))
+
+
+def _recent_git_evidence(limit: int = 80) -> list[dict[str, Any]]:
+    try:
+        completed = subprocess.run(
+            ["git", "log", f"-n{limit}", "--pretty=format:__COMMIT__%x1f%H%x1f%cI%x1f%s", "--name-only"],
+            cwd=Path.cwd(),
+            text=True,
+            capture_output=True,
+            timeout=6,
+            check=False,
+        )
+    except Exception:
+        return []
+    if completed.returncode != 0:
+        return []
+    entries: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for raw_line in completed.stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("__COMMIT__"):
+            parts = line.split("\x1f", 3)
+            if len(parts) == 4:
+                current = {"sha": parts[1], "created_at": parts[2], "subject": parts[3], "files": []}
+                entries.append(current)
+            else:
+                current = None
+            continue
+        if current is not None:
+            current.setdefault("files", []).append(line)
+    return entries
+
+
+def _recent_runtime_artifact_evidence(limit: int = 80) -> list[dict[str, Any]]:
+    if not TRAINING_RUNTIME_ROOT.exists():
+        return []
+    files = sorted(
+        (path for path in TRAINING_RUNTIME_ROOT.glob("*.latest.json") if path.is_file()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )[:limit]
+    evidence: list[dict[str, Any]] = []
+    for path in files:
+        payload = _load_json(path.name)
+        title = _first_text(
+            payload.get("project_title"),
+            payload.get("project"),
+            payload.get("objective_id"),
+            payload.get("artifact_id"),
+            path.stem,
+            default=path.name,
+        )
+        summary = _first_text(
+            payload.get("goal"),
+            payload.get("operator_observation"),
+            payload.get("diagnosis"),
+            payload.get("summary"),
+            payload.get("root_cause"),
+            default=title,
+        )
+        evidence.append(
+            {
+                "path": str(path),
+                "name": path.name,
+                "title": title,
+                "summary": summary,
+                "created_at": _first_text(payload.get("generated_at"), payload.get("created_at"), default=""),
+            }
+        )
+    return evidence
+
+
+async def _reconcile_studio_project_evidence(db: AsyncSession, projects: list[StudioProject]) -> int:
+    if not projects:
+        return 0
+    existing_events = (
+        await db.execute(
+            select(StudioProjectEvent.project_id, StudioProjectEvent.metadata_json)
+            .where(StudioProjectEvent.event_type == "evidence_reconciled")
+            .limit(5000)
+        )
+    ).all()
+    existing_ids: set[str] = set()
+    existing_project_evidence_counts: dict[int, int] = {}
+    for project_id, metadata in existing_events:
+        existing_project_evidence_counts[int(project_id)] = existing_project_evidence_counts.get(int(project_id), 0) + 1
+        if isinstance(metadata, dict):
+            evidence_id = str(metadata.get("evidence_id") or "").strip()
+            if evidence_id:
+                existing_ids.add(evidence_id)
+
+    git_entries = _recent_git_evidence()
+    artifact_entries = _recent_runtime_artifact_evidence()
+    added = 0
+    for project in projects:
+        if str(project.status or "").strip().lower() in {"deleted", "archived", "discarded", "scrapped"}:
+            continue
+        rule = _project_reconciliation_rule_for_title(project.title)
+        if rule is None:
+            continue
+        matched: list[dict[str, Any]] = []
+        for entry in git_entries:
+            match_text = " ".join([str(entry.get("subject") or ""), *[str(item) for item in entry.get("files", [])]])
+            if _project_text_matches_rule(match_text, rule):
+                evidence_id = f"git:{entry.get('sha')}"
+                if evidence_id not in existing_ids:
+                    matched.append({"kind": "git_commit", "evidence_id": evidence_id, **entry})
+        for entry in artifact_entries:
+            match_text = " ".join(str(entry.get(key) or "") for key in ("name", "title", "summary", "path"))
+            if _project_text_matches_rule(match_text, rule):
+                evidence_id = f"artifact:{entry.get('name')}"
+                if evidence_id not in existing_ids:
+                    matched.append({"kind": "runtime_artifact", "evidence_id": evidence_id, **entry})
+
+        for item in matched[:8]:
+            title = str(item.get("subject") or item.get("title") or item.get("name") or "Evidence reconciled").strip()
+            detail = str(item.get("summary") or "").strip()
+            if not detail and item.get("kind") == "git_commit":
+                changed = ", ".join(str(file_name) for file_name in item.get("files", [])[:6])
+                detail = f"Commit {str(item.get('sha') or '')[:8]} touched {changed}."
+            db.add(
+                StudioProjectEvent(
+                    project_id=project.id,
+                    event_type="evidence_reconciled",
+                    actor="MIM Project Reconciler",
+                    title=title[:220],
+                    detail=detail[:2000],
+                    evidence_json=item,
+                    metadata_json={
+                        "source": "studio_project_reconciliation_v1",
+                        "evidence_id": item.get("evidence_id"),
+                        "movement_event": True,
+                    },
+                )
+            )
+            existing_ids.add(str(item.get("evidence_id")))
+            added += 1
+
+        if matched:
+            metadata = project.metadata_json if isinstance(project.metadata_json, dict) else {}
+            metadata = dict(metadata)
+            current_progress = _project_progress(project)
+            min_progress = int(rule.get("min_progress") or current_progress)
+            if min_progress > current_progress:
+                metadata["progress_percent"] = min_progress
+            metadata["validation_evidence"] = f"reconciled {len(matched)} evidence item(s)"
+            metadata["last_reconciled_at"] = _utc_now()
+            metadata["last_reconciled_evidence_count"] = int(metadata.get("last_reconciled_evidence_count") or 0) + len(matched)
+            if "blocker" in rule:
+                metadata["blocker"] = str(rule.get("blocker") or "none")
+            project.metadata_json = metadata
+            project.status = str(rule.get("status") or project.status or "working")
+            project.next_action = str(rule.get("next_action") or project.next_action or "")
+        elif existing_project_evidence_counts.get(project.id, 0):
+            metadata = project.metadata_json if isinstance(project.metadata_json, dict) else {}
+            metadata = dict(metadata)
+            current_progress = _project_progress(project)
+            min_progress = int(rule.get("min_progress") or current_progress)
+            if min_progress > current_progress:
+                metadata["progress_percent"] = min_progress
+            metadata.setdefault("validation_evidence", f"reconciled {existing_project_evidence_counts[project.id]} evidence item(s)")
+            metadata.setdefault("last_reconciled_at", _utc_now())
+            metadata.setdefault("last_reconciled_evidence_count", existing_project_evidence_counts[project.id])
+            if "blocker" in rule:
+                metadata["blocker"] = str(rule.get("blocker") or "none")
+            project.metadata_json = metadata
+            project.status = str(rule.get("status") or project.status or "working")
+            project.next_action = str(rule.get("next_action") or project.next_action or "")
+
+    if added or existing_project_evidence_counts:
+        await db.commit()
+    return added
+
+
 async def _ensure_studio_project_record(
     db: AsyncSession,
     *,
@@ -2606,17 +2864,32 @@ async def _upsert_studio_project_record(
             merged_metadata.setdefault(key, value)
         existing.metadata_json = merged_metadata
         return existing
+    existing_has_reconciled_evidence = bool(existing_metadata.get("last_reconciled_at"))
     existing.summary = summary
-    existing.status = status
+    if not existing_has_reconciled_evidence or not existing.status:
+        existing.status = status
     existing.priority = priority
     existing.owner = owner
     existing.health = health
     existing.why_it_matters = why_it_matters
     existing.origin_story = origin_story
-    existing.next_action = next_action
+    if not existing_has_reconciled_evidence or not existing.next_action:
+        existing.next_action = next_action
     existing.dave_needed = dave_needed
     merged_metadata = dict(existing.metadata_json) if isinstance(existing.metadata_json, dict) else {}
     merged_metadata.update(metadata_json)
+    if existing_has_reconciled_evidence:
+        existing_progress = _project_progress({"status": existing.status, "metadata_json": existing_metadata})
+        incoming_progress = _project_progress({"status": status, "metadata_json": metadata_json})
+        merged_metadata["progress_percent"] = max(existing_progress, incoming_progress)
+        for key in (
+            "validation_evidence",
+            "completion_evidence",
+            "last_reconciled_at",
+            "last_reconciled_evidence_count",
+        ):
+            if key in existing_metadata:
+                merged_metadata[key] = existing_metadata[key]
     existing.metadata_json = merged_metadata
     return existing
 
@@ -3924,6 +4197,7 @@ async def _studio_projects_state(
     projects = (
         await db.execute(select(StudioProject).order_by(StudioProject.id.desc()).limit(50))
     ).scalars().all()
+    reconciled_count = await _reconcile_studio_project_evidence(db, projects)
     signals = (
         await db.execute(select(StudioProjectSignal).order_by(StudioProjectSignal.id.desc()).limit(50))
     ).scalars().all()
@@ -4029,6 +4303,7 @@ async def _studio_projects_state(
         "projects": visible_project_rows,
         "signals": signal_rows,
         "counts": counts,
+        "reconciled_count": reconciled_count,
         "selected_project": selected_project,
         "selected_events": selected_events,
         "view": view,
