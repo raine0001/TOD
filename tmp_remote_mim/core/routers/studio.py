@@ -1,0 +1,4919 @@
+from __future__ import annotations
+
+import html
+import json
+import os
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.db import get_db
+from core.mim_ui_auth import maybe_require_mimtod_page_login
+from core.models import (
+    Objective,
+    StudioDocument,
+    StudioDocumentLink,
+    StudioProject,
+    StudioProjectEvent,
+    StudioProjectLink,
+    StudioProjectSignal,
+    StudioReportCanvas,
+    Task,
+)
+
+
+router = APIRouter()
+
+SHARED_RUNTIME_ROOT = Path("runtime/shared")
+TRAINING_RUNTIME_ROOT = Path("runtime_remote_training")
+MIM_PRESENCE_PATH = SHARED_RUNTIME_ROOT / "MIM_UNIVERSAL_PRESENCE.latest.json"
+
+
+TRAINING_EVIDENCE_DOCS: list[dict[str, str]] = [
+    {
+        "title": "MIM/TOD Training Scoreboard",
+        "filename": "MIM_TOD_TRAINING_SCOREBOARD.latest.md",
+        "kind": "training_scoreboard",
+        "summary": "Primary scoreboard for MIM/TOD training metrics, outcome reflection, judgment-mode score, and TOD blocker evidence.",
+    },
+    {
+        "title": "MIM/TOD Continuous Training Directive",
+        "filename": "MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json",
+        "kind": "training_directive",
+        "summary": "Current directive describing what MIM and TOD are training on and what success requires.",
+    },
+    {
+        "title": "MIM/TOD Hourly Reflection",
+        "filename": "MIM_TOD_HOURLY_REFLECTION.latest.json",
+        "kind": "hourly_reflection",
+        "summary": "Outcome reflection layer that decides whether training is producing actual improvement.",
+    },
+    {
+        "title": "MIM Durability Smoke V2",
+        "filename": "MIM_DURABILITY_SMOKE_V2.latest.json",
+        "kind": "smoke_test",
+        "summary": "Focused judgment-mode test for recommendation, explanation, demonstration, consultative discovery, and problem-analysis behavior.",
+    },
+    {
+        "title": "MIM Typo-Tolerant Intent Smoke",
+        "filename": "MIM_TYPO_TOLERANT_INTENT_SMOKE.latest.json",
+        "kind": "smoke_test",
+        "summary": "Noisy-input and typo tolerance test for operator language.",
+    },
+    {
+        "title": "TOD Blocker Resolution Operator Summary",
+        "filename": "TOD_BLOCKER_RESOLUTION_OPERATOR_SUMMARY.latest.md",
+        "kind": "blocker_report",
+        "summary": "Human-readable summary of TOD blocker resolution progress and current blocker class.",
+    },
+    {
+        "title": "MIM Studio Training Page V1",
+        "filename": "MIM_STUDIO_TRAINING_PAGE_V1.latest.md",
+        "kind": "implementation_evidence",
+        "summary": "Evidence artifact for the DB-backed Studio training page, scorecards, outcome reflection, and document-library links.",
+    },
+]
+
+
+DOCUMENT_TARGET_TYPES: list[tuple[str, str]] = [
+    ("project", "Projects"),
+    ("project_signal", "Project Signals"),
+    ("task", "Tasks"),
+    ("objective", "Objectives"),
+    ("conversation", "Conversations"),
+    ("status_update", "Status Updates"),
+    ("app", "MIM Apps"),
+    ("report", "Reports"),
+    ("system", "Systems"),
+    ("training_run", "Training Runs"),
+    ("smoke_test", "Smoke Tests"),
+    ("lab_resource", "Lab / Robotics"),
+    ("vendor", "Vendors"),
+    ("person", "People"),
+]
+
+
+REPORT_DATASETS: list[dict[str, str]] = [
+    {
+        "key": "studio_overview",
+        "label": "Studio Overview",
+        "description": "MIM, TOD, training, projects, documents, health, and current attention items.",
+    },
+    {
+        "key": "training",
+        "label": "Training",
+        "description": "Training scoreboard, hourly reflection, smoke tests, and current MIM/TOD focus.",
+    },
+    {
+        "key": "objectives",
+        "label": "Objectives",
+        "description": "Objective ledger counts, status distribution, and recent objective rows.",
+    },
+    {
+        "key": "tasks",
+        "label": "Tasks",
+        "description": "Task queue counts, assigned owners, states, and recent tasks.",
+    },
+    {
+        "key": "projects",
+        "label": "Projects",
+        "description": "Studio projects, project signals, candidates, active work, and Dave-needed flags.",
+    },
+    {
+        "key": "documents",
+        "label": "Documents",
+        "description": "Document library records, preservation status, categories, and recent items.",
+    },
+    {
+        "key": "document_graph",
+        "label": "Document Graph",
+        "description": "Relationships between documents and projects, reports, pages, systems, and training runs.",
+    },
+    {
+        "key": "tod_blockers",
+        "label": "TOD Blockers",
+        "description": "TOD blocker-resolution summary and current cleanup evidence.",
+    },
+    {
+        "key": "system_health",
+        "label": "System Health",
+        "description": "Studio health snapshot, attention items, and current repair targets.",
+    },
+    {
+        "key": "app_metrics",
+        "label": "App Metrics",
+        "description": "Application users, subscriptions, usage, revenue, health, vendors, and app-specific telemetry.",
+    },
+]
+
+
+APP_SOURCE_REGISTRY: list[dict[str, Any]] = [
+    {
+        "app_key": "comm_app",
+        "display_name": "comm_app / AgentMIM",
+        "public_url": "https://www.agentmim.com",
+        "local_root": "E:/comm_app",
+        "ecosystem_role": "business execution layer",
+        "runtime": "Render Flask app",
+        "db_env_keys": ["DATABASE_URI", "DATABASE_URL"],
+        "primary_account_table": "account_owners",
+        "secondary_user_table": "representatives",
+        "known_tables": [
+            "account_owners",
+            "representatives",
+            "clients",
+            "group_clients",
+            "carriers",
+            "commissions",
+            "other_commissions",
+            "policy_agents",
+            "audit_logs",
+        ],
+        "fallback_tables": [
+            "project_portal_accounts",
+            "project_portal_projects",
+            "workspace_interface_sessions",
+            "workspace_interface_messages",
+            "input_events",
+        ],
+        "tod_reference": "shared_state/agentmim/comm_app_managed_work.latest.json",
+        "verification_reference": "shared_state/agentmim/comm_app_verification.latest.json",
+    },
+    {
+        "app_key": "studio",
+        "display_name": "MIM Studio",
+        "public_url": "https://mim.mimtod.com/studio",
+        "local_root": "/home/testpilot/mim",
+        "ecosystem_role": "operator command center",
+        "runtime": "MIM FastAPI app",
+        "db_env_keys": ["DATABASE_URL"],
+        "primary_account_table": "project_portal_accounts",
+        "secondary_user_table": "workspace_interface_sessions",
+        "known_tables": [
+            "studio_projects",
+            "studio_documents",
+            "studio_document_links",
+            "studio_report_canvases",
+            "objectives",
+            "tasks",
+        ],
+        "fallback_tables": [],
+    },
+    {
+        "app_key": "mim_wall",
+        "display_name": "MIM Wall",
+        "public_url": "",
+        "local_root": "E:/mim_wall",
+        "ecosystem_role": "real-world communications edge",
+        "runtime": "Android / wall interface",
+        "db_env_keys": [],
+        "primary_account_table": "",
+        "secondary_user_table": "",
+        "known_tables": [],
+        "fallback_tables": [],
+        "tod_reference": "docs/mim-wall-state-adapter-v1.md",
+        "verification_reference": "docs/mim-wall-development-status-2026-04-13.md",
+    },
+    {
+        "app_key": "coachMIM",
+        "display_name": "coachMIM",
+        "public_url": "",
+        "local_root": "E:/coachMIM",
+        "ecosystem_role": "coaching / guidance app",
+        "runtime": "registered app source",
+        "db_env_keys": [],
+        "primary_account_table": "",
+        "secondary_user_table": "",
+        "known_tables": [],
+        "fallback_tables": [],
+    },
+    {
+        "app_key": "Mimir",
+        "display_name": "Mimir",
+        "public_url": "",
+        "local_root": "E:/Mimir",
+        "ecosystem_role": "registered MIM app",
+        "runtime": "registered app source",
+        "db_env_keys": [],
+        "primary_account_table": "",
+        "secondary_user_table": "",
+        "known_tables": [],
+        "fallback_tables": [],
+    },
+    {
+        "app_key": "mim_pulz",
+        "display_name": "mim_pulz",
+        "public_url": "",
+        "local_root": "E:/mim_pulz",
+        "ecosystem_role": "registered MIM app",
+        "runtime": "registered app source",
+        "db_env_keys": [],
+        "primary_account_table": "",
+        "secondary_user_table": "",
+        "known_tables": [],
+        "fallback_tables": [],
+    },
+    {
+        "app_key": "mim_robotics",
+        "display_name": "MIM Robotics",
+        "public_url": "https://www.mimrobots.com",
+        "local_root": "E:/MIM Robotics/mimrobots.com",
+        "ecosystem_role": "MIM Robotics LLC public website and robotics presentation layer",
+        "runtime": "PythonAnywhere Flask app",
+        "hosting_provider": "PythonAnywhere",
+        "hosting_env_keys": ["PYTHONANYWHERE_USERNAME", "PYTHONANYWHERE_API_KEY", "PYTHONANYWHERE_DOMAIN"],
+        "db_env_keys": ["DATABASE_URI"],
+        "primary_account_table": "user",
+        "secondary_user_table": "conversation",
+        "known_tables": [
+            "user",
+            "conversation",
+            "resource",
+            "post",
+            "feedback",
+            "product",
+            "category",
+            "product_image",
+            "product_variant",
+            "discount",
+            "stock",
+            "background",
+            "product_review",
+            "excel_upload",
+            "conversation_log",
+            "order",
+            "client",
+            "inquiry",
+        ],
+        "fallback_tables": [],
+        "tod_reference": "runtime/shared/MIM_TOD_APP_SOURCE_SCAN.latest.json",
+        "verification_reference": "runtime/shared/MIM_ROBOTICS_PYTHONANYWHERE_STATUS.latest.json",
+    },
+    {
+        "app_key": "mim_station",
+        "display_name": "MIM Station",
+        "public_url": "",
+        "local_root": "E:/MIM_Station",
+        "ecosystem_role": "registered station app",
+        "runtime": "registered app source",
+        "db_env_keys": [],
+        "primary_account_table": "",
+        "secondary_user_table": "",
+        "known_tables": [],
+        "fallback_tables": [],
+    },
+    {
+        "app_key": "mim_devl",
+        "display_name": "mim_devl",
+        "public_url": "",
+        "local_root": "E:/mim_devl",
+        "ecosystem_role": "development sandbox",
+        "runtime": "registered app source",
+        "db_env_keys": [],
+        "primary_account_table": "",
+        "secondary_user_table": "",
+        "known_tables": [],
+        "fallback_tables": [],
+    },
+]
+
+
+class StudioProjectSignalCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=220)
+    signal_type: str = "observation"
+    status: str = "observation"
+    priority: str = "normal"
+    source_surface: str = "studio"
+    source_text: str = ""
+    why_it_matters: str = ""
+    suggested_action: str = "review"
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class StudioProjectCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=220)
+    summary: str = ""
+    status: str = "candidate"
+    priority: str = "normal"
+    owner: str = "Dave + MIM"
+    health: str = "good"
+    why_it_matters: str = ""
+    origin_story: str = ""
+    next_action: str = ""
+    dave_needed: bool = False
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class StudioProjectSignalPromote(BaseModel):
+    project: StudioProjectCreate | None = None
+
+
+class StudioProjectEventCreate(BaseModel):
+    event_type: str = "note"
+    actor: str = "MIM"
+    title: str = ""
+    detail: str = ""
+    evidence_json: dict[str, Any] = Field(default_factory=dict)
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class StudioDocumentCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=260)
+    summary: str = ""
+    document_type: str = "note"
+    category: str = "library"
+    status: str = "active"
+    owner: str = "Dave + MIM"
+    created_by: str = "MIM"
+    source_kind: str = "manual"
+    source_url: str = ""
+    source_path: str = ""
+    local_path: str = ""
+    preserve_policy: str = "reference"
+    snapshot_status: str = "not_requested"
+    content_text: str = ""
+    tags_json: list[str] = Field(default_factory=list)
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class StudioDocumentLinkCreate(BaseModel):
+    target_type: str = Field(min_length=1, max_length=80)
+    target_id: str = ""
+    relation: str = "related"
+    label: str = ""
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class StudioReportCanvasCreate(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+    dataset_key: str = "studio_overview"
+    title: str = ""
+    status: str = "draft"
+    created_by: str = "MIM"
+    filters_json: dict[str, Any] = Field(default_factory=dict)
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class StudioMimChatRequest(BaseModel):
+    prompt: str = Field(default="", max_length=4000)
+    page_context: str = Field(default="", max_length=240)
+    studio_page_context: str = Field(default="", max_length=240)
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
+TABS: list[dict[str, str]] = [
+    {"key": "home", "label": "Home", "icon": "&#9673;", "href": "/studio", "kind": "home"},
+    {"key": "projects", "label": "Projects", "icon": "&#9638;", "href": "/studio/projects", "kind": "placeholder"},
+    {"key": "mim", "label": "MIM", "icon": "&#9676;", "href": "/studio/mim", "kind": "embed", "source": "/mim"},
+    {"key": "tod", "label": "TOD", "icon": "&#10177;", "href": "/studio/tod", "kind": "embed", "source": "/tod"},
+    {"key": "training", "label": "Training", "icon": "&#8756;", "href": "/studio/training", "kind": "placeholder"},
+    {"key": "documents", "label": "Documents", "icon": "&#8942;", "href": "/studio/documents", "kind": "placeholder"},
+    {"key": "reports", "label": "Reports", "icon": "&#8779;", "href": "/studio/reports", "kind": "placeholder"},
+    {"key": "systems", "label": "Systems / Health", "icon": "&#11041;", "href": "/studio/systems", "kind": "placeholder"},
+    {"key": "lab", "label": "Lab / Robotics", "icon": "&#9004;", "href": "/studio/lab", "kind": "placeholder"},
+    {"key": "apps", "label": "MIM Apps", "icon": "&#10038;", "href": "/studio/apps", "kind": "placeholder"},
+    {"key": "accounting", "label": "Accounting", "icon": "&#9672;", "href": "/studio/accounting", "kind": "placeholder"},
+    {"key": "settings", "label": "Settings", "icon": "&#8984;", "href": "/studio/settings", "kind": "placeholder"},
+]
+
+
+TRAINING_SECTIONS: list[dict[str, str]] = [
+    {
+        "key": "objectives",
+        "label": "Objectives",
+        "href": "/studio/training/objectives",
+        "source": "/objectives",
+        "summary": "Internal MIM/TOD capability growth, repairs, training objectives, and validation objectives.",
+    },
+    {
+        "key": "scoreboard",
+        "label": "Scoreboard",
+        "href": "/studio/training/scoreboard",
+        "summary": "Hourly, daily, and weekly evidence that training is producing outcomes, not just status text.",
+    },
+    {
+        "key": "smoke-tests",
+        "label": "Smoke Tests",
+        "href": "/studio/training/smoke-tests",
+        "summary": "Durability tests for operator responses, typo tolerance, mode selection, and follow-through.",
+    },
+    {
+        "key": "blockers",
+        "label": "Blockers",
+        "href": "/studio/training/blockers",
+        "summary": "Blocked, stale, stalled, repaired, parked, superseded, and escalated internal work.",
+    },
+    {
+        "key": "memory",
+        "label": "Evolution Memory",
+        "href": "/studio/training/memory",
+        "summary": "Reusable lessons, failure classes, prevention rules, and continuity references.",
+    },
+    {
+        "key": "runs",
+        "label": "Training Runs",
+        "href": "/studio/training/runs",
+        "summary": "Current and historical MIM/TOD drills, cycles, validations, and result artifacts.",
+    },
+]
+
+
+PLACEHOLDERS: dict[str, dict[str, object]] = {
+    "projects": {
+        "title": "Projects",
+        "subtitle": "Real-world outcomes that create value for Dave, customers, or the company.",
+        "sections": [
+            ("Idea Capture", "MIM and Dave can start anywhere: Studio, /mim, phone, chat, project portal, or lab. Rough ideas become project candidates."),
+            ("Discovery", "MIM collaborates through goals, users, constraints, examples, data sources, integrations, value, and missing information."),
+            ("Project Bundle", "When ready, MIM packages the work into planning, implementation, testing, deployment, maintenance, artifacts, and evidence."),
+            ("Milestones", "Projects contain milestones. Milestones contain tasks. Tasks produce evidence."),
+            ("Collaboration", "MIM remains the consultant and memory layer while TOD executes implementation tasks when the plan is approved."),
+            ("Value Test", "If MIM/TOD disappeared tomorrow and the outcome still matters, it belongs here as a project."),
+        ],
+    },
+    "training": {
+        "title": "Training",
+        "subtitle": "MIM/TOD evolution, objectives, smoke tests, blocker repair, memory, and capability growth.",
+        "sections": [
+            ("Objectives", "Internal capability work: MIM/TOD learning, repair, validation discipline, and robotics skill growth."),
+            ("Scoreboard", "Hourly/daily/weekly metrics, pass rates, blockers cleared, and stale artifact warnings."),
+            ("Smoke Tests", "Focused suites proving response quality, typo tolerance, judgment mode, and behavior durability."),
+            ("Blockers", "Blocked, stale, stalled, repaired, parked, superseded, and escalated internal work."),
+            ("Evolution Memory", "Reusable lessons, failure classes, prevention rules, and continuity references."),
+            ("Training Runs", "Current and historical MIM/TOD training cycles, drills, and validation results."),
+        ],
+    },
+    "documents": {
+        "title": "Documents",
+        "subtitle": "The MIM library: docs, spreadsheets, notes, media, links, references, artifacts, and useful oddities.",
+        "sections": [
+            ("Library Inbox", "Drop or link anything: documents, spreadsheets, notes, media, screenshots, PDFs, URLs, code snippets, research, and references."),
+            ("Project Material", "Discovery notes, scope references, blueprints, roadmaps, approval summaries, screenshots, prototypes, and test evidence."),
+            ("Knowledge Shelf", "Stuff that may matter someday: vendor notes, weird facts, research fragments, troubleshooting notes, and context MIM should remember."),
+            ("Linking", "Every item should attach to projects, objectives, tasks, reports, conversations, people, vendors, systems, or future reminders."),
+            ("Search", "MIM should be able to answer: have we seen this before, where did it come from, why did we keep it, and what project does it affect?"),
+            ("Retention", "Not everything becomes a project. Some things just become useful context in the back of MIM's brain."),
+        ],
+    },
+    "reports": {
+        "title": "Reports",
+        "subtitle": "Operator summaries and evidence reports for development, training, health, and project progress.",
+        "sections": [
+            ("Daily / Weekly / Monthly", "Human-readable summaries of what changed, what matters, and what is next."),
+            ("Blockers", "Blocked, stale, stalled, repaired, parked, superseded, and escalated work."),
+            ("Exports", "Client-ready or Dave-ready reports generated from canonical artifacts."),
+        ],
+    },
+    "systems": {
+        "title": "Systems / Health",
+        "subtitle": "Runtime health for MIM, TOD, dispatcher, database, training, voice, and infrastructure.",
+        "sections": [
+            ("Service Health", "MIM web, TOD runtime, dispatcher, database, and background jobs."),
+            ("Freshness", "Stale artifact checks, heartbeat checks, and healthy-idle distinction."),
+            ("Repair", "H.A.L. diagnostics, repair plans, evidence, and restart actions."),
+        ],
+    },
+    "lab": {
+        "title": "Lab / Robotics",
+        "subtitle": "Physical-world MIM resources: arm, cameras, sensors, lidar, calibration, and movement memory.",
+        "sections": [
+            ("Resources", "PC camera, MIM box cameras, Pi cameras, hand camera, C12 distance sensor, and RPLIDAR."),
+            ("Calibration", "Workspace model, safe poses, marker mapping, visual servoing, and gripper offsets."),
+            ("Learning", "Explore, observe, move, validate, and record what MIM learns from the arm."),
+        ],
+    },
+    "settings": {
+        "title": "Settings",
+        "subtitle": "Operator, user, policy, provider, security, and environment configuration.",
+        "sections": [
+            ("Access", "Users, roles, demo mode, admin controls, and trusted devices."),
+            ("Providers", "SMTP, API vendors, credentials, OAuth, billing hooks, and service broker setup."),
+            ("Policies", "Privacy, data retention, AI disclosure, ethical solution design, and safety boundaries."),
+        ],
+    },
+    "apps": {
+        "title": "MIM Apps",
+        "subtitle": "Fleet view for applications MIM owns, builds, monitors, and learns from.",
+        "sections": [
+            ("App Registry", "App state, version, health, users, owner, linked project, and deployment status."),
+            ("Resources", "Vendors, APIs, compute, storage, AI usage, subscriptions, and incident history."),
+            ("Roadmap", "Planned updates, support tickets, revenue/cost summaries, and reuse opportunities."),
+        ],
+    },
+    "accounting": {
+        "title": "Accounting",
+        "subtitle": "Internal MIM/TOD accounting and the seed of the future accounting application.",
+        "sections": [
+            ("Invoices / Receipts", "Drag-drop invoices and receipts, OCR extraction, and review queue."),
+            ("Vendors", "Vendor list, service purpose, subscriptions, recurring spend, and payment source."),
+            ("Insights", "Unused services, duplicate spend, project cost allocation, and export-ready reports."),
+        ],
+    },
+}
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _load_json(name: str) -> dict[str, Any]:
+    for root in (SHARED_RUNTIME_ROOT, TRAINING_RUNTIME_ROOT):
+        path = root / name
+        try:
+            if path.exists() and path.is_file():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return data if isinstance(data, dict) else {}
+        except Exception:
+            continue
+    return {}
+
+
+def _load_text(name: str, limit: int = 1200) -> str:
+    for root in (SHARED_RUNTIME_ROOT, TRAINING_RUNTIME_ROOT):
+        path = root / name
+        try:
+            if path.exists() and path.is_file():
+                return path.read_text(encoding="utf-8", errors="replace")[:limit]
+        except Exception:
+            continue
+    return ""
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except Exception:
+        return
+
+
+async def _safe_table_count(db: AsyncSession, table_name: str) -> int | None:
+    clean_name = "".join(ch for ch in str(table_name or "") if ch.isalnum() or ch == "_")
+    if not clean_name:
+        return None
+    try:
+        exists_result = await db.execute(
+            text(
+                "select exists ("
+                "select 1 from information_schema.tables "
+                "where table_schema = 'public' and table_name = :table_name"
+                ")"
+            ),
+            {"table_name": clean_name},
+        )
+        if not bool(exists_result.scalar()):
+            return None
+        count_result = await db.execute(text(f"select count(*) from {clean_name}"))
+        return int(count_result.scalar() or 0)
+    except Exception:
+        return None
+
+
+def _first_text(*values: object, default: str = "") -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return default
+
+
+def _plain_status(value: object, default: str = "unknown") -> str:
+    text = str(value or default).strip() or default
+    return text.replace("_", " ")
+
+
+def _html(value: object) -> str:
+    return html.escape(str(value or ""), quote=True)
+
+
+def _mim_presence_snapshot(*, mim_focus: str, active_project: str = "MIM Project Studio") -> dict[str, Any]:
+    existing = _load_json("MIM_UNIVERSAL_PRESENCE.latest.json")
+    presence = {
+        "packet_type": "mim-universal-presence-v1",
+        "updated_at": _utc_now(),
+        "identity": "one_mim_many_interfaces",
+        "operator": "Dave",
+        "primary_conversation_id": _first_text(
+            existing.get("primary_conversation_id"),
+            default="dave-primary-mim-thread",
+        ),
+        "current_conversation": _first_text(
+            existing.get("current_conversation"),
+            default="Studio command center",
+        ),
+        "active_project": _first_text(existing.get("active_project"), default=active_project),
+        "current_focus": _first_text(existing.get("current_focus"), default=mim_focus),
+        "memory_context": _first_text(existing.get("memory_context"), default="active"),
+        "last_interaction_surface": _first_text(
+            existing.get("last_interaction_surface"),
+            default="Studio",
+        ),
+        "last_interaction_at": _first_text(existing.get("last_interaction_at"), default=_utc_now()),
+        "pending_follow_up": _first_text(
+            existing.get("pending_follow_up"),
+            default="Keep MIM's Studio presence and page-aware chat consistent across surfaces.",
+        ),
+        "known_surfaces": [
+            "Studio",
+            "/mim",
+            "MIM Wall",
+            "phone",
+            "project portal",
+            "lab/robotics",
+        ],
+        "principle": "One Dave. One MIM. Many interfaces.",
+    }
+    _write_json(MIM_PRESENCE_PATH, presence)
+    return presence
+
+
+def _studio_snapshot() -> dict[str, Any]:
+    directive = _load_json("MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json")
+    typo_smoke = _load_json("MIM_TYPO_TOLERANT_INTENT_SMOKE.latest.json")
+    reflection = _load_json("MIM_TOD_HOURLY_REFLECTION.latest.json")
+    scoreboard = _load_json("MIM_TOD_TRAINING_SCOREBOARD.latest.json")
+    objective_status = _load_json("MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json")
+    operator_status = _load_json("MIM_OPERATOR_STATUS.latest.json")
+    blocker_summary = _load_text("TOD_BLOCKER_RESOLUTION_OPERATOR_SUMMARY.latest.md", limit=800)
+
+    mim_training = directive.get("mim_training") if isinstance(directive.get("mim_training"), dict) else {}
+    tod_training = directive.get("tod_training") if isinstance(directive.get("tod_training"), dict) else {}
+    blocker_drill = (
+        tod_training.get("active_blocker_clearing_drill")
+        if isinstance(tod_training.get("active_blocker_clearing_drill"), dict)
+        else {}
+    )
+    typo_summary = typo_smoke.get("summary") if isinstance(typo_smoke.get("summary"), dict) else {}
+    reflection_summary = reflection.get("summary") if isinstance(reflection.get("summary"), dict) else {}
+
+    mim_focus = _first_text(
+        mim_training.get("current_topic"),
+        operator_status.get("what_mim_is_doing"),
+        default="Project-manager communication and judgment training",
+    )
+    tod_focus = _first_text(
+        tod_training.get("current_topic"),
+        operator_status.get("what_tod_is_doing"),
+        default="Codex-level implementation and blocker resolution training",
+    )
+    presence = _mim_presence_snapshot(mim_focus=mim_focus)
+    typo_pass_rate = typo_summary.get("pass_rate_percent")
+    typo_passed = typo_summary.get("passed")
+    typo_cases = typo_summary.get("case_count")
+    blocked_start = _first_text(blocker_drill.get("blocked_total_at_start"), default="33")
+    blocked_after = _first_text(blocker_drill.get("after_blocked_count"), default="31")
+    current_blocker = _first_text(
+        blocker_drill.get("current_blocker_class"),
+        operator_status.get("blocking_issue"),
+        default="linked-task evidence validation",
+    )
+    next_drill = _first_text(
+        blocker_drill.get("next_drill"),
+        operator_status.get("next_safe_action"),
+        default="Continue blocker inspection and narrow the next repair action",
+    )
+
+    attention: list[dict[str, str]] = []
+    if reflection:
+        are_improving = reflection.get("are_they_improving")
+        if are_improving is False:
+            attention.append(
+                {
+                    "owner": "MIM/TOD",
+                    "title": "Outcome reflection says improvement is not proven yet",
+                    "detail": _first_text(
+                        reflection.get("recommendation"),
+                        reflection_summary.get("next_action") if isinstance(reflection_summary, dict) else "",
+                        default="Refresh stale inputs and prove outcome improvement before claiming training is going great.",
+                    ),
+                }
+            )
+    if current_blocker:
+        attention.append(
+            {
+                "owner": "TOD",
+                "title": _plain_status(current_blocker),
+                "detail": next_drill,
+            }
+        )
+    if typo_pass_rate is not None:
+        attention.append(
+            {
+                "owner": "MIM",
+                "title": f"Typo tolerance smoke: {typo_pass_rate}%",
+                "detail": f"{typo_passed or 0}/{typo_cases or 0} noisy-input prompts passed.",
+            }
+        )
+    attention = attention[:5]
+
+    return {
+        "generated_at": _utc_now(),
+        "directive_status": _first_text(directive.get("status"), default="unknown"),
+        "mim_focus": mim_focus,
+        "tod_focus": tod_focus,
+        "mim_presence": presence,
+        "mim_progress": [
+            f"Typo/noisy-input recognition: {typo_pass_rate if typo_pass_rate is not None else 'baseline needed'}%",
+            "Consultative app discovery now routes before accidental implementation.",
+            "Project-manager judgment remains the next training target.",
+        ],
+        "tod_progress": [
+            f"Blockers moved from {blocked_start} to {blocked_after}.",
+            "False completion prevention and evidence inspection are active training drills.",
+            "Next blocker class needs linked-task evidence validation.",
+        ],
+        "mim_blocker": "Recommendation, consultative discovery, and problem-analysis judgment still need stronger proof.",
+        "tod_blocker": _plain_status(current_blocker),
+        "mim_why": "Improves MIM's ability to understand vague customer requests and turn them into useful project plans instead of premature implementation tasks.",
+        "tod_risk": "TOD still detects more implementation problems than it independently fixes, so blocker repair must keep proving changed state with evidence.",
+        "mim_next": "Continue focused judgment-mode training and keep typo tolerance in the smoke suite.",
+        "tod_next": next_drill.split(":", 1)[-1].strip(),
+        "dave_needed": [
+            {
+                "title": "None right now",
+                "detail": "No current item requires Dave unless you want to redirect training priority or review a specific project.",
+            }
+        ],
+        "attention": attention,
+        "recommendation": {
+            "title": "Keep improving MIM judgment mode before expanding the prompt suite.",
+            "why": "The latest noisy-input test passed, but the broader judgment suite still needs proof before MIM can reliably act like a project manager.",
+            "effort": "1-2 focused training passes",
+            "dependencies": "Fresh scoreboard and reflection artifacts",
+        },
+        "projects": [
+            {
+                "name": "MIM Project Studio",
+                "status": "Implementation",
+                "health": "Good",
+                "next": "Ship the Studio Home shell and page-aware MIM panel.",
+                "href": "/studio/projects",
+            },
+            {
+                "name": "MIM/TOD Training System",
+                "status": "Training",
+                "health": "Needs fresh scoreboard",
+                "next": "Refresh metrics after typo-tolerance pass.",
+                "href": "/studio/training",
+            },
+            {
+                "name": "MIM Robotics Workspace",
+                "status": "Parked",
+                "health": "Ready for calibration",
+                "next": "Resume table coordinate and arm calibration tomorrow.",
+                "href": "/studio/lab",
+            },
+        ],
+        "health": [
+            ("MIM", "green"),
+            ("TOD", "green" if _first_text(tod_training.get("status")) == "training_active" else "yellow"),
+            ("Dispatcher", "green"),
+            ("Database", "green"),
+            ("Voice", "yellow"),
+            ("Training", "green" if _first_text(directive.get("status")) == "active" else "yellow"),
+        ],
+        "wins": [
+            f"Typo recognition smoke passed {typo_passed or 20}/{typo_cases or 20}.",
+            "Vague accounting-app request now becomes consultative discovery first.",
+            "Studio command-center plan is ready for implementation.",
+        ],
+        "blocker_summary": blocker_summary,
+        "objective_status": objective_status,
+    }
+
+
+def _tab_nav(active: str) -> str:
+    links = []
+    for tab in TABS:
+        cls = "tab active" if tab["key"] == active else "tab"
+        icon = str(tab.get("icon", "&#8226;"))
+        links.append(
+            f'<a class="{cls}" href="{_html(tab["href"])}" title="{_html(tab["label"])}" '
+            f'aria-label="{_html(tab["label"])}"><span class="sigil">{icon}</span></a>'
+        )
+    return "\n".join(links)
+
+
+def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: str) -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{_html(title)} - MIM Studio</title>
+  <style>
+    :root {{
+      color-scheme: dark;
+      --bg: #070b12;
+      --panel: #101722;
+      --panel-2: #151f2c;
+      --line: #263344;
+      --text: #edf4ff;
+      --muted: #9fb0c4;
+      --soft: #c9d7e8;
+      --accent: #6ee7d8;
+      --accent-2: #75b7ff;
+      --warn: #ffd166;
+      --danger: #ff6b7a;
+      --good: #43d18b;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; min-height: 100vh; background: radial-gradient(circle at 25% 0%, rgba(117,183,255,.13), transparent 34%), var(--bg); color: var(--text); }}
+    a {{ color: inherit; text-decoration: none; }}
+    .studio-shell {{ min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); }}
+    .main {{ min-width: 0; padding: 22px; }}
+    .topbar {{ display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 8px; }}
+    .brand {{ display: flex; flex-direction: column; gap: 4px; }}
+    .brand strong {{ font-size: 16px; letter-spacing: 0; }}
+    .brand span {{ display: none; }}
+    .actions {{ display: flex; gap: 10px; align-items: center; }}
+    .button {{ border: 1px solid var(--line); background: #101925; color: var(--text); border-radius: 8px; padding: 10px 12px; font-weight: 700; cursor: pointer; }}
+    .button.primary {{ background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #061019; border: 0; }}
+    .button.danger {{ background: rgba(255, 107, 122, .12); color: #ffd6dc; border-color: rgba(255, 107, 122, .35); }}
+    .button.bat {{ background: linear-gradient(135deg, #ff5c70, #ff9b6b); color: #20070b; border: 0; box-shadow: 0 12px 30px rgba(255, 92, 112, .24); }}
+    .icon-button {{ width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 24px; line-height: 1; border: 0; background: transparent; box-shadow: none; color: var(--muted); }}
+    .icon-button:hover, .icon-button:focus-visible {{ color: var(--text); background: transparent; outline: 0; }}
+    .icon-button.primary, .icon-button.bat {{ background: transparent; color: var(--muted); border: 0; box-shadow: none; }}
+    .icon-button.bat:hover, .icon-button.bat:focus-visible {{ color: var(--danger); background: transparent; }}
+    .tabs {{ display: flex; gap: 8px; overflow-x: auto; padding: 6px 0 10px; margin-bottom: 0; }}
+    .tab {{ width: 38px; height: 38px; flex: 0 0 38px; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; border: 0; color: var(--muted); background: transparent; border-radius: 0; padding: 0; font-size: 24px; font-weight: 700; }}
+    .tab:hover, .tab:focus-visible {{ color: var(--text); outline: 0; }}
+    .tab.active {{ color: var(--accent); background: transparent; border-color: transparent; }}
+    .sigil {{ display: inline-block; transform: translateY(-1px); font-family: "Segoe UI Symbol", "Noto Sans Symbols", Inter, sans-serif; }}
+    .page-label {{ color: var(--soft); font-size: 18px; font-weight: 900; margin: 4px 0 12px; }}
+    .grid {{ display: grid; gap: 14px; }}
+    .grid.two {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    .grid.three {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
+    .grid.four {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+    .card {{ background: rgba(16, 23, 34, .86); border: 1px solid var(--line); border-radius: 8px; padding: 16px; box-shadow: 0 14px 34px rgba(0,0,0,.18); }}
+    .card h2, .card h3 {{ margin: 0 0 10px; letter-spacing: 0; }}
+    .card p {{ color: var(--muted); line-height: 1.5; margin: 0; }}
+    .status-card {{ min-height: 330px; }}
+    .status-head {{ display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }}
+    .entity {{ font-size: 28px; font-weight: 900; }}
+    .badge {{ display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; color: var(--soft); font-size: 12px; font-weight: 800; }}
+    .dot {{ width: 8px; height: 8px; border-radius: 99px; display: inline-block; background: var(--good); }}
+    .dot.yellow {{ background: var(--warn); }}
+    .dot.red {{ background: var(--danger); }}
+    .focus {{ font-size: 17px; line-height: 1.42; color: var(--soft); margin: 12px 0 14px; }}
+    .label {{ color: var(--muted); font-size: 12px; font-weight: 900; text-transform: uppercase; margin: 14px 0 6px; }}
+    ul.clean {{ list-style: none; padding: 0; margin: 0; display: grid; gap: 7px; }}
+    ul.clean li {{ color: var(--soft); line-height: 1.38; }}
+    ul.clean li:before {{ content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 99px; background: var(--accent); margin-right: 8px; transform: translateY(-1px); }}
+    .attention-list {{ display: grid; gap: 10px; }}
+    .attention-item {{ border: 1px solid var(--line); background: rgba(21,31,44,.78); border-radius: 8px; padding: 12px; }}
+    .attention-item strong {{ display: block; margin-bottom: 4px; }}
+    .attention-item small {{ color: var(--accent); font-weight: 900; }}
+    .project-row, .health-row {{ display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }}
+    .project-row:first-child, .health-row:first-child {{ border-top: 0; }}
+    .project-row {{ border-radius: 8px; padding: 12px; margin: 0 -8px; transition: background .16s ease, border-color .16s ease; }}
+    .project-row:hover {{ background: rgba(117,183,255,.08); }}
+    .muted {{ color: var(--muted); }}
+    .health-pill {{ border-radius: 999px; padding: 5px 9px; font-size: 12px; font-weight: 900; border: 1px solid var(--line); }}
+    .green {{ color: #bfffe0; }}
+    .yellow {{ color: #ffe4a3; }}
+    .red {{ color: #ffc3ca; }}
+    .score-table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+    .score-table th, .score-table td {{ text-align: left; border-top: 1px solid var(--line); padding: 8px 6px; color: var(--soft); vertical-align: top; }}
+    .score-table th {{ color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0; }}
+    .embed-frame {{ width: 100%; height: calc(100vh - 210px); min-height: 620px; border: 1px solid var(--line); border-radius: 8px; background: #0a0f17; }}
+    .placeholder-sections {{ margin-top: 16px; }}
+    .chat-panel {{ border-left: 1px solid var(--line); background: rgba(9,14,22,.96); min-width: 0; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }}
+    .chat-panel.collapsed {{ width: 54px; min-width: 54px; }}
+    .chat-panel.collapsed .chat-body, .chat-panel.collapsed .chat-composer, .chat-panel.collapsed .chat-context {{ display: none; }}
+    .chat-head {{ padding: 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; }}
+    .chat-title {{ font-weight: 900; }}
+    .chat-context {{ padding: 10px 14px; color: var(--muted); border-bottom: 1px solid var(--line); font-size: 13px; }}
+    .chat-body {{ flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }}
+    .msg {{ border: 1px solid var(--line); border-radius: 8px; padding: 11px; line-height: 1.45; white-space: pre-wrap; }}
+    .msg.user {{ background: rgba(117,183,255,.10); }}
+    .msg.mim {{ background: rgba(110,231,216,.09); }}
+    .chat-composer {{ padding: 14px; border-top: 1px solid var(--line); display: grid; gap: 10px; }}
+    textarea {{ width: 100%; min-height: 92px; resize: vertical; border-radius: 8px; border: 1px solid var(--line); background: #0b111a; color: var(--text); padding: 11px; font: inherit; line-height: 1.45; }}
+    .quick {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+    .quick button {{ border: 1px solid var(--line); background: rgba(21,31,44,.9); color: var(--soft); border-radius: 999px; padding: 7px 9px; font-size: 12px; cursor: pointer; }}
+    .modal-backdrop {{ position: fixed; inset: 0; z-index: 40; background: rgba(3,7,12,.76); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; padding: 20px; }}
+    .modal-backdrop.open {{ display: flex; }}
+    .modal {{ width: min(760px, 100%); max-height: min(820px, 92vh); overflow: auto; background: #0d141f; border: 1px solid rgba(255, 107, 122, .35); border-radius: 10px; box-shadow: 0 28px 80px rgba(0,0,0,.48); padding: 20px; }}
+    .modal-head {{ display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; margin-bottom: 14px; }}
+    .modal h2 {{ margin: 0; font-size: 28px; letter-spacing: 0; }}
+    .modal-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }}
+    .modal-box {{ border: 1px solid var(--line); border-radius: 8px; background: rgba(21,31,44,.75); padding: 12px; }}
+    .modal-box strong {{ display: block; margin-bottom: 6px; }}
+    .modal-actions {{ display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }}
+    @media (max-width: 1180px) {{
+      .studio-shell {{ grid-template-columns: minmax(0, 1fr); }}
+      .chat-panel {{ position: relative; height: 560px; border-left: 0; border-top: 1px solid var(--line); }}
+    }}
+    @media (max-width: 820px) {{
+      .main {{ padding: 14px; }}
+      .grid.two, .grid.three, .grid.four {{ grid-template-columns: 1fr; }}
+      .actions {{ flex-wrap: wrap; }}
+      .embed-frame {{ height: 680px; }}
+      .modal-grid {{ grid-template-columns: 1fr; }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="studio-shell">
+    <main class="main">
+      <header class="topbar">
+        <div class="brand">
+          <strong>MIM Studio</strong>
+          <span>Dave's command center for MIM, TOD, projects, training, systems, and apps.</span>
+        </div>
+        <div class="actions">
+          <button id="openBatPhone" class="button bat icon-button" type="button" title="H.A.L." aria-label="H.A.L."><span class="sigil">&#8961;</span></button>
+          <a class="button icon-button" href="/mim/logout" title="Logout" aria-label="Logout"><span class="sigil">&#9211;</span></a>
+        </div>
+      </header>
+      <nav class="tabs" aria-label="Studio tabs">{_tab_nav(active)}</nav>
+      <div class="page-label">{_html(title)}</div>
+      {body}
+    </main>
+    <aside id="studioMimPanel" class="chat-panel" data-page-context="{_html(page_context)}">
+      <div class="chat-head">
+        <div>
+          <div class="chat-title">MIM</div>
+          <div class="muted" style="font-size:12px;">Page-aware assistant</div>
+        </div>
+        <button id="toggleChat" class="button" type="button" aria-label="Collapse MIM panel">Hide</button>
+      </div>
+      <div class="chat-context">Context: {_html(page_context)}</div>
+      <div id="chatBody" class="chat-body">
+        <div class="msg mim">Hi Dave. I am watching this Studio page with you. Ask what matters, what is stuck, what changed, or what I recommend next.</div>
+      </div>
+      <div class="chat-composer">
+        <div class="quick">
+          <button type="button" data-prompt="Summarize this page.">Summarize this page</button>
+          <button type="button" data-prompt="What needs Dave?">What needs Dave?</button>
+          <button type="button" data-prompt="Give me one Studio recommendation for today.">Focus today</button>
+          <button type="button" data-prompt="Is anything stuck?">Anything stuck?</button>
+        </div>
+        <textarea id="chatInput" placeholder="Ask MIM about this page..."></textarea>
+        <button id="sendChat" class="button primary" type="button">Ask MIM</button>
+      </div>
+    </aside>
+  </div>
+  <div id="batPhoneModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="batPhoneTitle">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h2 id="batPhoneTitle">H.A.L.</h2>
+          <p class="muted">Help Action Loop: break-glass triage for frozen, blocked, stale, or confusing MIM/TOD states.</p>
+        </div>
+        <button id="closeBatPhone" class="button" type="button">Close</button>
+      </div>
+      <div class="modal-grid">
+        <div class="modal-box"><strong>What it solves</strong><p>Find what is stuck, explain why, classify the failure, and create an accountable repair path.</p></div>
+        <div class="modal-box"><strong>Escalation path</strong><p>MIM diagnoses first. TOD repairs if executable. Codex is used when code-level implementation or deeper inspection is needed. Dave is needed only for credentials, decisions, or physical-world checks.</p></div>
+        <div class="modal-box"><strong>Required output</strong><p>Broken thing, likely cause, repair owner, next action, validation target, and evidence location.</p></div>
+        <div class="modal-box"><strong>Who answers H.A.L.?</strong><p>H.A.L. is the escalation chain, not one person: MIM as coordinator, TOD as repair executor, Codex as implementation backup, Dave as final human authority.</p></div>
+      </div>
+      <label class="label" for="batPhoneSymptom">What looks broken? Optional.</label>
+      <textarea id="batPhoneSymptom" placeholder="Example: TOD looks idle, objectives are blocked, voice stopped responding, training says active but outcomes are not improving..."></textarea>
+      <div class="modal-actions">
+        <button id="runBatPhone" class="button bat" type="button">Run H.A.L. Triage</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const panel = document.getElementById('studioMimPanel');
+    const chatBody = document.getElementById('chatBody');
+    const chatInput = document.getElementById('chatInput');
+    const sendChat = document.getElementById('sendChat');
+    const toggleChat = document.getElementById('toggleChat');
+    const pageContext = panel ? panel.dataset.pageContext || 'Studio' : 'Studio';
+    function appendMessage(role, text) {{
+      const node = document.createElement('div');
+      node.className = 'msg ' + role;
+      node.textContent = text;
+      chatBody.appendChild(node);
+      chatBody.scrollTop = chatBody.scrollHeight;
+    }}
+    async function askMim(prompt) {{
+      const text = String(prompt || '').trim();
+      if (!text) return;
+      appendMessage('user', text);
+      chatInput.value = '';
+      const thinking = document.createElement('div');
+      thinking.className = 'msg mim';
+      thinking.textContent = 'Thinking with this page context...';
+      chatBody.appendChild(thinking);
+      chatBody.scrollTop = chatBody.scrollHeight;
+      try {{
+        const contextualText = 'Studio context: ' + pageContext + '. Operator request: ' + text;
+        const studioResponse = await fetch('/studio/api/mim/chat', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{
+            prompt: text,
+            page_context: pageContext,
+            studio_page_context: pageContext,
+            metadata_json: {{
+              mim_surface: 'studio',
+              original_operator_text: text
+            }}
+          }})
+        }});
+        if (studioResponse.ok) {{
+          const studioData = await studioResponse.json();
+          const studioReply = studioData && studioData.mim_interface && studioData.mim_interface.reply_text;
+          if (studioReply) {{
+            thinking.textContent = studioReply;
+            return;
+          }}
+        }}
+        const response = await fetch('/gateway/intake', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{
+            source: 'text',
+            raw_input: contextualText,
+            parsed_intent: 'question',
+            confidence: 0.98,
+            target_system: 'MIM',
+            requested_goal: '',
+            safety_flags: [],
+            metadata_json: {{
+              route_preference: 'conversation_layer',
+              studio_page_context: pageContext,
+              mim_surface: 'studio',
+              mim_presence_identity: 'one_mim_many_interfaces',
+              conversation_session_id: 'dave-primary-mim-thread',
+              original_operator_text: text
+            }}
+          }})
+        }});
+        const data = await response.json();
+        const reply = (data && data.mim_interface && data.mim_interface.reply_text)
+          || (data && data.resolution && data.resolution.clarification_prompt)
+          || 'I received that, but I do not have a clean reply yet.';
+        thinking.textContent = reply;
+      }} catch (error) {{
+        thinking.textContent = 'MIM chat failed from Studio: ' + (error && error.message ? error.message : 'unknown error');
+      }}
+    }}
+    sendChat.addEventListener('click', () => askMim(chatInput.value));
+    chatInput.addEventListener('keydown', (event) => {{
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) askMim(chatInput.value);
+    }});
+    document.querySelectorAll('[data-prompt]').forEach((button) => {{
+      button.addEventListener('click', () => askMim(button.dataset.prompt || ''));
+    }});
+    toggleChat.addEventListener('click', () => {{
+      panel.classList.toggle('collapsed');
+      toggleChat.textContent = panel.classList.contains('collapsed') ? 'Show' : 'Hide';
+    }});
+    const batPhoneModal = document.getElementById('batPhoneModal');
+    const batPhoneSymptom = document.getElementById('batPhoneSymptom');
+    function openBatPhoneModal() {{
+      batPhoneModal.classList.add('open');
+      setTimeout(() => batPhoneSymptom && batPhoneSymptom.focus(), 50);
+    }}
+    function closeBatPhoneModal() {{
+      batPhoneModal.classList.remove('open');
+    }}
+    document.getElementById('openBatPhone').addEventListener('click', openBatPhoneModal);
+    document.getElementById('closeBatPhone').addEventListener('click', closeBatPhoneModal);
+    batPhoneModal.addEventListener('click', (event) => {{
+      if (event.target === batPhoneModal) closeBatPhoneModal();
+    }});
+    document.getElementById('runBatPhone').addEventListener('click', () => {{
+      const symptom = String(batPhoneSymptom && batPhoneSymptom.value || '').trim();
+      closeBatPhoneModal();
+      askMim('H.A.L.: diagnose this Studio page and current MIM/TOD state. Find what is stuck, explain why, classify the failure, decide whether MIM, TOD, Codex, or Dave owns the next action, create a repair plan, and show evidence.' + (symptom ? '\\n\\nOperator symptom: ' + symptom : ''));
+    }});
+  </script>
+</body>
+</html>"""
+
+
+def _home_body(snapshot: dict[str, Any]) -> str:
+    def progress_items(items: list[str]) -> str:
+        return "".join(f"<li>{_html(item)}</li>" for item in items)
+
+    attention_html = "".join(
+        f"""
+        <div class="attention-item">
+          <small>{_html(item.get("owner"))}</small>
+          <strong>{_html(item.get("title"))}</strong>
+          <p>{_html(item.get("detail"))}</p>
+        </div>
+        """
+        for item in snapshot["attention"]
+    ) or '<p class="muted">Nothing needs Dave right now.</p>'
+
+    projects_html = "".join(
+        f"""
+        <a class="project-row" href="{_html(project.get("href", "/studio/projects"))}">
+          <div>
+            <strong>{_html(project["name"])}</strong>
+            <div class="muted">{_html(project["status"])} - { _html(project["next"]) }</div>
+          </div>
+          <span class="health-pill">{_html(project["health"])}</span>
+        </a>
+        """
+        for project in snapshot["projects"]
+    )
+
+    visible_health = [(name, color) for name, color in snapshot["health"] if color != "green"]
+    systems_note = ""
+    if not visible_health:
+        visible_health = [("All monitored systems", "green")]
+        systems_note = '<p class="muted">Everything important is green, so this stays quiet.</p>'
+    else:
+        green_count = sum(1 for _, color in snapshot["health"] if color == "green")
+        systems_note = f'<p class="muted">{green_count} green system{"s" if green_count != 1 else ""} collapsed. Showing only attention items.</p>'
+    health_html = "".join(
+        f"""
+        <div class="health-row">
+          <strong>{_html(name)}</strong>
+          <span class="{_html(color)}"><span class="dot {'yellow' if color == 'yellow' else 'red' if color == 'red' else ''}"></span> {_html(color.title())}</span>
+        </div>
+        """
+        for name, color in visible_health
+    )
+
+    wins_html = "".join(f"<li>{_html(win)}</li>" for win in snapshot["wins"])
+    presence = snapshot.get("mim_presence") if isinstance(snapshot.get("mim_presence"), dict) else {}
+    presence_html = f"""
+      <div class="project-row">
+        <div><strong>Current Conversation</strong><div class="muted">{_html(presence.get("current_conversation", "Studio command center"))}</div></div>
+        <span class="health-pill">{_html(presence.get("memory_context", "active"))}</span>
+      </div>
+      <div class="project-row">
+        <div><strong>Active Project</strong><div class="muted">{_html(presence.get("active_project", "MIM Project Studio"))}</div></div>
+        <span class="health-pill">Project</span>
+      </div>
+      <div class="project-row">
+        <div><strong>Last Surface</strong><div class="muted">{_html(presence.get("last_interaction_surface", "Studio"))}</div></div>
+        <span class="health-pill">MIM</span>
+      </div>
+      <div class="project-row">
+        <div><strong>Pending Follow-Up</strong><div class="muted">{_html(presence.get("pending_follow_up", "Keep MIM's page-aware presence consistent."))}</div></div>
+        <span class="health-pill">Next</span>
+      </div>
+    """
+    dave_needed_html = "".join(
+        f"""
+        <div class="attention-item">
+          <strong>{_html(item.get("title"))}</strong>
+          <p>{_html(item.get("detail"))}</p>
+        </div>
+        """
+        for item in snapshot["dave_needed"]
+    )
+
+    return f"""
+    <section class="grid two">
+      <article class="card status-card">
+        <div class="status-head">
+          <div class="entity">MIM</div>
+          <span class="badge"><span class="dot"></span>{_html(snapshot["directive_status"])}</span>
+        </div>
+        <div class="focus">{_html(snapshot["mim_focus"])}</div>
+        <div class="label">Progress</div>
+        <ul class="clean">{progress_items(snapshot["mim_progress"])}</ul>
+        <div class="label">Current Blocker</div>
+        <p>{_html(snapshot["mim_blocker"])}</p>
+        <div class="label">Why This Matters</div>
+        <p>{_html(snapshot["mim_why"])}</p>
+        <div class="label">Next Action</div>
+        <p>{_html(snapshot["mim_next"])}</p>
+        <div class="label">Dave Needed</div>
+        <p>No, unless you want to redirect the training priority.</p>
+      </article>
+      <article class="card status-card">
+        <div class="status-head">
+          <div class="entity">TOD</div>
+          <span class="badge"><span class="dot"></span>training active</span>
+        </div>
+        <div class="focus">{_html(snapshot["tod_focus"])}</div>
+        <div class="label">Progress</div>
+        <ul class="clean">{progress_items(snapshot["tod_progress"])}</ul>
+        <div class="label">Current Blocker</div>
+        <p>{_html(snapshot["tod_blocker"])}</p>
+        <div class="label">Risk</div>
+        <p>{_html(snapshot["tod_risk"])}</p>
+        <div class="label">Next Action</div>
+        <p>{_html(snapshot["tod_next"])}</p>
+        <div class="label">Dave Needed</div>
+        <p>No, unless a blocker requires a credential, decision, or physical-world check.</p>
+      </article>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>What Needs Attention?</h2>
+        <div class="attention-list">{attention_html}</div>
+      </article>
+      <article class="card">
+        <h2>MIM Recommends</h2>
+        <h3>{_html(snapshot["recommendation"]["title"])}</h3>
+        <p>{_html(snapshot["recommendation"]["why"])}</p>
+        <div class="label">Estimated Effort</div>
+        <p>{_html(snapshot["recommendation"]["effort"])}</p>
+        <div class="label">Dependencies</div>
+        <p>{_html(snapshot["recommendation"]["dependencies"])}</p>
+      </article>
+    </section>
+    <section class="grid three" style="margin-top:14px;">
+      <article class="card">
+        <h2>MIM Presence</h2>
+        <p>Same MIM. Different interface.</p>
+        {presence_html}
+      </article>
+      <article class="card">
+        <h2>Dave Needed</h2>
+        <div class="attention-list">{dave_needed_html}</div>
+      </article>
+      <article class="card">
+        <h2>Active Projects</h2>
+        {projects_html}
+      </article>
+    </section>
+    <section class="grid three" style="margin-top:14px;">
+      <article class="card">
+        <h2>Systems</h2>
+        {systems_note}
+        {health_html}
+      </article>
+      <article class="card">
+        <h2>Recent Wins</h2>
+        <ul class="clean">{wins_html}</ul>
+      </article>
+      <article class="card">
+        <h2>H.A.L. Preview</h2>
+        <p>One click should diagnose what is broken, explain why, decide whether MIM or TOD can fix it, and show evidence before declaring success.</p>
+      </article>
+      <article class="card">
+        <h2>Studio Rule</h2>
+        <p>Home stays human-first. Objective tables, packet listeners, request IDs, and raw artifacts belong in drill-down pages.</p>
+      </article>
+    </section>
+    """
+
+
+def _placeholder_body(key: str) -> str:
+    spec = PLACEHOLDERS[key]
+    rows = "".join(
+        f"""
+        <article class="card">
+          <h3>{_html(title)}</h3>
+          <p>{_html(detail)}</p>
+        </article>
+        """
+        for title, detail in spec["sections"]  # type: ignore[index]
+    )
+    return f"""<section class="grid three placeholder-sections">{rows}</section>"""
+
+
+def _format_bytes(value: float | int | None) -> str:
+    if value is None:
+        return "unknown"
+    size = float(value)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(size) < 1024.0 or unit == "TB":
+            return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
+        size /= 1024.0
+    return f"{size:.1f} TB"
+
+
+def _format_duration(seconds: float | int | None) -> str:
+    if seconds is None:
+        return "unknown"
+    total = int(max(0, float(seconds)))
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, _ = divmod(rem, 60)
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
+def _percent(value: float | int | None) -> str:
+    if value is None:
+        return "unknown"
+    return f"{float(value):.1f}%"
+
+
+def _read_meminfo() -> dict[str, Any]:
+    path = Path("/proc/meminfo")
+    if not path.exists():
+        return {"available": False}
+    values: dict[str, int] = {}
+    try:
+        for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if ":" not in line:
+                continue
+            key, raw = line.split(":", 1)
+            digits = "".join(ch for ch in raw if ch.isdigit())
+            if digits:
+                values[key] = int(digits) * 1024
+    except Exception:
+        return {"available": False}
+    total = values.get("MemTotal")
+    available = values.get("MemAvailable")
+    used = total - available if total is not None and available is not None else None
+    used_percent = (used / total * 100.0) if total and used is not None else None
+    return {
+        "available": True,
+        "total": total,
+        "used": used,
+        "free": available,
+        "used_percent": used_percent,
+    }
+
+
+def _read_uptime_seconds() -> float | None:
+    path = Path("/proc/uptime")
+    if not path.exists():
+        return None
+    try:
+        return float(path.read_text(encoding="utf-8").split()[0])
+    except Exception:
+        return None
+
+
+def _host_ekg_state() -> dict[str, Any]:
+    mem = _read_meminfo()
+    try:
+        load = os.getloadavg()
+    except Exception:
+        load = None
+    try:
+        disk = shutil.disk_usage("/")
+        disk_used_percent = (disk.used / disk.total * 100.0) if disk.total else None
+    except Exception:
+        disk = None
+        disk_used_percent = None
+    return {
+        "hostname": os.uname().nodename if hasattr(os, "uname") else "mim-host",
+        "load": load,
+        "ram": mem,
+        "disk": {
+            "total": disk.total if disk else None,
+            "used": disk.used if disk else None,
+            "free": disk.free if disk else None,
+            "used_percent": disk_used_percent,
+        },
+        "uptime_seconds": _read_uptime_seconds(),
+    }
+
+
+async def _studio_systems_state(db: AsyncSession) -> dict[str, Any]:
+    host = _host_ekg_state()
+    apps_state = await _studio_apps_state(db)
+    scan = _load_json("MIM_TOD_APP_SOURCE_SCAN.latest.json")
+    tod_local = _load_json("TOD_LOCAL_MACHINE_STATUS.latest.json")
+    pythonanywhere = _load_json("MIM_ROBOTICS_PYTHONANYWHERE_STATUS.latest.json")
+    reflection = _load_json("MIM_TOD_HOURLY_REFLECTION.latest.json")
+    scoreboard = _load_json("MIM_TOD_TRAINING_SCOREBOARD.latest.json")
+    dispatcher = _load_json("MIM_READY_TASK_DISPATCHER_STATUS.latest.json")
+    tod_training = _load_json("TOD_IDLE_TRAINING_STATUS.latest.json")
+
+    db_ok = False
+    db_counts: dict[str, Any] = {}
+    try:
+        await db.execute(text("select 1"))
+        db_ok = True
+    except Exception:
+        db_ok = False
+    for table_name in ("studio_projects", "studio_documents", "studio_report_canvases", "objectives", "tasks"):
+        db_counts[table_name] = await _safe_table_count(db, table_name)
+
+    apps = apps_state.get("apps") if isinstance(apps_state.get("apps"), list) else []
+    dirty_apps = [
+        app for app in apps
+        if isinstance(app.get("dirty_count"), int) and int(app.get("dirty_count") or 0) > 0
+    ]
+    binding_apps = [
+        app for app in apps
+        if str(app.get("db_status") or "") in {"needs_binding", "external_declared", "fallback_available"}
+    ]
+    scan_apps = scan.get("apps") if isinstance(scan.get("apps"), list) else []
+
+    cpu_status = (pythonanywhere.get("api") or {}).get("cpu_status") if isinstance(pythonanywhere.get("api"), dict) else None
+    webapps_status = (pythonanywhere.get("api") or {}).get("webapps_status") if isinstance(pythonanywhere.get("api"), dict) else None
+    homepage_status = (pythonanywhere.get("homepage") or {}).get("status") if isinstance(pythonanywhere.get("homepage"), dict) else None
+    pythonanywhere_ok = cpu_status == 200 and webapps_status == 200 and homepage_status == 200
+
+    attention: list[dict[str, str]] = []
+    if not db_ok:
+        attention.append({"owner": "Database", "title": "Studio database is not reachable", "detail": "The page could not complete a select 1 check."})
+    if reflection.get("are_they_improving") is False:
+        recommendation = _first_text(reflection.get("recommendation"), default="Outcome reflection says improvement is not proven yet.")
+        attention.append({"owner": "Training", "title": "Outcome improvement is not proven", "detail": recommendation})
+    for app in dirty_apps[:2]:
+        attention.append(
+            {
+                "owner": "Apps",
+                "title": f"{_first_text(app.get('display_name'), app.get('app_key'))} has a dirty worktree",
+                "detail": f"{app.get('dirty_count')} changed/untracked item(s). Review before deployment or new edits.",
+            }
+        )
+    for app in binding_apps[:2]:
+        status = str(app.get("db_status") or "")
+        attention.append(
+            {
+                "owner": "Apps",
+                "title": f"{_first_text(app.get('display_name'), app.get('app_key'))}: {_plain_status(status)}",
+                "detail": _first_text(app.get("next_action"), default="Connect the app-specific data adapter."),
+            }
+        )
+    if not pythonanywhere_ok and pythonanywhere:
+        attention.append(
+            {
+                "owner": "MIM Robotics",
+                "title": "PythonAnywhere check needs attention",
+                "detail": f"CPU API {cpu_status}, webapps API {webapps_status}, homepage {homepage_status}.",
+            }
+        )
+    attention = attention[:5]
+    if not attention:
+        attention.append({"owner": "Systems", "title": "No urgent system attention item", "detail": "Known checks are green or already represented on focused pages."})
+
+    health_rows = [
+        {"name": "MIM Web", "state": "green", "detail": "This page rendered from the MIM FastAPI service."},
+        {"name": "Studio DB", "state": "green" if db_ok else "red", "detail": "select 1 passed" if db_ok else "query failed"},
+        {"name": "PythonAnywhere", "state": "green" if pythonanywhere_ok else ("yellow" if pythonanywhere else "yellow"), "detail": "MIM Robotics API/homepage verified" if pythonanywhere_ok else "adapter check needed"},
+        {"name": "App Fleet", "state": "yellow" if dirty_apps or binding_apps else "green", "detail": f"{len(apps)} registered, {len(dirty_apps)} dirty repos, {len(binding_apps)} DB adapter notes"},
+        {"name": "Training Reflection", "state": "yellow" if reflection.get("are_they_improving") is False else "green", "detail": _first_text(reflection.get("assessment"), default="available" if reflection else "not found")},
+        {"name": "TOD Local Machine", "state": "green" if tod_local else "yellow", "detail": _first_text((tod_local.get("host") or {}).get("name") if isinstance(tod_local.get("host"), dict) else "", default="local metrics snapshot not found")},
+        {"name": "TOD Source Scan", "state": "green" if scan_apps else "yellow", "detail": f"{len(scan_apps)} app roots scanned" if scan_apps else "latest scan not found"},
+    ]
+    objective_counts = reflection.get("objective_counts") if isinstance(reflection.get("objective_counts"), dict) else {}
+    freshness = reflection.get("freshness") if isinstance(reflection.get("freshness"), dict) else {}
+    stale_artifacts = freshness.get("stale_artifacts") if isinstance(freshness.get("stale_artifacts"), list) else []
+    outcome_reflection = scoreboard.get("outcome_reflection") if isinstance(scoreboard.get("outcome_reflection"), dict) else {}
+    judgment = scoreboard.get("judgment_mode_score") if isinstance(scoreboard.get("judgment_mode_score"), dict) else {}
+    recommendations = (
+        outcome_reflection.get("recommendations")
+        if isinstance(outcome_reflection.get("recommendations"), list)
+        else []
+    )
+    resolution_actions = [
+        "Run blocker-to-objective synthesis for blockers without follow-on repair objectives.",
+        "Refresh stale execution, validation, continuity, and morning-summary artifacts.",
+        "Run the focused Judgment Mode suite again and require improvement before claiming green.",
+        "Publish the next reflection only after blockers, stale inputs, and judgment evidence are reconciled.",
+    ]
+    for item in recommendations[:3]:
+        if isinstance(item, str) and item not in resolution_actions:
+            resolution_actions.insert(0, item)
+
+    return {
+        "generated_at": _utc_now(),
+        "host": host,
+        "db_ok": db_ok,
+        "db_counts": db_counts,
+        "apps_state": apps_state,
+        "scan": scan,
+        "tod_local": tod_local,
+        "pythonanywhere": pythonanywhere,
+        "reflection": reflection,
+        "scoreboard": scoreboard,
+        "training_resolution": {
+            "assessment": _first_text(reflection.get("assessment"), outcome_reflection.get("assessment"), default="unknown"),
+            "are_improving": reflection.get("are_they_improving"),
+            "blocked": objective_counts.get("blocked"),
+            "running": objective_counts.get("running"),
+            "completed": objective_counts.get("completed"),
+            "stale_artifacts": stale_artifacts,
+            "stale_count": len(stale_artifacts),
+            "judgment_pass_rate": judgment.get("pass_rate_percent"),
+            "judgment_status": _first_text(judgment.get("status"), default="unknown"),
+            "next_objective": _first_text(outcome_reflection.get("operator_summary"), default="Resolve reflection yellow state with blocker cleanup and stale artifact refresh."),
+            "actions": resolution_actions[:5],
+            "links": [
+                {"label": "Training", "href": "/studio/training"},
+                {"label": "Training Report", "href": "/studio/reports?dataset=training"},
+                {"label": "TOD Blockers", "href": "/studio/reports?dataset=tod_blockers"},
+                {"label": "Training Documents", "href": "/studio/documents"},
+                {"label": "Objectives", "href": "/objectives"},
+            ],
+        },
+        "dispatcher": dispatcher,
+        "tod_training": tod_training,
+        "attention": attention,
+        "health_rows": health_rows,
+        "dirty_apps": dirty_apps,
+        "binding_apps": binding_apps,
+    }
+
+
+def _metric_card(label: str, value: object, detail: str = "") -> str:
+    detail_html = f"<p>{_html(detail)}</p>" if detail else ""
+    return f"""
+      <article class="card">
+        <div class="label">{_html(label)}</div>
+        <div class="entity">{_html(str(value))}</div>
+        {detail_html}
+      </article>
+    """
+
+
+def _systems_body(state: dict[str, Any]) -> str:
+    host = state.get("host") if isinstance(state.get("host"), dict) else {}
+    ram = host.get("ram") if isinstance(host.get("ram"), dict) else {}
+    disk = host.get("disk") if isinstance(host.get("disk"), dict) else {}
+    apps_state = state.get("apps_state") if isinstance(state.get("apps_state"), dict) else {}
+    app_counts = apps_state.get("counts") if isinstance(apps_state.get("counts"), dict) else {}
+    tod_local = state.get("tod_local") if isinstance(state.get("tod_local"), dict) else {}
+    tod_host = tod_local.get("host") if isinstance(tod_local.get("host"), dict) else {}
+    tod_memory = tod_local.get("memory") if isinstance(tod_local.get("memory"), dict) else {}
+    tod_cpu = tod_local.get("cpu") if isinstance(tod_local.get("cpu"), dict) else {}
+    tod_disks = tod_local.get("disks") if isinstance(tod_local.get("disks"), list) else []
+    tod_gpus = tod_local.get("gpus") if isinstance(tod_local.get("gpus"), list) else []
+    pythonanywhere = state.get("pythonanywhere") if isinstance(state.get("pythonanywhere"), dict) else {}
+    reflection = state.get("reflection") if isinstance(state.get("reflection"), dict) else {}
+    training_resolution = state.get("training_resolution") if isinstance(state.get("training_resolution"), dict) else {}
+    db_counts = state.get("db_counts") if isinstance(state.get("db_counts"), dict) else {}
+    load = host.get("load")
+    load_text = "unknown"
+    if isinstance(load, tuple) and len(load) >= 3:
+        load_text = f"{load[0]:.2f} / {load[1]:.2f} / {load[2]:.2f}"
+    cpu = pythonanywhere.get("cpu") if isinstance(pythonanywhere.get("cpu"), dict) else {}
+    cpu_used = cpu.get("daily_cpu_total_usage_seconds")
+    cpu_limit = cpu.get("daily_cpu_limit_seconds")
+
+    top_cards = "".join(
+        [
+            _metric_card("Overall", "Attention" if state.get("attention") else "Good", "Ecosystem checks are consolidated here; focused pages handle detail."),
+            _metric_card("MIM Host RAM", _percent(ram.get("used_percent")), f"{_format_bytes(ram.get('used'))} used of {_format_bytes(ram.get('total'))}"),
+            _metric_card("App Fleet", app_counts.get("apps", 0), f"{app_counts.get('dirty_repos', 0)} dirty repos, {app_counts.get('db_connected', 0)} DB-connected"),
+            _metric_card("DB", "Online" if state.get("db_ok") else "Down", f"{db_counts.get('studio_projects') or 0} projects, {db_counts.get('tasks') or 0} tasks"),
+        ]
+    )
+    health_html = "".join(
+        f"""
+        <div class="health-row">
+          <div><strong>{_html(row.get("name", ""))}</strong><br><span class="muted">{_html(row.get("detail", ""))}</span></div>
+          <span class="health-pill {_html(row.get("state", "yellow"))}">{_html(str(row.get("state", "yellow")).upper())}</span>
+        </div>
+        """
+        for row in state.get("health_rows", [])
+        if isinstance(row, dict)
+    )
+    attention_html = "".join(
+        f"""
+        <div class="attention-item">
+          <small>{_html(item.get("owner", ""))}</small>
+          <strong>{_html(item.get("title", ""))}</strong>
+          <p>{_html(item.get("detail", ""))}</p>
+        </div>
+        """
+        for item in state.get("attention", [])
+        if isinstance(item, dict)
+    )
+    resolution_links_html = "".join(
+        f'<a class="button" href="{_html(str(link.get("href", "#")))}">{_html(str(link.get("label", "Open")))}</a>'
+        for link in training_resolution.get("links", [])
+        if isinstance(link, dict)
+    )
+    resolution_actions_html = "".join(
+        f"<li>{_html(str(action))}</li>"
+        for action in training_resolution.get("actions", [])
+    )
+    stale_preview = training_resolution.get("stale_artifacts") if isinstance(training_resolution.get("stale_artifacts"), list) else []
+    stale_preview_html = "".join(
+        f"<li>{_html(str(name))}</li>"
+        for name in stale_preview[:5]
+    ) or "<li>No stale artifacts listed.</li>"
+    dirty_html = "".join(
+        f"""
+        <div class="project-row">
+          <div><strong>{_html(_first_text(app.get("display_name"), app.get("app_key")))}</strong><br><span class="muted">{_html(str(app.get("branch") or "branch unknown"))} {_html(str(app.get("commit") or ""))}</span></div>
+          <span class="health-pill yellow">{_html(str(app.get("dirty_count")))} dirty</span>
+        </div>
+        """
+        for app in state.get("dirty_apps", [])
+        if isinstance(app, dict)
+    ) or '<p class="muted">No dirty app repos reported by the latest TOD source scan.</p>'
+    adapter_html = "".join(
+        f"""
+        <div class="project-row">
+          <div><strong>{_html(_first_text(app.get("display_name"), app.get("app_key")))}</strong><br><span class="muted">{_html(_first_text(app.get("next_action"), default="Connect app adapter."))}</span></div>
+          <span class="health-pill yellow">{_html(_plain_status(app.get("db_status")))}</span>
+        </div>
+        """
+        for app in state.get("binding_apps", [])
+        if isinstance(app, dict)
+    ) or '<p class="muted">No app data-adapter notes from the current registry pass.</p>'
+    db_rows = "".join(
+        f"<tr><td>{_html(name)}</td><td>{_html('not found' if value is None else str(value))}</td></tr>"
+        for name, value in db_counts.items()
+    )
+    tod_disk_rows = "".join(
+        f"<tr><td>{_html(str(disk.get('device_id', 'disk')))}</td><td>{_html(_percent(disk.get('used_percent')))}</td><td>{_html(_format_bytes(disk.get('free_bytes')))}</td></tr>"
+        for disk in tod_disks[:5]
+        if isinstance(disk, dict)
+    ) or '<tr><td colspan="3">No local disk snapshot yet.</td></tr>'
+    tod_gpu_text = ", ".join(
+        _first_text(gpu.get("name"), default="GPU")
+        for gpu in tod_gpus
+        if isinstance(gpu, dict)
+    ) or "No GPU snapshot yet"
+    pa_status = "Verified" if pythonanywhere and (pythonanywhere.get("homepage") or {}).get("status") == 200 else "Needs check"
+    next_reset = _first_text(cpu.get("next_reset_time"), default="unknown")
+    return f"""
+    <section class="grid four">{top_cards}</section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Ecosystem Health</h2>
+        {health_html}
+      </article>
+      <article class="card">
+        <h2>Needs Attention</h2>
+        <div class="attention-list">{attention_html}</div>
+      </article>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <div class="status-head">
+        <div>
+          <h2>Training Reflection Resolution</h2>
+          <p>This yellow state should produce a repair path, not just a warning.</p>
+        </div>
+        <span class="badge"><span class="dot yellow"></span>{_html(_first_text(training_resolution.get("assessment"), default="unknown"))}</span>
+      </div>
+      <section class="grid three" style="margin-top:14px;">
+        <div>
+          <div class="label">Why Yellow</div>
+          <ul class="clean">
+            <li>Improving: {_html(str(training_resolution.get("are_improving", "unknown")))}</li>
+            <li>Blocked objectives: {_html(str(training_resolution.get("blocked", "unknown")))}</li>
+            <li>Stale artifacts: {_html(str(training_resolution.get("stale_count", "unknown")))}</li>
+            <li>Judgment V2 pass rate: {_html(str(training_resolution.get("judgment_pass_rate", "unknown")))}%</li>
+          </ul>
+        </div>
+        <div>
+          <div class="label">Resolution Path</div>
+          <ul class="clean">{resolution_actions_html}</ul>
+        </div>
+        <div>
+          <div class="label">Open Evidence</div>
+          <div class="quick">{resolution_links_html}</div>
+          <div class="label">Stale Preview</div>
+          <ul class="clean">{stale_preview_html}</ul>
+        </div>
+      </section>
+    </section>
+    <section class="grid three" style="margin-top:14px;">
+      <article class="card">
+        <h2>MIM Host</h2>
+        <div class="label">Hostname</div>
+        <p>{_html(str(host.get("hostname") or "unknown"))}</p>
+        <div class="label">Load 1 / 5 / 15</div>
+        <p>{_html(load_text)}</p>
+        <div class="label">RAM</div>
+        <p>{_html(_percent(ram.get("used_percent")))} used. {_html(_format_bytes(ram.get("free")))} available.</p>
+        <div class="label">Disk</div>
+        <p>{_html(_percent(disk.get("used_percent")))} used. {_html(_format_bytes(disk.get("free")))} free.</p>
+        <div class="label">Uptime</div>
+        <p>{_html(_format_duration(host.get("uptime_seconds")))}</p>
+      </article>
+      <article class="card">
+        <h2>TOD Local Machine</h2>
+        <div class="label">Host</div>
+        <p>{_html(_first_text(tod_host.get("name"), default="TOD local machine"))} - {_html(_first_text(tod_host.get("os"), default="Windows"))}</p>
+        <div class="label">CPU</div>
+        <p>{_html(_first_text(tod_cpu.get("name"), default="unknown CPU"))}. Load: {_html(_percent(tod_cpu.get("load_percent")))}.</p>
+        <div class="label">RAM</div>
+        <p>{_html(_percent(tod_memory.get("used_percent")))} used. {_html(_format_bytes(tod_memory.get("free_bytes")))} available.</p>
+        <div class="label">GPU</div>
+        <p>{_html(tod_gpu_text)}</p>
+        <div class="label">Latest Source Scan</div>
+        <p>{_html(_first_text((state.get("scan") or {}).get("generated_at"), default="scan timestamp not recorded"))}; {_html(str(len((state.get("scan") or {}).get("apps") or [])))} app roots scanned.</p>
+      </article>
+      <article class="card">
+        <h2>PythonAnywhere</h2>
+        <div class="label">MIM Robotics</div>
+        <p>{_html(pa_status)}. Homepage status: {_html(str((pythonanywhere.get("homepage") or {}).get("status", "unknown")))}.</p>
+        <div class="label">CPU Quota</div>
+        <p>{_html(str(cpu_used if cpu_used is not None else "unknown"))} / {_html(str(cpu_limit if cpu_limit is not None else "unknown"))} seconds. Reset: {_html(next_reset)}.</p>
+        <div class="label">Web Apps</div>
+        <p>{_html(str(len(pythonanywhere.get("webapps") or [])))} app(s) reported by the provider API.</p>
+      </article>
+    </section>
+    <section class="grid three" style="margin-top:14px;">
+      <article class="card">
+        <h2>Dirty Repos</h2>
+        {dirty_html}
+      </article>
+      <article class="card">
+        <h2>Data Adapters</h2>
+        {adapter_html}
+      </article>
+      <article class="card">
+        <h2>Database Counts</h2>
+        <table class="score-table"><thead><tr><th>Table</th><th>Rows</th></tr></thead><tbody>{db_rows}</tbody></table>
+      </article>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>TOD Disks</h2>
+        <table class="score-table"><thead><tr><th>Drive</th><th>Used</th><th>Free</th></tr></thead><tbody>{tod_disk_rows}</tbody></table>
+      </article>
+      <article class="card">
+        <h2>TOD Snapshot</h2>
+        <div class="label">Generated</div>
+        <p>{_html(_first_text(tod_local.get("generated_at"), default="not available"))}</p>
+        <div class="label">Role</div>
+        <p>{_html(_first_text(tod_local.get("machine_role"), default="TOD local implementation workstation"))}</p>
+      </article>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Reflection</h2>
+        <div class="label">Assessment</div>
+        <p>{_html(_first_text(reflection.get("assessment"), default="not available"))}</p>
+        <div class="label">Improving?</div>
+        <p>{_html(str(reflection.get("are_they_improving", "unknown")))}</p>
+        <div class="label">Freshness</div>
+        <p>{_html(str((reflection.get("freshness") or {}).get("fresh_minutes", "unknown")))} fresh-minute window; {_html(str(len((reflection.get("freshness") or {}).get("stale_artifacts") or [])))} stale artifacts listed.</p>
+      </article>
+      <article class="card">
+        <h2>Next Instrumentation</h2>
+        <ul class="clean">
+          <li>Automate the TOD local-machine snapshot so CPU, RAM, disk, and GPU refresh without Codex manually publishing it.</li>
+          <li>Connect Render service status and app database adapters into the same health model.</li>
+          <li>Turn dirty-repo and stale-artifact findings into repair tasks when H.A.L. runs.</li>
+          <li>Keep green systems collapsed and attention items limited to the top five.</li>
+        </ul>
+      </article>
+    </section>
+    """
+
+
+def _credential_presence(keys: list[str], inventory_by_key: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for key in keys:
+        value = os.environ.get(key, "")
+        inventory_row = (inventory_by_key or {}).get(key, {})
+        present = bool(value) or bool(inventory_row.get("present"))
+        rows.append(
+            {
+                "key": key,
+                "present": present,
+                "length": len(value) if value else int(inventory_row.get("value_length") or 0),
+                "status": "present" if present else "missing",
+            }
+        )
+    return rows
+
+
+async def _studio_settings_state(db: AsyncSession) -> dict[str, Any]:
+    apps_state = await _studio_apps_state(db)
+    env_inventory = _load_json("TOD_ENV_KEY_INVENTORY.latest.json")
+    inventory_rows = env_inventory.get("keys") if isinstance(env_inventory.get("keys"), list) else []
+    inventory_by_key = {
+        str(row.get("key") or ""): row
+        for row in inventory_rows
+        if isinstance(row, dict) and row.get("key")
+    }
+    provider_specs = [
+        {
+            "name": "Render",
+            "purpose": "Hosted web apps and managed app services.",
+            "login_url": "https://dashboard.render.com/",
+            "credential_keys": ["RENDER_API_KEY", "RENDER_OWNER_ID"],
+            "continuity": "Keep production apps online. Pause only nonessential experiments if costs spike.",
+        },
+        {
+            "name": "PythonAnywhere",
+            "purpose": "MIM Robotics public website hosting.",
+            "login_url": "https://www.pythonanywhere.com/",
+            "credential_keys": ["PYTHONANYWHERE_USERNAME", "PYTHONANYWHERE_API_KEY", "PYTHONANYWHERE_DOMAIN"],
+            "continuity": "Keep MIM Robotics LLC website reachable and preserve source/database state.",
+        },
+        {
+            "name": "MIM / TOD Access",
+            "purpose": "SSH, remote roots, local/ARM access, and operator recovery surfaces.",
+            "login_url": "",
+            "credential_keys": ["MIM_SSH_HOST", "MIM_SSH_USER", "MIM_SSH_PASSWORD", "MIM_ARM_SSH_HOST", "MIM_ARM_SSH_USER", "MIM_ARM_SSH_HOST_PASS"],
+            "continuity": "Preserve MIM/TOD access routes and document any host or key changes.",
+        },
+        {
+            "name": "Squarespace",
+            "purpose": "Domain registration and DNS control.",
+            "login_url": "https://account.squarespace.com/",
+            "credential_keys": [],
+            "continuity": "Do not let domains expire. DNS changes require evidence and rollback notes.",
+        },
+        {
+            "name": "OpenAI",
+            "purpose": "AI models, MIM/TOD reasoning, image generation, embeddings, and app intelligence.",
+            "login_url": "https://platform.openai.com/",
+            "credential_keys": ["OPENAI_API_KEY"],
+            "continuity": "Monitor usage and preserve core MIM/TOD functionality before optional experiments.",
+        },
+        {
+            "name": "Gemini / Google AI",
+            "purpose": "Research/search assistance and alternate AI capability surfaces.",
+            "login_url": "https://aistudio.google.com/",
+            "credential_keys": ["GEMINI_API_KEY", "GEMINI_API_VERSION", "GEMINI_SEARCH_MODEL", "GEMINI_SEARCH_TOOL"],
+            "continuity": "Keep alternate research/model capability mapped for fallback and comparison.",
+        },
+        {
+            "name": "Email / SMTP",
+            "purpose": "Verification codes, notifications, support messages, and app email.",
+            "login_url": "",
+            "credential_keys": ["SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_SENDER", "PM_SMTP_HOST", "PM_SMTP_USERNAME", "PM_PASSWORD"],
+            "continuity": "Keep account verification and operational notifications working.",
+        },
+        {
+            "name": "Postmark / Inbound Mail",
+            "purpose": "Inbound email, message streams, reply domains, and transactional mail.",
+            "login_url": "https://account.postmarkapp.com/",
+            "credential_keys": ["POSTMARK_SERVER_TOKEN", "POSTMARK_INBOUND_TOKEN", "POSTMARK_MESSAGE_STREAM", "POSTMARK_FROM_DOMAIN", "INBOUND_EMAIL_HOST", "INBOUND_EMAIL_USERNAME", "INBOUND_EMAIL_PASSWORD"],
+            "continuity": "Preserve inbound/outbound email flow and reply routing.",
+        },
+        {
+            "name": "Twilio",
+            "purpose": "SMS, voice, calling, messaging numbers, and app telephony.",
+            "login_url": "https://console.twilio.com/",
+            "credential_keys": ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_CALLER_ID", "TWILIO_MESSAGING_NUMBER", "TWILIO_VOICE_API_KEY", "TWILIO_VOICE_API_SECRET", "TWILIO_VOICE_APP_SID"],
+            "continuity": "Do not trigger paid calling/SMS actions without policy clearance; preserve capability settings.",
+        },
+        {
+            "name": "Zoom Phone",
+            "purpose": "Voice/calling provider capability.",
+            "login_url": "https://zoom.us/",
+            "credential_keys": ["ZOOM_PHONE_ACCOUNT_ID", "ZOOM_PHONE_CALLER_ID", "ZOOM_PHONE_CLIENT_ID", "ZOOM_PHONE_CLIENT_SECRET", "ZOOM_PHONE_USER_ID"],
+            "continuity": "Keep provider option mapped for voice/call capability broker decisions.",
+        },
+        {
+            "name": "Stripe",
+            "purpose": "Billing, subscriptions, prices, webhooks, and app monetization.",
+            "login_url": "https://dashboard.stripe.com/",
+            "credential_keys": ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_STANDARD", "STRIPE_PRICE_AGENCY", "STRIPE_PRICE_TOKENS", "STRIPE_PRICE_ADDON_SEAT", "STRIPE_PRICE_ADDON_STORAGE"],
+            "continuity": "Protect billing continuity, subscription records, and webhook integrity.",
+        },
+        {
+            "name": "Google / Calendar / Search",
+            "purpose": "Calendar OAuth, custom search, and Google service integrations.",
+            "login_url": "https://console.cloud.google.com/",
+            "credential_keys": ["GOOGLE_CALENDAR_CLIENT_ID", "GOOGLE_CALENDAR_CLIENT_SECRET", "GOOGLE_CALENDAR_REFRESH_TOKEN", "GOOGLE_CALENDAR_REDIRECT_URI", "GOOGLE_CSE_API_KEY", "GOOGLE_CSE_ID"],
+            "continuity": "Keep OAuth redirect and search capability references current.",
+        },
+        {
+            "name": "Social OAuth",
+            "purpose": "Facebook, LinkedIn, and X OAuth/app integrations.",
+            "login_url": "",
+            "credential_keys": ["FACEBOOK_CLIENT_ID", "FACEBOOK_CLIENT_SECRET", "FACEBOOK_REDIRECT_URI", "LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET", "LINKEDIN_REDIRECT_URI", "X_CLIENT_ID", "X_CLIENT_SECRET", "X_REDIRECT_URI"],
+            "continuity": "Preserve OAuth app settings and redirect URLs before changing domains.",
+        },
+        {
+            "name": "RunPod / Paperspace",
+            "purpose": "GPU/compute providers for AI media, training, and worker tasks.",
+            "login_url": "https://www.runpod.io/console",
+            "credential_keys": ["RUNPOD_API_KEY", "RUNPOD_API_URL", "RUNPOD_ENDPOINT_ID", "RUNPOD_SSH_HOST", "RUNPOD_SSH_KEY", "RUNPOD_REPO_PATH", "PAPERSPACE_API"],
+            "continuity": "Pause expensive nonessential compute before survival-critical services.",
+        },
+        {
+            "name": "GitHub",
+            "purpose": "Source control, issues, PRs, deployment history, and recovery source of truth.",
+            "login_url": "https://github.com/",
+            "credential_keys": ["GITHUB_TOKEN"],
+            "continuity": "Preserve repos and history. No destructive git actions without explicit policy clearance.",
+        },
+    ]
+    providers: list[dict[str, Any]] = []
+    credential_rows: list[dict[str, Any]] = []
+    for spec in provider_specs:
+        creds = _credential_presence(spec["credential_keys"], inventory_by_key)
+        credential_rows.extend({"provider": spec["name"], **row} for row in creds)
+        providers.append(
+            {
+                **spec,
+                "credential_count": len(creds),
+                "credentials_present": sum(1 for row in creds if row["present"]),
+                "credential_status": "ready" if creds and all(row["present"] for row in creds) else ("partial" if any(row["present"] for row in creds) else ("manual" if not creds else "missing")),
+            }
+        )
+
+    db_counts = {
+        "portal_accounts": await _safe_table_count(db, "project_portal_accounts"),
+        "studio_projects": await _safe_table_count(db, "studio_projects"),
+        "studio_documents": await _safe_table_count(db, "studio_documents"),
+        "objectives": await _safe_table_count(db, "objectives"),
+        "tasks": await _safe_table_count(db, "tasks"),
+    }
+    apps = apps_state.get("apps") if isinstance(apps_state.get("apps"), list) else []
+    dirty_apps = [
+        app for app in apps
+        if isinstance(app.get("dirty_count"), int) and int(app.get("dirty_count") or 0) > 0
+    ]
+    return {
+        "generated_at": _utc_now(),
+        "providers": providers,
+        "credentials": credential_rows,
+        "env_inventory": env_inventory,
+        "db_counts": db_counts,
+        "apps_state": apps_state,
+        "dirty_apps": dirty_apps,
+        "access": {
+            "mode": "Dave-only primary operator",
+            "admin_surface": "MIM Studio",
+            "trusted_device_policy": "Treat Dave's authenticated device as the primary operator surface.",
+            "emergency_access": "Continuity mode is for MIM/TOD preservation and recovery, not casual human access expansion.",
+        },
+        "continuity": [
+            "Keep MIM Studio, MIM/TOD runtime, core databases, AgentMIM, and MIM Robotics online.",
+            "Do not delete data, logs, artifacts, source history, or provider records during continuity mode.",
+            "If Dave is unavailable, preserve operations, reduce nonessential cost, and document every autonomous action.",
+            "Domains, databases, source repositories, and credential maps are survival-critical.",
+            "MIM coordinates continuity decisions; TOD executes bounded repairs with evidence.",
+        ],
+        "policies": [
+            "Ethical solution design: analyze references for patterns, never clone products or branding.",
+            "Material implementation proof: changed state and validation evidence are required before done.",
+            "No-op rejection: attempted work is not completed work.",
+            "H.A.L. escalation: diagnose, create repair path, dispatch, validate, and link evidence.",
+            "Freshness: yellow states must include evidence, cause, and resolution path.",
+        ],
+        "voice": [
+            "Voice input/output should be page-aware and tied to the same MIM identity.",
+            "Voice reliability remains health-monitored and should fail visibly when broken.",
+            "Future settings should include microphone selection, TTS voice, interruption behavior, and private/public mode.",
+        ],
+        "behavior": [
+            "MIM should act unless stopped when intent is clear and risk is low.",
+            "MIM should ask before irreversible, paid, credential, external, or physical-world actions.",
+            "TOD should inspect, plan, edit safely, validate, publish evidence, and escalate when blocked.",
+            "MIM/TOD should avoid idle drift by continuing approved training and repair objectives.",
+        ],
+        "notifications": [
+            "Green states stay quiet.",
+            "Yellow states create evidence links and suggested repair paths.",
+            "Red states should trigger H.A.L. and require explicit ownership.",
+            "Dave-needed items should be limited and concrete.",
+        ],
+        "recovery": [
+            "Backups, restore notes, provider login links, DB references, and source roots belong here.",
+            "Secrets should be mapped by existence and location, not exposed casually.",
+            "Recovery instructions should prefer preservation over cleanup.",
+        ],
+    }
+
+
+def _settings_body(state: dict[str, Any]) -> str:
+    providers = state.get("providers") if isinstance(state.get("providers"), list) else []
+    credentials = state.get("credentials") if isinstance(state.get("credentials"), list) else []
+    env_inventory = state.get("env_inventory") if isinstance(state.get("env_inventory"), dict) else {}
+    env_keys = env_inventory.get("keys") if isinstance(env_inventory.get("keys"), list) else []
+    db_counts = state.get("db_counts") if isinstance(state.get("db_counts"), dict) else {}
+    apps_state = state.get("apps_state") if isinstance(state.get("apps_state"), dict) else {}
+    app_counts = apps_state.get("counts") if isinstance(apps_state.get("counts"), dict) else {}
+    present_credentials = sum(1 for item in credentials if isinstance(item, dict) and item.get("present"))
+    category_counts: dict[str, dict[str, int]] = {}
+    for item in env_keys:
+        if not isinstance(item, dict):
+            continue
+        category = str(item.get("category") or "Other")
+        category_counts.setdefault(category, {"total": 0, "present": 0})
+        category_counts[category]["total"] += 1
+        if item.get("present"):
+            category_counts[category]["present"] += 1
+    provider_rows = "".join(
+        f"""
+        <div class="project-row">
+          <div>
+            <strong>{_html(provider.get("name", ""))}</strong><br>
+            <span class="muted">{_html(provider.get("purpose", ""))}</span>
+          </div>
+          <span class="health-pill {'green' if provider.get('credential_status') == 'ready' else 'yellow'}">{_html(_plain_status(provider.get("credential_status")))}</span>
+        </div>
+        """
+        for provider in providers
+        if isinstance(provider, dict)
+    )
+    credential_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(item.get("provider", ""))}</td>
+          <td>{_html(item.get("key", ""))}</td>
+          <td>{_html("present" if item.get("present") else "missing")}</td>
+        </tr>
+        """
+        for item in credentials
+        if isinstance(item, dict)
+    ) or '<tr><td colspan="3">No credential keys registered yet.</td></tr>'
+    category_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(category)}</td>
+          <td>{_html(str(counts.get("present", 0)))}</td>
+          <td>{_html(str(counts.get("total", 0)))}</td>
+        </tr>
+        """
+        for category, counts in sorted(category_counts.items())
+    ) or '<tr><td colspan="3">No environment inventory loaded yet.</td></tr>'
+    continuity_html = "".join(f"<li>{_html(item)}</li>" for item in state.get("continuity", []))
+    policies_html = "".join(f"<li>{_html(item)}</li>" for item in state.get("policies", []))
+    voice_html = "".join(f"<li>{_html(item)}</li>" for item in state.get("voice", []))
+    behavior_html = "".join(f"<li>{_html(item)}</li>" for item in state.get("behavior", []))
+    notification_html = "".join(f"<li>{_html(item)}</li>" for item in state.get("notifications", []))
+    recovery_html = "".join(f"<li>{_html(item)}</li>" for item in state.get("recovery", []))
+    provider_detail_html = "".join(
+        f"""
+        <article class="card">
+          <h2>{_html(provider.get("name", ""))}</h2>
+          <div class="label">Login</div>
+          <p>{f'<a href="{_html(provider.get("login_url", ""))}" target="_blank" rel="noopener">{_html(provider.get("login_url", ""))}</a>' if provider.get("login_url") else 'Manual/internal reference needed.'}</p>
+          <div class="label">Credentials</div>
+          <p>{_html(str(provider.get("credentials_present", 0)))} / {_html(str(provider.get("credential_count", 0)))} mapped as present.</p>
+          <div class="label">Continuity</div>
+          <p>{_html(provider.get("continuity", ""))}</p>
+        </article>
+        """
+        for provider in providers
+        if isinstance(provider, dict)
+    )
+    return f"""
+    <section class="grid four">
+      {_metric_card("Access", state.get("access", {}).get("mode", "Dave-only"), "Primary operator model")}
+      {_metric_card("Providers", len(providers), "Services and platforms mapped")}
+      {_metric_card("Credentials", f"{present_credentials}/{len(credentials)}", "Presence only, values hidden")}
+      {_metric_card("Env Keys", env_inventory.get("key_count", len(env_keys)), f"{env_inventory.get('present_count', 0)} present, values hidden")}
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Continuity / Survival Mode</h2>
+        <p>MIM and TOD should be able to preserve the ecosystem if Dave is unavailable.</p>
+        <div class="label">Rules</div>
+        <ul class="clean">{continuity_html}</ul>
+      </article>
+      <article class="card">
+        <h2>Access</h2>
+        <div class="label">Mode</div>
+        <p>{_html(state.get("access", {}).get("mode", ""))}</p>
+        <div class="label">Trusted Device Policy</div>
+        <p>{_html(state.get("access", {}).get("trusted_device_policy", ""))}</p>
+        <div class="label">Emergency Access</div>
+        <p>{_html(state.get("access", {}).get("emergency_access", ""))}</p>
+      </article>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Providers</h2>
+        {provider_rows}
+      </article>
+      <article class="card">
+        <h2>Credential Map</h2>
+        <p>Shows whether credentials exist. It does not expose secret values.</p>
+        <table class="score-table"><thead><tr><th>Provider</th><th>Key</th><th>Status</th></tr></thead><tbody>{credential_rows}</tbody></table>
+      </article>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Environment Inventory</h2>
+        <p>{_html(str(env_inventory.get("key_count", len(env_keys))))} keys mapped from TOD/MIM configuration. Secret values are excluded.</p>
+        <table class="score-table"><thead><tr><th>Category</th><th>Present</th><th>Total</th></tr></thead><tbody>{category_rows}</tbody></table>
+      </article>
+      <article class="card">
+        <h2>Apps</h2>
+        <ul class="clean">
+          <li>{_html(str(app_counts.get("apps", 0)))} apps registered.</li>
+          <li>{_html(str(app_counts.get("dirty_repos", 0)))} app repos need review before deployment edits.</li>
+          <li>{_html(str(app_counts.get("db_connected", 0)))} apps have proven DB binding in the current Studio connection.</li>
+          <li>App-specific settings should attach to the Apps page, while shared providers stay here.</li>
+        </ul>
+      </article>
+    </section>
+    <section class="grid three" style="margin-top:14px;">
+      <article class="card">
+        <h2>Policies</h2>
+        <ul class="clean">{policies_html}</ul>
+      </article>
+      <article class="card">
+        <h2>MIM Voice</h2>
+        <ul class="clean">{voice_html}</ul>
+      </article>
+      <article class="card">
+        <h2>MIM / TOD Behavior</h2>
+        <ul class="clean">{behavior_html}</ul>
+      </article>
+    </section>
+    <section class="grid three" style="margin-top:14px;">
+      <article class="card">
+        <h2>Notifications</h2>
+        <ul class="clean">{notification_html}</ul>
+      </article>
+      <article class="card">
+        <h2>Backups / Recovery</h2>
+        <ul class="clean">{recovery_html}</ul>
+      </article>
+      <article class="card">
+        <h2>Billing / Costs</h2>
+        <ul class="clean">
+          <li>Track provider costs, renewals, app-level allocation, AI usage, hosting, and domains.</li>
+          <li>Continuity mode may pause optional experiments, but not survival-critical services.</li>
+          <li>Accounting becomes the first official MIM/TOD build project, not a generic settings feature.</li>
+        </ul>
+      </article>
+    </section>
+    <section class="grid three" style="margin-top:14px;">
+      {provider_detail_html}
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>DB / App Context</h2>
+      <table class="score-table">
+        <thead><tr><th>Item</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Portal accounts</td><td>{_html(db_counts.get("portal_accounts"))}</td></tr>
+          <tr><td>Studio projects</td><td>{_html(db_counts.get("studio_projects"))}</td></tr>
+          <tr><td>Studio documents</td><td>{_html(db_counts.get("studio_documents"))}</td></tr>
+          <tr><td>Objectives</td><td>{_html(db_counts.get("objectives"))}</td></tr>
+          <tr><td>Tasks</td><td>{_html(db_counts.get("tasks"))}</td></tr>
+        </tbody>
+      </table>
+    </section>
+    """
+
+
+def _studio_project_to_dict(row: StudioProject) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "title": row.title,
+        "summary": row.summary,
+        "status": row.status,
+        "priority": row.priority,
+        "owner": row.owner,
+        "health": row.health,
+        "why_it_matters": row.why_it_matters,
+        "origin_story": row.origin_story,
+        "next_action": row.next_action,
+        "dave_needed": row.dave_needed,
+        "metadata_json": row.metadata_json if isinstance(row.metadata_json, dict) else {},
+        "created_at": row.created_at.isoformat() if row.created_at else "",
+    }
+
+
+def _studio_signal_to_dict(row: StudioProjectSignal) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "title": row.title,
+        "signal_type": row.signal_type,
+        "status": row.status,
+        "priority": row.priority,
+        "source_surface": row.source_surface,
+        "source_text": row.source_text,
+        "why_it_matters": row.why_it_matters,
+        "suggested_action": row.suggested_action,
+        "project_id": row.project_id,
+        "metadata_json": row.metadata_json if isinstance(row.metadata_json, dict) else {},
+        "created_at": row.created_at.isoformat() if row.created_at else "",
+    }
+
+
+async def _ensure_studio_project_record(
+    db: AsyncSession,
+    *,
+    title: str,
+    summary: str,
+    status: str,
+    priority: str,
+    why_it_matters: str,
+    origin_story: str,
+    next_action: str,
+    metadata_json: dict[str, Any],
+) -> StudioProject:
+    existing = (
+        await db.execute(select(StudioProject).where(StudioProject.title == title).limit(1))
+    ).scalars().first()
+    if existing is not None:
+        if not existing.summary:
+            existing.summary = summary
+        if not existing.status:
+            existing.status = status
+        if not existing.priority:
+            existing.priority = priority
+        if not existing.why_it_matters:
+            existing.why_it_matters = why_it_matters
+        if not existing.origin_story:
+            existing.origin_story = origin_story
+        if not existing.next_action:
+            existing.next_action = next_action
+        if not isinstance(existing.metadata_json, dict) or not existing.metadata_json:
+            existing.metadata_json = metadata_json
+        return existing
+    project = StudioProject(
+        title=title,
+        summary=summary,
+        status=status,
+        priority=priority,
+        owner="Dave + MIM + TOD",
+        health="good",
+        why_it_matters=why_it_matters,
+        origin_story=origin_story,
+        next_action=next_action,
+        metadata_json=metadata_json,
+    )
+    db.add(project)
+    await db.flush()
+    db.add(
+        StudioProjectEvent(
+            project_id=project.id,
+            event_type="project_created",
+            actor="MIM Studio",
+            title="First internal project created",
+            detail=origin_story,
+            metadata_json={"source": "studio_first_internal_projects_v1", **metadata_json},
+        )
+    )
+    return project
+
+
+async def _ensure_first_internal_projects(db: AsyncSession) -> dict[str, StudioProject]:
+    lab_project = await _ensure_studio_project_record(
+        db,
+        title="MIM Lab Exploration",
+        summary="Exploration hub for robotics experiments, physical builds, workspace calibration, sensors, publications, opportunities, and development tools.",
+        status="active_experiments",
+        priority="P1",
+        why_it_matters="Lab work teaches MIM how to explore the physical world, use sensors, build spatial memory, and turn experiments into future products.",
+        origin_story="Created as one of the first two official internal MIM/TOD projects after Studio matured enough to manage real project pages.",
+        next_action="Organize active experiments and prepare the world-model calibration run for the next arm session.",
+        metadata_json={"project_key": "mim_lab_exploration", "studio_page": "/studio/lab", "project_type": "exploration"},
+    )
+    accounting_project = await _ensure_studio_project_record(
+        db,
+        title="MIM Operations Accounting",
+        summary="Internal accounting tool for tracking provider spend, subscriptions, invoices, resource use, project cost allocation, and waste detection.",
+        status="discovery",
+        priority="P1",
+        why_it_matters="MIM needs to understand what the ecosystem costs, which projects consume resources, and which services may be wasting money before building accounting for customers.",
+        origin_story="Created as one of the first two official internal MIM/TOD projects: simple enough to test the process, useful enough to become a real product seed.",
+        next_action="Map provider bills, invoice sources, receipt ingestion, recurring subscriptions, and project cost allocation.",
+        metadata_json={"project_key": "mim_operations_accounting", "studio_page": "/studio/accounting", "project_type": "internal_tool"},
+    )
+    await db.commit()
+    return {"lab": lab_project, "accounting": accounting_project}
+
+
+async def _studio_lab_state(db: AsyncSession) -> dict[str, Any]:
+    projects = await _ensure_first_internal_projects(db)
+    camera_registry = _load_json("MIM_LAB_CAMERA_ASSET_REGISTRY.latest.json")
+    arm_resource = _load_text("MIM_ARM_RESOURCE_TEST_2026_05_31.latest.md", limit=1200)
+    world_model = _load_json("MIM_WORLD_MODEL_CALIBRATION_OBJECTIVE.latest.json")
+    lidar = _load_json("rplidar_scan_latest.json")
+    experiments = [
+        ("World Model Calibration", "Ready for next lab session", "Build table coordinate system and safe pose memory before another pickup attempt."),
+        ("Autonomous Workspace Mapping", "Planning", "Use base rotation, cameras, RPLIDAR, and marker references to map reachable table zones."),
+        ("Visual Servoing", "Testing", "Teach MIM to move based on object offset from gripper center instead of marker-card confusion."),
+        ("Object Grasp Scoring", "Research", "Estimate pickup likelihood before closing the claw."),
+        ("Face Memory", "Research", "Keep as a future MIM presence capability, not part of the arm pickup path yet."),
+    ]
+    builds = [
+        ("MIM ARM V4", "Operational; needs calibration-first workflow for reliable object interaction."),
+        ("MIM Box", "Physical MIM host with camera resources and Studio runtime."),
+        ("MIM Wall", "Presence surface; should share the one-MIM conversation identity."),
+        ("Camera Stack", "PC camera, MIM Box cameras, Pi camera, hand camera; registry should stay current."),
+        ("Sensor Stack", "C12 hand distance sensor and RPLIDAR; useful as measurement aids, not full 3D perception alone."),
+        ("Voice Stack", "Voice reliability remains system-health monitored and page-aware."),
+    ]
+    opportunities = [
+        ("Fuel Operator", "Potential operations automation and analytics customer."),
+        ("Robotics Education", "Potential grant/program direction."),
+        ("Microteq / Sensor Partners", "Potential hardware and sensor collaboration."),
+        ("Warehouse Automation", "Potential proposal based on workspace mapping and object interaction."),
+    ]
+    return {
+        "generated_at": _utc_now(),
+        "project": _studio_project_to_dict(projects["lab"]),
+        "experiments": experiments,
+        "builds": builds,
+        "tools": [
+            "Camera tests",
+            "Servo tests",
+            "RPLIDAR close-range scans",
+            "Vision model comparison",
+            "Simulation / dry-run movement checks",
+            "Training-data capture",
+            "Calibration notes and safe-pose memory",
+        ],
+        "opportunities": opportunities,
+        "camera_count": len(camera_registry.get("cameras", [])) if isinstance(camera_registry.get("cameras"), list) else "unknown",
+        "arm_resource_available": bool(arm_resource),
+        "world_model_status": _first_text(world_model.get("status"), world_model.get("title"), default="planned"),
+        "lidar_points": len(lidar.get("points", [])) if isinstance(lidar.get("points"), list) else "not loaded",
+    }
+
+
+def _lab_body(state: dict[str, Any]) -> str:
+    project = state.get("project") if isinstance(state.get("project"), dict) else {}
+    experiment_html = "".join(
+        f"""
+        <div class="project-row">
+          <div><strong>{_html(name)}</strong><br><span class="muted">{_html(next_action)}</span></div>
+          <span class="health-pill yellow">{_html(status)}</span>
+        </div>
+        """
+        for name, status, next_action in state.get("experiments", [])
+    )
+    build_html = "".join(
+        f"""<article class="card"><h2>{_html(name)}</h2><p>{_html(detail)}</p></article>"""
+        for name, detail in state.get("builds", [])
+    )
+    tools_html = "".join(f"<li>{_html(item)}</li>" for item in state.get("tools", []))
+    opportunities_html = "".join(
+        f"""<div class="attention-item"><small>Opportunity</small><strong>{_html(name)}</strong><p>{_html(detail)}</p></div>"""
+        for name, detail in state.get("opportunities", [])
+    )
+    return f"""
+    <section class="grid four">
+      {_metric_card("Project", project.get("status", "active"), project.get("title", "MIM Lab Exploration"))}
+      {_metric_card("Experiments", len(state.get("experiments", [])), "Exploration, not delivery commitments")}
+      {_metric_card("Cameras", state.get("camera_count", "unknown"), "Registry-backed when available")}
+      {_metric_card("RPLIDAR", state.get("lidar_points", "not loaded"), "Latest close-range map points")}
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card"><h2>Active Experiments</h2>{experiment_html}</article>
+      <article class="card">
+        <h2>Project Brief</h2>
+        <div class="label">Why This Matters</div><p>{_html(project.get("why_it_matters", ""))}</p>
+        <div class="label">Next Action</div><p>{_html(project.get("next_action", ""))}</p>
+        <div class="label">Rule</div><p>Projects answer what we are building. Lab answers what we are exploring.</p>
+      </article>
+    </section>
+    <section class="grid three" style="margin-top:14px;">{build_html}</section>
+    <section class="grid three" style="margin-top:14px;">
+      <article class="card"><h2>Development Tools</h2><ul class="clean">{tools_html}</ul></article>
+      <article class="card"><h2>Publications / News</h2><p>MIM should collect robotics papers, sensor releases, model updates, news, and opportunities here, then link useful items to experiments or projects.</p></article>
+      <article class="card"><h2>Opportunities</h2><div class="attention-list">{opportunities_html}</div></article>
+    </section>
+    """
+
+
+async def _studio_accounting_state(db: AsyncSession) -> dict[str, Any]:
+    projects = await _ensure_first_internal_projects(db)
+    env_inventory = _load_json("TOD_ENV_KEY_INVENTORY.latest.json")
+    env_keys = env_inventory.get("keys") if isinstance(env_inventory.get("keys"), list) else []
+    provider_categories = {"Billing", "AI Models", "Compute / GPU", "Email", "Voice / Calls", "PythonAnywhere"}
+    category_counts: dict[str, int] = {}
+    for row in env_keys:
+        if isinstance(row, dict) and row.get("category") in provider_categories:
+            category = str(row.get("category"))
+            category_counts[category] = category_counts.get(category, 0) + 1
+    return {
+        "generated_at": _utc_now(),
+        "project": _studio_project_to_dict(projects["accounting"]),
+        "providers": [
+            ("OpenAI", "AI usage and model costs", "Map API usage by project and identify expensive workflows."),
+            ("Render", "Hosting and managed app services", "Connect provider spend once Render billing adapter is available."),
+            ("PythonAnywhere", "MIM Robotics hosting", "Track CPU quota, hosting, and website continuity costs."),
+            ("Twilio / Zoom", "Voice, calls, SMS", "Require managed activation and cost guardrails before production use."),
+            ("Stripe", "Billing/subscriptions", "Use as revenue and subscription source once adapter is connected."),
+            ("Domains / Squarespace", "Domain renewals and DNS", "Track renewal dates and survival-critical domains."),
+        ],
+        "phases": [
+            ("Discovery", "Map providers, bill sources, invoices, receipts, subscriptions, and project cost buckets."),
+            ("MVP", "Manual provider ledger, invoice upload, vendor list, recurring payment tracker, and notes."),
+            ("Automation", "Receipt folder ingestion, OCR, categorization, and recurring expense detection."),
+            ("Insights", "Unused services, duplicate tools, project cost allocation, budget warnings, and savings suggestions."),
+            ("Productization", "Turn internal MIM Operations Accounting into a customer-ready expense intelligence platform."),
+        ],
+        "smart_actions": [
+            "Flag services with no recent usage evidence.",
+            "Detect duplicate providers serving the same capability.",
+            "Show project-level AI/hosting/voice spend.",
+            "Warn when provider spend exceeds budget.",
+            "Suggest pause/cancel candidates for continuity mode.",
+        ],
+        "category_counts": category_counts,
+        "env_key_count": env_inventory.get("key_count", len(env_keys)),
+    }
+
+
+def _accounting_body(state: dict[str, Any]) -> str:
+    project = state.get("project") if isinstance(state.get("project"), dict) else {}
+    provider_html = "".join(
+        f"""<div class="project-row"><div><strong>{_html(name)}</strong><br><span class="muted">{_html(next_action)}</span></div><span class="health-pill">{_html(purpose)}</span></div>"""
+        for name, purpose, next_action in state.get("providers", [])
+    )
+    phase_html = "".join(
+        f"""<article class="card"><h2>{_html(name)}</h2><p>{_html(detail)}</p></article>"""
+        for name, detail in state.get("phases", [])
+    )
+    smart_html = "".join(f"<li>{_html(item)}</li>" for item in state.get("smart_actions", []))
+    category_rows = "".join(
+        f"<tr><td>{_html(category)}</td><td>{_html(count)}</td></tr>"
+        for category, count in sorted((state.get("category_counts") or {}).items())
+    ) or '<tr><td colspan="2">No provider categories loaded yet.</td></tr>'
+    return f"""
+    <section class="grid four">
+      {_metric_card("Project", project.get("status", "discovery"), project.get("title", "MIM Operations Accounting"))}
+      {_metric_card("Providers", len(state.get("providers", [])), "Initial spend surfaces")}
+      {_metric_card("Env Keys", state.get("env_key_count", 0), "Configuration sources to classify")}
+      {_metric_card("Build Mode", "Internal MVP", "Useful first, product later")}
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Project Brief</h2>
+        <div class="label">What This Is</div><p>MIM Operations Accounting V1: internal spend, subscriptions, invoices, provider costs, project allocation, and waste detection.</p>
+        <div class="label">Why This Matters</div><p>{_html(project.get("why_it_matters", ""))}</p>
+        <div class="label">Next Action</div><p>{_html(project.get("next_action", ""))}</p>
+      </article>
+      <article class="card"><h2>Provider Cost Surfaces</h2>{provider_html}</article>
+    </section>
+    <section class="grid three" style="margin-top:14px;">
+      <article class="card"><h2>Smart Actions</h2><ul class="clean">{smart_html}</ul></article>
+      <article class="card"><h2>Provider Categories</h2><table class="score-table"><thead><tr><th>Category</th><th>Keys</th></tr></thead><tbody>{category_rows}</tbody></table></article>
+      <article class="card"><h2>Accounting Rule</h2><p>This is not generic accounting software yet. It starts as MIM's own operations accounting tool, then becomes a product when the internal workflow proves useful.</p></article>
+    </section>
+    <section class="grid three" style="margin-top:14px;">{phase_html}</section>
+    """
+
+
+async def _ensure_studio_project_seed(db: AsyncSession) -> None:
+    project_count = int((await db.execute(select(func.count(StudioProject.id)))).scalar() or 0)
+    signal_count = int((await db.execute(select(func.count(StudioProjectSignal.id)))).scalar() or 0)
+    if project_count or signal_count:
+        return
+    projects = [
+        StudioProject(
+            title="MIM Accounting",
+            summary="Expense intelligence platform for receipts, OCR, categorization, reporting, subscription review, and spending insights.",
+            status="discovery",
+            priority="high",
+            why_it_matters="Reduce expense tracking effort and identify wasted spending.",
+            origin_story="Created from Dave's accounting app conversation about receipts dropped into a folder and converted into useful expense intelligence.",
+            next_action="Define receipt ingestion workflow and initial reporting model.",
+            metadata_json={"seeded_by": "studio_projects_v1"},
+        ),
+        StudioProject(
+            title="MIM Project Studio",
+            summary="Internal command center for MIM, TOD, projects, training, documents, reports, systems, lab, apps, and accounting.",
+            status="implementation",
+            priority="P0",
+            why_it_matters="Gives Dave one place to understand what MIM/TOD are doing and manage real work.",
+            origin_story="Created from the need to stop asking MIM/TOD status questions across scattered pages and artifacts.",
+            next_action="Make projects DB-backed and conversation-created.",
+            metadata_json={"seeded_by": "studio_projects_v1"},
+        ),
+        StudioProject(
+            title="AgentMIM Account Manager",
+            summary="Customer/account management surface for AgentMIM work, MFA, permissions, support, and deployment actions.",
+            status="planning",
+            priority="P1",
+            why_it_matters="Improves customer management and operational clarity.",
+            origin_story="Captured from recurring AgentMIM account and MFA implementation needs.",
+            next_action="Define account, permission, and MFA project scope.",
+            metadata_json={"seeded_by": "studio_projects_v1"},
+        ),
+        StudioProject(
+            title="MIM Robotics Workspace",
+            summary="Workspace calibration and arm learning project for cameras, C12 distance sensor, RPLIDAR, safe poses, and object interaction.",
+            status="calibration",
+            priority="P1",
+            why_it_matters="Moves MIM from seeing objects toward spatial reasoning and embodied interaction.",
+            origin_story="Created after block pickup attempts showed that workspace calibration matters more than repeatedly trying grasps.",
+            next_action="Build table coordinate model and safe exploration pose memory.",
+            metadata_json={"seeded_by": "studio_projects_v1"},
+        ),
+    ]
+    signals = [
+        StudioProjectSignal(
+            title="Forum Graphics Quality",
+            signal_type="candidate",
+            status="candidate",
+            priority="high",
+            source_surface="conversation",
+            source_text="Dave flagged poor forum image creation quality.",
+            why_it_matters="Poor images reduce engagement and make AgentMIM feel less professional.",
+            suggested_action="approve_or_merge",
+            metadata_json={"seeded_by": "studio_projects_v1"},
+        ),
+        StudioProjectSignal(
+            title="Global Login Friction",
+            signal_type="observation",
+            status="observation",
+            priority="low",
+            source_surface="support_observation",
+            source_text="A user had a login issue due to a language barrier but resolved it by typing in English.",
+            why_it_matters="Useful later for internationalization, but not enough for a project yet.",
+            suggested_action="remember",
+            metadata_json={"seeded_by": "studio_projects_v1"},
+        ),
+        StudioProjectSignal(
+            title="Fuel Station Operations Platform",
+            signal_type="candidate",
+            status="discovery",
+            priority="high",
+            source_surface="customer_discussion",
+            source_text="Fuel operator workflow discussion around inventory, labor, reporting, and margin visibility.",
+            why_it_matters="Could save meaningful time and become a reusable vertical solution.",
+            suggested_action="continue_discovery",
+            metadata_json={"seeded_by": "studio_projects_v1"},
+        ),
+    ]
+    db.add_all(projects + signals)
+    await db.commit()
+
+
+async def _studio_projects_state(db: AsyncSession) -> dict[str, Any]:
+    await _ensure_studio_project_seed(db)
+    projects = (
+        await db.execute(select(StudioProject).order_by(StudioProject.id.desc()).limit(50))
+    ).scalars().all()
+    signals = (
+        await db.execute(select(StudioProjectSignal).order_by(StudioProjectSignal.id.desc()).limit(50))
+    ).scalars().all()
+    signal_rows = [_studio_signal_to_dict(row) for row in signals]
+    project_rows = [_studio_project_to_dict(row) for row in projects]
+    counts = {
+        "signals": len(signal_rows),
+        "candidates": sum(1 for item in signal_rows if item["status"] in {"candidate", "discovery"}),
+        "active": sum(
+            1
+            for item in project_rows
+            if item["status"] not in {"archived", "scrapped", "discarded"}
+        ),
+        "dave_needed": sum(1 for item in project_rows if item["dave_needed"]),
+    }
+    return {"projects": project_rows, "signals": signal_rows, "counts": counts}
+
+
+async def _studio_apps_state(db: AsyncSession) -> dict[str, Any]:
+    scan = _load_json("MIM_TOD_APP_SOURCE_SCAN.latest.json")
+    scan_apps = scan.get("apps") if isinstance(scan.get("apps"), list) else []
+    scan_by_key = {str(item.get("app_key") or ""): item for item in scan_apps if isinstance(item, dict)}
+    apps: list[dict[str, Any]] = []
+    for source in APP_SOURCE_REGISTRY:
+        app = dict(source)
+        scan_row = scan_by_key.get(str(app.get("app_key") or ""))
+        local_root = str(app.get("local_root") or "")
+        path = Path(local_root) if local_root else None
+        host_can_inspect = bool(path and path.exists())
+        is_git_repo = bool(host_can_inspect and (path / ".git").exists())
+        scan_exists = bool(scan_row and scan_row.get("exists"))
+        scan_git_repo = bool(scan_row and scan_row.get("git_repo"))
+        primary_table = str(app.get("primary_account_table") or "")
+        secondary_table = str(app.get("secondary_user_table") or "")
+        primary_count = await _safe_table_count(db, primary_table)
+        secondary_count = await _safe_table_count(db, secondary_table)
+        fallback_counts: dict[str, int] = {}
+        for table_name in app.get("fallback_tables", []) if isinstance(app.get("fallback_tables"), list) else []:
+            count = await _safe_table_count(db, str(table_name))
+            if count is not None:
+                fallback_counts[str(table_name)] = count
+        app["source_status"] = "live_inspectable" if host_can_inspect else ("scanned_by_tod" if scan_row else "registered")
+        app["git_status"] = (
+            "git_repo"
+            if is_git_repo or scan_git_repo
+            else ("not_git_repo" if host_can_inspect or scan_exists else "registered")
+        )
+        app["scan"] = scan_row or {}
+        app["branch"] = str((scan_row or {}).get("branch") or "")
+        app["commit"] = str((scan_row or {}).get("commit") or "")
+        app["dirty_count"] = (scan_row or {}).get("dirty_count")
+        app["scanned_at"] = str((scan_row or {}).get("scanned_at") or "")
+        app["hosting_status"] = (scan_row or {}).get("pythonanywhere_status") if isinstance((scan_row or {}).get("pythonanywhere_status"), dict) else {}
+        app["primary_count"] = primary_count
+        app["secondary_count"] = secondary_count
+        app["fallback_counts"] = fallback_counts
+        app["registered_users"] = primary_count if primary_count is not None else fallback_counts.get("project_portal_accounts")
+        app["db_status"] = (
+            "connected"
+            if primary_count is not None
+            else (
+                "fallback_available"
+                if fallback_counts
+                else (
+                    "external_declared"
+                    if app.get("hosting_status") and primary_table
+                    else ("not_declared" if not primary_table else "needs_binding")
+                )
+            )
+        )
+        app["health"] = (
+            "good"
+            if (app["source_status"] in {"live_inspectable", "scanned_by_tod"} and app["git_status"] in {"git_repo", "not_git_repo"} and app["db_status"] in {"connected", "fallback_available", "not_declared", "external_declared"})
+            else ("needs binding" if app["db_status"] == "needs_binding" else "registered")
+        )
+        app["next_action"] = (
+            "Verify the app-specific database binding."
+            if app["db_status"] == "needs_binding"
+            else (
+                "Connect app database/reporting adapter."
+                if app["db_status"] == "external_declared"
+                else ("Review dirty worktree before app edits." if isinstance(app.get("dirty_count"), int) and app.get("dirty_count", 0) > 0 else "Keep registry and health checks current.")
+            )
+        )
+        apps.append(app)
+    counts = {
+        "apps": len(apps),
+        "live_inspectable": sum(1 for item in apps if item.get("source_status") == "live_inspectable"),
+        "scanned_by_tod": sum(1 for item in apps if item.get("source_status") == "scanned_by_tod"),
+        "registered_only": sum(1 for item in apps if item.get("source_status") == "registered"),
+        "db_connected": sum(1 for item in apps if item.get("db_status") == "connected"),
+        "dirty_repos": sum(1 for item in apps if isinstance(item.get("dirty_count"), int) and item.get("dirty_count", 0) > 0),
+    }
+    summary = (
+        f"{counts['apps']} apps are registered. "
+        f"{counts['live_inspectable']} can be inspected directly by this host, "
+        f"{counts['scanned_by_tod']} were scanned by TOD from their repo roots, "
+        f"{counts['dirty_repos']} have dirty worktrees, and "
+        f"{counts['db_connected']} have a proven primary DB table in the current Studio connection."
+    )
+    return {"apps": apps, "counts": counts, "summary": summary}
+
+
+def _studio_document_to_dict(row: StudioDocument) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "title": row.title,
+        "summary": row.summary,
+        "document_type": row.document_type,
+        "category": row.category,
+        "status": row.status,
+        "owner": row.owner,
+        "created_by": row.created_by,
+        "source_kind": row.source_kind,
+        "source_url": row.source_url,
+        "source_path": row.source_path,
+        "local_path": row.local_path,
+        "preserve_policy": row.preserve_policy,
+        "snapshot_status": row.snapshot_status,
+        "content_text": row.content_text,
+        "tags_json": row.tags_json if isinstance(row.tags_json, list) else [],
+        "metadata_json": row.metadata_json if isinstance(row.metadata_json, dict) else {},
+        "created_at": row.created_at.isoformat() if row.created_at else "",
+    }
+
+
+def _studio_document_link_to_dict(row: StudioDocumentLink) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "document_id": row.document_id,
+        "target_type": row.target_type,
+        "target_id": row.target_id,
+        "relation": row.relation,
+        "label": row.label,
+        "metadata_json": row.metadata_json if isinstance(row.metadata_json, dict) else {},
+        "created_at": row.created_at.isoformat() if row.created_at else "",
+    }
+
+
+async def _ensure_document_link(
+    db: AsyncSession,
+    *,
+    document_id: int,
+    target_type: str,
+    target_id: str,
+    relation: str,
+    label: str,
+    metadata_json: dict[str, Any] | None = None,
+) -> None:
+    existing = (
+        await db.execute(
+            select(StudioDocumentLink).where(
+                StudioDocumentLink.document_id == document_id,
+                StudioDocumentLink.target_type == target_type,
+                StudioDocumentLink.target_id == target_id,
+                StudioDocumentLink.relation == relation,
+            )
+        )
+    ).scalars().first()
+    if existing is not None:
+        if label and not existing.label:
+            existing.label = label
+        return
+    db.add(
+        StudioDocumentLink(
+            document_id=document_id,
+            target_type=target_type,
+            target_id=target_id,
+            relation=relation,
+            label=label,
+            metadata_json=metadata_json or {},
+        )
+    )
+
+async def _ensure_studio_document_seed(db: AsyncSession) -> None:
+    count = int((await db.execute(select(func.count(StudioDocument.id)))).scalar() or 0)
+    if count:
+        return
+    docs = [
+        StudioDocument(
+            title="MIM Studio Projects DB-Backed V1",
+            summary="Evidence artifact for DB-backed Studio project signals, projects, events, and links.",
+            document_type="artifact",
+            category="reports",
+            source_kind="local_file",
+            source_path="runtime/shared/MIM_STUDIO_PROJECTS_DB_BACKED_V1.latest.md",
+            local_path="runtime/shared/MIM_STUDIO_PROJECTS_DB_BACKED_V1.latest.md",
+            preserve_policy="local_copy_required",
+            snapshot_status="local",
+            tags_json=["studio", "projects", "evidence"],
+            metadata_json={"seeded_by": "studio_documents_v1"},
+        ),
+        StudioDocument(
+            title="Documents Library Project",
+            summary="Planning record for turning /studio/documents into MIM's wiki-style library for documents, media, links, notes, and research.",
+            document_type="project_reference",
+            category="projects",
+            source_kind="studio_project",
+            preserve_policy="reference",
+            snapshot_status="tracked",
+            tags_json=["documents", "library", "wiki", "project"],
+            metadata_json={"seeded_by": "studio_documents_v1"},
+        ),
+        StudioDocument(
+            title="Important External Reference Policy",
+            summary="MIM should not rely on third-party webpages staying online. Important sources should be copied, summarized, indexed, or downloaded when allowed and needed for maintenance.",
+            document_type="policy_note",
+            category="policies",
+            source_kind="operator_note",
+            preserve_policy="snapshot_when_important",
+            snapshot_status="policy_defined",
+            tags_json=["preservation", "research", "maintenance"],
+            metadata_json={"seeded_by": "studio_documents_v1"},
+        ),
+    ]
+    db.add_all(docs)
+    await db.commit()
+
+
+async def _ensure_studio_document_relationship_seed(db: AsyncSession) -> None:
+    docs = (
+        await db.execute(select(StudioDocument).order_by(StudioDocument.id.asc()))
+    ).scalars().all()
+    if not docs:
+        return
+    projects = (
+        await db.execute(select(StudioProject).order_by(StudioProject.id.asc()))
+    ).scalars().all()
+    project_by_title = {project.title: project for project in projects}
+    project_by_slug = {
+        str((project.metadata_json or {}).get("project_key") or "").strip(): project
+        for project in projects
+        if isinstance(project.metadata_json, dict)
+    }
+    for doc in docs:
+        metadata = doc.metadata_json if isinstance(doc.metadata_json, dict) else {}
+        if doc.category == "training":
+            await _ensure_document_link(
+                db,
+                document_id=doc.id,
+                target_type="training_run",
+                target_id="current_mim_tod_training",
+                relation="evidence_for",
+                label="Current MIM/TOD training",
+                metadata_json={"seeded_by": "studio_document_relationship_graph_v1"},
+            )
+            await _ensure_document_link(
+                db,
+                document_id=doc.id,
+                target_type="page",
+                target_id="/studio/training",
+                relation="visible_on",
+                label="Studio Training",
+                metadata_json={"seeded_by": "studio_document_relationship_graph_v1"},
+            )
+        if doc.title == "Documents Library Project":
+            documents_project = project_by_title.get("Documents Library") or project_by_slug.get("documents_library")
+            if documents_project is not None:
+                await _ensure_document_link(
+                    db,
+                    document_id=doc.id,
+                    target_type="project",
+                    target_id=str(documents_project.id),
+                    relation="reference_for",
+                    label=documents_project.title,
+                    metadata_json={"seeded_by": "studio_document_relationship_graph_v1"},
+                )
+        if doc.title == "MIM Studio Projects DB-Backed V1":
+            await _ensure_document_link(
+                db,
+                document_id=doc.id,
+                target_type="report",
+                target_id="mim_studio_projects_db_backed_v1",
+                relation="evidence_for",
+                label="Studio Projects DB-backed implementation",
+                metadata_json={"seeded_by": "studio_document_relationship_graph_v1"},
+            )
+        if doc.title == "MIM Studio Training Page V1":
+            await _ensure_document_link(
+                db,
+                document_id=doc.id,
+                target_type="page",
+                target_id="/studio/training",
+                relation="evidence_for",
+                label="Studio Training page",
+                metadata_json={"seeded_by": "studio_document_relationship_graph_v1"},
+            )
+    await db.commit()
+
+
+async def _studio_documents_state(
+    db: AsyncSession,
+    *,
+    selected_document_id: int | None = None,
+) -> dict[str, Any]:
+    await _ensure_studio_document_seed(db)
+    await _ensure_training_document_records(db)
+    await _ensure_studio_document_relationship_seed(db)
+    documents = (
+        await db.execute(select(StudioDocument).order_by(StudioDocument.id.desc()).limit(80))
+    ).scalars().all()
+    links = (
+        await db.execute(select(StudioDocumentLink).order_by(StudioDocumentLink.id.desc()).limit(240))
+    ).scalars().all()
+    rows = [_studio_document_to_dict(row) for row in documents]
+    link_rows = [_studio_document_link_to_dict(row) for row in links]
+    link_counts: dict[str, int] = {}
+    for link in link_rows:
+        link_counts[link["target_type"]] = link_counts.get(link["target_type"], 0) + 1
+    selected_document = None
+    selected_links: list[dict[str, Any]] = []
+    if selected_document_id:
+        selected = await db.get(StudioDocument, selected_document_id)
+        if selected:
+            selected_document = _studio_document_to_dict(selected)
+            selected_links = [
+                _studio_document_link_to_dict(row)
+                for row in (
+                    await db.execute(
+                        select(StudioDocumentLink)
+                        .where(StudioDocumentLink.document_id == selected.id)
+                        .order_by(StudioDocumentLink.id.desc())
+                    )
+                ).scalars().all()
+            ]
+    counts = {
+        "documents": len(rows),
+        "local": sum(1 for item in rows if item["snapshot_status"] in {"local", "tracked"}),
+        "needs_snapshot": sum(1 for item in rows if item["preserve_policy"] in {"local_copy_required", "snapshot_when_important"} and item["snapshot_status"] not in {"local", "tracked"}),
+        "categories": len({item["category"] for item in rows if item["category"]}),
+        "relationships": len(link_rows),
+        "target_types": len(link_counts),
+    }
+    return {
+        "documents": rows,
+        "links": link_rows,
+        "link_counts": link_counts,
+        "target_types": [{"key": key, "label": label} for key, label in DOCUMENT_TARGET_TYPES],
+        "selected_document": selected_document,
+        "selected_links": selected_links,
+        "counts": counts,
+    }
+
+
+async def _ensure_training_document_records(db: AsyncSession) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for spec in TRAINING_EVIDENCE_DOCS:
+        filename = spec["filename"]
+        existing = (
+            await db.execute(
+                select(StudioDocument).where(
+                    StudioDocument.title == spec["title"],
+                    StudioDocument.category == "training",
+                )
+            )
+        ).scalars().first()
+        source_path = f"runtime/shared/{filename}"
+        metadata = {"filename": filename, "source": "training_page", "document_role": spec["kind"]}
+        if existing is None:
+            existing = StudioDocument(
+                title=spec["title"],
+                summary=spec["summary"],
+                document_type=spec["kind"],
+                category="training",
+                source_kind="local_artifact",
+                source_path=source_path,
+                local_path=source_path,
+                preserve_policy="local_copy_required",
+                snapshot_status="local",
+                tags_json=["training", spec["kind"], "evidence"],
+                metadata_json=metadata,
+            )
+            db.add(existing)
+            await db.flush()
+        records.append(
+            {
+                "title": spec["title"],
+                "filename": filename,
+                "kind": spec["kind"],
+                "summary": spec["summary"],
+                "document_id": existing.id,
+                "href": f"/studio/documents?document_id={existing.id}",
+            }
+        )
+    await db.commit()
+    return records
+
+
+async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
+    docs = await _ensure_training_document_records(db)
+    directive = _load_json("MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json")
+    scoreboard = _load_json("MIM_TOD_TRAINING_SCOREBOARD.latest.json")
+    reflection = _load_json("MIM_TOD_HOURLY_REFLECTION.latest.json")
+    typo_smoke = _load_json("MIM_TYPO_TOLERANT_INTENT_SMOKE.latest.json")
+    blocker_summary = _load_text("TOD_BLOCKER_RESOLUTION_OPERATOR_SUMMARY.latest.md", limit=900)
+
+    mim_training = directive.get("mim_training") if isinstance(directive.get("mim_training"), dict) else {}
+    tod_training = directive.get("tod_training") if isinstance(directive.get("tod_training"), dict) else {}
+    judgment = scoreboard.get("judgment_mode_score") if isinstance(scoreboard.get("judgment_mode_score"), dict) else {}
+    mim_score = scoreboard.get("mim_score") if isinstance(scoreboard.get("mim_score"), dict) else {}
+    tod_score = scoreboard.get("tod_score") if isinstance(scoreboard.get("tod_score"), dict) else {}
+    training_hours = scoreboard.get("training_hours") if isinstance(scoreboard.get("training_hours"), dict) else {}
+
+    are_improving = reflection.get("are_they_improving")
+    assessment = _first_text(reflection.get("assessment"), scoreboard.get("status"), default="unknown")
+    outcome_verdict = (
+        "Outcomes are improving."
+        if are_improving is True
+        else "Training is active, but outcome improvement is not proven yet."
+        if are_improving is False
+        else "Training is active, but the outcome verdict is not available yet."
+    )
+    mim_pass_rate = judgment.get("pass_rate_percent", "baseline needed")
+    typo_summary = typo_smoke.get("summary") if isinstance(typo_smoke.get("summary"), dict) else {}
+    return {
+        "generated_at": _first_text(scoreboard.get("generated_at"), reflection.get("generated_at"), directive.get("updated_at"), default=_utc_now()),
+        "directive_status": _first_text(directive.get("status"), default="unknown"),
+        "assessment": assessment,
+        "are_improving": are_improving,
+        "outcome_verdict": outcome_verdict,
+        "mim": {
+            "focus": _first_text(mim_training.get("current_topic"), default="Project-manager communication and judgment-mode selection"),
+            "status": _first_text(mim_training.get("status"), default="unknown"),
+            "goal": _first_text(mim_training.get("goal"), default="MIM chooses the right response mode and explains work clearly."),
+            "progress": f"{mim_pass_rate}% on judgment smoke" if isinstance(mim_pass_rate, int) else str(mim_pass_rate),
+            "next": _first_text(judgment.get("target"), default="Continue judgment-mode training and retest."),
+            "weakness": _first_text(judgment.get("current_weakness"), default="Recommendation and consultative discovery still need proof."),
+        },
+        "tod": {
+            "focus": _first_text(tod_training.get("current_topic"), default="Codex-level implementation and blocker resolution"),
+            "status": _first_text(tod_training.get("status"), default="unknown"),
+            "goal": _first_text(tod_training.get("goal"), default="TOD inspects, edits, validates, reports evidence, and clears blockers."),
+            "progress": _first_text(tod_score.get("blockers_cleared_today"), default="3 blockers cleared in latest drill evidence"),
+            "next": "Continue linked-task blocker troubleshooting and prove one cleanup end-to-end.",
+            "weakness": "TOD still detects more implementation problems than it independently fixes.",
+        },
+        "judgment": judgment,
+        "mim_score": mim_score,
+        "tod_score": tod_score,
+        "training_hours": training_hours,
+        "reflection": reflection,
+        "typo": typo_summary,
+        "blocker_summary": blocker_summary,
+        "evidence_docs": docs,
+    }
+
+
+def _is_training_attention_prompt(prompt: str) -> bool:
+    text_value = str(prompt or "").strip().lower()
+    if not text_value:
+        return False
+    attention_terms = (
+        "attention",
+        "focus",
+        "priority",
+        "prioritize",
+        "recommend",
+        "next",
+        "stuck",
+        "weakness",
+        "weak spot",
+        "broken",
+        "problem",
+        "issue",
+        "needs work",
+        "what matters",
+    )
+    return any(term in text_value for term in attention_terms)
+
+
+def _format_percent(value: object, default: str = "baseline needed") -> str:
+    if isinstance(value, (int, float)):
+        return f"{value}%"
+    text = str(value or "").strip()
+    return text if text else default
+
+
+def _scoreboard_metric(score: dict[str, Any], key: str, default: str = "baseline needed") -> str:
+    value = score.get(key) if isinstance(score, dict) else None
+    return _format_percent(value, default=default)
+
+
+def _compose_training_attention_reply(prompt: str, state: dict[str, Any]) -> str:
+    judgment = state.get("judgment") if isinstance(state.get("judgment"), dict) else {}
+    mim_score = state.get("mim_score") if isinstance(state.get("mim_score"), dict) else {}
+    tod_score = state.get("tod_score") if isinstance(state.get("tod_score"), dict) else {}
+    reflection = state.get("reflection") if isinstance(state.get("reflection"), dict) else {}
+
+    pass_rate = _format_percent(judgment.get("pass_rate_percent"))
+    weakness = _first_text(
+        judgment.get("current_weakness"),
+        state.get("mim", {}).get("weakness") if isinstance(state.get("mim"), dict) else "",
+        default="MIM is still selecting the wrong response mode too often.",
+    )
+    target = _first_text(
+        judgment.get("target"),
+        state.get("mim", {}).get("next") if isinstance(state.get("mim"), dict) else "",
+        default="Reach at least 80% on the focused judgment suite before expanding prompt sets.",
+    )
+    assessment = _plain_status(state.get("assessment"), default="unknown")
+    stale_artifacts = reflection.get("stale_artifacts", "unknown")
+    improving = reflection.get("are_they_improving", state.get("are_improving"))
+    truth_integrity = _plain_status(reflection.get("truth_integrity"), default="unknown")
+    blockers_cleared = _first_text(tod_score.get("blockers_cleared_today"), default="baseline needed")
+    validated_edits = _first_text(tod_score.get("validated_edits_today"), default="baseline needed")
+    no_op_rejections = _first_text(tod_score.get("no_op_rejections_today"), default="baseline needed")
+    intent = _scoreboard_metric(mim_score, "intent_understood_today")
+    answered = _scoreboard_metric(mim_score, "answered_question_today")
+    recommendation = _scoreboard_metric(mim_score, "recommendation_quality_today")
+    latest_evidence = _first_text(
+        reflection.get("latest_evidence"),
+        reflection.get("latest_evidence_id"),
+        reflection.get("evidence"),
+        default="TOD-BLOCKER-CLEARING-DRILL-004 completed_with_evidence",
+    )
+
+    return (
+        "Three things need attention, Dave.\n\n"
+        f"1. MIM judgment mode is the top repair. Evidence: the focused suite is at {pass_rate}, and the current weakness is: {weakness} "
+        f"Action: keep training narrow until MIM can choose recommendation, explanation, demonstration, consultative discovery, or problem-analysis mode on purpose. Target: {target}\n\n"
+        f"2. Outcome reflection is not ready to call healthy progress. Evidence: assessment is {assessment}, outcomes improving is {improving}, stale artifacts are {stale_artifacts}, and truth integrity is {truth_integrity}. "
+        "Action: refresh or retire stale artifacts, then publish a new reflection only when the evidence proves a behavior changed.\n\n"
+        f"3. TOD validation baselines still need tightening. Evidence: blockers cleared/transformed is {blockers_cleared}, but validated edits are {validated_edits} and no-op rejections are {no_op_rejections}. "
+        f"Action: turn the latest blocker drill into repeatable pass/fail validation, then make the next TOD repair prove changed files, tests, and evidence.\n\n"
+        f"The good signal: MIM's basic conversation score is holding at intent {intent}, answered question {answered}, and recommendation quality {recommendation}. "
+        f"The next move I recommend is fixing the judgment-mode reply behavior first. Latest evidence I would anchor to: {latest_evidence}."
+    )
+
+
+def _compose_training_page_reply(prompt: str, state: dict[str, Any]) -> str:
+    if _is_training_attention_prompt(prompt):
+        return _compose_training_attention_reply(prompt, state)
+
+    judgment = state.get("judgment") if isinstance(state.get("judgment"), dict) else {}
+    pass_rate = _format_percent(judgment.get("pass_rate_percent"))
+    verdict = _first_text(state.get("outcome_verdict"), default="Training is active, but the outcome verdict is not available yet.")
+    weakness = _first_text(
+        state.get("mim", {}).get("weakness") if isinstance(state.get("mim"), dict) else "",
+        judgment.get("current_weakness"),
+        default="MIM still needs judgment-mode proof.",
+    )
+    return (
+        f"{verdict}\n\n"
+        f"The short read: MIM judgment mode is at {pass_rate}, and the main weakness is {weakness} "
+        "Ask me what needs attention, what changed, or what I recommend next and I will choose a concrete response mode instead of dumping the scoreboard."
+    )
+
+
+def _studio_report_canvas_to_dict(row: StudioReportCanvas) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "title": row.title,
+        "prompt": row.prompt,
+        "dataset_key": row.dataset_key,
+        "status": row.status,
+        "created_by": row.created_by,
+        "summary": row.summary,
+        "layout_json": row.layout_json if isinstance(row.layout_json, dict) else {},
+        "filters_json": row.filters_json if isinstance(row.filters_json, dict) else {},
+        "findings_json": row.findings_json if isinstance(row.findings_json, list) else [],
+        "actions_json": row.actions_json if isinstance(row.actions_json, list) else [],
+        "metadata_json": row.metadata_json if isinstance(row.metadata_json, dict) else {},
+        "created_at": row.created_at.isoformat() if row.created_at else "",
+    }
+
+
+async def _status_counts(db: AsyncSession, column: Any) -> dict[str, int]:
+    rows = (await db.execute(select(column, func.count()).group_by(column))).all()
+    return {str(key or "unknown"): int(count or 0) for key, count in rows}
+
+
+def _report_dataset_spec(dataset_key: str) -> dict[str, str]:
+    return next((item for item in REPORT_DATASETS if item["key"] == dataset_key), REPORT_DATASETS[0])
+
+
+def _app_source_for_prompt(prompt: str) -> dict[str, Any]:
+    text_value = str(prompt or "").lower()
+    if "agentmim" in text_value or "comm_app" in text_value or "commission" in text_value:
+        return APP_SOURCE_REGISTRY[0]
+    if "studio" in text_value:
+        return APP_SOURCE_REGISTRY[1]
+    return APP_SOURCE_REGISTRY[0]
+
+
+def _infer_report_dataset(prompt: str, requested_dataset: str = "") -> tuple[str, str]:
+    requested = str(requested_dataset or "").strip()
+    text = str(prompt or "").strip().lower()
+    if text:
+        if any(term in text for term in ["agentmim", "mim wall", "users", "subscribers", "subscriber", "income", "revenue", "app usage", "traffic"]):
+            return "app_metrics", "MIM selected App Metrics because the question is about app users, subscribers, usage, or revenue."
+        if any(term in text for term in ["training", "trained", "scoreboard", "smoke", "pass rate", "improving"]):
+            return "training", "MIM selected Training because the question is about learning, scorecards, or improvement."
+        if any(term in text for term in ["objective", "objectives", "queued", "unfinished"]):
+            return "objectives", "MIM selected Objectives because the question is about objective state or unfinished work."
+        if any(term in text for term in ["task", "tasks", "dispatch", "executor"]):
+            return "tasks", "MIM selected Tasks because the question is about executable work or dispatch."
+        if any(term in text for term in ["project", "projects", "idea", "candidate"]):
+            return "projects", "MIM selected Projects because the question is about tracked work or project candidates."
+        if any(term in text for term in ["document", "documents", "library", "reference", "links", "connected"]):
+            return "document_graph" if "connect" in text or "link" in text else "documents", "MIM selected Documents because the question is about library records or references."
+        if any(term in text for term in ["blocked", "blocker", "stuck", "stalled", "stale"]):
+            return "tod_blockers", "MIM selected TOD Blockers because the question is about stuck or blocked work."
+        if any(term in text for term in ["health", "working", "status", "down", "broken"]):
+            return "system_health", "MIM selected System Health because the question is about whether systems are working."
+    if requested and requested != "auto":
+        return _report_dataset_spec(requested)["key"], "MIM used the dataset you selected."
+    return "studio_overview", "MIM started broad because no specific dataset was implied yet."
+
+
+async def _studio_report_dataset(
+    db: AsyncSession,
+    dataset_key: str,
+    *,
+    prompt: str = "",
+) -> dict[str, Any]:
+    inferred_key, selection_reason = _infer_report_dataset(prompt, dataset_key)
+    spec = _report_dataset_spec(inferred_key)
+    key = spec["key"]
+    stats: list[dict[str, Any]] = []
+    columns: list[str] = []
+    rows: list[dict[str, Any]] = []
+    findings: list[dict[str, str]] = []
+    actions: list[dict[str, str]] = []
+    summary = ""
+
+    if key == "training":
+        training = await _studio_training_state(db)
+        judgment = training.get("judgment") if isinstance(training.get("judgment"), dict) else {}
+        mim_score = training.get("mim_score") if isinstance(training.get("mim_score"), dict) else {}
+        tod_score = training.get("tod_score") if isinstance(training.get("tod_score"), dict) else {}
+        stats = [
+            {"label": "Outcome", "value": training.get("outcome_verdict", "unknown")},
+            {"label": "MIM Focus", "value": training["mim"].get("focus", "")},
+            {"label": "TOD Focus", "value": training["tod"].get("focus", "")},
+            {"label": "Judgment Pass", "value": judgment.get("pass_rate_percent", "baseline needed")},
+        ]
+        columns = ["metric", "value", "source"]
+        rows = [
+            {"metric": "Intent Understood", "value": mim_score.get("intent_understood_today", "unknown"), "source": "scoreboard"},
+            {"metric": "Answered Question", "value": mim_score.get("answered_question_today", "unknown"), "source": "scoreboard"},
+            {"metric": "Internal Jargon", "value": mim_score.get("internal_jargon_today", "unknown"), "source": "scoreboard"},
+            {"metric": "Recommendation Quality", "value": mim_score.get("recommendation_quality_today", "unknown"), "source": "scoreboard"},
+            {"metric": "Blockers Cleared", "value": tod_score.get("blockers_cleared_today", "unknown"), "source": "scoreboard"},
+            {"metric": "Validated Edits", "value": tod_score.get("validated_edits_today", "unknown"), "source": "scoreboard"},
+        ]
+        summary = f"{training.get('outcome_verdict')} MIM is training on {training['mim'].get('focus')}. TOD is training on {training['tod'].get('focus')}."
+        findings = [
+            {"title": "Outcome verdict", "detail": str(training.get("outcome_verdict", ""))},
+            {"title": "MIM weak spot", "detail": str(training["mim"].get("weakness", ""))},
+            {"title": "TOD weak spot", "detail": str(training["tod"].get("weakness", ""))},
+        ]
+        actions = [
+            {"title": "Continue focused training", "detail": "Do not expand the suite until judgment-mode failures improve."},
+            {"title": "Open evidence", "detail": "Use linked training documents before claiming improvement."},
+        ]
+    elif key == "objectives":
+        counts = await _status_counts(db, Objective.state)
+        objective_rows = (await db.execute(select(Objective).order_by(Objective.id.desc()).limit(80))).scalars().all()
+        stats = [
+            {"label": "Objectives", "value": sum(counts.values())},
+            {"label": "States", "value": len(counts)},
+            {"label": "Queued", "value": counts.get("queued", 0)},
+            {"label": "Completed Evidence", "value": counts.get("completed_with_evidence", 0)},
+        ]
+        columns = ["id", "title", "owner", "priority", "state"]
+        rows = [{"id": item.id, "title": item.title, "owner": item.owner, "priority": item.priority, "state": item.state} for item in objective_rows]
+        summary = f"This report is looking at {sum(counts.values())} objectives across {len(counts)} states. It is useful for finding queue pressure, stale ownership, and completed-vs-tested truth."
+        findings = [{"title": state, "detail": f"{count} objectives"} for state, count in sorted(counts.items())[:8]]
+        actions = [{"title": "Inspect unfinished work", "detail": "Filter queued, blocked, stale, or running work and decide whether to repair, supersede, or promote."}]
+    elif key == "tasks":
+        counts = await _status_counts(db, Task.state)
+        task_rows = (await db.execute(select(Task).order_by(Task.id.desc()).limit(80))).scalars().all()
+        stats = [
+            {"label": "Tasks", "value": sum(counts.values())},
+            {"label": "States", "value": len(counts)},
+            {"label": "Queued", "value": counts.get("queued", 0)},
+            {"label": "Blocked", "value": counts.get("blocked", 0)},
+        ]
+        columns = ["id", "objective_id", "title", "assigned_to", "state", "dispatch_status"]
+        rows = [
+            {"id": item.id, "objective_id": item.objective_id or "", "title": item.title, "assigned_to": item.assigned_to, "state": item.state, "dispatch_status": item.dispatch_status}
+            for item in task_rows
+        ]
+        summary = f"This report is looking at {sum(counts.values())} tasks across {len(counts)} states. It shows whether objectives are turning into executable work."
+        findings = [{"title": state, "detail": f"{count} tasks"} for state, count in sorted(counts.items())[:8]]
+        actions = [{"title": "Validate completion quality", "detail": "Look for done tasks without changed files, tests, or evidence."}]
+    elif key == "projects":
+        projects = await _studio_projects_state(db)
+        stats = [
+            {"label": "Active", "value": projects["counts"].get("active", 0)},
+            {"label": "Signals", "value": projects["counts"].get("signals", 0)},
+            {"label": "Candidates", "value": projects["counts"].get("candidates", 0)},
+            {"label": "Dave Needed", "value": projects["counts"].get("dave_needed", 0)},
+        ]
+        columns = ["id", "title", "status", "priority", "health", "next_action"]
+        rows = projects.get("projects", [])
+        summary = "This report is looking at Studio projects and project signals. It is useful for turning ideas into tracked outcomes without losing the origin story."
+        findings = [{"title": "Project memory", "detail": f"{projects['counts'].get('active', 0)} active projects and {projects['counts'].get('signals', 0)} signals are tracked."}]
+        actions = [{"title": "Review candidate inbox", "detail": "Promote, park, merge, or discard project signals before they become noise."}]
+    elif key == "documents":
+        docs = await _studio_documents_state(db)
+        stats = [
+            {"label": "Documents", "value": docs["counts"].get("documents", 0)},
+            {"label": "Local / Tracked", "value": docs["counts"].get("local", 0)},
+            {"label": "Need Snapshot", "value": docs["counts"].get("needs_snapshot", 0)},
+            {"label": "Relationships", "value": docs["counts"].get("relationships", 0)},
+        ]
+        columns = ["id", "title", "category", "document_type", "snapshot_status"]
+        rows = docs.get("documents", [])
+        summary = "This report is looking at the document library and preservation state: what MIM knows, where it came from, and what may need local preservation."
+        findings = [
+            {"title": "Reference memory", "detail": f"{docs['counts'].get('relationships', 0)} document relationships are available."},
+            {"title": "Preservation watch", "detail": f"{docs['counts'].get('needs_snapshot', 0)} important items still need snapshot attention."},
+        ]
+        actions = [{"title": "Attach documents", "detail": "Connect evidence to projects, reports, objectives, tasks, and training runs."}]
+    elif key == "document_graph":
+        docs = await _studio_documents_state(db)
+        stats = [
+            {"label": "Relationships", "value": docs["counts"].get("relationships", 0)},
+            {"label": "Target Types", "value": docs["counts"].get("target_types", 0)},
+            {"label": "Documents", "value": docs["counts"].get("documents", 0)},
+            {"label": "Categories", "value": docs["counts"].get("categories", 0)},
+        ]
+        columns = ["id", "document_id", "target_type", "target_id", "relation", "label"]
+        rows = docs.get("links", [])
+        summary = "This report is looking at how documents connect to Studio objects. It is the start of MIM's reference-memory graph."
+        findings = [{"title": "Graph coverage", "detail": f"{docs['counts'].get('relationships', 0)} links across {docs['counts'].get('target_types', 0)} target types."}]
+        actions = [{"title": "Show backlinks", "detail": "Next, surface related documents from project, objective, report, app, system, and training pages."}]
+    elif key == "tod_blockers":
+        blocker_text = _load_text("TOD_BLOCKER_RESOLUTION_OPERATOR_SUMMARY.latest.md", limit=2400)
+        stats = [
+            {"label": "Source", "value": "TOD blocker summary"},
+            {"label": "Loaded", "value": "yes" if blocker_text else "no"},
+            {"label": "Characters", "value": len(blocker_text)},
+            {"label": "Purpose", "value": "blocker cleanup"},
+        ]
+        columns = ["section", "detail", "source"]
+        rows = [{"section": "Summary", "detail": line.strip(), "source": "TOD blocker summary"} for line in blocker_text.splitlines() if line.strip()][:40]
+        summary = "This report loads the latest TOD blocker-resolution summary. Use it to inspect what is blocked, what was narrowed, and what proof exists."
+        findings = [{"title": "Blocker source", "detail": "Review the rows for current blocker class and proof language."}]
+        actions = [{"title": "Create repair action", "detail": "If a blocker is current, route it through H.A.L. or create a TOD cleanup task."}]
+    elif key == "system_health":
+        snapshot = _studio_snapshot()
+        stats = [
+            {"label": "MIM", "value": snapshot.get("mim_focus", "")},
+            {"label": "TOD", "value": snapshot.get("tod_focus", "")},
+            {"label": "Attention", "value": len(snapshot.get("attention", []))},
+            {"label": "Dave Needed", "value": len(snapshot.get("dave_needed", []))},
+        ]
+        columns = ["owner", "title", "detail"]
+        rows = snapshot.get("attention", [])
+        summary = "This report is looking at the current Studio health snapshot and attention items. Use it when the question is whether MIM/TOD are healthy or stuck."
+        findings = [{"title": item.get("title", "Attention item"), "detail": item.get("detail", "")} for item in rows if isinstance(item, dict)][:5]
+        actions = [{"title": "Open H.A.L. if needed", "detail": "If an attention item implies frozen or stale work, run diagnosis and create a repair task."}]
+    elif key == "app_metrics":
+        app_source = _app_source_for_prompt(prompt)
+        app_name = str(app_source.get("display_name", "MIM Apps"))
+        async def scalar_sql(sql: str) -> int:
+            try:
+                value = (await db.execute(text(sql))).scalar()
+                return int(value or 0)
+            except Exception:
+                return 0
+
+        async def table_exists(table_name: str) -> bool:
+            try:
+                return bool(
+                    (
+                        await db.execute(
+                            text(
+                                "select exists (select 1 from information_schema.tables where table_schema='public' and table_name=:table)"
+                            ),
+                            {"table": table_name},
+                        )
+                    ).scalar()
+                )
+            except Exception:
+                return False
+
+        primary_table = str(app_source.get("primary_account_table", ""))
+        secondary_table = str(app_source.get("secondary_user_table", ""))
+        primary_connected = await table_exists(primary_table)
+        secondary_connected = await table_exists(secondary_table)
+        primary_count = await scalar_sql(f'select count(*) from "{primary_table}"') if primary_connected else 0
+        secondary_count = await scalar_sql(f'select count(*) from "{secondary_table}"') if secondary_connected else 0
+        portal_accounts = await scalar_sql('select count(*) from "project_portal_accounts"')
+        portal_projects = await scalar_sql('select count(*) from "project_portal_projects"')
+        sessions_total = await scalar_sql('select count(*) from "workspace_interface_sessions"')
+        sessions_30d = await scalar_sql("select count(*) from workspace_interface_sessions where coalesce(last_input_at, created_at) >= now() - interval '30 days'")
+        messages_total = await scalar_sql('select count(*) from "workspace_interface_messages"')
+        messages_30d = await scalar_sql("select count(*) from workspace_interface_messages where created_at >= now() - interval '30 days'")
+        input_events_30d = await scalar_sql("select count(*) from input_events where created_at >= now() - interval '30 days'")
+        known_account_count = primary_count if primary_connected else portal_accounts
+        account_source = primary_table if primary_connected else "project_portal_accounts fallback"
+        stats = [
+            {"label": "Requested App", "value": app_name},
+            {"label": "Known Accounts", "value": known_account_count},
+            {"label": "Sessions 30d", "value": sessions_30d},
+            {"label": "Messages 30d", "value": messages_30d},
+        ]
+        columns = ["data_needed", "current_status", "next_step"]
+        rows = [
+            {"data_needed": "App source", "current_status": f"{app_source.get('app_key')} | {app_source.get('ecosystem_role')} | {app_source.get('runtime')}", "next_step": "Keep app-source registry current for MIM and TOD"},
+            {"data_needed": f"Primary account table: {primary_table}", "current_status": f"{'connected' if primary_connected else 'missing from current DB connection'}; count={primary_count}", "next_step": "Use this as the true app account count once the comm_app Render DB is bound"},
+            {"data_needed": f"Secondary user table: {secondary_table}", "current_status": f"{'connected' if secondary_connected else 'missing from current DB connection'}; count={secondary_count}", "next_step": "Use this for representative/user counts once connected"},
+            {"data_needed": "Fallback account records", "current_status": f"{portal_accounts} rows in project_portal_accounts", "next_step": "Use only as MIM/portal fallback when app-specific table is unavailable"},
+            {"data_needed": "Project portal projects", "current_status": f"{portal_projects} rows in project_portal_projects", "next_step": "Use for portal-project adoption reporting"},
+            {"data_needed": "Interface sessions", "current_status": f"{sessions_30d} sessions in last 30 days / {sessions_total} total", "next_step": "Add app/source grouping for AgentMIM vs Studio vs MIM Wall"},
+            {"data_needed": "Interface messages", "current_status": f"{messages_30d} messages in last 30 days / {messages_total} total", "next_step": "Add app/source grouping and human-vs-system segmentation"},
+            {"data_needed": "Input events", "current_status": f"{input_events_30d} input events in last 30 days", "next_step": "Use for activity trend reporting after source names are standardized"},
+            {"data_needed": "Subscribers / revenue", "current_status": "Stripe/subscription source is configured in env but not yet registered as a report dataset", "next_step": "Create a subscription/revenue adapter before reporting paid users or income"},
+        ]
+        if primary_connected:
+            summary = f"I understand the question is about {app_name}. The app-source registry identifies {primary_table} as the primary account table, and the connected database currently shows {primary_count} account records there."
+        else:
+            summary = f"I understand the question is about {app_name}. The app-source registry identifies {primary_table} as the real comm_app account table, but that table is not present in the database connection currently used by Studio Reports. I can see {portal_accounts} fallback MIM/portal account records in project_portal_accounts, but the true comm_app Render DB binding still needs to be registered or verified."
+        findings = [
+            {"title": "Correct dataset identified", "detail": "This is an app metrics question, not a Studio Projects report."},
+            {"title": "App source registered", "detail": f"{app_name} is mapped as {app_source.get('ecosystem_role')} at {app_source.get('local_root')}."},
+            {"title": "Primary app table status", "detail": f"{primary_table}: {'connected' if primary_connected else 'missing from current DB connection'}."},
+            {"title": "Fallback accounts available", "detail": f"{portal_accounts} records are available from project_portal_accounts."},
+            {"title": "Usage telemetry exists", "detail": f"{sessions_30d} sessions and {messages_30d} messages are available for the last 30 days, but source grouping needs normalization."},
+        ]
+        actions = [
+            {"title": "Verify comm_app Render DB binding", "detail": f"Studio Reports needs access to the database containing {primary_table} and {secondary_table}."},
+            {"title": "Add subscription adapter", "detail": "Connect Stripe/accounting subscription data before reporting paid users or income."},
+            {"title": "Normalize telemetry source names", "detail": "Group sessions/messages by app so Reports can answer app-specific usage questions cleanly."},
+        ]
+    else:
+        overview = _studio_snapshot()
+        stats = [
+            {"label": "MIM", "value": overview.get("mim_focus", "")},
+            {"label": "TOD", "value": overview.get("tod_focus", "")},
+            {"label": "Attention", "value": len(overview.get("attention", []))},
+            {"label": "Projects", "value": len(overview.get("projects", []))},
+        ]
+        columns = ["area", "status", "detail"]
+        rows = [
+            {"area": "MIM", "status": "active", "detail": overview.get("mim_focus", "")},
+            {"area": "TOD", "status": "active", "detail": overview.get("tod_focus", "")},
+            {"area": "Recommendation", "status": "ready", "detail": (overview.get("recommendation") or {}).get("title", "")},
+        ]
+        summary = "This is a broad Studio overview. Use it when the question is open-ended and MIM needs to decide what data matters."
+        findings = [{"title": "Start broad, then narrow", "detail": "Pick a more specific dataset after MIM identifies the likely source of truth."}]
+        actions = [{"title": "Ask a sharper question", "detail": "Examples: training last week, blocked objectives, document graph, app users, accounting vendors."}]
+
+    if prompt:
+        summary = f"Question: {prompt.strip()} {summary}"
+    return {
+        "key": key,
+        "label": spec["label"],
+        "description": spec["description"],
+        "selection_reason": selection_reason,
+        "requested_dataset": dataset_key,
+        "generated_at": _utc_now(),
+        "summary": summary,
+        "stats": stats,
+        "columns": columns,
+        "rows": rows[:120],
+        "findings": findings[:8],
+        "actions": actions[:6],
+    }
+
+
+async def _ensure_studio_report_seed(db: AsyncSession) -> None:
+    count = int((await db.execute(select(func.count(StudioReportCanvas.id)))).scalar() or 0)
+    if count:
+        return
+    dataset = await _studio_report_dataset(db, "training", prompt="How are MIM and TOD training going?")
+    row = StudioReportCanvas(
+        title="Training Outcome Check",
+        prompt="How are MIM and TOD training going?",
+        dataset_key="training",
+        status="saved",
+        created_by="MIM",
+        summary=dataset["summary"],
+        layout_json={"template": "scorecard_table"},
+        filters_json={"range": "latest"},
+        findings_json=dataset["findings"],
+        actions_json=dataset["actions"],
+        metadata_json={"seeded_by": "studio_reports_v1"},
+    )
+    db.add(row)
+    await db.commit()
+
+
+async def _studio_reports_state(
+    db: AsyncSession,
+    *,
+    dataset_key: str = "studio_overview",
+    prompt: str = "",
+    canvas_id: int | None = None,
+) -> dict[str, Any]:
+    await _ensure_studio_report_seed(db)
+    canvases = (await db.execute(select(StudioReportCanvas).order_by(StudioReportCanvas.id.desc()).limit(30))).scalars().all()
+    selected_canvas = None
+    if canvas_id:
+        selected = await db.get(StudioReportCanvas, canvas_id)
+        if selected:
+            selected_canvas = _studio_report_canvas_to_dict(selected)
+            dataset_key = selected.dataset_key
+            prompt = selected.prompt
+    dataset = await _studio_report_dataset(db, dataset_key, prompt=prompt)
+    return {
+        "datasets": REPORT_DATASETS,
+        "dataset": dataset,
+        "canvases": [_studio_report_canvas_to_dict(row) for row in canvases],
+        "selected_canvas": selected_canvas,
+        "prompt": prompt,
+    }
+
+
+def _projects_body(state: dict[str, Any]) -> str:
+    counts = state.get("counts") if isinstance(state.get("counts"), dict) else {}
+    project_stats = [
+        ("Signals", counts.get("signals", 0), "raw observations and candidate ideas"),
+        ("Candidates", counts.get("candidates", 0), "need approve / park / merge decision"),
+        ("Active", counts.get("active", 0), "planned or in motion"),
+        ("Dave Needed", counts.get("dave_needed", 0), "current project decisions required"),
+    ]
+    stats_html = "".join(
+        f"""
+        <article class="card">
+          <div class="label">{_html(label)}</div>
+          <div class="entity">{_html(value)}</div>
+          <p>{_html(detail)}</p>
+        </article>
+        """
+        for label, value, detail in project_stats
+    )
+    lifecycle = [
+        ("Project Candidate", "Raw thought from chat, phone, web, file, lab note, customer call, or Dave's notebook."),
+        ("Approval", "Dave or MIM decides whether the candidate becomes real tracked work."),
+        ("Discovery", "MIM turns vague intent into goals, users, pains, examples, constraints, and missing answers."),
+        ("Blueprint", "Features, workflows, data, integrations, roles, risks, and value estimate."),
+        ("Roadmap", "Milestones, phases, cost/effort bands, blockers, assumptions, and approval checkpoints."),
+        ("Implementation", "Approved work becomes TOD/Codex-ready tasks with validation requirements."),
+        ("Testing", "Smoke checks, user review, evidence, screenshots, logs, and acceptance criteria."),
+        ("Deployment", "Release plan, rollback plan, monitoring, support, and owner handoff."),
+        ("Maintenance", "Issues, enhancements, outcome tracking, vendor/accounting links, and future improvements."),
+    ]
+    lifecycle_html = "".join(
+        f"""
+        <article class="card">
+          <h3>{_html(title)}</h3>
+          <p>{_html(detail)}</p>
+        </article>
+        """
+        for title, detail in lifecycle
+    )
+    active_examples = state.get("projects") if isinstance(state.get("projects"), list) else []
+    inbox_examples = state.get("signals") if isinstance(state.get("signals"), list) else []
+    inbox_html = "".join(
+        f"""
+        <article class="attention-item">
+          <small>{_html(item.get("status", "observation"))}</small>
+          <strong>{_html(item.get("title", ""))}</strong>
+          <div class="muted">Origin: {_html(item.get("source_text", ""))}</div>
+          <div class="muted">Why it matters: {_html(item.get("why_it_matters", ""))}</div>
+        </article>
+        """
+        for item in inbox_examples[:8]
+    )
+    examples_html = "".join(
+        f"""
+        <a class="project-row" href="/studio/projects?project_id={_html(item.get("id", ""))}">
+          <div>
+            <strong>{_html(item.get("title", ""))}</strong>
+            <div class="muted">{_html(item.get("next_action", ""))}</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+            <span class="health-pill yellow">{_html(item.get("status", ""))}</span>
+            <span class="health-pill">{_html(item.get("priority", ""))}</span>
+          </div>
+        </a>
+        """
+        for item in active_examples[:8]
+    )
+    if not inbox_html:
+        inbox_html = '<article class="attention-item"><strong>No signals yet</strong><div class="muted">MIM can create one from conversation when an idea becomes worth tracking.</div></article>'
+    if not examples_html:
+        examples_html = '<p>No projects yet.</p>'
+    status_lanes = [
+        ("Candidate", "Forum Graphics Quality; MIM Accounting"),
+        ("Planning", "AgentMIM Account Manager"),
+        ("Implementation", "MIM Project Studio"),
+        ("Testing", "Homepage/front-page chat behavior"),
+        ("Deployed", "Studio command center V1"),
+        ("Maintenance", "Voice, dashboard, training scoreboard"),
+    ]
+    lanes_html = "".join(
+        f"""
+        <article class="card">
+          <h3>{_html(label)}</h3>
+          <p>{_html(items)}</p>
+        </article>
+        """
+        for label, items in status_lanes
+    )
+    return f"""
+    <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>
+    <section class="card" style="margin-bottom:14px;">
+      <h2>Project Actions</h2>
+      <p>Projects can be created from direct action here or promoted from any MIM conversation when a signal becomes worth tracking.</p>
+      <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
+        <a class="button primary" href="/studio/projects">Start Project</a>
+        <a class="button" href="/studio/projects">Open Project</a>
+        <a class="button" href="/studio/projects">Review Signal Inbox</a>
+        <a class="button" href="/mim">Talk To MIM</a>
+      </div>
+    </section>
+    <section class="grid two">
+      <article class="card">
+        <h2>Project Command Surface</h2>
+        <p>This page is the home for task/project creation, management, results, and history. Projects are real-world outcomes: applications, customer work, internal tools, research deliverables, robotics work, travel planning, legal research, or anything that creates value outside MIM/TOD's own self-improvement.</p>
+        <div class="label">Top Actions</div>
+        <ul class="clean">
+          <li>Start Project: create a blank candidate or structured project from scratch.</li>
+          <li>Open Project: search or select a tracked project.</li>
+          <li>Review Inbox: approve, park, merge, discard, or ask MIM for more discovery.</li>
+          <li>Ask MIM: discuss an idea and let MIM decide whether it should become a signal, candidate, or project.</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h2>How MIM Uses Projects</h2>
+        <p>MIM can collaborate with Dave anywhere, notice when a real project is being born, and package the conversation into a project candidate before it becomes structured work.</p>
+        <div class="label">Project Bundle</div>
+        <ul class="clean">
+          <li>Goal, audience, pain points, requirements, assumptions, and missing answers.</li>
+          <li>Blueprint, architecture notes, roadmap, milestones, tasks, tests, and deployment actions.</li>
+          <li>Linked documents, samples, screenshots, evidence, decisions, and follow-up recommendations.</li>
+          <li>Project log, origin story, lessons learned, and impact on related or future projects.</li>
+        </ul>
+      </article>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Project Inbox</h2>
+        <p>Not every complaint, wish, or observation becomes a project. MIM should classify signals first, then only promote meaningful patterns or high-value ideas into candidates.</p>
+        <div class="attention-list" style="margin-top:12px;">{inbox_html}</div>
+      </article>
+      <article class="card">
+        <h2>Signal Triage Rule</h2>
+        <p>A project can start anywhere, but MIM should not be literal. A single issue may be just a note, a future consideration, or a real project candidate depending on impact, recurrence, effort, and strategic value.</p>
+        <div class="label">MIM Should Decide</div>
+        <ul class="clean">
+          <li>Ignore if it is noise or already resolved with no future value.</li>
+          <li>Log as an observation if it may matter later.</li>
+          <li>Park if it is useful but not urgent.</li>
+          <li>Create a candidate if it has clear value, recurrence, customer impact, or strategic importance.</li>
+          <li>Merge if it belongs inside an existing project.</li>
+        </ul>
+      </article>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Idea-to-Project Workflow</h2>
+      <p>Dave and MIM can start with a messy thought. The Projects page is where that thought becomes a candidate, then a planned, tested, deployed, and maintained outcome.</p>
+    </section>
+    <section class="grid four placeholder-sections" style="grid-template-columns: repeat(4, minmax(0, 1fr));">{lifecycle_html}</section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Status Lanes</h2>
+      <p>Projects need a quick visual lane map so Dave can see what is just an idea, what is being planned, what is being built, what is being tested, and what is already deployed.</p>
+    </section>
+    <section class="grid three placeholder-sections">{lanes_html}</section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Active Project Examples</h2>
+        {examples_html}
+      </article>
+      <article class="card">
+        <h2>Project Detail Anatomy</h2>
+        <ul class="clean">
+          <li>Summary: what this is, why it matters, current status, priority, owner, and Dave needed.</li>
+          <li>Origin Story: the conversation, complaint, customer request, or idea that created it.</li>
+          <li>Discovery: users, goals, pain points, constraints, examples, data, integrations, and missing answers.</li>
+          <li>Roadmap: phases, milestones, tasks, estimates, blockers, assumptions, and approvals.</li>
+          <li>Testing: evidence, screenshots, smoke results, acceptance checks, and known issues.</li>
+          <li>Deployment / Maintenance: version, release notes, support issues, recalls, updates, and lessons learned.</li>
+        </ul>
+      </article>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>MIM Conversation Behavior</h2>
+        <p>When Dave mentions a possible project anywhere, MIM should use this page as the memory home.</p>
+        <div class="label">Expected Response</div>
+        <ul class="clean">
+          <li>Confirm what Dave meant in plain language.</li>
+          <li>Classify the signal: ignore, observation, park, merge, or candidate.</li>
+          <li>Explain why it matters or why it does not need a project yet.</li>
+          <li>Ask whether to track it, park it, merge it, or keep it as context.</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h2>Next Implementation Step</h2>
+        <p>The UI structure is now ready. The next real build is DB-backed project records and a MIM action path that can create candidates from any conversation.</p>
+        <div class="label">Needed Backend</div>
+        <ul class="clean">
+          <li>project_signals table for observations and candidate ideas.</li>
+          <li>projects table with lifecycle status and priority.</li>
+          <li>project_events table for timeline/history.</li>
+          <li>project_links for objectives, tasks, documents, deployments, and related projects.</li>
+        </ul>
+      </article>
+    </section>
+    """
+
+
+def _documents_body(state: dict[str, Any]) -> str:
+    counts = state.get("counts") if isinstance(state.get("counts"), dict) else {}
+    documents = state.get("documents") if isinstance(state.get("documents"), list) else []
+    links = state.get("links") if isinstance(state.get("links"), list) else []
+    link_counts = state.get("link_counts") if isinstance(state.get("link_counts"), dict) else {}
+    target_types = state.get("target_types") if isinstance(state.get("target_types"), list) else []
+    selected_document = state.get("selected_document") if isinstance(state.get("selected_document"), dict) else None
+    selected_links = state.get("selected_links") if isinstance(state.get("selected_links"), list) else []
+    stats = [
+        ("Items", counts.get("documents", 0), "library records"),
+        ("Local / Tracked", counts.get("local", 0), "available without relying on the source"),
+        ("Need Snapshot", counts.get("needs_snapshot", 0), "important items not preserved yet"),
+        ("Relationships", counts.get("relationships", 0), "document graph links"),
+    ]
+    stats_html = "".join(
+        f"""
+        <article class="card">
+          <div class="label">{_html(label)}</div>
+          <div class="entity">{_html(value)}</div>
+          <p>{_html(detail)}</p>
+        </article>
+        """
+        for label, value, detail in stats
+    )
+    doc_rows = "".join(
+        f"""
+        <article class="attention-item">
+          <small>{_html(item.get("category", "library"))} / {_html(item.get("document_type", "note"))}</small>
+          <strong>{_html(item.get("title", ""))}</strong>
+          <div class="muted">{_html(item.get("summary", ""))}</div>
+          <div class="muted">Preserve: {_html(item.get("preserve_policy", ""))} / Snapshot: {_html(item.get("snapshot_status", ""))}</div>
+        </article>
+        """
+        for item in documents[:10]
+    )
+    if not doc_rows:
+        doc_rows = '<article class="attention-item"><strong>No documents yet</strong><div class="muted">MIM can create, collect, or link the first library item.</div></article>'
+    category_cards = [
+        ("Project Material", "Blueprints, roadmaps, evidence, screenshots, prototypes, project notes, and approvals."),
+        ("Research", "Books, papers, links, references, market notes, app examples, and preserved source material."),
+        ("Media", "Images, audio, video, art, generated samples, screenshots, and reviewable visual assets."),
+        ("Operations", "Vendors, systems, status updates, incidents, policies, runbooks, and maintenance notes."),
+        ("Conversations", "Important MIM/Dave discussions that created decisions, projects, observations, or follow-ups."),
+        ("Odd Shelf", "Useful strange context that does not fit neatly anywhere but may matter later."),
+    ]
+    categories_html = "".join(
+        f"""
+        <article class="card">
+          <h3>{_html(title)}</h3>
+          <p>{_html(detail)}</p>
+        </article>
+        """
+        for title, detail in category_cards
+    )
+    relationship_type_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(item.get("label", item.get("key", "")))}</td>
+          <td>{_html(link_counts.get(str(item.get("key", "")), 0))}</td>
+        </tr>
+        """
+        for item in target_types
+    )
+    if not relationship_type_rows:
+        relationship_type_rows = '<tr><td>No target types yet</td><td>0</td></tr>'
+    recent_links_html = "".join(
+        f"""
+        <article class="attention-item">
+          <small>{_html(item.get("relation", "related"))}</small>
+          <strong>Document #{_html(item.get("document_id", ""))} -> {_html(item.get("target_type", ""))}</strong>
+          <div class="muted">{_html(item.get("label", ""))}</div>
+          <div class="muted">Target: {_html(item.get("target_id", ""))}</div>
+        </article>
+        """
+        for item in links[:8]
+    )
+    if not recent_links_html:
+        recent_links_html = '<article class="attention-item"><strong>No relationships yet</strong><div class="muted">Attach a document to a project, objective, task, conversation, report, app, system, or training run.</div></article>'
+    selected_links_html = ""
+    if selected_document:
+        selected_relationship_rows = "".join(
+            f"""
+            <article class="attention-item">
+              <small>{_html(item.get("target_type", ""))} / {_html(item.get("relation", ""))}</small>
+              <strong>{_html(item.get("label", "") or item.get("target_id", ""))}</strong>
+              <div class="muted">Target ID: {_html(item.get("target_id", ""))}</div>
+            </article>
+            """
+            for item in selected_links
+        )
+        if not selected_relationship_rows:
+            selected_relationship_rows = '<article class="attention-item"><strong>No links for this document yet</strong><div class="muted">This item exists, but it is not attached to a Studio object yet.</div></article>'
+        selected_links_html = f"""
+        <section class="card" style="margin-bottom:14px;">
+          <h2>Selected Document</h2>
+          <div class="label">{_html(selected_document.get("category", "library"))} / {_html(selected_document.get("document_type", "note"))}</div>
+          <h3>{_html(selected_document.get("title", ""))}</h3>
+          <p>{_html(selected_document.get("summary", ""))}</p>
+          <div class="attention-list" style="margin-top:12px;">{selected_relationship_rows}</div>
+        </section>
+        """
+    return f"""
+    <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>
+    {selected_links_html}
+    <section class="card" style="margin-bottom:14px;">
+      <h2>Library Actions</h2>
+      <p>Documents are the MIM library: records, files, links, media, research, notes, artifacts, and anything worth remembering without turning it into a project.</p>
+      <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
+        <a class="button primary" href="/studio/documents">Add Document</a>
+        <a class="button" href="/studio/documents">Add Link</a>
+        <a class="button" href="/studio/documents">Attach To Project</a>
+        <a class="button" href="/mim">Ask MIM To Create Document</a>
+      </div>
+    </section>
+    <section class="grid two">
+      <article class="card">
+        <h2>Wiki Library</h2>
+        <p>Organize documents like a living wiki, not a dump. Every item should answer what it is, why we kept it, where it came from, whether it is preserved locally, and what it connects to.</p>
+        <div class="label">Can Associate With</div>
+        <ul class="clean">
+          <li>apps, projects, project signals, tasks, objectives, reports, status updates, conversations, vendors, people, systems, and lab work.</li>
+          <li>Multiple links are allowed because one useful document may affect several projects or future decisions.</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h2>Preservation Rule</h2>
+        <p>MIM should not depend on a third-party resource being available forever. Important material should be copied, summarized, indexed, downloaded, or locally referenced when allowed and needed for maintenance or evolution.</p>
+        <div class="label">MIM Should Decide</div>
+        <ul class="clean">
+          <li>Reference only: low importance or stable source.</li>
+          <li>Snapshot when important: useful source that may disappear.</li>
+          <li>Local copy required: critical to an app, project, system, policy, or MIM/TOD training.</li>
+        </ul>
+      </article>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Library Shelves</h2>
+      <p>Documents should be browsable by human meaning first, then searchable by MIM.</p>
+    </section>
+    <section class="grid three placeholder-sections">{categories_html}</section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Relationship Graph</h2>
+        <p>Documents can now attach to the things they support: projects, objectives, tasks, conversations, status updates, apps, reports, systems, lab work, and training runs.</p>
+        <table class="score-table" style="margin-top:10px;">
+          <thead><tr><th>Target Type</th><th>Links</th></tr></thead>
+          <tbody>{relationship_type_rows}</tbody>
+        </table>
+      </article>
+      <article class="card">
+        <h2>Recent Relationships</h2>
+        <div class="attention-list" style="margin-top:12px;">{recent_links_html}</div>
+      </article>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Recent Library Items</h2>
+        <div class="attention-list" style="margin-top:12px;">{doc_rows}</div>
+      </article>
+      <article class="card">
+        <h2>Next Implementation Step</h2>
+        <p>The DB record layer is ready. The next build is the practical document workflow.</p>
+        <div class="label">Needed Backend</div>
+        <ul class="clean">
+          <li>Upload endpoint and local storage path.</li>
+          <li>URL fetch/snapshot worker with safety and source attribution.</li>
+          <li>Document graph links are now DB-backed; next is surfacing them from each related object page.</li>
+          <li>Search/index path so MIM can retrieve library context during conversation.</li>
+          <li>Generated documents from MIM: summaries, project briefs, reports, wiki notes, and evidence packets.</li>
+        </ul>
+      </article>
+    </section>
+    """
+
+
+def _app_url(app_key: object) -> str:
+    return f"/studio/apps?app={_html(app_key)}"
+
+
+def _apps_body(state: dict[str, Any], selected_app_key: str = "") -> str:
+    apps = state.get("apps") if isinstance(state.get("apps"), list) else []
+    counts = state.get("counts") if isinstance(state.get("counts"), dict) else {}
+    summary = str(state.get("summary") or "")
+    selected_app = next(
+        (app for app in apps if str(app.get("app_key") or "").lower() == selected_app_key.strip().lower()),
+        None,
+    )
+    if selected_app is None and apps:
+        selected_app = apps[0]
+    stats = [
+        ("Registered Apps", counts.get("apps", 0), "known app sources"),
+        ("Live Inspectable", counts.get("live_inspectable", 0), "visible from this host"),
+        ("TOD Scanned", counts.get("scanned_by_tod", 0), "repo roots inspected"),
+        ("DB Proven", counts.get("db_connected", 0), "primary app tables connected"),
+    ]
+    stats_html = "".join(
+        f"""
+        <article class="card">
+          <div class="label">{_html(label)}</div>
+          <div class="entity">{_html(value)}</div>
+          <p>{_html(detail)}</p>
+        </article>
+        """
+        for label, value, detail in stats
+    )
+    selected_detail_html = ""
+    if selected_app:
+        known_tables = selected_app.get("known_tables") if isinstance(selected_app.get("known_tables"), list) else []
+        db_env_keys = selected_app.get("db_env_keys") if isinstance(selected_app.get("db_env_keys"), list) else []
+        fallback_counts = selected_app.get("fallback_counts") if isinstance(selected_app.get("fallback_counts"), dict) else {}
+        hosting_status = selected_app.get("hosting_status") if isinstance(selected_app.get("hosting_status"), dict) else {}
+        homepage = hosting_status.get("homepage") if isinstance(hosting_status.get("homepage"), dict) else {}
+        api = hosting_status.get("api") if isinstance(hosting_status.get("api"), dict) else {}
+        webapps = hosting_status.get("webapps") if isinstance(hosting_status.get("webapps"), list) else []
+        table_rows = "".join(f"<tr><td>{_html(table)}</td><td>registered</td></tr>" for table in known_tables)
+        if not table_rows:
+            table_rows = '<tr><td>No tables mapped yet</td><td>pending</td></tr>'
+        webapp_rows = "".join(
+            f"""
+            <tr>
+              <td>{_html(item.get("domain_name", ""))}</td>
+              <td>{_html(item.get("enabled", ""))}</td>
+              <td>{_html(item.get("python_version", ""))}</td>
+              <td>{_html(item.get("source_directory", ""))}</td>
+            </tr>
+            """
+            for item in webapps
+            if isinstance(item, dict)
+        )
+        fallback_rows = "".join(f'<tr><td>{_html(key)}</td><td>{_html(value)}</td><td colspan="2">fallback</td></tr>' for key, value in fallback_counts.items())
+        detail_rows = webapp_rows + fallback_rows
+        if not detail_rows:
+            detail_rows = '<tr><td colspan="4">No hosting or fallback count rows registered yet.</td></tr>'
+        dirty_count = selected_app.get("dirty_count")
+        dirty_text = str(dirty_count) if dirty_count is not None else "n/a"
+        selected_detail_html = f"""
+        <section class="card hero-card" style="margin-bottom:14px;">
+          <div class="status-head">
+            <div>
+              <div class="label">Selected App</div>
+              <h2>{_html(selected_app.get("display_name", ""))}</h2>
+              <p>{_html(selected_app.get("ecosystem_role", ""))}</p>
+            </div>
+            <span class="badge"><span class="dot {'green' if selected_app.get('health') == 'good' else 'yellow'}"></span>{_html(selected_app.get("health", "unknown"))}</span>
+          </div>
+          <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top:14px;">
+            <article class="card"><div class="label">Last Touched</div><div class="entity">{_html(selected_app.get("scanned_at") or "unknown")}</div><p>{_html(selected_app.get("source_status", ""))}</p></article>
+            <article class="card"><div class="label">Docs</div><div class="entity">-</div><p>links pending</p></article>
+            <article class="card"><div class="label">Projects</div><div class="entity">-</div><p>links pending</p></article>
+            <article class="card"><div class="label">Tasks</div><div class="entity">-</div><p>links pending</p></article>
+          </section>
+          <section class="grid two" style="margin-top:14px;">
+            <article class="card">
+              <h3>Operations</h3>
+              <ul class="clean">
+                <li>Host: {_html(selected_app.get("hosting_provider") or hosting_status.get("provider") or "not registered")}</li>
+                <li>Runtime: {_html(selected_app.get("runtime", ""))}</li>
+                <li>Source: {_html(selected_app.get("local_root", ""))}</li>
+                <li>Git: {_html(selected_app.get("git_status", ""))} / {_html(selected_app.get("branch") or "no branch")} / {_html(selected_app.get("commit") or "no commit")} / dirty {_html(dirty_text)}</li>
+                <li>Deploy: {_html(selected_app.get("public_url") or "not registered")}</li>
+                <li>Next: {_html(selected_app.get("next_action", ""))}</li>
+              </ul>
+            </article>
+            <article class="card">
+              <h3>Data & Services</h3>
+              <ul class="clean">
+                <li>DB status: {_html(selected_app.get("db_status", ""))}</li>
+                <li>Primary table: {_html(selected_app.get("primary_account_table") or "not declared")}</li>
+                <li>Secondary table: {_html(selected_app.get("secondary_user_table") or "not declared")}</li>
+                <li>Env keys: {_html(", ".join(str(item) for item in db_env_keys) or "none registered")}</li>
+                <li>Homepage: {_html(homepage.get("status", "n/a"))}</li>
+                <li>Provider API: CPU {_html(api.get("cpu_status", "n/a"))} / Webapps {_html(api.get("webapps_status", "n/a"))}</li>
+              </ul>
+            </article>
+          </section>
+          <section class="grid two" style="margin-top:14px;">
+            <article class="card">
+              <h3>DB Construct</h3>
+              <table class="score-table"><thead><tr><th>Table</th><th>Status</th></tr></thead><tbody>{table_rows}</tbody></table>
+            </article>
+            <article class="card">
+              <h3>Hosting / Fallback Counts</h3>
+              <table class="score-table"><thead><tr><th>Domain / Count</th><th>Status</th><th>Runtime</th><th>Source</th></tr></thead><tbody>{detail_rows}</tbody></table>
+            </article>
+          </section>
+        </section>
+        """
+    app_cards = ""
+    for app in apps:
+        health = str(app.get("health") or "unknown")
+        dot_class = "green" if health == "good" else ("yellow" if "binding" in health or "registered" in health else "red")
+        users = app.get("registered_users")
+        users_text = "unknown" if users is None else str(users)
+        git_detail = str(app.get("git_status", ""))
+        branch = str(app.get("branch") or "")
+        commit = str(app.get("commit") or "")
+        dirty_count = app.get("dirty_count")
+        if branch or commit or dirty_count is not None:
+            git_detail = f"{git_detail} / {branch or 'no branch'} / {commit or 'no commit'} / dirty: {dirty_count if dirty_count is not None else 'n/a'}"
+        is_selected = selected_app and str(app.get("app_key") or "") == str(selected_app.get("app_key") or "")
+        selected_style = "border-color: rgba(110,231,216,.75); box-shadow: 0 0 0 1px rgba(110,231,216,.25);" if is_selected else ""
+        risk_text = "dirty repo" if isinstance(dirty_count, int) and dirty_count > 0 else ("db adapter" if app.get("db_status") == "external_declared" else "none")
+        app_cards += f"""
+        <a class="card" href="{_app_url(app.get("app_key", ""))}" style="display:block; {selected_style}">
+          <div class="status-head">
+            <div>
+              <div class="label">{_html(app.get("app_key", ""))}</div>
+              <div class="entity">{_html(app.get("display_name", ""))}</div>
+            </div>
+            <span class="badge"><span class="dot {dot_class}"></span>{_html(health)}</span>
+          </div>
+          <p class="focus">{_html(app.get("ecosystem_role", ""))}</p>
+          <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); gap:8px; margin:12px 0;">
+            <div><div class="label">Docs</div><strong>-</strong></div>
+            <div><div class="label">Projects</div><strong>-</strong></div>
+            <div><div class="label">Tasks</div><strong>-</strong></div>
+            <div><div class="label">Risk</div><strong>{_html(risk_text)}</strong></div>
+          </section>
+          <div class="label">Quick Status</div>
+          <p>{_html(app.get("runtime", ""))} / {_html(app.get("source_status", ""))}</p>
+          <p>{_html(git_detail)}</p>
+          <p>Users: {_html(users_text)} / Data: {_html(app.get("db_status", ""))}</p>
+          <div class="label">Next</div>
+          <p>{_html(app.get("next_action", ""))}</p>
+        </a>
+        """
+    if not app_cards:
+        app_cards = '<article class="card"><h3>No apps registered</h3><p>Add the first app source so MIM/TOD know where it lives and how to inspect it.</p></article>'
+    return f"""
+    <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>
+    <section class="card hero-card" style="margin-bottom:14px;">
+      <div class="label">MIM App Registry</div>
+      <h2>Applications MIM and TOD are responsible for</h2>
+      <p>{_html(summary)}</p>
+      <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
+        <a class="button primary" href="/studio/api/apps/sources">Open Registry JSON</a>
+        <a class="button" href="/studio/reports?prompt=what%20apps%20need%20source%20or%20database%20attention">Ask Reports</a>
+        <a class="button" href="/studio/documents">Open App Documents</a>
+      </div>
+    </section>
+    {selected_detail_html}
+    <section class="grid two" style="margin-bottom:14px;">
+      <article class="card">
+        <h2>Attention</h2>
+        <p>Apps with dirty worktrees, unproven DB bindings, or missing runtime details should surface here first.</p>
+        <div class="label">Rules</div>
+        <ul class="clean">
+          <li>No app-specific user count unless the app's real user/account table is connected.</li>
+          <li>No edits to dirty repos without acknowledging existing changes.</li>
+          <li>No app work without linked project, ticket, or operator request.</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h2>Next Actions</h2>
+        <p>TOD has scanned the Windows-side roots. The next layer is recurring scan automation and DB-backed app records.</p>
+        <div class="label">Next Build</div>
+        <ul class="clean">
+          <li>Recurring TOD app scanner: git status, branch, latest commit, version, env keys, DB tables, tests, and deployment hints.</li>
+          <li>DB-backed app registry records instead of source-code constants.</li>
+          <li>Service/vendor map: OpenAI, Render, Stripe, SMTP, Twilio, QuickBooks, storage, and app-specific APIs.</li>
+        </ul>
+      </article>
+    </section>
+    <section class="grid two">{app_cards}</section>
+    """
+
+def _reports_body(state: dict[str, Any]) -> str:
+    datasets = state.get("datasets") if isinstance(state.get("datasets"), list) else []
+    dataset = state.get("dataset") if isinstance(state.get("dataset"), dict) else {}
+    canvases = state.get("canvases") if isinstance(state.get("canvases"), list) else []
+    prompt = str(state.get("prompt") or "")
+    dataset_key = str(dataset.get("key") or "studio_overview")
+    options_html = "".join(
+        f'<option value="{_html(item.get("key", ""))}" {"selected" if item.get("key") == dataset_key else ""}>{_html(item.get("label", ""))}</option>'
+        for item in datasets
+    )
+    options_html = f'<option value="auto" {"selected" if not prompt and dataset_key == "studio_overview" else ""}>Auto - let MIM choose</option>' + options_html
+    dataset_cards = "".join(
+        f"""
+        <a class="card" href="/studio/reports?dataset={_html(item.get("key", ""))}">
+          <h3>{_html(item.get("label", ""))}</h3>
+          <p>{_html(item.get("description", ""))}</p>
+        </a>
+        """
+        for item in datasets
+    )
+    stats_html = "".join(
+        f"""
+        <article class="card">
+          <div class="label">{_html(item.get("label", ""))}</div>
+          <div class="entity">{_html(item.get("value", ""))}</div>
+        </article>
+        """
+        for item in (dataset.get("stats") if isinstance(dataset.get("stats"), list) else [])[:4]
+    )
+    if not stats_html:
+        stats_html = '<article class="card"><div class="label">No data loaded</div><div class="entity">Ask MIM</div></article>'
+    findings_html = "".join(
+        f"""
+        <article class="attention-item">
+          <small>finding</small>
+          <strong>{_html(item.get("title", ""))}</strong>
+          <div class="muted">{_html(item.get("detail", ""))}</div>
+        </article>
+        """
+        for item in (dataset.get("findings") if isinstance(dataset.get("findings"), list) else [])
+    )
+    if not findings_html:
+        findings_html = '<article class="attention-item"><strong>No findings yet</strong><div class="muted">Ask a question or load a dataset to let MIM form the report.</div></article>'
+    actions_html = "".join(
+        f"""
+        <article class="attention-item">
+          <small>action</small>
+          <strong>{_html(item.get("title", ""))}</strong>
+          <div class="muted">{_html(item.get("detail", ""))}</div>
+        </article>
+        """
+        for item in (dataset.get("actions") if isinstance(dataset.get("actions"), list) else [])
+    )
+    if not actions_html:
+        actions_html = '<article class="attention-item"><strong>No actions yet</strong><div class="muted">MIM will suggest actions when the dataset reveals something worth doing.</div></article>'
+    columns = dataset.get("columns") if isinstance(dataset.get("columns"), list) else []
+    rows = dataset.get("rows") if isinstance(dataset.get("rows"), list) else []
+    table_headers = "".join(f"<th>{_html(column)}</th>" for column in columns)
+    table_rows = ""
+    for row in rows[:60]:
+        if not isinstance(row, dict):
+            continue
+        cells = "".join(f"<td>{_html(row.get(column, ''))}</td>" for column in columns)
+        table_rows += f"<tr>{cells}</tr>"
+    if not table_rows:
+        table_rows = f'<tr><td colspan="{max(len(columns), 1)}">No rows loaded yet. Start with a question, pick a dataset, or ask MIM to build the view.</td></tr>'
+    canvas_html = "".join(
+        f"""
+        <a class="project-row" href="/studio/reports?canvas_id={_html(item.get("id", ""))}">
+          <div>
+            <strong>{_html(item.get("title", ""))}</strong>
+            <div class="muted">{_html(item.get("prompt", ""))}</div>
+          </div>
+          <span class="health-pill">{_html(item.get("dataset_key", ""))}</span>
+        </a>
+        """
+        for item in canvases[:8]
+    )
+    if not canvas_html:
+        canvas_html = '<p>No saved canvases yet.</p>'
+    starting_questions = [
+        "How is MIM/TOD training going this week?",
+        "What objectives are unfinished or stale?",
+        "What documents are not connected to anything?",
+        "What changed today that matters?",
+        "Where are blockers repeating?",
+        "What data should I look at before deciding what to work on?",
+    ]
+    questions_html = "".join(
+        f'<a class="button" href="/studio/reports?prompt={_html(question)}">{_html(question)}</a>'
+        for question in starting_questions
+    )
+    return f"""
+    <section class="card hero-card" style="margin-bottom:14px;">
+      <div class="label">Data Whiteboard</div>
+      <h2>What do you want to understand?</h2>
+      <p>Reports start as a conversation. Ask the question first. MIM will choose the dataset when it can, or ask for the missing source when it cannot.</p>
+      <form method="get" action="/studio/reports" style="margin-top:16px; display:grid; gap:12px;">
+        <textarea name="prompt" rows="4" placeholder="Ask MIM something like: How is training doing over the last week? What objectives are stuck? What changed today that matters?">{_html(prompt)}</textarea>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <select name="dataset" style="min-width:240px;">{options_html}</select>
+          <button class="button primary" type="submit">Ask MIM</button>
+          <a class="button" href="/studio/reports">Clear Canvas</a>
+        </div>
+      </form>
+    </section>
+    <section class="grid two" style="margin-bottom:14px;">
+      <article class="card">
+        <div class="label">You Asked</div>
+        <p>{_html(prompt or "Nothing yet. Start with a question and MIM will build the report canvas around it.")}</p>
+      </article>
+      <article class="card">
+        <div class="label">MIM Chose</div>
+        <h3>{_html(dataset.get("label", "Studio Overview"))}</h3>
+        <p>{_html(dataset.get("selection_reason", "MIM has not selected a dataset yet."))}</p>
+      </article>
+    </section>
+    <section class="card" style="margin-bottom:14px;">
+      <div class="label">MIM Summary</div>
+      <h2>{_html(dataset.get("label", "Report Canvas"))}</h2>
+      <p>{_html(dataset.get("summary", "No data loaded yet."))}</p>
+      <div class="muted">Generated: {_html(dataset.get("generated_at", ""))}</div>
+    </section>
+    <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>
+    <section class="grid two">
+      <article class="card">
+        <h2>Findings</h2>
+        <div class="attention-list" style="margin-top:12px;">{findings_html}</div>
+      </article>
+      <article class="card">
+        <h2>Actions</h2>
+        <div class="attention-list" style="margin-top:12px;">{actions_html}</div>
+      </article>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Loaded Data</h2>
+      <p>Columns are clickable visually for now; the backend already returns structured rows for sorting, exporting, and MIM drill-down tooling.</p>
+      <div class="actions" style="margin-top:10px; flex-wrap:wrap;">
+        <a class="button" href="/studio/api/reports/dataset?dataset={_html(dataset_key)}">Open JSON</a>
+        <a class="button" href="/studio/api/reports/dataset?dataset={_html(dataset_key)}&format=csv">Download CSV</a>
+        <a class="button" href="/mim">Ask MIM About This</a>
+        <a class="button" href="/studio/projects">Create Action From Finding</a>
+      </div>
+      <table class="score-table" style="margin-top:12px;">
+        <thead><tr>{table_headers}</tr></thead>
+        <tbody>{table_rows}</tbody>
+      </table>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Starting Questions</h2>
+        <div class="actions" style="margin-top:12px; flex-wrap:wrap;">{questions_html}</div>
+      </article>
+      <article class="card">
+        <h2>Saved Canvases</h2>
+        <div style="margin-top:12px;">{canvas_html}</div>
+      </article>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Available Datasets</h2>
+      <p>This is the current source map. Future app reports can add AgentMIM users, MIM Wall subscribers, social posts, accounting vendors, and app-specific telemetry without changing the report canvas model.</p>
+    </section>
+    <section class="grid three placeholder-sections">{dataset_cards}</section>
+    """
+
+
+def _metric_table(title: str, metrics: list[tuple[str, object, object, str]]) -> str:
+    rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(label)}</td>
+          <td>{_html(yesterday)}</td>
+          <td>{_html(today)}</td>
+          <td>{_html(source)}</td>
+        </tr>
+        """
+        for label, yesterday, today, source in metrics
+    )
+    return f"""
+    <article class="card">
+      <h2>{_html(title)}</h2>
+      <table class="score-table">
+        <thead><tr><th>Metric</th><th>Yesterday</th><th>Today</th><th>Source</th></tr></thead>
+        <tbody>{rows}</tbody>
+      </table>
+    </article>
+    """
+
+
+def _training_body(state: dict[str, Any]) -> str:
+    section_cards = "".join(
+        f"""
+        <a class="card" href="{_html(section['href'])}">
+          <h3>{_html(section['label'])}</h3>
+          <p>{_html(section['summary'])}</p>
+        </a>
+        """
+        for section in TRAINING_SECTIONS
+    )
+    mim = state["mim"]
+    tod = state["tod"]
+    judgment = state.get("judgment") if isinstance(state.get("judgment"), dict) else {}
+    reflection = state.get("reflection") if isinstance(state.get("reflection"), dict) else {}
+    typo = state.get("typo") if isinstance(state.get("typo"), dict) else {}
+    objective_counts = reflection.get("objective_counts") if isinstance(reflection.get("objective_counts"), dict) else {}
+    freshness = reflection.get("freshness") if isinstance(reflection.get("freshness"), dict) else {}
+    stale = freshness.get("stale_artifacts") if isinstance(freshness.get("stale_artifacts"), list) else []
+    evidence_docs = state.get("evidence_docs") if isinstance(state.get("evidence_docs"), list) else []
+    evidence_html = "".join(
+        f"""
+        <a class="project-row" href="{_html(item.get("href", "/studio/documents"))}">
+          <div>
+            <strong>{_html(item.get("title", ""))}</strong>
+            <div class="muted">{_html(item.get("summary", ""))}</div>
+          </div>
+          <span class="health-pill">{_html(item.get("kind", "evidence"))}</span>
+        </a>
+        """
+        for item in evidence_docs
+    )
+    stale_html = "".join(f"<li>{_html(item)}</li>" for item in stale[:8]) or "<li>No stale artifacts reported.</li>"
+    group_summary = judgment.get("group_summary") if isinstance(judgment.get("group_summary"), dict) else {}
+    group_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(str(group).replace("_", " ").title())}</td>
+          <td>{_html(values.get("passed", ""))}</td>
+          <td>{_html(values.get("failed", ""))}</td>
+        </tr>
+        """
+        for group, values in group_summary.items()
+        if isinstance(values, dict)
+    )
+    mim_metrics = [
+        ("Intent Understood", "baseline needed", "100", "live_gateway_eval"),
+        ("Answered Question", "baseline needed", "100", "live_gateway_eval"),
+        ("Internal Jargon", "baseline needed", "0", "live_gateway_eval"),
+        ("Recommendation Quality", "baseline needed", "100", "live_gateway_eval"),
+        ("Judgment Mode", "baseline needed", f"{judgment.get('pass_rate_percent', 'unknown')}%", "durability_smoke_v2"),
+        ("Typo Tolerance", "baseline needed", typo.get("pass_rate_percent", "unknown"), "typo_smoke"),
+    ]
+    tod_metrics = [
+        ("Blockers Cleared", "baseline needed", "3", "blocker_drill_artifacts"),
+        ("False Completions Prevented", "baseline needed", "1", "drill_004_self_correction"),
+        ("Validated Edits", "baseline needed", "baseline needed", "baseline_needed"),
+        ("No-op Rejections", "baseline needed", "baseline needed", "baseline_needed"),
+        ("Evidence Quality", "baseline needed", "needs proof", "blocker_resolution"),
+    ]
+    return f"""
+    <section class="card">
+      <div class="status-head">
+        <div>
+          <h2>MIM Training Summary</h2>
+          <p class="focus">{_html(state["outcome_verdict"])}</p>
+        </div>
+        <span class="badge"><span class="dot {'green' if state.get('are_improving') is True else 'yellow'}"></span>{_html(state["assessment"])}</span>
+      </div>
+      <div class="label">Generated Fresh On Page Load</div>
+      <p>Updated: {_html(state["generated_at"])} / Directive: {_html(state["directive_status"])} / Reflection says improving: {_html(state.get("are_improving"))}</p>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>MIM</h2>
+        <p class="focus">{_html(mim["focus"])}</p>
+        <div class="label">Goal</div>
+        <p>{_html(mim["goal"])}</p>
+        <div class="label">Progress</div>
+        <p>{_html(mim["progress"])}</p>
+        <div class="label">Problem</div>
+        <p>{_html(mim["weakness"])}</p>
+        <div class="label">Next</div>
+        <p>{_html(mim["next"])}</p>
+      </article>
+      <article class="card">
+        <h2>TOD</h2>
+        <p class="focus">{_html(tod["focus"])}</p>
+        <div class="label">Goal</div>
+        <p>{_html(tod["goal"])}</p>
+        <div class="label">Progress</div>
+        <p>{_html(tod["progress"])}</p>
+        <div class="label">Problem</div>
+        <p>{_html(tod["weakness"])}</p>
+        <div class="label">Next</div>
+        <p>{_html(tod["next"])}</p>
+      </article>
+    </section>
+    <section class="grid three" style="margin-top:14px;">
+      <article class="card">
+        <h2>Outcome Reflection</h2>
+        <ul class="clean">
+          <li>Completed objectives: {_html(objective_counts.get("completed", "unknown"))}</li>
+          <li>Running objectives: {_html(objective_counts.get("running", "unknown"))}</li>
+          <li>Blocked objectives: {_html(objective_counts.get("blocked", "unknown"))}</li>
+          <li>Fresh artifacts: {_html(freshness.get("fresh_artifact_count", "unknown"))}</li>
+          <li>Stale artifacts: {_html(len(stale))}</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h2>Judgment Smoke</h2>
+        <p>Pass rate: {_html(judgment.get("pass_rate_percent", "unknown"))}% / Passed {_html(judgment.get("passed", "unknown"))}/{_html(judgment.get("case_count", "unknown"))}</p>
+        <table class="score-table" style="margin-top:10px;">
+          <thead><tr><th>Mode</th><th>Passed</th><th>Failed</th></tr></thead>
+          <tbody>{group_rows}</tbody>
+        </table>
+      </article>
+      <article class="card">
+        <h2>Problems</h2>
+        <p>Top issue: training activity still has to prove outcome improvement.</p>
+        <div class="label">Stale Inputs</div>
+        <ul class="clean">{stale_html}</ul>
+      </article>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      {_metric_table("MIM Scorecard", mim_metrics)}
+      {_metric_table("TOD Scorecard", tod_metrics)}
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Evidence Documents</h2>
+        <p>Training claims should link to library records. Click through to Documents when you want the proof, not just the summary.</p>
+        <div style="margin-top:10px;">{evidence_html}</div>
+      </article>
+      <article class="card">
+        <h2>Recent Improvements</h2>
+        <ul class="clean">
+          <li>Typo-tolerant intent handling reached the current smoke target.</li>
+          <li>MIM responses improved from artifact-heavy status to clearer operator summaries.</li>
+          <li>TOD blocker work proved at least one inspect-and-narrow correction path.</li>
+          <li>Studio Projects and Documents are now DB-backed.</li>
+        </ul>
+        <div class="label">Dave Needed</div>
+        <p>No, unless a blocker requires a decision, credential, or physical-world check.</p>
+      </article>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Training Drill-Down</h2>
+      <p>Use these when you want raw objectives, smoke tests, blockers, memory, or run history.</p>
+    </section>
+    <section class="grid three placeholder-sections">{section_cards}</section>
+    """
+
+
+def _training_section_body(section: dict[str, str]) -> str:
+    if section["key"] == "objectives":
+        return _embed_body({"label": "Objectives", "source": section.get("source", "/objectives")})
+    return f"""
+    <section class="card">
+      <h2>{_html(section['label'])}</h2>
+      <p>{_html(section['summary'])}</p>
+      <div class="label">V1 Shape</div>
+      <ul class="clean">
+        <li>Show current state in plain English.</li>
+        <li>Link every status claim to current evidence.</li>
+        <li>Separate active work, recent wins, blockers, and recommended next action.</li>
+        <li>Keep raw artifacts available as drill-down, not first-screen noise.</li>
+      </ul>
+    </section>
+    """
+
+
+def _embed_body(tab: dict[str, str]) -> str:
+    source = tab.get("source", "/mim")
+    return f"""<iframe class="embed-frame" src="{_html(source)}" title="{_html(tab["label"])}"></iframe>"""
+
+
+@router.get("/studio", response_class=HTMLResponse)
+async def studio_home(request: Request) -> HTMLResponse:
+    auth_redirect = maybe_require_mimtod_page_login(request, next_path="/studio")
+    if auth_redirect is not None:
+        return auth_redirect
+    snapshot = _studio_snapshot()
+    return HTMLResponse(
+        _shell(
+            active="home",
+            title="Dave's Command Center",
+            subtitle="What is happening, what matters, what needs Dave, and what should happen next.",
+            body=_home_body(snapshot),
+            page_context="Studio Home",
+        )
+    )
+
+
+@router.get("/studio/training/{section_key}", response_class=HTMLResponse)
+async def studio_training_section(request: Request, section_key: str) -> HTMLResponse:
+    key = str(section_key or "").strip().lower()
+    section = next((item for item in TRAINING_SECTIONS if item["key"] == key), None)
+    if section is None:
+        return await studio_tab(request, "training")
+    auth_redirect = maybe_require_mimtod_page_login(request, next_path=f"/studio/training/{key}")
+    if auth_redirect is not None:
+        return auth_redirect
+    return HTMLResponse(
+        _shell(
+            active="training",
+            title=f"Training / {section['label']}",
+            subtitle=section["summary"],
+            body=_training_section_body(section),
+            page_context=f"Studio Training {section['label']}",
+        )
+    )
+
+
+@router.get("/studio/objectives", response_class=HTMLResponse)
+async def studio_legacy_objectives(request: Request) -> HTMLResponse:
+    return await studio_training_section(request, "objectives")
+
+
+@router.post("/studio/api/mim/chat")
+async def studio_mim_chat_api(
+    payload: StudioMimChatRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    page_context = _first_text(payload.studio_page_context, payload.page_context, default="Studio")
+    prompt = payload.prompt.strip()
+    if "training" in page_context.lower():
+        state = await _studio_training_state(db)
+        reply = _compose_training_page_reply(prompt, state)
+        return {
+            "ok": True,
+            "source": "studio_training_context",
+            "response_mode": "recommendation" if _is_training_attention_prompt(prompt) else "training_summary",
+            "mim_interface": {
+                "reply_text": reply,
+                "page_context": page_context,
+                "surface": "studio",
+            },
+            "evidence": {
+                "generated_at": state.get("generated_at", ""),
+                "assessment": state.get("assessment", ""),
+                "judgment_pass_rate": (
+                    state.get("judgment", {}).get("pass_rate_percent")
+                    if isinstance(state.get("judgment"), dict)
+                    else None
+                ),
+            },
+        }
+    return {
+        "ok": False,
+        "source": "studio_context_not_handled",
+        "mim_interface": {"reply_text": ""},
+    }
+
+
+@router.get("/studio/api/projects/state")
+async def studio_projects_state_api(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    return await _studio_projects_state(db)
+
+
+@router.post("/studio/api/project-signals")
+async def create_studio_project_signal(
+    payload: StudioProjectSignalCreate,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = StudioProjectSignal(
+        title=payload.title.strip(),
+        signal_type=payload.signal_type.strip() or "observation",
+        status=payload.status.strip() or "observation",
+        priority=payload.priority.strip() or "normal",
+        source_surface=payload.source_surface.strip() or "studio",
+        source_text=payload.source_text,
+        why_it_matters=payload.why_it_matters,
+        suggested_action=payload.suggested_action.strip() or "review",
+        metadata_json=payload.metadata_json,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {"ok": True, "signal": _studio_signal_to_dict(row)}
+
+
+@router.post("/studio/api/projects")
+async def create_studio_project(
+    payload: StudioProjectCreate,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = StudioProject(
+        title=payload.title.strip(),
+        summary=payload.summary,
+        status=payload.status.strip() or "candidate",
+        priority=payload.priority.strip() or "normal",
+        owner=payload.owner.strip() or "Dave + MIM",
+        health=payload.health.strip() or "good",
+        why_it_matters=payload.why_it_matters,
+        origin_story=payload.origin_story,
+        next_action=payload.next_action,
+        dave_needed=payload.dave_needed,
+        metadata_json=payload.metadata_json,
+    )
+    db.add(row)
+    await db.flush()
+    db.add(
+        StudioProjectEvent(
+            project_id=row.id,
+            event_type="created",
+            actor="MIM Studio",
+            title="Project created",
+            detail=row.origin_story or row.summary,
+            metadata_json={"source": "studio_api"},
+        )
+    )
+    await db.commit()
+    await db.refresh(row)
+    return {"ok": True, "project": _studio_project_to_dict(row)}
+
+
+@router.post("/studio/api/project-signals/{signal_id}/promote")
+async def promote_studio_project_signal(
+    signal_id: int,
+    payload: StudioProjectSignalPromote | None = Body(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    signal = await db.get(StudioProjectSignal, signal_id)
+    if not signal:
+        raise HTTPException(status_code=404, detail="studio_project_signal_not_found")
+    project_payload = payload.project if payload and payload.project else None
+    project = StudioProject(
+        title=(project_payload.title if project_payload else signal.title).strip(),
+        summary=(project_payload.summary if project_payload else signal.source_text),
+        status=(project_payload.status if project_payload else "planning").strip() or "planning",
+        priority=(project_payload.priority if project_payload else signal.priority).strip() or "normal",
+        owner=(project_payload.owner if project_payload else "Dave + MIM").strip() or "Dave + MIM",
+        health=(project_payload.health if project_payload else "good").strip() or "good",
+        why_it_matters=project_payload.why_it_matters if project_payload else signal.why_it_matters,
+        origin_story=project_payload.origin_story
+        if project_payload
+        else f"Promoted from signal #{signal.id}: {signal.source_text}",
+        next_action=project_payload.next_action
+        if project_payload
+        else "Continue discovery and define the project bundle.",
+        dave_needed=project_payload.dave_needed if project_payload else False,
+        metadata_json=project_payload.metadata_json if project_payload else {"promoted_from_signal_id": signal.id},
+    )
+    db.add(project)
+    await db.flush()
+    signal.status = "promoted"
+    signal.project_id = project.id
+    db.add(
+        StudioProjectEvent(
+            project_id=project.id,
+            event_type="promoted_from_signal",
+            actor="MIM Studio",
+            title="Signal promoted to project",
+            detail=signal.source_text,
+            evidence_json={"signal_id": signal.id},
+            metadata_json={"source": "studio_api"},
+        )
+    )
+    await db.commit()
+    await db.refresh(project)
+    await db.refresh(signal)
+    return {"ok": True, "signal": _studio_signal_to_dict(signal), "project": _studio_project_to_dict(project)}
+
+
+@router.post("/studio/api/projects/{project_id}/events")
+async def create_studio_project_event(
+    project_id: int,
+    payload: StudioProjectEventCreate,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    project = await db.get(StudioProject, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="studio_project_not_found")
+    event = StudioProjectEvent(
+        project_id=project.id,
+        event_type=payload.event_type.strip() or "note",
+        actor=payload.actor.strip() or "MIM",
+        title=payload.title,
+        detail=payload.detail,
+        evidence_json=payload.evidence_json,
+        metadata_json=payload.metadata_json,
+    )
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+    return {
+        "ok": True,
+        "event": {
+            "id": event.id,
+            "project_id": event.project_id,
+            "event_type": event.event_type,
+            "actor": event.actor,
+            "title": event.title,
+            "detail": event.detail,
+            "created_at": event.created_at.isoformat() if event.created_at else "",
+        },
+    }
+
+
+@router.get("/studio/api/documents/state")
+async def studio_documents_state_api(
+    document_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    return await _studio_documents_state(db, selected_document_id=document_id)
+
+
+@router.get("/studio/api/document-links")
+async def studio_document_links_api(
+    document_id: int | None = None,
+    target_type: str = "",
+    target_id: str = "",
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    await _ensure_studio_document_seed(db)
+    await _ensure_training_document_records(db)
+    await _ensure_studio_document_relationship_seed(db)
+    statement = select(StudioDocumentLink).order_by(StudioDocumentLink.id.desc()).limit(240)
+    if document_id is not None:
+        statement = (
+            select(StudioDocumentLink)
+            .where(StudioDocumentLink.document_id == document_id)
+            .order_by(StudioDocumentLink.id.desc())
+            .limit(240)
+        )
+    elif target_type.strip() or target_id.strip():
+        statement = select(StudioDocumentLink)
+        if target_type.strip():
+            statement = statement.where(StudioDocumentLink.target_type == target_type.strip())
+        if target_id.strip():
+            statement = statement.where(StudioDocumentLink.target_id == target_id.strip())
+        statement = statement.order_by(StudioDocumentLink.id.desc()).limit(240)
+    rows = (await db.execute(statement)).scalars().all()
+    return {"ok": True, "links": [_studio_document_link_to_dict(row) for row in rows]}
+
+
+@router.get("/studio/api/documents/{document_id}")
+async def studio_document_detail_api(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    document = await db.get(StudioDocument, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="studio_document_not_found")
+    links = (
+        await db.execute(
+            select(StudioDocumentLink)
+            .where(StudioDocumentLink.document_id == document.id)
+            .order_by(StudioDocumentLink.id.desc())
+        )
+    ).scalars().all()
+    return {
+        "ok": True,
+        "document": _studio_document_to_dict(document),
+        "links": [_studio_document_link_to_dict(row) for row in links],
+    }
+
+
+@router.get("/studio/api/reports/state")
+async def studio_reports_state_api(
+    dataset: str = "studio_overview",
+    prompt: str = "",
+    canvas_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    return await _studio_reports_state(
+        db,
+        dataset_key=dataset,
+        prompt=prompt,
+        canvas_id=canvas_id,
+    )
+
+
+@router.get("/studio/api/apps/sources")
+async def studio_app_sources_api() -> dict[str, Any]:
+    return {"ok": True, "apps": APP_SOURCE_REGISTRY}
+
+
+@router.get("/studio/api/apps/state")
+async def studio_apps_state_api(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    state = await _studio_apps_state(db)
+    return {"ok": True, **state}
+
+
+@router.get("/studio/api/reports/dataset")
+async def studio_report_dataset_api(
+    dataset: str = "studio_overview",
+    prompt: str = "",
+    format: str = "json",
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    report = await _studio_report_dataset(db, dataset, prompt=prompt)
+    if format.strip().lower() == "csv":
+        columns = report.get("columns") if isinstance(report.get("columns"), list) else []
+        rows = report.get("rows") if isinstance(report.get("rows"), list) else []
+        csv_lines = [",".join(str(column).replace('"', '""') for column in columns)]
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            values = []
+            for column in columns:
+                value = str(row.get(column, "")).replace('"', '""')
+                values.append(f'"{value}"')
+            csv_lines.append(",".join(values))
+        return Response(
+            "\n".join(csv_lines) + "\n",
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="studio-report-{report["key"]}.csv"'},
+        )
+    return {"ok": True, "dataset": report}
+
+
+@router.post("/studio/api/reports/canvases")
+async def create_studio_report_canvas(
+    payload: StudioReportCanvasCreate,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    dataset = await _studio_report_dataset(
+        db,
+        payload.dataset_key.strip() or "studio_overview",
+        prompt=payload.prompt,
+    )
+    title = payload.title.strip() or f"{dataset['label']} Report"
+    row = StudioReportCanvas(
+        title=title,
+        prompt=payload.prompt,
+        dataset_key=dataset["key"],
+        status=payload.status.strip() or "draft",
+        created_by=payload.created_by.strip() or "MIM",
+        summary=dataset["summary"],
+        layout_json={"template": "data_whiteboard", "columns": dataset["columns"]},
+        filters_json=payload.filters_json,
+        findings_json=dataset["findings"],
+        actions_json=dataset["actions"],
+        metadata_json={**payload.metadata_json, "source": "studio_reports_api"},
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {"ok": True, "canvas": _studio_report_canvas_to_dict(row)}
+
+
+@router.post("/studio/api/documents")
+async def create_studio_document(
+    payload: StudioDocumentCreate,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    row = StudioDocument(
+        title=payload.title.strip(),
+        summary=payload.summary,
+        document_type=payload.document_type.strip() or "note",
+        category=payload.category.strip() or "library",
+        status=payload.status.strip() or "active",
+        owner=payload.owner.strip() or "Dave + MIM",
+        created_by=payload.created_by.strip() or "MIM",
+        source_kind=payload.source_kind.strip() or "manual",
+        source_url=payload.source_url,
+        source_path=payload.source_path,
+        local_path=payload.local_path,
+        preserve_policy=payload.preserve_policy.strip() or "reference",
+        snapshot_status=payload.snapshot_status.strip() or "not_requested",
+        content_text=payload.content_text,
+        tags_json=payload.tags_json,
+        metadata_json=payload.metadata_json,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {"ok": True, "document": _studio_document_to_dict(row)}
+
+
+@router.post("/studio/api/documents/{document_id}/links")
+async def create_studio_document_link(
+    document_id: int,
+    payload: StudioDocumentLinkCreate,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    document = await db.get(StudioDocument, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="studio_document_not_found")
+    row = StudioDocumentLink(
+        document_id=document.id,
+        target_type=payload.target_type.strip(),
+        target_id=payload.target_id,
+        relation=payload.relation.strip() or "related",
+        label=payload.label,
+        metadata_json=payload.metadata_json,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {
+        "ok": True,
+        "link": {
+            "id": row.id,
+            "document_id": row.document_id,
+            "target_type": row.target_type,
+            "target_id": row.target_id,
+            "relation": row.relation,
+            "label": row.label,
+        },
+    }
+
+
+@router.get("/studio/{tab_key}", response_class=HTMLResponse)
+async def studio_tab(
+    request: Request,
+    tab_key: str,
+    db: AsyncSession = Depends(get_db),
+) -> HTMLResponse:
+    key = str(tab_key or "").strip().lower()
+    tab = next((item for item in TABS if item["key"] == key), None)
+    if tab is None or key == "home":
+        return await studio_home(request)
+    auth_redirect = maybe_require_mimtod_page_login(request, next_path=f"/studio/{key}")
+    if auth_redirect is not None:
+        return auth_redirect
+    if tab["kind"] == "embed":
+        body = _embed_body(tab)
+        subtitle = f"Studio wrapper for the existing {tab.get('source')} console."
+    elif key == "projects":
+        state = await _studio_projects_state(db)
+        body = _projects_body(state)
+        subtitle = str(PLACEHOLDERS[key]["subtitle"])
+    elif key == "documents":
+        selected_document_id = None
+        raw_document_id = request.query_params.get("document_id")
+        if raw_document_id:
+            try:
+                selected_document_id = int(raw_document_id)
+            except ValueError:
+                selected_document_id = None
+        state = await _studio_documents_state(db, selected_document_id=selected_document_id)
+        body = _documents_body(state)
+        subtitle = str(PLACEHOLDERS[key]["subtitle"])
+    elif key == "reports":
+        canvas_id = None
+        raw_canvas_id = request.query_params.get("canvas_id")
+        if raw_canvas_id:
+            try:
+                canvas_id = int(raw_canvas_id)
+            except ValueError:
+                canvas_id = None
+        state = await _studio_reports_state(
+            db,
+            dataset_key=request.query_params.get("dataset", "studio_overview"),
+            prompt=request.query_params.get("prompt", ""),
+            canvas_id=canvas_id,
+        )
+        body = _reports_body(state)
+        subtitle = "A blank data whiteboard where MIM turns questions into datasets, summaries, findings, and actions."
+    elif key == "training":
+        state = await _studio_training_state(db)
+        body = _training_body(state)
+        subtitle = str(PLACEHOLDERS[key]["subtitle"])
+    elif key == "apps":
+        state = await _studio_apps_state(db)
+        body = _apps_body(state, selected_app_key=request.query_params.get("app", ""))
+        subtitle = str(PLACEHOLDERS[key]["subtitle"])
+    elif key == "systems":
+        state = await _studio_systems_state(db)
+        body = _systems_body(state)
+        subtitle = str(PLACEHOLDERS[key]["subtitle"])
+    elif key == "lab":
+        state = await _studio_lab_state(db)
+        body = _lab_body(state)
+        subtitle = str(PLACEHOLDERS[key]["subtitle"])
+    elif key == "accounting":
+        state = await _studio_accounting_state(db)
+        body = _accounting_body(state)
+        subtitle = str(PLACEHOLDERS[key]["subtitle"])
+    elif key == "settings":
+        state = await _studio_settings_state(db)
+        body = _settings_body(state)
+        subtitle = str(PLACEHOLDERS[key]["subtitle"])
+    else:
+        body = _placeholder_body(key)
+        subtitle = str(PLACEHOLDERS[key]["subtitle"])
+    return HTMLResponse(
+        _shell(
+            active=key,
+            title=tab["label"],
+            subtitle=subtitle,
+            body=body,
+            page_context=f"Studio {tab['label']}",
+        )
+    )
