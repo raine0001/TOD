@@ -3482,40 +3482,19 @@ async def _studio_reports_state(
 def _projects_body(state: dict[str, Any]) -> str:
     counts = state.get("counts") if isinstance(state.get("counts"), dict) else {}
     project_stats = [
-        ("Signals", counts.get("signals", 0), "raw observations and candidate ideas"),
-        ("Candidates", counts.get("candidates", 0), "need approve / park / merge decision"),
-        ("Active", counts.get("active", 0), "planned or in motion"),
-        ("Dave Needed", counts.get("dave_needed", 0), "current project decisions required"),
+        ("Signals", counts.get("signals", 0)),
+        ("Candidates", counts.get("candidates", 0)),
+        ("Active", counts.get("active", 0)),
+        ("Dave Needed", counts.get("dave_needed", 0)),
     ]
     stats_html = "".join(
         f"""
         <article class="card">
           <div class="label">{_html(label)}</div>
           <div class="entity">{_html(value)}</div>
-          <p>{_html(detail)}</p>
         </article>
         """
-        for label, value, detail in project_stats
-    )
-    lifecycle = [
-        ("Project Candidate", "Raw thought from chat, phone, web, file, lab note, customer call, or Dave's notebook."),
-        ("Approval", "Dave or MIM decides whether the candidate becomes real tracked work."),
-        ("Discovery", "MIM turns vague intent into goals, users, pains, examples, constraints, and missing answers."),
-        ("Blueprint", "Features, workflows, data, integrations, roles, risks, and value estimate."),
-        ("Roadmap", "Milestones, phases, cost/effort bands, blockers, assumptions, and approval checkpoints."),
-        ("Implementation", "Approved work becomes TOD/Codex-ready tasks with validation requirements."),
-        ("Testing", "Smoke checks, user review, evidence, screenshots, logs, and acceptance criteria."),
-        ("Deployment", "Release plan, rollback plan, monitoring, support, and owner handoff."),
-        ("Maintenance", "Issues, enhancements, outcome tracking, vendor/accounting links, and future improvements."),
-    ]
-    lifecycle_html = "".join(
-        f"""
-        <article class="card">
-          <h3>{_html(title)}</h3>
-          <p>{_html(detail)}</p>
-        </article>
-        """
-        for title, detail in lifecycle
+        for label, value in project_stats
     )
     active_examples = state.get("projects") if isinstance(state.get("projects"), list) else []
     inbox_examples = state.get("signals") if isinstance(state.get("signals"), list) else []
@@ -3546,31 +3525,13 @@ def _projects_body(state: dict[str, Any]) -> str:
         for item in active_examples[:8]
     )
     if not inbox_html:
-        inbox_html = '<article class="attention-item"><strong>No signals yet</strong><div class="muted">MIM can create one from conversation when an idea becomes worth tracking.</div></article>'
+        inbox_html = '<article class="attention-item"><strong>No signals yet</strong></article>'
     if not examples_html:
-        examples_html = '<p>No projects yet.</p>'
-    status_lanes = [
-        ("Candidate", "Forum Graphics Quality; MIM Accounting"),
-        ("Planning", "AgentMIM Account Manager"),
-        ("Implementation", "MIM Project Studio"),
-        ("Testing", "Homepage/front-page chat behavior"),
-        ("Deployed", "Studio command center V1"),
-        ("Maintenance", "Voice, dashboard, training scoreboard"),
-    ]
-    lanes_html = "".join(
-        f"""
-        <article class="card">
-          <h3>{_html(label)}</h3>
-          <p>{_html(items)}</p>
-        </article>
-        """
-        for label, items in status_lanes
-    )
+        examples_html = '<article class="attention-item"><strong>No projects yet</strong></article>'
     return f"""
     <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>
     <section class="card" style="margin-bottom:14px;">
       <h2>Project Actions</h2>
-      <p>Projects can be created from direct action here or promoted from any MIM conversation when a signal becomes worth tracking.</p>
       <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
         <a class="button primary" href="/studio/projects">Start Project</a>
         <a class="button" href="/studio/projects">Open Project</a>
@@ -3580,96 +3541,12 @@ def _projects_body(state: dict[str, Any]) -> str:
     </section>
     <section class="grid two">
       <article class="card">
-        <h2>Project Command Surface</h2>
-        <p>This page is the home for task/project creation, management, results, and history. Projects are real-world outcomes: applications, customer work, internal tools, research deliverables, robotics work, travel planning, legal research, or anything that creates value outside MIM/TOD's own self-improvement.</p>
-        <div class="label">Top Actions</div>
-        <ul class="clean">
-          <li>Start Project: create a blank candidate or structured project from scratch.</li>
-          <li>Open Project: search or select a tracked project.</li>
-          <li>Review Inbox: approve, park, merge, discard, or ask MIM for more discovery.</li>
-          <li>Ask MIM: discuss an idea and let MIM decide whether it should become a signal, candidate, or project.</li>
-        </ul>
-      </article>
-      <article class="card">
-        <h2>How MIM Uses Projects</h2>
-        <p>MIM can collaborate with Dave anywhere, notice when a real project is being born, and package the conversation into a project candidate before it becomes structured work.</p>
-        <div class="label">Project Bundle</div>
-        <ul class="clean">
-          <li>Goal, audience, pain points, requirements, assumptions, and missing answers.</li>
-          <li>Blueprint, architecture notes, roadmap, milestones, tasks, tests, and deployment actions.</li>
-          <li>Linked documents, samples, screenshots, evidence, decisions, and follow-up recommendations.</li>
-          <li>Project log, origin story, lessons learned, and impact on related or future projects.</li>
-        </ul>
-      </article>
-    </section>
-    <section class="grid two" style="margin-top:14px;">
-      <article class="card">
         <h2>Project Inbox</h2>
-        <p>Not every complaint, wish, or observation becomes a project. MIM should classify signals first, then only promote meaningful patterns or high-value ideas into candidates.</p>
         <div class="attention-list" style="margin-top:12px;">{inbox_html}</div>
       </article>
       <article class="card">
-        <h2>Signal Triage Rule</h2>
-        <p>A project can start anywhere, but MIM should not be literal. A single issue may be just a note, a future consideration, or a real project candidate depending on impact, recurrence, effort, and strategic value.</p>
-        <div class="label">MIM Should Decide</div>
-        <ul class="clean">
-          <li>Ignore if it is noise or already resolved with no future value.</li>
-          <li>Log as an observation if it may matter later.</li>
-          <li>Park if it is useful but not urgent.</li>
-          <li>Create a candidate if it has clear value, recurrence, customer impact, or strategic importance.</li>
-          <li>Merge if it belongs inside an existing project.</li>
-        </ul>
-      </article>
-    </section>
-    <section class="card" style="margin-top:14px;">
-      <h2>Idea-to-Project Workflow</h2>
-      <p>Dave and MIM can start with a messy thought. The Projects page is where that thought becomes a candidate, then a planned, tested, deployed, and maintained outcome.</p>
-    </section>
-    <section class="grid four placeholder-sections" style="grid-template-columns: repeat(4, minmax(0, 1fr));">{lifecycle_html}</section>
-    <section class="card" style="margin-top:14px;">
-      <h2>Status Lanes</h2>
-      <p>Projects need a quick visual lane map so Dave can see what is just an idea, what is being planned, what is being built, what is being tested, and what is already deployed.</p>
-    </section>
-    <section class="grid three placeholder-sections">{lanes_html}</section>
-    <section class="grid two" style="margin-top:14px;">
-      <article class="card">
         <h2>Active Project Examples</h2>
         {examples_html}
-      </article>
-      <article class="card">
-        <h2>Project Detail Anatomy</h2>
-        <ul class="clean">
-          <li>Summary: what this is, why it matters, current status, priority, owner, and Dave needed.</li>
-          <li>Origin Story: the conversation, complaint, customer request, or idea that created it.</li>
-          <li>Discovery: users, goals, pain points, constraints, examples, data, integrations, and missing answers.</li>
-          <li>Roadmap: phases, milestones, tasks, estimates, blockers, assumptions, and approvals.</li>
-          <li>Testing: evidence, screenshots, smoke results, acceptance checks, and known issues.</li>
-          <li>Deployment / Maintenance: version, release notes, support issues, recalls, updates, and lessons learned.</li>
-        </ul>
-      </article>
-    </section>
-    <section class="grid two" style="margin-top:14px;">
-      <article class="card">
-        <h2>MIM Conversation Behavior</h2>
-        <p>When Dave mentions a possible project anywhere, MIM should use this page as the memory home.</p>
-        <div class="label">Expected Response</div>
-        <ul class="clean">
-          <li>Confirm what Dave meant in plain language.</li>
-          <li>Classify the signal: ignore, observation, park, merge, or candidate.</li>
-          <li>Explain why it matters or why it does not need a project yet.</li>
-          <li>Ask whether to track it, park it, merge it, or keep it as context.</li>
-        </ul>
-      </article>
-      <article class="card">
-        <h2>Next Implementation Step</h2>
-        <p>The UI structure is now ready. The next real build is DB-backed project records and a MIM action path that can create candidates from any conversation.</p>
-        <div class="label">Needed Backend</div>
-        <ul class="clean">
-          <li>project_signals table for observations and candidate ideas.</li>
-          <li>projects table with lifecycle status and priority.</li>
-          <li>project_events table for timeline/history.</li>
-          <li>project_links for objectives, tasks, documents, deployments, and related projects.</li>
-        </ul>
       </article>
     </section>
     """
