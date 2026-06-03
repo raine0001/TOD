@@ -1,0 +1,70 @@
+{
+  "packet_type": "mim-arm-blue-block-pickup-run-result-v1",
+  "generated_at": "2026-05-31T22:14:53Z",
+  "status": "completed_with_evidence",
+  "confidence": "medium_high",
+  "operator_facing_summary": "MIM located the table, identified the blue block, learned a better side-seat alignment, closed the claw, lifted, and verified the block stayed with the claw during a small base movement and return.",
+  "objective": "Pick up Blue Block",
+  "resources_used": [
+    "Pi hand camera",
+    "MIM Box camera availability registry",
+    "Dave PC camera attempted/blocked by local access conflict",
+    "C12 distance sensor",
+    "RPLIDAR scans",
+    "movement memory",
+    "servo move trace"
+  ],
+  "successful_pose_after_hold_verification": [
+    100,
+    90,
+    50,
+    108,
+    89,
+    0
+  ],
+  "learned_alignment": {
+    "base": 100,
+    "shoulder": 90,
+    "elbow_deep_seat": 32,
+    "wrist": 108,
+    "hand_side_seat_angle": 89,
+    "claw_full_close": 0,
+    "lift_elbow": 50,
+    "note": "Hand angle 89 and side-seat alignment retained the block better than top-down pinch attempts at hand angle 95."
+  },
+  "key_evidence": {
+    "initial_multicamera_contact_sheet": "runtime_remote_training/arm_pickup_run/multicamera_contact_sheet.jpg",
+    "table_found": "runtime_remote_training/arm_pickup_run/hand_after_restored_search_open_annotated.jpg",
+    "base_direction_probe": "runtime_remote_training/arm_pickup_run/hand_probe_base_92_direction_annotated.jpg",
+    "deep_seat_probe": "runtime_remote_training/arm_pickup_run/deep_seat_elbow_down_32_annotated.jpg",
+    "failed_top_down_lift": "runtime_remote_training/arm_pickup_run/final_retry_lift_50_annotated.jpg",
+    "successful_side_seat_lift": "runtime_remote_training/arm_pickup_run/side_seat_lift_50_annotated.jpg",
+    "hold_before": "runtime_remote_training/arm_pickup_run/hold_verify_before_annotated.jpg",
+    "hold_after_base_plus4": "runtime_remote_training/arm_pickup_run/hold_verify_after_base_plus4_annotated.jpg",
+    "hold_return": "runtime_remote_training/arm_pickup_run/hold_verify_return_annotated.jpg"
+  },
+  "run_logs": [
+    "runtime_remote_training/arm_pickup_run/mim_arm_blue_block_centerline_retry.json",
+    "runtime_remote_training/arm_pickup_run/mim_arm_blue_block_deep_seat_probe.json",
+    "runtime_remote_training/arm_pickup_run/mim_arm_blue_block_final_retry.json",
+    "runtime_remote_training/arm_pickup_run/mim_arm_blue_block_finish_attempt.json",
+    "runtime_remote_training/arm_pickup_run/mim_arm_blue_block_grip_attempt.json",
+    "runtime_remote_training/arm_pickup_run/mim_arm_blue_block_hold_verification.json",
+    "runtime_remote_training/arm_pickup_run/mim_arm_blue_block_scan_continue.json",
+    "runtime_remote_training/arm_pickup_run/mim_arm_blue_block_search_run.json",
+    "runtime_remote_training/arm_pickup_run/mim_arm_blue_block_side_seat_retry.json"
+  ],
+  "what_worked": [
+    "Known-good memory got MIM back over the table.",
+    "Base direction probing found base 92/100 as useful alignment zones.",
+    "Elbow 32 seated the block deeper in the claw view.",
+    "Hand angle 89 produced better side-seat retention than hand angle 95.",
+    "Closed-claw base +4 verification kept the block in the same claw-relative position."
+  ],
+  "what_failed": [
+    "Initial camera pass saw room/floor, not table.",
+    "Top-down pinch attempts lifted away without retaining the block.",
+    "External observer camera bridge is still weaker than the hand camera."
+  ],
+  "next_recommended_action": "Ask Dave what MIM should do next with the block, or run a controlled place-down routine that opens the claw only after the hand camera confirms the table below."
+}

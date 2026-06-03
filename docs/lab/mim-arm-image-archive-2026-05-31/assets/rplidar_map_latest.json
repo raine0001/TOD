@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-05-31T22:31:17Z",
+  "source_url": "http://192.168.1.90:5000/lidar/scan?duration=4&max_points=1440&include_points=1",
+  "scan_status": "ok",
+  "ok": true,
+  "point_count": 1440,
+  "points_rendered": 1440,
+  "render_note": "full points",
+  "min_distance_mm": 25.0,
+  "max_distance_mm": 7236.5,
+  "descriptor_ok": true,
+  "image": "runtime_remote_training/arm_pickup_run/rplidar_map_latest.png",
+  "raw": "runtime_remote_training/arm_pickup_run/rplidar_scan_latest.json"
+}

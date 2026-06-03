@@ -1,0 +1,10136 @@
+{
+  "baud": 460800,
+  "connected": true,
+  "descriptor": "a55a0500004081",
+  "descriptor_ok": true,
+  "max_distance_mm": 7223.0,
+  "min_distance_mm": 48.0,
+  "ok": true,
+  "point_count": 2000,
+  "points": [
+    {
+      "angle_degrees": 116.52,
+      "distance_mm": 177.5,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 120.58,
+      "distance_mm": 937.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 121.38,
+      "distance_mm": 937.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 121.98,
+      "distance_mm": 938.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 122.73,
+      "distance_mm": 940.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 123.48,
+      "distance_mm": 942.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 124.23,
+      "distance_mm": 945.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 124.98,
+      "distance_mm": 947.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 125.73,
+      "distance_mm": 949.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 126.48,
+      "distance_mm": 951.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 127.23,
+      "distance_mm": 952.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 128.0,
+      "distance_mm": 954.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 128.75,
+      "distance_mm": 958.5,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 132.45,
+      "distance_mm": 77.8,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 133.97,
+      "distance_mm": 72.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 135.47,
+      "distance_mm": 67.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 137.17,
+      "distance_mm": 64.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 138.77,
+      "distance_mm": 60.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 140.2,
+      "distance_mm": 55.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 140.97,
+      "distance_mm": 54.5,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 141.72,
+      "distance_mm": 54.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 142.48,
+      "distance_mm": 53.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 143.27,
+      "distance_mm": 53.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 144.03,
+      "distance_mm": 54.2,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 144.8,
+      "distance_mm": 54.2,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 145.56,
+      "distance_mm": 53.0,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 148.53,
+      "distance_mm": 48.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 149.31,
+      "distance_mm": 48.0,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 150.83,
+      "distance_mm": 51.5,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 152.34,
+      "distance_mm": 51.0,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 153.86,
+      "distance_mm": 53.8,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 154.62,
+      "distance_mm": 54.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 155.41,
+      "distance_mm": 54.0,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 156.94,
+      "distance_mm": 55.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 157.7,
+      "distance_mm": 54.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 158.47,
+      "distance_mm": 54.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 159.23,
+      "distance_mm": 55.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 160.0,
+      "distance_mm": 55.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 160.77,
+      "distance_mm": 54.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 161.5,
+      "distance_mm": 55.0,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 162.27,
+      "distance_mm": 55.8,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 163.02,
+      "distance_mm": 55.5,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 163.78,
+      "distance_mm": 54.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 164.52,
+      "distance_mm": 53.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 166.02,
+      "distance_mm": 51.8,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 166.77,
+      "distance_mm": 52.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 167.58,
+      "distance_mm": 52.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 170.61,
+      "distance_mm": 51.0,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 174.69,
+      "distance_mm": 56.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 176.31,
+      "distance_mm": 58.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 176.95,
+      "distance_mm": 58.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 177.72,
+      "distance_mm": 59.0,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 178.48,
+      "distance_mm": 59.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 179.25,
+      "distance_mm": 59.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 180.02,
+      "distance_mm": 60.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 180.78,
+      "distance_mm": 60.8,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 181.55,
+      "distance_mm": 61.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 182.31,
+      "distance_mm": 62.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 183.86,
+      "distance_mm": 57.0,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 184.62,
+      "distance_mm": 55.5,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 185.39,
+      "distance_mm": 54.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 186.17,
+      "distance_mm": 53.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 186.94,
+      "distance_mm": 52.5,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 187.7,
+      "distance_mm": 51.8,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 189.23,
+      "distance_mm": 55.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 190.0,
+      "distance_mm": 57.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 190.77,
+      "distance_mm": 57.2,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 191.53,
+      "distance_mm": 57.2,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 192.45,
+      "distance_mm": 58.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 193.27,
+      "distance_mm": 58.2,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 194.88,
+      "distance_mm": 60.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 195.55,
+      "distance_mm": 61.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 196.33,
+      "distance_mm": 63.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 197.88,
+      "distance_mm": 65.8,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 199.42,
+      "distance_mm": 71.2,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 206.38,
+      "distance_mm": 765.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 207.16,
+      "distance_mm": 754.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 208.14,
+      "distance_mm": 757.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 208.97,
+      "distance_mm": 759.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 209.8,
+      "distance_mm": 760.5,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 210.62,
+      "distance_mm": 761.2,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 211.23,
+      "distance_mm": 761.5,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 212.02,
+      "distance_mm": 762.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 212.78,
+      "distance_mm": 761.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 213.56,
+      "distance_mm": 760.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 214.38,
+      "distance_mm": 760.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 215.16,
+      "distance_mm": 763.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 215.94,
+      "distance_mm": 764.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 216.72,
+      "distance_mm": 764.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 217.5,
+      "distance_mm": 766.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 218.28,
+      "distance_mm": 768.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 219.06,
+      "distance_mm": 769.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 219.84,
+      "distance_mm": 772.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 220.62,
+      "distance_mm": 775.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 221.41,
+      "distance_mm": 776.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 222.19,
+      "distance_mm": 778.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 222.97,
+      "distance_mm": 784.5,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 223.73,
+      "distance_mm": 784.5,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 224.52,
+      "distance_mm": 784.5,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 225.28,
+      "distance_mm": 799.0,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 226.06,
+      "distance_mm": 799.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 226.94,
+      "distance_mm": 789.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 227.73,
+      "distance_mm": 793.5,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 228.53,
+      "distance_mm": 798.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 229.33,
+      "distance_mm": 802.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 230.05,
+      "distance_mm": 808.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 230.83,
+      "distance_mm": 812.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 231.59,
+      "distance_mm": 815.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 232.38,
+      "distance_mm": 820.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 233.19,
+      "distance_mm": 824.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 233.97,
+      "distance_mm": 829.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 234.75,
+      "distance_mm": 836.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 235.53,
+      "distance_mm": 841.2,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 236.33,
+      "distance_mm": 845.5,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 237.11,
+      "distance_mm": 852.5,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 237.89,
+      "distance_mm": 860.2,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 238.67,
+      "distance_mm": 867.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 239.47,
+      "distance_mm": 875.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 240.25,
+      "distance_mm": 883.5,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 241.03,
+      "distance_mm": 890.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 241.81,
+      "distance_mm": 898.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 242.59,
+      "distance_mm": 905.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 243.38,
+      "distance_mm": 913.2,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 244.16,
+      "distance_mm": 921.2,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 244.94,
+      "distance_mm": 929.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 245.8,
+      "distance_mm": 942.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 246.59,
+      "distance_mm": 948.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 247.39,
+      "distance_mm": 946.8,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 248.19,
+      "distance_mm": 938.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 248.95,
+      "distance_mm": 917.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 249.75,
+      "distance_mm": 908.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 250.53,
+      "distance_mm": 909.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 251.33,
+      "distance_mm": 905.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 252.09,
+      "distance_mm": 908.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 252.88,
+      "distance_mm": 919.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 253.66,
+      "distance_mm": 929.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 254.44,
+      "distance_mm": 940.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 255.25,
+      "distance_mm": 952.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 256.05,
+      "distance_mm": 964.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 256.83,
+      "distance_mm": 976.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 257.62,
+      "distance_mm": 991.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 258.39,
+      "distance_mm": 1007.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 259.17,
+      "distance_mm": 1024.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 259.95,
+      "distance_mm": 1041.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 260.73,
+      "distance_mm": 1054.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 261.55,
+      "distance_mm": 1068.5,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 263.92,
+      "distance_mm": 6804.5,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 264.75,
+      "distance_mm": 6917.5,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 265.55,
+      "distance_mm": 7048.0,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 266.34,
+      "distance_mm": 7143.0,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 267.14,
+      "distance_mm": 7211.5,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 275.83,
+      "distance_mm": 2952.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 276.62,
+      "distance_mm": 2941.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 277.38,
+      "distance_mm": 2959.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 278.16,
+      "distance_mm": 2971.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 281.34,
+      "distance_mm": 2643.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 282.12,
+      "distance_mm": 2565.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 282.92,
+      "distance_mm": 2491.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 283.69,
+      "distance_mm": 2424.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 284.47,
+      "distance_mm": 2363.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 285.25,
+      "distance_mm": 2302.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 286.03,
+      "distance_mm": 2246.0,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 286.86,
+      "distance_mm": 2186.5,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 287.66,
+      "distance_mm": 2155.0,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 288.44,
+      "distance_mm": 2153.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 290.83,
+      "distance_mm": 2137.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 291.61,
+      "distance_mm": 2136.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 293.16,
+      "distance_mm": 224.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 293.94,
+      "distance_mm": 219.5,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 294.72,
+      "distance_mm": 215.0,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 295.5,
+      "distance_mm": 210.0,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 296.31,
+      "distance_mm": 205.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 297.11,
+      "distance_mm": 202.0,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 297.89,
+      "distance_mm": 200.8,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 298.69,
+      "distance_mm": 202.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 299.69,
+      "distance_mm": 204.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 300.53,
+      "distance_mm": 205.2,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 301.38,
+      "distance_mm": 205.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 302.22,
+      "distance_mm": 207.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 302.86,
+      "distance_mm": 210.5,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 303.66,
+      "distance_mm": 213.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 304.44,
+      "distance_mm": 215.2,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 305.23,
+      "distance_mm": 217.2,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 306.03,
+      "distance_mm": 220.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 306.83,
+      "distance_mm": 221.2,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 307.61,
+      "distance_mm": 220.5,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 310.06,
+      "distance_mm": 2125.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 310.86,
+      "distance_mm": 2127.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 311.67,
+      "distance_mm": 2130.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 314.05,
+      "distance_mm": 2147.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 314.84,
+      "distance_mm": 2152.5,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 315.62,
+      "distance_mm": 2162.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 316.42,
+      "distance_mm": 2173.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 317.2,
+      "distance_mm": 2182.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 318.0,
+      "distance_mm": 2189.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 318.91,
+      "distance_mm": 2198.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 319.73,
+      "distance_mm": 2206.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 320.55,
+      "distance_mm": 2218.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 321.38,
+      "distance_mm": 2232.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 322.12,
+      "distance_mm": 2245.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 322.94,
+      "distance_mm": 2258.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 323.73,
+      "distance_mm": 2271.5,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 324.55,
+      "distance_mm": 2287.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 325.31,
+      "distance_mm": 2300.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 326.11,
+      "distance_mm": 2311.2,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 326.91,
+      "distance_mm": 2327.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 327.7,
+      "distance_mm": 2348.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 328.53,
+      "distance_mm": 2365.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 329.34,
+      "distance_mm": 2381.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 330.14,
+      "distance_mm": 2400.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 330.95,
+      "distance_mm": 2420.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 331.72,
+      "distance_mm": 2439.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 332.52,
+      "distance_mm": 2461.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 333.31,
+      "distance_mm": 2471.8,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 334.11,
+      "distance_mm": 2494.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 335.0,
+      "distance_mm": 2524.5,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 335.83,
+      "distance_mm": 2547.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 336.64,
+      "distance_mm": 2574.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 340.58,
+      "distance_mm": 1101.0,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 342.22,
+      "distance_mm": 119.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 343.02,
+      "distance_mm": 118.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 343.83,
+      "distance_mm": 117.2,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 344.58,
+      "distance_mm": 118.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 345.38,
+      "distance_mm": 121.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 346.16,
+      "distance_mm": 123.0,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 346.95,
+      "distance_mm": 124.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 347.8,
+      "distance_mm": 123.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 348.61,
+      "distance_mm": 121.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 349.41,
+      "distance_mm": 121.5,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 350.22,
+      "distance_mm": 120.8,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 351.0,
+      "distance_mm": 120.2,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 351.8,
+      "distance_mm": 122.2,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 356.11,
+      "distance_mm": 122.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 356.97,
+      "distance_mm": 119.8,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 357.64,
+      "distance_mm": 120.2,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 358.45,
+      "distance_mm": 120.2,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 359.25,
+      "distance_mm": 121.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 0.06,
+      "distance_mm": 123.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 0.89,
+      "distance_mm": 123.2,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 1.7,
+      "distance_mm": 122.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 3.33,
+      "distance_mm": 128.2,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 4.11,
+      "distance_mm": 128.0,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 5.72,
+      "distance_mm": 2582.0,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 6.53,
+      "distance_mm": 2592.5,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 8.98,
+      "distance_mm": 2485.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 9.8,
+      "distance_mm": 2516.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 10.84,
+      "distance_mm": 2520.8,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 11.72,
+      "distance_mm": 2506.8,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 12.58,
+      "distance_mm": 2495.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 13.45,
+      "distance_mm": 2485.8,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 14.12,
+      "distance_mm": 2474.8,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 14.95,
+      "distance_mm": 2466.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 15.77,
+      "distance_mm": 2457.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 16.59,
+      "distance_mm": 2444.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 17.38,
+      "distance_mm": 2431.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 18.19,
+      "distance_mm": 2422.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 19.0,
+      "distance_mm": 2422.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 19.81,
+      "distance_mm": 2411.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 20.67,
+      "distance_mm": 2403.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 21.5,
+      "distance_mm": 2398.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 22.31,
+      "distance_mm": 2390.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 23.14,
+      "distance_mm": 2383.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 23.97,
+      "distance_mm": 2377.2,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 24.8,
+      "distance_mm": 2374.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 25.61,
+      "distance_mm": 2366.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 26.44,
+      "distance_mm": 2334.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 27.22,
+      "distance_mm": 2291.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 29.66,
+      "distance_mm": 1881.0,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 30.45,
+      "distance_mm": 1876.5,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 31.27,
+      "distance_mm": 1876.0,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 32.88,
+      "distance_mm": 1957.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 35.38,
+      "distance_mm": 2355.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 36.97,
+      "distance_mm": 2275.0,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 39.39,
+      "distance_mm": 2633.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 40.25,
+      "distance_mm": 2640.2,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 41.08,
+      "distance_mm": 2645.8,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 41.89,
+      "distance_mm": 2652.2,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 42.72,
+      "distance_mm": 2656.8,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 46.0,
+      "distance_mm": 2015.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 47.44,
+      "distance_mm": 1847.0,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 48.22,
+      "distance_mm": 1820.5,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 49.0,
+      "distance_mm": 1804.5,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 52.36,
+      "distance_mm": 2225.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 53.19,
+      "distance_mm": 2213.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 54.81,
+      "distance_mm": 183.5,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 55.62,
+      "distance_mm": 182.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 56.41,
+      "distance_mm": 182.5,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 57.22,
+      "distance_mm": 182.2,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 58.02,
+      "distance_mm": 182.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 60.45,
+      "distance_mm": 201.2,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 61.25,
+      "distance_mm": 202.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 63.72,
+      "distance_mm": 176.5,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 64.53,
+      "distance_mm": 174.0,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 65.34,
+      "distance_mm": 173.0,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 66.72,
+      "distance_mm": 174.0,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 67.67,
+      "distance_mm": 175.0,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 68.62,
+      "distance_mm": 178.0,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 69.58,
+      "distance_mm": 182.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 70.06,
+      "distance_mm": 183.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 70.91,
+      "distance_mm": 185.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 71.73,
+      "distance_mm": 185.8,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 72.58,
+      "distance_mm": 187.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 74.22,
+      "distance_mm": 1350.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 75.05,
+      "distance_mm": 1378.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 75.88,
+      "distance_mm": 1394.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 76.75,
+      "distance_mm": 1413.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 77.59,
+      "distance_mm": 1434.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 79.27,
+      "distance_mm": 1484.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 80.09,
+      "distance_mm": 1492.0,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 80.94,
+      "distance_mm": 1507.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 81.77,
+      "distance_mm": 1492.5,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 83.31,
+      "distance_mm": 962.5,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 84.92,
+      "distance_mm": 1420.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 85.73,
+      "distance_mm": 1406.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 86.62,
+      "distance_mm": 1393.0,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 87.45,
+      "distance_mm": 1382.2,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 88.28,
+      "distance_mm": 1369.2,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 89.11,
+      "distance_mm": 1354.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 90.78,
+      "distance_mm": 1325.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 91.61,
+      "distance_mm": 1312.2,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 92.44,
+      "distance_mm": 1299.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 93.25,
+      "distance_mm": 1297.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 94.08,
+      "distance_mm": 1280.0,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 94.89,
+      "distance_mm": 1272.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 95.72,
+      "distance_mm": 1260.5,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 96.58,
+      "distance_mm": 1254.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 97.41,
+      "distance_mm": 1252.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 98.23,
+      "distance_mm": 1240.0,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 99.06,
+      "distance_mm": 1231.5,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 99.89,
+      "distance_mm": 1219.5,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 100.72,
+      "distance_mm": 1216.0,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 101.55,
+      "distance_mm": 1218.2,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 102.38,
+      "distance_mm": 1205.2,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 103.2,
+      "distance_mm": 1197.8,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 104.03,
+      "distance_mm": 1195.8,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 104.86,
+      "distance_mm": 1183.8,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 106.52,
+      "distance_mm": 837.8,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 107.34,
+      "distance_mm": 833.5,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 108.17,
+      "distance_mm": 828.8,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 113.14,
+      "distance_mm": 181.0,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 113.97,
+      "distance_mm": 180.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 114.8,
+      "distance_mm": 180.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 115.62,
+      "distance_mm": 179.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 116.44,
+      "distance_mm": 178.8,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 120.81,
+      "distance_mm": 937.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 121.69,
+      "distance_mm": 937.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 122.56,
+      "distance_mm": 939.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 123.3,
+      "distance_mm": 943.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 124.14,
+      "distance_mm": 945.8,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 124.97,
+      "distance_mm": 947.8,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 125.81,
+      "distance_mm": 949.5,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 126.66,
+      "distance_mm": 951.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 127.5,
+      "distance_mm": 954.0,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 128.33,
+      "distance_mm": 957.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 133.31,
+      "distance_mm": 74.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 134.14,
+      "distance_mm": 72.5,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 134.97,
+      "distance_mm": 71.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 136.81,
+      "distance_mm": 66.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 138.56,
+      "distance_mm": 60.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 139.44,
+      "distance_mm": 60.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 141.88,
+      "distance_mm": 54.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 142.72,
+      "distance_mm": 54.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 143.56,
+      "distance_mm": 54.2,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 144.41,
+      "distance_mm": 54.2,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 145.25,
+      "distance_mm": 54.2,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 146.09,
+      "distance_mm": 52.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 146.92,
+      "distance_mm": 51.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 147.77,
+      "distance_mm": 51.2,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 148.59,
+      "distance_mm": 51.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 151.2,
+      "distance_mm": 51.8,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 152.05,
+      "distance_mm": 51.0,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 152.91,
+      "distance_mm": 51.2,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 153.67,
+      "distance_mm": 53.0,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 154.5,
+      "distance_mm": 54.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 155.33,
+      "distance_mm": 53.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 156.16,
+      "distance_mm": 53.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 157.05,
+      "distance_mm": 55.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 157.89,
+      "distance_mm": 56.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 158.73,
+      "distance_mm": 56.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 159.58,
+      "distance_mm": 56.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 160.41,
+      "distance_mm": 56.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 162.08,
+      "distance_mm": 54.2,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 162.92,
+      "distance_mm": 54.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 163.8,
+      "distance_mm": 52.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 166.33,
+      "distance_mm": 52.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 167.16,
+      "distance_mm": 52.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 168.0,
+      "distance_mm": 52.0,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 169.67,
+      "distance_mm": 54.5,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 170.53,
+      "distance_mm": 54.0,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 171.38,
+      "distance_mm": 54.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 172.22,
+      "distance_mm": 55.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 173.06,
+      "distance_mm": 56.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 175.88,
+      "distance_mm": 57.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 176.77,
+      "distance_mm": 58.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 177.48,
+      "distance_mm": 59.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 178.33,
+      "distance_mm": 60.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 179.17,
+      "distance_mm": 60.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 180.02,
+      "distance_mm": 60.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 180.88,
+      "distance_mm": 59.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 181.72,
+      "distance_mm": 60.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 183.41,
+      "distance_mm": 57.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 184.31,
+      "distance_mm": 56.8,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 185.17,
+      "distance_mm": 56.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 186.03,
+      "distance_mm": 54.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 187.7,
+      "distance_mm": 52.5,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 188.55,
+      "distance_mm": 53.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 189.39,
+      "distance_mm": 54.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 190.23,
+      "distance_mm": 55.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 191.17,
+      "distance_mm": 55.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 192.05,
+      "distance_mm": 56.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 192.91,
+      "distance_mm": 58.8,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 193.78,
+      "distance_mm": 59.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 194.59,
+      "distance_mm": 60.2,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 195.45,
+      "distance_mm": 62.0,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 196.3,
+      "distance_mm": 63.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 197.16,
+      "distance_mm": 63.8,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 200.56,
+      "distance_mm": 65.0,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 202.28,
+      "distance_mm": 76.8,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 206.55,
+      "distance_mm": 756.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 207.41,
+      "distance_mm": 755.2,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 208.41,
+      "distance_mm": 758.2,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 209.3,
+      "distance_mm": 760.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 210.19,
+      "distance_mm": 760.8,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 211.08,
+      "distance_mm": 760.2,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 211.86,
+      "distance_mm": 760.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 212.72,
+      "distance_mm": 760.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 213.58,
+      "distance_mm": 761.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 214.44,
+      "distance_mm": 762.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 215.3,
+      "distance_mm": 763.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 216.16,
+      "distance_mm": 763.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 217.02,
+      "distance_mm": 764.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 217.88,
+      "distance_mm": 767.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 218.73,
+      "distance_mm": 768.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 219.59,
+      "distance_mm": 770.2,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 220.45,
+      "distance_mm": 772.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 221.31,
+      "distance_mm": 774.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 222.17,
+      "distance_mm": 777.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 223.03,
+      "distance_mm": 783.8,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 223.89,
+      "distance_mm": 785.8,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 224.75,
+      "distance_mm": 789.2,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 225.61,
+      "distance_mm": 797.0,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 226.47,
+      "distance_mm": 794.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 227.33,
+      "distance_mm": 791.5,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 228.19,
+      "distance_mm": 795.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 229.06,
+      "distance_mm": 801.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 229.92,
+      "distance_mm": 806.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 230.78,
+      "distance_mm": 810.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 231.64,
+      "distance_mm": 815.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 232.52,
+      "distance_mm": 820.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 233.38,
+      "distance_mm": 824.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 234.23,
+      "distance_mm": 830.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 235.09,
+      "distance_mm": 837.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 235.95,
+      "distance_mm": 844.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 236.81,
+      "distance_mm": 850.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 237.67,
+      "distance_mm": 858.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 238.53,
+      "distance_mm": 865.2,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 239.41,
+      "distance_mm": 873.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 240.27,
+      "distance_mm": 882.2,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 241.12,
+      "distance_mm": 889.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 241.98,
+      "distance_mm": 897.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 242.84,
+      "distance_mm": 907.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 243.7,
+      "distance_mm": 918.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 244.56,
+      "distance_mm": 927.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 245.42,
+      "distance_mm": 938.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 246.3,
+      "distance_mm": 947.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 247.16,
+      "distance_mm": 948.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 248.02,
+      "distance_mm": 941.5,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 249.75,
+      "distance_mm": 908.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 250.61,
+      "distance_mm": 908.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 251.47,
+      "distance_mm": 904.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 252.33,
+      "distance_mm": 910.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 253.2,
+      "distance_mm": 921.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 254.06,
+      "distance_mm": 933.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 254.92,
+      "distance_mm": 946.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 255.78,
+      "distance_mm": 958.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 256.64,
+      "distance_mm": 973.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 257.5,
+      "distance_mm": 989.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 258.36,
+      "distance_mm": 1006.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 259.22,
+      "distance_mm": 1023.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 260.06,
+      "distance_mm": 1040.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 260.92,
+      "distance_mm": 1056.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 262.62,
+      "distance_mm": 1994.5,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 264.42,
+      "distance_mm": 6857.0,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 265.28,
+      "distance_mm": 6980.0,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 266.16,
+      "distance_mm": 7116.5,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 267.0,
+      "distance_mm": 7211.5,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 276.53,
+      "distance_mm": 2944.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 277.36,
+      "distance_mm": 2955.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 278.22,
+      "distance_mm": 2969.8,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 282.52,
+      "distance_mm": 2535.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 283.38,
+      "distance_mm": 2460.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 284.23,
+      "distance_mm": 2389.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 285.09,
+      "distance_mm": 2321.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 285.95,
+      "distance_mm": 2258.0,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 288.55,
+      "distance_mm": 2152.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 291.11,
+      "distance_mm": 2137.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 292.81,
+      "distance_mm": 226.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 293.67,
+      "distance_mm": 221.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 294.56,
+      "distance_mm": 216.0,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 295.42,
+      "distance_mm": 210.8,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 296.28,
+      "distance_mm": 207.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 297.14,
+      "distance_mm": 203.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 298.17,
+      "distance_mm": 200.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 299.08,
+      "distance_mm": 201.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 299.97,
+      "distance_mm": 203.0,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 300.88,
+      "distance_mm": 205.2,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 301.62,
+      "distance_mm": 207.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 302.48,
+      "distance_mm": 208.5,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 303.34,
+      "distance_mm": 213.0,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 304.2,
+      "distance_mm": 214.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 305.08,
+      "distance_mm": 215.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 305.94,
+      "distance_mm": 219.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 306.8,
+      "distance_mm": 221.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 307.66,
+      "distance_mm": 220.0,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 310.3,
+      "distance_mm": 2126.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 311.17,
+      "distance_mm": 2129.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 312.05,
+      "distance_mm": 2130.8,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 312.92,
+      "distance_mm": 2133.8,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 313.78,
+      "distance_mm": 2144.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 314.66,
+      "distance_mm": 2152.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 315.53,
+      "distance_mm": 2161.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 316.41,
+      "distance_mm": 2172.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 317.27,
+      "distance_mm": 2180.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 318.14,
+      "distance_mm": 2189.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 319.03,
+      "distance_mm": 2198.5,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 319.91,
+      "distance_mm": 2210.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 320.78,
+      "distance_mm": 2224.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 321.66,
+      "distance_mm": 2236.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 322.53,
+      "distance_mm": 2249.8,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 323.41,
+      "distance_mm": 2264.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 324.28,
+      "distance_mm": 2279.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 325.16,
+      "distance_mm": 2296.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 325.98,
+      "distance_mm": 2309.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 326.84,
+      "distance_mm": 2326.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 327.7,
+      "distance_mm": 2348.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 328.56,
+      "distance_mm": 2365.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 329.48,
+      "distance_mm": 2383.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 330.36,
+      "distance_mm": 2402.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 331.23,
+      "distance_mm": 2424.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 332.11,
+      "distance_mm": 2447.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 332.94,
+      "distance_mm": 2470.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 333.8,
+      "distance_mm": 2487.5,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 334.66,
+      "distance_mm": 2511.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 335.52,
+      "distance_mm": 2542.0,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 336.44,
+      "distance_mm": 2569.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 340.8,
+      "distance_mm": 1096.0,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 342.53,
+      "distance_mm": 118.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 343.39,
+      "distance_mm": 118.0,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 344.27,
+      "distance_mm": 119.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 345.12,
+      "distance_mm": 120.8,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 346.0,
+      "distance_mm": 122.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 346.84,
+      "distance_mm": 123.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 347.7,
+      "distance_mm": 121.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 348.56,
+      "distance_mm": 119.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 350.34,
+      "distance_mm": 122.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 351.22,
+      "distance_mm": 121.0,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 353.95,
+      "distance_mm": 135.0,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 356.66,
+      "distance_mm": 119.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 357.44,
+      "distance_mm": 119.5,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 358.31,
+      "distance_mm": 121.2,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 359.17,
+      "distance_mm": 122.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 0.05,
+      "distance_mm": 122.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 0.95,
+      "distance_mm": 123.5,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 1.83,
+      "distance_mm": 122.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 2.7,
+      "distance_mm": 123.8,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 3.58,
+      "distance_mm": 124.5,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 6.22,
+      "distance_mm": 2587.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 8.84,
+      "distance_mm": 2472.5,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 9.72,
+      "distance_mm": 2504.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 10.59,
+      "distance_mm": 2521.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 11.67,
+      "distance_mm": 2511.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 12.59,
+      "distance_mm": 2492.8,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 13.52,
+      "distance_mm": 2477.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 14.44,
+      "distance_mm": 2474.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 15.22,
+      "distance_mm": 2466.2,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 16.11,
+      "distance_mm": 2450.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 16.98,
+      "distance_mm": 2441.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 17.88,
+      "distance_mm": 2434.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 18.73,
+      "distance_mm": 2423.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 19.61,
+      "distance_mm": 2410.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 20.48,
+      "distance_mm": 2401.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 21.36,
+      "distance_mm": 2397.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 22.28,
+      "distance_mm": 2390.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 23.17,
+      "distance_mm": 2384.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 24.05,
+      "distance_mm": 2383.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 24.94,
+      "distance_mm": 2382.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 25.83,
+      "distance_mm": 2367.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 26.72,
+      "distance_mm": 2326.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 30.14,
+      "distance_mm": 1875.0,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 31.0,
+      "distance_mm": 1879.2,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 31.86,
+      "distance_mm": 1896.8,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 32.77,
+      "distance_mm": 1937.5,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 35.38,
+      "distance_mm": 2347.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 38.06,
+      "distance_mm": 1850.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 39.83,
+      "distance_mm": 2635.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 40.72,
+      "distance_mm": 2642.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 41.59,
+      "distance_mm": 2650.2,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 42.48,
+      "distance_mm": 2656.5,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 45.95,
+      "distance_mm": 2012.2,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 47.55,
+      "distance_mm": 1844.5,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 48.39,
+      "distance_mm": 1821.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 49.23,
+      "distance_mm": 1805.2,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 51.92,
+      "distance_mm": 2227.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 52.8,
+      "distance_mm": 2221.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 54.53,
+      "distance_mm": 184.5,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 55.39,
+      "distance_mm": 184.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 56.27,
+      "distance_mm": 183.5,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 57.16,
+      "distance_mm": 183.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 58.03,
+      "distance_mm": 181.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 60.62,
+      "distance_mm": 201.0,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 61.5,
+      "distance_mm": 201.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 64.61,
+      "distance_mm": 175.8,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 65.61,
+      "distance_mm": 175.2,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 66.59,
+      "distance_mm": 174.2,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 67.59,
+      "distance_mm": 174.0,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 68.2,
+      "distance_mm": 175.2,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 69.11,
+      "distance_mm": 179.2,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 70.0,
+      "distance_mm": 183.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 70.91,
+      "distance_mm": 185.2,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 71.77,
+      "distance_mm": 186.5,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 72.66,
+      "distance_mm": 184.8,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 74.44,
+      "distance_mm": 1348.8,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 75.38,
+      "distance_mm": 1373.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 76.28,
+      "distance_mm": 1403.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 77.17,
+      "distance_mm": 1425.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 78.08,
+      "distance_mm": 1434.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 78.97,
+      "distance_mm": 1457.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 79.88,
+      "distance_mm": 1490.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 80.77,
+      "distance_mm": 1507.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 81.67,
+      "distance_mm": 1492.0,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 82.38,
+      "distance_mm": 1476.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 84.94,
+      "distance_mm": 1419.0,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 85.95,
+      "distance_mm": 1403.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 86.84,
+      "distance_mm": 1390.0,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 87.73,
+      "distance_mm": 1376.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 88.62,
+      "distance_mm": 1364.0,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 89.5,
+      "distance_mm": 1350.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 90.39,
+      "distance_mm": 1334.0,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 91.27,
+      "distance_mm": 1320.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 92.16,
+      "distance_mm": 1305.2,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 93.06,
+      "distance_mm": 1295.2,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 93.95,
+      "distance_mm": 1284.8,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 94.84,
+      "distance_mm": 1275.2,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 95.73,
+      "distance_mm": 1263.0,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 96.62,
+      "distance_mm": 1257.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 97.52,
+      "distance_mm": 1254.5,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 98.41,
+      "distance_mm": 1242.0,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 99.3,
+      "distance_mm": 1238.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 100.14,
+      "distance_mm": 1224.5,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 101.02,
+      "distance_mm": 1215.0,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 101.89,
+      "distance_mm": 1210.5,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 102.77,
+      "distance_mm": 1201.2,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 103.69,
+      "distance_mm": 1197.0,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 104.58,
+      "distance_mm": 1188.2,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 106.34,
+      "distance_mm": 836.8,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 107.23,
+      "distance_mm": 833.2,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 108.12,
+      "distance_mm": 828.5,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 109.0,
+      "distance_mm": 838.0,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 112.55,
+      "distance_mm": 181.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 113.44,
+      "distance_mm": 183.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 114.31,
+      "distance_mm": 182.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 115.2,
+      "distance_mm": 180.8,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 116.08,
+      "distance_mm": 177.2,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 118.7,
+      "distance_mm": 205.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 121.55,
+      "distance_mm": 938.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 122.48,
+      "distance_mm": 939.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 123.41,
+      "distance_mm": 942.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 124.34,
+      "distance_mm": 946.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 125.12,
+      "distance_mm": 948.2,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 126.02,
+      "distance_mm": 950.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 126.91,
+      "distance_mm": 952.8,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 127.8,
+      "distance_mm": 955.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 128.7,
+      "distance_mm": 956.5,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 133.14,
+      "distance_mm": 77.2,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 134.02,
+      "distance_mm": 74.8,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 135.83,
+      "distance_mm": 70.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 138.5,
+      "distance_mm": 60.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 140.5,
+      "distance_mm": 57.8,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 142.36,
+      "distance_mm": 54.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 143.14,
+      "distance_mm": 54.2,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 144.03,
+      "distance_mm": 54.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 144.92,
+      "distance_mm": 54.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 147.64,
+      "distance_mm": 50.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 149.44,
+      "distance_mm": 49.8,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 150.31,
+      "distance_mm": 51.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 151.2,
+      "distance_mm": 50.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 152.09,
+      "distance_mm": 50.0,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 153.91,
+      "distance_mm": 53.0,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 154.81,
+      "distance_mm": 53.5,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 155.7,
+      "distance_mm": 54.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 156.61,
+      "distance_mm": 54.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 157.5,
+      "distance_mm": 54.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 158.41,
+      "distance_mm": 54.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 159.3,
+      "distance_mm": 56.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 160.2,
+      "distance_mm": 56.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 161.06,
+      "distance_mm": 54.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 161.95,
+      "distance_mm": 53.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 162.84,
+      "distance_mm": 53.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 163.73,
+      "distance_mm": 53.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 164.67,
+      "distance_mm": 54.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 165.58,
+      "distance_mm": 53.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 167.38,
+      "distance_mm": 49.5,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 170.02,
+      "distance_mm": 54.8,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 170.91,
+      "distance_mm": 55.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 173.59,
+      "distance_mm": 55.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 175.56,
+      "distance_mm": 58.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 176.5,
+      "distance_mm": 58.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 178.38,
+      "distance_mm": 61.8,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 179.16,
+      "distance_mm": 61.5,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 180.06,
+      "distance_mm": 61.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 181.86,
+      "distance_mm": 59.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 182.77,
+      "distance_mm": 59.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 184.56,
+      "distance_mm": 56.5,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 185.47,
+      "distance_mm": 55.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 186.39,
+      "distance_mm": 54.0,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 189.11,
+      "distance_mm": 54.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 190.97,
+      "distance_mm": 57.2,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 192.8,
+      "distance_mm": 58.5,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 193.66,
+      "distance_mm": 59.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 194.56,
+      "distance_mm": 60.8,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 195.45,
+      "distance_mm": 61.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 197.31,
+      "distance_mm": 65.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 198.23,
+      "distance_mm": 65.0,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 199.14,
+      "distance_mm": 64.8,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 200.06,
+      "distance_mm": 66.8,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 201.83,
+      "distance_mm": 71.0,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 207.27,
+      "distance_mm": 755.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 208.28,
+      "distance_mm": 757.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 209.22,
+      "distance_mm": 760.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 210.14,
+      "distance_mm": 761.8,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 211.08,
+      "distance_mm": 760.8,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 211.92,
+      "distance_mm": 760.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 212.83,
+      "distance_mm": 761.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 213.73,
+      "distance_mm": 761.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 214.64,
+      "distance_mm": 761.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 215.56,
+      "distance_mm": 763.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 216.47,
+      "distance_mm": 765.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 217.38,
+      "distance_mm": 766.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 218.28,
+      "distance_mm": 767.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 219.2,
+      "distance_mm": 770.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 220.11,
+      "distance_mm": 772.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 221.02,
+      "distance_mm": 773.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 221.92,
+      "distance_mm": 776.5,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 222.86,
+      "distance_mm": 780.8,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 223.78,
+      "distance_mm": 782.2,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 224.69,
+      "distance_mm": 786.0,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 225.61,
+      "distance_mm": 797.0,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 226.44,
+      "distance_mm": 797.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 227.33,
+      "distance_mm": 793.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 228.22,
+      "distance_mm": 798.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 229.11,
+      "distance_mm": 803.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 230.09,
+      "distance_mm": 806.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 231.02,
+      "distance_mm": 810.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 231.92,
+      "distance_mm": 815.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 232.84,
+      "distance_mm": 821.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 233.75,
+      "distance_mm": 826.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 234.67,
+      "distance_mm": 834.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 235.58,
+      "distance_mm": 842.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 236.5,
+      "distance_mm": 848.5,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 237.38,
+      "distance_mm": 855.2,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 238.28,
+      "distance_mm": 861.2,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 239.19,
+      "distance_mm": 870.5,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 240.09,
+      "distance_mm": 881.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 241.02,
+      "distance_mm": 889.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 241.92,
+      "distance_mm": 898.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 242.83,
+      "distance_mm": 908.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 243.73,
+      "distance_mm": 918.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 244.66,
+      "distance_mm": 927.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 245.56,
+      "distance_mm": 939.2,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 246.47,
+      "distance_mm": 946.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 247.38,
+      "distance_mm": 947.2,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 248.3,
+      "distance_mm": 936.8,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 249.2,
+      "distance_mm": 914.8,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 250.11,
+      "distance_mm": 908.5,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 251.02,
+      "distance_mm": 908.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 251.94,
+      "distance_mm": 905.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 252.84,
+      "distance_mm": 914.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 253.75,
+      "distance_mm": 928.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 254.66,
+      "distance_mm": 941.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 255.58,
+      "distance_mm": 955.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 256.48,
+      "distance_mm": 970.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 257.39,
+      "distance_mm": 984.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 258.3,
+      "distance_mm": 1002.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 259.2,
+      "distance_mm": 1022.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 260.11,
+      "distance_mm": 1040.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 261.02,
+      "distance_mm": 1057.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 262.84,
+      "distance_mm": 1995.2,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 264.66,
+      "distance_mm": 6877.0,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 265.56,
+      "distance_mm": 7016.5,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 266.47,
+      "distance_mm": 7134.0,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 267.38,
+      "distance_mm": 7222.0,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 276.45,
+      "distance_mm": 2947.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 277.36,
+      "distance_mm": 2954.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 278.27,
+      "distance_mm": 2970.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 284.59,
+      "distance_mm": 2365.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 285.5,
+      "distance_mm": 2296.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 288.23,
+      "distance_mm": 2153.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 289.14,
+      "distance_mm": 2141.0,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 290.05,
+      "distance_mm": 2134.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 290.95,
+      "distance_mm": 2138.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 292.73,
+      "distance_mm": 226.5,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 293.62,
+      "distance_mm": 222.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 294.53,
+      "distance_mm": 217.0,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 295.45,
+      "distance_mm": 211.5,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 296.36,
+      "distance_mm": 206.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 297.27,
+      "distance_mm": 202.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 298.17,
+      "distance_mm": 200.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 299.2,
+      "distance_mm": 202.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 300.14,
+      "distance_mm": 204.0,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 301.08,
+      "distance_mm": 206.0,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 302.02,
+      "distance_mm": 207.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 302.83,
+      "distance_mm": 211.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 303.73,
+      "distance_mm": 214.2,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 304.64,
+      "distance_mm": 216.2,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 305.55,
+      "distance_mm": 219.5,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 306.5,
+      "distance_mm": 222.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 310.14,
+      "distance_mm": 2125.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 311.05,
+      "distance_mm": 2129.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 311.95,
+      "distance_mm": 2132.5,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 312.86,
+      "distance_mm": 2133.0,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 313.8,
+      "distance_mm": 2141.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 314.72,
+      "distance_mm": 2151.2,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 315.62,
+      "distance_mm": 2160.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 316.55,
+      "distance_mm": 2172.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 317.45,
+      "distance_mm": 2182.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 318.38,
+      "distance_mm": 2194.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 319.28,
+      "distance_mm": 2201.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 320.2,
+      "distance_mm": 2210.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 321.12,
+      "distance_mm": 2227.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 322.05,
+      "distance_mm": 2244.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 322.95,
+      "distance_mm": 2258.8,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 323.88,
+      "distance_mm": 2270.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 324.75,
+      "distance_mm": 2287.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 325.66,
+      "distance_mm": 2306.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 326.56,
+      "distance_mm": 2322.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 327.47,
+      "distance_mm": 2341.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 328.42,
+      "distance_mm": 2359.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 329.34,
+      "distance_mm": 2378.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 330.25,
+      "distance_mm": 2400.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 331.17,
+      "distance_mm": 2421.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 332.08,
+      "distance_mm": 2443.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 333.0,
+      "distance_mm": 2467.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 333.91,
+      "distance_mm": 2487.0,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 334.83,
+      "distance_mm": 2512.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 335.67,
+      "distance_mm": 2545.0,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 336.58,
+      "distance_mm": 2574.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 342.08,
+      "distance_mm": 121.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 343.86,
+      "distance_mm": 117.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 344.77,
+      "distance_mm": 120.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 345.67,
+      "distance_mm": 122.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 346.58,
+      "distance_mm": 123.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 347.48,
+      "distance_mm": 122.2,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 348.39,
+      "distance_mm": 120.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 349.3,
+      "distance_mm": 119.8,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 350.23,
+      "distance_mm": 122.8,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 356.86,
+      "distance_mm": 118.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 357.64,
+      "distance_mm": 119.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 358.55,
+      "distance_mm": 121.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 359.45,
+      "distance_mm": 122.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 0.36,
+      "distance_mm": 122.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 1.31,
+      "distance_mm": 122.2,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 2.23,
+      "distance_mm": 122.5,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 3.14,
+      "distance_mm": 125.0,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 4.06,
+      "distance_mm": 126.0,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 7.73,
+      "distance_mm": 2848.5,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 9.58,
+      "distance_mm": 2500.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 10.48,
+      "distance_mm": 2518.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 11.41,
+      "distance_mm": 2503.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 12.48,
+      "distance_mm": 2500.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 13.44,
+      "distance_mm": 2492.2,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 14.39,
+      "distance_mm": 2488.2,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 15.34,
+      "distance_mm": 2472.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 16.2,
+      "distance_mm": 2452.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 17.14,
+      "distance_mm": 2441.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 18.06,
+      "distance_mm": 2431.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 19.0,
+      "distance_mm": 2417.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 19.91,
+      "distance_mm": 2401.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 20.83,
+      "distance_mm": 2395.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 21.75,
+      "distance_mm": 2387.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 22.67,
+      "distance_mm": 2381.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 23.59,
+      "distance_mm": 2377.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 24.52,
+      "distance_mm": 2381.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 25.44,
+      "distance_mm": 2377.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 26.36,
+      "distance_mm": 2340.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 27.3,
+      "distance_mm": 2293.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 30.06,
+      "distance_mm": 1876.0,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 30.84,
+      "distance_mm": 1880.0,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 31.73,
+      "distance_mm": 1888.5,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 32.61,
+      "distance_mm": 1927.8,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 35.45,
+      "distance_mm": 2348.2,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 36.38,
+      "distance_mm": 2311.0,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 38.22,
+      "distance_mm": 1852.0,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 40.06,
+      "distance_mm": 2636.8,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 40.98,
+      "distance_mm": 2643.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 41.86,
+      "distance_mm": 2652.2,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 42.77,
+      "distance_mm": 2657.8,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 46.47,
+      "distance_mm": 2009.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 48.31,
+      "distance_mm": 1826.8,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 49.0,
+      "distance_mm": 1808.2,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 51.58,
+      "distance_mm": 2226.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 52.66,
+      "distance_mm": 2224.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 54.48,
+      "distance_mm": 184.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 55.41,
+      "distance_mm": 184.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 56.28,
+      "distance_mm": 184.5,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 57.19,
+      "distance_mm": 183.8,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 58.09,
+      "distance_mm": 183.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 60.83,
+      "distance_mm": 202.2,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 61.73,
+      "distance_mm": 202.2,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 64.02,
+      "distance_mm": 180.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 65.05,
+      "distance_mm": 175.5,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 66.06,
+      "distance_mm": 174.5,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 67.09,
+      "distance_mm": 175.0,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 67.72,
+      "distance_mm": 173.2,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 69.56,
+      "distance_mm": 182.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 70.48,
+      "distance_mm": 180.8,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 71.47,
+      "distance_mm": 181.0,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 74.28,
+      "distance_mm": 1349.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 75.19,
+      "distance_mm": 1370.2,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 76.12,
+      "distance_mm": 1394.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 77.05,
+      "distance_mm": 1425.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 77.98,
+      "distance_mm": 1441.2,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 78.94,
+      "distance_mm": 1455.2,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 79.88,
+      "distance_mm": 1483.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 80.81,
+      "distance_mm": 1504.8,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 81.75,
+      "distance_mm": 1493.5,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 83.39,
+      "distance_mm": 963.0,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 85.17,
+      "distance_mm": 1420.8,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 86.19,
+      "distance_mm": 1391.2,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 87.11,
+      "distance_mm": 1381.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 88.95,
+      "distance_mm": 1355.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 90.81,
+      "distance_mm": 1324.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 91.73,
+      "distance_mm": 1311.8,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 92.66,
+      "distance_mm": 1297.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 93.59,
+      "distance_mm": 1286.0,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 94.52,
+      "distance_mm": 1281.5,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 95.44,
+      "distance_mm": 1280.5,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 96.36,
+      "distance_mm": 1260.2,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 97.25,
+      "distance_mm": 1251.8,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 98.17,
+      "distance_mm": 1241.0,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 99.08,
+      "distance_mm": 1238.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 100.0,
+      "distance_mm": 1228.8,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 100.89,
+      "distance_mm": 1217.8,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 101.8,
+      "distance_mm": 1217.2,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 102.7,
+      "distance_mm": 1203.8,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 103.61,
+      "distance_mm": 1195.2,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 104.58,
+      "distance_mm": 1186.8,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 106.42,
+      "distance_mm": 837.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 107.34,
+      "distance_mm": 833.8,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 108.27,
+      "distance_mm": 827.8,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 109.19,
+      "distance_mm": 835.0,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 112.86,
+      "distance_mm": 184.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 113.77,
+      "distance_mm": 180.5,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 114.69,
+      "distance_mm": 180.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 115.61,
+      "distance_mm": 180.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 116.53,
+      "distance_mm": 179.2,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 121.33,
+      "distance_mm": 937.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 122.28,
+      "distance_mm": 940.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 123.12,
+      "distance_mm": 943.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 124.05,
+      "distance_mm": 945.2,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 124.97,
+      "distance_mm": 948.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 125.89,
+      "distance_mm": 950.5,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 126.83,
+      "distance_mm": 952.5,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 127.75,
+      "distance_mm": 954.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 128.67,
+      "distance_mm": 955.2,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 133.3,
+      "distance_mm": 75.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 135.12,
+      "distance_mm": 71.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 136.95,
+      "distance_mm": 66.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 138.98,
+      "distance_mm": 60.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 140.89,
+      "distance_mm": 56.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 141.73,
+      "distance_mm": 55.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 142.66,
+      "distance_mm": 55.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 143.58,
+      "distance_mm": 54.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 146.39,
+      "distance_mm": 53.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 150.16,
+      "distance_mm": 49.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 151.09,
+      "distance_mm": 49.8,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 152.94,
+      "distance_mm": 56.0,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 153.88,
+      "distance_mm": 54.8,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 155.73,
+      "distance_mm": 51.8,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 156.56,
+      "distance_mm": 53.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 157.47,
+      "distance_mm": 54.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 158.38,
+      "distance_mm": 56.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 159.28,
+      "distance_mm": 56.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 160.25,
+      "distance_mm": 56.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 161.17,
+      "distance_mm": 56.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 162.09,
+      "distance_mm": 56.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 163.02,
+      "distance_mm": 56.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 164.92,
+      "distance_mm": 53.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 165.84,
+      "distance_mm": 53.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 166.78,
+      "distance_mm": 52.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 169.53,
+      "distance_mm": 52.0,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 170.45,
+      "distance_mm": 53.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 171.39,
+      "distance_mm": 54.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 173.23,
+      "distance_mm": 53.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 174.16,
+      "distance_mm": 54.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 176.17,
+      "distance_mm": 57.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 178.08,
+      "distance_mm": 60.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 178.95,
+      "distance_mm": 61.0,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 180.81,
+      "distance_mm": 59.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 181.75,
+      "distance_mm": 59.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 183.61,
+      "distance_mm": 56.0,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 184.53,
+      "distance_mm": 55.5,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 186.41,
+      "distance_mm": 52.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 187.34,
+      "distance_mm": 52.2,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 188.27,
+      "distance_mm": 53.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 189.2,
+      "distance_mm": 54.5,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 190.19,
+      "distance_mm": 55.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 192.08,
+      "distance_mm": 58.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 193.03,
+      "distance_mm": 59.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 193.91,
+      "distance_mm": 59.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 194.84,
+      "distance_mm": 60.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 196.7,
+      "distance_mm": 63.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 201.38,
+      "distance_mm": 69.8,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 207.0,
+      "distance_mm": 754.0,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 207.94,
+      "distance_mm": 757.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 208.97,
+      "distance_mm": 759.8,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 209.94,
+      "distance_mm": 760.5,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 210.89,
+      "distance_mm": 760.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 211.86,
+      "distance_mm": 760.2,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 212.72,
+      "distance_mm": 761.2,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 213.66,
+      "distance_mm": 761.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 214.59,
+      "distance_mm": 762.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 215.53,
+      "distance_mm": 763.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 216.47,
+      "distance_mm": 765.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 217.41,
+      "distance_mm": 767.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 218.34,
+      "distance_mm": 768.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 219.28,
+      "distance_mm": 770.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 220.23,
+      "distance_mm": 772.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 221.17,
+      "distance_mm": 774.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 222.11,
+      "distance_mm": 777.8,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 223.05,
+      "distance_mm": 784.2,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 223.98,
+      "distance_mm": 784.8,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 224.92,
+      "distance_mm": 786.2,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 225.86,
+      "distance_mm": 792.2,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 226.8,
+      "distance_mm": 792.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 227.69,
+      "distance_mm": 795.2,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 228.61,
+      "distance_mm": 799.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 229.53,
+      "distance_mm": 802.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 230.45,
+      "distance_mm": 808.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 231.39,
+      "distance_mm": 814.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 232.31,
+      "distance_mm": 819.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 233.23,
+      "distance_mm": 824.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 234.16,
+      "distance_mm": 830.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 235.16,
+      "distance_mm": 838.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 236.09,
+      "distance_mm": 845.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 237.03,
+      "distance_mm": 851.5,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 237.97,
+      "distance_mm": 859.5,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 238.91,
+      "distance_mm": 867.8,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 239.84,
+      "distance_mm": 876.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 240.78,
+      "distance_mm": 884.2,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 241.72,
+      "distance_mm": 894.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 242.66,
+      "distance_mm": 904.2,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 243.59,
+      "distance_mm": 914.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 244.53,
+      "distance_mm": 925.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 245.47,
+      "distance_mm": 937.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 246.39,
+      "distance_mm": 946.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 247.33,
+      "distance_mm": 947.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 248.25,
+      "distance_mm": 939.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 249.19,
+      "distance_mm": 917.2,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 250.12,
+      "distance_mm": 909.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 251.06,
+      "distance_mm": 907.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 251.98,
+      "distance_mm": 905.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 252.92,
+      "distance_mm": 915.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 253.88,
+      "distance_mm": 928.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 254.81,
+      "distance_mm": 942.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 255.75,
+      "distance_mm": 956.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 256.69,
+      "distance_mm": 972.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 257.61,
+      "distance_mm": 989.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 258.55,
+      "distance_mm": 1008.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 259.47,
+      "distance_mm": 1028.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 260.41,
+      "distance_mm": 1046.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 261.33,
+      "distance_mm": 1063.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 264.12,
+      "distance_mm": 6812.2,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 265.05,
+      "distance_mm": 6946.0,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 265.98,
+      "distance_mm": 7102.0,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 266.91,
+      "distance_mm": 7196.0,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 276.25,
+      "distance_mm": 2950.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 277.17,
+      "distance_mm": 2949.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 278.09,
+      "distance_mm": 2970.5,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 283.66,
+      "distance_mm": 2443.2,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 285.5,
+      "distance_mm": 2296.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 288.27,
+      "distance_mm": 2153.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 289.19,
+      "distance_mm": 2132.5,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 290.11,
+      "distance_mm": 2127.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 291.08,
+      "distance_mm": 2139.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 292.94,
+      "distance_mm": 226.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 293.88,
+      "distance_mm": 220.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 294.8,
+      "distance_mm": 215.5,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 295.73,
+      "distance_mm": 211.0,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 296.66,
+      "distance_mm": 205.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 297.59,
+      "distance_mm": 201.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 298.59,
+      "distance_mm": 201.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 299.55,
+      "distance_mm": 203.0,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 300.48,
+      "distance_mm": 204.8,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 301.44,
+      "distance_mm": 206.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 302.34,
+      "distance_mm": 207.5,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 304.22,
+      "distance_mm": 217.2,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 305.16,
+      "distance_mm": 217.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 306.06,
+      "distance_mm": 220.2,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 307.0,
+      "distance_mm": 222.2,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 307.92,
+      "distance_mm": 224.8,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 309.84,
+      "distance_mm": 2124.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 310.8,
+      "distance_mm": 2129.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 311.73,
+      "distance_mm": 2132.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 312.69,
+      "distance_mm": 2131.0,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 313.56,
+      "distance_mm": 2139.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 314.5,
+      "distance_mm": 2149.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 315.42,
+      "distance_mm": 2156.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 316.36,
+      "distance_mm": 2169.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 317.34,
+      "distance_mm": 2180.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 318.3,
+      "distance_mm": 2190.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 319.23,
+      "distance_mm": 2199.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 320.19,
+      "distance_mm": 2211.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 321.05,
+      "distance_mm": 2228.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 321.97,
+      "distance_mm": 2243.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 322.89,
+      "distance_mm": 2258.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 323.81,
+      "distance_mm": 2271.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 324.81,
+      "distance_mm": 2288.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 325.75,
+      "distance_mm": 2306.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 326.69,
+      "distance_mm": 2322.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 327.62,
+      "distance_mm": 2343.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 328.53,
+      "distance_mm": 2363.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 329.47,
+      "distance_mm": 2381.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 330.39,
+      "distance_mm": 2401.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 331.33,
+      "distance_mm": 2425.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 332.28,
+      "distance_mm": 2449.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 333.22,
+      "distance_mm": 2471.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 334.16,
+      "distance_mm": 2495.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 335.09,
+      "distance_mm": 2519.2,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 335.92,
+      "distance_mm": 2547.8,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 336.83,
+      "distance_mm": 2575.0,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 343.39,
+      "distance_mm": 117.8,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 344.33,
+      "distance_mm": 119.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 345.25,
+      "distance_mm": 121.8,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 346.19,
+      "distance_mm": 122.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 347.11,
+      "distance_mm": 121.8,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 348.05,
+      "distance_mm": 121.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 348.97,
+      "distance_mm": 119.2,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 349.91,
+      "distance_mm": 120.2,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 350.83,
+      "distance_mm": 120.8,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 351.77,
+      "distance_mm": 120.8,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 356.56,
+      "distance_mm": 120.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 357.52,
+      "distance_mm": 118.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 359.34,
+      "distance_mm": 122.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 0.28,
+      "distance_mm": 123.2,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 1.22,
+      "distance_mm": 123.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 2.16,
+      "distance_mm": 123.2,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 3.09,
+      "distance_mm": 125.2,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 4.03,
+      "distance_mm": 127.2,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 4.97,
+      "distance_mm": 128.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 7.78,
+      "distance_mm": 2846.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 9.67,
+      "distance_mm": 2499.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 10.61,
+      "distance_mm": 2528.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 11.55,
+      "distance_mm": 2511.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 12.48,
+      "distance_mm": 2488.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 13.59,
+      "distance_mm": 2478.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 14.58,
+      "distance_mm": 2473.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 15.55,
+      "distance_mm": 2464.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 16.53,
+      "distance_mm": 2447.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 17.34,
+      "distance_mm": 2434.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 18.28,
+      "distance_mm": 2424.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 19.22,
+      "distance_mm": 2412.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 20.16,
+      "distance_mm": 2400.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 21.12,
+      "distance_mm": 2398.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 22.08,
+      "distance_mm": 2392.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 23.02,
+      "distance_mm": 2383.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 23.97,
+      "distance_mm": 2379.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 24.92,
+      "distance_mm": 2371.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 25.88,
+      "distance_mm": 2363.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 26.81,
+      "distance_mm": 2329.5,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 30.36,
+      "distance_mm": 1872.5,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 31.27,
+      "distance_mm": 1877.5,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 33.23,
+      "distance_mm": 1963.0,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 36.02,
+      "distance_mm": 2321.5,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 36.95,
+      "distance_mm": 2281.8,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 39.78,
+      "distance_mm": 2633.8,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 40.72,
+      "distance_mm": 2641.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 41.66,
+      "distance_mm": 2649.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 42.59,
+      "distance_mm": 2654.5,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 46.36,
+      "distance_mm": 2011.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 47.94,
+      "distance_mm": 1828.0,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 48.81,
+      "distance_mm": 1806.0,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 52.64,
+      "distance_mm": 2224.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 53.58,
+      "distance_mm": 2212.5,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 55.44,
+      "distance_mm": 185.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 56.36,
+      "distance_mm": 185.2,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 57.3,
+      "distance_mm": 184.5,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 58.17,
+      "distance_mm": 184.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 60.92,
+      "distance_mm": 203.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 64.64,
+      "distance_mm": 174.2,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 66.05,
+      "distance_mm": 174.8,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 67.09,
+      "distance_mm": 175.0,
+      "quality": 51
+    },
+    {
+      "angle_degrees": 68.12,
+      "distance_mm": 174.8,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 69.86,
+      "distance_mm": 182.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 70.81,
+      "distance_mm": 186.0,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 74.62,
+      "distance_mm": 1357.2,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 75.58,
+      "distance_mm": 1379.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 76.53,
+      "distance_mm": 1400.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 77.47,
+      "distance_mm": 1417.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 79.36,
+      "distance_mm": 1474.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 80.31,
+      "distance_mm": 1485.2,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 81.28,
+      "distance_mm": 1504.5,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 84.88,
+      "distance_mm": 1427.8,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 85.78,
+      "distance_mm": 1403.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 86.67,
+      "distance_mm": 1387.8,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 87.58,
+      "distance_mm": 1374.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 88.64,
+      "distance_mm": 1363.5,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 89.58,
+      "distance_mm": 1345.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 90.52,
+      "distance_mm": 1335.0,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 91.45,
+      "distance_mm": 1318.5,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 92.36,
+      "distance_mm": 1303.8,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 93.3,
+      "distance_mm": 1299.8,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 94.22,
+      "distance_mm": 1284.2,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 95.16,
+      "distance_mm": 1274.8,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 96.14,
+      "distance_mm": 1261.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 97.09,
+      "distance_mm": 1252.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 98.03,
+      "distance_mm": 1243.8,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 98.98,
+      "distance_mm": 1238.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 99.91,
+      "distance_mm": 1229.2,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 100.84,
+      "distance_mm": 1217.8,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 101.78,
+      "distance_mm": 1217.8,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 102.72,
+      "distance_mm": 1202.5,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 103.58,
+      "distance_mm": 1193.5,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 104.5,
+      "distance_mm": 1186.0,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 105.41,
+      "distance_mm": 1181.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 107.33,
+      "distance_mm": 835.8,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 108.27,
+      "distance_mm": 828.2,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 112.92,
+      "distance_mm": 182.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 113.86,
+      "distance_mm": 181.5,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 114.8,
+      "distance_mm": 181.8,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 115.73,
+      "distance_mm": 179.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 116.66,
+      "distance_mm": 178.8,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 121.53,
+      "distance_mm": 937.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 122.41,
+      "distance_mm": 939.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 123.34,
+      "distance_mm": 942.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 124.28,
+      "distance_mm": 945.2,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 125.22,
+      "distance_mm": 948.0,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 126.17,
+      "distance_mm": 951.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 127.11,
+      "distance_mm": 954.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 128.05,
+      "distance_mm": 956.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 128.98,
+      "distance_mm": 957.8,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 131.8,
+      "distance_mm": 83.2,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 133.7,
+      "distance_mm": 72.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 134.66,
+      "distance_mm": 72.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 136.55,
+      "distance_mm": 67.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 137.53,
+      "distance_mm": 65.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 139.44,
+      "distance_mm": 60.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 140.39,
+      "distance_mm": 58.5,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 142.27,
+      "distance_mm": 55.0,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 143.2,
+      "distance_mm": 54.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 144.16,
+      "distance_mm": 54.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 145.08,
+      "distance_mm": 54.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 146.02,
+      "distance_mm": 54.0,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 147.89,
+      "distance_mm": 50.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 148.86,
+      "distance_mm": 52.2,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 151.7,
+      "distance_mm": 52.8,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 155.48,
+      "distance_mm": 55.5,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 156.33,
+      "distance_mm": 54.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 159.09,
+      "distance_mm": 56.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 160.09,
+      "distance_mm": 56.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 161.97,
+      "distance_mm": 54.5,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 162.91,
+      "distance_mm": 54.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 163.88,
+      "distance_mm": 54.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 164.83,
+      "distance_mm": 53.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 169.5,
+      "distance_mm": 54.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 170.44,
+      "distance_mm": 55.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 171.38,
+      "distance_mm": 55.8,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 172.31,
+      "distance_mm": 55.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 173.25,
+      "distance_mm": 56.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 175.28,
+      "distance_mm": 55.5,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 176.27,
+      "distance_mm": 57.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 177.23,
+      "distance_mm": 57.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 179.98,
+      "distance_mm": 59.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 180.92,
+      "distance_mm": 59.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 181.86,
+      "distance_mm": 59.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 182.81,
+      "distance_mm": 58.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 183.75,
+      "distance_mm": 57.2,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 185.62,
+      "distance_mm": 53.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 187.55,
+      "distance_mm": 51.8,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 189.44,
+      "distance_mm": 55.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 191.34,
+      "distance_mm": 59.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 192.28,
+      "distance_mm": 60.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 193.23,
+      "distance_mm": 60.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 194.16,
+      "distance_mm": 60.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 196.03,
+      "distance_mm": 63.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 197.94,
+      "distance_mm": 66.8,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 199.83,
+      "distance_mm": 65.0,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 201.72,
+      "distance_mm": 70.8,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 202.67,
+      "distance_mm": 70.0,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 207.41,
+      "distance_mm": 755.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 208.36,
+      "distance_mm": 759.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 209.38,
+      "distance_mm": 760.5,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 210.34,
+      "distance_mm": 760.8,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 211.3,
+      "distance_mm": 760.2,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 212.27,
+      "distance_mm": 761.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 213.17,
+      "distance_mm": 761.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 214.12,
+      "distance_mm": 761.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 215.06,
+      "distance_mm": 763.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 216.02,
+      "distance_mm": 764.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 216.97,
+      "distance_mm": 764.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 217.92,
+      "distance_mm": 767.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 218.86,
+      "distance_mm": 769.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 219.81,
+      "distance_mm": 771.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 220.77,
+      "distance_mm": 772.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 221.72,
+      "distance_mm": 776.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 222.66,
+      "distance_mm": 779.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 223.61,
+      "distance_mm": 781.2,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 224.56,
+      "distance_mm": 784.2,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 225.52,
+      "distance_mm": 796.8,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 226.45,
+      "distance_mm": 798.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 227.41,
+      "distance_mm": 793.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 228.28,
+      "distance_mm": 798.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 229.22,
+      "distance_mm": 803.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 230.14,
+      "distance_mm": 808.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 231.08,
+      "distance_mm": 812.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 232.06,
+      "distance_mm": 819.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 233.02,
+      "distance_mm": 826.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 233.95,
+      "distance_mm": 830.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 234.91,
+      "distance_mm": 835.5,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 235.86,
+      "distance_mm": 842.5,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 236.81,
+      "distance_mm": 851.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 237.75,
+      "distance_mm": 858.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 238.7,
+      "distance_mm": 866.2,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 239.64,
+      "distance_mm": 875.8,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 240.59,
+      "distance_mm": 884.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 241.53,
+      "distance_mm": 892.2,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 242.48,
+      "distance_mm": 902.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 243.42,
+      "distance_mm": 912.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 244.38,
+      "distance_mm": 923.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 245.31,
+      "distance_mm": 935.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 246.27,
+      "distance_mm": 946.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 247.16,
+      "distance_mm": 949.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 248.09,
+      "distance_mm": 942.2,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 249.95,
+      "distance_mm": 910.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 250.95,
+      "distance_mm": 909.5,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 251.91,
+      "distance_mm": 907.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 252.84,
+      "distance_mm": 915.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 253.8,
+      "distance_mm": 928.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 254.73,
+      "distance_mm": 942.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 255.69,
+      "distance_mm": 956.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 256.62,
+      "distance_mm": 970.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 257.58,
+      "distance_mm": 988.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 258.52,
+      "distance_mm": 1007.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 259.47,
+      "distance_mm": 1026.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 260.41,
+      "distance_mm": 1045.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 261.36,
+      "distance_mm": 1061.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 264.06,
+      "distance_mm": 6809.2,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 264.98,
+      "distance_mm": 6945.8,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 266.03,
+      "distance_mm": 7103.0,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 266.98,
+      "distance_mm": 7194.5,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 276.36,
+      "distance_mm": 2948.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 277.3,
+      "distance_mm": 2950.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 278.23,
+      "distance_mm": 2969.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 284.73,
+      "distance_mm": 2355.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 285.67,
+      "distance_mm": 2284.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 288.5,
+      "distance_mm": 2154.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 291.31,
+      "distance_mm": 2137.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 293.2,
+      "distance_mm": 224.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 294.14,
+      "distance_mm": 219.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 295.08,
+      "distance_mm": 214.5,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 296.0,
+      "distance_mm": 209.2,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 296.94,
+      "distance_mm": 204.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 297.86,
+      "distance_mm": 202.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 298.8,
+      "distance_mm": 201.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 299.81,
+      "distance_mm": 203.5,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 300.77,
+      "distance_mm": 205.0,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 301.72,
+      "distance_mm": 206.8,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 302.67,
+      "distance_mm": 211.5,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 303.59,
+      "distance_mm": 215.0,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 304.55,
+      "distance_mm": 216.2,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 305.48,
+      "distance_mm": 218.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 306.44,
+      "distance_mm": 221.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 307.34,
+      "distance_mm": 219.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 310.16,
+      "distance_mm": 2125.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 311.14,
+      "distance_mm": 2129.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 312.09,
+      "distance_mm": 2132.0,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 313.03,
+      "distance_mm": 2135.0,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 313.98,
+      "distance_mm": 2143.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 314.89,
+      "distance_mm": 2152.2,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 315.83,
+      "distance_mm": 2162.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 316.77,
+      "distance_mm": 2174.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 317.7,
+      "distance_mm": 2186.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 318.72,
+      "distance_mm": 2196.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 319.67,
+      "distance_mm": 2204.2,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 320.62,
+      "distance_mm": 2217.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 321.58,
+      "distance_mm": 2234.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 322.42,
+      "distance_mm": 2248.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 323.34,
+      "distance_mm": 2263.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 324.27,
+      "distance_mm": 2280.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 325.19,
+      "distance_mm": 2297.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 326.16,
+      "distance_mm": 2311.8,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 327.09,
+      "distance_mm": 2329.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 328.02,
+      "distance_mm": 2352.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 328.95,
+      "distance_mm": 2372.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 329.94,
+      "distance_mm": 2393.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 330.89,
+      "distance_mm": 2413.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 331.83,
+      "distance_mm": 2436.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 332.78,
+      "distance_mm": 2460.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 333.72,
+      "distance_mm": 2476.8,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 334.67,
+      "distance_mm": 2504.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 335.61,
+      "distance_mm": 2540.2,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 336.56,
+      "distance_mm": 2569.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 342.09,
+      "distance_mm": 119.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 343.03,
+      "distance_mm": 117.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 343.97,
+      "distance_mm": 118.5,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 344.88,
+      "distance_mm": 120.5,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 345.81,
+      "distance_mm": 123.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 346.73,
+      "distance_mm": 125.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 348.64,
+      "distance_mm": 119.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 350.52,
+      "distance_mm": 122.8,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 351.45,
+      "distance_mm": 122.8,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 352.45,
+      "distance_mm": 123.0,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 356.22,
+      "distance_mm": 123.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 357.16,
+      "distance_mm": 119.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 358.09,
+      "distance_mm": 119.5,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 359.03,
+      "distance_mm": 121.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 359.98,
+      "distance_mm": 124.2,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 0.92,
+      "distance_mm": 124.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 1.86,
+      "distance_mm": 123.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 6.61,
+      "distance_mm": 2588.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 11.44,
+      "distance_mm": 2509.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 12.42,
+      "distance_mm": 2502.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 13.39,
+      "distance_mm": 2480.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 14.38,
+      "distance_mm": 2468.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 15.2,
+      "distance_mm": 2458.0,
+      "quality": 2
+    },
+    {
+      "angle_degrees": 16.14,
+      "distance_mm": 2440.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 17.08,
+      "distance_mm": 2432.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 18.02,
+      "distance_mm": 2424.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 19.0,
+      "distance_mm": 2416.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 19.95,
+      "distance_mm": 2411.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 20.89,
+      "distance_mm": 2399.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 21.84,
+      "distance_mm": 2387.8,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 22.8,
+      "distance_mm": 2385.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 23.75,
+      "distance_mm": 2382.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 24.69,
+      "distance_mm": 2372.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 25.64,
+      "distance_mm": 2364.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 26.58,
+      "distance_mm": 2333.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 30.2,
+      "distance_mm": 1874.0,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 31.11,
+      "distance_mm": 1879.0,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 32.92,
+      "distance_mm": 1958.2,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 35.88,
+      "distance_mm": 2355.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 36.83,
+      "distance_mm": 2313.0,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 39.62,
+      "distance_mm": 2634.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 40.56,
+      "distance_mm": 2642.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 41.48,
+      "distance_mm": 2650.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 42.42,
+      "distance_mm": 2656.0,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 46.19,
+      "distance_mm": 2012.5,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 48.06,
+      "distance_mm": 1832.5,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 48.78,
+      "distance_mm": 1807.5,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 52.56,
+      "distance_mm": 2226.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 53.52,
+      "distance_mm": 2215.2,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 55.41,
+      "distance_mm": 183.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 56.19,
+      "distance_mm": 183.2,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 57.09,
+      "distance_mm": 183.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 58.0,
+      "distance_mm": 182.8,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 60.86,
+      "distance_mm": 202.2,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 64.05,
+      "distance_mm": 178.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 65.08,
+      "distance_mm": 175.0,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 66.11,
+      "distance_mm": 174.0,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 67.14,
+      "distance_mm": 174.5,
+      "quality": 51
+    },
+    {
+      "angle_degrees": 67.86,
+      "distance_mm": 174.8,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 69.77,
+      "distance_mm": 184.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 70.72,
+      "distance_mm": 184.8,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 74.48,
+      "distance_mm": 1350.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 75.48,
+      "distance_mm": 1380.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 76.45,
+      "distance_mm": 1399.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 78.38,
+      "distance_mm": 1455.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 79.3,
+      "distance_mm": 1467.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 80.25,
+      "distance_mm": 1485.0,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 81.2,
+      "distance_mm": 1505.5,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 84.69,
+      "distance_mm": 1422.8,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 85.59,
+      "distance_mm": 1409.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 86.66,
+      "distance_mm": 1394.2,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 87.59,
+      "distance_mm": 1383.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 89.47,
+      "distance_mm": 1342.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 90.44,
+      "distance_mm": 1332.2,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 91.39,
+      "distance_mm": 1320.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 92.33,
+      "distance_mm": 1306.8,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 93.28,
+      "distance_mm": 1302.8,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 94.2,
+      "distance_mm": 1292.0,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 95.14,
+      "distance_mm": 1278.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 96.08,
+      "distance_mm": 1265.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 97.02,
+      "distance_mm": 1249.2,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 97.94,
+      "distance_mm": 1240.5,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 98.88,
+      "distance_mm": 1234.2,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 99.8,
+      "distance_mm": 1224.8,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 100.73,
+      "distance_mm": 1215.2,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 101.59,
+      "distance_mm": 1218.8,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 102.52,
+      "distance_mm": 1205.2,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 103.42,
+      "distance_mm": 1193.8,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 104.34,
+      "distance_mm": 1186.5,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 105.36,
+      "distance_mm": 1186.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 107.23,
+      "distance_mm": 834.5,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 108.17,
+      "distance_mm": 828.8,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 112.84,
+      "distance_mm": 180.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 113.78,
+      "distance_mm": 182.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 114.7,
+      "distance_mm": 181.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 115.64,
+      "distance_mm": 180.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 116.58,
+      "distance_mm": 178.8,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 121.41,
+      "distance_mm": 938.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 122.36,
+      "distance_mm": 939.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 123.33,
+      "distance_mm": 942.5,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 124.2,
+      "distance_mm": 946.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 125.14,
+      "distance_mm": 949.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 126.08,
+      "distance_mm": 951.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 127.02,
+      "distance_mm": 953.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 127.97,
+      "distance_mm": 956.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 128.91,
+      "distance_mm": 958.5,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 131.7,
+      "distance_mm": 81.0,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 134.5,
+      "distance_mm": 72.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 135.47,
+      "distance_mm": 70.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 138.28,
+      "distance_mm": 61.5,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 139.31,
+      "distance_mm": 59.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 141.23,
+      "distance_mm": 56.2,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 142.2,
+      "distance_mm": 55.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 143.08,
+      "distance_mm": 54.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 144.02,
+      "distance_mm": 54.2,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 144.95,
+      "distance_mm": 54.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 145.89,
+      "distance_mm": 54.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 149.7,
+      "distance_mm": 48.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 152.53,
+      "distance_mm": 50.8,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 153.48,
+      "distance_mm": 52.5,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 154.33,
+      "distance_mm": 54.5,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 155.25,
+      "distance_mm": 55.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 158.08,
+      "distance_mm": 56.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 159.02,
+      "distance_mm": 56.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 159.95,
+      "distance_mm": 56.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 160.89,
+      "distance_mm": 55.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 161.83,
+      "distance_mm": 55.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 162.77,
+      "distance_mm": 54.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 166.56,
+      "distance_mm": 50.8,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 171.23,
+      "distance_mm": 53.0,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 175.12,
+      "distance_mm": 57.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 177.91,
+      "distance_mm": 59.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 179.78,
+      "distance_mm": 62.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 180.73,
+      "distance_mm": 62.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 182.61,
+      "distance_mm": 59.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 183.55,
+      "distance_mm": 58.5,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 184.5,
+      "distance_mm": 57.8,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 186.38,
+      "distance_mm": 53.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 187.31,
+      "distance_mm": 54.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 188.28,
+      "distance_mm": 53.5,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 189.23,
+      "distance_mm": 54.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 191.12,
+      "distance_mm": 56.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 192.08,
+      "distance_mm": 57.2,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 193.03,
+      "distance_mm": 58.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 193.97,
+      "distance_mm": 59.0,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 195.83,
+      "distance_mm": 64.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 196.77,
+      "distance_mm": 64.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 197.7,
+      "distance_mm": 65.2,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 207.17,
+      "distance_mm": 755.5,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 208.12,
+      "distance_mm": 757.5,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 209.06,
+      "distance_mm": 761.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 210.02,
+      "distance_mm": 763.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 211.03,
+      "distance_mm": 763.5,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 212.0,
+      "distance_mm": 763.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 212.95,
+      "distance_mm": 762.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 213.92,
+      "distance_mm": 761.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 214.83,
+      "distance_mm": 761.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 215.78,
+      "distance_mm": 762.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 216.72,
+      "distance_mm": 765.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 217.67,
+      "distance_mm": 766.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 218.56,
+      "distance_mm": 768.2,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 219.5,
+      "distance_mm": 771.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 220.42,
+      "distance_mm": 773.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 221.36,
+      "distance_mm": 775.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 222.38,
+      "distance_mm": 778.5,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 223.33,
+      "distance_mm": 785.5,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 224.28,
+      "distance_mm": 788.0,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 225.23,
+      "distance_mm": 794.0,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 226.09,
+      "distance_mm": 796.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 227.03,
+      "distance_mm": 792.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 227.95,
+      "distance_mm": 796.5,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 228.89,
+      "distance_mm": 800.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 229.88,
+      "distance_mm": 806.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 230.83,
+      "distance_mm": 810.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 231.77,
+      "distance_mm": 815.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 232.72,
+      "distance_mm": 820.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 233.66,
+      "distance_mm": 827.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 234.61,
+      "distance_mm": 833.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 235.55,
+      "distance_mm": 841.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 236.5,
+      "distance_mm": 848.5,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 237.42,
+      "distance_mm": 856.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 238.36,
+      "distance_mm": 864.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 239.3,
+      "distance_mm": 872.8,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 240.23,
+      "distance_mm": 882.2,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 241.2,
+      "distance_mm": 890.2,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 242.16,
+      "distance_mm": 897.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 243.09,
+      "distance_mm": 908.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 244.05,
+      "distance_mm": 918.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 244.95,
+      "distance_mm": 928.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 245.89,
+      "distance_mm": 942.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 246.83,
+      "distance_mm": 947.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 247.77,
+      "distance_mm": 947.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 249.61,
+      "distance_mm": 911.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 250.53,
+      "distance_mm": 907.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 251.47,
+      "distance_mm": 905.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 252.45,
+      "distance_mm": 909.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 253.41,
+      "distance_mm": 923.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 254.34,
+      "distance_mm": 936.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 255.3,
+      "distance_mm": 948.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 256.22,
+      "distance_mm": 964.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 257.16,
+      "distance_mm": 981.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 258.09,
+      "distance_mm": 998.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 259.03,
+      "distance_mm": 1018.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 260.0,
+      "distance_mm": 1037.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 260.95,
+      "distance_mm": 1054.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 262.84,
+      "distance_mm": 1994.2,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 264.62,
+      "distance_mm": 6873.2,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 265.55,
+      "distance_mm": 7015.0,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 266.47,
+      "distance_mm": 7135.5,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 267.45,
+      "distance_mm": 7223.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 276.8,
+      "distance_mm": 2945.5,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 277.73,
+      "distance_mm": 2960.2,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 278.7,
+      "distance_mm": 2948.8,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 284.14,
+      "distance_mm": 2400.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 285.05,
+      "distance_mm": 2328.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 287.95,
+      "distance_mm": 2152.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 288.89,
+      "distance_mm": 2149.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 289.83,
+      "distance_mm": 2137.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 290.77,
+      "distance_mm": 2135.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 291.7,
+      "distance_mm": 2139.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 293.55,
+      "distance_mm": 223.5,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 295.41,
+      "distance_mm": 212.2,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 296.34,
+      "distance_mm": 208.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 297.27,
+      "distance_mm": 202.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 298.2,
+      "distance_mm": 200.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 299.12,
+      "distance_mm": 202.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 300.06,
+      "distance_mm": 204.5,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 301.08,
+      "distance_mm": 206.2,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 302.03,
+      "distance_mm": 208.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 303.94,
+      "distance_mm": 216.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 304.83,
+      "distance_mm": 216.5,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 305.77,
+      "distance_mm": 220.0,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 306.7,
+      "distance_mm": 223.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 310.42,
+      "distance_mm": 2127.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 311.36,
+      "distance_mm": 2129.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 312.33,
+      "distance_mm": 2129.5,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 313.27,
+      "distance_mm": 2138.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 314.2,
+      "distance_mm": 2148.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 315.14,
+      "distance_mm": 2156.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 316.08,
+      "distance_mm": 2167.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 317.02,
+      "distance_mm": 2176.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 317.95,
+      "distance_mm": 2187.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 318.89,
+      "distance_mm": 2199.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 319.81,
+      "distance_mm": 2209.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 320.75,
+      "distance_mm": 2221.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 321.67,
+      "distance_mm": 2236.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 322.61,
+      "distance_mm": 2251.2,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 323.56,
+      "distance_mm": 2265.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 324.5,
+      "distance_mm": 2283.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 325.44,
+      "distance_mm": 2301.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 326.38,
+      "distance_mm": 2314.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 327.28,
+      "distance_mm": 2334.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 328.22,
+      "distance_mm": 2356.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 329.14,
+      "distance_mm": 2374.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 330.08,
+      "distance_mm": 2396.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 331.03,
+      "distance_mm": 2419.2,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 331.97,
+      "distance_mm": 2441.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 332.91,
+      "distance_mm": 2466.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 333.84,
+      "distance_mm": 2486.0,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 334.69,
+      "distance_mm": 2511.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 335.61,
+      "distance_mm": 2545.0,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 336.52,
+      "distance_mm": 2572.8,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 342.14,
+      "distance_mm": 118.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 343.06,
+      "distance_mm": 117.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 343.97,
+      "distance_mm": 118.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 344.89,
+      "distance_mm": 121.5,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 345.88,
+      "distance_mm": 123.5,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 346.81,
+      "distance_mm": 125.0,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 347.73,
+      "distance_mm": 124.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 348.67,
+      "distance_mm": 120.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 350.5,
+      "distance_mm": 122.8,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 351.42,
+      "distance_mm": 123.0,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 352.34,
+      "distance_mm": 125.2,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 354.36,
+      "distance_mm": 136.0,
+      "quality": 23
+    },
+    {
+      "angle_degrees": 357.16,
+      "distance_mm": 119.5,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 358.09,
+      "distance_mm": 120.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 359.03,
+      "distance_mm": 122.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 359.97,
+      "distance_mm": 124.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 0.88,
+      "distance_mm": 124.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 1.81,
+      "distance_mm": 124.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 2.73,
+      "distance_mm": 125.5,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 3.67,
+      "distance_mm": 128.0,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 4.61,
+      "distance_mm": 130.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 6.47,
+      "distance_mm": 2590.0,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 11.17,
+      "distance_mm": 2519.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 12.22,
+      "distance_mm": 2517.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 13.19,
+      "distance_mm": 2495.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 14.14,
+      "distance_mm": 2472.2,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 15.11,
+      "distance_mm": 2460.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 16.0,
+      "distance_mm": 2449.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 16.95,
+      "distance_mm": 2447.8,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 17.89,
+      "distance_mm": 2438.2,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 18.84,
+      "distance_mm": 2426.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 19.78,
+      "distance_mm": 2415.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 20.73,
+      "distance_mm": 2396.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 21.67,
+      "distance_mm": 2388.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 22.62,
+      "distance_mm": 2389.8,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 23.53,
+      "distance_mm": 2382.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 24.47,
+      "distance_mm": 2370.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 25.41,
+      "distance_mm": 2365.0,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 26.34,
+      "distance_mm": 2342.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 27.3,
+      "distance_mm": 2296.2,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 30.11,
+      "distance_mm": 1875.2,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 30.91,
+      "distance_mm": 1879.5,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 31.81,
+      "distance_mm": 1888.8,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 32.7,
+      "distance_mm": 1928.2,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 35.53,
+      "distance_mm": 2349.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 39.3,
+      "distance_mm": 2629.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 40.23,
+      "distance_mm": 2638.2,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 41.17,
+      "distance_mm": 2645.2,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 42.06,
+      "distance_mm": 2654.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 42.98,
+      "distance_mm": 2660.0,
+      "quality": 2
+    },
+    {
+      "angle_degrees": 46.77,
+      "distance_mm": 2006.5,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 48.64,
+      "distance_mm": 1820.5,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 49.31,
+      "distance_mm": 1803.2,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 51.92,
+      "distance_mm": 2227.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 53.02,
+      "distance_mm": 2219.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 54.86,
+      "distance_mm": 183.8,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 55.78,
+      "distance_mm": 184.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 56.67,
+      "distance_mm": 184.2,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 57.59,
+      "distance_mm": 183.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 58.5,
+      "distance_mm": 183.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 61.27,
+      "distance_mm": 203.0,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 64.45,
+      "distance_mm": 176.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 65.48,
+      "distance_mm": 174.8,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 66.5,
+      "distance_mm": 174.8,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 67.53,
+      "distance_mm": 174.2,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 68.25,
+      "distance_mm": 176.0,
+      "quality": 50
+    },
+    {
+      "angle_degrees": 69.2,
+      "distance_mm": 181.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 70.14,
+      "distance_mm": 183.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 71.09,
+      "distance_mm": 185.0,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 72.0,
+      "distance_mm": 190.0,
+      "quality": 8
+    },
+    {
+      "angle_degrees": 73.88,
+      "distance_mm": 1345.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 74.81,
+      "distance_mm": 1360.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 75.8,
+      "distance_mm": 1378.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 76.75,
+      "distance_mm": 1404.8,
+      "quality": 2
+    },
+    {
+      "angle_degrees": 77.69,
+      "distance_mm": 1429.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 78.64,
+      "distance_mm": 1444.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 80.53,
+      "distance_mm": 1499.5,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 81.47,
+      "distance_mm": 1502.5,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 82.42,
+      "distance_mm": 1487.5,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 85.78,
+      "distance_mm": 1408.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 86.86,
+      "distance_mm": 1395.5,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 87.8,
+      "distance_mm": 1370.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 88.72,
+      "distance_mm": 1363.0,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 90.59,
+      "distance_mm": 1330.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 92.45,
+      "distance_mm": 1304.5,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 93.39,
+      "distance_mm": 1302.8,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 94.33,
+      "distance_mm": 1285.2,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 95.27,
+      "distance_mm": 1279.2,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 96.19,
+      "distance_mm": 1264.8,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 97.12,
+      "distance_mm": 1254.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 98.08,
+      "distance_mm": 1246.0,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 99.02,
+      "distance_mm": 1234.5,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 99.95,
+      "distance_mm": 1223.5,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 100.89,
+      "distance_mm": 1221.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 101.66,
+      "distance_mm": 1223.0,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 102.55,
+      "distance_mm": 1204.5,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 103.44,
+      "distance_mm": 1195.0,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 104.33,
+      "distance_mm": 1186.8,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 105.39,
+      "distance_mm": 1181.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 107.25,
+      "distance_mm": 835.5,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 108.19,
+      "distance_mm": 829.0,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 109.09,
+      "distance_mm": 836.2,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 112.8,
+      "distance_mm": 181.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 113.72,
+      "distance_mm": 182.5,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 114.64,
+      "distance_mm": 182.5,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 115.56,
+      "distance_mm": 180.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 116.48,
+      "distance_mm": 178.2,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 121.23,
+      "distance_mm": 938.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 122.17,
+      "distance_mm": 939.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 123.12,
+      "distance_mm": 942.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 124.05,
+      "distance_mm": 946.0,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 124.98,
+      "distance_mm": 948.5,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 125.92,
+      "distance_mm": 950.5,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 126.86,
+      "distance_mm": 953.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 127.78,
+      "distance_mm": 954.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 128.72,
+      "distance_mm": 956.2,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 134.23,
+      "distance_mm": 74.2,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 137.06,
+      "distance_mm": 65.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 138.0,
+      "distance_mm": 65.0,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 139.91,
+      "distance_mm": 59.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 140.84,
+      "distance_mm": 57.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 141.78,
+      "distance_mm": 55.8,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 142.7,
+      "distance_mm": 55.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 143.64,
+      "distance_mm": 54.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 146.44,
+      "distance_mm": 54.5,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 148.3,
+      "distance_mm": 51.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 149.23,
+      "distance_mm": 50.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 150.22,
+      "distance_mm": 49.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 152.11,
+      "distance_mm": 51.8,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 153.06,
+      "distance_mm": 52.2,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 153.94,
+      "distance_mm": 53.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 156.73,
+      "distance_mm": 54.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 160.23,
+      "distance_mm": 56.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 161.23,
+      "distance_mm": 56.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 162.16,
+      "distance_mm": 55.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 163.08,
+      "distance_mm": 56.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 164.0,
+      "distance_mm": 55.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 164.97,
+      "distance_mm": 54.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 165.91,
+      "distance_mm": 53.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 168.66,
+      "distance_mm": 50.8,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 170.5,
+      "distance_mm": 54.2,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 171.42,
+      "distance_mm": 53.5,
+      "quality": 46
+    },
+    {
+      "angle_degrees": 173.42,
+      "distance_mm": 57.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 174.38,
+      "distance_mm": 57.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 175.33,
+      "distance_mm": 57.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 176.17,
+      "distance_mm": 57.2,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 178.02,
+      "distance_mm": 61.2,
+      "quality": 49
+    },
+    {
+      "angle_degrees": 179.89,
+      "distance_mm": 60.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 180.83,
+      "distance_mm": 60.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 181.75,
+      "distance_mm": 60.2,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 182.69,
+      "distance_mm": 59.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 186.41,
+      "distance_mm": 53.2,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 187.34,
+      "distance_mm": 53.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 189.2,
+      "distance_mm": 55.8,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 192.89,
+      "distance_mm": 60.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 193.81,
+      "distance_mm": 61.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 194.81,
+      "distance_mm": 61.8,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 196.69,
+      "distance_mm": 64.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 197.62,
+      "distance_mm": 66.2,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 198.53,
+      "distance_mm": 67.2,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 199.47,
+      "distance_mm": 67.5,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 200.39,
+      "distance_mm": 68.2,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 201.33,
+      "distance_mm": 68.2,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 203.16,
+      "distance_mm": 73.8,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 206.91,
+      "distance_mm": 755.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 207.83,
+      "distance_mm": 758.2,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 208.77,
+      "distance_mm": 761.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 209.75,
+      "distance_mm": 761.8,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 210.7,
+      "distance_mm": 762.8,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 211.64,
+      "distance_mm": 761.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 212.59,
+      "distance_mm": 761.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 213.48,
+      "distance_mm": 761.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 214.42,
+      "distance_mm": 762.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 215.34,
+      "distance_mm": 763.5,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 216.28,
+      "distance_mm": 764.2,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 217.22,
+      "distance_mm": 765.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 218.16,
+      "distance_mm": 767.2,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 219.08,
+      "distance_mm": 770.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 220.02,
+      "distance_mm": 772.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 220.95,
+      "distance_mm": 774.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 221.89,
+      "distance_mm": 776.8,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 222.81,
+      "distance_mm": 779.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 223.75,
+      "distance_mm": 781.2,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 224.67,
+      "distance_mm": 785.8,
+      "quality": 22
+    },
+    {
+      "angle_degrees": 225.61,
+      "distance_mm": 797.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 226.53,
+      "distance_mm": 797.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 227.47,
+      "distance_mm": 793.2,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 228.34,
+      "distance_mm": 797.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 229.27,
+      "distance_mm": 803.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 230.17,
+      "distance_mm": 808.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 231.09,
+      "distance_mm": 812.0,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 232.06,
+      "distance_mm": 818.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 233.0,
+      "distance_mm": 824.8,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 233.92,
+      "distance_mm": 829.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 234.86,
+      "distance_mm": 835.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 235.78,
+      "distance_mm": 842.5,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 236.72,
+      "distance_mm": 849.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 237.64,
+      "distance_mm": 857.5,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 238.58,
+      "distance_mm": 865.5,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 239.5,
+      "distance_mm": 872.2,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 240.44,
+      "distance_mm": 881.2,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 241.36,
+      "distance_mm": 891.5,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 242.3,
+      "distance_mm": 903.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 243.19,
+      "distance_mm": 910.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 244.11,
+      "distance_mm": 918.5,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 245.03,
+      "distance_mm": 931.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 245.95,
+      "distance_mm": 945.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 246.86,
+      "distance_mm": 948.2,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 247.78,
+      "distance_mm": 946.5,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 249.61,
+      "distance_mm": 911.5,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 250.58,
+      "distance_mm": 908.2,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 251.52,
+      "distance_mm": 906.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 252.44,
+      "distance_mm": 911.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 253.38,
+      "distance_mm": 923.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 254.28,
+      "distance_mm": 936.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 255.2,
+      "distance_mm": 949.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 256.12,
+      "distance_mm": 964.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 257.05,
+      "distance_mm": 978.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 257.98,
+      "distance_mm": 995.5,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 258.91,
+      "distance_mm": 1015.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 259.83,
+      "distance_mm": 1033.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 260.75,
+      "distance_mm": 1050.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 261.75,
+      "distance_mm": 1067.5,
+      "quality": 20
+    },
+    {
+      "angle_degrees": 264.56,
+      "distance_mm": 6847.2,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 265.34,
+      "distance_mm": 6979.2,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 266.25,
+      "distance_mm": 7115.0,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 267.14,
+      "distance_mm": 7216.2,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 276.44,
+      "distance_mm": 2949.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 277.38,
+      "distance_mm": 2953.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 278.3,
+      "distance_mm": 2971.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 283.67,
+      "distance_mm": 2441.8,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 284.59,
+      "distance_mm": 2368.8,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 288.28,
+      "distance_mm": 2153.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 289.2,
+      "distance_mm": 2138.5,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 290.12,
+      "distance_mm": 2133.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 291.02,
+      "distance_mm": 2138.0,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 292.84,
+      "distance_mm": 227.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 293.77,
+      "distance_mm": 221.8,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 294.69,
+      "distance_mm": 216.2,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 295.61,
+      "distance_mm": 211.5,
+      "quality": 45
+    },
+    {
+      "angle_degrees": 296.52,
+      "distance_mm": 206.8,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 297.44,
+      "distance_mm": 202.5,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 298.41,
+      "distance_mm": 199.8,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 299.34,
+      "distance_mm": 202.0,
+      "quality": 48
+    },
+    {
+      "angle_degrees": 300.27,
+      "distance_mm": 206.0,
+      "quality": 47
+    },
+    {
+      "angle_degrees": 301.2,
+      "distance_mm": 207.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 302.12,
+      "distance_mm": 208.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 303.98,
+      "distance_mm": 215.5,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 304.92,
+      "distance_mm": 217.0,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 305.78,
+      "distance_mm": 220.5,
+      "quality": 44
+    },
+    {
+      "angle_degrees": 306.7,
+      "distance_mm": 223.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 307.61,
+      "distance_mm": 222.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 310.41,
+      "distance_mm": 2126.8,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 311.33,
+      "distance_mm": 2128.8,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 312.25,
+      "distance_mm": 2129.8,
+      "quality": 13
+    },
+    {
+      "angle_degrees": 313.19,
+      "distance_mm": 2138.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 314.11,
+      "distance_mm": 2148.0,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 315.03,
+      "distance_mm": 2154.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 315.95,
+      "distance_mm": 2165.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 316.86,
+      "distance_mm": 2175.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 317.78,
+      "distance_mm": 2185.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 318.69,
+      "distance_mm": 2196.2,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 319.61,
+      "distance_mm": 2204.2,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 320.52,
+      "distance_mm": 2216.2,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 321.44,
+      "distance_mm": 2232.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 322.34,
+      "distance_mm": 2247.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 323.27,
+      "distance_mm": 2263.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 324.2,
+      "distance_mm": 2279.0,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 325.12,
+      "distance_mm": 2295.2,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 326.05,
+      "distance_mm": 2310.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 326.97,
+      "distance_mm": 2327.2,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 327.86,
+      "distance_mm": 2349.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 328.78,
+      "distance_mm": 2368.5,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 329.69,
+      "distance_mm": 2388.5,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 330.61,
+      "distance_mm": 2406.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 331.56,
+      "distance_mm": 2428.5,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 332.48,
+      "distance_mm": 2455.8,
+      "quality": 32
+    },
+    {
+      "angle_degrees": 333.41,
+      "distance_mm": 2472.8,
+      "quality": 21
+    },
+    {
+      "angle_degrees": 334.33,
+      "distance_mm": 2498.0,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 335.17,
+      "distance_mm": 2528.0,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 336.08,
+      "distance_mm": 2556.5,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 343.39,
+      "distance_mm": 117.5,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 344.3,
+      "distance_mm": 119.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 345.22,
+      "distance_mm": 121.5,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 346.14,
+      "distance_mm": 122.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 347.06,
+      "distance_mm": 122.0,
+      "quality": 40
+    },
+    {
+      "angle_degrees": 347.97,
+      "distance_mm": 122.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 348.89,
+      "distance_mm": 119.8,
+      "quality": 27
+    },
+    {
+      "angle_degrees": 349.78,
+      "distance_mm": 119.5,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 350.69,
+      "distance_mm": 121.8,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 351.59,
+      "distance_mm": 121.5,
+      "quality": 14
+    },
+    {
+      "angle_degrees": 352.5,
+      "distance_mm": 120.0,
+      "quality": 11
+    },
+    {
+      "angle_degrees": 354.45,
+      "distance_mm": 135.2,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 357.2,
+      "distance_mm": 120.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 358.12,
+      "distance_mm": 120.5,
+      "quality": 36
+    },
+    {
+      "angle_degrees": 359.05,
+      "distance_mm": 122.0,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 359.97,
+      "distance_mm": 123.8,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 0.84,
+      "distance_mm": 124.0,
+      "quality": 38
+    },
+    {
+      "angle_degrees": 1.75,
+      "distance_mm": 123.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 2.66,
+      "distance_mm": 124.8,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 3.56,
+      "distance_mm": 128.0,
+      "quality": 10
+    },
+    {
+      "angle_degrees": 4.52,
+      "distance_mm": 129.2,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 6.34,
+      "distance_mm": 2590.0,
+      "quality": 24
+    },
+    {
+      "angle_degrees": 9.12,
+      "distance_mm": 2482.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 10.05,
+      "distance_mm": 2515.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 10.97,
+      "distance_mm": 2524.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 12.0,
+      "distance_mm": 2508.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 12.95,
+      "distance_mm": 2485.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 13.89,
+      "distance_mm": 2471.0,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 14.84,
+      "distance_mm": 2467.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 15.7,
+      "distance_mm": 2461.5,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 16.62,
+      "distance_mm": 2444.2,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 17.55,
+      "distance_mm": 2432.2,
+      "quality": 3
+    },
+    {
+      "angle_degrees": 18.47,
+      "distance_mm": 2421.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 19.41,
+      "distance_mm": 2410.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 20.33,
+      "distance_mm": 2400.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 21.25,
+      "distance_mm": 2391.5,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 22.17,
+      "distance_mm": 2389.5,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 23.08,
+      "distance_mm": 2392.0,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 24.0,
+      "distance_mm": 2385.2,
+      "quality": 5
+    },
+    {
+      "angle_degrees": 24.91,
+      "distance_mm": 2372.2,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 25.83,
+      "distance_mm": 2362.8,
+      "quality": 4
+    },
+    {
+      "angle_degrees": 26.8,
+      "distance_mm": 2326.0,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 30.33,
+      "distance_mm": 1877.0,
+      "quality": 18
+    },
+    {
+      "angle_degrees": 31.22,
+      "distance_mm": 1878.8,
+      "quality": 19
+    },
+    {
+      "angle_degrees": 32.98,
+      "distance_mm": 1956.0,
+      "quality": 15
+    },
+    {
+      "angle_degrees": 35.77,
+      "distance_mm": 2352.0,
+      "quality": 6
+    },
+    {
+      "angle_degrees": 36.67,
+      "distance_mm": 2315.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 39.48,
+      "distance_mm": 2633.5,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 40.41,
+      "distance_mm": 2641.0,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 41.33,
+      "distance_mm": 2648.0,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 42.25,
+      "distance_mm": 2655.2,
+      "quality": 26
+    },
+    {
+      "angle_degrees": 46.78,
+      "distance_mm": 2004.2,
+      "quality": 17
+    },
+    {
+      "angle_degrees": 48.36,
+      "distance_mm": 1822.5,
+      "quality": 7
+    },
+    {
+      "angle_degrees": 49.2,
+      "distance_mm": 1804.5,
+      "quality": 9
+    },
+    {
+      "angle_degrees": 52.0,
+      "distance_mm": 2230.0,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 52.91,
+      "distance_mm": 2221.0,
+      "quality": 31
+    }
+  ],
+  "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+  "sample": [
+    {
+      "angle_degrees": 116.52,
+      "distance_mm": 177.5,
+      "quality": 12
+    },
+    {
+      "angle_degrees": 120.58,
+      "distance_mm": 937.2,
+      "quality": 29
+    },
+    {
+      "angle_degrees": 121.38,
+      "distance_mm": 937.2,
+      "quality": 30
+    },
+    {
+      "angle_degrees": 121.98,
+      "distance_mm": 938.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 122.73,
+      "distance_mm": 940.0,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 123.48,
+      "distance_mm": 942.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 124.23,
+      "distance_mm": 945.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 124.98,
+      "distance_mm": 947.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 125.73,
+      "distance_mm": 949.2,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 126.48,
+      "distance_mm": 951.0,
+      "quality": 35
+    },
+    {
+      "angle_degrees": 127.23,
+      "distance_mm": 952.8,
+      "quality": 34
+    },
+    {
+      "angle_degrees": 128.0,
+      "distance_mm": 954.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 128.75,
+      "distance_mm": 958.5,
+      "quality": 16
+    },
+    {
+      "angle_degrees": 132.45,
+      "distance_mm": 77.8,
+      "quality": 25
+    },
+    {
+      "angle_degrees": 133.97,
+      "distance_mm": 72.0,
+      "quality": 28
+    },
+    {
+      "angle_degrees": 135.47,
+      "distance_mm": 67.5,
+      "quality": 31
+    },
+    {
+      "angle_degrees": 137.17,
+      "distance_mm": 64.8,
+      "quality": 33
+    },
+    {
+      "angle_degrees": 138.77,
+      "distance_mm": 60.8,
+      "quality": 37
+    },
+    {
+      "angle_degrees": 140.2,
+      "distance_mm": 55.0,
+      "quality": 39
+    },
+    {
+      "angle_degrees": 140.97,
+      "distance_mm": 54.5,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 141.72,
+      "distance_mm": 54.0,
+      "quality": 41
+    },
+    {
+      "angle_degrees": 142.48,
+      "distance_mm": 53.8,
+      "quality": 42
+    },
+    {
+      "angle_degrees": 143.27,
+      "distance_mm": 53.8,
+      "quality": 43
+    },
+    {
+      "angle_degrees": 144.03,
+      "distance_mm": 54.2,
+      "quality": 43
+    }
+  ],
+  "status": "ok"
+}

@@ -1,0 +1,61 @@
+{
+  "artifact": "MIM_ARM_BLUE_BLOCK_PICKUP_ATTEMPT_2026_05_31_LIVE",
+  "generated_at": "2026-05-31T16:41:13-0700",
+  "status": "failed_with_inspection_evidence",
+  "objective": "Pick up blue block using cameras, C12 distance, RPLIDAR table-height map, and movement memory.",
+  "c12_sensor_to_claw_tip_offset_mm": 123,
+  "distance_interpretation": "approx_tip_clearance_mm = c12_distance_mm - 123 when target is aligned in the C12 beam path",
+  "resources_verified": {
+    "arm_serial": "ok",
+    "c12_distance": "ok source=arduino_i2c_0x10",
+    "rplidar": "ok table-height scan available",
+    "hand_camera": "ok",
+    "mim_box_cameras": "ok but too distant/overexposed for pickup proof in this run",
+    "pc_camera": "present but not useful for arm view in this run"
+  },
+  "what_worked": [
+    "hand camera clearly located blue block",
+    "table-height RPLIDAR can detect block-scale clusters",
+    "movement memory returned to known block approach region",
+    "bounded grip/lift attempts were captured with evidence"
+  ],
+  "what_failed": [
+    "high lift at elbow 72 lost the block from the claws",
+    "full-close grip engaged mostly one side of the blue block while the opposite claw closed over the paper marker/table area",
+    "hook attempt at base 95 did not retain the block after movement",
+    "external camera proof was not strong enough for success confirmation"
+  ],
+  "learned_motion_lessons": [
+    {
+      "pose": "base=100 shoulder=90 elbow=38 wrist=89 hand=89 claw=open",
+      "lesson": "good visual recenter pose after failure"
+    },
+    {
+      "pose": "base=100 shoulder=90 elbow=32 wrist=89 hand=89 claw=0",
+      "lesson": "seat pose placed block near one claw but not bracketed by both claw tips"
+    },
+    {
+      "pose": "base=95 shoulder=90 elbow=38-50 wrist=89 hand=89 claw=0",
+      "lesson": "left claw/hook alignment improved but retention failed"
+    },
+    {
+      "pose": "elbow=72 after grip",
+      "lesson": "too high/aggressive; block was lost from claw view"
+    }
+  ],
+  "next_attempt_recommendation": [
+    "Use C12 offset: seek raw distance near 123mm plus desired clearance before final close when beam is aligned with object.",
+    "Before closing, require both claw tips to bracket blue pixels, not just one claw contacting the block.",
+    "Use smaller base increments around 95-100 and wrist/hand alignment to move the right claw onto the blue block before closing.",
+    "Use RPLIDAR table-height diff to verify whether the block leaves the table plane after lift.",
+    "Do not mark success unless hand camera plus lidar-plane disappearance or external view confirms pickup."
+  ],
+  "evidence_dir": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_now_20260531",
+  "key_evidence_files": [
+    "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_now_20260531\\hand_camera_after_open.jpg",
+    "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_now_20260531\\higher_lift_elbow_72.jpg",
+    "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_now_20260531\\second_close_0.jpg",
+    "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_now_20260531\\hook_base_95_return_check.jpg",
+    "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_now_20260531\\run_log.json"
+  ]
+}

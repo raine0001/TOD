@@ -1,0 +1,47 @@
+{
+  "artifact": "MIM_ARM_BLUE_BLOCK_PICKUP_CONTINUING_LEARNING_STATUS_2026_05_31",
+  "generated_at": "2026-05-31T16:59:21-0700",
+  "status": "continuing_operator_assistance_requested",
+  "objective": "Pick up the blue block using all available MIM ARM resources and operator assistance as needed.",
+  "not_terminal_failure": true,
+  "current_pose": [
+    90,
+    90,
+    38,
+    65,
+    80,
+    99
+  ],
+  "current_pose_note": "open claw, low visual search pose after relocalization sweep",
+  "c12_sensor_to_claw_tip_offset_mm": 123,
+  "what_mim_learned_this_pass": [
+    "Servo 4 hand side-to-side strongly changes gripper presentation; useful zone around 80-90.",
+    "Servo 3 wrist turn around 65-75 gives better gripper angle than prior 89 for this block position.",
+    "Base 90-96 can approach the block center-hole path, but the block slides away unless mechanically captured first.",
+    "Symmetric pinch is weak for this cube; center-hole hook or deeper bracket is more promising.",
+    "High lift before secure capture causes loss; lift must remain incremental and validated."
+  ],
+  "why_operator_help_is_now_useful": [
+    "The block has shifted outside the current reliable grip lane during exploration.",
+    "Blind continued movements would mostly push the block rather than improve capture.",
+    "A quick reposition lets MIM test the learned wrist/hand alignment instead of rediscovering the block location."
+  ],
+  "operator_reposition_request": "Place the blue block directly between the two claw tips in the current open pose, with the large center hole facing the left claw tip if possible. Leave a small gap so the tips can close around/through the hole without immediately pushing the block away.",
+  "next_mim_action_after_reposition": [
+    "Capture hand-camera confirmation.",
+    "Use wrist=65, hand-side=80 as starting alignment.",
+    "Use C12 offset when the sensor beam is aligned: estimated tip clearance = raw distance - 123mm.",
+    "Close in stages and inspect at each stage.",
+    "Lift only to elbow 42, then 46, then 50 after visible retention.",
+    "Use table-height RPLIDAR diff to check whether block leaves the table plane."
+  ],
+  "evidence_dir": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531",
+  "key_files": [
+    "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\servo4_sweep_contact_sheet.jpg",
+    "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\wrist_servo3_sweep_contact_sheet.jpg",
+    "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\wrist65_close0.jpg",
+    "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\base90hook_hook_lift50.jpg",
+    "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\relocalize_base_sweep_contact_sheet.jpg",
+    "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\learning_run_log.json"
+  ]
+}

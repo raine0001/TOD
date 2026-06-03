@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-05-31T22:33:36Z",
+  "source_url": "http://192.168.1.90:5000/lidar/scan?duration=8&max_points=5000&include_points=1",
+  "scan_status": "ok",
+  "ok": true,
+  "raw_point_count": 2000,
+  "endpoint_point_count": 2000,
+  "filtered_close_points": 1467,
+  "binned_close_points": 442,
+  "close_range_filter": {
+    "min_mm": 20,
+    "max_mm": 2000,
+    "min_quality": 3,
+    "angle_bin_degrees": 0.5,
+    "distance_stat": "median"
+  },
+  "hardware_note": "Close-range detail is improved by longer capture and close-range filtering, but minimum measurable range and blind spots remain sensor/mount dependent.",
+  "image": "runtime_remote_training/arm_pickup_run/rplidar_close_range_map_latest.png",
+  "raw": "runtime_remote_training/arm_pickup_run/rplidar_close_range_scan_latest.json",
+  "binned": "runtime_remote_training/arm_pickup_run/rplidar_close_range_binned_latest.json",
+  "min_distance_mm": 24.5,
+  "max_distance_mm": 7230.0
+}

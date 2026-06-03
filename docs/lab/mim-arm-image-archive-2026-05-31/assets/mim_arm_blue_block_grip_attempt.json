@@ -1,0 +1,1808 @@
+{
+  "started_at": "2026-05-31T21:59:59Z",
+  "start_pose": [
+    100,
+    90,
+    40,
+    108,
+    95,
+    157
+  ],
+  "start_lidar": {
+    "baud": 460800,
+    "connected": true,
+    "descriptor": "a55a0500004081",
+    "descriptor_ok": true,
+    "max_distance_mm": 7209.0,
+    "min_distance_mm": 23.2,
+    "ok": true,
+    "point_count": 360,
+    "points": [],
+    "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+    "sample": [
+      {
+        "angle_degrees": 179.62,
+        "distance_mm": 882.8,
+        "quality": 30
+      },
+      {
+        "angle_degrees": 180.41,
+        "distance_mm": 900.0,
+        "quality": 34
+      },
+      {
+        "angle_degrees": 181.23,
+        "distance_mm": 897.5,
+        "quality": 34
+      },
+      {
+        "angle_degrees": 182.03,
+        "distance_mm": 892.5,
+        "quality": 33
+      },
+      {
+        "angle_degrees": 182.81,
+        "distance_mm": 911.5,
+        "quality": 30
+      },
+      {
+        "angle_degrees": 183.61,
+        "distance_mm": 913.0,
+        "quality": 33
+      },
+      {
+        "angle_degrees": 186.77,
+        "distance_mm": 7190.0,
+        "quality": 13
+      },
+      {
+        "angle_degrees": 197.12,
+        "distance_mm": 2975.0,
+        "quality": 37
+      },
+      {
+        "angle_degrees": 197.92,
+        "distance_mm": 2969.5,
+        "quality": 31
+      },
+      {
+        "angle_degrees": 198.7,
+        "distance_mm": 2991.5,
+        "quality": 31
+      },
+      {
+        "angle_degrees": 199.5,
+        "distance_mm": 2984.5,
+        "quality": 26
+      },
+      {
+        "angle_degrees": 201.91,
+        "distance_mm": 2739.5,
+        "quality": 25
+      },
+      {
+        "angle_degrees": 202.7,
+        "distance_mm": 2661.5,
+        "quality": 25
+      },
+      {
+        "angle_degrees": 203.47,
+        "distance_mm": 2590.0,
+        "quality": 27
+      },
+      {
+        "angle_degrees": 204.27,
+        "distance_mm": 2522.0,
+        "quality": 27
+      },
+      {
+        "angle_degrees": 205.05,
+        "distance_mm": 2456.5,
+        "quality": 27
+      },
+      {
+        "angle_degrees": 205.84,
+        "distance_mm": 2396.5,
+        "quality": 27
+      },
+      {
+        "angle_degrees": 206.64,
+        "distance_mm": 2341.5,
+        "quality": 23
+      },
+      {
+        "angle_degrees": 208.22,
+        "distance_mm": 1785.5,
+        "quality": 18
+      },
+      {
+        "angle_degrees": 209.02,
+        "distance_mm": 1757.5,
+        "quality": 22
+      },
+      {
+        "angle_degrees": 209.97,
+        "distance_mm": 1740.2,
+        "quality": 23
+      },
+      {
+        "angle_degrees": 210.8,
+        "distance_mm": 1728.8,
+        "quality": 24
+      },
+      {
+        "angle_degrees": 211.62,
+        "distance_mm": 1720.2,
+        "quality": 32
+      },
+      {
+        "angle_degrees": 212.45,
+        "distance_mm": 1718.5,
+        "quality": 33
+      }
+    ],
+    "status": "ok"
+  },
+  "steps": [
+    {
+      "phase": "base92_open",
+      "pose": [
+        92,
+        90,
+        40,
+        108,
+        95,
+        157
+      ],
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12032,TEMP_RAW=5100,REG0_7=4900002FEC136F16"
+        ],
+        "registers_0_7": "4900002FEC136F16",
+        "signal_strength": 12032,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5100
+      },
+      "vision": {
+        "frame": "runtime_remote_training\\arm_pickup_run\\grip_attempt_00_base92_open.jpg",
+        "annotated": "runtime_remote_training\\arm_pickup_run\\grip_attempt_00_base92_open_annotated.jpg",
+        "candidates": [
+          {
+            "x": 471,
+            "y": 729,
+            "w": 314,
+            "h": 231,
+            "area": 55571.5,
+            "cx": 628.0,
+            "cy": 844.5
+          },
+          {
+            "x": 0,
+            "y": 881,
+            "w": 80,
+            "h": 79,
+            "area": 4876.0,
+            "cx": 40.0,
+            "cy": 920.5
+          }
+        ]
+      }
+    },
+    {
+      "phase": "close_claw_100",
+      "move": {
+        "servo": 5,
+        "angle": 100,
+        "result": {
+          "audit": {
+            "angle": 100,
+            "client_timestamp": null,
+            "page": "codex_grip_attempt",
+            "request_id": "mim-grip-dd2be34f",
+            "requested_angle": 100,
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 100,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 100,
+              "servo": 5,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "server_timestamp": "2026-05-31T22:00:15.024886+00:00",
+            "servo": 5,
+            "source": "mim_blue_block_grip_attempt"
+          },
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 100,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 100,
+            "servo": 5,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "sent": "MOVE 5 100",
+          "status": "ok"
+        },
+        "distance_after": {
+          "address": "0x10",
+          "connected": true,
+          "distance_cm": 73,
+          "distance_mm": 730,
+          "last_distance_mm": 730,
+          "ok": true,
+          "raw_lines": [
+            "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12030,TEMP_RAW=5100,REG0_7=4900FE2EEC13B519"
+          ],
+          "registers_0_7": "4900FE2EEC13B519",
+          "signal_strength": 12030,
+          "source": "arduino_i2c_0x10",
+          "status": "ok",
+          "temperature_raw": 5100
+        }
+      },
+      "pose": [
+        92,
+        90,
+        40,
+        108,
+        95,
+        100
+      ],
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12031,TEMP_RAW=5100,REG0_7=4900FF2EEC139E21"
+        ],
+        "registers_0_7": "4900FF2EEC139E21",
+        "signal_strength": 12031,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5100
+      },
+      "vision": {
+        "frame": "runtime_remote_training\\arm_pickup_run\\grip_attempt_claw_100.jpg",
+        "annotated": "runtime_remote_training\\arm_pickup_run\\grip_attempt_claw_100_annotated.jpg",
+        "candidates": [
+          {
+            "x": 471,
+            "y": 726,
+            "w": 314,
+            "h": 234,
+            "area": 56377.0,
+            "cx": 628.0,
+            "cy": 843.0
+          },
+          {
+            "x": 0,
+            "y": 833,
+            "w": 160,
+            "h": 127,
+            "area": 11370.0,
+            "cx": 80.0,
+            "cy": 896.5
+          }
+        ]
+      },
+      "lidar": {
+        "baud": 460800,
+        "connected": true,
+        "descriptor": "a55a0500004081",
+        "descriptor_ok": true,
+        "max_distance_mm": 7202.8,
+        "min_distance_mm": 25.0,
+        "ok": true,
+        "point_count": 360,
+        "points": [],
+        "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+        "sample": [
+          {
+            "angle_degrees": 270.52,
+            "distance_mm": 1255.0,
+            "quality": 38
+          },
+          {
+            "angle_degrees": 271.34,
+            "distance_mm": 1249.0,
+            "quality": 38
+          },
+          {
+            "angle_degrees": 272.19,
+            "distance_mm": 1243.5,
+            "quality": 35
+          },
+          {
+            "angle_degrees": 273.02,
+            "distance_mm": 1245.0,
+            "quality": 37
+          },
+          {
+            "angle_degrees": 273.86,
+            "distance_mm": 1248.0,
+            "quality": 34
+          },
+          {
+            "angle_degrees": 275.53,
+            "distance_mm": 1153.5,
+            "quality": 14
+          },
+          {
+            "angle_degrees": 276.34,
+            "distance_mm": 1144.0,
+            "quality": 16
+          },
+          {
+            "angle_degrees": 277.17,
+            "distance_mm": 1144.0,
+            "quality": 14
+          },
+          {
+            "angle_degrees": 278.0,
+            "distance_mm": 1166.0,
+            "quality": 12
+          },
+          {
+            "angle_degrees": 282.22,
+            "distance_mm": 1521.0,
+            "quality": 17
+          },
+          {
+            "angle_degrees": 283.03,
+            "distance_mm": 1516.5,
+            "quality": 12
+          },
+          {
+            "angle_degrees": 284.69,
+            "distance_mm": 2980.8,
+            "quality": 25
+          },
+          {
+            "angle_degrees": 285.52,
+            "distance_mm": 2963.8,
+            "quality": 25
+          },
+          {
+            "angle_degrees": 286.39,
+            "distance_mm": 2944.0,
+            "quality": 26
+          },
+          {
+            "angle_degrees": 287.23,
+            "distance_mm": 2925.5,
+            "quality": 25
+          },
+          {
+            "angle_degrees": 288.06,
+            "distance_mm": 2909.0,
+            "quality": 26
+          },
+          {
+            "angle_degrees": 289.7,
+            "distance_mm": 2646.5,
+            "quality": 3
+          },
+          {
+            "angle_degrees": 290.53,
+            "distance_mm": 2625.0,
+            "quality": 4
+          },
+          {
+            "angle_degrees": 291.36,
+            "distance_mm": 2616.0,
+            "quality": 4
+          },
+          {
+            "angle_degrees": 292.19,
+            "distance_mm": 2613.0,
+            "quality": 4
+          },
+          {
+            "angle_degrees": 293.06,
+            "distance_mm": 2604.5,
+            "quality": 4
+          },
+          {
+            "angle_degrees": 293.91,
+            "distance_mm": 2595.5,
+            "quality": 3
+          },
+          {
+            "angle_degrees": 294.73,
+            "distance_mm": 2585.0,
+            "quality": 4
+          },
+          {
+            "angle_degrees": 295.58,
+            "distance_mm": 2567.5,
+            "quality": 4
+          }
+        ],
+        "status": "ok"
+      }
+    },
+    {
+      "phase": "close_claw_64",
+      "move": {
+        "servo": 5,
+        "angle": 64,
+        "result": {
+          "audit": {
+            "angle": 64,
+            "client_timestamp": null,
+            "page": "codex_grip_attempt",
+            "request_id": "mim-grip-7db2d5ac",
+            "requested_angle": 64,
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 64,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 64,
+              "servo": 5,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "server_timestamp": "2026-05-31T22:00:25.816773+00:00",
+            "servo": 5,
+            "source": "mim_blue_block_grip_attempt"
+          },
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 64,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 64,
+            "servo": 5,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "sent": "MOVE 5 64",
+          "status": "ok"
+        },
+        "distance_after": {
+          "address": "0x10",
+          "connected": true,
+          "distance_cm": 73,
+          "distance_mm": 730,
+          "last_distance_mm": 730,
+          "ok": true,
+          "raw_lines": [
+            "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12034,TEMP_RAW=5100,REG0_7=4900022FEC13D543"
+          ],
+          "registers_0_7": "4900022FEC13D543",
+          "signal_strength": 12034,
+          "source": "arduino_i2c_0x10",
+          "status": "ok",
+          "temperature_raw": 5100
+        }
+      },
+      "pose": [
+        92,
+        90,
+        40,
+        108,
+        95,
+        64
+      ],
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12035,TEMP_RAW=5100,REG0_7=4900032FEC13C84B"
+        ],
+        "registers_0_7": "4900032FEC13C84B",
+        "signal_strength": 12035,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5100
+      },
+      "vision": {
+        "frame": "runtime_remote_training\\arm_pickup_run\\grip_attempt_claw_64.jpg",
+        "annotated": "runtime_remote_training\\arm_pickup_run\\grip_attempt_claw_64_annotated.jpg",
+        "candidates": [
+          {
+            "x": 433,
+            "y": 725,
+            "w": 352,
+            "h": 235,
+            "area": 57783.0,
+            "cx": 609.0,
+            "cy": 842.5
+          },
+          {
+            "x": 0,
+            "y": 808,
+            "w": 240,
+            "h": 152,
+            "area": 22447.5,
+            "cx": 120.0,
+            "cy": 884.0
+          }
+        ]
+      },
+      "lidar": {
+        "baud": 460800,
+        "connected": true,
+        "descriptor": "a55a0500004081",
+        "descriptor_ok": true,
+        "max_distance_mm": 7218.5,
+        "min_distance_mm": 24.0,
+        "ok": true,
+        "point_count": 360,
+        "points": [],
+        "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+        "sample": [
+          {
+            "angle_degrees": 181.5,
+            "distance_mm": 894.5,
+            "quality": 32
+          },
+          {
+            "angle_degrees": 182.31,
+            "distance_mm": 897.5,
+            "quality": 32
+          },
+          {
+            "angle_degrees": 183.12,
+            "distance_mm": 911.5,
+            "quality": 30
+          },
+          {
+            "angle_degrees": 183.84,
+            "distance_mm": 910.5,
+            "quality": 33
+          },
+          {
+            "angle_degrees": 185.42,
+            "distance_mm": 1071.0,
+            "quality": 9
+          },
+          {
+            "angle_degrees": 187.08,
+            "distance_mm": 7218.5,
+            "quality": 13
+          },
+          {
+            "angle_degrees": 196.81,
+            "distance_mm": 2984.0,
+            "quality": 33
+          },
+          {
+            "angle_degrees": 197.61,
+            "distance_mm": 2963.0,
+            "quality": 33
+          },
+          {
+            "angle_degrees": 198.41,
+            "distance_mm": 2981.5,
+            "quality": 31
+          },
+          {
+            "angle_degrees": 199.2,
+            "distance_mm": 2997.5,
+            "quality": 29
+          },
+          {
+            "angle_degrees": 201.69,
+            "distance_mm": 2764.5,
+            "quality": 25
+          },
+          {
+            "angle_degrees": 202.5,
+            "distance_mm": 2684.0,
+            "quality": 26
+          },
+          {
+            "angle_degrees": 203.3,
+            "distance_mm": 2608.0,
+            "quality": 26
+          },
+          {
+            "angle_degrees": 204.11,
+            "distance_mm": 2539.0,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 204.91,
+            "distance_mm": 2472.5,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 205.72,
+            "distance_mm": 2409.5,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 206.52,
+            "distance_mm": 2351.0,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 208.12,
+            "distance_mm": 1791.8,
+            "quality": 18
+          },
+          {
+            "angle_degrees": 208.94,
+            "distance_mm": 1760.8,
+            "quality": 21
+          },
+          {
+            "angle_degrees": 209.89,
+            "distance_mm": 1743.5,
+            "quality": 23
+          },
+          {
+            "angle_degrees": 210.73,
+            "distance_mm": 1733.0,
+            "quality": 25
+          },
+          {
+            "angle_degrees": 211.58,
+            "distance_mm": 1723.5,
+            "quality": 31
+          },
+          {
+            "angle_degrees": 212.42,
+            "distance_mm": 1718.2,
+            "quality": 33
+          },
+          {
+            "angle_degrees": 213.17,
+            "distance_mm": 1723.8,
+            "quality": 24
+          }
+        ],
+        "status": "ok"
+      }
+    },
+    {
+      "phase": "close_claw_35",
+      "move": {
+        "servo": 5,
+        "angle": 35,
+        "result": {
+          "audit": {
+            "angle": 35,
+            "client_timestamp": null,
+            "page": "codex_grip_attempt",
+            "request_id": "mim-grip-df891129",
+            "requested_angle": 35,
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 35,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 35,
+              "servo": 5,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "server_timestamp": "2026-05-31T22:00:36.582581+00:00",
+            "servo": 5,
+            "source": "mim_blue_block_grip_attempt"
+          },
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 35,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 35,
+            "servo": 5,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "sent": "MOVE 5 35",
+          "status": "ok"
+        },
+        "distance_after": {
+          "address": "0x10",
+          "connected": true,
+          "distance_cm": 73,
+          "distance_mm": 730,
+          "last_distance_mm": 730,
+          "ok": true,
+          "raw_lines": [
+            "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12035,TEMP_RAW=5100,REG0_7=4900032FEC13EB6D"
+          ],
+          "registers_0_7": "4900032FEC13EB6D",
+          "signal_strength": 12035,
+          "source": "arduino_i2c_0x10",
+          "status": "ok",
+          "temperature_raw": 5100
+        }
+      },
+      "pose": [
+        92,
+        90,
+        40,
+        108,
+        95,
+        35
+      ],
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12039,TEMP_RAW=5100,REG0_7=4900072FEC13F275"
+        ],
+        "registers_0_7": "4900072FEC13F275",
+        "signal_strength": 12039,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5100
+      },
+      "vision": {
+        "frame": "runtime_remote_training\\arm_pickup_run\\grip_attempt_claw_35.jpg",
+        "annotated": "runtime_remote_training\\arm_pickup_run\\grip_attempt_claw_35_annotated.jpg",
+        "candidates": [
+          {
+            "x": 533,
+            "y": 728,
+            "w": 252,
+            "h": 232,
+            "area": 40411.5,
+            "cx": 659.0,
+            "cy": 844.0
+          },
+          {
+            "x": 0,
+            "y": 832,
+            "w": 148,
+            "h": 128,
+            "area": 15697.0,
+            "cx": 74.0,
+            "cy": 896.0
+          }
+        ]
+      },
+      "lidar": {
+        "baud": 460800,
+        "connected": true,
+        "descriptor": "a55a0500004081",
+        "descriptor_ok": true,
+        "max_distance_mm": 7227.5,
+        "min_distance_mm": 22.5,
+        "ok": true,
+        "point_count": 360,
+        "points": [],
+        "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+        "sample": [
+          {
+            "angle_degrees": 229.61,
+            "distance_mm": 2169.8,
+            "quality": 21
+          },
+          {
+            "angle_degrees": 232.08,
+            "distance_mm": 2173.0,
+            "quality": 19
+          },
+          {
+            "angle_degrees": 232.91,
+            "distance_mm": 2174.5,
+            "quality": 24
+          },
+          {
+            "angle_degrees": 233.73,
+            "distance_mm": 2190.0,
+            "quality": 31
+          },
+          {
+            "angle_degrees": 236.2,
+            "distance_mm": 2221.0,
+            "quality": 26
+          },
+          {
+            "angle_degrees": 237.02,
+            "distance_mm": 2231.5,
+            "quality": 32
+          },
+          {
+            "angle_degrees": 239.52,
+            "distance_mm": 2261.8,
+            "quality": 32
+          },
+          {
+            "angle_degrees": 241.17,
+            "distance_mm": 2063.2,
+            "quality": 8
+          },
+          {
+            "angle_degrees": 242.81,
+            "distance_mm": 2314.8,
+            "quality": 14
+          },
+          {
+            "angle_degrees": 244.45,
+            "distance_mm": 277.5,
+            "quality": 15
+          },
+          {
+            "angle_degrees": 245.36,
+            "distance_mm": 279.5,
+            "quality": 11
+          },
+          {
+            "angle_degrees": 247.05,
+            "distance_mm": 1352.0,
+            "quality": 31
+          },
+          {
+            "angle_degrees": 247.89,
+            "distance_mm": 1347.5,
+            "quality": 35
+          },
+          {
+            "angle_degrees": 248.67,
+            "distance_mm": 1350.0,
+            "quality": 36
+          },
+          {
+            "angle_degrees": 249.5,
+            "distance_mm": 1354.0,
+            "quality": 37
+          },
+          {
+            "angle_degrees": 250.33,
+            "distance_mm": 1354.0,
+            "quality": 36
+          },
+          {
+            "angle_degrees": 251.16,
+            "distance_mm": 1352.0,
+            "quality": 12
+          },
+          {
+            "angle_degrees": 252.83,
+            "distance_mm": 263.0,
+            "quality": 12
+          },
+          {
+            "angle_degrees": 254.48,
+            "distance_mm": 1339.0,
+            "quality": 25
+          },
+          {
+            "angle_degrees": 255.3,
+            "distance_mm": 1343.0,
+            "quality": 31
+          },
+          {
+            "angle_degrees": 256.12,
+            "distance_mm": 1363.5,
+            "quality": 34
+          },
+          {
+            "angle_degrees": 256.94,
+            "distance_mm": 1386.0,
+            "quality": 38
+          },
+          {
+            "angle_degrees": 257.77,
+            "distance_mm": 1383.0,
+            "quality": 36
+          },
+          {
+            "angle_degrees": 258.62,
+            "distance_mm": 1355.5,
+            "quality": 40
+          }
+        ],
+        "status": "ok"
+      }
+    },
+    {
+      "phase": "close_claw_25",
+      "move": {
+        "servo": 5,
+        "angle": 25,
+        "result": {
+          "audit": {
+            "angle": 25,
+            "client_timestamp": null,
+            "page": "codex_grip_attempt",
+            "request_id": "mim-grip-eb4aa83e",
+            "requested_angle": 25,
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 25,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 25,
+              "servo": 5,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "server_timestamp": "2026-05-31T22:00:47.582146+00:00",
+            "servo": 5,
+            "source": "mim_blue_block_grip_attempt"
+          },
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 25,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 25,
+            "servo": 5,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "sent": "MOVE 5 25",
+          "status": "ok"
+        },
+        "distance_after": {
+          "address": "0x10",
+          "connected": true,
+          "distance_cm": 73,
+          "distance_mm": 730,
+          "last_distance_mm": 730,
+          "ok": true,
+          "raw_lines": [
+            "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12035,TEMP_RAW=5100,REG0_7=4900032FEC13DC98"
+          ],
+          "registers_0_7": "4900032FEC13DC98",
+          "signal_strength": 12035,
+          "source": "arduino_i2c_0x10",
+          "status": "ok",
+          "temperature_raw": 5100
+        }
+      },
+      "pose": [
+        92,
+        90,
+        40,
+        108,
+        95,
+        25
+      ],
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12039,TEMP_RAW=5100,REG0_7=4900072FEC13C5A0"
+        ],
+        "registers_0_7": "4900072FEC13C5A0",
+        "signal_strength": 12039,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5100
+      },
+      "vision": {
+        "frame": "runtime_remote_training\\arm_pickup_run\\grip_attempt_claw_25.jpg",
+        "annotated": "runtime_remote_training\\arm_pickup_run\\grip_attempt_claw_25_annotated.jpg",
+        "candidates": [
+          {
+            "x": 574,
+            "y": 744,
+            "w": 211,
+            "h": 216,
+            "area": 32584.5,
+            "cx": 679.5,
+            "cy": 852.0
+          },
+          {
+            "x": 0,
+            "y": 817,
+            "w": 160,
+            "h": 143,
+            "area": 15426.0,
+            "cx": 80.0,
+            "cy": 888.5
+          },
+          {
+            "x": 1089,
+            "y": 897,
+            "w": 89,
+            "h": 63,
+            "area": 2748.5,
+            "cx": 1133.5,
+            "cy": 928.5
+          }
+        ]
+      },
+      "lidar": {
+        "baud": 460800,
+        "connected": true,
+        "descriptor": "a55a0500004081",
+        "descriptor_ok": true,
+        "max_distance_mm": 7220.5,
+        "min_distance_mm": 24.2,
+        "ok": true,
+        "point_count": 360,
+        "points": [],
+        "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+        "sample": [
+          {
+            "angle_degrees": 197.16,
+            "distance_mm": 2975.0,
+            "quality": 38
+          },
+          {
+            "angle_degrees": 197.94,
+            "distance_mm": 2969.8,
+            "quality": 31
+          },
+          {
+            "angle_degrees": 198.69,
+            "distance_mm": 2992.2,
+            "quality": 31
+          },
+          {
+            "angle_degrees": 199.47,
+            "distance_mm": 2986.8,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 201.02,
+            "distance_mm": 2830.5,
+            "quality": 24
+          },
+          {
+            "angle_degrees": 201.83,
+            "distance_mm": 2747.5,
+            "quality": 25
+          },
+          {
+            "angle_degrees": 202.61,
+            "distance_mm": 2670.5,
+            "quality": 26
+          },
+          {
+            "angle_degrees": 203.39,
+            "distance_mm": 2597.5,
+            "quality": 26
+          },
+          {
+            "angle_degrees": 204.17,
+            "distance_mm": 2529.2,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 204.94,
+            "distance_mm": 2468.5,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 205.72,
+            "distance_mm": 2407.5,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 206.48,
+            "distance_mm": 2350.2,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 208.2,
+            "distance_mm": 1795.0,
+            "quality": 17
+          },
+          {
+            "angle_degrees": 209.02,
+            "distance_mm": 1764.0,
+            "quality": 21
+          },
+          {
+            "angle_degrees": 209.83,
+            "distance_mm": 1744.0,
+            "quality": 23
+          },
+          {
+            "angle_degrees": 210.64,
+            "distance_mm": 1733.0,
+            "quality": 24
+          },
+          {
+            "angle_degrees": 211.36,
+            "distance_mm": 1724.5,
+            "quality": 29
+          },
+          {
+            "angle_degrees": 212.16,
+            "distance_mm": 1718.5,
+            "quality": 34
+          },
+          {
+            "angle_degrees": 212.94,
+            "distance_mm": 1721.5,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 213.73,
+            "distance_mm": 1729.8,
+            "quality": 22
+          },
+          {
+            "angle_degrees": 214.48,
+            "distance_mm": 1740.5,
+            "quality": 20
+          },
+          {
+            "angle_degrees": 215.27,
+            "distance_mm": 1757.0,
+            "quality": 19
+          },
+          {
+            "angle_degrees": 216.05,
+            "distance_mm": 1778.0,
+            "quality": 17
+          },
+          {
+            "angle_degrees": 217.64,
+            "distance_mm": 2148.0,
+            "quality": 33
+          }
+        ],
+        "status": "ok"
+      }
+    },
+    {
+      "phase": "close_claw_22",
+      "move": {
+        "servo": 5,
+        "angle": 22,
+        "result": {
+          "audit": {
+            "angle": 22,
+            "client_timestamp": null,
+            "page": "codex_grip_attempt",
+            "request_id": "mim-grip-0c6e5137",
+            "requested_angle": 22,
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 22,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 22,
+              "servo": 5,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "server_timestamp": "2026-05-31T22:00:58.859616+00:00",
+            "servo": 5,
+            "source": "mim_blue_block_grip_attempt"
+          },
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 22,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 22,
+            "servo": 5,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "sent": "MOVE 5 22",
+          "status": "ok"
+        },
+        "distance_after": {
+          "address": "0x10",
+          "connected": true,
+          "distance_cm": 73,
+          "distance_mm": 730,
+          "last_distance_mm": 730,
+          "ok": true,
+          "raw_lines": [
+            "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12037,TEMP_RAW=5100,REG0_7=4900052FEC13EEC4"
+          ],
+          "registers_0_7": "4900052FEC13EEC4",
+          "signal_strength": 12037,
+          "source": "arduino_i2c_0x10",
+          "status": "ok",
+          "temperature_raw": 5100
+        }
+      },
+      "pose": [
+        92,
+        90,
+        40,
+        108,
+        95,
+        22
+      ],
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12033,TEMP_RAW=5100,REG0_7=4900012FEC13CDCC"
+        ],
+        "registers_0_7": "4900012FEC13CDCC",
+        "signal_strength": 12033,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5100
+      },
+      "vision": {
+        "frame": "runtime_remote_training\\arm_pickup_run\\grip_attempt_claw_22.jpg",
+        "annotated": "runtime_remote_training\\arm_pickup_run\\grip_attempt_claw_22_annotated.jpg",
+        "candidates": [
+          {
+            "x": 591,
+            "y": 744,
+            "w": 194,
+            "h": 216,
+            "area": 30539.0,
+            "cx": 688.0,
+            "cy": 852.0
+          },
+          {
+            "x": 0,
+            "y": 832,
+            "w": 144,
+            "h": 128,
+            "area": 14380.0,
+            "cx": 72.0,
+            "cy": 896.0
+          },
+          {
+            "x": 1089,
+            "y": 865,
+            "w": 90,
+            "h": 95,
+            "area": 3254.0,
+            "cx": 1134.0,
+            "cy": 912.5
+          }
+        ]
+      },
+      "lidar": {
+        "baud": 460800,
+        "connected": true,
+        "descriptor": "a55a0500004081",
+        "descriptor_ok": true,
+        "max_distance_mm": 7215.5,
+        "min_distance_mm": 23.8,
+        "ok": true,
+        "point_count": 360,
+        "points": [],
+        "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+        "sample": [
+          {
+            "angle_degrees": 109.78,
+            "distance_mm": 44.5,
+            "quality": 52
+          },
+          {
+            "angle_degrees": 110.52,
+            "distance_mm": 44.8,
+            "quality": 52
+          },
+          {
+            "angle_degrees": 111.25,
+            "distance_mm": 45.8,
+            "quality": 52
+          },
+          {
+            "angle_degrees": 118.02,
+            "distance_mm": 36.0,
+            "quality": 45
+          },
+          {
+            "angle_degrees": 119.59,
+            "distance_mm": 29.5,
+            "quality": 40
+          },
+          {
+            "angle_degrees": 120.95,
+            "distance_mm": 32.0,
+            "quality": 34
+          },
+          {
+            "angle_degrees": 123.95,
+            "distance_mm": 689.5,
+            "quality": 32
+          },
+          {
+            "angle_degrees": 124.7,
+            "distance_mm": 694.0,
+            "quality": 36
+          },
+          {
+            "angle_degrees": 125.45,
+            "distance_mm": 696.2,
+            "quality": 38
+          },
+          {
+            "angle_degrees": 126.2,
+            "distance_mm": 696.5,
+            "quality": 40
+          },
+          {
+            "angle_degrees": 126.88,
+            "distance_mm": 699.2,
+            "quality": 42
+          },
+          {
+            "angle_degrees": 127.61,
+            "distance_mm": 702.0,
+            "quality": 42
+          },
+          {
+            "angle_degrees": 128.33,
+            "distance_mm": 701.0,
+            "quality": 42
+          },
+          {
+            "angle_degrees": 129.06,
+            "distance_mm": 699.5,
+            "quality": 44
+          },
+          {
+            "angle_degrees": 129.84,
+            "distance_mm": 698.8,
+            "quality": 44
+          },
+          {
+            "angle_degrees": 130.59,
+            "distance_mm": 699.0,
+            "quality": 44
+          },
+          {
+            "angle_degrees": 131.33,
+            "distance_mm": 699.0,
+            "quality": 44
+          },
+          {
+            "angle_degrees": 132.08,
+            "distance_mm": 701.0,
+            "quality": 43
+          },
+          {
+            "angle_degrees": 132.8,
+            "distance_mm": 702.2,
+            "quality": 42
+          },
+          {
+            "angle_degrees": 133.53,
+            "distance_mm": 701.8,
+            "quality": 41
+          },
+          {
+            "angle_degrees": 134.27,
+            "distance_mm": 702.5,
+            "quality": 42
+          },
+          {
+            "angle_degrees": 135.0,
+            "distance_mm": 703.8,
+            "quality": 42
+          },
+          {
+            "angle_degrees": 135.75,
+            "distance_mm": 705.2,
+            "quality": 42
+          },
+          {
+            "angle_degrees": 136.48,
+            "distance_mm": 705.0,
+            "quality": 41
+          }
+        ],
+        "status": "ok"
+      }
+    },
+    {
+      "phase": "micro_lift_elbow_plus4",
+      "move": {
+        "servo": 2,
+        "angle": 44,
+        "result": {
+          "audit": {
+            "angle": 44,
+            "client_timestamp": null,
+            "page": "codex_grip_attempt",
+            "request_id": "mim-grip-5cc474c0",
+            "requested_angle": 44,
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 44,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 44,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "server_timestamp": "2026-05-31T22:01:11.510802+00:00",
+            "servo": 2,
+            "source": "mim_blue_block_micro_lift_verification"
+          },
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 44,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 44,
+            "servo": 2,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "sent": "MOVE 2 44",
+          "status": "ok"
+        },
+        "distance_after": {
+          "address": "0x10",
+          "connected": true,
+          "distance_cm": 75,
+          "distance_mm": 750,
+          "last_distance_mm": 750,
+          "ok": true,
+          "raw_lines": [
+            "DIST:ADDR=0x10,CM=75,MM=750,STRENGTH=11464,TEMP_RAW=5100,REG0_7=4B00C82CEC1343F6"
+          ],
+          "registers_0_7": "4B00C82CEC1343F6",
+          "signal_strength": 11464,
+          "source": "arduino_i2c_0x10",
+          "status": "ok",
+          "temperature_raw": 5100
+        }
+      },
+      "pose": [
+        92,
+        90,
+        44,
+        108,
+        95,
+        22
+      ],
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 75,
+        "distance_mm": 750,
+        "last_distance_mm": 750,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=75,MM=750,STRENGTH=11507,TEMP_RAW=5100,REG0_7=4B00F32CEC1322FE"
+        ],
+        "registers_0_7": "4B00F32CEC1322FE",
+        "signal_strength": 11507,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5100
+      },
+      "vision": {
+        "frame": "runtime_remote_training\\arm_pickup_run\\grip_attempt_micro_lift.jpg",
+        "annotated": "runtime_remote_training\\arm_pickup_run\\grip_attempt_micro_lift_annotated.jpg",
+        "candidates": [
+          {
+            "x": 591,
+            "y": 809,
+            "w": 221,
+            "h": 151,
+            "area": 25828.0,
+            "cx": 701.5,
+            "cy": 884.5
+          },
+          {
+            "x": 40,
+            "y": 912,
+            "w": 104,
+            "h": 48,
+            "area": 2847.0,
+            "cx": 92.0,
+            "cy": 936.0
+          }
+        ]
+      },
+      "lidar": {
+        "baud": 460800,
+        "connected": true,
+        "descriptor": "a55a0500004081",
+        "descriptor_ok": true,
+        "max_distance_mm": 7222.2,
+        "min_distance_mm": 25.2,
+        "ok": true,
+        "point_count": 360,
+        "points": [],
+        "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+        "sample": [
+          {
+            "angle_degrees": 196.98,
+            "distance_mm": 2974.5,
+            "quality": 35
+          },
+          {
+            "angle_degrees": 197.78,
+            "distance_mm": 2966.5,
+            "quality": 31
+          },
+          {
+            "angle_degrees": 198.62,
+            "distance_mm": 2989.0,
+            "quality": 31
+          },
+          {
+            "angle_degrees": 199.44,
+            "distance_mm": 2992.0,
+            "quality": 28
+          },
+          {
+            "angle_degrees": 201.8,
+            "distance_mm": 2748.8,
+            "quality": 25
+          },
+          {
+            "angle_degrees": 202.59,
+            "distance_mm": 2669.0,
+            "quality": 25
+          },
+          {
+            "angle_degrees": 203.38,
+            "distance_mm": 2594.0,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 204.17,
+            "distance_mm": 2526.0,
+            "quality": 26
+          },
+          {
+            "angle_degrees": 205.05,
+            "distance_mm": 2463.0,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 205.86,
+            "distance_mm": 2400.8,
+            "quality": 27
+          },
+          {
+            "angle_degrees": 206.67,
+            "distance_mm": 2343.0,
+            "quality": 24
+          },
+          {
+            "angle_degrees": 208.38,
+            "distance_mm": 1786.5,
+            "quality": 18
+          },
+          {
+            "angle_degrees": 209.2,
+            "distance_mm": 1758.0,
+            "quality": 21
+          },
+          {
+            "angle_degrees": 210.03,
+            "distance_mm": 1742.2,
+            "quality": 23
+          },
+          {
+            "angle_degrees": 210.86,
+            "distance_mm": 1730.2,
+            "quality": 25
+          },
+          {
+            "angle_degrees": 211.62,
+            "distance_mm": 1721.5,
+            "quality": 32
+          },
+          {
+            "angle_degrees": 212.44,
+            "distance_mm": 1719.2,
+            "quality": 33
+          },
+          {
+            "angle_degrees": 213.25,
+            "distance_mm": 1725.8,
+            "quality": 24
+          },
+          {
+            "angle_degrees": 214.06,
+            "distance_mm": 1736.8,
+            "quality": 21
+          },
+          {
+            "angle_degrees": 214.88,
+            "distance_mm": 1749.8,
+            "quality": 19
+          },
+          {
+            "angle_degrees": 215.69,
+            "distance_mm": 1768.2,
+            "quality": 17
+          },
+          {
+            "angle_degrees": 216.5,
+            "distance_mm": 1794.8,
+            "quality": 16
+          },
+          {
+            "angle_degrees": 218.08,
+            "distance_mm": 2155.2,
+            "quality": 34
+          },
+          {
+            "angle_degrees": 218.88,
+            "distance_mm": 2158.2,
+            "quality": 34
+          }
+        ],
+        "status": "ok"
+      }
+    }
+  ],
+  "recenter_moves": [
+    {
+      "servo": 0,
+      "angle": 96,
+      "result": {
+        "audit": {
+          "angle": 96,
+          "client_timestamp": null,
+          "page": "codex_grip_attempt",
+          "request_id": "mim-grip-6f5bef11",
+          "requested_angle": 96,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 96,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 96,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-05-31T22:00:10.854078+00:00",
+          "servo": 0,
+          "source": "mim_blue_block_recenter_base92"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 96,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 96,
+          "servo": 0,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 0 96",
+        "status": "ok"
+      },
+      "distance_after": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12721,TEMP_RAW=5100,REG0_7=4900B131EC136B09"
+        ],
+        "registers_0_7": "4900B131EC136B09",
+        "signal_strength": 12721,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5100
+      }
+    },
+    {
+      "servo": 0,
+      "angle": 92,
+      "result": {
+        "audit": {
+          "angle": 92,
+          "client_timestamp": null,
+          "page": "codex_grip_attempt",
+          "request_id": "mim-grip-fb31b634",
+          "requested_angle": 92,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 92,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 92,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-05-31T22:00:11.628967+00:00",
+          "servo": 0,
+          "source": "mim_blue_block_recenter_base92"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 92,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 92,
+          "servo": 0,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 0 92",
+        "status": "ok"
+      },
+      "distance_after": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=12062,TEMP_RAW=5100,REG0_7=49001E2FEC136B0C"
+        ],
+        "registers_0_7": "49001E2FEC136B0C",
+        "signal_strength": 12062,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 5100
+      }
+    }
+  ],
+  "ended_at": "2026-05-31T22:01:22Z",
+  "final_pose": [
+    92,
+    90,
+    44,
+    108,
+    95,
+    22
+  ],
+  "final_distance": {
+    "address": "0x10",
+    "connected": true,
+    "distance_cm": 73,
+    "distance_mm": 730,
+    "last_distance_mm": 730,
+    "ok": true,
+    "raw_lines": [
+      "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=11975,TEMP_RAW=5100,REG0_7=4900C72EEC13F726"
+    ],
+    "registers_0_7": "4900C72EEC13F726",
+    "signal_strength": 11975,
+    "source": "arduino_i2c_0x10",
+    "status": "ok",
+    "temperature_raw": 5100
+  }
+}

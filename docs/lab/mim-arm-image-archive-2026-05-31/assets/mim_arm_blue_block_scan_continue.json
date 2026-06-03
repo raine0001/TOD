@@ -1,0 +1,2315 @@
+{
+  "started_at": "2026-05-31T21:56:33Z",
+  "start_pose": [
+    58,
+    82,
+    11,
+    108,
+    89,
+    157
+  ],
+  "steps": [
+    {
+      "name": "known_good_open",
+      "target": [
+        72,
+        90,
+        24,
+        108,
+        89,
+        157
+      ],
+      "moves": [
+        {
+          "servo": 1,
+          "angle": 90,
+          "res": {
+            "audit": {
+              "angle": 90,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-5edb780c",
+              "requested_angle": 90,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 90,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 90,
+                "servo": 1,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:56:37.841607+00:00",
+              "servo": 1,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 90,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 90,
+              "servo": 1,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 1 90",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 17,
+            "distance_mm": 170,
+            "last_distance_mm": 170,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=17,MM=170,STRENGTH=8350,TEMP_RAW=4800,REG0_7=11009E20C012F4C8"
+            ],
+            "registers_0_7": "11009E20C012F4C8",
+            "signal_strength": 8350,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 21,
+          "res": {
+            "audit": {
+              "angle": 21,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-d9ff0664",
+              "requested_angle": 21,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 21,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 21,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:56:40.380752+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 21,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 21,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 21",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 18,
+            "distance_mm": 180,
+            "last_distance_mm": 180,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=18,MM=180,STRENGTH=2045,TEMP_RAW=4800,REG0_7=1200FD07C012F0D2"
+            ],
+            "registers_0_7": "1200FD07C012F0D2",
+            "signal_strength": 2045,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 24,
+          "res": {
+            "audit": {
+              "angle": 24,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-0e0a4bf1",
+              "requested_angle": 24,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 24,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 24,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:56:41.059614+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 24,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 24,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 24",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 19,
+            "distance_mm": 190,
+            "last_distance_mm": 190,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=19,MM=190,STRENGTH=1147,TEMP_RAW=4800,REG0_7=13007B04C01279D5"
+            ],
+            "registers_0_7": "13007B04C01279D5",
+            "signal_strength": 1147,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 68,
+          "res": {
+            "audit": {
+              "angle": 68,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-a5bac316",
+              "requested_angle": 68,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 68,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 68,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:56:47.417844+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 68,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 68,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 68",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 15,
+            "distance_mm": 150,
+            "last_distance_mm": 150,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=15,MM=150,STRENGTH=4828,TEMP_RAW=4800,REG0_7=0F00DC12C01267EE"
+            ],
+            "registers_0_7": "0F00DC12C01267EE",
+            "signal_strength": 4828,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 72,
+          "res": {
+            "audit": {
+              "angle": 72,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-0af4a6cb",
+              "requested_angle": 72,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 72,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 72,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:56:48.065170+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 72,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 72,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 72",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 17,
+            "distance_mm": 170,
+            "last_distance_mm": 170,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=17,MM=170,STRENGTH=4776,TEMP_RAW=4800,REG0_7=1100A812C012F0F0"
+            ],
+            "registers_0_7": "1100A812C012F0F0",
+            "signal_strength": 4776,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        }
+      ],
+      "frame": "runtime_remote_training\\arm_pickup_run\\hand_scan_known_good_open.jpg",
+      "detect": {
+        "shape": [
+          1280,
+          960
+        ],
+        "candidates": [
+          {
+            "x": 576,
+            "y": 495,
+            "w": 149,
+            "h": 116,
+            "area": 10422.5,
+            "cx": 650.5,
+            "cy": 553.0,
+            "aspect": 1.2844827586206897
+          },
+          {
+            "x": 155,
+            "y": 521,
+            "w": 239,
+            "h": 85,
+            "area": 3573.0,
+            "cx": 274.5,
+            "cy": 563.5,
+            "aspect": 2.8117647058823527
+          },
+          {
+            "x": 509,
+            "y": 319,
+            "w": 169,
+            "h": 64,
+            "area": 2035.0,
+            "cx": 593.5,
+            "cy": 351.0,
+            "aspect": 2.640625
+          },
+          {
+            "x": 583,
+            "y": 344,
+            "w": 105,
+            "h": 41,
+            "area": 1548.0,
+            "cx": 635.5,
+            "cy": 364.5,
+            "aspect": 2.5609756097560976
+          },
+          {
+            "x": 176,
+            "y": 480,
+            "w": 125,
+            "h": 51,
+            "area": 1508.5,
+            "cx": 238.5,
+            "cy": 505.5,
+            "aspect": 2.450980392156863
+          }
+        ],
+        "annotated": "runtime_remote_training\\arm_pickup_run\\hand_scan_known_good_open_cube_annotated.jpg"
+      },
+      "pose_after": [
+        72,
+        90,
+        24,
+        108,
+        89,
+        157
+      ],
+      "distance_after": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 18,
+        "distance_mm": 180,
+        "last_distance_mm": 180,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=18,MM=180,STRENGTH=4706,TEMP_RAW=4800,REG0_7=12006212C012B00A"
+        ],
+        "registers_0_7": "12006212C012B00A",
+        "signal_strength": 4706,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4800
+      }
+    },
+    {
+      "name": "operator_guided_scan_open",
+      "target": [
+        134,
+        95,
+        86,
+        93,
+        103,
+        157
+      ],
+      "moves": [
+        {
+          "servo": 1,
+          "angle": 95,
+          "res": {
+            "audit": {
+              "angle": 95,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-c0c693a6",
+              "requested_angle": 95,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 95,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 95,
+                "servo": 1,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:56:57.221261+00:00",
+              "servo": 1,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 95,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 95,
+              "servo": 1,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 1 95",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 13,
+            "distance_mm": 130,
+            "last_distance_mm": 130,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=13,MM=130,STRENGTH=5410,TEMP_RAW=4800,REG0_7=0D002215C0129814"
+            ],
+            "registers_0_7": "0D002215C0129814",
+            "signal_strength": 5410,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 34,
+          "res": {
+            "audit": {
+              "angle": 34,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-74642f82",
+              "requested_angle": 34,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 34,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 34,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:56:59.726987+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 34,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 34,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 34",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 35,
+            "distance_mm": 350,
+            "last_distance_mm": 350,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=35,MM=350,STRENGTH=692,TEMP_RAW=4800,REG0_7=2300B402C012631E"
+            ],
+            "registers_0_7": "2300B402C012631E",
+            "signal_strength": 692,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 44,
+          "res": {
+            "audit": {
+              "angle": 44,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-d2c85d95",
+              "requested_angle": 44,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 44,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 44,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:00.339122+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 44,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 44,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 44",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 70,
+            "distance_mm": 700,
+            "last_distance_mm": 700,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=70,MM=700,STRENGTH=1717,TEMP_RAW=4800,REG0_7=4600B506C012CE20"
+            ],
+            "registers_0_7": "4600B506C012CE20",
+            "signal_strength": 1717,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 54,
+          "res": {
+            "audit": {
+              "angle": 54,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-9d3fe807",
+              "requested_angle": 54,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 54,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 54,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:00.959918+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 54,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 54,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 54",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 82,
+            "distance_mm": 820,
+            "last_distance_mm": 820,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=82,MM=820,STRENGTH=1391,TEMP_RAW=4800,REG0_7=52006F05C0123A23"
+            ],
+            "registers_0_7": "52006F05C0123A23",
+            "signal_strength": 1391,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 64,
+          "res": {
+            "audit": {
+              "angle": 64,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-64f09bed",
+              "requested_angle": 64,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 64,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 64,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:01.624846+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 64,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 64,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 64",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 97,
+            "distance_mm": 970,
+            "last_distance_mm": 970,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=97,MM=970,STRENGTH=7696,TEMP_RAW=4800,REG0_7=6100101EC012D725"
+            ],
+            "registers_0_7": "6100101EC012D725",
+            "signal_strength": 7696,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 74,
+          "res": {
+            "audit": {
+              "angle": 74,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-351cbef0",
+              "requested_angle": 74,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 74,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 74,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:02.253038+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 74,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 74,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 74",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 120,
+            "distance_mm": 1200,
+            "last_distance_mm": 1200,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=120,MM=1200,STRENGTH=5041,TEMP_RAW=4800,REG0_7=7800B113C0124C28"
+            ],
+            "registers_0_7": "7800B113C0124C28",
+            "signal_strength": 5041,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 84,
+          "res": {
+            "audit": {
+              "angle": 84,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-b4ada470",
+              "requested_angle": 84,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 84,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 84,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:02.921672+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 84,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 84,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 84",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 157,
+            "distance_mm": 1570,
+            "last_distance_mm": 1570,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=157,MM=1570,STRENGTH=1329,TEMP_RAW=4800,REG0_7=9D003105C012F32A"
+            ],
+            "registers_0_7": "9D003105C012F32A",
+            "signal_strength": 1329,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 86,
+          "res": {
+            "audit": {
+              "angle": 86,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-b785cf05",
+              "requested_angle": 86,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 86,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 86,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:03.600838+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 86,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 86,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 86",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 158,
+            "distance_mm": 1580,
+            "last_distance_mm": 1580,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=158,MM=1580,STRENGTH=1554,TEMP_RAW=4800,REG0_7=9E001206C012902D"
+            ],
+            "registers_0_7": "9E001206C012902D",
+            "signal_strength": 1554,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 3,
+          "angle": 98,
+          "res": {
+            "audit": {
+              "angle": 98,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-8985226b",
+              "requested_angle": 98,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 98,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 98,
+                "servo": 3,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:06.164781+00:00",
+              "servo": 3,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 98,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 98,
+              "servo": 3,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 3 98",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 154,
+            "distance_mm": 1540,
+            "last_distance_mm": 1540,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=154,MM=1540,STRENGTH=1752,TEMP_RAW=4800,REG0_7=9A00D806C012A037"
+            ],
+            "registers_0_7": "9A00D806C012A037",
+            "signal_strength": 1752,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 3,
+          "angle": 93,
+          "res": {
+            "audit": {
+              "angle": 93,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-1f463b48",
+              "requested_angle": 93,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 93,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 93,
+                "servo": 3,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:06.818375+00:00",
+              "servo": 3,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 93,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 93,
+              "servo": 3,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 3 93",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 157,
+            "distance_mm": 1570,
+            "last_distance_mm": 1570,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=157,MM=1570,STRENGTH=2599,TEMP_RAW=4800,REG0_7=9D00270AC012293A"
+            ],
+            "registers_0_7": "9D00270AC012293A",
+            "signal_strength": 2599,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 4,
+          "angle": 99,
+          "res": {
+            "audit": {
+              "angle": 99,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-8ebc8e70",
+              "requested_angle": 99,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 99,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 99,
+                "servo": 4,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:09.353722+00:00",
+              "servo": 4,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 99,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 99,
+              "servo": 4,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 4 99",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 155,
+            "distance_mm": 1550,
+            "last_distance_mm": 1550,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=155,MM=1550,STRENGTH=2682,TEMP_RAW=4800,REG0_7=9B007A0AC012FD43"
+            ],
+            "registers_0_7": "9B007A0AC012FD43",
+            "signal_strength": 2682,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 4,
+          "angle": 103,
+          "res": {
+            "audit": {
+              "angle": 103,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-5c056478",
+              "requested_angle": 103,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 103,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 103,
+                "servo": 4,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:10.000710+00:00",
+              "servo": 4,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 103,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 103,
+              "servo": 4,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 4 103",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 155,
+            "distance_mm": 1550,
+            "last_distance_mm": 1550,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=155,MM=1550,STRENGTH=2489,TEMP_RAW=4800,REG0_7=9B00B909C0129046"
+            ],
+            "registers_0_7": "9B00B909C0129046",
+            "signal_strength": 2489,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 82,
+          "res": {
+            "audit": {
+              "angle": 82,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-f3ed5931",
+              "requested_angle": 82,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 82,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 82,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:12.519849+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 82,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 82,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 82",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 156,
+            "distance_mm": 1560,
+            "last_distance_mm": 1560,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=156,MM=1560,STRENGTH=2160,TEMP_RAW=4800,REG0_7=9C007008C0126E50"
+            ],
+            "registers_0_7": "9C007008C0126E50",
+            "signal_strength": 2160,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4800
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 92,
+          "res": {
+            "audit": {
+              "angle": 92,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-fe047e13",
+              "requested_angle": 92,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 92,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 92,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:13.153351+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 92,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 92,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 92",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 127,
+            "distance_mm": 1270,
+            "last_distance_mm": 1270,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=127,MM=1270,STRENGTH=5961,TEMP_RAW=4900,REG0_7=7F0049172413E352"
+            ],
+            "registers_0_7": "7F0049172413E352",
+            "signal_strength": 5961,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 102,
+          "res": {
+            "audit": {
+              "angle": 102,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-bee565a7",
+              "requested_angle": 102,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 102,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 102,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:13.822164+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 102,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 102,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 102",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 155,
+            "distance_mm": 1550,
+            "last_distance_mm": 1550,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=155,MM=1550,STRENGTH=2627,TEMP_RAW=4900,REG0_7=9B00430A24138A55"
+            ],
+            "registers_0_7": "9B00430A24138A55",
+            "signal_strength": 2627,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 112,
+          "res": {
+            "audit": {
+              "angle": 112,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-50b3cd73",
+              "requested_angle": 112,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 112,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 112,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:14.486127+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 112,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 112,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 112",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 154,
+            "distance_mm": 1540,
+            "last_distance_mm": 1540,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=154,MM=1540,STRENGTH=3026,TEMP_RAW=4875,REG0_7=9A00D20B0B132758"
+            ],
+            "registers_0_7": "9A00D20B0B132758",
+            "signal_strength": 3026,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4875
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 122,
+          "res": {
+            "audit": {
+              "angle": 122,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-02f3a2d1",
+              "requested_angle": 122,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 122,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 122,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:15.170360+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 122,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 122,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 122",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 122,
+            "distance_mm": 1220,
+            "last_distance_mm": 1220,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=122,MM=1220,STRENGTH=205,TEMP_RAW=4900,REG0_7=7A00CD002413CE5A"
+            ],
+            "registers_0_7": "7A00CD002413CE5A",
+            "signal_strength": 205,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 132,
+          "res": {
+            "audit": {
+              "angle": 132,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-4187a997",
+              "requested_angle": 132,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 132,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 132,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:15.810157+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 132,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 132,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 132",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 153,
+            "distance_mm": 1530,
+            "last_distance_mm": 1530,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=153,MM=1530,STRENGTH=2096,TEMP_RAW=4900,REG0_7=9900300824134D5D"
+            ],
+            "registers_0_7": "9900300824134D5D",
+            "signal_strength": 2096,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 134,
+          "res": {
+            "audit": {
+              "angle": 134,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-88c71942",
+              "requested_angle": 134,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 134,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 134,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:16.458313+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 134,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 134,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 134",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 151,
+            "distance_mm": 1510,
+            "last_distance_mm": 1510,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=151,MM=1510,STRENGTH=801,TEMP_RAW=4900,REG0_7=970021032413E05F"
+            ],
+            "registers_0_7": "970021032413E05F",
+            "signal_strength": 801,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        }
+      ],
+      "frame": "runtime_remote_training\\arm_pickup_run\\hand_scan_operator_guided_scan_open.jpg",
+      "detect": {
+        "shape": [
+          1280,
+          960
+        ],
+        "candidates": [
+          {
+            "x": 0,
+            "y": 659,
+            "w": 160,
+            "h": 301,
+            "area": 37598.0,
+            "cx": 80.0,
+            "cy": 809.5,
+            "aspect": 0.53156146179402
+          }
+        ],
+        "annotated": "runtime_remote_training\\arm_pickup_run\\hand_scan_operator_guided_scan_open_cube_annotated.jpg"
+      },
+      "pose_after": [
+        134,
+        95,
+        86,
+        93,
+        103,
+        157
+      ],
+      "distance_after": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 152,
+        "distance_mm": 1520,
+        "last_distance_mm": 1520,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=152,MM=1520,STRENGTH=1526,TEMP_RAW=4900,REG0_7=9800F6052413A378"
+        ],
+        "registers_0_7": "9800F6052413A378",
+        "signal_strength": 1526,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4900
+      }
+    },
+    {
+      "name": "left_table_scan_open",
+      "target": [
+        100,
+        90,
+        40,
+        108,
+        95,
+        157
+      ],
+      "moves": [
+        {
+          "servo": 1,
+          "angle": 90,
+          "res": {
+            "audit": {
+              "angle": 90,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-27400d0c",
+              "requested_angle": 90,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 90,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 90,
+                "servo": 1,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:25.366948+00:00",
+              "servo": 1,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 90,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 90,
+              "servo": 1,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 1 90",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 141,
+            "distance_mm": 1410,
+            "last_distance_mm": 1410,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=141,MM=1410,STRENGTH=291,TEMP_RAW=4900,REG0_7=8D00230124139582"
+            ],
+            "registers_0_7": "8D00230124139582",
+            "signal_strength": 291,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 76,
+          "res": {
+            "audit": {
+              "angle": 76,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-49dc5599",
+              "requested_angle": 76,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 76,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 76,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:27.940219+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 76,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 76,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 76",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 156,
+            "distance_mm": 1560,
+            "last_distance_mm": 1560,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=156,MM=1560,STRENGTH=1221,TEMP_RAW=4900,REG0_7=9C00C5042413A58C"
+            ],
+            "registers_0_7": "9C00C5042413A58C",
+            "signal_strength": 1221,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 66,
+          "res": {
+            "audit": {
+              "angle": 66,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-5b353983",
+              "requested_angle": 66,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 66,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 66,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:28.606559+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 66,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 66,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 66",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 125,
+            "distance_mm": 1250,
+            "last_distance_mm": 1250,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=125,MM=1250,STRENGTH=4157,TEMP_RAW=4900,REG0_7=7D003D102413378F"
+            ],
+            "registers_0_7": "7D003D102413378F",
+            "signal_strength": 4157,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 56,
+          "res": {
+            "audit": {
+              "angle": 56,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-b58c7c80",
+              "requested_angle": 56,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 56,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 56,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:29.257364+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 56,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 56,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 56",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 102,
+            "distance_mm": 1020,
+            "last_distance_mm": 1020,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=102,MM=1020,STRENGTH=6214,TEMP_RAW=4900,REG0_7=660046182413C091"
+            ],
+            "registers_0_7": "660046182413C091",
+            "signal_strength": 6214,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 46,
+          "res": {
+            "audit": {
+              "angle": 46,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-b31858fc",
+              "requested_angle": 46,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 46,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 46,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:29.879277+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 46,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 46,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 46",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 84,
+            "distance_mm": 840,
+            "last_distance_mm": 840,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=84,MM=840,STRENGTH=9434,TEMP_RAW=4900,REG0_7=5400DA2424133594"
+            ],
+            "registers_0_7": "5400DA2424133594",
+            "signal_strength": 9434,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 2,
+          "angle": 40,
+          "res": {
+            "audit": {
+              "angle": 40,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-63f3155c",
+              "requested_angle": 40,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 40,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 40,
+                "servo": 2,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:30.532563+00:00",
+              "servo": 2,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 40,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 40,
+              "servo": 2,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 2 40",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 77,
+            "distance_mm": 770,
+            "last_distance_mm": 770,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=77,MM=770,STRENGTH=11370,TEMP_RAW=4900,REG0_7=4D006A2C2413B496"
+            ],
+            "registers_0_7": "4D006A2C2413B496",
+            "signal_strength": 11370,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 3,
+          "angle": 103,
+          "res": {
+            "audit": {
+              "angle": 103,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-5caa0dee",
+              "requested_angle": 103,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 103,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 103,
+                "servo": 3,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:33.074773+00:00",
+              "servo": 3,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 103,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 103,
+              "servo": 3,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 3 103",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 75,
+            "distance_mm": 750,
+            "last_distance_mm": 750,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=75,MM=750,STRENGTH=12714,TEMP_RAW=4900,REG0_7=4B00AA312413C3A0"
+            ],
+            "registers_0_7": "4B00AA312413C3A0",
+            "signal_strength": 12714,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 3,
+          "angle": 108,
+          "res": {
+            "audit": {
+              "angle": 108,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-bfb89bb4",
+              "requested_angle": 108,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 108,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 108,
+                "servo": 3,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:33.759656+00:00",
+              "servo": 3,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 108,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 108,
+              "servo": 3,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 3 108",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 73,
+            "distance_mm": 730,
+            "last_distance_mm": 730,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=13294,TEMP_RAW=4900,REG0_7=4900EE3324136AA3"
+            ],
+            "registers_0_7": "4900EE3324136AA3",
+            "signal_strength": 13294,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 4,
+          "angle": 95,
+          "res": {
+            "audit": {
+              "angle": 95,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-b8c47abc",
+              "requested_angle": 95,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 95,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 95,
+                "servo": 4,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:36.310762+00:00",
+              "servo": 4,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 95,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 95,
+              "servo": 4,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 4 95",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 73,
+            "distance_mm": 730,
+            "last_distance_mm": 730,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=14524,TEMP_RAW=4900,REG0_7=4900BC38241351AD"
+            ],
+            "registers_0_7": "4900BC38241351AD",
+            "signal_strength": 14524,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 124,
+          "res": {
+            "audit": {
+              "angle": 124,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-d9615bdb",
+              "requested_angle": 124,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 124,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 124,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:38.824876+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 124,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 124,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 124",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 73,
+            "distance_mm": 730,
+            "last_distance_mm": 730,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=14497,TEMP_RAW=4900,REG0_7=4900A13824132FB7"
+            ],
+            "registers_0_7": "4900A13824132FB7",
+            "signal_strength": 14497,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 114,
+          "res": {
+            "audit": {
+              "angle": 114,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-08af7135",
+              "requested_angle": 114,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 114,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 114,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:39.502940+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 114,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 114,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 114",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 37,
+            "distance_mm": 370,
+            "last_distance_mm": 370,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=37,MM=370,STRENGTH=3120,TEMP_RAW=4900,REG0_7=2500300C2413E0B9"
+            ],
+            "registers_0_7": "2500300C2413E0B9",
+            "signal_strength": 3120,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 104,
+          "res": {
+            "audit": {
+              "angle": 104,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-0dfb3a93",
+              "requested_angle": 104,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 104,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 104,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:40.184911+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 104,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 104,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 104",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 73,
+            "distance_mm": 730,
+            "last_distance_mm": 730,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=13033,TEMP_RAW=4900,REG0_7=4900E932241372BC"
+            ],
+            "registers_0_7": "4900E932241372BC",
+            "signal_strength": 13033,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        },
+        {
+          "servo": 0,
+          "angle": 100,
+          "res": {
+            "audit": {
+              "angle": 100,
+              "client_timestamp": null,
+              "page": "codex_scan_continue",
+              "request_id": "mim-scan-17e105c3",
+              "requested_angle": 100,
+              "safety": {
+                "clamped": false,
+                "clamped_angle": 100,
+                "limit_configured": true,
+                "limit_max": 180,
+                "limit_min": 0,
+                "limit_source": "servo_config",
+                "requested_angle": 100,
+                "servo": 0,
+                "table_edge_guard": "servo_limit_clamp"
+              },
+              "server_timestamp": "2026-05-31T21:57:40.801649+00:00",
+              "servo": 0,
+              "source": "mim_multiview_blue_block_pickup_scan"
+            },
+            "safety": {
+              "clamped": false,
+              "clamped_angle": 100,
+              "limit_configured": true,
+              "limit_max": 180,
+              "limit_min": 0,
+              "limit_source": "servo_config",
+              "requested_angle": 100,
+              "servo": 0,
+              "table_edge_guard": "servo_limit_clamp"
+            },
+            "sent": "MOVE 0 100",
+            "status": "ok"
+          },
+          "distance_after": {
+            "address": "0x10",
+            "connected": true,
+            "distance_cm": 73,
+            "distance_mm": 730,
+            "last_distance_mm": 730,
+            "ok": true,
+            "raw_lines": [
+              "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=13502,TEMP_RAW=4900,REG0_7=4900BE342413F1BE"
+            ],
+            "registers_0_7": "4900BE342413F1BE",
+            "signal_strength": 13502,
+            "source": "arduino_i2c_0x10",
+            "status": "ok",
+            "temperature_raw": 4900
+          }
+        }
+      ],
+      "frame": "runtime_remote_training\\arm_pickup_run\\hand_scan_left_table_scan_open.jpg",
+      "detect": {
+        "shape": [
+          1280,
+          960
+        ],
+        "candidates": [
+          {
+            "x": 719,
+            "y": 656,
+            "w": 561,
+            "h": 304,
+            "area": 123771.0,
+            "cx": 999.5,
+            "cy": 808.0,
+            "aspect": 1.8453947368421053
+          },
+          {
+            "x": 929,
+            "y": 540,
+            "w": 351,
+            "h": 104,
+            "area": 19690.5,
+            "cx": 1104.5,
+            "cy": 592.0,
+            "aspect": 3.375
+          }
+        ],
+        "annotated": "runtime_remote_training\\arm_pickup_run\\hand_scan_left_table_scan_open_cube_annotated.jpg"
+      },
+      "pose_after": [
+        100,
+        90,
+        40,
+        108,
+        95,
+        157
+      ],
+      "distance_after": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 73,
+        "distance_mm": 730,
+        "last_distance_mm": 730,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=73,MM=730,STRENGTH=13400,TEMP_RAW=4900,REG0_7=4900583424133FD8"
+        ],
+        "registers_0_7": "4900583424133FD8",
+        "signal_strength": 13400,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4900
+      }
+    }
+  ],
+  "ended_at": "2026-05-31T21:57:47Z",
+  "final_pose": [
+    100,
+    90,
+    40,
+    108,
+    95,
+    157
+  ]
+}

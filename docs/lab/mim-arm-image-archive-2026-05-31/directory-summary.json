@@ -1,0 +1,27 @@
+﻿[
+    {
+        "directory":  "white_block_attempt_20260531",
+        "image_count":  328,
+        "size_bytes":  29307858
+    },
+    {
+        "directory":  "",
+        "image_count":  115,
+        "size_bytes":  24156542
+    },
+    {
+        "directory":  "pickup_continue_20260531",
+        "image_count":  82,
+        "size_bytes":  9763730
+    },
+    {
+        "directory":  "pickup_now_20260531",
+        "image_count":  46,
+        "size_bytes":  6764780
+    },
+    {
+        "directory":  "exploratory_spatial_interaction_20260531",
+        "image_count":  3,
+        "size_bytes":  337271
+    }
+]

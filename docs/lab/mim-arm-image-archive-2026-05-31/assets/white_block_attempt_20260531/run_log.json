@@ -1,0 +1,2387 @@
+{
+  "objective": "place_blue_on_1_marker_then_pick_white_block",
+  "started_at": "2026-05-31T17:20:47-0700",
+  "steps": [
+    {
+      "phase": "place_blue",
+      "servo": 0,
+      "angle": 90,
+      "name": "align_base90_over_marker",
+      "move": {
+        "audit": {
+          "angle": 90,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "d607b2e6f1b74342addc58708e61409e",
+          "requested_angle": 90,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 90,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 90,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:20:53.851129+00:00",
+          "servo": 0,
+          "source": "mim_arm_place_blue_then_pick_white"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 90,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 90,
+          "servo": 0,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 0 90",
+        "status": "ok"
+      },
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 10,
+        "distance_mm": 100,
+        "last_distance_mm": 100,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=10,MM=100,STRENGTH=9250,TEMP_RAW=4600,REG0_7=0A002224F811C3DE"
+        ],
+        "registers_0_7": "0A002224F811C3DE",
+        "signal_strength": 9250,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\place_blue_align_base90_over_marker.jpg",
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          50,
+          88,
+          80,
+          0
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1560,
+          "commands_total": 1560,
+          "last_command_ack_at": "2026-06-01T00:20:55.004205+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:20:54.892901+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:20:55.004205+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:20:54.892901+00:00",
+          "last_serial_age_seconds": 4.044,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:20:55.004205+00:00",
+          "serial_ack_count": 1560,
+          "serial_bound": true,
+          "serial_command_count": 1560,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "phase": "place_blue",
+      "servo": 2,
+      "angle": 44,
+      "name": "lower_elbow44",
+      "move": {
+        "audit": {
+          "angle": 44,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "378a47f8fdd44abc87093c011a93ed33",
+          "requested_angle": 44,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 44,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 44,
+            "servo": 2,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:21:00.956883+00:00",
+          "servo": 2,
+          "source": "mim_arm_place_blue_then_pick_white"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 44,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 44,
+          "servo": 2,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 2 44",
+        "status": "ok"
+      },
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 9,
+        "distance_mm": 90,
+        "last_distance_mm": 90,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=9,MM=90,STRENGTH=6485,TEMP_RAW=4600,REG0_7=09005519F81185FA"
+        ],
+        "registers_0_7": "09005519F81185FA",
+        "signal_strength": 6485,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\place_blue_lower_elbow44.jpg",
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          44,
+          88,
+          80,
+          0
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1562,
+          "commands_total": 1562,
+          "last_command_ack_at": "2026-06-01T00:21:02.107669+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:01.995385+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:21:02.107669+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:01.995385+00:00",
+          "last_serial_age_seconds": 5.723,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:21:02.107669+00:00",
+          "serial_ack_count": 1562,
+          "serial_bound": true,
+          "serial_command_count": 1562,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "phase": "place_blue",
+      "servo": 2,
+      "angle": 39,
+      "name": "lower_elbow39_pregrab_height",
+      "move": {
+        "audit": {
+          "angle": 39,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "5df296935b75443b98453dfdd3bce936",
+          "requested_angle": 39,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 39,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 39,
+            "servo": 2,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:21:09.729018+00:00",
+          "servo": 2,
+          "source": "mim_arm_place_blue_then_pick_white"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 39,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 39,
+          "servo": 2,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 2 39",
+        "status": "ok"
+      },
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 9,
+        "distance_mm": 90,
+        "last_distance_mm": 90,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=9,MM=90,STRENGTH=6914,TEMP_RAW=4600,REG0_7=0900021BF8111C1D"
+        ],
+        "registers_0_7": "0900021BF8111C1D",
+        "signal_strength": 6914,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\place_blue_lower_elbow39_pregrab_height.jpg",
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          39,
+          88,
+          80,
+          0
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1564,
+          "commands_total": 1564,
+          "last_command_ack_at": "2026-06-01T00:21:10.969071+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:10.856918+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:21:10.969071+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:10.856918+00:00",
+          "last_serial_age_seconds": 5.58,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:21:10.969071+00:00",
+          "serial_ack_count": 1564,
+          "serial_bound": true,
+          "serial_command_count": 1564,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "phase": "place_blue",
+      "servo": 5,
+      "angle": 75,
+      "name": "release_partial_75",
+      "move": {
+        "audit": {
+          "angle": 75,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "db5f32feff984e1f90a5bea5e3bbdb71",
+          "requested_angle": 75,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 75,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 75,
+            "servo": 5,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:21:18.452727+00:00",
+          "servo": 5,
+          "source": "mim_arm_place_blue_then_pick_white"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 75,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 75,
+          "servo": 5,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 5 75",
+        "status": "ok"
+      },
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 9,
+        "distance_mm": 90,
+        "last_distance_mm": 90,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=9,MM=90,STRENGTH=8622,TEMP_RAW=4600,REG0_7=0900AE21F811103E"
+        ],
+        "registers_0_7": "0900AE21F811103E",
+        "signal_strength": 8622,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\place_blue_release_partial_75.jpg",
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          39,
+          88,
+          80,
+          75
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1566,
+          "commands_total": 1566,
+          "last_command_ack_at": "2026-06-01T00:21:19.399746+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:19.287859+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:21:19.399746+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:19.287859+00:00",
+          "last_serial_age_seconds": 4.108,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:21:19.399746+00:00",
+          "serial_ack_count": 1566,
+          "serial_bound": true,
+          "serial_command_count": 1566,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "phase": "place_blue",
+      "servo": 5,
+      "angle": 100,
+      "name": "release_open_100",
+      "move": {
+        "audit": {
+          "angle": 100,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "93477168876a4705becd9903b290f4b9",
+          "requested_angle": 100,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 100,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 100,
+            "servo": 5,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:21:25.403542+00:00",
+          "servo": 5,
+          "source": "mim_arm_place_blue_then_pick_white"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 100,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 100,
+          "servo": 5,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 5 100",
+        "status": "ok"
+      },
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 9,
+        "distance_mm": 90,
+        "last_distance_mm": 90,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=9,MM=90,STRENGTH=8589,TEMP_RAW=4600,REG0_7=09008D21F8119659"
+        ],
+        "registers_0_7": "09008D21F8119659",
+        "signal_strength": 8589,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\place_blue_release_open_100.jpg",
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          39,
+          88,
+          80,
+          100
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1568,
+          "commands_total": 1568,
+          "last_command_ack_at": "2026-06-01T00:21:26.449885+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:26.337785+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:21:26.449885+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:26.337785+00:00",
+          "last_serial_age_seconds": 0.574,
+          "last_serial_event": "ping_ok",
+          "last_serial_event_at": "2026-06-01T00:21:32.699481+00:00",
+          "serial_ack_count": 1568,
+          "serial_bound": true,
+          "serial_command_count": 1568,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "phase": "place_blue",
+      "servo": 5,
+      "angle": 125,
+      "name": "release_open_125",
+      "move": {
+        "audit": {
+          "angle": 125,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "53e28f258d174b2985a2a48b169a5152",
+          "requested_angle": 125,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 125,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 125,
+            "servo": 5,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:21:35.179648+00:00",
+          "servo": 5,
+          "source": "mim_arm_place_blue_then_pick_white"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 125,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 125,
+          "servo": 5,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 5 125",
+        "status": "ok"
+      },
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 9,
+        "distance_mm": 90,
+        "last_distance_mm": 90,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=9,MM=90,STRENGTH=8592,TEMP_RAW=4600,REG0_7=09009021F811D97F"
+        ],
+        "registers_0_7": "09009021F811D97F",
+        "signal_strength": 8592,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\place_blue_release_open_125.jpg",
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          39,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1570,
+          "commands_total": 1570,
+          "last_command_ack_at": "2026-06-01T00:21:36.243457+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:36.131729+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:21:36.243457+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:36.131729+00:00",
+          "last_serial_age_seconds": 1.336,
+          "last_serial_event": "ping_ok",
+          "last_serial_event_at": "2026-06-01T00:21:42.707839+00:00",
+          "serial_ack_count": 1570,
+          "serial_bound": true,
+          "serial_command_count": 1570,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "phase": "place_blue",
+      "servo": 2,
+      "angle": 50,
+      "name": "lift_away_elbow50",
+      "move": {
+        "audit": {
+          "angle": 50,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "d809f7b25fe64f8dbb80c4907716de6b",
+          "requested_angle": 50,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 50,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 50,
+            "servo": 2,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:21:45.956941+00:00",
+          "servo": 2,
+          "source": "mim_arm_place_blue_then_pick_white"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 50,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 50,
+          "servo": 2,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 2 50",
+        "status": "ok"
+      },
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 64,
+        "distance_mm": 640,
+        "last_distance_mm": 640,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=64,MM=640,STRENGTH=2320,TEMP_RAW=4600,REG0_7=40001009F81153AA"
+        ],
+        "registers_0_7": "40001009F81153AA",
+        "signal_strength": 2320,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\place_blue_lift_away_elbow50.jpg",
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1572,
+          "commands_total": 1572,
+          "last_command_ack_at": "2026-06-01T00:21:47.114435+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:47.002505+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:21:47.114435+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:21:47.002505+00:00",
+          "last_serial_age_seconds": 0.879,
+          "last_serial_event": "ping_ok",
+          "last_serial_event_at": "2026-06-01T00:21:52.706390+00:00",
+          "serial_ack_count": 1572,
+          "serial_bound": true,
+          "serial_command_count": 1572,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    }
+  ],
+  "initial_state": {
+    "app_alive": true,
+    "camera": {
+      "depthai_device_bound": false,
+      "detection_pipeline_enabled": false,
+      "detection_pipeline_error": null,
+      "detection_stream_configured": false,
+      "detections_queue_ready": false,
+      "frame_counter": 0,
+      "last_frame_age_seconds": null,
+      "status": "ok",
+      "video_queue_ready": false
+    },
+    "current_pose": [
+      90,
+      100,
+      50,
+      88,
+      80,
+      0
+    ],
+    "estop": {
+      "active": null,
+      "supported": false
+    },
+    "last_command_result": {
+      "acks_total": 1557,
+      "commands_total": 1557,
+      "last_command_ack_at": "2026-06-01T00:17:20.744541+00:00",
+      "last_command_sent": "I2C_DIST_READ",
+      "last_command_sent_at": "2026-06-01T00:17:20.632752+00:00"
+    },
+    "last_error": null,
+    "lidar": {
+      "baud": 460800,
+      "connected": true,
+      "firmware_major": 1,
+      "firmware_minor": 2,
+      "hardware": 18,
+      "health_error_code": 0,
+      "health_raw": "a55a0300000006000000",
+      "health_status_code": 0,
+      "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+      "model": 65,
+      "ok": true,
+      "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+      "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+      "status": "ok"
+    },
+    "mode": "unknown",
+    "runtime": "live",
+    "serial": {
+      "controller_error": null,
+      "controller_port": "/dev/ttyACM0",
+      "last_command_ack_at": "2026-06-01T00:17:20.744541+00:00",
+      "last_command_sent": "I2C_DIST_READ",
+      "last_command_sent_at": "2026-06-01T00:17:20.632752+00:00",
+      "last_serial_age_seconds": 55.853,
+      "last_serial_event": "ping_ok",
+      "last_serial_event_at": "2026-06-01T00:19:51.843505+00:00",
+      "serial_ack_count": 1557,
+      "serial_bound": true,
+      "serial_command_count": 1557,
+      "serial_ready": true,
+      "status": "ok"
+    },
+    "sim_enabled": false,
+    "status": "ok"
+  },
+  "initial_distance": {
+    "address": "0x10",
+    "connected": true,
+    "distance_cm": 10,
+    "distance_mm": 100,
+    "last_distance_mm": 100,
+    "ok": true,
+    "raw_lines": [
+      "DIST:ADDR=0x10,CM=10,MM=100,STRENGTH=9243,TEMP_RAW=4600,REG0_7=0A001B24F81112CA"
+    ],
+    "registers_0_7": "0A001B24F81112CA",
+    "signal_strength": 9243,
+    "source": "arduino_i2c_0x10",
+    "status": "ok",
+    "temperature_raw": 4600
+  },
+  "initial_frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\initial_holding_blue.jpg",
+  "white_block_search": [
+    {
+      "servo": 5,
+      "angle": 125,
+      "name": "ensure_open",
+      "move": {
+        "audit": {
+          "angle": 125,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "d86791cedbb74853ab666c221aa765d7",
+          "requested_angle": 125,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 125,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 125,
+            "servo": 5,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:22:36.516743+00:00",
+          "servo": 5,
+          "source": "mim_arm_white_block_search"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 125,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 125,
+          "servo": 5,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 5 125",
+        "status": "ok"
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\white_search_ensure_open.jpg",
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 64,
+        "distance_mm": 640,
+        "last_distance_mm": 640,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=64,MM=640,STRENGTH=2351,TEMP_RAW=4600,REG0_7=40002F09F811A08D"
+        ],
+        "registers_0_7": "40002F09F811A08D",
+        "signal_strength": 2351,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1574,
+          "commands_total": 1574,
+          "last_command_ack_at": "2026-06-01T00:22:45.310476+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:22:45.198612+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:22:45.310476+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:22:45.198612+00:00",
+          "last_serial_age_seconds": 0.027,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:22:45.310476+00:00",
+          "serial_ack_count": 1574,
+          "serial_bound": true,
+          "serial_command_count": 1574,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "servo": 2,
+      "angle": 50,
+      "name": "safe_height_elbow50",
+      "move": {
+        "audit": {
+          "angle": 50,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "83b6c34184ca442cbffe37c1c9e498ea",
+          "requested_angle": 50,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 50,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 50,
+            "servo": 2,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:22:47.226087+00:00",
+          "servo": 2,
+          "source": "mim_arm_white_block_search"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 50,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 50,
+          "servo": 2,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 2 50",
+        "status": "ok"
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\white_search_safe_height_elbow50.jpg",
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 64,
+        "distance_mm": 640,
+        "last_distance_mm": 640,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=64,MM=640,STRENGTH=2363,TEMP_RAW=4600,REG0_7=40003B09F811F8AE"
+        ],
+        "registers_0_7": "40003B09F811F8AE",
+        "signal_strength": 2363,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1576,
+          "commands_total": 1576,
+          "last_command_ack_at": "2026-06-01T00:22:53.848065+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:22:53.735901+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:22:53.848065+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:22:53.735901+00:00",
+          "last_serial_age_seconds": 0.026,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:22:53.848065+00:00",
+          "serial_ack_count": 1576,
+          "serial_bound": true,
+          "serial_command_count": 1576,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "servo": 3,
+      "angle": 88,
+      "name": "wrist88",
+      "move": {
+        "audit": {
+          "angle": 88,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "91abc9c4d3fa443c9b9704994a748acf",
+          "requested_angle": 88,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 88,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 88,
+            "servo": 3,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:22:55.784349+00:00",
+          "servo": 3,
+          "source": "mim_arm_white_block_search"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 88,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 88,
+          "servo": 3,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 3 88",
+        "status": "ok"
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\white_search_wrist88.jpg",
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 64,
+        "distance_mm": 640,
+        "last_distance_mm": 640,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=64,MM=640,STRENGTH=2358,TEMP_RAW=4600,REG0_7=40003609F811EBD4"
+        ],
+        "registers_0_7": "40003609F811EBD4",
+        "signal_strength": 2358,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1578,
+          "commands_total": 1578,
+          "last_command_ack_at": "2026-06-01T00:23:03.561531+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:03.449538+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:23:03.561531+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:03.449538+00:00",
+          "last_serial_age_seconds": 0.025,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:23:03.561531+00:00",
+          "serial_ack_count": 1578,
+          "serial_bound": true,
+          "serial_command_count": 1578,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "servo": 4,
+      "angle": 80,
+      "name": "hand_side80",
+      "move": {
+        "audit": {
+          "angle": 80,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "16bb1515f79a4f90a979660cdbb440cc",
+          "requested_angle": 80,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 80,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 80,
+            "servo": 4,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:23:05.485720+00:00",
+          "servo": 4,
+          "source": "mim_arm_white_block_search"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 80,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 80,
+          "servo": 4,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 4 80",
+        "status": "ok"
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\white_search_hand_side80.jpg",
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 63,
+        "distance_mm": 630,
+        "last_distance_mm": 630,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=63,MM=630,STRENGTH=2352,TEMP_RAW=4600,REG0_7=3F003009F8113EFF"
+        ],
+        "registers_0_7": "3F003009F8113EFF",
+        "signal_strength": 2352,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1580,
+          "commands_total": 1580,
+          "last_command_ack_at": "2026-06-01T00:23:14.393677+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:14.281983+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:23:14.393677+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:14.281983+00:00",
+          "last_serial_age_seconds": 0.026,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:23:14.393677+00:00",
+          "serial_ack_count": 1580,
+          "serial_bound": true,
+          "serial_command_count": 1580,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "servo": 0,
+      "angle": 70,
+      "name": "base_70",
+      "move": {
+        "audit": {
+          "angle": 70,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "797f9bfac387403bb37235114ad0d28c",
+          "requested_angle": 70,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 70,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 70,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:23:16.314242+00:00",
+          "servo": 0,
+          "source": "mim_arm_white_block_search"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 70,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 70,
+          "servo": 0,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 0 70",
+        "status": "ok"
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\white_search_base_70.jpg",
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 65,
+        "distance_mm": 650,
+        "last_distance_mm": 650,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=65,MM=650,STRENGTH=2291,TEMP_RAW=4600,REG0_7=4100F308F811BE1B"
+        ],
+        "registers_0_7": "4100F308F811BE1B",
+        "signal_strength": 2291,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          70,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1582,
+          "commands_total": 1582,
+          "last_command_ack_at": "2026-06-01T00:23:21.688081+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:21.583751+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:23:21.688081+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:21.583751+00:00",
+          "last_serial_age_seconds": 0.004,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:23:21.688081+00:00",
+          "serial_ack_count": 1582,
+          "serial_bound": true,
+          "serial_command_count": 1582,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "servo": 0,
+      "angle": 80,
+      "name": "base_80",
+      "move": {
+        "audit": {
+          "angle": 80,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "1b1c06f9428448498fa18d1783b16b7e",
+          "requested_angle": 80,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 80,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 80,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:23:22.188196+00:00",
+          "servo": 0,
+          "source": "mim_arm_white_block_search"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 80,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 80,
+          "servo": 0,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 0 80",
+        "status": "ok"
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\white_search_base_80.jpg",
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 64,
+        "distance_mm": 640,
+        "last_distance_mm": 640,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=64,MM=640,STRENGTH=2097,TEMP_RAW=4600,REG0_7=40003108F811E02E"
+        ],
+        "registers_0_7": "40003108F811E02E",
+        "signal_strength": 2097,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          80,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1584,
+          "commands_total": 1584,
+          "last_command_ack_at": "2026-06-01T00:23:26.589853+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:26.478141+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:23:26.589853+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:26.478141+00:00",
+          "last_serial_age_seconds": 0.025,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:23:26.589853+00:00",
+          "serial_ack_count": 1584,
+          "serial_bound": true,
+          "serial_command_count": 1584,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "servo": 0,
+      "angle": 90,
+      "name": "base_90",
+      "move": {
+        "audit": {
+          "angle": 90,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "03f671a3d6c84f2aaee602255a9db197",
+          "requested_angle": 90,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 90,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 90,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:23:28.498957+00:00",
+          "servo": 0,
+          "source": "mim_arm_white_block_search"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 90,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 90,
+          "servo": 0,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 0 90",
+        "status": "ok"
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\white_search_base_90.jpg",
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 64,
+        "distance_mm": 640,
+        "last_distance_mm": 640,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=64,MM=640,STRENGTH=2229,TEMP_RAW=4600,REG0_7=4000B508F8117F46"
+        ],
+        "registers_0_7": "4000B508F8117F46",
+        "signal_strength": 2229,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          90,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1586,
+          "commands_total": 1586,
+          "last_command_ack_at": "2026-06-01T00:23:32.636327+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:32.524940+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:23:32.636327+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:32.524940+00:00",
+          "last_serial_age_seconds": 0.027,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:23:32.636327+00:00",
+          "serial_ack_count": 1586,
+          "serial_bound": true,
+          "serial_command_count": 1586,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "servo": 0,
+      "angle": 100,
+      "name": "base_100",
+      "move": {
+        "audit": {
+          "angle": 100,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "ba9ebd1e112f4eb48fecbfab56321b51",
+          "requested_angle": 100,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 100,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 100,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:23:34.570132+00:00",
+          "servo": 0,
+          "source": "mim_arm_white_block_search"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 100,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 100,
+          "servo": 0,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 0 100",
+        "status": "ok"
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\white_search_base_100.jpg",
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 15,
+        "distance_mm": 150,
+        "last_distance_mm": 150,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=15,MM=150,STRENGTH=483,TEMP_RAW=4600,REG0_7=0F00E301F811065D"
+        ],
+        "registers_0_7": "0F00E301F811065D",
+        "signal_strength": 483,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          100,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1588,
+          "commands_total": 1588,
+          "last_command_ack_at": "2026-06-01T00:23:38.407545+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:38.296131+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:23:38.407545+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:38.296131+00:00",
+          "last_serial_age_seconds": 0.028,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:23:38.407545+00:00",
+          "serial_ack_count": 1588,
+          "serial_bound": true,
+          "serial_command_count": 1588,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "servo": 0,
+      "angle": 110,
+      "name": "base_110",
+      "move": {
+        "audit": {
+          "angle": 110,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "acffc8b846854abd848e72926b713039",
+          "requested_angle": 110,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 110,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 110,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:23:40.335182+00:00",
+          "servo": 0,
+          "source": "mim_arm_white_block_search"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 110,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 110,
+          "servo": 0,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 0 110",
+        "status": "ok"
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\white_search_base_110.jpg",
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 64,
+        "distance_mm": 640,
+        "last_distance_mm": 640,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=64,MM=640,STRENGTH=18119,TEMP_RAW=4600,REG0_7=4000C746F8113F76"
+        ],
+        "registers_0_7": "4000C746F8113F76",
+        "signal_strength": 18119,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          110,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1590,
+          "commands_total": 1590,
+          "last_command_ack_at": "2026-06-01T00:23:44.863314+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:44.751314+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:23:44.863314+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:44.751314+00:00",
+          "last_serial_age_seconds": 0.027,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:23:44.863314+00:00",
+          "serial_ack_count": 1590,
+          "serial_bound": true,
+          "serial_command_count": 1590,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "servo": 0,
+      "angle": 120,
+      "name": "base_120",
+      "move": {
+        "audit": {
+          "angle": 120,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "21329b99d5fd4961ab85a5a03e20caec",
+          "requested_angle": 120,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 120,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 120,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:23:46.784914+00:00",
+          "servo": 0,
+          "source": "mim_arm_white_block_search"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 120,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 120,
+          "servo": 0,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 0 120",
+        "status": "ok"
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\white_search_base_120.jpg",
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 64,
+        "distance_mm": 640,
+        "last_distance_mm": 640,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=64,MM=640,STRENGTH=6715,TEMP_RAW=4600,REG0_7=40003B1AF811D490"
+        ],
+        "registers_0_7": "40003B1AF811D490",
+        "signal_strength": 6715,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          120,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1592,
+          "commands_total": 1592,
+          "last_command_ack_at": "2026-06-01T00:23:51.663329+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:51.551266+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:23:51.663329+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:51.551266+00:00",
+          "last_serial_age_seconds": 0.026,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:23:51.663329+00:00",
+          "serial_ack_count": 1592,
+          "serial_bound": true,
+          "serial_command_count": 1592,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    },
+    {
+      "servo": 0,
+      "angle": 130,
+      "name": "base_130",
+      "move": {
+        "audit": {
+          "angle": 130,
+          "client_timestamp": null,
+          "page": "mim_arm_executor",
+          "request_id": "c268b8ec021147c2897632121046654d",
+          "requested_angle": 130,
+          "safety": {
+            "clamped": false,
+            "clamped_angle": 130,
+            "limit_configured": true,
+            "limit_max": 180,
+            "limit_min": 0,
+            "limit_source": "servo_config",
+            "requested_angle": 130,
+            "servo": 0,
+            "table_edge_guard": "servo_limit_clamp"
+          },
+          "server_timestamp": "2026-06-01T00:23:53.599500+00:00",
+          "servo": 0,
+          "source": "mim_arm_white_block_search"
+        },
+        "safety": {
+          "clamped": false,
+          "clamped_angle": 130,
+          "limit_configured": true,
+          "limit_max": 180,
+          "limit_min": 0,
+          "limit_source": "servo_config",
+          "requested_angle": 130,
+          "servo": 0,
+          "table_edge_guard": "servo_limit_clamp"
+        },
+        "sent": "MOVE 0 130",
+        "status": "ok"
+      },
+      "frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\white_block_attempt_20260531\\white_search_base_130.jpg",
+      "distance": {
+        "address": "0x10",
+        "connected": true,
+        "distance_cm": 64,
+        "distance_mm": 640,
+        "last_distance_mm": 640,
+        "ok": true,
+        "raw_lines": [
+          "DIST:ADDR=0x10,CM=64,MM=640,STRENGTH=7116,TEMP_RAW=4600,REG0_7=4000CC1BF81142A6"
+        ],
+        "registers_0_7": "4000CC1BF81142A6",
+        "signal_strength": 7116,
+        "source": "arduino_i2c_0x10",
+        "status": "ok",
+        "temperature_raw": 4600
+      },
+      "arm_state": {
+        "app_alive": true,
+        "camera": {
+          "depthai_device_bound": false,
+          "detection_pipeline_enabled": false,
+          "detection_pipeline_error": null,
+          "detection_stream_configured": false,
+          "detections_queue_ready": false,
+          "frame_counter": 0,
+          "last_frame_age_seconds": null,
+          "status": "ok",
+          "video_queue_ready": false
+        },
+        "current_pose": [
+          130,
+          100,
+          50,
+          88,
+          80,
+          125
+        ],
+        "estop": {
+          "active": null,
+          "supported": false
+        },
+        "last_command_result": {
+          "acks_total": 1594,
+          "commands_total": 1594,
+          "last_command_ack_at": "2026-06-01T00:23:57.151722+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:57.040050+00:00"
+        },
+        "last_error": null,
+        "lidar": {
+          "baud": 460800,
+          "connected": true,
+          "firmware_major": 1,
+          "firmware_minor": 2,
+          "hardware": 18,
+          "health_error_code": 0,
+          "health_raw": "a55a0300000006000000",
+          "health_status_code": 0,
+          "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+          "model": 65,
+          "ok": true,
+          "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+          "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+          "status": "ok"
+        },
+        "mode": "unknown",
+        "runtime": "live",
+        "serial": {
+          "controller_error": null,
+          "controller_port": "/dev/ttyACM0",
+          "last_command_ack_at": "2026-06-01T00:23:57.151722+00:00",
+          "last_command_sent": "I2C_DIST_READ",
+          "last_command_sent_at": "2026-06-01T00:23:57.040050+00:00",
+          "last_serial_age_seconds": 0.025,
+          "last_serial_event": "distance_i2c_read_complete",
+          "last_serial_event_at": "2026-06-01T00:23:57.151722+00:00",
+          "serial_ack_count": 1594,
+          "serial_bound": true,
+          "serial_command_count": 1594,
+          "serial_ready": true,
+          "status": "ok"
+        },
+        "sim_enabled": false,
+        "status": "ok"
+      }
+    }
+  ]
+}

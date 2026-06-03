@@ -1,0 +1,142 @@
+{
+  "generated_at": "2026-05-31T22:40:20Z",
+  "status": "completed",
+  "view": "1m_immediate_arm_workspace",
+  "filtered_returns": 1043,
+  "cluster_count": 10,
+  "image": "runtime_remote_training/arm_pickup_run/rplidar_1m_workspace_latest.png",
+  "clusters": "runtime_remote_training/arm_pickup_run/rplidar_1m_workspace_latest.json",
+  "interpretation_note": "Only shows surfaces intersecting the horizontal RPLIDAR plane at the arm base. It is useful for immediate obstacle/base geometry, not camera-like object identity.",
+  "clusters_summary": [
+    {
+      "cluster_id": 1,
+      "samples": 66,
+      "range_min_m": 0.9722000000000001,
+      "range_max_m": 1.091,
+      "centroid_m": {
+        "x": 1.024725086679231,
+        "y": 0.07210557461369063,
+        "r": 1.0272588364964927
+      },
+      "approx_surface_length_m": 0.26676570462970123,
+      "median_quality": 19.5
+    },
+    {
+      "cluster_id": 2,
+      "samples": 17,
+      "range_min_m": 0.943,
+      "range_max_m": 1.062,
+      "centroid_m": {
+        "x": 0.9625530539998431,
+        "y": 0.21697210941920544,
+        "r": 0.9867042505382475
+      },
+      "approx_surface_length_m": 0.16495589652022724,
+      "median_quality": 17.0
+    },
+    {
+      "cluster_id": 3,
+      "samples": 10,
+      "range_min_m": 0.954,
+      "range_max_m": 1.0797999999999999,
+      "centroid_m": {
+        "x": 0.921908157341418,
+        "y": 0.3087255619951555,
+        "r": 0.9722274030296992
+      },
+      "approx_surface_length_m": 0.15248171237708838,
+      "median_quality": 32.0
+    },
+    {
+      "cluster_id": 4,
+      "samples": 23,
+      "range_min_m": 0.796,
+      "range_max_m": 0.814,
+      "centroid_m": {
+        "x": 0.7402089328495614,
+        "y": 0.3129814260023288,
+        "r": 0.8036582839072448
+      },
+      "approx_surface_length_m": 0.08195586509423361,
+      "median_quality": 13.0
+    },
+    {
+      "cluster_id": 5,
+      "samples": 142,
+      "range_min_m": 0.8977999999999999,
+      "range_max_m": 0.928,
+      "centroid_m": {
+        "x": 0.6717340918753663,
+        "y": 0.604501805481173,
+        "r": 0.9036864074542789
+      },
+      "approx_surface_length_m": 0.3636435111548654,
+      "median_quality": 36.0
+    },
+    {
+      "cluster_id": 6,
+      "samples": 12,
+      "range_min_m": 0.030199999999999998,
+      "range_max_m": 0.0342,
+      "centroid_m": {
+        "x": 0.01894119307081331,
+        "y": 0.026506219259332924,
+        "r": 0.032578343333718764
+      },
+      "approx_surface_length_m": 0.007979680197980593,
+      "median_quality": 36.0
+    },
+    {
+      "cluster_id": 7,
+      "samples": 247,
+      "range_min_m": 0.03,
+      "range_max_m": 0.046,
+      "centroid_m": {
+        "x": -0.005288436642008717,
+        "y": 0.040038497723291204,
+        "r": 0.04038624595149363
+      },
+      "approx_surface_length_m": 0.2523642229120598,
+      "median_quality": 52.0
+    },
+    {
+      "cluster_id": 8,
+      "samples": 511,
+      "range_min_m": 0.6892,
+      "range_max_m": 0.9325,
+      "centroid_m": {
+        "x": -0.6827406332511056,
+        "y": 0.3168832906364485,
+        "r": 0.7526950193648849
+      },
+      "approx_surface_length_m": 1.2373600757007432,
+      "median_quality": 34.0
+    },
+    {
+      "cluster_id": 9,
+      "samples": 3,
+      "range_min_m": 0.294,
+      "range_max_m": 0.298,
+      "centroid_m": {
+        "x": -0.1775735996715504,
+        "y": -0.2375693079982879,
+        "r": 0.2965999989937583
+      },
+      "approx_surface_length_m": 0.004006647789748626,
+      "median_quality": 11.0
+    },
+    {
+      "cluster_id": 10,
+      "samples": 9,
+      "range_min_m": 0.278,
+      "range_max_m": 0.2845,
+      "centroid_m": {
+        "x": -0.14747696483575712,
+        "y": -0.23946941281240866,
+        "r": 0.28123843057072934
+      },
+      "approx_surface_length_m": 0.017262488594132396,
+      "median_quality": 12.0
+    }
+  ]
+}

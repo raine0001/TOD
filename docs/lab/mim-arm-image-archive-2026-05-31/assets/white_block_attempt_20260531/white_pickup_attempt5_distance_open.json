@@ -1,0 +1,16 @@
+{
+  "address": "0x10",
+  "connected": true,
+  "distance_cm": 165,
+  "distance_mm": 1650,
+  "last_distance_mm": 1650,
+  "ok": true,
+  "raw_lines": [
+    "DIST:ADDR=0x10,CM=165,MM=1650,STRENGTH=1445,TEMP_RAW=4800,REG0_7=A500A505C012D735"
+  ],
+  "registers_0_7": "A500A505C012D735",
+  "signal_strength": 1445,
+  "source": "arduino_i2c_0x10",
+  "status": "ok",
+  "temperature_raw": 4800
+}

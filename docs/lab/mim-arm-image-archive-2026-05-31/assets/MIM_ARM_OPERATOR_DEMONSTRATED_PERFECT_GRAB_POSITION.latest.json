@@ -1,0 +1,134 @@
+{
+  "artifact": "MIM_ARM_OPERATOR_DEMONSTRATED_PERFECT_GRAB_POSITION",
+  "generated_at": "2026-05-31T17:05:54-0700",
+  "label": "operator_demonstrated_perfect_grab_position",
+  "purpose": "positive visual and servo-pose learning example for blue block pickup",
+  "operator_note": "Dave positioned the arm at a perfect grab position; MIM should learn this visual/pose relationship.",
+  "arm_state": {
+    "app_alive": true,
+    "camera": {
+      "depthai_device_bound": false,
+      "detection_pipeline_enabled": false,
+      "detection_pipeline_error": null,
+      "detection_stream_configured": false,
+      "detections_queue_ready": false,
+      "frame_counter": 0,
+      "last_frame_age_seconds": null,
+      "status": "ok",
+      "video_queue_ready": false
+    },
+    "current_pose": [
+      90,
+      100,
+      39,
+      88,
+      80,
+      125
+    ],
+    "estop": {
+      "active": null,
+      "supported": false
+    },
+    "last_command_result": {
+      "acks_total": 1528,
+      "commands_total": 1528,
+      "last_command_ack_at": "2026-06-01T00:04:46.837611+00:00",
+      "last_command_sent": "MOVE 2 39",
+      "last_command_sent_at": "2026-06-01T00:04:46.816479+00:00"
+    },
+    "last_error": null,
+    "lidar": {
+      "baud": 460800,
+      "connected": true,
+      "firmware_major": 1,
+      "firmware_minor": 2,
+      "hardware": 18,
+      "health_error_code": 0,
+      "health_raw": "a55a0300000006000000",
+      "health_status_code": 0,
+      "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+      "model": 65,
+      "ok": true,
+      "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+      "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+      "status": "ok"
+    },
+    "mode": "unknown",
+    "runtime": "live",
+    "serial": {
+      "controller_error": null,
+      "controller_port": "/dev/ttyACM0",
+      "last_command_ack_at": "2026-06-01T00:04:46.837611+00:00",
+      "last_command_sent": "MOVE 2 39",
+      "last_command_sent_at": "2026-06-01T00:04:46.816479+00:00",
+      "last_serial_age_seconds": 4.884,
+      "last_serial_event": "ping_ok",
+      "last_serial_event_at": "2026-06-01T00:05:37.699144+00:00",
+      "serial_ack_count": 1528,
+      "serial_bound": true,
+      "serial_command_count": 1528,
+      "serial_ready": true,
+      "status": "ok"
+    },
+    "sim_enabled": false,
+    "status": "ok"
+  },
+  "current_pose": [
+    90,
+    100,
+    39,
+    88,
+    80,
+    125
+  ],
+  "c12_distance": {
+    "address": "0x10",
+    "connected": true,
+    "distance_cm": 8,
+    "distance_mm": 80,
+    "last_distance_mm": 80,
+    "ok": true,
+    "raw_lines": [
+      "DIST:ADDR=0x10,CM=8,MM=80,STRENGTH=7954,TEMP_RAW=4775,REG0_7=0800121FA712A4FA"
+    ],
+    "registers_0_7": "0800121FA712A4FA",
+    "signal_strength": 7954,
+    "source": "arduino_i2c_0x10",
+    "status": "ok",
+    "temperature_raw": 4775
+  },
+  "c12_sensor_to_claw_tip_offset_mm": 123,
+  "estimated_tip_clearance_mm": -43,
+  "lidar_status": {
+    "baud": 460800,
+    "connected": true,
+    "firmware_major": 1,
+    "firmware_minor": 2,
+    "hardware": 18,
+    "health_error_code": 0,
+    "health_raw": "a55a0300000006000000",
+    "health_status_code": 0,
+    "info_raw": "a55a140000000441020112e307e0f6c1e092d8a19e9ff973ab4616",
+    "model": 65,
+    "ok": true,
+    "port": "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_2abc584d98d5ef118505744b49d2c684-if00-port0",
+    "serial_number": "e307e0f6c1e092d8a19e9ff973ab4616",
+    "status": "ok"
+  },
+  "hand_camera_frame": "E:\\TOD\\runtime_remote_training\\arm_pickup_run\\pickup_continue_20260531\\operator_demonstrated_perfect_grab_position.jpg",
+  "hand_camera_bytes": 82656,
+  "learning_tags": [
+    "positive_demonstration",
+    "blue_block_pickup",
+    "gripper_alignment",
+    "operator_teaching",
+    "movement_memory_seed",
+    "visual_servo_pose_pair"
+  ],
+  "reuse_guidance": [
+    "Use this pose/image as a target alignment reference before closing claw.",
+    "Compare future camera frames against this visual relationship: block position relative to both yellow claw tips.",
+    "Prefer small bounded adjustments toward this pose rather than large blind movement.",
+    "Do not mark pickup successful from this artifact alone; it is a pre-grip alignment demonstration."
+  ]
+}
