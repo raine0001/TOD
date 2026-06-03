@@ -2813,6 +2813,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button id="connectSerial" class="button primary" type="button">Connect UNO</button>
           <button id="disconnectSerial" class="button" type="button">Disconnect</button>
+          <button id="forgetSerial" class="button" type="button">Forget Port</button>
           <button id="addServo" class="button" type="button">Add Servo</button>
           <button id="saveProfile" class="button primary" type="button">Save Profile</button>
         </div>
@@ -2822,6 +2823,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         <label>Serial Command Template<input id="commandTemplate" type="text"></label>
       </div>
       <div id="serialStatus" class="muted" style="margin-top:10px;">Serial disconnected.</div>
+      <div id="serialHelp" class="attention-item" style="display:none; margin-top:10px;"></div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
         <button id="useCurrentSketchProtocol" class="button primary" type="button">Use Current UNO Sketch</button>
         <button id="useMoveProtocol" class="button" type="button">Use MOVE Angle Protocol</button>
@@ -2846,6 +2848,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       let serialReadActive = false;
       const servoList = document.getElementById('servoList');
       const serialStatus = document.getElementById('serialStatus');
+      const serialHelp = document.getElementById('serialHelp');
       const serialLog = document.getElementById('serialLog');
       const connectionMetric = document.getElementById('connectionMetric');
       const baudRate = document.getElementById('baudRate');
@@ -2893,6 +2896,19 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         if (entity) entity.textContent = connected ? 'Connected' : 'Disconnected';
         if (copy) copy.textContent = detail || (connected ? 'UNO serial open' : 'Chrome on Dave\\'s PC');
         serialStatus.textContent = detail || (connected ? 'Connected.' : 'Serial disconnected.');
+      }}
+      function setSerialHelp(text) {{
+        if (!serialHelp) return;
+        const clean = String(text || '').trim();
+        serialHelp.style.display = clean ? 'block' : 'none';
+        serialHelp.textContent = clean;
+      }}
+      function serialOpenFailureHelp(error) {{
+        const message = String(error && error.message ? error.message : error || '').toLowerCase();
+        if (message.includes('failed to open') || message.includes('busy') || message.includes('access denied') || message.includes('networkerror')) {{
+          return 'Chrome can see the UNO, but the COM port could not be opened. Close Arduino IDE Serial Monitor/Plotter, close any other tab using the port, unplug/replug the UNO, then click Forget Port and Connect UNO again.';
+        }}
+        return 'Serial connection failed before any command was sent. Check the selected COM port, USB cable, browser serial permission, and whether another program is holding the port.';
       }}
       function readProfileFromDom() {{
         profile.baud_rate = Number(baudRate.value || 9600);
@@ -2999,6 +3015,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
           await serialPort.open({{ baudRate: Number(profile.baud_rate || 9600) }});
           serialWriter = serialPort.writable.getWriter();
           setConnectedState(true, 'Connected to UNO serial at ' + profile.baud_rate + ' baud.');
+          setSerialHelp('');
           logSerial('Connected. Waiting for UNO replies...');
           if (serialPort.readable) {{
             serialReadActive = true;
@@ -3024,8 +3041,11 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
             }})();
           }}
         }} catch (error) {{
+          const help = serialOpenFailureHelp(error);
           setConnectedState(false, 'Serial connection failed: ' + (error && error.message ? error.message : 'unknown error'));
+          setSerialHelp(help);
           logSerial('CONNECT FAILED: ' + (error && error.message ? error.message : 'unknown error'));
+          logSerial('HELP ' + help);
         }}
       }});
       document.getElementById('disconnectSerial').addEventListener('click', async () => {{
@@ -3034,7 +3054,26 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         if (serialWriter) {{ serialWriter.releaseLock(); serialWriter = null; }}
         if (serialPort) {{ await serialPort.close(); serialPort = null; }}
         setConnectedState(false, 'Serial disconnected.');
+        setSerialHelp('');
         logSerial('Disconnected.');
+      }});
+      document.getElementById('forgetSerial').addEventListener('click', async () => {{
+        try {{
+          serialReadActive = false;
+          if (serialReader) {{ try {{ await serialReader.cancel(); serialReader.releaseLock(); }} catch (error) {{}} serialReader = null; }}
+          if (serialWriter) {{ serialWriter.releaseLock(); serialWriter = null; }}
+          if (serialPort) {{
+            try {{ await serialPort.close(); }} catch (error) {{}}
+            if (serialPort.forget) await serialPort.forget();
+          }}
+          serialPort = null;
+          setConnectedState(false, 'Port permission cleared. Click Connect UNO and select COM5 again.');
+          setSerialHelp('If COM5 still fails to open, close Arduino IDE Serial Monitor/Plotter or any other program using COM5, then unplug/replug the UNO.');
+          logSerial('Port forgotten.');
+        }} catch (error) {{
+          setSerialHelp('Could not forget the port: ' + (error && error.message ? error.message : 'unknown error'));
+          logSerial('FORGET FAILED: ' + (error && error.message ? error.message : 'unknown error'));
+        }}
       }});
       document.getElementById('useCurrentSketchProtocol').addEventListener('click', () => {{
         commandTemplate.value = '{{pulse}}';
