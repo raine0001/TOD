@@ -1,0 +1,50 @@
+{
+  "generated_at": "2026-06-03T16:05:00-07:00",
+  "objective_id": "MIM-STUDIO-PROJECTS-TABLE-ORGANIZATION-V1",
+  "project_title": "Studio Projects Table Organization",
+  "status": "queued",
+  "owner": "MIM + TOD",
+  "priority": "P0",
+  "goal": "Make the Studio Projects inbox table fast to sort, filter, and search as the project list grows.",
+  "operator_request": "Add click-sortable columns, quick status filters, blocker/Dave-needed filters, and boolean search across any project field.",
+  "requirements": [
+    "Each visible Project Inbox column is sortable by click.",
+    "Sort direction is visible and repeat-click toggles ascending/descending.",
+    "Top filter controls include All, Finished, In Process, Queued, Blockers, and Dave Needed.",
+    "Search can inspect any visible row field: title, status, owner, progress, blocker, next action, Dave flag, work state, and project type.",
+    "Boolean search should support simple AND/OR/quoted phrase if practical; first implementation may use multi-term contains-all search with follow-up noted.",
+    "No static descriptive filler text; controls plus results only.",
+    "Preserve row click-to-open behavior.",
+    "Do not break narrow/mobile layout."
+  ],
+  "execution_plan": {
+    "mim": [
+      "Create interaction spec from Dave's request.",
+      "Confirm project is queued and visible in Studio Projects.",
+      "Track acceptance criteria and validation evidence."
+    ],
+    "tod": [
+      "Implement front-end table sort/filter/search controls.",
+      "Validate sorting/filtering/search against current project rows.",
+      "Report evidence before marking complete."
+    ],
+    "codex": [
+      "Escalate only if TOD stalls, implementation breaks the Studio page, or validation fails repeatedly."
+    ]
+  },
+  "acceptance_criteria": [
+    "Clicking each column header sorts rows correctly.",
+    "Quick filters return expected groups for finished, working, queued, blockers, Dave-needed, and all.",
+    "Search works across all listed fields.",
+    "Search and filters combine predictably.",
+    "Project rows remain openable.",
+    "No new static explanatory text is added to the page."
+  ],
+  "first_validation_data": [
+    "LAB Workbench Servo Tester",
+    "MIM Development Continuity V1",
+    "AgentMIM Reports DB Binding",
+    "Studio Static Text Cleanup",
+    "Studio Projects Table Organization"
+  ]
+}

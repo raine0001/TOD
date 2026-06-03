@@ -3800,6 +3800,41 @@ async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
                 "requested_by": "Dave",
             },
         },
+        {
+            "title": "Studio Projects Table Organization",
+            "summary": "Upgrade the Studio Projects inbox table with click-sortable columns, quick status filters, Dave-needed/blocker filters, and boolean search across project fields.",
+            "status": "queued",
+            "priority": "P0",
+            "owner": "MIM + TOD",
+            "health": "ready_for_design",
+            "why_it_matters": "The project list is growing quickly, so Dave needs fast ways to find, sort, and focus on actionable work without scanning the full table.",
+            "origin_story": "Dave requested sortable project columns, top filter buttons for finished/in-process/queued/blockers/Dave-needed views, and a boolean search tool across fields.",
+            "next_action": "MIM should produce the interaction spec and TOD should implement the Projects inbox table controls without adding static explanatory text.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "studio_ui",
+                "progress_percent": 0,
+                "work_state": "queued",
+                "blocker": "none",
+                "acceptance": "Projects table supports click sorting by each column, quick filters for finished/in process/queued/blockers/Dave needed/all, and boolean text search across title, status, owner, blocker, next action, type, and Dave-needed fields.",
+                "requested_by": "Dave",
+                "execution_lane": "MIM project management + TOD implementation",
+                "requirements": [
+                    "Clickable sortable column headers with visible direction state.",
+                    "Filter buttons at top: All, Finished, In Process, Queued, Blockers, Dave Needed.",
+                    "Boolean search across any field with simple AND/OR/quoted phrase support if feasible; otherwise start with multi-term contains-all search and document upgrade path in project notes.",
+                    "No static explanatory filler text; controls and results only.",
+                    "Preserve row click-to-open project behavior.",
+                    "Support large project lists without layout breakage."
+                ],
+                "validation": [
+                    "Verify sorting changes row order for Project, Status, Owner, Done, Blocker, Next Action, and Dave columns.",
+                    "Verify each quick filter returns the expected subset.",
+                    "Verify search finds matches in title, owner, blocker, next action, type, and status.",
+                    "Verify mobile/narrow layout does not overlap text."
+                ],
+            },
+        },
     ]
     for spec in requested_projects:
         metadata = spec.setdefault("metadata_json", {})
