@@ -7,9 +7,12 @@
     "RX OK channel 0 pulse",
     "TX PING",
     "RX PONG SmoothServoBenchTester",
+    "RX PCA9685 FOUND 0x40",
+    "RX I2C 0x40",
+    "RX OK testall 300 650",
     "servo does not move"
   ],
-  "diagnosis": "Browser serial and UNO firmware loop are working. Failure is downstream of serial: PCA9685 I2C detection, channel mapping, servo V+ power, or shared ground.",
+  "diagnosis": "Browser serial, UNO firmware loop, and PCA9685 I2C detection are working. Since TESTALL is accepted and no physical servo moves, the most likely failure is servo rail power, missing shared ground, servo plug orientation, or a bad/unpowered servo.",
   "studio_update": {
     "status": "deployed",
     "changes": [
@@ -31,7 +34,8 @@
     ],
     "compile_result": "passed for arduino:renesas_uno:unor4wifi",
     "upload_result": "uploaded to COM5 after the Lab page was hard-refreshed/released",
-    "next_action": "Reconnect the Lab page, click PCA Status, I2C Scan, and Test All Channels. Use the serial log to identify PCA9685 presence, I2C address, channel mapping, or servo power/ground failure."
+    "next_action": "Verify the PCA9685 servo V+ rail has external servo power, confirm servo supply ground is tied to PCA9685/UNO ground, confirm servo plug orientation, then retest with TESTALL."
   },
-  "mim_training_lesson": "When RX OK and PONG are present but no servo moves, MIM must stop asking about browser serial and move directly to PCA9685 presence, channel mapping, servo power, and shared ground."
+  "current_resolution_lane": "physical_power_and_ground_check",
+  "mim_training_lesson": "When RX OK, PONG, PCA9685 FOUND 0x40, I2C 0x40, and TESTALL OK are present but no servo moves, MIM must stop asking about software and move directly to servo V+ rail power, shared ground, plug orientation, and known-good servo checks."
 }

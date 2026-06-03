@@ -5940,6 +5940,15 @@ async def studio_mim_chat_api(
                 "does not move",
             ]
         )
+        pca_found_no_motion = serial_ok_no_servo_motion and any(
+            term in prompt_lower
+            for term in [
+                "pca9685 found 0x40",
+                "i2c 0x40",
+                "ok testall",
+                "testall 300 650",
+            ]
+        )
         firmware_update_request = any(
             term in prompt_lower
             for term in [
@@ -5980,6 +5989,24 @@ async def studio_mim_chat_api(
             response_mode = "demonstration"
             failure_class = "servo_firmware_update_requires_local_serial_executor"
             training_lesson = "When Dave asks to update UNO firmware, route to a bounded local executor workflow: compile, upload, diagnose COM port lock, then update Studio evidence."
+        elif pca_found_no_motion:
+            reply = (
+                "The software path is now proven good.\n\n"
+                "Evidence:\n"
+                "- The UNO replies to serial commands.\n"
+                "- The PCA9685 is found at I2C address 0x40.\n"
+                "- TESTALL is accepted by the firmware.\n\n"
+                "If the servo still does not physically move, the next fix is hardware power/orientation, not more browser or sketch work:\n"
+                "- Confirm the PCA9685 servo V+ rail has external servo power, usually 5-6V depending on the servo.\n"
+                "- Confirm the external servo supply ground is tied to PCA9685/UNO ground.\n"
+                "- Confirm servo plug orientation: ground wire to GND, red to V+, signal to PWM.\n"
+                "- Try one known-good servo directly on channel 0, then channel 1.\n"
+                "- If the board has a V+ terminal block and a VCC pin, remember VCC powers logic; V+ powers the servos.\n\n"
+                "MIM should classify this as physical_power_and_ground_check."
+            )
+            response_mode = "problem_analysis"
+            failure_class = "pca_found_testall_ok_servo_power_or_orientation"
+            training_lesson = "When PCA9685 is found at 0x40 and TESTALL is accepted but no servo moves, diagnose servo rail V+ power, shared ground, plug orientation, and known-good servo before more software changes."
         elif serial_ok_no_servo_motion:
             reply = (
                 "The serial lane is working. RX OK and PONG prove Chrome is talking to the UNO and the smooth sketch is running.\n\n"
