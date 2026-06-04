@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-06-04T15:30:00-07:00",
+  "objective_id": "MIM-SCOPE-COMPLETION-DISCIPLINE-V1",
+  "project_title": "MIM Scope Completion Discipline V1",
+  "status": "active",
+  "owner": "MIM + TOD",
+  "priority": "P0",
+  "goal": "Prevent projects from staying active because useful new ideas are absorbed into the original scope instead of becoming follow-on projects.",
+  "trigger_rule": {
+    "scope_expansion_threshold": "more than 30%",
+    "required_action": "Create a follow-on project and preserve the original project's acceptance criteria.",
+    "forbidden_behavior": "Do not keep adding related improvements to the current project while the original acceptance remains incomplete."
+  },
+  "completion_pressure_rule": {
+    "question": "Has the original acceptance criteria been completed?",
+    "valid_answers": [
+      "yes",
+      "no",
+      "blocked",
+      "split into follow-on project"
+    ],
+    "invalid_answer": "We can improve it further."
+  },
+  "mim_behavior": [
+    "When Codex, TOD, or MIM proposes adjacent work, compare it to the project's original acceptance criteria.",
+    "If the adjacent work expands scope by more than 30%, create a follow-on project.",
+    "Keep the original project focused on closure.",
+    "Report scope expansion in the Project board and MIM Command Brief.",
+    "Ask whether acceptance is complete before recommending enhancements."
+  ],
+  "tod_behavior": [
+    "Implement the current driving task only.",
+    "Report evidence against the original acceptance criteria.",
+    "Do not mark progress based only on unrelated architecture or dashboard work.",
+    "Escalate if reconciliation downgrades completed work or masks incomplete acceptance."
+  ],
+  "first_failure_case": {
+    "project": "Studio Projects Table Organization",
+    "original_scope": "sortable headers, quick filters, searchable table, preserve row opening",
+    "scope_expansion": [
+      "momentum model",
+      "project heat",
+      "aging rules",
+      "command brief",
+      "source trust"
+    ],
+    "repair": "Complete the original table controls, mark the project completed, and treat momentum/scope discipline as follow-on projects."
+  },
+  "acceptance_criteria": [
+    "Projects page shows acceptance criteria for each project.",
+    "Projects page shows Scope Stable, Scope Watch, or Scope Expanded.",
+    "Projects page counts scope-expanded projects.",
+    "Projects page counts projects missing acceptance criteria.",
+    "MIM Command Brief recommends splitting expanded scope before continuing broad improvements.",
+    "MIM Command Brief recommends defining acceptance before tracking progress when acceptance is missing.",
+    "Completed projects cannot be downgraded to working by reconciliation."
+  ]
+}

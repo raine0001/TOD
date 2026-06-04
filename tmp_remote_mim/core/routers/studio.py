@@ -1304,6 +1304,8 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
         if (filter === 'queued') return ['queued', 'candidate', 'planning', 'discovery'].includes(row.dataset.status || '');
         if (filter === 'blockers') return row.dataset.blocked === 'true';
         if (filter === 'dave_needed') return row.dataset.dave === 'true';
+        if (filter === 'scope_expanded') return row.dataset.scope === 'scope expanded';
+        if (filter === 'needs_acceptance') return row.dataset.acceptanceState === 'needs acceptance';
         return true;
       }}
       function sortRows(visibleRows) {{
@@ -2748,6 +2750,50 @@ def _project_current_driving_task(row: dict[str, Any]) -> str:
         metadata.get("next_action"),
         default="Define current driving task.",
     )
+
+
+def _project_acceptance(row: StudioProject | dict[str, Any]) -> str:
+    metadata = _project_metadata(row)
+    value = metadata.get("acceptance") or metadata.get("acceptance_criteria") or metadata.get("definition_of_done")
+    if isinstance(value, list):
+        value = "; ".join(str(item) for item in value if str(item).strip())
+    return _first_text(value, default="Define acceptance criteria.")
+
+
+def _project_completion_pressure(row: dict[str, Any]) -> str:
+    status = str(row.get("status") or "").strip().lower()
+    progress = int(row.get("progress_percent") or 0)
+    acceptance = _project_acceptance(row)
+    if status in {"done", "complete", "completed", "deployed"} or progress >= 100:
+        return "Accepted"
+    if acceptance == "Define acceptance criteria.":
+        return "Needs Acceptance"
+    if progress >= 80:
+        return "Close or Split"
+    return "Acceptance Open"
+
+
+def _project_scope_state(row: dict[str, Any]) -> str:
+    metadata = _project_metadata(row)
+    explicit = str(metadata.get("scope_state") or metadata.get("scope_status") or "").strip().lower()
+    if explicit in {"expanded", "scope expanded", "scope_expanded"}:
+        return "Scope Expanded"
+    if explicit in {"stable", "scope stable", "scope_stable"}:
+        return "Scope Stable"
+    try:
+        expansion_percent = int(float(metadata.get("scope_expansion_percent") or 0))
+    except Exception:
+        expansion_percent = 0
+    status = str(row.get("status") or "").strip().lower()
+    if status in {"done", "complete", "completed", "deployed"}:
+        return "Scope Stable"
+    follow_ups = int(row.get("follow_up_event_count") or 0)
+    progress = int(row.get("progress_percent") or 0)
+    if expansion_percent > 30 or (follow_ups >= 6 and progress < 80):
+        return "Scope Expanded"
+    if follow_ups >= 3 and progress < 100:
+        return "Scope Watch"
+    return "Scope Stable"
 
 
 def _project_waiting_on(row: dict[str, Any]) -> str:
@@ -4746,6 +4792,29 @@ async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
                 ],
             },
         },
+        {
+            "title": "MIM Scope Completion Discipline V1",
+            "summary": "Teach MIM/TOD to preserve original acceptance criteria, split scope expansion into follow-on projects, and report when activity is delaying completion.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "MIM + TOD",
+            "health": "active_training_objective",
+            "why_it_matters": "Projects should complete instead of endlessly absorbing good new ideas. MIM must protect completion pressure and create follow-on projects when scope expands.",
+            "origin_story": "Dave identified the Studio Projects Table Organization delay as scope expansion: momentum, heat, aging, and command brief work distracted from the original sortable/filterable/searchable table objective.",
+            "next_action": "Audit active projects for scope expansion and split any new work that exceeds the original acceptance criteria.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "objective_id": "MIM-SCOPE-COMPLETION-DISCIPLINE-V1",
+                "progress_percent": 35,
+                "work_state": "working",
+                "blocker": "none",
+                "current_driving_task": "Audit active projects for scope expansion and create follow-on projects when new work exceeds original acceptance by more than 30%.",
+                "acceptance": "Every active project has visible acceptance criteria, a scope state, completion pressure, and a follow-on split path when new work expands scope by more than 30%.",
+                "scope_state": "Scope Stable",
+                "requested_by": "Dave",
+            },
+        },
     ]
     for spec in requested_projects:
         metadata = spec.setdefault("metadata_json", {})
@@ -4832,6 +4901,9 @@ async def _studio_projects_state(
         row["last_movement_age"] = _studio_age_label(row["last_movement_at"])
         row["movement_state"] = _project_movement_state(row)
         row["current_driving_task"] = _project_current_driving_task(row)
+        row["acceptance"] = _project_acceptance(row)
+        row["completion_pressure"] = _project_completion_pressure(row)
+        row["scope_state"] = _project_scope_state(row)
         row["waiting_on"] = _project_waiting_on(row)
         row["momentum"] = _project_momentum(row)
         row["momentum_decay"] = _project_momentum_decay(row)
@@ -4863,6 +4935,9 @@ async def _studio_projects_state(
             selected_project["last_movement_age"] = _studio_age_label(selected_project["last_movement_at"])
             selected_project["movement_state"] = _project_movement_state(selected_project)
             selected_project["current_driving_task"] = _project_current_driving_task(selected_project)
+            selected_project["acceptance"] = _project_acceptance(selected_project)
+            selected_project["completion_pressure"] = _project_completion_pressure(selected_project)
+            selected_project["scope_state"] = _project_scope_state(selected_project)
             selected_project["waiting_on"] = _project_waiting_on(selected_project)
             selected_project["momentum"] = _project_momentum(selected_project)
             selected_project["momentum_decay"] = _project_momentum_decay(selected_project)
@@ -4901,6 +4976,9 @@ async def _studio_projects_state(
         "waiting": sum(1 for item in visible_project_rows if item.get("momentum") == "Waiting"),
         "blocked": sum(1 for item in visible_project_rows if item.get("momentum") == "Blocked"),
         "abandoned": sum(1 for item in visible_project_rows if item.get("momentum") == "Abandoned"),
+        "scope_stable": sum(1 for item in visible_project_rows if item.get("scope_state") == "Scope Stable"),
+        "scope_expanded": sum(1 for item in visible_project_rows if item.get("scope_state") == "Scope Expanded"),
+        "needs_acceptance": sum(1 for item in visible_project_rows if item.get("completion_pressure") == "Needs Acceptance"),
         "no_driving_task": sum(1 for item in visible_project_rows if item.get("current_driving_task") == "Define current driving task."),
         "dave_needed": sum(1 for item in visible_project_rows if item["dave_needed"]),
     }
@@ -6128,6 +6206,8 @@ def _projects_body(state: dict[str, Any]) -> str:
         ("Moving", counts.get("moving", 0), "moving"),
         ("Waiting", counts.get("waiting", 0), "waiting"),
         ("Blocked", counts.get("blocked", 0), "blocked"),
+        ("Scope Expanded", counts.get("scope_expanded", 0), "scope_expanded"),
+        ("Needs Acceptance", counts.get("needs_acceptance", 0), "needs_acceptance"),
         ("Abandoned", counts.get("abandoned", 0), "abandoned"),
         ("Dave Needed", counts.get("dave_needed", 0), "dave_needed"),
     ]
@@ -6152,6 +6232,8 @@ def _projects_body(state: dict[str, Any]) -> str:
         task = str(item.get("current_driving_task") or "")
         momentum = str(item.get("momentum") or "")
         status = str(item.get("status") or "").strip().lower()
+        scope_state = str(item.get("scope_state") or "")
+        completion_pressure = str(item.get("completion_pressure") or "")
         if momentum == "Blocked":
             command_candidates.append(
                 {
@@ -6159,6 +6241,24 @@ def _projects_body(state: dict[str, Any]) -> str:
                     "impact": f"Unblocks: {task}" if task else f"Unblocks {title}.",
                     "href": f"/studio/projects?project_id={_html(item.get('id', ''))}",
                     "priority": "1",
+                }
+            )
+        elif scope_state == "Scope Expanded" and status not in {"done", "complete", "completed", "deployed"}:
+            command_candidates.append(
+                {
+                    "title": f"Split expanded scope from {title}.",
+                    "impact": "Protects the original acceptance criteria and creates a follow-on project for new work.",
+                    "href": f"/studio/projects?project_id={_html(item.get('id', ''))}",
+                    "priority": "2",
+                }
+            )
+        elif completion_pressure == "Needs Acceptance":
+            command_candidates.append(
+                {
+                    "title": f"Define acceptance for {title}.",
+                    "impact": "Creates completion pressure so the project can close instead of drifting.",
+                    "href": f"/studio/projects?project_id={_html(item.get('id', ''))}",
+                    "priority": "2",
                 }
             )
         elif "forum graphics" in title.lower() and momentum in {"Waiting", "Blocked"}:
@@ -6230,6 +6330,10 @@ def _projects_body(state: dict[str, Any]) -> str:
             return bool(item.get("dave_needed"))
         if view == "frozen":
             return str(item.get("movement_state") or "").strip().lower() in {"frozen", "seed only"}
+        if view == "scope_expanded":
+            return str(item.get("scope_state") or "").strip().lower() == "scope expanded"
+        if view == "needs_acceptance":
+            return str(item.get("completion_pressure") or "").strip().lower() == "needs acceptance"
         if view in {"moving", "waiting", "blocked", "abandoned"}:
             return str(item.get("momentum") or "").strip().lower() == view
         return True
@@ -6239,14 +6343,18 @@ def _projects_body(state: dict[str, Any]) -> str:
         <tr class="row-link" data-project-row
           data-status="{_html(str(item.get("status", "")).strip().lower())}"
           data-momentum="{_html(str(item.get("momentum", "")).strip().lower())}"
+          data-scope="{_html(str(item.get("scope_state", "")).strip().lower())}"
+          data-acceptance-state="{_html(str(item.get("completion_pressure", "")).strip().lower())}"
           data-dave="{'true' if item.get("dave_needed") else 'false'}"
           data-blocked="{'true' if str(item.get("momentum") or "") == "Blocked" or str(item.get("waiting_on") or "none").lower() not in {"none", "mim/tod scheduling", "first movement"} else 'false'}"
-          data-search="{_html(" ".join(str(value or "") for value in [item.get("title"), item.get("project_type"), item.get("momentum"), item.get("heat"), item.get("owner"), item.get("current_driving_task"), item.get("waiting_on"), item.get("blocked_next_step"), item.get("status"), item.get("work_state"), item.get("progress_percent"), item.get("progress_basis"), item.get("last_movement_age"), 'dave yes' if item.get("dave_needed") else 'dave no']))}"
+          data-search="{_html(" ".join(str(value or "") for value in [item.get("title"), item.get("project_type"), item.get("momentum"), item.get("heat"), item.get("scope_state"), item.get("completion_pressure"), item.get("acceptance"), item.get("owner"), item.get("current_driving_task"), item.get("waiting_on"), item.get("blocked_next_step"), item.get("status"), item.get("work_state"), item.get("progress_percent"), item.get("progress_basis"), item.get("last_movement_age"), 'dave yes' if item.get("dave_needed") else 'dave no']))}"
           data-sort-project="{_html(item.get("title", ""))}"
           data-sort-momentum="{_html(item.get("momentum_decay") or item.get("momentum", ""))}"
           data-sort-heat="{_html(item.get("heat", ""))}"
+          data-sort-scope="{_html(item.get("scope_state", ""))}"
           data-sort-owner="{_html(item.get("owner", ""))}"
           data-sort-task="{_html(item.get("current_driving_task", ""))}"
+          data-sort-acceptance="{_html(item.get("completion_pressure", ""))}"
           data-sort-waiting="{_html(item.get("waiting_on", "none"))}"
           data-sort-movement="{_html(item.get("last_movement_age", "none"))}"
           data-sort-dave="{'1' if item.get("dave_needed") else '0'}"
@@ -6254,8 +6362,10 @@ def _projects_body(state: dict[str, Any]) -> str:
           <td><strong>{_html(item.get("title", ""))}</strong><div class="muted">{_html(item.get("project_type", ""))}</div></td>
           <td><span class="health-pill {_project_momentum_class(item.get("momentum_decay") or item.get("momentum"))}">{_html(item.get("momentum_decay") or item.get("momentum", "Waiting"))}</span><div class="muted">{_html(item.get("status", ""))}</div></td>
           <td>{_html(item.get("heat", ""))}</td>
+          <td><span class="health-pill {'red' if item.get("scope_state") == "Scope Expanded" else 'yellow' if item.get("scope_state") == "Scope Watch" else 'green'}">{_html(item.get("scope_state", ""))}</span></td>
           <td>{_html(item.get("owner", ""))}</td>
           <td>{_html(item.get("current_driving_task", ""))}<div class="muted">Progress: {_html(item.get("progress_percent", 0))}% / {_html(item.get("progress_basis", "estimate"))}</div></td>
+          <td>{_html(item.get("completion_pressure", ""))}<div class="muted">{_html(item.get("acceptance", ""))}</div></td>
           <td>{_html(item.get("waiting_on", "none"))}<div class="muted">{_html(item.get("blocked_next_step", ""))}</div></td>
           <td><span class="health-pill {'red' if str(item.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(item.get("last_movement_age", "none"))}</span><div class="muted">{_html(item.get("movement_state", ""))} / M-T {_html(item.get("mim_tod_event_count", 0))} / C {_html(item.get("codex_event_count", 0))}</div></td>
           <td>{'yes' if item.get("dave_needed") else 'no'}</td>
@@ -6265,7 +6375,7 @@ def _projects_body(state: dict[str, Any]) -> str:
         if view != "signals" and project_visible(item)
     )
     if not project_rows and view != "signals":
-        project_rows = '<tr><td colspan="8">No projects in this view.</td></tr>'
+        project_rows = '<tr><td colspan="10">No projects in this view.</td></tr>'
 
     signal_rows = "".join(
         f"""
@@ -6346,8 +6456,12 @@ def _projects_body(state: dict[str, Any]) -> str:
         <section class="card" style="margin-bottom:14px;">
           <h2>{_html(selected_project.get("title", "Project"))}</h2>
           <div class="project-row" style="margin-bottom:12px;">
-            <div><strong>{_html(selected_project.get("current_driving_task", ""))}</strong><br><span class="muted">Waiting on: {_html(selected_project.get("waiting_on", "none"))} / last movement: {_html(selected_project.get("last_movement_age", "none"))} / MIM-TOD {_html(selected_project.get("mim_tod_event_count", 0))} / Codex {_html(selected_project.get("codex_event_count", 0))}</span></div>
+            <div><strong>{_html(selected_project.get("current_driving_task", ""))}</strong><br><span class="muted">Acceptance: {_html(selected_project.get("acceptance", ""))}</span><br><span class="muted">Waiting on: {_html(selected_project.get("waiting_on", "none"))} / last movement: {_html(selected_project.get("last_movement_age", "none"))} / MIM-TOD {_html(selected_project.get("mim_tod_event_count", 0))} / Codex {_html(selected_project.get("codex_event_count", 0))}</span></div>
             <span class="health-pill {_project_momentum_class(selected_project.get("momentum_decay") or selected_project.get("momentum"))}">{_html(selected_project.get("heat", ""))} / {_html(selected_project.get("momentum_decay") or selected_project.get("momentum", "Waiting"))}</span>
+          </div>
+          <div class="project-row" style="margin-bottom:12px;">
+            <div><strong>{_html(selected_project.get("scope_state", ""))}</strong><br><span class="muted">{_html(selected_project.get("completion_pressure", ""))}</span></div>
+            <span class="health-pill {'red' if selected_project.get("scope_state") == "Scope Expanded" else 'yellow' if selected_project.get("scope_state") == "Scope Watch" else 'green'}">Scope</span>
           </div>
           {dave_action_html}
           <form method="post" action="/studio/projects/{_html(selected_project.get("id", ""))}/update" class="form-grid">
@@ -6409,13 +6523,15 @@ def _projects_body(state: dict[str, Any]) -> str:
           <button class="button" type="button" data-project-filter="in_process">In Process</button>
           <button class="button" type="button" data-project-filter="queued">Queued</button>
           <button class="button" type="button" data-project-filter="blockers">Blockers</button>
+          <button class="button" type="button" data-project-filter="scope_expanded">Scope Expanded</button>
+          <button class="button" type="button" data-project-filter="needs_acceptance">Needs Acceptance</button>
           <button class="button" type="button" data-project-filter="dave_needed">Dave Needed</button>
         </div>
-        <input data-project-search placeholder="Search projects, owner, status, blocker, task, heat, Dave...">
+        <input data-project-search placeholder="Search projects, owner, status, blocker, task, scope, acceptance, Dave...">
         <div class="table-meta"><span><span data-project-visible-count>0</span> / <span data-project-total-count>0</span> visible</span><span>Quotes and OR supported</span></div>
       </div>
       <table class="score-table" data-project-table>
-        <thead><tr><th><button type="button" data-sort-key="Project">Project</button></th><th><button type="button" data-sort-key="Momentum">Momentum</button></th><th><button type="button" data-sort-key="Heat">Heat</button></th><th><button type="button" data-sort-key="Owner">Owner</button></th><th><button type="button" data-sort-key="Task">Current Driving Task</button></th><th><button type="button" data-sort-key="Waiting">Waiting On</button></th><th><button type="button" data-sort-key="Movement">Last Movement</button></th><th><button type="button" data-sort-key="Dave">Dave</button></th></tr></thead>
+        <thead><tr><th><button type="button" data-sort-key="Project">Project</button></th><th><button type="button" data-sort-key="Momentum">Momentum</button></th><th><button type="button" data-sort-key="Heat">Heat</button></th><th><button type="button" data-sort-key="Scope">Scope</button></th><th><button type="button" data-sort-key="Owner">Owner</button></th><th><button type="button" data-sort-key="Task">Current Driving Task</button></th><th><button type="button" data-sort-key="Acceptance">Acceptance</button></th><th><button type="button" data-sort-key="Waiting">Waiting On</button></th><th><button type="button" data-sort-key="Movement">Last Movement</button></th><th><button type="button" data-sort-key="Dave">Dave</button></th></tr></thead>
         <tbody>{project_rows}</tbody>
       </table>
     </section>
