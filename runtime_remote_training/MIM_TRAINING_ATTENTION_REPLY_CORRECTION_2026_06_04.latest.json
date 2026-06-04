@@ -1,0 +1,24 @@
+{
+  "generated_at": "2026-06-04T10:55:00-07:00",
+  "artifact_id": "MIM-TRAINING-ATTENTION-REPLY-CORRECTION-2026-06-04",
+  "status": "implemented",
+  "operator_observation": "MIM explained training needs_attention but incorrectly ranked judgment-mode repair as the top repair even though the focused V2 judgment suite was at 100%.",
+  "root_cause": [
+    "Studio training reply template hardcoded judgment mode as the top repair.",
+    "The reply did not merge the scoreboard outcome_reflection fields when the hourly reflection shape did not expose stale_artifacts directly.",
+    "Lower-level canned training replies still implied judgment repair was active rather than resolved/green."
+  ],
+  "fix": [
+    "Treat judgment mode as a good signal when pass_rate_percent is at or above 80.",
+    "Rank outcome reflection gap, stale artifacts, blocked objective pressure, and TOD validation baselines as the active attention items.",
+    "Use outcome_reflection fallback fields for stale artifact count and names.",
+    "Update canned communication-composer training replies to reflect that judgment is green and stale evidence is the blocker."
+  ],
+  "validation": [
+    "Live Studio MIM reply says stale artifact count is 12.",
+    "Live reply names stale artifacts including TOD_EXECUTION_RESULT.latest.json and TOD_VALIDATION_RESULT.latest.json.",
+    "Live reply says MIM judgment mode is currently green, not the top repair.",
+    "Live reply recommends refreshing/retiring stale reflection artifacts and binding TOD validation metrics."
+  ],
+  "training_lesson": "MIM must not repeat stale weakness text when newer score evidence shows the weakness is resolved. Current pass/fail evidence outranks old weakness labels."
+}

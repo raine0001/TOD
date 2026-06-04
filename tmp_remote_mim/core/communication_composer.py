@@ -314,10 +314,10 @@ def _contextual_answer_first_reply(
 
     if query_key == "how is training going mim":
         return (
-            "Training needs attention, but the judgment-mode repair is now moving in the right direction. "
-            "The focused V2 suite should be checked first because it measures whether MIM recommends, explains, demonstrates, discovers requirements, and analyzes problems instead of only reporting status. "
-            "Current blocker: stale reflection inputs still make the overall scoreboard cautious. "
-            "Next step: keep the V2 pass green, then refresh the stale TOD evidence."
+            "Training still needs attention, but not because the focused judgment suite is failing. "
+            "That suite is currently green; the bigger issue is that outcome reflection still says improvement is not proven and several TOD evidence artifacts are stale. "
+            "Current blocker: stale reflection inputs and missing TOD validation baselines make the overall scoreboard cautious. "
+            "Next step: keep judgment mode green, refresh or retire stale TOD artifacts, and publish validated-edit/no-op-rejection counts."
         )
 
     if query_key == "any blockers":
@@ -332,8 +332,8 @@ def _contextual_answer_first_reply(
         return (
             "MIM training is focused on choosing the right response mode: recommendation, explanation, demonstration, consultative discovery, or problem analysis. "
             "That matters because Dave should get a useful answer or next action, not a raw status dump. "
-            "The latest target is the V2 judgment suite, with the blocker being stale reflection evidence around TOD validation and objective state. "
-            "Next step: keep judgment-mode scoring above target and refresh stale artifacts."
+            "The focused V2 judgment suite is currently above target, so the active blocker is stale reflection evidence around TOD validation and objective state. "
+            "Next step: keep judgment-mode scoring above target, refresh stale artifacts, and turn TOD validated edits/no-op rejections into daily metrics."
         )
 
     if query_key == "summarize the proposal":

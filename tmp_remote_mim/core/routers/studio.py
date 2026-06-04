@@ -4978,6 +4978,7 @@ async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
     mim_score = scoreboard.get("mim_score") if isinstance(scoreboard.get("mim_score"), dict) else {}
     tod_score = scoreboard.get("tod_score") if isinstance(scoreboard.get("tod_score"), dict) else {}
     training_hours = scoreboard.get("training_hours") if isinstance(scoreboard.get("training_hours"), dict) else {}
+    outcome_reflection = scoreboard.get("outcome_reflection") if isinstance(scoreboard.get("outcome_reflection"), dict) else {}
 
     are_improving = reflection.get("are_they_improving")
     assessment = _first_text(reflection.get("assessment"), scoreboard.get("status"), default="unknown")
@@ -5044,6 +5045,7 @@ async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
         "tod_score": tod_score,
         "training_hours": training_hours,
         "reflection": reflection,
+        "outcome_reflection": outcome_reflection,
         "typo": typo_summary,
         "blocker_summary": blocker_summary,
         "evidence_docs": docs,
@@ -5180,8 +5182,13 @@ def _compose_training_attention_reply(prompt: str, state: dict[str, Any]) -> str
     mim_score = state.get("mim_score") if isinstance(state.get("mim_score"), dict) else {}
     tod_score = state.get("tod_score") if isinstance(state.get("tod_score"), dict) else {}
     reflection = state.get("reflection") if isinstance(state.get("reflection"), dict) else {}
+    outcome_reflection = state.get("outcome_reflection") if isinstance(state.get("outcome_reflection"), dict) else {}
 
     pass_rate = _format_percent(judgment.get("pass_rate_percent"))
+    try:
+        pass_rate_number = int(judgment.get("pass_rate_percent"))
+    except Exception:
+        pass_rate_number = None
     weakness = _first_text(
         judgment.get("current_weakness"),
         state.get("mim", {}).get("weakness") if isinstance(state.get("mim"), dict) else "",
@@ -5193,32 +5200,76 @@ def _compose_training_attention_reply(prompt: str, state: dict[str, Any]) -> str
         default="Reach at least 80% on the focused judgment suite before expanding prompt sets.",
     )
     assessment = _plain_status(state.get("assessment"), default="unknown")
-    stale_artifacts = reflection.get("stale_artifacts", "unknown")
-    improving = reflection.get("are_they_improving", state.get("are_improving"))
-    truth_integrity = _plain_status(reflection.get("truth_integrity"), default="unknown")
-    blockers_cleared = _first_text(tod_score.get("blockers_cleared_today"), default="baseline needed")
-    validated_edits = _first_text(tod_score.get("validated_edits_today"), default="baseline needed")
-    no_op_rejections = _first_text(tod_score.get("no_op_rejections_today"), default="baseline needed")
+    freshness = reflection.get("freshness") if isinstance(reflection.get("freshness"), dict) else {}
+    stale_artifacts = freshness.get("stale_artifacts") if isinstance(freshness.get("stale_artifacts"), list) else reflection.get("stale_artifacts")
+    if not isinstance(stale_artifacts, list):
+        stale_artifacts = outcome_reflection.get("stale_artifacts") if isinstance(outcome_reflection.get("stale_artifacts"), list) else stale_artifacts
+    stale_count = (
+        len(stale_artifacts)
+        if isinstance(stale_artifacts, list)
+        else _first_text(reflection.get("stale_artifact_count"), outcome_reflection.get("stale_artifact_count"), default="unknown")
+    )
+    stale_sample = ", ".join(str(item) for item in stale_artifacts[:5]) if isinstance(stale_artifacts, list) else str(stale_artifacts)
+    if not stale_sample or stale_sample == "None":
+        stale_sample = "none listed"
+    improving = reflection.get("are_they_improving", outcome_reflection.get("are_they_improving", state.get("are_improving")))
+    truth_value = reflection.get("truth_integrity")
+    truth_integrity = _plain_status(
+        truth_value.get("status") if isinstance(truth_value, dict) else outcome_reflection.get("truth_integrity_status", truth_value),
+        default="unknown",
+    )
+    tod_metrics = tod_score.get("metrics") if isinstance(tod_score.get("metrics"), dict) else {}
+
+    def tod_metric(metric_key: str, default: str = "baseline needed") -> str:
+        metric = tod_metrics.get(metric_key) if isinstance(tod_metrics.get(metric_key), dict) else {}
+        today = metric.get("today") if isinstance(metric, dict) else None
+        if isinstance(today, dict):
+            return _plain_status(today.get("status"), default=default).replace("_", " ")
+        if today is not None:
+            return str(today)
+        return _first_text(tod_score.get(f"{metric_key}_today"), default=default)
+
+    blockers_cleared = tod_metric("blockers_cleared")
+    validated_edits = tod_metric("validated_edits")
+    no_op_rejections = tod_metric("no_op_rejections")
     intent = _scoreboard_metric(mim_score, "intent_understood_today")
     answered = _scoreboard_metric(mim_score, "answered_question_today")
     recommendation = _scoreboard_metric(mim_score, "recommendation_quality_today")
+    objective_counts = reflection.get("objective_counts") if isinstance(reflection.get("objective_counts"), dict) else outcome_reflection.get("objective_counts") if isinstance(outcome_reflection.get("objective_counts"), dict) else {}
+    blocked_count = _first_text(objective_counts.get("blocked"), default="unknown")
+    running_count = _first_text(objective_counts.get("running"), default="unknown")
     latest_evidence = _first_text(
         reflection.get("latest_evidence"),
         reflection.get("latest_evidence_id"),
         reflection.get("evidence"),
         default="TOD-BLOCKER-CLEARING-DRILL-004 completed_with_evidence",
     )
+    judgment_line = (
+        f"MIM judgment mode is currently green, not the top repair. Evidence: focused suite is {pass_rate}, target is {target}. "
+        "Action: keep it monitored and do not expand the suite until the outcome-reflection lane is clean."
+        if pass_rate_number is not None and pass_rate_number >= 80
+        else (
+            f"MIM judgment mode needs repair. Evidence: focused suite is {pass_rate}, weakness is: {weakness}. "
+            f"Action: keep training narrow until mode selection is reliable. Target: {target}"
+        )
+    )
+    next_move = (
+        "refreshing or retiring stale reflection artifacts and binding TOD validation metrics"
+        if pass_rate_number is not None and pass_rate_number >= 80
+        else "fixing judgment-mode reply behavior"
+    )
 
     return (
         "Three things need attention, Dave.\n\n"
-        f"1. MIM judgment mode is the top repair. Evidence: the focused suite is at {pass_rate}, and the current weakness is: {weakness} "
-        f"Action: keep training narrow until MIM can choose recommendation, explanation, demonstration, consultative discovery, or problem-analysis mode on purpose. Target: {target}\n\n"
-        f"2. Outcome reflection is not ready to call healthy progress. Evidence: assessment is {assessment}, outcomes improving is {improving}, stale artifacts are {stale_artifacts}, and truth integrity is {truth_integrity}. "
+        f"1. Outcome reflection is not ready to call healthy progress. Evidence: assessment is {assessment}, outcomes improving is {improving}, stale artifact count is {stale_count}, and truth integrity is {truth_integrity}. "
         "Action: refresh or retire stale artifacts, then publish a new reflection only when the evidence proves a behavior changed.\n\n"
+        f"2. Blocked objective pressure is still high. Evidence: blocked objectives are {blocked_count}, running objectives are {running_count}, and stale examples include: {stale_sample}. "
+        "Action: bind each stale blocker to a current owner/action or mark it superseded instead of letting old blockers keep the reflection yellow.\n\n"
         f"3. TOD validation baselines still need tightening. Evidence: blockers cleared/transformed is {blockers_cleared}, but validated edits are {validated_edits} and no-op rejections are {no_op_rejections}. "
         f"Action: turn the latest blocker drill into repeatable pass/fail validation, then make the next TOD repair prove changed files, tests, and evidence.\n\n"
-        f"The good signal: MIM's basic conversation score is holding at intent {intent}, answered question {answered}, and recommendation quality {recommendation}. "
-        f"The next move I recommend is fixing the judgment-mode reply behavior first. Latest evidence I would anchor to: {latest_evidence}."
+        f"Good signal: {judgment_line}\n\n"
+        f"MIM's basic conversation score is holding at intent {intent}, answered question {answered}, and recommendation quality {recommendation}. "
+        f"The next move I recommend is {next_move}. Latest evidence I would anchor to: {latest_evidence}."
     )
 
 
