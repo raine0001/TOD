@@ -2641,6 +2641,55 @@ def _project_movement_state(row: dict[str, Any]) -> str:
     return "moving"
 
 
+def _project_current_driving_task(row: dict[str, Any]) -> str:
+    metadata = _project_metadata(row)
+    return _first_text(
+        metadata.get("current_driving_task"),
+        metadata.get("driving_task"),
+        row.get("next_action"),
+        metadata.get("next_action"),
+        default="Define current driving task.",
+    )
+
+
+def _project_waiting_on(row: dict[str, Any]) -> str:
+    status = str(row.get("status") or "").strip().lower()
+    blocker = _first_text(row.get("blocker"), default="none")
+    if row.get("dave_needed"):
+        return "Dave"
+    if blocker and blocker.lower() != "none":
+        return blocker
+    if status in {"queued", "candidate", "planning", "discovery"}:
+        return "MIM/TOD scheduling"
+    if not row.get("last_movement_at"):
+        return "first movement"
+    return "none"
+
+
+def _project_momentum(row: dict[str, Any]) -> str:
+    status = str(row.get("status") or "").strip().lower()
+    movement = str(row.get("movement_state") or "").strip().lower()
+    waiting_on = _project_waiting_on(row)
+    if status in {"archived", "scrapped", "discarded", "deleted", "abandoned", "cancelled", "canceled"}:
+        return "Abandoned"
+    if status in {"blocked", "stalled"} or movement == "frozen":
+        return "Blocked"
+    if waiting_on.lower() != "none" or status in {"queued", "candidate", "planning", "discovery", "paused"}:
+        return "Waiting"
+    if movement in {"mim/tod moving", "codex moved", "moving"} or status in {"working", "implementation", "active", "active_experiments", "calibration"}:
+        return "Moving"
+    return "Waiting"
+
+
+def _project_momentum_class(value: object) -> str:
+    momentum = str(value or "").strip().lower()
+    if momentum == "moving":
+        return "green"
+    if momentum in {"blocked", "abandoned"}:
+        return "red"
+    return "yellow"
+
+
 PROJECT_RECONCILIATION_RULES: list[dict[str, Any]] = [
     {
         "title": "LAB Workbench Servo Tester",
@@ -4615,6 +4664,9 @@ async def _studio_projects_state(
         row["last_movement_at"] = str(summary.get("last_movement_at") or "")
         row["last_movement_age"] = _studio_age_label(row["last_movement_at"])
         row["movement_state"] = _project_movement_state(row)
+        row["current_driving_task"] = _project_current_driving_task(row)
+        row["waiting_on"] = _project_waiting_on(row)
+        row["momentum"] = _project_momentum(row)
         row["is_deleted"] = str(row.get("status") or "").strip().lower() in {"deleted", "archived", "discarded", "scrapped"}
         project_rows[index] = row
     visible_project_rows = [row for row in project_rows if not row.get("is_deleted")]
@@ -4640,6 +4692,9 @@ async def _studio_projects_state(
             selected_project["last_movement_at"] = str(selected_summary.get("last_movement_at") or "")
             selected_project["last_movement_age"] = _studio_age_label(selected_project["last_movement_at"])
             selected_project["movement_state"] = _project_movement_state(selected_project)
+            selected_project["current_driving_task"] = _project_current_driving_task(selected_project)
+            selected_project["waiting_on"] = _project_waiting_on(selected_project)
+            selected_project["momentum"] = _project_momentum(selected_project)
             events = (
                 await db.execute(
                     select(StudioProjectEvent)
@@ -4669,6 +4724,11 @@ async def _studio_projects_state(
             if item["status"] in {"working", "implementation", "active", "active_experiments", "calibration"}
         ),
         "frozen": sum(1 for item in visible_project_rows if item.get("movement_state") == "frozen"),
+        "moving": sum(1 for item in visible_project_rows if item.get("momentum") == "Moving"),
+        "waiting": sum(1 for item in visible_project_rows if item.get("momentum") == "Waiting"),
+        "blocked": sum(1 for item in visible_project_rows if item.get("momentum") == "Blocked"),
+        "abandoned": sum(1 for item in visible_project_rows if item.get("momentum") == "Abandoned"),
+        "no_driving_task": sum(1 for item in visible_project_rows if item.get("current_driving_task") == "Define current driving task."),
         "dave_needed": sum(1 for item in visible_project_rows if item["dave_needed"]),
     }
     return {
@@ -5892,10 +5952,10 @@ def _projects_body(state: dict[str, Any]) -> str:
     selected_events = state.get("selected_events") if isinstance(state.get("selected_events"), list) else []
     new_project = bool(state.get("new_project"))
     project_stats = [
-        ("Signals", counts.get("signals", 0), "signals"),
-        ("Candidates", counts.get("candidates", 0), "candidates"),
-        ("In Process", counts.get("active", 0), "active"),
-        ("Frozen", counts.get("frozen", 0), "frozen"),
+        ("Moving", counts.get("moving", 0), "moving"),
+        ("Waiting", counts.get("waiting", 0), "waiting"),
+        ("Blocked", counts.get("blocked", 0), "blocked"),
+        ("Abandoned", counts.get("abandoned", 0), "abandoned"),
         ("Dave Needed", counts.get("dave_needed", 0), "dave_needed"),
     ]
     stats_html = "".join(
@@ -5920,18 +5980,19 @@ def _projects_body(state: dict[str, Any]) -> str:
             return bool(item.get("dave_needed"))
         if view == "frozen":
             return str(item.get("movement_state") or "").strip().lower() in {"frozen", "seed only"}
+        if view in {"moving", "waiting", "blocked", "abandoned"}:
+            return str(item.get("momentum") or "").strip().lower() == view
         return True
 
     project_rows = "".join(
         f"""
         <tr class="row-link" onclick="window.location.href='/studio/projects?project_id={_html(item.get("id", ""))}&view={_html(view)}'">
           <td><strong>{_html(item.get("title", ""))}</strong><div class="muted">{_html(item.get("project_type", ""))}</div></td>
-          <td><span class="health-pill yellow">{_html(item.get("status", ""))}</span><div class="muted">{_html(item.get("work_state", ""))}</div></td>
+          <td><span class="health-pill {_project_momentum_class(item.get("momentum"))}">{_html(item.get("momentum", "Waiting"))}</span><div class="muted">{_html(item.get("status", ""))}</div></td>
           <td>{_html(item.get("owner", ""))}</td>
-          <td><div class="progress-track"><div class="progress-fill" style="width:{_html(item.get("progress_percent", 0))}%;"></div></div><div class="muted">{_html(item.get("progress_percent", 0))}% / {_html(item.get("progress_basis", "estimate"))}</div></td>
-          <td><span class="health-pill {'red' if str(item.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(item.get("movement_state", ""))}</span><div class="muted">M/T {_html(item.get("mim_tod_event_count", 0))} / C {_html(item.get("codex_event_count", 0))} / R {_html(item.get("reconciled_event_count", 0))}</div></td>
-          <td>{_html(item.get("blocker", "none"))}</td>
-          <td>{_html(item.get("next_action", ""))}</td>
+          <td>{_html(item.get("current_driving_task", ""))}<div class="muted">Progress: {_html(item.get("progress_percent", 0))}% / {_html(item.get("progress_basis", "estimate"))}</div></td>
+          <td>{_html(item.get("waiting_on", "none"))}</td>
+          <td><span class="health-pill {'red' if str(item.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(item.get("last_movement_age", "none"))}</span><div class="muted">{_html(item.get("movement_state", ""))} / M-T {_html(item.get("mim_tod_event_count", 0))} / C {_html(item.get("codex_event_count", 0))}</div></td>
           <td>{'yes' if item.get("dave_needed") else 'no'}</td>
         </tr>
         """
@@ -5939,7 +6000,7 @@ def _projects_body(state: dict[str, Any]) -> str:
         if view != "signals" and project_visible(item)
     )
     if not project_rows and view != "signals":
-        project_rows = '<tr><td colspan="8">No projects in this view.</td></tr>'
+        project_rows = '<tr><td colspan="7">No projects in this view.</td></tr>'
 
     signal_rows = "".join(
         f"""
@@ -6020,8 +6081,8 @@ def _projects_body(state: dict[str, Any]) -> str:
         <section class="card" style="margin-bottom:14px;">
           <h2>{_html(selected_project.get("title", "Project"))}</h2>
           <div class="project-row" style="margin-bottom:12px;">
-            <div><strong>{_html(selected_project.get("movement_state", ""))}</strong><br><span class="muted">MIM/TOD {_html(selected_project.get("mim_tod_event_count", 0))} / Codex {_html(selected_project.get("codex_event_count", 0))} / Reconciled {_html(selected_project.get("reconciled_event_count", 0))} / total {_html(selected_project.get("follow_up_event_count", 0))}/{_html(selected_project.get("event_count", 0))}</span></div>
-            <span class="health-pill {'red' if str(selected_project.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(selected_project.get("progress_percent", 0))}% / {_html(selected_project.get("progress_basis", ""))}</span>
+            <div><strong>{_html(selected_project.get("current_driving_task", ""))}</strong><br><span class="muted">Waiting on: {_html(selected_project.get("waiting_on", "none"))} / last movement: {_html(selected_project.get("last_movement_age", "none"))} / MIM-TOD {_html(selected_project.get("mim_tod_event_count", 0))} / Codex {_html(selected_project.get("codex_event_count", 0))}</span></div>
+            <span class="health-pill {_project_momentum_class(selected_project.get("momentum"))}">{_html(selected_project.get("momentum", "Waiting"))}</span>
           </div>
           {dave_action_html}
           <form method="post" action="/studio/projects/{_html(selected_project.get("id", ""))}/update" class="form-grid">
@@ -6067,7 +6128,7 @@ def _projects_body(state: dict[str, Any]) -> str:
     <section class="card" style="margin-bottom:14px;">
       <h2>Project Inbox</h2>
       <table class="score-table">
-        <thead><tr><th>Project</th><th>Status</th><th>Owner</th><th>Done</th><th>Movement</th><th>Blocker</th><th>Next Action</th><th>Dave</th></tr></thead>
+        <thead><tr><th>Project</th><th>Momentum</th><th>Owner</th><th>Current Driving Task</th><th>Waiting On</th><th>Last Movement</th><th>Dave</th></tr></thead>
         <tbody>{project_rows}</tbody>
       </table>
     </section>
