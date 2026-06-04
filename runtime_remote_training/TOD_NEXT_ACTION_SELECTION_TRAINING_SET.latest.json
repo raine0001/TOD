@@ -1,0 +1,85 @@
+{
+  "generated_at": "2026-06-04T16:50:00-07:00",
+  "objective_id": "TOD-NEXT-ACTION-SELECTION-COMPETENCY-V1",
+  "source": "studio_projects_live_state_first_slice",
+  "status": "starter_training_set",
+  "records": [
+    {
+      "situation": "Studio Projects Table Organization is completed with accepted criteria.",
+      "outcome": "completed",
+      "candidate_next_action": "Verify closeout evidence and keep closed unless regression evidence appears.",
+      "lane": "closeout",
+      "reason": "Original acceptance is complete.",
+      "confidence": 0.95,
+      "validation_evidence": "Project status remains completed, progress is 100, and table controls remain live."
+    },
+    {
+      "situation": "LAB Workbench Servo Tester has active hardware work but lacks explicit acceptance criteria.",
+      "outcome": "needs_acceptance",
+      "candidate_next_action": "Define acceptance criteria and one current driving task before claiming progress.",
+      "lane": "planning",
+      "reason": "TOD cannot choose or validate execution without a definition of done.",
+      "confidence": 0.9,
+      "validation_evidence": "Project has measurable servo tester acceptance criteria and a bounded next task."
+    },
+    {
+      "situation": "MIM Development Continuity V1 is waiting on the first real continuity lookup/brief validation against forum graphics.",
+      "outcome": "blocked",
+      "candidate_next_action": "Run blocker repair: identify the smallest unblock step, attempt it, then escalate only if MIM/TOD cannot clear it.",
+      "lane": "blocker_repair",
+      "reason": "A named dependency is preventing validation.",
+      "confidence": 0.82,
+      "validation_evidence": "Continuity brief exists and is attached to the forum graphics project before implementation."
+    },
+    {
+      "situation": "TOD Local PowerShell Migration has scope expansion and prior result-contract issues.",
+      "outcome": "scope_expanded",
+      "candidate_next_action": "Split expanded work into a follow-on project, then restore the original completion path.",
+      "lane": "project_management",
+      "reason": "The project accumulated daemon migration, watchdog visibility, and result-contract repair work.",
+      "confidence": 0.86,
+      "validation_evidence": "Follow-on project exists and original PowerShell migration acceptance is isolated."
+    },
+    {
+      "situation": "MIM Operations Accounting is in discovery and has no explicit acceptance criteria.",
+      "outcome": "needs_acceptance",
+      "candidate_next_action": "Define acceptance criteria and one current driving task before claiming progress.",
+      "lane": "planning",
+      "reason": "Discovery cannot convert to execution until completion can be measured.",
+      "confidence": 0.9,
+      "validation_evidence": "Accounting project has first report/workflow acceptance and a bounded implementation task."
+    },
+    {
+      "situation": "MIM Scope Completion Discipline V1 is active and has acceptance criteria.",
+      "outcome": "moving",
+      "candidate_next_action": "Audit active projects for scope expansion and create follow-on projects when new work exceeds original acceptance by more than 30%.",
+      "lane": "execution",
+      "reason": "The current driving task is explicit and validation is project-board based.",
+      "confidence": 0.72,
+      "validation_evidence": "Scope-expanded and needs-acceptance projects are identified and acted upon."
+    },
+    {
+      "situation": "MIM TOD Automatic Reality Response V1 is active and needs validation of event-writing behavior.",
+      "outcome": "moving",
+      "candidate_next_action": "Validate the auto-intervention loop against current Projects board conditions and confirm MIM/TOD writes corrective events.",
+      "lane": "execution",
+      "reason": "The system has an explicit validation task with observable project events.",
+      "confidence": 0.72,
+      "validation_evidence": "mim_auto_intervention events exist and next_action/current_driving_task are updated."
+    },
+    {
+      "situation": "TOD Next Action Selection Competency V1 has the selector implemented but needs more real examples.",
+      "outcome": "training_gap",
+      "candidate_next_action": "Extract first next-action training set from existing project events and TOD result artifacts.",
+      "lane": "training_data",
+      "reason": "The selector needs real situation/outcome/successor examples to improve beyond rules.",
+      "confidence": 0.78,
+      "validation_evidence": "Training-set artifact exists with real project-state examples."
+    }
+  ],
+  "next_dataset_expansion": [
+    "Mine StudioProjectEvent rows for completed, blocked, rejected, stale, and superseded cases.",
+    "Mine TOD_MIM_TASK_RESULT and TOD_VALIDATION_RESULT artifacts for rejected/failed result examples.",
+    "Compare selected candidate action to the action that actually resolved the project later."
+  ]
+}

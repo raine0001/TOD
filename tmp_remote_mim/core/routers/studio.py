@@ -2796,6 +2796,83 @@ def _project_scope_state(row: dict[str, Any]) -> str:
     return "Scope Stable"
 
 
+def _tod_next_action_candidate(row: dict[str, Any]) -> dict[str, Any]:
+    status = str(row.get("status") or "").strip().lower()
+    if status in {"done", "complete", "completed", "deployed"}:
+        return {
+            "action": "Verify closeout evidence and keep closed unless regression evidence appears.",
+            "lane": "closeout",
+            "reason": "Original acceptance is complete.",
+            "confidence": 0.95,
+        }
+    completion_pressure = str(row.get("completion_pressure") or "").strip()
+    scope_state = str(row.get("scope_state") or "").strip()
+    momentum = str(row.get("momentum") or "").strip()
+    waiting_on = _first_text(row.get("waiting_on"), default="none")
+    current_task = _first_text(row.get("current_driving_task"), row.get("next_action"), default="Define current driving task.")
+    blocker = _first_text(row.get("blocker"), default="none")
+    blocker_like = (
+        momentum == "Blocked"
+        or blocker.lower() != "none"
+        or waiting_on.lower() not in {"none", "mim/tod scheduling", "first movement"}
+    )
+    if completion_pressure == "Needs Acceptance":
+        return {
+            "action": "Define acceptance criteria and one current driving task before claiming progress.",
+            "lane": "planning",
+            "reason": "TOD cannot choose or validate execution without a definition of done.",
+            "confidence": 0.9,
+        }
+    if scope_state == "Scope Expanded":
+        return {
+            "action": "Split expanded work into a follow-on project, then restore the original completion path.",
+            "lane": "project_management",
+            "reason": "New work appears larger than the original project acceptance.",
+            "confidence": 0.86,
+        }
+    if completion_pressure == "Close or Split":
+        return {
+            "action": "Decide whether acceptance is complete; close the project or create a follow-on task for remaining improvements.",
+            "lane": "close_or_split",
+            "reason": "Progress is high enough that continued improvement may be hiding completion.",
+            "confidence": 0.84,
+        }
+    if blocker_like:
+        return {
+            "action": "Run blocker repair: identify the smallest unblock step, attempt it, then escalate only if MIM/TOD cannot clear it.",
+            "lane": "blocker_repair",
+            "reason": f"Project is blocked on {waiting_on if waiting_on.lower() != 'none' else blocker}.",
+            "confidence": 0.82,
+        }
+    if str(row.get("momentum_decay") or "") in {"Stale", "Needs Review"}:
+        return {
+            "action": "Choose promote, block, archive, or a new bounded driving task; do not leave the project idle.",
+            "lane": "momentum_review",
+            "reason": "Project momentum decayed and needs an explicit successor state.",
+            "confidence": 0.8,
+        }
+    if waiting_on == "MIM/TOD scheduling":
+        return {
+            "action": current_task if current_task != "Define current driving task." else "Select the first bounded task with validation evidence.",
+            "lane": "dispatch",
+            "reason": "Project is ready for MIM/TOD scheduling.",
+            "confidence": 0.76,
+        }
+    if momentum == "Moving":
+        return {
+            "action": current_task,
+            "lane": "execution",
+            "reason": "Project is moving; TOD should execute the current driving task and publish evidence.",
+            "confidence": 0.72,
+        }
+    return {
+        "action": current_task,
+        "lane": "selection",
+        "reason": "No terminal state is allowed without a successor action.",
+        "confidence": 0.65,
+    }
+
+
 def _project_waiting_on(row: dict[str, Any]) -> str:
     status = str(row.get("status") or "").strip().lower()
     blocker = _first_text(row.get("blocker"), default="none")
@@ -3467,6 +3544,8 @@ async def _run_project_auto_interventions(db: AsyncSession, projects: list[Studi
         row["waiting_on"] = _project_waiting_on(row)
         row["momentum"] = _project_momentum(row)
         row["momentum_decay"] = _project_momentum_decay(row)
+        row["tod_next_action"] = _tod_next_action_candidate(row)
+        candidate = row["tod_next_action"]
 
         if row["completion_pressure"] == "Needs Acceptance":
             if add_intervention(
@@ -3474,10 +3553,11 @@ async def _run_project_auto_interventions(db: AsyncSession, projects: list[Studi
                 rule_key="needs_acceptance",
                 title="Acceptance criteria required",
                 detail="MIM/TOD cannot measure completion until this project has explicit acceptance criteria.",
-                next_action="Define acceptance criteria and one current driving task before claiming progress.",
+                next_action=str(candidate.get("action") or "Define acceptance criteria and one current driving task before claiming progress."),
                 metadata_patch={
                     "work_state": "needs_acceptance",
-                    "current_driving_task": "Define acceptance criteria and one current driving task.",
+                    "current_driving_task": str(candidate.get("action") or "Define acceptance criteria and one current driving task."),
+                    "tod_next_action": candidate,
                     "blocker": "Missing acceptance criteria.",
                 },
             ):
@@ -3489,11 +3569,12 @@ async def _run_project_auto_interventions(db: AsyncSession, projects: list[Studi
                 rule_key="scope_expanded",
                 title="Scope expansion detected",
                 detail="New work appears to exceed the original project acceptance. MIM should split the extra work into a follow-on project and preserve the original closure path.",
-                next_action="Split expanded scope into a follow-on project, then finish or reclassify the original acceptance path.",
+                next_action=str(candidate.get("action") or "Split expanded scope into a follow-on project, then finish or reclassify the original acceptance path."),
                 metadata_patch={
                     "work_state": "scope_review",
-                    "current_driving_task": "Split expanded scope into a follow-on project and restore the original completion path.",
+                    "current_driving_task": str(candidate.get("action") or "Split expanded scope into a follow-on project and restore the original completion path."),
                     "scope_state": "Scope Expanded",
+                    "tod_next_action": candidate,
                 },
             ):
                 added += 1
@@ -3504,23 +3585,30 @@ async def _run_project_auto_interventions(db: AsyncSession, projects: list[Studi
                 rule_key="close_or_split",
                 title="Project needs close-or-split decision",
                 detail="Progress is high enough that MIM/TOD should close the original acceptance or create a follow-on for remaining enhancements.",
-                next_action="Decide whether original acceptance is complete; mark complete or create a follow-on project for remaining work.",
+                next_action=str(candidate.get("action") or "Decide whether original acceptance is complete; mark complete or create a follow-on project for remaining work."),
                 metadata_patch={
                     "work_state": "close_or_split",
-                    "current_driving_task": "Close original acceptance or split remaining work into a follow-on project.",
+                    "current_driving_task": str(candidate.get("action") or "Close original acceptance or split remaining work into a follow-on project."),
+                    "tod_next_action": candidate,
                 },
             ):
                 added += 1
             continue
-        if row["momentum"] == "Blocked":
+        blocker_like = (
+            row["momentum"] == "Blocked"
+            or _first_text(row.get("blocker"), default="none").lower() != "none"
+            or _first_text(row.get("waiting_on"), default="none").lower() not in {"none", "mim/tod scheduling", "first movement"}
+        )
+        if blocker_like:
             if add_intervention(
                 project,
                 rule_key="blocked_resolution",
                 title="Blocked project requires resolution path",
                 detail=f"Blocked on: {row.get('waiting_on') or row.get('blocker') or 'unknown blocker'}. MIM/TOD must resolve, reclassify, escalate, or archive.",
-                next_action="Resolve or reclassify the blocker; escalate to Codex, external dependency, or Dave only after MIM/TOD cannot clear it.",
+                next_action=str(candidate.get("action") or "Resolve or reclassify the blocker; escalate to Codex, external dependency, or Dave only after MIM/TOD cannot clear it."),
                 metadata_patch={
-                    "current_driving_task": "Resolve or reclassify the active blocker.",
+                    "current_driving_task": str(candidate.get("action") or "Resolve or reclassify the active blocker."),
+                    "tod_next_action": candidate,
                 },
             ):
                 added += 1
@@ -3531,10 +3619,11 @@ async def _run_project_auto_interventions(db: AsyncSession, projects: list[Studi
                 rule_key="momentum_decay",
                 title="Project momentum decayed",
                 detail="Project has been waiting or blocked long enough that MIM/TOD must actively review it instead of leaving it in place.",
-                next_action="Promote, block, archive, or assign a new bounded driving task; do not leave this project idle.",
+                next_action=str(candidate.get("action") or "Promote, block, archive, or assign a new bounded driving task; do not leave this project idle."),
                 metadata_patch={
                     "work_state": "momentum_review",
-                    "current_driving_task": "Review decayed momentum and choose promote, block, archive, or new bounded task.",
+                    "current_driving_task": str(candidate.get("action") or "Review decayed momentum and choose promote, block, archive, or new bounded task."),
+                    "tod_next_action": candidate,
                 },
             ):
                 added += 1
@@ -5032,6 +5121,29 @@ async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
                 "requested_by": "Dave",
             },
         },
+        {
+            "title": "TOD Next Action Selection Competency V1",
+            "summary": "Train TOD to select a candidate successor action after every completion, blocker, failure, rejection, or superseded task.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "TOD + MIM",
+            "health": "top_training_objective",
+            "why_it_matters": "A capable worker still sits idle without task selection. Next-action selection amplifies execution, continuity, blocker resolution, training, and autonomy.",
+            "origin_story": "Dave identified task selection as the lowest-rated capability after Project Management reached roughly 8/10. TOD increasingly knows what happened and what failed, but still often does nothing next.",
+            "next_action": "Build a real training set from existing objectives, tasks, blockers, and project events: situation, outcome, expected successor action.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "objective_id": "TOD-NEXT-ACTION-SELECTION-COMPETENCY-V1",
+                "progress_percent": 20,
+                "work_state": "working",
+                "blocker": "Needs training set extraction and validation against real project states.",
+                "current_driving_task": "Extract first next-action training set from existing project events and TOD result artifacts.",
+                "acceptance": "After any completed, blocked, failed, rejected, or superseded TOD result, TOD produces a candidate next action with lane, reason, confidence, and validation evidence.",
+                "scope_state": "Scope Stable",
+                "requested_by": "Dave",
+            },
+        },
     ]
     for spec in requested_projects:
         metadata = spec.setdefault("metadata_json", {})
@@ -5128,6 +5240,7 @@ async def _studio_projects_state(
         row["momentum_decay"] = _project_momentum_decay(row)
         row["heat"] = _project_heat(row)
         row["blocked_next_step"] = _project_blocked_next_step(row)
+        row["tod_next_action"] = _tod_next_action_candidate(row)
         row["is_deleted"] = str(row.get("status") or "").strip().lower() in {"deleted", "archived", "discarded", "scrapped"}
         project_rows[index] = row
     visible_project_rows = [row for row in project_rows if not row.get("is_deleted")]
@@ -5162,6 +5275,7 @@ async def _studio_projects_state(
             selected_project["momentum_decay"] = _project_momentum_decay(selected_project)
             selected_project["heat"] = _project_heat(selected_project)
             selected_project["blocked_next_step"] = _project_blocked_next_step(selected_project)
+            selected_project["tod_next_action"] = _tod_next_action_candidate(selected_project)
             events = (
                 await db.execute(
                     select(StudioProjectEvent)
@@ -5198,6 +5312,7 @@ async def _studio_projects_state(
         "scope_stable": sum(1 for item in visible_project_rows if item.get("scope_state") == "Scope Stable"),
         "scope_expanded": sum(1 for item in visible_project_rows if item.get("scope_state") == "Scope Expanded"),
         "needs_acceptance": sum(1 for item in visible_project_rows if item.get("completion_pressure") == "Needs Acceptance"),
+        "tod_next_actions": sum(1 for item in visible_project_rows if (item.get("tod_next_action") or {}).get("action")),
         "no_driving_task": sum(1 for item in visible_project_rows if item.get("current_driving_task") == "Define current driving task."),
         "dave_needed": sum(1 for item in visible_project_rows if item["dave_needed"]),
     }
@@ -6429,6 +6544,7 @@ def _projects_body(state: dict[str, Any]) -> str:
         ("Blocked", counts.get("blocked", 0), "blocked"),
         ("Scope Expanded", counts.get("scope_expanded", 0), "scope_expanded"),
         ("Needs Acceptance", counts.get("needs_acceptance", 0), "needs_acceptance"),
+        ("TOD Next", counts.get("tod_next_actions", 0), "all"),
         ("Auto Actions", state.get("auto_intervention_count", 0), "all"),
         ("Abandoned", counts.get("abandoned", 0), "abandoned"),
         ("Dave Needed", counts.get("dave_needed", 0), "dave_needed"),
@@ -6569,7 +6685,7 @@ def _projects_body(state: dict[str, Any]) -> str:
           data-acceptance-state="{_html(str(item.get("completion_pressure", "")).strip().lower())}"
           data-dave="{'true' if item.get("dave_needed") else 'false'}"
           data-blocked="{'true' if str(item.get("momentum") or "") == "Blocked" or str(item.get("waiting_on") or "none").lower() not in {"none", "mim/tod scheduling", "first movement"} else 'false'}"
-          data-search="{_html(" ".join(str(value or "") for value in [item.get("title"), item.get("project_type"), item.get("momentum"), item.get("heat"), item.get("scope_state"), item.get("completion_pressure"), item.get("acceptance"), item.get("owner"), item.get("current_driving_task"), item.get("waiting_on"), item.get("blocked_next_step"), item.get("status"), item.get("work_state"), item.get("progress_percent"), item.get("progress_basis"), item.get("last_movement_age"), 'dave yes' if item.get("dave_needed") else 'dave no']))}"
+          data-search="{_html(" ".join(str(value or "") for value in [item.get("title"), item.get("project_type"), item.get("momentum"), item.get("heat"), item.get("scope_state"), item.get("completion_pressure"), item.get("acceptance"), item.get("owner"), item.get("current_driving_task"), (item.get("tod_next_action") or {}).get("action"), (item.get("tod_next_action") or {}).get("lane"), (item.get("tod_next_action") or {}).get("reason"), item.get("waiting_on"), item.get("blocked_next_step"), item.get("status"), item.get("work_state"), item.get("progress_percent"), item.get("progress_basis"), item.get("last_movement_age"), 'dave yes' if item.get("dave_needed") else 'dave no']))}"
           data-sort-project="{_html(item.get("title", ""))}"
           data-sort-momentum="{_html(item.get("momentum_decay") or item.get("momentum", ""))}"
           data-sort-heat="{_html(item.get("heat", ""))}"
@@ -6586,7 +6702,7 @@ def _projects_body(state: dict[str, Any]) -> str:
           <td>{_html(item.get("heat", ""))}</td>
           <td><span class="health-pill {'red' if item.get("scope_state") == "Scope Expanded" else 'yellow' if item.get("scope_state") == "Scope Watch" else 'green'}">{_html(item.get("scope_state", ""))}</span></td>
           <td>{_html(item.get("owner", ""))}</td>
-          <td>{_html(item.get("current_driving_task", ""))}<div class="muted">Progress: {_html(item.get("progress_percent", 0))}% / {_html(item.get("progress_basis", "estimate"))}</div></td>
+          <td>{_html(item.get("current_driving_task", ""))}<div class="muted">TOD: {_html((item.get("tod_next_action") or {}).get("action", ""))}</div><div class="muted">Progress: {_html(item.get("progress_percent", 0))}% / {_html(item.get("progress_basis", "estimate"))}</div></td>
           <td>{_html(item.get("completion_pressure", ""))}<div class="muted">{_html(item.get("acceptance", ""))}</div></td>
           <td>{_html(item.get("waiting_on", "none"))}<div class="muted">{_html(item.get("blocked_next_step", ""))}</div></td>
           <td><span class="health-pill {'red' if str(item.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(item.get("last_movement_age", "none"))}</span><div class="muted">{_html(item.get("movement_state", ""))} / M-T {_html(item.get("mim_tod_event_count", 0))} / C {_html(item.get("codex_event_count", 0))}</div></td>
@@ -6684,6 +6800,10 @@ def _projects_body(state: dict[str, Any]) -> str:
           <div class="project-row" style="margin-bottom:12px;">
             <div><strong>{_html(selected_project.get("scope_state", ""))}</strong><br><span class="muted">{_html(selected_project.get("completion_pressure", ""))}</span></div>
             <span class="health-pill {'red' if selected_project.get("scope_state") == "Scope Expanded" else 'yellow' if selected_project.get("scope_state") == "Scope Watch" else 'green'}">Scope</span>
+          </div>
+          <div class="project-row" style="margin-bottom:12px;">
+            <div><strong>{_html((selected_project.get("tod_next_action") or {}).get("action", ""))}</strong><br><span class="muted">{_html((selected_project.get("tod_next_action") or {}).get("reason", ""))}</span></div>
+            <span class="health-pill green">{_html((selected_project.get("tod_next_action") or {}).get("lane", "TOD"))}</span>
           </div>
           {dave_action_html}
           <form method="post" action="/studio/projects/{_html(selected_project.get("id", ""))}/update" class="form-grid">

@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-06-04T16:35:00-07:00",
+  "objective_id": "TOD-NEXT-ACTION-SELECTION-COMPETENCY-V1",
+  "project_title": "TOD Next Action Selection Competency V1",
+  "status": "active",
+  "owner": "TOD + MIM",
+  "priority": "P0",
+  "goal": "TOD must always select a candidate successor action after completed, blocked, failed, rejected, or superseded work.",
+  "why_it_matters": "Execution cannot improve enough if TOD does not know what to do next. A perfect worker sitting idle is still idle.",
+  "ratings_context": {
+    "project_management": 8,
+    "continuity": 6,
+    "communication": 6,
+    "governance": 8,
+    "execution": 5,
+    "task_selection": 3,
+    "autonomy": 3
+  },
+  "training_record_shape": {
+    "situation": "Current project/task/result state.",
+    "outcome": "What happened: completed, blocked, failed, rejected, superseded, stale, accepted, needs acceptance, scope expanded.",
+    "candidate_next_action": "The next bounded action TOD should take.",
+    "lane": "planning, dispatch, execution, blocker_repair, close_or_split, momentum_review, project_management, closeout.",
+    "reason": "Why that successor action is correct.",
+    "confidence": "0.0 to 1.0",
+    "validation_evidence": "What proof would show the next action worked."
+  },
+  "rules": [
+    "No terminal state without a successor state.",
+    "Completed work requires closeout or regression watch.",
+    "Blocked work requires unblock, reclassify, escalate, or archive.",
+    "Rejected work requires contract repair or corrected replay.",
+    "Missing acceptance requires definition of done before progress claims.",
+    "Scope-expanded work requires follow-on project split.",
+    "Moving work requires executing the current driving task and publishing evidence."
+  ],
+  "first_implementation": {
+    "surface": "Studio Projects API and Projects table",
+    "fields": [
+      "tod_next_action.action",
+      "tod_next_action.lane",
+      "tod_next_action.reason",
+      "tod_next_action.confidence"
+    ],
+    "behavior": "Each project receives a candidate TOD next action derived from its current completion pressure, scope state, momentum, blocker, and driving task."
+  },
+  "acceptance_criteria": [
+    "Every non-deleted project exposes a TOD next-action candidate.",
+    "Candidate includes action, lane, reason, and confidence.",
+    "Automatic interventions use the same candidate selector.",
+    "The Projects page surfaces the candidate action without adding static explanatory filler.",
+    "Next training pass extracts real situation/outcome/next-action examples from existing project events and TOD artifacts."
+  ]
+}
