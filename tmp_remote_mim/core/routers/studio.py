@@ -2429,6 +2429,50 @@ def _project_category(row: StudioProject | dict[str, Any]) -> str:
     return _first_text(metadata.get("project_type"), metadata.get("category"), default="project")
 
 
+def _project_dave_request(project: dict[str, Any]) -> dict[str, str]:
+    title = str(project.get("title") or "").strip().lower()
+    blocker = _first_text(project.get("blocker"), default="")
+    if "account manager" in title:
+        return {
+            "decision": "Approve the commission/report access rule for Account Manager users.",
+            "reason": "Rep totals and commission data are confidential. MIM/TOD need the owner-level rule before implementing account-manager permissions.",
+            "choices": "Approve access, reject access, approve limited/non-commission access, or delegate approval to a named owner/admin.",
+            "impact": "Without this, TOD can define non-sensitive account-manager access but should not implement commission/report visibility.",
+            "default_note": "Approved limited access: account managers may manage carriers, contacts, agents, and account profile details, but commission totals/report payouts require explicit account-owner approval.",
+        }
+    if "reports db" in title or "db binding" in title:
+        return {
+            "decision": "Provide or approve the AgentMIM/comm_app database binding.",
+            "reason": "Studio cannot read true account_owners, representatives, commissions, carriers, or production AgentMIM records without COMM_APP_DATABASE_URL.",
+            "choices": "Provide Render Postgres URL, approve service-secret setup, defer, or mark unavailable.",
+            "impact": "Reports will keep using fallback portal records and cannot answer true AgentMIM production questions.",
+            "default_note": "Approved to bind COMM_APP_DATABASE_URL as a service-level secret for read/reporting access.",
+        }
+    if "carrier login mfa" in title:
+        return {
+            "decision": "Approve the security model for inbound MFA code capture and display.",
+            "reason": "Carrier MFA codes are sensitive. MIM/TOD need permission boundaries before showing, staging, or auto-entering codes.",
+            "choices": "Approve display only, approve clipboard staging, approve auto-entry, reject, or require per-carrier approval.",
+            "impact": "MFA automation remains blocked until the security rule is clear.",
+            "default_note": "Approved display-only MFA code capture with audit logging; clipboard/auto-entry requires later approval.",
+        }
+    if "mim wall mobile" in title:
+        return {
+            "decision": "Choose the first mobile assistant capability phase.",
+            "reason": "The mobile assistant list is broad and includes permissions-heavy features. MIM/TOD need a first phase to avoid a giant unfinished build.",
+            "choices": "Communication, scheduling/tasks, search/files, device control, security, or defer.",
+            "impact": "Without a phase choice, MIM/TOD should keep this queued and avoid unfocused implementation.",
+            "default_note": "Start with communication and task extraction; defer device-control and security features.",
+        }
+    return {
+        "decision": blocker or "Dave decision required.",
+        "reason": "This project is marked Dave Needed and needs an operator decision before MIM/TOD should continue.",
+        "choices": "Approve, reject, delegate, wait on external dependency, or add clarification.",
+        "impact": "The project remains blocked or queued until the decision is recorded.",
+        "default_note": "",
+    }
+
+
 def _project_progress_basis(row: StudioProject | dict[str, Any]) -> str:
     metadata = _project_metadata(row)
     status = str(row.status if isinstance(row, StudioProject) else row.get("status") or "").strip().lower()
@@ -5750,6 +5794,26 @@ def _projects_body(state: dict[str, Any]) -> str:
 
     selected_html = ""
     if selected_project:
+        dave_action_html = ""
+        if selected_project.get("dave_needed"):
+            dave_request = _project_dave_request(selected_project)
+            dave_action_html = f"""
+          <section class="attention-item" style="margin:12px 0;">
+            <small>Dave Needed</small>
+            <strong>{_html(dave_request.get("decision", ""))}</strong>
+            <div class="muted">{_html(dave_request.get("reason", ""))}</div>
+            <div class="muted"><strong>Choices:</strong> {_html(dave_request.get("choices", ""))}</div>
+            <div class="muted"><strong>Impact:</strong> {_html(dave_request.get("impact", ""))}</div>
+            <form method="post" action="/studio/projects/{_html(selected_project.get("id", ""))}/dave-action" class="form-grid" style="margin-top:10px;">
+              <label>Decision<select name="decision"><option value="approved">Approve</option><option value="approved_limited">Approve Limited</option><option value="rejected">Reject</option><option value="delegated">Delegate</option><option value="waiting_external">Waiting External</option><option value="clarification">Clarification</option></select></label>
+              <label>Owner / Delegate<input name="delegate_to" placeholder="optional"></label>
+              <label class="wide">Decision Note<textarea name="decision_note">{_html(dave_request.get("default_note", ""))}</textarea></label>
+              <div class="actions wide">
+                <button class="button primary" type="submit">Record Decision</button>
+              </div>
+            </form>
+          </section>
+            """
         event_rows = "".join(
             f"""
             <article class="attention-item">
@@ -5769,6 +5833,7 @@ def _projects_body(state: dict[str, Any]) -> str:
             <div><strong>{_html(selected_project.get("movement_state", ""))}</strong><br><span class="muted">MIM/TOD {_html(selected_project.get("mim_tod_event_count", 0))} / Codex {_html(selected_project.get("codex_event_count", 0))} / Reconciled {_html(selected_project.get("reconciled_event_count", 0))} / total {_html(selected_project.get("follow_up_event_count", 0))}/{_html(selected_project.get("event_count", 0))}</span></div>
             <span class="health-pill {'red' if str(selected_project.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(selected_project.get("progress_percent", 0))}% / {_html(selected_project.get("progress_basis", ""))}</span>
           </div>
+          {dave_action_html}
           <form method="post" action="/studio/projects/{_html(selected_project.get("id", ""))}/update" class="form-grid">
             <label>Status<input name="status" value="{_html(selected_project.get("status", ""))}"></label>
             <label>Owner<input name="owner" value="{_html(selected_project.get("owner", ""))}"></label>
@@ -6712,6 +6777,77 @@ async def _studio_navigation_target(db: AsyncSession, prompt: str, page_context:
     return None
 
 
+async def _studio_project_blocker_reply(db: AsyncSession, prompt: str) -> dict[str, Any] | None:
+    prompt_lower = str(prompt or "").lower()
+    project_intent = any(term in prompt_lower for term in ["project", "blocker", "blocked", "what do you need", "need from me", "dave approval", "continue"])
+    if not project_intent:
+        return None
+    result = await db.execute(select(StudioProject).where(StudioProject.status != "deleted").order_by(StudioProject.id.desc()).limit(80))
+    projects = result.scalars().all()
+    best: StudioProject | None = None
+    best_score = 0
+    prompt_tokens = {token for token in prompt_lower.replace("/", " ").replace("-", " ").split() if len(token) >= 4}
+    for project in projects:
+        title_lower = str(project.title or "").lower()
+        title_tokens = {token for token in title_lower.replace("/", " ").replace("-", " ").split() if len(token) >= 4}
+        score = len(prompt_tokens & title_tokens)
+        if title_lower and title_lower in prompt_lower:
+            score += 10
+        if "account manager" in prompt_lower and "account manager" in title_lower:
+            score += 8
+        if "reports db" in prompt_lower and "reports db" in title_lower:
+            score += 8
+        if score > best_score:
+            best_score = score
+            best = project
+    if best is None or best_score < 2:
+        return None
+    project_dict = _studio_project_to_dict(best)
+    project_dict["blocker"] = _project_blocker(best)
+    project_dict["progress_percent"] = _project_progress(best)
+    project_dict["progress_basis"] = _project_progress_basis(best)
+    dave_request = _project_dave_request(project_dict)
+    if best.dave_needed:
+        reply = (
+            f"Project mode: {best.title}.\n\n"
+            f"What I need from Dave:\n- {dave_request['decision']}\n\n"
+            f"Why:\n- {dave_request['reason']}\n\n"
+            f"Choices:\n- {dave_request['choices']}\n\n"
+            f"Impact if no decision:\n- {dave_request['impact']}\n\n"
+            f"Next: open this project and use the Dave Needed decision box to record approve, approve limited, reject, delegate, waiting external, or clarification."
+        )
+    else:
+        reply = (
+            f"Project mode: {best.title}.\n\n"
+            f"Current blocker: {project_dict.get('blocker') or 'none'}.\n"
+            f"Dave needed: no.\n"
+            f"Next action: {best.next_action or 'No next action is recorded yet.'}"
+        )
+    return {
+        "ok": True,
+        "source": "studio_project_blocker_context",
+        "response_mode": "project_blocker",
+        "mim_interface": {
+            "reply_text": reply,
+            "page_context": "Studio Projects",
+            "surface": "studio",
+        },
+        "navigation": {
+            "href": f"/studio/projects?project_id={best.id}",
+            "label": "Projects",
+            "target_area": "projects",
+            "auto_redirect": False,
+            "reason": "This is a project blocker / Dave decision question.",
+        },
+        "evidence": {
+            "project_id": best.id,
+            "project_title": best.title,
+            "dave_needed": best.dave_needed,
+            "blocker": project_dict.get("blocker"),
+        },
+    }
+
+
 @router.post("/studio/api/mim/chat")
 async def studio_mim_chat_api(
     payload: StudioMimChatRequest,
@@ -6721,6 +6857,9 @@ async def studio_mim_chat_api(
     prompt = payload.prompt.strip()
     page_context_lower = page_context.lower()
     prompt_lower = prompt.lower()
+    project_blocker_reply = await _studio_project_blocker_reply(db, prompt)
+    if project_blocker_reply is not None:
+        return project_blocker_reply
     navigation = await _studio_navigation_target(db, prompt, page_context)
     if navigation is not None:
         label = str(navigation.get("label") or "that Studio page")
@@ -7123,6 +7262,92 @@ async def delete_studio_project_form(
     db.add(StudioProjectEvent(project_id=row.id, event_type="deleted", actor="Dave", title="Project deleted"))
     await db.commit()
     return RedirectResponse(url="/studio/projects", status_code=303)
+
+
+@router.post("/studio/projects/{project_id}/dave-action")
+async def studio_project_dave_action_form(
+    project_id: int,
+    decision: str = Form("approved"),
+    delegate_to: str = Form(""),
+    decision_note: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    row = await db.get(StudioProject, project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="studio_project_not_found")
+    decision_value = decision.strip().lower() or "approved"
+    note = decision_note.strip()
+    delegate = delegate_to.strip()
+    metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+    metadata = dict(metadata)
+    metadata["user_modified"] = True
+    metadata["last_dave_decision"] = decision_value
+    metadata["last_dave_decision_at"] = _utc_now()
+    if note:
+        metadata["last_dave_decision_note"] = note
+    if delegate:
+        metadata["delegate_to"] = delegate
+
+    actionable = decision_value in {"approved", "approved_limited", "rejected", "delegated"}
+    if decision_value == "approved":
+        row.dave_needed = False
+        metadata["blocker"] = "none"
+        metadata["work_state"] = "ready_for_tod"
+        row.status = "working"
+        row.next_action = "TOD should continue with the approved rule and publish implementation/validation evidence."
+    elif decision_value == "approved_limited":
+        row.dave_needed = False
+        metadata["blocker"] = "limited approval recorded; sensitive access outside the note remains blocked"
+        metadata["work_state"] = "ready_for_tod"
+        row.status = "working"
+        row.next_action = "TOD should implement only the approved limited scope and leave excluded sensitive access blocked."
+    elif decision_value == "rejected":
+        row.dave_needed = False
+        metadata["blocker"] = "Dave rejected the requested approval"
+        metadata["work_state"] = "blocked"
+        row.status = "blocked"
+        row.next_action = "MIM should revise scope or propose an alternate path that avoids the rejected access."
+    elif decision_value == "delegated":
+        row.dave_needed = bool(not delegate)
+        metadata["blocker"] = f"delegated to {delegate}" if delegate else "delegation target needed"
+        metadata["work_state"] = "waiting_on_delegate" if delegate else "waiting_on_dave"
+        row.status = "waiting_external" if delegate else "blocked"
+        row.next_action = f"Follow up with {delegate} for approval and record the result." if delegate else "Add the delegate/owner who can approve this."
+    elif decision_value == "waiting_external":
+        row.dave_needed = False
+        metadata["blocker"] = note or "waiting on external dependency"
+        metadata["work_state"] = "waiting_external"
+        row.status = "waiting_external"
+        row.next_action = "Track the external dependency and remind on the project follow-through schedule."
+    else:
+        row.dave_needed = True
+        metadata["blocker"] = note or metadata.get("blocker") or "clarification needed from Dave"
+        metadata["work_state"] = "waiting_on_dave"
+        row.status = "blocked"
+        row.next_action = "MIM should ask the narrow follow-up question needed to unblock the project."
+
+    row.metadata_json = metadata
+    event_title = f"Dave decision: {decision_value.replace('_', ' ')}"
+    detail_parts = [note]
+    if delegate:
+        detail_parts.append(f"Delegate/owner: {delegate}")
+    db.add(
+        StudioProjectEvent(
+            project_id=row.id,
+            event_type="dave_decision",
+            actor="Dave",
+            title=event_title,
+            detail="\n".join(part for part in detail_parts if part).strip() or event_title,
+            metadata_json={
+                "source": "studio_projects_dave_action_form",
+                "decision": decision_value,
+                "delegate_to": delegate,
+                "movement_event": actionable,
+            },
+        )
+    )
+    await db.commit()
+    return RedirectResponse(url=f"/studio/projects?project_id={row.id}", status_code=303)
 
 
 @router.post("/studio/projects/{project_id}/events")

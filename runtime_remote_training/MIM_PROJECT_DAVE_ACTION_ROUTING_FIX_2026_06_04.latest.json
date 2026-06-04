@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-06-04T10:35:00-07:00",
+  "artifact_id": "MIM-PROJECT-DAVE-ACTION-ROUTING-FIX-2026-06-04",
+  "status": "implemented",
+  "operator_observation": "Dave opened projects that required his attention but had no practical place to approve, reject, delegate, or clarify what MIM/TOD needed from him. MIM also answered an Account Manager project blocker question as a Reports/App Metrics question.",
+  "root_cause": [
+    "Selected project view had a generic edit/note form but no Dave decision workflow.",
+    "MIM Studio chat routed AgentMIM/comm_app words to Reports mode before checking project blocker intent."
+  ],
+  "fix": [
+    "Add Dave Needed decision panel to selected projects marked dave_needed.",
+    "Add decision choices: approve, approve limited, reject, delegate, waiting external, clarification.",
+    "Record Dave decisions as project events and update blocker, work_state, dave_needed, status, and next_action.",
+    "Add project-blocker chat path before Reports routing so MIM answers what it needs from Dave for a project."
+  ],
+  "validation": [
+    "AgentMIM Account Manager Roles renders a Dave Needed decision box.",
+    "MIM replies in project_blocker mode for the Account Manager Roles blocker question.",
+    "MIM answer now states the approval needed, reason, choices, impact, and next action."
+  ],
+  "training_lesson": "When Dave asks what MIM needs from him for a project blocker, MIM must answer from the project ledger and operator-action contract before any Reports/App Metrics routing."
+}
