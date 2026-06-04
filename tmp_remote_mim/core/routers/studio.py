@@ -631,6 +631,70 @@ def _load_text(name: str, limit: int = 1200) -> str:
     return ""
 
 
+def _studio_data_audit_state() -> dict[str, Any]:
+    result = _load_json("MIM_STUDIO_DATA_AUDIT_AND_RECONCILIATION_RESULT.latest.json")
+    objective = _load_json("MIM_STUDIO_DATA_AUDIT_AND_RECONCILIATION_V1.latest.json")
+    pages = result.get("pages") if isinstance(result.get("pages"), list) else []
+    page_map = {
+        str(page.get("page") or "").strip().lower(): page
+        for page in pages
+        if isinstance(page, dict)
+    }
+    return {
+        "result": result,
+        "objective": objective,
+        "pages": page_map,
+        "status": _first_text(result.get("status"), objective.get("status"), default="not_run"),
+        "generated_at": _first_text(result.get("generated_at"), objective.get("created_at"), default=""),
+        "generated_at_la": _la_time(_first_text(result.get("generated_at"), objective.get("created_at"), default="")),
+    }
+
+
+def _page_audit_sources(state: dict[str, Any], page_key: str) -> list[dict[str, Any]]:
+    audit = state.get("data_audit") if isinstance(state.get("data_audit"), dict) else _studio_data_audit_state()
+    pages = audit.get("pages") if isinstance(audit.get("pages"), dict) else {}
+    page = pages.get(page_key) if isinstance(pages.get(page_key), dict) else {}
+    sources = page.get("sources") if isinstance(page.get("sources"), list) else []
+    return [source for source in sources if isinstance(source, dict)]
+
+
+def _data_sources_html(state: dict[str, Any], page_key: str) -> str:
+    audit = state.get("data_audit") if isinstance(state.get("data_audit"), dict) else _studio_data_audit_state()
+    sources = _page_audit_sources(state, page_key)
+    if not sources:
+        sources = [
+            {
+                "label": "Studio Data Audit",
+                "kind": "audit",
+                "path": "MIM_STUDIO_DATA_AUDIT_AND_RECONCILIATION_RESULT.latest.json",
+                "exists": bool((audit.get("result") or {})),
+                "status": audit.get("status", "not_run"),
+                "last_write_utc": audit.get("generated_at", ""),
+            }
+        ]
+    rows = "".join(
+        f"""
+        <tr>
+          <td><strong>{_html(source.get("label", ""))}</strong><div class="muted">{_html(source.get("kind", ""))}</div></td>
+          <td><span class="health-pill {'green' if source.get("exists") else 'red'}">{'found' if source.get("exists") else 'missing'}</span><div class="muted">{_html(source.get("status", ""))}</div></td>
+          <td>{_html(source.get("path", ""))}</td>
+          <td>{_html(_la_time(source.get("generated_at") or source.get("last_write_utc"), default=str(source.get("last_write_utc") or "")))}</td>
+        </tr>
+        """
+        for source in sources
+    )
+    return f"""
+    <section class="card" style="margin-bottom:14px;">
+      <h2>Sources</h2>
+      <div class="muted">Audit: {_html(audit.get("status", "not_run"))} / {_html(audit.get("generated_at_la", ""))}</div>
+      <table class="score-table" style="margin-top:10px;">
+        <thead><tr><th>Source</th><th>Status</th><th>Path</th><th>Time</th></tr></thead>
+        <tbody>{rows}</tbody>
+      </table>
+    </section>
+    """
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1585,6 +1649,7 @@ def _host_ekg_state() -> dict[str, Any]:
 async def _studio_systems_state(db: AsyncSession) -> dict[str, Any]:
     host = _host_ekg_state()
     apps_state = await _studio_apps_state(db)
+    data_audit = _studio_data_audit_state()
     scan = _load_json("MIM_TOD_APP_SOURCE_SCAN.latest.json")
     tod_local = _load_json("TOD_LOCAL_MACHINE_STATUS.latest.json")
     pythonanywhere = _load_json("MIM_ROBOTICS_PYTHONANYWHERE_STATUS.latest.json")
@@ -1716,6 +1781,7 @@ async def _studio_systems_state(db: AsyncSession) -> dict[str, Any]:
         },
         "dispatcher": dispatcher,
         "tod_training": tod_training,
+        "data_audit": data_audit,
         "attention": attention,
         "health_rows": health_rows,
         "dirty_apps": dirty_apps,
@@ -1839,6 +1905,7 @@ def _systems_body(state: dict[str, Any]) -> str:
     next_reset = _first_text(cpu.get("next_reset_time"), default="unknown")
     return f"""
     <section class="grid four">{top_cards}</section>
+    {_data_sources_html(state, "health")}
     <section class="grid two" style="margin-top:14px;">
       <article class="card">
         <h2>Ecosystem Health</h2>
@@ -4584,6 +4651,7 @@ async def _studio_projects_state(
         "projects": visible_project_rows,
         "signals": signal_rows,
         "counts": counts,
+        "data_audit": _studio_data_audit_state(),
         "reconciled_count": reconciled_count,
         "dispatched_count": dispatched_count,
         "tod_bound_count": tod_bound_count,
@@ -4676,7 +4744,7 @@ async def _studio_apps_state(db: AsyncSession) -> dict[str, Any]:
         f"{counts['dirty_repos']} have dirty worktrees, and "
         f"{counts['db_connected']} have a proven primary DB table in the current Studio connection."
     )
-    return {"apps": apps, "counts": counts, "summary": summary}
+    return {"apps": apps, "counts": counts, "summary": summary, "data_audit": _studio_data_audit_state()}
 
 
 def _studio_document_to_dict(row: StudioDocument) -> dict[str, Any]:
@@ -4971,6 +5039,7 @@ async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
     reflection = _load_json("MIM_TOD_HOURLY_REFLECTION.latest.json")
     typo_smoke = _load_json("MIM_TYPO_TOLERANT_INTENT_SMOKE.latest.json")
     blocker_summary = _load_text("TOD_BLOCKER_RESOLUTION_OPERATOR_SUMMARY.latest.md", limit=900)
+    data_audit = _studio_data_audit_state()
 
     mim_training = directive.get("mim_training") if isinstance(directive.get("mim_training"), dict) else {}
     tod_training = directive.get("tod_training") if isinstance(directive.get("tod_training"), dict) else {}
@@ -5049,6 +5118,7 @@ async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
         "typo": typo_summary,
         "blocker_summary": blocker_summary,
         "evidence_docs": docs,
+        "data_audit": data_audit,
     }
 
 
@@ -5787,6 +5857,7 @@ async def _studio_reports_state(
         "canvases": [_studio_report_canvas_to_dict(row) for row in canvases],
         "selected_canvas": selected_canvas,
         "prompt": prompt,
+        "data_audit": _studio_data_audit_state(),
     }
 
 
@@ -5958,6 +6029,7 @@ def _projects_body(state: dict[str, Any]) -> str:
 
     return f"""
     <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{stats_html}</section>
+    {_data_sources_html(state, "projects")}
     <section class="card" style="margin-bottom:14px;">
       <h2>Project Actions</h2>
       <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
@@ -6315,6 +6387,7 @@ def _apps_body(state: dict[str, Any], selected_app_key: str = "") -> str:
         app_cards = '<article class="card"><h3>No apps registered</h3><p>Add the first app source so MIM/TOD know where it lives and how to inspect it.</p></article>'
     return f"""
     <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>
+    {_data_sources_html(state, "apps")}
     <section class="card hero-card" style="margin-bottom:14px;">
       <div class="label">MIM App Registry</div>
       <h2>Applications MIM and TOD are responsible for</h2>
@@ -6418,6 +6491,7 @@ def _reports_body(state: dict[str, Any]) -> str:
         <section class="card">
           <h2>Report Canvas</h2>
         </section>
+        {_data_sources_html(state, "reports")}
         {saved_section}
         """
 
@@ -6464,6 +6538,7 @@ def _reports_body(state: dict[str, Any]) -> str:
       <p>{_html(dataset.get("summary", ""))}</p>
       <div class="muted">{_html(dataset.get("generated_at", ""))}</div>
     </section>
+    {_data_sources_html(state, "reports")}
     {stats_section}
     {findings_actions_section}
     {table_section}
@@ -6620,6 +6695,7 @@ def _training_body(state: dict[str, Any]) -> str:
       <div class="label">Resolution Ownership</div>
       <p>{_html(state.get("resolution_owner_model", ""))}</p>
     </section>
+    {_data_sources_html(state, "training")}
     <section class="card" style="margin-top:14px;">
       <h2>What Needs Attention</h2>
       <div class="attention-list" style="margin-top:10px;">{attention_html}</div>

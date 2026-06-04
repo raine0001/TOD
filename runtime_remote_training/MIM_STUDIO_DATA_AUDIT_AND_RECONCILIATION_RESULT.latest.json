@@ -1,0 +1,286 @@
+{
+    "artifact_id":  "MIM-STUDIO-DATA-AUDIT-AND-RECONCILIATION-RESULT",
+    "objective_id":  "MIM-STUDIO-DATA-AUDIT-AND-RECONCILIATION-V1",
+    "generated_at":  "2026-06-04T19:52:56Z",
+    "status":  "passed_with_watch",
+    "owner":  "TOD",
+    "accountable_to":  "MIM",
+    "operator":  "Dave",
+    "summary":  "Studio pages now have a source-led audit target: every displayed metric should resolve to a DB table, artifact, registry, or API source.",
+    "latest_tod_task":  {
+                            "request_id":  "objective-3458-task-1780598281",
+                            "task_id":  "objective-3458-task-1780598281",
+                            "status":  "succeeded"
+                        },
+    "context_sync":  {
+                         "validation_status":  "passed",
+                         "sync_status":  "ok_with_truth_repair",
+                         "suspect_count":  0
+                     },
+    "training":  {
+                     "scoreboard_generated_at":  "2026-06-04T19:51:48Z",
+                     "scoreboard_status":  "needs_attention_with_training_active"
+                 },
+    "pages":  [
+                  {
+                      "page":  "training",
+                      "route":  "/studio/training",
+                      "status":  "source_traceable",
+                      "owner":  "MIM + TOD",
+                      "sources":  [
+                                      {
+                                          "label":  "Training Scoreboard",
+                                          "kind":  "artifact",
+                                          "path":  "runtime_remote_training/MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+                                          "exists":  true,
+                                          "last_write_utc":  "2026-06-04T19:51:48Z",
+                                          "generated_at":  "2026-06-04T19:51:48Z",
+                                          "status":  "needs_attention_with_training_active",
+                                          "bytes":  12634
+                                      },
+                                      {
+                                          "label":  "Hourly Reflection",
+                                          "kind":  "artifact",
+                                          "path":  "runtime_remote_training/MIM_TOD_HOURLY_REFLECTION.latest.json",
+                                          "exists":  true,
+                                          "last_write_utc":  "2026-06-04T19:04:26Z",
+                                          "generated_at":  "2026-06-04T19:04:23Z",
+                                          "status":  "available",
+                                          "bytes":  50884
+                                      },
+                                      {
+                                          "label":  "Context Sync Validation",
+                                          "kind":  "artifact",
+                                          "path":  "tod/out/context-sync/listener/MIM_CONTEXT_SYNC_DATA_ACCURACY_VALIDATION.latest.json",
+                                          "exists":  true,
+                                          "last_write_utc":  "2026-06-04T19:52:45Z",
+                                          "generated_at":  "2026-06-04T19:52:45Z",
+                                          "status":  "passed",
+                                          "bytes":  6787
+                                      },
+                                      {
+                                          "label":  "TOD Validation Result",
+                                          "kind":  "artifact",
+                                          "path":  "runtime_remote_training/TOD_VALIDATION_RESULT.latest.json",
+                                          "exists":  true,
+                                          "last_write_utc":  "2026-05-21T19:07:20Z",
+                                          "generated_at":  "2026-05-21T19:07:20Z",
+                                          "status":  "passed",
+                                          "bytes":  4733
+                                      }
+                                  ],
+                      "findings":  [
+                                       "Training must show source files for scoreboard, reflection, TOD validation, and context-sync validation."
+                                   ]
+                  },
+                  {
+                      "page":  "health",
+                      "route":  "/studio/health",
+                      "status":  "source_traceable",
+                      "owner":  "TOD",
+                      "sources":  [
+                                      {
+                                          "label":  "Context Sync Status",
+                                          "kind":  "artifact",
+                                          "path":  "tod/out/context-sync/MIM_CONTEXT_SYNC_STATUS.latest.json",
+                                          "exists":  true,
+                                          "last_write_utc":  "2026-06-04T19:52:45Z",
+                                          "generated_at":  "",
+                                          "status":  "available",
+                                          "bytes":  1149
+                                      },
+                                      {
+                                          "label":  "Context Sync Validation",
+                                          "kind":  "artifact",
+                                          "path":  "tod/out/context-sync/listener/MIM_CONTEXT_SYNC_DATA_ACCURACY_VALIDATION.latest.json",
+                                          "exists":  true,
+                                          "last_write_utc":  "2026-06-04T19:52:45Z",
+                                          "generated_at":  "2026-06-04T19:52:45Z",
+                                          "status":  "passed",
+                                          "bytes":  6787
+                                      },
+                                      {
+                                          "label":  "TOD Integration Status",
+                                          "kind":  "artifact",
+                                          "path":  "tod/out/context-sync/listener/TOD_INTEGRATION_STATUS.latest.json",
+                                          "exists":  true,
+                                          "last_write_utc":  "2026-06-04T19:51:58Z",
+                                          "generated_at":  "2026-06-04T19:51:56.3351642Z",
+                                          "status":  "available",
+                                          "bytes":  25836
+                                      },
+                                      {
+                                          "label":  "TOD Latest Result",
+                                          "kind":  "artifact",
+                                          "path":  "tod/out/context-sync/listener/TOD_MIM_TASK_RESULT.latest.json",
+                                          "exists":  true,
+                                          "last_write_utc":  "2026-06-04T18:39:22Z",
+                                          "generated_at":  "2026-06-04T18:39:21.9138850Z",
+                                          "status":  "succeeded",
+                                          "bytes":  14111
+                                      }
+                                  ],
+                      "findings":  [
+                                       "Health must expose the current context-sync validation and latest TOD task/source status."
+                                   ]
+                  },
+                  {
+                      "page":  "projects",
+                      "route":  "/studio/projects",
+                      "status":  "source_traceable",
+                      "owner":  "MIM + TOD",
+                      "sources":  [
+                                      {
+                                          "label":  "Studio Projects Table",
+                                          "kind":  "database_table",
+                                          "path":  "studio_projects",
+                                          "exists":  true,
+                                          "last_write_utc":  "",
+                                          "generated_at":  "",
+                                          "status":  "queried_by_page",
+                                          "bytes":  0
+                                      },
+                                      {
+                                          "label":  "Studio Project Events Table",
+                                          "kind":  "database_table",
+                                          "path":  "studio_project_events",
+                                          "exists":  true,
+                                          "last_write_utc":  "",
+                                          "generated_at":  "",
+                                          "status":  "queried_by_page",
+                                          "bytes":  0
+                                      },
+                                      {
+                                          "label":  "TOD Latest Result",
+                                          "kind":  "artifact",
+                                          "path":  "tod/out/context-sync/listener/TOD_MIM_TASK_RESULT.latest.json",
+                                          "exists":  true,
+                                          "last_write_utc":  "2026-06-04T18:39:22Z",
+                                          "generated_at":  "2026-06-04T18:39:21.9138850Z",
+                                          "status":  "succeeded",
+                                          "bytes":  14111
+                                      }
+                                  ],
+                      "findings":  [
+                                       "Project counts, progress, movement, and Dave-needed flags must show DB/table and event-source accountability."
+                                   ]
+                  },
+                  {
+                      "page":  "apps",
+                      "route":  "/studio/apps",
+                      "status":  "source_traceable",
+                      "owner":  "TOD",
+                      "sources":  [
+                                      {
+                                          "label":  "App Source Registry",
+                                          "kind":  "code_registry",
+                                          "path":  "tmp_remote_mim/core/routers/studio.py::APP_SOURCE_REGISTRY",
+                                          "exists":  true,
+                                          "last_write_utc":  "",
+                                          "generated_at":  "",
+                                          "status":  "registered",
+                                          "bytes":  0
+                                      },
+                                      {
+                                          "label":  "TOD App Source Scan",
+                                          "kind":  "artifact",
+                                          "path":  "runtime_remote_training/MIM_TOD_APP_SOURCE_SCAN.latest.json",
+                                          "exists":  true,
+                                          "last_write_utc":  "2026-06-03T00:27:57Z",
+                                          "generated_at":  "2026-06-03T00:27:56Z",
+                                          "status":  "available",
+                                          "bytes":  7672
+                                      },
+                                      {
+                                          "label":  "AgentMIM Verification",
+                                          "kind":  "artifact",
+                                          "path":  "shared_state/agentmim/comm_app_verification.latest.json",
+                                          "exists":  true,
+                                          "last_write_utc":  "2026-03-21T18:18:31Z",
+                                          "generated_at":  "2026-03-21T18:18:31.6809226Z",
+                                          "status":  "available",
+                                          "bytes":  14846
+                                      }
+                                  ],
+                      "findings":  [
+                                       "Apps must separate registered source, TOD scan evidence, and DB binding proof."
+                                   ]
+                  },
+                  {
+                      "page":  "reports",
+                      "route":  "/studio/reports",
+                      "status":  "source_traceable",
+                      "owner":  "MIM",
+                      "sources":  [
+                                      {
+                                          "label":  "Report Dataset Registry",
+                                          "kind":  "code_registry",
+                                          "path":  "tmp_remote_mim/core/routers/studio.py::REPORT_DATASETS",
+                                          "exists":  true,
+                                          "last_write_utc":  "",
+                                          "generated_at":  "",
+                                          "status":  "registered",
+                                          "bytes":  0
+                                      },
+                                      {
+                                          "label":  "Report Canvases Table",
+                                          "kind":  "database_table",
+                                          "path":  "studio_report_canvases",
+                                          "exists":  true,
+                                          "last_write_utc":  "",
+                                          "generated_at":  "",
+                                          "status":  "queried_by_page",
+                                          "bytes":  0
+                                      }
+                                  ],
+                      "findings":  [
+                                       "Reports must expose dataset source metadata and generated report source path/API JSON."
+                                   ]
+                  }
+              ],
+    "studio_api_checks":  [
+                              {
+                                  "label":  "Projects State API",
+                                  "kind":  "studio_api",
+                                  "path":  "http://192.168.1.120:18001/studio/api/projects/state",
+                                  "exists":  true,
+                                  "last_write_utc":  "2026-06-04T19:52:57Z",
+                                  "generated_at":  "",
+                                  "status":  "reachable",
+                                  "bytes":  0
+                              },
+                              {
+                                  "label":  "Apps State API",
+                                  "kind":  "studio_api",
+                                  "path":  "http://192.168.1.120:18001/studio/api/apps/state",
+                                  "exists":  true,
+                                  "last_write_utc":  "2026-06-04T19:52:58Z",
+                                  "generated_at":  "",
+                                  "status":  "reachable",
+                                  "bytes":  0
+                              },
+                              {
+                                  "label":  "Reports State API",
+                                  "kind":  "studio_api",
+                                  "path":  "http://192.168.1.120:18001/studio/api/reports/state",
+                                  "exists":  true,
+                                  "last_write_utc":  "2026-06-04T19:52:58Z",
+                                  "generated_at":  "",
+                                  "status":  "reachable",
+                                  "bytes":  0
+                              }
+                          ],
+    "missing_sources":  [
+
+                        ],
+    "accountability_function":  {
+                                    "script":  "scripts/Invoke-StudioDataAudit.ps1",
+                                    "cadence":  "run after context-sync truth repair, after Studio page changes, and during TOD periodic accountability checks",
+                                    "outputs":  [
+                                                    "runtime_remote_training/MIM_STUDIO_DATA_AUDIT_AND_RECONCILIATION_RESULT.latest.json",
+                                                    "runtime_remote_training/MIM_STUDIO_DATA_AUDIT_AND_RECONCILIATION_RESULT.latest.md"
+                                                ],
+                                    "owner":  "TOD"
+                                },
+    "next_action":  "Keep this objective active until Studio Training, Health, Projects, Apps, and Reports expose the audit artifact and source rows in the UI."
+}

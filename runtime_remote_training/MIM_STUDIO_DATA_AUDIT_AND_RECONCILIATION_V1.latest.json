@@ -1,0 +1,42 @@
+{
+  "artifact_id": "MIM-STUDIO-DATA-AUDIT-AND-RECONCILIATION-V1",
+  "objective_id": "MIM-STUDIO-DATA-AUDIT-AND-RECONCILIATION-V1",
+  "created_at": "2026-06-04T12:30:00-07:00",
+  "status": "active",
+  "owner": "MIM",
+  "executor": "TOD",
+  "codex_role": "audit implementation, reconciliation tooling, and validation",
+  "priority": "P0",
+  "goal": "Make every Studio page display accurate, accountable, drillable data with clear source artifacts, DB tables, or runtime files.",
+  "scope": [
+    "Training",
+    "Health",
+    "Projects",
+    "Apps",
+    "Reports",
+    "Documents",
+    "MIM/TOD direct pages where applicable"
+  ],
+  "requirements": [
+    "Data presented on Studio pages must be accurate and accountable.",
+    "Dave must be able to drill down into data and find the source.",
+    "Studio must expose resources that manage the data sources.",
+    "Pages with inaccurate or stale data must be updated.",
+    "TOD must own an ongoing accountability function that audits Studio data freshness and source traceability."
+  ],
+  "initial_truth_anchor": {
+    "context_sync_validation": "tod/out/context-sync/listener/MIM_CONTEXT_SYNC_DATA_ACCURACY_VALIDATION.latest.json",
+    "context_sync_suspect_count": 0,
+    "latest_tod_result_status": "succeeded"
+  },
+  "acceptance_criteria": [
+    "Studio data-source audit artifact lists page, displayed metric, source file/table, freshness, and confidence.",
+    "Training page uses current scoreboard/context-sync validation data and exposes evidence/source links.",
+    "Health page reflects current context-sync validation and integration health with source drilldown.",
+    "Projects page displays source/evidence for project counts and movement status.",
+    "Apps page displays DB binding status and source registry clearly.",
+    "Reports page exposes generated report source metadata.",
+    "TOD accountability script can be run repeatedly without noisy backup churn and publishes latest validation."
+  ],
+  "next_action": "Build and run the Studio data-source audit, patch inaccurate pages, publish validation, and keep the objective active until all audited critical pages have source-traceable data."
+}

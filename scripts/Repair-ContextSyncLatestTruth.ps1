@@ -3,6 +3,7 @@ param(
     [string]$ObjectiveArtifactPath = "runtime_remote_training/MIM_CONTEXT_SYNC_DATA_ACCURACY_REPAIR_2026_06_04.latest.json",
     [int]$FreshWrapperOldEmbeddedMinutes = 180,
     [switch]$WhatIfOnly,
+    [switch]$NoBackup,
     [switch]$EmitJson
 )
 
@@ -79,7 +80,7 @@ function Backup-ThenWriteJson {
         [Parameter(Mandatory = $true)][string]$Reason
     )
     $backupPath = ""
-    if (Test-Path -LiteralPath $PathValue) {
+    if ((-not $NoBackup) -and (Test-Path -LiteralPath $PathValue)) {
         $backupDir = Join-Path (Split-Path -Parent $PathValue) "superseded"
         if (-not (Test-Path -LiteralPath $backupDir)) {
             New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
@@ -249,7 +250,17 @@ $scopedPayload.Add("destination", [string]$contextRootAbs)
 $scopedPayload.Add("sync_scope", "scoped_status_files_plus_latest_truth_repair")
 $scopedPayload.Add("synced_files", @($syncedFilesValue))
 $scopedPayload.Add("latest_truth_repair", $truthRepairPayload)
-$mutations.Add((Backup-ThenWriteJson -PathValue $syncStatusPath -Payload $scopedPayload -Reason "sync_status_scope_truth_repair"))
+$existingTruthRepair = if ($syncStatus.PSObject.Properties["latest_truth_repair"] -and $null -ne $syncStatus.latest_truth_repair) { $syncStatus.latest_truth_repair } else { $null }
+$truthRepairAlreadyCurrent = (
+    $null -ne $existingTruthRepair -and
+    (Get-JsonString -Object $existingTruthRepair -Name "current_request_id") -eq $latestRequestId -and
+    (Get-JsonString -Object $existingTruthRepair -Name "current_task_id") -eq $latestTaskId -and
+    (Get-JsonString -Object $existingTruthRepair -Name "current_result_status") -eq $latestStatus -and
+    (Get-JsonString -Object $existingTruthRepair -Name "repaired_count") -eq $mutationCountText
+)
+if ($mutationCount -gt 0 -or -not $truthRepairAlreadyCurrent) {
+    $mutations.Add((Backup-ThenWriteJson -PathValue $syncStatusPath -Payload $scopedPayload -Reason "sync_status_scope_truth_repair"))
+}
 
 $objectivePayload = Read-JsonFileIfExists -PathValue $objectiveAbs
 if ($null -ne $objectivePayload) {
