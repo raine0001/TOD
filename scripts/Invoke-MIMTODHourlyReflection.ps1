@@ -341,8 +341,25 @@ $artifactNames = @(
     'MIM_OPERATOR_RESPONSE_SYNTHESIS_ENFORCEMENT_STATUS.latest.json',
     'MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json',
     'MIM_TOD_CONTINUITY_MEMORY.latest.json',
-    'MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json'
+    'MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json',
+    'TOD_MIM_TASK_RESULT.latest.json',
+    'TOD_MIM_COMMAND_STATUS.latest.json',
+    'TOD_EXECUTION_TRUTH.latest.json'
 )
+
+$durableReferenceArtifactNames = @(
+    'MIM_TOD_CANONICAL_AUTHORITY_REGISTRY.latest.json',
+    'TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json',
+    'MIM_TOD_CONTINUITY_MEMORY.latest.json',
+    'MIM_OPERATOR_RESPONSE_SYNTHESIS_ENFORCEMENT_STATUS.latest.json',
+    'TOD_MATERIAL_IMPLEMENTATION_PROOF_STATUS.latest.json',
+    'MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json'
+)
+
+$artifactSupersessionMap = @{
+    'TOD_EXECUTION_RESULT.latest.json' = @('TOD_MIM_TASK_RESULT.latest.json', 'TOD_EXECUTION_TRUTH.latest.json')
+    'TOD_VALIDATION_RESULT.latest.json' = @('TOD_MIM_TASK_RESULT.latest.json', 'TOD_MIM_COMMAND_STATUS.latest.json')
+}
 
 $artifacts = @{}
 $sshSession = New-MimSshSessionIfAvailable -EnvPath $envAbs
@@ -372,9 +389,33 @@ $followonCount = if ($followon -and $followon.PSObject.Properties['objective_cou
 $nextObjective = $artifacts['MIM_TOD_NEXT_OBJECTIVE.latest.json'].json
 $proactive = $artifacts['TOD_PROACTIVE_AUTONOMY.latest.json'].json
 
-$freshArtifactCount = @($artifacts.Values | Where-Object { $_.fresh }).Count
+$freshArtifactNames = @($artifacts.GetEnumerator() | Where-Object { $_.Value.exists -and $_.Value.fresh } | ForEach-Object { $_.Key })
 $missingArtifactNames = @($artifacts.GetEnumerator() | Where-Object { -not $_.Value.exists } | ForEach-Object { $_.Key })
-$staleArtifactNames = @($artifacts.GetEnumerator() | Where-Object { $_.Value.exists -and -not $_.Value.fresh } | ForEach-Object { $_.Key })
+$durableCurrentArtifactNames = @($artifacts.GetEnumerator() | Where-Object {
+    $_.Value.exists -and (-not $_.Value.fresh) -and ($durableReferenceArtifactNames -contains $_.Key)
+} | ForEach-Object { $_.Key })
+$supersededCurrentItems = @($artifactSupersessionMap.GetEnumerator() | ForEach-Object {
+    $artifactName = [string]$_.Key
+    $artifactInfo = $artifacts[$artifactName]
+    if (-not $artifactInfo -or -not $artifactInfo.exists -or $artifactInfo.fresh) { return }
+    $freshReplacements = @($_.Value | Where-Object {
+        $replacementInfo = $artifacts[[string]$_]
+        $replacementInfo -and $replacementInfo.exists -and $replacementInfo.fresh
+    })
+    if (@($freshReplacements).Count -gt 0) {
+        [pscustomobject]@{
+            artifact = $artifactName
+            current_by = 'superseded_by_fresh_successor'
+            replacements = @($freshReplacements)
+        }
+    }
+})
+$supersededCurrentArtifactNames = @($supersededCurrentItems | ForEach-Object { $_.artifact })
+$currentArtifactNames = @($freshArtifactNames + $durableCurrentArtifactNames + $supersededCurrentArtifactNames | Select-Object -Unique)
+$freshArtifactCount = @($currentArtifactNames).Count
+$staleArtifactNames = @($artifacts.GetEnumerator() | Where-Object {
+    $_.Value.exists -and ($currentArtifactNames -notcontains $_.Key)
+} | ForEach-Object { $_.Key })
 $freshnessProvenance = @($artifacts.GetEnumerator() | ForEach-Object {
     New-FreshnessProvenanceItem -Name $_.Key -Info $_.Value -NowUtc (Get-Date).ToUniversalTime()
 })
@@ -463,13 +504,22 @@ $payload = [ordered]@{
     freshness = [ordered]@{
         fresh_minutes = $FreshMinutes
         fresh_artifact_count = $freshArtifactCount
+        fresh_artifacts = @($freshArtifactNames)
+        durable_reference_artifacts_current = @($durableCurrentArtifactNames)
+        superseded_artifacts_current = @($supersededCurrentItems)
         missing_artifacts = @($missingArtifactNames)
         stale_artifacts = @($staleArtifactNames)
         sources = @($artifacts.GetEnumerator() | ForEach-Object {
+            $currentReason = if ($_.Value.fresh) { 'fresh' }
+            elseif ($durableCurrentArtifactNames -contains $_.Key) { 'durable_reference' }
+            elseif ($supersededCurrentArtifactNames -contains $_.Key) { 'superseded_by_fresh_successor' }
+            else { 'stale' }
             [pscustomobject]@{
                 name = $_.Key
                 source = $_.Value.source
                 fresh = $_.Value.fresh
+                current = ($currentArtifactNames -contains $_.Key)
+                current_reason = $currentReason
                 age_minutes = $_.Value.age_minutes
             }
         })
@@ -546,28 +596,24 @@ Write-Utf8NoBomText -PathValue $markdownAbs -Text (($mdLines -join "`n") + "`n")
 $publishSession = New-MimSshSessionIfAvailable -EnvPath $envAbs
 if ($publishSession) {
     try {
-        $json64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json + "`n"))
-        $markdownText = (($mdLines -join "`n") + "`n")
-        $md64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($markdownText))
-        $remoteJsonPath = ($RemoteSharedRoot.TrimEnd('/') + '/MIM_TOD_HOURLY_REFLECTION.latest.json')
-        $remoteMdPath = ($RemoteSharedRoot.TrimEnd('/') + '/MIM_TOD_HOURLY_REFLECTION.latest.md')
-        $publishCommand = @"
-python3 - <<'PY'
-import base64, pathlib
-files = {
-    '$remoteJsonPath': '$json64',
-    '$remoteMdPath': '$md64',
-}
-for path, data in files.items():
-    p = pathlib.Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_bytes(base64.b64decode(data))
-print('hourly_reflection_published')
-PY
-"@
-        Invoke-SSHCommand -SessionId $publishSession.SessionId -Command $publishCommand -TimeOut 15 | Out-Null
+        Invoke-SSHCommand -SessionId $publishSession.SessionId -Command "mkdir -p '$($RemoteSharedRoot.TrimEnd('/'))'" -TimeOut 15 | Out-Null
+        $hostName = Get-DotEnvValue -PathValue $envAbs -Name 'MIM_SSH_HOST'
+        $userName = Get-DotEnvValue -PathValue $envAbs -Name 'MIM_SSH_USER'
+        $port = Get-DotEnvValue -PathValue $envAbs -Name 'MIM_SSH_PORT'
+        $password = Get-DotEnvValue -PathValue $envAbs -Name 'MIM_SSH_PASSWORD'
+        if ([string]::IsNullOrWhiteSpace($port)) { $port = '22' }
+        $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+        $credential = [System.Management.Automation.PSCredential]::new($userName, $securePassword)
+        Set-SCPItem -ComputerName $hostName -Port ([int]$port) -Credential $credential -AcceptKey -ConnectionTimeout 30 -Path $outputAbs -Destination $RemoteSharedRoot -Force | Out-Null
+        Set-SCPItem -ComputerName $hostName -Port ([int]$port) -Credential $credential -AcceptKey -ConnectionTimeout 30 -Path $markdownAbs -Destination $RemoteSharedRoot -Force | Out-Null
     }
     catch {
+        $logRoot = Resolve-RepoPath -PathValue 'runtime/logs'
+        if (-not (Test-Path -LiteralPath $logRoot)) {
+            New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+        }
+        $message = "Hourly reflection publish failed: $([string]::Join(' ', @($_.Exception.Message -split '\s+')))"
+        Add-Content -LiteralPath (Join-Path $logRoot 'mim_tod_hourly_reflection.publish_failed.log') -Value $message
     }
     finally {
         Remove-SSHSession -SessionId $publishSession.SessionId | Out-Null

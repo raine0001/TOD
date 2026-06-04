@@ -5084,6 +5084,16 @@ def _format_percent(value: object, default: str = "baseline needed") -> str:
 
 def _scoreboard_metric(score: dict[str, Any], key: str, default: str = "baseline needed") -> str:
     value = score.get(key) if isinstance(score, dict) else None
+    if value is None and isinstance(score, dict) and key.endswith("_today"):
+        metric_key = key[: -len("_today")]
+        metrics = score.get("metrics") if isinstance(score.get("metrics"), dict) else {}
+        row = metrics.get(metric_key) if isinstance(metrics.get(metric_key), dict) else {}
+        value = row.get("today") if isinstance(row, dict) else None
+        if isinstance(value, dict):
+            if value.get("status") == "measured" and value.get("value") is not None:
+                value = value.get("value")
+            else:
+                return _plain_status(value.get("status"), default=default).replace("_", " ")
     return _format_percent(value, default=default)
 
 
@@ -5224,6 +5234,8 @@ def _compose_training_attention_reply(prompt: str, state: dict[str, Any]) -> str
         metric = tod_metrics.get(metric_key) if isinstance(tod_metrics.get(metric_key), dict) else {}
         today = metric.get("today") if isinstance(metric, dict) else None
         if isinstance(today, dict):
+            if today.get("status") == "measured" and today.get("value") is not None:
+                return str(today.get("value"))
             return _plain_status(today.get("status"), default=default).replace("_", " ")
         if today is not None:
             return str(today)
@@ -6537,6 +6549,9 @@ def _training_body(state: dict[str, Any]) -> str:
         value = row.get("today") if isinstance(row, dict) else None
         unit = row.get("unit") if isinstance(row, dict) else ""
         if isinstance(value, dict):
+            if value.get("status") == "measured" and value.get("value") is not None:
+                suffix = "%" if "percent" in str(unit) else ""
+                return f"{value.get('value')}{suffix}"
             return _first_text(value.get("status"), default=default)
         if value is None:
             yesterday = row.get("yesterday") if isinstance(row.get("yesterday"), dict) else {}
@@ -6555,8 +6570,8 @@ def _training_body(state: dict[str, Any]) -> str:
     tod_metrics = [
         ("Blockers Cleared", "baseline needed", today_metric(tod_metrics_source, "blockers_cleared"), "blocker_drill_artifacts"),
         ("False Completions Prevented", "baseline needed", today_metric(tod_metrics_source, "false_completions_prevented"), "drill_004_self_correction"),
-        ("Validated Edits", "baseline needed", today_metric(tod_metrics_source, "validated_edits"), "baseline_needed"),
-        ("No-op Rejections", "baseline needed", today_metric(tod_metrics_source, "no_op_rejections"), "baseline_needed"),
+        ("Validated Edits", "baseline needed", today_metric(tod_metrics_source, "validated_edits"), "tod_result_artifacts"),
+        ("No-op Rejections", "baseline needed", today_metric(tod_metrics_source, "no_op_rejections"), "tod_result_artifacts"),
         ("Evidence Quality", "baseline needed", "needs proof", "blocker_resolution"),
     ]
     return f"""

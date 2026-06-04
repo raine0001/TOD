@@ -1,0 +1,36 @@
+{
+  "artifact_id": "MIM-TOD-TRAINING-ATTENTION-REPAIR-2026-06-04",
+  "generated_at": "2026-06-04T10:55:00-07:00",
+  "status": "applied",
+  "operator_trigger": "Dave asked to fix the training attention findings and apply the repair.",
+  "repairs": [
+    "Classified durable policy/reference artifacts as current instead of stale-by-hourly-clock.",
+    "Marked legacy TOD execution and validation latest artifacts current when fresh successor artifacts exist.",
+    "Pulled fresh TOD result/status/truth artifacts before scoreboard generation.",
+    "Replaced hard-coded TOD baseline-needed validation metrics with measured values from TOD artifacts.",
+    "Fixed Studio Training display so measured zero does not render as baseline-needed.",
+    "Fixed the MIM live-eval expectation that falsely failed when a correct answer did not repeat the literal word MIM."
+  ],
+  "verified_outcome": {
+    "stale_artifacts_before": 12,
+    "stale_artifacts_after": 4,
+    "remaining_stale_artifacts": [
+      "MIM_TOD_NEXT_OBJECTIVE.latest.json",
+      "MIM_TOD_BLOCKER_FOLLOWON_OBJECTIVES.latest.json",
+      "MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json",
+      "MIM_TOD_MORNING_OPERATOR_SUMMARY.latest.json"
+    ],
+    "mim_score_today": {
+      "intent_understood_percent": 100,
+      "answered_question_percent": 100,
+      "internal_jargon_rate_percent": 0,
+      "recommendation_quality_percent": 100
+    },
+    "tod_score_today": {
+      "validated_edits": 0,
+      "no_op_rejections": 0,
+      "metric_status": "measured"
+    }
+  },
+  "lesson_for_mim_tod": "Needs attention must point to live-owned work. Stable policies should not be treated as hourly stale work, superseded execution files should point to their successor evidence, and measured zero is better than baseline-needed when the evidence lane can prove the count."
+}

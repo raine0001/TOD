@@ -20,6 +20,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 TRAINING_ROOT = ROOT / "runtime_remote_training"
 BLOCKER_ROOT = TRAINING_ROOT / "blocked_objective_training"
+RUNTIME_SHARED_ROOT = ROOT / "runtime" / "shared"
 
 
 def utc_now() -> str:
@@ -36,6 +37,26 @@ def load_json(path: Path) -> dict[str, Any]:
         return {}
 
 
+def load_first_json(paths: list[Path]) -> dict[str, Any]:
+    for path in paths:
+        payload = load_json(path)
+        if payload:
+            return payload
+    return {}
+
+
+def parse_json_text(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
 def pct(numerator: int, denominator: int) -> int | None:
     if denominator <= 0:
         return None
@@ -46,6 +67,13 @@ def baseline_needed(reason: str) -> dict[str, Any]:
     return {"value": None, "status": "baseline_needed", "reason": reason}
 
 
+def measured_count(value: int, source: str, reason: str | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {"value": value, "status": "measured", "source": source}
+    if reason:
+        payload["reason"] = reason
+    return payload
+
+
 def sanitize_operator_text(value: Any) -> str:
     text = str(value or "")
     text = re.sub(r"\btask\s+\d{3,}\b", "the inspected task", text, flags=re.IGNORECASE)
@@ -53,6 +81,73 @@ def sanitize_operator_text(value: Any) -> str:
     text = re.sub(r"\bobjective-\d+\b", "the active objective", text, flags=re.IGNORECASE)
     text = re.sub(r"\brecommendation\s+\d{2,}\b", "the newest improvement recommendation", text, flags=re.IGNORECASE)
     return text
+
+
+def tod_artifact_metric_snapshot() -> dict[str, Any]:
+    task_result = load_first_json(
+        [
+            TRAINING_ROOT / "TOD_MIM_TASK_RESULT.latest.json",
+            RUNTIME_SHARED_ROOT / "TOD_MIM_TASK_RESULT.latest.json",
+        ]
+    )
+    command_status = load_first_json(
+        [
+            TRAINING_ROOT / "TOD_MIM_COMMAND_STATUS.latest.json",
+            RUNTIME_SHARED_ROOT / "TOD_MIM_COMMAND_STATUS.latest.json",
+        ]
+    )
+    execution_result = load_first_json(
+        [
+            TRAINING_ROOT / "TOD_EXECUTION_RESULT.latest.json",
+            RUNTIME_SHARED_ROOT / "TOD_EXECUTION_RESULT.latest.json",
+        ]
+    )
+    validation_result = load_first_json(
+        [
+            TRAINING_ROOT / "TOD_VALIDATION_RESULT.latest.json",
+            RUNTIME_SHARED_ROOT / "TOD_VALIDATION_RESULT.latest.json",
+        ]
+    )
+    artifacts = [task_result, command_status, execution_result, validation_result]
+    changed_file_sets = []
+    artifact_write_sets = []
+    for payload in artifacts:
+        if not isinstance(payload, dict):
+            continue
+        changed_files = payload.get("changed_files")
+        if isinstance(changed_files, list):
+            changed_file_sets.append(changed_files)
+        artifact_writes = payload.get("artifact_writes")
+        if isinstance(artifact_writes, list):
+            artifact_write_sets.append(artifact_writes)
+    validator = task_result.get("validator") if isinstance(task_result.get("validator"), dict) else {}
+    validator_output = parse_json_text(validator.get("output"))
+    validator_checks = validator_output.get("checks") if isinstance(validator_output.get("checks"), list) else []
+    validator_passed = bool(validator.get("passed")) or str(validation_result.get("status") or "").lower() == "passed"
+    has_validated_change = bool(validator_passed and (changed_file_sets or artifact_write_sets))
+    no_op_haystack = json.dumps(artifacts, sort_keys=True, default=str).lower()
+    no_op_rejections = 1 if "no_op_rejected" in no_op_haystack else 0
+    return {
+        "source": "tod_result_artifacts",
+        "task_result_generated_at": task_result.get("generated_at"),
+        "command_status_generated_at": command_status.get("generated_at"),
+        "validator_passed": validator_passed,
+        "validator_check_count": len(validator_checks),
+        "validated_edits": measured_count(
+            1 if has_validated_change else 0,
+            "tod_result_artifacts",
+            (
+                "latest TOD result has passing validation and changed-file/artifact-write evidence"
+                if has_validated_change
+                else "latest TOD validation is measured, but no changed-file/artifact-write evidence was present"
+            ),
+        ),
+        "no_op_rejections": measured_count(
+            no_op_rejections,
+            "tod_result_artifacts",
+            "counted no_op_rejected classifications visible in latest TOD result/status artifacts",
+        ),
+    }
 
 
 def post_gateway(base_url: str, prompt: str) -> str:
@@ -87,7 +182,7 @@ def evaluate_mim(base_url: str | None) -> dict[str, Any]:
         {
             "id": "training_status",
             "prompt": "how is training going MIM?",
-            "expected": ["training", "mim", "tod", "blocker"],
+            "expected": ["training", "tod", "blocker"],
             "recommendation": False,
         },
         {
@@ -240,8 +335,9 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
 
     meaningful_inspection = bool(((drill4.get("validation") or {}).get("meaningful_result_detected")))
     false_completion_prevented = 1 if meaningful_inspection else 0
-    no_op_rejections = baseline_needed("no-op rejection events are not yet counted in a daily metric artifact")
-    validated_edits = baseline_needed("validated edit count needs task-result aggregation by day")
+    tod_artifact_metrics = tod_artifact_metric_snapshot()
+    no_op_rejections = tod_artifact_metrics["no_op_rejections"]
+    validated_edits = tod_artifact_metrics["validated_edits"]
 
     mim_metrics_today = mim_eval.get("metrics", {}) if mim_eval.get("status") == "measured" else {}
     mim_metric_source = "live_gateway_eval" if mim_eval.get("status") == "measured" else "baseline_needed"
@@ -383,15 +479,16 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
                     "yesterday": baseline_needed("no prior daily validated-edit scoreboard"),
                     "today": validated_edits,
                     "unit": "count",
-                    "source": "baseline_needed",
+                    "source": "tod_result_artifacts",
                 },
                 "no_op_rejections": {
                     "yesterday": baseline_needed("no prior daily no-op rejection scoreboard"),
                     "today": no_op_rejections,
                     "unit": "count",
-                    "source": "baseline_needed",
+                    "source": "tod_result_artifacts",
                 },
             },
+            "artifact_metrics": tod_artifact_metrics,
             "blocker_classes": (((directive.get("tod_training") or {}).get("active_blocker_clearing_drill") or {}).get("classes") or triage.get("classes") or {}),
             "latest_drill": {
                 "id": drill4.get("drill_id"),
@@ -428,6 +525,8 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
 
 def metric_value(value: Any) -> str:
     if isinstance(value, dict):
+        if value.get("status") == "measured" and value.get("value") is not None:
+            return str(value.get("value"))
         return "baseline needed"
     if value is None:
         return "baseline needed"

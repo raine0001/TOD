@@ -25,6 +25,8 @@ function Get-DotEnvValue {
 $hostName = Get-DotEnvValue "MIM_SSH_HOST"
 $userName = Get-DotEnvValue "MIM_SSH_USER"
 $password = Get-DotEnvValue "MIM_SSH_PASSWORD"
+$portValue = Get-DotEnvValue "MIM_SSH_PORT"
+if (-not $portValue) { $portValue = "22" }
 
 if ($hostName -and $userName -and $password) {
   try {
@@ -32,10 +34,24 @@ if ($hostName -and $userName -and $password) {
     $cred = New-Object System.Management.Automation.PSCredential($userName, $sec)
     $tmpPull = Join-Path $LogDir "mim_tod_reflection_pull"
     New-Item -ItemType Directory -Force -Path $tmpPull | Out-Null
-    Get-SCPItem -ComputerName $hostName -Credential $cred -AcceptKey -ConnectionTimeout 30 -Path "/home/testpilot/mim/runtime/shared/MIM_TOD_HOURLY_REFLECTION.latest.json" -PathType File -Destination $tmpPull -Force | Out-Null
-    $pulled = Join-Path $tmpPull "MIM_TOD_HOURLY_REFLECTION.latest.json"
-    if (Test-Path $pulled) {
-      Copy-Item -LiteralPath $pulled -Destination (Join-Path $OutDir "MIM_TOD_HOURLY_REFLECTION.latest.json") -Force
+    $remoteArtifacts = @(
+      "MIM_TOD_HOURLY_REFLECTION.latest.json",
+      "TOD_MIM_TASK_RESULT.latest.json",
+      "TOD_MIM_COMMAND_STATUS.latest.json",
+      "TOD_EXECUTION_TRUTH.latest.json",
+      "TOD_EXECUTION_RESULT.latest.json",
+      "TOD_VALIDATION_RESULT.latest.json"
+    )
+    foreach ($artifactName in $remoteArtifacts) {
+      try {
+        Get-SCPItem -ComputerName $hostName -Port ([int]$portValue) -Credential $cred -AcceptKey -ConnectionTimeout 30 -Path "/home/testpilot/mim/runtime/shared/$artifactName" -PathType File -Destination $tmpPull -Force | Out-Null
+        $pulled = Join-Path $tmpPull $artifactName
+        if (Test-Path $pulled) {
+          Copy-Item -LiteralPath $pulled -Destination (Join-Path $OutDir $artifactName) -Force
+        }
+      } catch {
+        "Artifact pull failed for ${artifactName}: $([string]::Join(' ', @($_.Exception.Message -split '\s+')))" | Tee-Object -FilePath (Join-Path $LogDir "mim_tod_training_scoreboard.artifact_pull_failed.log") -Append | Out-Null
+      }
     }
   } catch {
     "Reflection pull failed: $([string]::Join(' ', @($_.Exception.Message -split '\s+')))" | Tee-Object -FilePath (Join-Path $LogDir "mim_tod_training_scoreboard.reflection_pull_failed.log") -Append | Out-Null
@@ -99,7 +115,7 @@ foreach ($file in $files) {
   $lastPublishError = ""
   for ($attempt = 1; $attempt -le 3 -and -not $published; $attempt++) {
     try {
-      Set-SCPItem -ComputerName $hostName -Credential $cred -AcceptKey -ConnectionTimeout 30 -Path $file -Destination "/home/testpilot/mim/runtime/shared" -Force | Out-Null
+      Set-SCPItem -ComputerName $hostName -Port ([int]$portValue) -Credential $cred -AcceptKey -ConnectionTimeout 30 -Path $file -Destination "/home/testpilot/mim/runtime/shared" -Force | Out-Null
       $published = $true
     } catch {
       $lastPublishError = [string]::Join(" ", @($_.Exception.Message -split "\s+"))
