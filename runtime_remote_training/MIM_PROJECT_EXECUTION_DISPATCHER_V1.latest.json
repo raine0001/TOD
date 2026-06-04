@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-06-04T00:08:00-07:00",
+  "objective_id": "MIM-PROJECT-EXECUTION-DISPATCHER-V1",
+  "status": "active",
+  "priority": "P0",
+  "goal": "Ensure the Studio project queue produces at least one active MIM/TOD execution assignment instead of remaining passive backlog.",
+  "trigger": "Dave observed that MIM/TOD had not accomplished much with projects after the reconciliation layer was added.",
+  "audit_basis": "Live project event audit showed zero MIM/TOD execution events; visible movement was reconciled prior evidence, Codex audit, or seeded backlog.",
+  "implemented_v1": [
+    "Studio distinguishes reconciled-only evidence from MIM/TOD-originated movement.",
+    "Studio displays MIM/TOD, Codex, and Reconciled event counts per project.",
+    "A bounded dispatcher assigns one eligible non-Dave-blocked project to MIM/TOD when no dispatch exists.",
+    "The dispatch creates a mim_tod_dispatch project event with TOD required and Codex not initially required."
+  ],
+  "truth_rule": "Dispatch is movement, not completion. It proves MIM selected and assigned work; TOD must still produce implementation or validation evidence before progress can advance further.",
+  "next_required_layer": "TOD execution result binding: when TOD accepts, rejects, completes, stalls, or escalates the dispatched item, it must write a project event and update blocker/next action."
+}

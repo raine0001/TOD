@@ -2485,6 +2485,9 @@ PROJECT_NON_MOVEMENT_EVENT_TYPES = {"project_seeded", "project_created", "promot
 
 def _project_movement_state(row: dict[str, Any]) -> str:
     follow_up_count = int(row.get("follow_up_event_count") or 0)
+    mim_tod_count = int(row.get("mim_tod_event_count") or 0)
+    codex_count = int(row.get("codex_event_count") or 0)
+    reconciled_count = int(row.get("reconciled_event_count") or 0)
     status = str(row.get("status") or "").strip().lower()
     if follow_up_count <= 0:
         if status in {"working", "implementation", "active", "active_experiments", "calibration"}:
@@ -2494,6 +2497,12 @@ def _project_movement_state(row: dict[str, Any]) -> str:
         return "waiting Dave"
     if status in {"blocked", "stalled"}:
         return "blocked"
+    if mim_tod_count > 0:
+        return "MIM/TOD moving"
+    if codex_count > 0:
+        return "Codex moved"
+    if reconciled_count > 0:
+        return "reconciled only"
     return "moving"
 
 
@@ -2752,6 +2761,69 @@ async def _reconcile_studio_project_evidence(db: AsyncSession, projects: list[St
     if added or existing_project_evidence_counts:
         await db.commit()
     return added
+
+
+def _studio_project_priority_rank(project: StudioProject) -> tuple[int, int]:
+    priority = str(project.priority or "").strip().upper()
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}.get(priority, 9)
+    return (priority_rank, -int(project.id or 0))
+
+
+async def _dispatch_next_studio_project_if_needed(db: AsyncSession, projects: list[StudioProject]) -> int:
+    existing_dispatch = (
+        await db.execute(
+            select(StudioProjectEvent.id)
+            .where(StudioProjectEvent.event_type == "mim_tod_dispatch")
+            .limit(1)
+        )
+    ).scalars().first()
+    if existing_dispatch:
+        return 0
+
+    eligible: list[StudioProject] = []
+    for project in projects:
+        status = str(project.status or "").strip().lower()
+        if project.dave_needed:
+            continue
+        if status in {"deleted", "archived", "discarded", "scrapped", "done", "complete", "completed", "deployed"}:
+            continue
+        if str(project.owner or "").strip().lower() == "codex":
+            continue
+        eligible.append(project)
+    if not eligible:
+        return 0
+
+    selected = sorted(eligible, key=_studio_project_priority_rank)[0]
+    detail = (
+        "MIM/TOD dispatch started. MIM owns project management and continuity context; "
+        "TOD owns the first bounded implementation or verification step. "
+        f"Current next action: {selected.next_action or 'define the first bounded action with validation evidence.'}"
+    )
+    metadata = selected.metadata_json if isinstance(selected.metadata_json, dict) else {}
+    metadata = dict(metadata)
+    metadata["work_state"] = "dispatched"
+    metadata["last_mim_tod_dispatch_at"] = _utc_now()
+    metadata["dispatch_owner"] = "MIM + TOD"
+    selected.metadata_json = metadata
+    selected.status = "working"
+    selected.owner = "MIM + TOD"
+    db.add(
+        StudioProjectEvent(
+            project_id=selected.id,
+            event_type="mim_tod_dispatch",
+            actor="MIM Project Dispatcher",
+            title="MIM assigned next execution step",
+            detail=detail,
+            metadata_json={
+                "source": "studio_project_dispatcher_v1",
+                "movement_event": True,
+                "tod_required": True,
+                "codex_required": False,
+            },
+        )
+    )
+    await db.commit()
+    return 1
 
 
 async def _ensure_studio_project_record(
@@ -4198,6 +4270,7 @@ async def _studio_projects_state(
         await db.execute(select(StudioProject).order_by(StudioProject.id.desc()).limit(50))
     ).scalars().all()
     reconciled_count = await _reconcile_studio_project_evidence(db, projects)
+    dispatched_count = await _dispatch_next_studio_project_if_needed(db, projects)
     signals = (
         await db.execute(select(StudioProjectSignal).order_by(StudioProjectSignal.id.desc()).limit(50))
     ).scalars().all()
@@ -4215,6 +4288,9 @@ async def _studio_projects_state(
             {
                 "event_count": 0,
                 "follow_up_event_count": 0,
+                "reconciled_event_count": 0,
+                "mim_tod_event_count": 0,
+                "codex_event_count": 0,
                 "last_event_at": "",
                 "last_event_type": "",
                 "last_movement_at": "",
@@ -4227,6 +4303,13 @@ async def _studio_projects_state(
             summary["last_event_type"] = event.event_type
         if event.event_type not in PROJECT_NON_MOVEMENT_EVENT_TYPES:
             summary["follow_up_event_count"] = int(summary["follow_up_event_count"]) + 1
+            actor_lower = str(event.actor or "").strip().lower()
+            if event.event_type == "evidence_reconciled" or actor_lower == "mim project reconciler":
+                summary["reconciled_event_count"] = int(summary["reconciled_event_count"]) + 1
+            elif "codex" in actor_lower:
+                summary["codex_event_count"] = int(summary["codex_event_count"]) + 1
+            elif ("mim" in actor_lower or "tod" in actor_lower) and actor_lower not in {"mim studio"}:
+                summary["mim_tod_event_count"] = int(summary["mim_tod_event_count"]) + 1
             if not summary["last_movement_at"]:
                 summary["last_movement_at"] = event.created_at.isoformat() if event.created_at else ""
                 summary["last_movement_type"] = event.event_type
@@ -4241,6 +4324,9 @@ async def _studio_projects_state(
         row["project_type"] = _project_category(row)
         row["event_count"] = int(summary.get("event_count") or 0)
         row["follow_up_event_count"] = int(summary.get("follow_up_event_count") or 0)
+        row["reconciled_event_count"] = int(summary.get("reconciled_event_count") or 0)
+        row["mim_tod_event_count"] = int(summary.get("mim_tod_event_count") or 0)
+        row["codex_event_count"] = int(summary.get("codex_event_count") or 0)
         row["last_event_at"] = str(summary.get("last_event_at") or row.get("created_at") or "")
         row["last_event_age"] = _studio_age_label(row["last_event_at"])
         row["last_movement_at"] = str(summary.get("last_movement_at") or "")
@@ -4263,6 +4349,9 @@ async def _studio_projects_state(
             selected_summary = event_summary.get(selected.id, {})
             selected_project["event_count"] = int(selected_summary.get("event_count") or 0)
             selected_project["follow_up_event_count"] = int(selected_summary.get("follow_up_event_count") or 0)
+            selected_project["reconciled_event_count"] = int(selected_summary.get("reconciled_event_count") or 0)
+            selected_project["mim_tod_event_count"] = int(selected_summary.get("mim_tod_event_count") or 0)
+            selected_project["codex_event_count"] = int(selected_summary.get("codex_event_count") or 0)
             selected_project["last_event_at"] = str(selected_summary.get("last_event_at") or selected_project.get("created_at") or "")
             selected_project["last_event_age"] = _studio_age_label(selected_project["last_event_at"])
             selected_project["last_movement_at"] = str(selected_summary.get("last_movement_at") or "")
@@ -4304,6 +4393,7 @@ async def _studio_projects_state(
         "signals": signal_rows,
         "counts": counts,
         "reconciled_count": reconciled_count,
+        "dispatched_count": dispatched_count,
         "selected_project": selected_project,
         "selected_events": selected_events,
         "view": view,
@@ -5456,7 +5546,7 @@ def _projects_body(state: dict[str, Any]) -> str:
           <td><span class="health-pill yellow">{_html(item.get("status", ""))}</span><div class="muted">{_html(item.get("work_state", ""))}</div></td>
           <td>{_html(item.get("owner", ""))}</td>
           <td><div class="progress-track"><div class="progress-fill" style="width:{_html(item.get("progress_percent", 0))}%;"></div></div><div class="muted">{_html(item.get("progress_percent", 0))}% / {_html(item.get("progress_basis", "estimate"))}</div></td>
-          <td><span class="health-pill {'red' if str(item.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(item.get("movement_state", ""))}</span><div class="muted">events {_html(item.get("follow_up_event_count", 0))}/{_html(item.get("event_count", 0))} / {_html(item.get("last_event_age", "none"))}</div></td>
+          <td><span class="health-pill {'red' if str(item.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(item.get("movement_state", ""))}</span><div class="muted">M/T {_html(item.get("mim_tod_event_count", 0))} / C {_html(item.get("codex_event_count", 0))} / R {_html(item.get("reconciled_event_count", 0))}</div></td>
           <td>{_html(item.get("blocker", "none"))}</td>
           <td>{_html(item.get("next_action", ""))}</td>
           <td>{'yes' if item.get("dave_needed") else 'no'}</td>
@@ -5527,7 +5617,7 @@ def _projects_body(state: dict[str, Any]) -> str:
         <section class="card" style="margin-bottom:14px;">
           <h2>{_html(selected_project.get("title", "Project"))}</h2>
           <div class="project-row" style="margin-bottom:12px;">
-            <div><strong>{_html(selected_project.get("movement_state", ""))}</strong><br><span class="muted">events {_html(selected_project.get("follow_up_event_count", 0))}/{_html(selected_project.get("event_count", 0))} / last {_html(selected_project.get("last_event_age", "none"))}</span></div>
+            <div><strong>{_html(selected_project.get("movement_state", ""))}</strong><br><span class="muted">MIM/TOD {_html(selected_project.get("mim_tod_event_count", 0))} / Codex {_html(selected_project.get("codex_event_count", 0))} / Reconciled {_html(selected_project.get("reconciled_event_count", 0))} / total {_html(selected_project.get("follow_up_event_count", 0))}/{_html(selected_project.get("event_count", 0))}</span></div>
             <span class="health-pill {'red' if str(selected_project.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(selected_project.get("progress_percent", 0))}% / {_html(selected_project.get("progress_basis", ""))}</span>
           </div>
           <form method="post" action="/studio/projects/{_html(selected_project.get("id", ""))}/update" class="form-grid">

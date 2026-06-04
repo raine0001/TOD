@@ -1,0 +1,24 @@
+{
+  "artifact_id": "MIM-TOD-PROJECT-EXECUTION-REALITY-CHECK-2026-06-04",
+  "created_at": "2026-06-04T00:00:00-07:00",
+  "operator_observation": "Dave reported that MIM/TOD do not appear to have accomplished much with the projects.",
+  "audit_result": {
+    "finding": "confirmed",
+    "summary": "Project movement visible in Studio was mostly MIM Project Reconciler evidence ingestion, not fresh MIM/TOD execution.",
+    "live_event_sources": {
+      "mim_project_reconciler_evidence_reconciled": 17,
+      "codex_for_mim_project_audit": 19,
+      "mim_studio_seed_or_create": 16,
+      "codex_implementation_update": 1,
+      "mim_or_tod_execution_events": 0
+    }
+  },
+  "lesson": "Reconciled prior evidence is useful for continuity, but it is not the same as MIM/TOD accomplishing new work. Studio must distinguish reconciled-only movement from MIM/TOD-originated execution.",
+  "fix": [
+    "Add event-source counters to Studio project rows.",
+    "Classify movement as MIM/TOD moving, Codex moved, reconciled only, frozen, seed only, blocked, or waiting Dave.",
+    "Show MIM/TOD, Codex, and Reconciled counts in the Project Inbox Movement column."
+  ],
+  "required_next_step": "Create the project execution dispatcher so MIM assigns one eligible project to TOD/MIM and records real project events when work starts, stalls, validates, or escalates.",
+  "status": "truth_display_repaired_execution_dispatcher_still_needed"
+}
