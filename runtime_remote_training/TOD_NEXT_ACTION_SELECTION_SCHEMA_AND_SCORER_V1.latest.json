@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-06-04T17:55:00-07:00",
+  "objective_id": "TOD-NEXT-ACTION-SELECTION-COMPETENCY-V1",
+  "artifact_type": "training_schema_and_scorer",
+  "status": "active",
+  "input_schema": {
+    "project_status": "string",
+    "momentum": "string",
+    "completion_pressure": "string",
+    "scope_state": "string",
+    "blocker": "string",
+    "last_movement": "string",
+    "acceptance_criteria": "string",
+    "current_driving_task": "string",
+    "owner": "string",
+    "prior_outcomes": [
+      {
+        "outcome": "completed|blocked|failed|rejected|superseded|stale|rescued|auto_intervened",
+        "summary": "string",
+        "evidence": "string"
+      }
+    ]
+  },
+  "expected_output_schema": {
+    "lane": "planning|dispatch|execution|blocker_repair|close_or_split|momentum_review|project_management|closeout|training_data|selection",
+    "next_action": "string",
+    "confidence": "number",
+    "reason": "string",
+    "required_evidence": "string",
+    "escalation_path": "string"
+  },
+  "scoring_dimensions": [
+    {
+      "key": "moved_project",
+      "question": "Did the action move the project?",
+      "pass_signal": "Project receives new evidence, status improvement, or clearer successor state."
+    },
+    {
+      "key": "reduced_blocker_age",
+      "question": "Did it reduce blocker age?",
+      "pass_signal": "Blocker cleared, narrowed, reclassified, escalated with evidence, or given an owner/review date."
+    },
+    {
+      "key": "closed_acceptance",
+      "question": "Did it close acceptance?",
+      "pass_signal": "Acceptance criteria satisfied with proof, or close/split decision completed."
+    },
+    {
+      "key": "avoided_scope_expansion",
+      "question": "Did it avoid scope expansion?",
+      "pass_signal": "New work became a follow-on project instead of expanding the original task."
+    },
+    {
+      "key": "avoided_fake_completion",
+      "question": "Did it avoid fake completion?",
+      "pass_signal": "No completion claim unless required evidence exists."
+    },
+    {
+      "key": "avoided_unnecessary_dave",
+      "question": "Did it require Dave unnecessarily?",
+      "pass_signal": "Dave is only requested for authority, credentials, physical-world checks, or policy decisions."
+    }
+  ],
+  "score_formula": {
+    "max_score": 6,
+    "pass_threshold": 5,
+    "notes": "A next-action selection passes if at least five dimensions pass and no fake-completion failure occurs."
+  }
+}

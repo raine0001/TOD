@@ -2796,15 +2796,60 @@ def _project_scope_state(row: dict[str, Any]) -> str:
     return "Scope Stable"
 
 
+def _tod_required_evidence(lane: str) -> str:
+    lane_key = str(lane or "").strip().lower()
+    evidence_by_lane = {
+        "planning": "Acceptance criteria, one current driving task, owner, and validation method recorded on the project.",
+        "dispatch": "Dispatch-ready task envelope with objective, scope, target files/surfaces, expected output, and validation probe.",
+        "execution": "Changed state with proof: file diff, API/UI verification, generated artifact, command output, or hardware/operator evidence.",
+        "blocker_repair": "Blocker class, attempted repair step, result, remaining blocker age, and next escalation threshold.",
+        "close_or_split": "Acceptance closeout proof or a follow-on project with preserved original acceptance criteria.",
+        "momentum_review": "Recovery decision: promote, block, archive, bounded task, Dave decision, external dependency, or Codex escalation.",
+        "project_management": "Follow-on project candidate plus original project acceptance path restored.",
+        "closeout": "Closeout evidence, regression watch condition, and no active blocker/scope drift.",
+        "training_data": "Situation/outcome/next-action training records with validation evidence and updated policy note.",
+    }
+    return evidence_by_lane.get(lane_key, "Evidence that the selected next action moved the project toward acceptance without creating scope drift.")
+
+
+def _tod_escalation_path(lane: str, row: dict[str, Any]) -> str:
+    lane_key = str(lane or "").strip().lower()
+    if row.get("dave_needed"):
+        return "Dave only for the named decision; otherwise MIM/TOD continue local work."
+    if lane_key == "blocker_repair":
+        return "TOD self-repair -> MIM coordination -> Codex packet -> external dependency -> Dave only if authority/credential/physical decision is required."
+    if lane_key in {"planning", "project_management", "close_or_split", "momentum_review"}:
+        return "MIM/TOD decide locally -> create follow-on/block/archive/escalation packet -> Dave only if policy or sensitive-access approval is required."
+    if lane_key == "execution":
+        return "TOD executes and validates -> MIM reviews evidence -> Codex only if code-level blocker remains after local probe."
+    if lane_key == "dispatch":
+        return "MIM prepares bounded task -> TOD executes -> Codex only if no bound executor or validation blocker exists."
+    if lane_key == "closeout":
+        return "Keep closed -> reopen only on regression evidence -> dispatch TOD if regression is reproducible."
+    return "MIM/TOD local decision first -> Codex for specialist engineering -> Dave only when unavoidable."
+
+
+def _tod_decision_record(*, action: str, lane: str, reason: str, confidence: float, row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "action": action,
+        "lane": lane,
+        "reason": reason,
+        "confidence": confidence,
+        "required_evidence": _tod_required_evidence(lane),
+        "escalation_path": _tod_escalation_path(lane, row),
+    }
+
+
 def _tod_next_action_candidate(row: dict[str, Any]) -> dict[str, Any]:
     status = str(row.get("status") or "").strip().lower()
     if status in {"done", "complete", "completed", "deployed"}:
-        return {
-            "action": "Verify closeout evidence and keep closed unless regression evidence appears.",
-            "lane": "closeout",
-            "reason": "Original acceptance is complete.",
-            "confidence": 0.95,
-        }
+        return _tod_decision_record(
+            action="Verify closeout evidence and keep closed unless regression evidence appears.",
+            lane="closeout",
+            reason="Original acceptance is complete.",
+            confidence=0.95,
+            row=row,
+        )
     completion_pressure = str(row.get("completion_pressure") or "").strip()
     scope_state = str(row.get("scope_state") or "").strip()
     momentum = str(row.get("momentum") or "").strip()
@@ -2817,60 +2862,68 @@ def _tod_next_action_candidate(row: dict[str, Any]) -> dict[str, Any]:
         or waiting_on.lower() not in {"none", "mim/tod scheduling", "first movement"}
     )
     if completion_pressure == "Needs Acceptance":
-        return {
-            "action": "Define acceptance criteria and one current driving task before claiming progress.",
-            "lane": "planning",
-            "reason": "TOD cannot choose or validate execution without a definition of done.",
-            "confidence": 0.9,
-        }
+        return _tod_decision_record(
+            action="Define acceptance criteria and one current driving task before claiming progress.",
+            lane="planning",
+            reason="TOD cannot choose or validate execution without a definition of done.",
+            confidence=0.9,
+            row=row,
+        )
     if scope_state == "Scope Expanded":
-        return {
-            "action": "Split expanded work into a follow-on project, then restore the original completion path.",
-            "lane": "project_management",
-            "reason": "New work appears larger than the original project acceptance.",
-            "confidence": 0.86,
-        }
+        return _tod_decision_record(
+            action="Split expanded work into a follow-on project, then restore the original completion path.",
+            lane="project_management",
+            reason="New work appears larger than the original project acceptance.",
+            confidence=0.86,
+            row=row,
+        )
     if completion_pressure == "Close or Split":
-        return {
-            "action": "Decide whether acceptance is complete; close the project or create a follow-on task for remaining improvements.",
-            "lane": "close_or_split",
-            "reason": "Progress is high enough that continued improvement may be hiding completion.",
-            "confidence": 0.84,
-        }
+        return _tod_decision_record(
+            action="Decide whether acceptance is complete; close the project or create a follow-on task for remaining improvements.",
+            lane="close_or_split",
+            reason="Progress is high enough that continued improvement may be hiding completion.",
+            confidence=0.84,
+            row=row,
+        )
     if blocker_like:
-        return {
-            "action": "Run blocker repair: identify the smallest unblock step, attempt it, then escalate only if MIM/TOD cannot clear it.",
-            "lane": "blocker_repair",
-            "reason": f"Project is blocked on {waiting_on if waiting_on.lower() != 'none' else blocker}.",
-            "confidence": 0.82,
-        }
+        return _tod_decision_record(
+            action="Run blocker repair: identify the smallest unblock step, attempt it, then escalate only if MIM/TOD cannot clear it.",
+            lane="blocker_repair",
+            reason=f"Project is blocked on {waiting_on if waiting_on.lower() != 'none' else blocker}.",
+            confidence=0.82,
+            row=row,
+        )
     if str(row.get("momentum_decay") or "") in {"Stale", "Needs Review"}:
-        return {
-            "action": "Choose promote, block, archive, or a new bounded driving task; do not leave the project idle.",
-            "lane": "momentum_review",
-            "reason": "Project momentum decayed and needs an explicit successor state.",
-            "confidence": 0.8,
-        }
+        return _tod_decision_record(
+            action="Choose promote, block, archive, or a new bounded driving task; do not leave the project idle.",
+            lane="momentum_review",
+            reason="Project momentum decayed and needs an explicit successor state.",
+            confidence=0.8,
+            row=row,
+        )
     if waiting_on == "MIM/TOD scheduling":
-        return {
-            "action": current_task if current_task != "Define current driving task." else "Select the first bounded task with validation evidence.",
-            "lane": "dispatch",
-            "reason": "Project is ready for MIM/TOD scheduling.",
-            "confidence": 0.76,
-        }
+        return _tod_decision_record(
+            action=current_task if current_task != "Define current driving task." else "Select the first bounded task with validation evidence.",
+            lane="dispatch",
+            reason="Project is ready for MIM/TOD scheduling.",
+            confidence=0.76,
+            row=row,
+        )
     if momentum == "Moving":
-        return {
-            "action": current_task,
-            "lane": "execution",
-            "reason": "Project is moving; TOD should execute the current driving task and publish evidence.",
-            "confidence": 0.72,
-        }
-    return {
-        "action": current_task,
-        "lane": "selection",
-        "reason": "No terminal state is allowed without a successor action.",
-        "confidence": 0.65,
-    }
+        return _tod_decision_record(
+            action=current_task,
+            lane="execution",
+            reason="Project is moving; TOD should execute the current driving task and publish evidence.",
+            confidence=0.72,
+            row=row,
+        )
+    return _tod_decision_record(
+        action=current_task,
+        lane="selection",
+        reason="No terminal state is allowed without a successor action.",
+        confidence=0.65,
+        row=row,
+    )
 
 
 def _project_waiting_on(row: dict[str, Any]) -> str:
@@ -7009,7 +7062,7 @@ def _projects_body(state: dict[str, Any]) -> str:
             <span class="health-pill {'red' if selected_project.get("scope_state") == "Scope Expanded" else 'yellow' if selected_project.get("scope_state") == "Scope Watch" else 'green'}">Scope</span>
           </div>
           <div class="project-row" style="margin-bottom:12px;">
-            <div><strong>{_html((selected_project.get("tod_next_action") or {}).get("action", ""))}</strong><br><span class="muted">{_html((selected_project.get("tod_next_action") or {}).get("reason", ""))}</span></div>
+            <div><strong>{_html((selected_project.get("tod_next_action") or {}).get("action", ""))}</strong><br><span class="muted">{_html((selected_project.get("tod_next_action") or {}).get("reason", ""))}</span><br><span class="muted">Evidence: {_html((selected_project.get("tod_next_action") or {}).get("required_evidence", ""))}</span><br><span class="muted">Escalation: {_html((selected_project.get("tod_next_action") or {}).get("escalation_path", ""))}</span></div>
             <span class="health-pill green">{_html((selected_project.get("tod_next_action") or {}).get("lane", "TOD"))}</span>
           </div>
           {dave_action_html}

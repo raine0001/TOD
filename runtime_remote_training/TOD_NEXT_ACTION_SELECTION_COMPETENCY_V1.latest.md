@@ -12,15 +12,36 @@ TOD must always produce a candidate successor action after completed, blocked, f
 
 No terminal state without a successor state.
 
-## Training Record Shape
+## Input Shape
 
-- Situation
-- Outcome
-- Candidate next action
+- Project status
+- Momentum
+- Completion pressure
+- Scope state
+- Blocker
+- Last movement
+- Acceptance criteria
+- Current driving task
+- Owner
+- Prior outcomes
+
+## Expected Output
+
 - Lane
-- Reason
+- Next action
 - Confidence
-- Validation evidence
+- Reason
+- Required evidence
+- Escalation path
+
+## Scoring
+
+- Did the action move the project?
+- Did it reduce blocker age?
+- Did it close acceptance?
+- Did it avoid scope expansion?
+- Did it avoid fake completion?
+- Did it require Dave unnecessarily?
 
 ## First Implementation
 
@@ -30,12 +51,14 @@ Studio Projects now derives a TOD next-action candidate per project with:
 - `lane`
 - `reason`
 - `confidence`
+- `required_evidence`
+- `escalation_path`
 
 Automatic interventions use the same candidate selector.
 
 ## Acceptance
 
 - Every non-deleted project exposes a TOD next-action candidate.
-- Candidate includes action, lane, reason, and confidence.
+- Candidate includes lane, next action, confidence, reason, required evidence, and escalation path.
 - Projects page surfaces the candidate action without static filler.
 - Next pass extracts real examples from project events and TOD artifacts.

@@ -11,7 +11,8 @@
       "lane": "closeout",
       "reason": "Original acceptance is complete.",
       "confidence": 0.95,
-      "validation_evidence": "Project status remains completed, progress is 100, and table controls remain live."
+      "required_evidence": "Project status remains completed, progress is 100, and table controls remain live.",
+      "escalation_path": "Keep closed; reopen only on regression evidence."
     },
     {
       "situation": "LAB Workbench Servo Tester has active hardware work but lacks explicit acceptance criteria.",
@@ -20,7 +21,8 @@
       "lane": "planning",
       "reason": "TOD cannot choose or validate execution without a definition of done.",
       "confidence": 0.9,
-      "validation_evidence": "Project has measurable servo tester acceptance criteria and a bounded next task."
+      "required_evidence": "Project has measurable servo tester acceptance criteria and a bounded next task.",
+      "escalation_path": "MIM/TOD define acceptance; Dave only if hardware/operator constraints are unknowable."
     },
     {
       "situation": "MIM Development Continuity V1 is waiting on the first real continuity lookup/brief validation against forum graphics.",
@@ -29,7 +31,8 @@
       "lane": "blocker_repair",
       "reason": "A named dependency is preventing validation.",
       "confidence": 0.82,
-      "validation_evidence": "Continuity brief exists and is attached to the forum graphics project before implementation."
+      "required_evidence": "Continuity brief exists and is attached to the forum graphics project before implementation.",
+      "escalation_path": "TOD local lookup -> MIM continuity summary -> Codex only if implementation needs specialist code changes."
     },
     {
       "situation": "TOD Local PowerShell Migration has scope expansion and prior result-contract issues.",
@@ -38,7 +41,8 @@
       "lane": "project_management",
       "reason": "The project accumulated daemon migration, watchdog visibility, and result-contract repair work.",
       "confidence": 0.86,
-      "validation_evidence": "Follow-on project exists and original PowerShell migration acceptance is isolated."
+      "required_evidence": "Follow-on project exists and original PowerShell migration acceptance is isolated.",
+      "escalation_path": "TOD/MIM split scope; Codex only if Windows task repair remains blocked by implementation detail."
     },
     {
       "situation": "MIM Operations Accounting is in discovery and has no explicit acceptance criteria.",
@@ -47,7 +51,8 @@
       "lane": "planning",
       "reason": "Discovery cannot convert to execution until completion can be measured.",
       "confidence": 0.9,
-      "validation_evidence": "Accounting project has first report/workflow acceptance and a bounded implementation task."
+      "required_evidence": "Accounting project has first report/workflow acceptance and a bounded implementation task.",
+      "escalation_path": "MIM/TOD define workflow; Dave only for business policy or credential decisions."
     },
     {
       "situation": "MIM Scope Completion Discipline V1 is active and has acceptance criteria.",
@@ -56,7 +61,8 @@
       "lane": "execution",
       "reason": "The current driving task is explicit and validation is project-board based.",
       "confidence": 0.72,
-      "validation_evidence": "Scope-expanded and needs-acceptance projects are identified and acted upon."
+      "required_evidence": "Scope-expanded and needs-acceptance projects are identified and acted upon.",
+      "escalation_path": "MIM/TOD act locally; Codex only for code-level project board changes."
     },
     {
       "situation": "MIM TOD Automatic Reality Response V1 is active and needs validation of event-writing behavior.",
@@ -65,7 +71,8 @@
       "lane": "execution",
       "reason": "The system has an explicit validation task with observable project events.",
       "confidence": 0.72,
-      "validation_evidence": "mim_auto_intervention events exist and next_action/current_driving_task are updated."
+      "required_evidence": "mim_auto_intervention events exist and next_action/current_driving_task are updated.",
+      "escalation_path": "MIM/TOD local intervention; Codex only if the Studio intervention code fails."
     },
     {
       "situation": "TOD Next Action Selection Competency V1 has the selector implemented but needs more real examples.",
@@ -74,7 +81,8 @@
       "lane": "training_data",
       "reason": "The selector needs real situation/outcome/successor examples to improve beyond rules.",
       "confidence": 0.78,
-      "validation_evidence": "Training-set artifact exists with real project-state examples."
+      "required_evidence": "Training-set artifact exists with real project-state examples.",
+      "escalation_path": "TOD mines artifacts; Codex only if extraction tooling or schema changes are needed."
     }
   ],
   "next_dataset_expansion": [

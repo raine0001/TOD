@@ -17,14 +17,33 @@
     "autonomy": 3
   },
   "training_record_shape": {
-    "situation": "Current project/task/result state.",
-    "outcome": "What happened: completed, blocked, failed, rejected, superseded, stale, accepted, needs acceptance, scope expanded.",
-    "candidate_next_action": "The next bounded action TOD should take.",
+    "input": {
+      "project_status": "Current project status.",
+      "momentum": "Moving, Waiting, Blocked, Abandoned, Completed, Stale, Needs Review.",
+      "completion_pressure": "Accepted, Acceptance Open, Needs Acceptance, Close or Split.",
+      "scope_state": "Scope Stable, Scope Watch, Scope Expanded.",
+      "blocker": "Current blocker or none.",
+      "last_movement": "Last meaningful movement age/time.",
+      "acceptance_criteria": "Definition of done.",
+      "current_driving_task": "One current task.",
+      "owner": "Current owner.",
+      "prior_outcomes": "Recent completed, blocked, failed, rejected, superseded, rescued, or auto-intervened outcomes."
+    },
     "lane": "planning, dispatch, execution, blocker_repair, close_or_split, momentum_review, project_management, closeout.",
-    "reason": "Why that successor action is correct.",
+    "next_action": "The next bounded action TOD should take.",
     "confidence": "0.0 to 1.0",
-    "validation_evidence": "What proof would show the next action worked."
+    "reason": "Why that successor action is correct.",
+    "required_evidence": "What proof would show the next action worked.",
+    "escalation_path": "TOD/MIM/Codex/external/Dave path if the next action fails or requires authority."
   },
+  "scoring": [
+    "Did the action move the project?",
+    "Did it reduce blocker age?",
+    "Did it close acceptance?",
+    "Did it avoid scope expansion?",
+    "Did it avoid fake completion?",
+    "Did it require Dave unnecessarily?"
+  ],
   "rules": [
     "No terminal state without a successor state.",
     "Completed work requires closeout or regression watch.",
@@ -40,13 +59,15 @@
       "tod_next_action.action",
       "tod_next_action.lane",
       "tod_next_action.reason",
-      "tod_next_action.confidence"
+      "tod_next_action.confidence",
+      "tod_next_action.required_evidence",
+      "tod_next_action.escalation_path"
     ],
     "behavior": "Each project receives a candidate TOD next action derived from its current completion pressure, scope state, momentum, blocker, and driving task."
   },
   "acceptance_criteria": [
     "Every non-deleted project exposes a TOD next-action candidate.",
-    "Candidate includes action, lane, reason, and confidence.",
+    "Candidate includes lane, next action, confidence, reason, required evidence, and escalation path.",
     "Automatic interventions use the same candidate selector.",
     "The Projects page surfaces the candidate action without adding static explanatory filler.",
     "Next training pass extracts real situation/outcome/next-action examples from existing project events and TOD artifacts."
