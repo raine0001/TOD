@@ -1091,8 +1091,15 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
     .score-table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
     .score-table th, .score-table td {{ text-align: left; border-top: 1px solid var(--line); padding: 8px 6px; color: var(--soft); vertical-align: top; }}
     .score-table th {{ color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0; }}
+    .score-table th button {{ all: unset; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: inherit; font: inherit; font-weight: 900; text-transform: uppercase; }}
+    .score-table th button:after {{ content: ""; opacity: .7; }}
+    .score-table th button[data-dir="asc"]:after {{ content: "▲"; }}
+    .score-table th button[data-dir="desc"]:after {{ content: "▼"; }}
     .score-table tr.row-link {{ cursor: pointer; }}
     .score-table tr.row-link:hover {{ background: rgba(117,183,255,.08); }}
+    .table-tools {{ display: grid; gap: 10px; margin: 12px 0; }}
+    .table-tools .quick .button.selected {{ color: #061019; background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; }}
+    .table-meta {{ display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; font-weight: 800; }}
     .progress-track {{ width: 100%; min-width: 96px; height: 8px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); border: 1px solid var(--line); }}
     .progress-fill {{ height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }}
     input, select {{ width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #0b111a; color: var(--text); padding: 10px 11px; font: inherit; }}
@@ -1258,6 +1265,96 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
       if (target === current) return;
       setTimeout(() => {{ window.location.href = target; }}, 650);
     }}
+    function normalizeTableText(value) {{
+      return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    }}
+    function parseProjectSearch(query) {{
+      const text = normalizeTableText(query);
+      if (!text) return [];
+      return text.split(/\s+or\s+/i).map((group) => {{
+        const terms = [];
+        group.replace(/"([^"]+)"|(\S+)/g, (_, quoted, bare) => {{
+          const term = normalizeTableText(quoted || bare);
+          if (term && term !== 'and') terms.push(term);
+          return '';
+        }});
+        return terms;
+      }}).filter((group) => group.length);
+    }}
+    function projectSearchMatches(haystack, groups) {{
+      if (!groups.length) return true;
+      return groups.some((group) => group.every((term) => haystack.includes(term)));
+    }}
+    function initProjectTableTools() {{
+      const table = document.querySelector('[data-project-table]');
+      if (!table) return;
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('[data-project-row]'));
+      const search = document.querySelector('[data-project-search]');
+      const buttons = Array.from(document.querySelectorAll('[data-project-filter]'));
+      const countNode = document.querySelector('[data-project-visible-count]');
+      const totalNode = document.querySelector('[data-project-total-count]');
+      let filter = 'all';
+      let sortKey = '';
+      let sortDir = 'asc';
+      function rowMatchesFilter(row) {{
+        if (filter === 'all') return true;
+        if (filter === 'finished') return ['done', 'complete', 'completed', 'deployed'].includes(row.dataset.status || '');
+        if (filter === 'in_process') return ['moving', 'working', 'implementation', 'active'].includes(row.dataset.momentum || '') || ['working', 'implementation', 'active', 'active_experiments', 'calibration'].includes(row.dataset.status || '');
+        if (filter === 'queued') return ['queued', 'candidate', 'planning', 'discovery'].includes(row.dataset.status || '');
+        if (filter === 'blockers') return row.dataset.blocked === 'true';
+        if (filter === 'dave_needed') return row.dataset.dave === 'true';
+        return true;
+      }}
+      function sortRows(visibleRows) {{
+        if (!sortKey) return;
+        visibleRows.sort((a, b) => {{
+          const av = a.dataset['sort' + sortKey] || '';
+          const bv = b.dataset['sort' + sortKey] || '';
+          const an = Number(av);
+          const bn = Number(bv);
+          let result = 0;
+          if (!Number.isNaN(an) && !Number.isNaN(bn) && av !== '' && bv !== '') result = an - bn;
+          else result = av.localeCompare(bv, undefined, {{ numeric: true, sensitivity: 'base' }});
+          return sortDir === 'asc' ? result : -result;
+        }});
+        visibleRows.forEach((row) => tbody.appendChild(row));
+      }}
+      function applyProjectTable() {{
+        const groups = parseProjectSearch(search ? search.value : '');
+        const visibleRows = [];
+        rows.forEach((row) => {{
+          const matches = rowMatchesFilter(row) && projectSearchMatches(row.dataset.search || '', groups);
+          row.hidden = !matches;
+          if (matches) visibleRows.push(row);
+        }});
+        sortRows(visibleRows);
+        if (countNode) countNode.textContent = String(visibleRows.length);
+        if (totalNode) totalNode.textContent = String(rows.length);
+      }}
+      buttons.forEach((button) => {{
+        button.addEventListener('click', () => {{
+          filter = button.dataset.projectFilter || 'all';
+          buttons.forEach((item) => item.classList.toggle('selected', item === button));
+          applyProjectTable();
+        }});
+      }});
+      search && search.addEventListener('input', applyProjectTable);
+      table.querySelectorAll('[data-sort-key]').forEach((button) => {{
+        button.addEventListener('click', () => {{
+          const key = button.dataset.sortKey || '';
+          if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+          else {{
+            sortKey = key;
+            sortDir = 'asc';
+          }}
+          table.querySelectorAll('[data-sort-key]').forEach((item) => item.removeAttribute('data-dir'));
+          button.dataset.dir = sortDir;
+          applyProjectTable();
+        }});
+      }});
+      applyProjectTable();
+    }}
     async function askMim(prompt) {{
       if (!chatInput || !sendChat || !chatBody) return;
       const text = String(prompt || '').trim();
@@ -1391,6 +1488,7 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
       closeBatPhoneModal();
       askMim('H.A.L.: diagnose this Studio page and current MIM/TOD state. Find what is stuck, explain why, classify the failure, decide whether MIM, TOD, Codex, or Dave owns the next action, create a repair plan, and show evidence.' + (symptom ? '\\n\\nOperator symptom: ' + symptom : ''));
     }});
+    initProjectTableTools();
   </script>
 </body>
 </html>"""
@@ -2678,6 +2776,8 @@ def _project_momentum(row: dict[str, Any]) -> str:
     status = str(row.get("status") or "").strip().lower()
     movement = str(row.get("movement_state") or "").strip().lower()
     waiting_on = _project_waiting_on(row)
+    if status in {"done", "complete", "completed", "deployed"}:
+        return "Completed"
     if status in {"archived", "scrapped", "discarded", "deleted", "abandoned", "cancelled", "canceled"}:
         return "Abandoned"
     if status in {"blocked", "stalled"} or movement == "frozen":
@@ -2707,6 +2807,8 @@ def _project_heat(row: dict[str, Any]) -> str:
     momentum = str(row.get("momentum") or "").strip()
     decay = str(row.get("momentum_decay") or momentum).strip()
     age_hours = _project_age_hours(row)
+    if momentum == "Completed":
+        return "Complete"
     if momentum == "Blocked" or decay == "Needs Review":
         return "🔴 Blocked"
     if momentum == "Abandoned":
@@ -2732,7 +2834,7 @@ def _project_blocked_next_step(row: dict[str, Any]) -> str:
 
 def _project_momentum_class(value: object) -> str:
     momentum = str(value or "").strip().lower()
-    if momentum == "moving":
+    if momentum in {"moving", "completed"}:
         return "green"
     if momentum in {"blocked", "abandoned", "needs review"}:
         return "red"
@@ -2751,10 +2853,10 @@ PROJECT_RECONCILIATION_RULES: list[dict[str, Any]] = [
     {
         "title": "Studio Projects Table Organization",
         "tokens": ["projects table", "project progress", "studio project", "project inbox", "sortable", "filter", "search"],
-        "min_progress": 25,
-        "status": "working",
+        "min_progress": 100,
+        "status": "completed",
         "blocker": "none",
-        "next_action": "Implement sortable headers, quick filters, and search controls, then validate against the current project rows.",
+        "next_action": "Monitor live Projects table controls and reopen only if sorting, filtering, search, or row opening fails.",
     },
     {
         "title": "Studio Static Text Cleanup",
@@ -2964,31 +3066,47 @@ async def _reconcile_studio_project_evidence(db: AsyncSession, projects: list[St
             metadata = project.metadata_json if isinstance(project.metadata_json, dict) else {}
             metadata = dict(metadata)
             current_progress = _project_progress(project)
+            completed_statuses = {"done", "complete", "completed", "deployed"}
+            project_completed = str(project.status or "").strip().lower() in completed_statuses
+            rule_status = str(rule.get("status") or project.status or "working")
+            rule_completed = rule_status.strip().lower() in completed_statuses
             min_progress = int(rule.get("min_progress") or current_progress)
             if min_progress > current_progress:
                 metadata["progress_percent"] = min_progress
+            if rule_completed:
+                metadata["progress_percent"] = max(100, int(metadata.get("progress_percent") or current_progress or 0))
+                metadata["work_state"] = "completed"
             metadata["validation_evidence"] = f"reconciled {len(matched)} evidence item(s)"
             metadata["last_reconciled_at"] = _utc_now()
             metadata["last_reconciled_evidence_count"] = int(metadata.get("last_reconciled_evidence_count") or 0) + len(matched)
             if "blocker" in rule:
                 metadata["blocker"] = str(rule.get("blocker") or "none")
             project.metadata_json = metadata
-            project.status = str(rule.get("status") or project.status or "working")
+            if not project_completed or rule_completed:
+                project.status = rule_status
             project.next_action = str(rule.get("next_action") or project.next_action or "")
         elif existing_project_evidence_counts.get(project.id, 0):
             metadata = project.metadata_json if isinstance(project.metadata_json, dict) else {}
             metadata = dict(metadata)
             current_progress = _project_progress(project)
+            completed_statuses = {"done", "complete", "completed", "deployed"}
+            project_completed = str(project.status or "").strip().lower() in completed_statuses
+            rule_status = str(rule.get("status") or project.status or "working")
+            rule_completed = rule_status.strip().lower() in completed_statuses
             min_progress = int(rule.get("min_progress") or current_progress)
             if min_progress > current_progress:
                 metadata["progress_percent"] = min_progress
+            if rule_completed:
+                metadata["progress_percent"] = max(100, int(metadata.get("progress_percent") or current_progress or 0))
+                metadata["work_state"] = "completed"
             metadata.setdefault("validation_evidence", f"reconciled {existing_project_evidence_counts[project.id]} evidence item(s)")
             metadata.setdefault("last_reconciled_at", _utc_now())
             metadata.setdefault("last_reconciled_evidence_count", existing_project_evidence_counts[project.id])
             if "blocker" in rule:
                 metadata["blocker"] = str(rule.get("blocker") or "none")
             project.metadata_json = metadata
-            project.status = str(rule.get("status") or project.status or "working")
+            if not project_completed or rule_completed:
+                project.status = rule_status
             project.next_action = str(rule.get("next_action") or project.next_action or "")
 
     if added or existing_project_evidence_counts:
@@ -4596,18 +4714,18 @@ async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
         {
             "title": "Studio Projects Table Organization",
             "summary": "Upgrade the Studio Projects inbox table with click-sortable columns, quick status filters, Dave-needed/blocker filters, and boolean search across project fields.",
-            "status": "queued",
+            "status": "completed",
             "priority": "P0",
             "owner": "MIM + TOD",
-            "health": "ready_for_design",
+            "health": "completed_with_evidence",
             "why_it_matters": "The project list is growing quickly, so Dave needs fast ways to find, sort, and focus on actionable work without scanning the full table.",
             "origin_story": "Dave requested sortable project columns, top filter buttons for finished/in-process/queued/blockers/Dave-needed views, and a boolean search tool across fields.",
-            "next_action": "MIM should produce the interaction spec and TOD should implement the Projects inbox table controls without adding static explanatory text.",
+            "next_action": "Monitor live Projects table controls and reopen only if sorting, filtering, search, or row opening fails.",
             "dave_needed": False,
             "metadata_json": {
                 "project_type": "studio_ui",
-                "progress_percent": 0,
-                "work_state": "not_started",
+                "progress_percent": 100,
+                "work_state": "completed",
                 "blocker": "none",
                 "acceptance": "Projects table supports click sorting by each column, quick filters for finished/in process/queued/blockers/Dave needed/all, and boolean text search across title, status, owner, blocker, next action, type, and Dave-needed fields.",
                 "requested_by": "Dave",
@@ -6033,6 +6151,7 @@ def _projects_body(state: dict[str, Any]) -> str:
         blocker = str(item.get("waiting_on") or "")
         task = str(item.get("current_driving_task") or "")
         momentum = str(item.get("momentum") or "")
+        status = str(item.get("status") or "").strip().lower()
         if momentum == "Blocked":
             command_candidates.append(
                 {
@@ -6051,7 +6170,7 @@ def _projects_body(state: dict[str, Any]) -> str:
                     "priority": "2",
                 }
             )
-        elif "projects table" in title.lower():
+        elif "projects table" in title.lower() and status not in {"done", "complete", "completed", "deployed"}:
             command_candidates.append(
                 {
                     "title": "Complete Studio Projects Table Organization.",
@@ -6117,7 +6236,21 @@ def _projects_body(state: dict[str, Any]) -> str:
 
     project_rows = "".join(
         f"""
-        <tr class="row-link" onclick="window.location.href='/studio/projects?project_id={_html(item.get("id", ""))}&view={_html(view)}'">
+        <tr class="row-link" data-project-row
+          data-status="{_html(str(item.get("status", "")).strip().lower())}"
+          data-momentum="{_html(str(item.get("momentum", "")).strip().lower())}"
+          data-dave="{'true' if item.get("dave_needed") else 'false'}"
+          data-blocked="{'true' if str(item.get("momentum") or "") == "Blocked" or str(item.get("waiting_on") or "none").lower() not in {"none", "mim/tod scheduling", "first movement"} else 'false'}"
+          data-search="{_html(" ".join(str(value or "") for value in [item.get("title"), item.get("project_type"), item.get("momentum"), item.get("heat"), item.get("owner"), item.get("current_driving_task"), item.get("waiting_on"), item.get("blocked_next_step"), item.get("status"), item.get("work_state"), item.get("progress_percent"), item.get("progress_basis"), item.get("last_movement_age"), 'dave yes' if item.get("dave_needed") else 'dave no']))}"
+          data-sort-project="{_html(item.get("title", ""))}"
+          data-sort-momentum="{_html(item.get("momentum_decay") or item.get("momentum", ""))}"
+          data-sort-heat="{_html(item.get("heat", ""))}"
+          data-sort-owner="{_html(item.get("owner", ""))}"
+          data-sort-task="{_html(item.get("current_driving_task", ""))}"
+          data-sort-waiting="{_html(item.get("waiting_on", "none"))}"
+          data-sort-movement="{_html(item.get("last_movement_age", "none"))}"
+          data-sort-dave="{'1' if item.get("dave_needed") else '0'}"
+          onclick="window.location.href='/studio/projects?project_id={_html(item.get("id", ""))}&view={_html(view)}'">
           <td><strong>{_html(item.get("title", ""))}</strong><div class="muted">{_html(item.get("project_type", ""))}</div></td>
           <td><span class="health-pill {_project_momentum_class(item.get("momentum_decay") or item.get("momentum"))}">{_html(item.get("momentum_decay") or item.get("momentum", "Waiting"))}</span><div class="muted">{_html(item.get("status", ""))}</div></td>
           <td>{_html(item.get("heat", ""))}</td>
@@ -6269,8 +6402,20 @@ def _projects_body(state: dict[str, Any]) -> str:
     {selected_html}
     <section class="card" style="margin-bottom:14px;">
       <h2>Project Inbox</h2>
-      <table class="score-table">
-        <thead><tr><th>Project</th><th>Momentum</th><th>Heat</th><th>Owner</th><th>Current Driving Task</th><th>Waiting On</th><th>Last Movement</th><th>Dave</th></tr></thead>
+      <div class="table-tools">
+        <div class="quick">
+          <button class="button selected" type="button" data-project-filter="all">All</button>
+          <button class="button" type="button" data-project-filter="finished">Finished</button>
+          <button class="button" type="button" data-project-filter="in_process">In Process</button>
+          <button class="button" type="button" data-project-filter="queued">Queued</button>
+          <button class="button" type="button" data-project-filter="blockers">Blockers</button>
+          <button class="button" type="button" data-project-filter="dave_needed">Dave Needed</button>
+        </div>
+        <input data-project-search placeholder="Search projects, owner, status, blocker, task, heat, Dave...">
+        <div class="table-meta"><span><span data-project-visible-count>0</span> / <span data-project-total-count>0</span> visible</span><span>Quotes and OR supported</span></div>
+      </div>
+      <table class="score-table" data-project-table>
+        <thead><tr><th><button type="button" data-sort-key="Project">Project</button></th><th><button type="button" data-sort-key="Momentum">Momentum</button></th><th><button type="button" data-sort-key="Heat">Heat</button></th><th><button type="button" data-sort-key="Owner">Owner</button></th><th><button type="button" data-sort-key="Task">Current Driving Task</button></th><th><button type="button" data-sort-key="Waiting">Waiting On</button></th><th><button type="button" data-sort-key="Movement">Last Movement</button></th><th><button type="button" data-sort-key="Dave">Dave</button></th></tr></thead>
         <tbody>{project_rows}</tbody>
       </table>
     </section>

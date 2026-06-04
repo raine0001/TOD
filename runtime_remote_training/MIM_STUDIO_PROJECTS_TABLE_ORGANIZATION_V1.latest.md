@@ -1,7 +1,7 @@
 # MIM Studio Projects Table Organization V1
 
-Status: queued  
-Owner: MIM + TOD  
+Status: completed_with_evidence
+Owner: MIM + TOD
 Priority: P0
 
 ## Goal
@@ -23,4 +23,16 @@ MIM owns the project spec and follow-through.
 
 TOD owns implementation and validation.
 
-Codex only steps in if TOD stalls or validation fails.
+Codex stepped in after the task stayed active without closing evidence.
+
+## Completion Evidence
+
+- Projects table renders sortable headers with visible direction state.
+- Projects table renders quick filters: All, Finished, In Process, Queued, Blockers, Dave Needed.
+- Projects table search uses row data and supports quoted phrases plus OR groups.
+- Project rows retain click-to-open behavior.
+- Studio reconciliation now marks this project completed at 100% instead of resetting it to working/25%.
+
+## Follow-Up
+
+Monitor live behavior and reopen only if sorting, filtering, search, or row opening fails.

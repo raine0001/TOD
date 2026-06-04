@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-06-03T16:05:00-07:00",
+  "generated_at": "2026-06-04T15:00:00-07:00",
   "objective_id": "MIM-STUDIO-PROJECTS-TABLE-ORGANIZATION-V1",
   "project_title": "Studio Projects Table Organization",
-  "status": "queued",
+  "status": "completed_with_evidence",
   "owner": "MIM + TOD",
   "priority": "P0",
   "goal": "Make the Studio Projects inbox table fast to sort, filter, and search as the project list grows.",
@@ -46,5 +46,17 @@
     "AgentMIM Reports DB Binding",
     "Studio Static Text Cleanup",
     "Studio Projects Table Organization"
+  ],
+  "completed_at": "2026-06-04T15:00:00-07:00",
+  "completion_evidence": [
+    "Projects table renders click-sortable headers with visible direction state.",
+    "Projects table renders quick filters for All, Finished, In Process, Queued, Blockers, and Dave Needed.",
+    "Projects table renders a search input that searches row data and supports quoted phrases plus OR groups.",
+    "Project rows retain click-to-open navigation.",
+    "Reconciliation rules now mark this project completed at 100% and no longer keep it at working/25%."
+  ],
+  "follow_up": [
+    "Monitor live table behavior and reopen only if browser-level sorting, filtering, search, or row opening fails.",
+    "Use this as a pattern for small projects: one driving task, evidence, completion, then stop tracking as active work."
   ]
 }
