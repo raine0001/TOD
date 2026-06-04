@@ -1,0 +1,72 @@
+{
+  "generated_at": "2026-06-04T17:35:00-07:00",
+  "sprint_id": "TOD-HARD-PUSH-GROWTH-SPRINT-2026-06-04",
+  "status": "first_slice_completed",
+  "summary": "The first hard-push slice seeded ten TOD growth objectives, verified live Studio coverage, corrected a blocker-classification mistake, and produced first policy outputs for TOD execution growth.",
+  "live_verification": {
+    "sprint_objectives_found": 10,
+    "missing_tod_next_action": 0,
+    "lane_counts": {
+      "execution": 10
+    },
+    "corrected_issue": "Initial objective seeds used blocker text for work still to do, causing TOD to select blocker_repair for every new training objective. The seeds were corrected so work belongs in current_driving_task and blockers remain none unless truly blocked."
+  },
+  "objective_outputs": [
+    {
+      "objective_id": "TOD-NEXT-ACTION-SELECTION-COMPETENCY-V1",
+      "first_output": "Live Projects API exposes a TOD next-action candidate for every non-deleted project.",
+      "next_action": "Expand training set from StudioProjectEvent and TOD result artifacts."
+    },
+    {
+      "objective_id": "TOD-RESULT-TO-SUCCESSOR-DISPATCH-LOOP-V1",
+      "first_output": "Successor envelope categories defined: closeout, successor task, blocker repair, escalation packet, archive decision.",
+      "next_action": "Bind successor envelope creation to fresh TOD result artifacts."
+    },
+    {
+      "objective_id": "TOD-AUTONOMOUS-BLOCKER-REPAIR-LADDER-V1",
+      "first_output": "Repair ladder defined: TOD self-repair, MIM coordination, Codex escalation, external dependency, Dave final authority.",
+      "next_action": "Map current blocker classes to repair ladder levels."
+    },
+    {
+      "objective_id": "TOD-EVIDENCE-FIRST-COMPLETION-GATE-V1",
+      "first_output": "Evidence classes identified: file changes, tests, live API/UI verification, generated artifact, hardware/operator evidence.",
+      "next_action": "Create project-type evidence schema."
+    },
+    {
+      "objective_id": "TOD-SCOPE-SPLIT-ENFORCEMENT-V1",
+      "first_output": "Scope split rule active on Projects: scope-expanded work must become follow-on work before original completion can drift.",
+      "next_action": "Apply split pass to Scope Expanded and Scope Watch projects."
+    },
+    {
+      "objective_id": "TOD-CONTINUITY-BRIEF-EXECUTION-GATE-V1",
+      "first_output": "First continuity target selected: AgentMIM Forum Graphics Quality.",
+      "next_action": "Generate continuity brief before any implementation change."
+    },
+    {
+      "objective_id": "TOD-SELF-VALIDATION-REGRESSION-PROBE-V1",
+      "first_output": "Probe classes identified by project type: UI render/API smoke, backend contract test, data source audit, training artifact validation, hardware operator evidence.",
+      "next_action": "Map current project types to minimal probes."
+    },
+    {
+      "objective_id": "TOD-STALE-PROJECT-RECOVERY-SWEEP-V1",
+      "first_output": "Recovery outcomes defined: promote, block, archive, bounded task, Dave decision, external dependency, Codex escalation.",
+      "next_action": "Run recovery sweep over waiting, needs-acceptance, and scope-expanded projects."
+    },
+    {
+      "objective_id": "TOD-CODEX-ESCALATION-PACKET-QUALITY-V1",
+      "first_output": "Codex packet fields defined: objective, context, acceptance, files, attempts, blockers, evidence, requested action, validation plan.",
+      "next_action": "Backfill Studio Projects Table Organization as the first rescue packet example."
+    },
+    {
+      "objective_id": "TOD-EXECUTION-LEARNING-FEEDBACK-LOOP-V1",
+      "first_output": "Learning record shape defined: situation, selected action, outcome, repair, updated policy, reusable lesson.",
+      "next_action": "Backfill learning records from completed, blocked, rescued, and auto-intervened states."
+    }
+  ],
+  "lessons": [
+    "A task requirement should not be stored as a blocker unless it truly prevents movement.",
+    "TOD needs task selection and state classification together; wrong classification creates wrong next actions.",
+    "Fast hard pushes should include live verification after every seed/change.",
+    "The sprint should use Codex direction to create scaffolding, then TOD uses the scaffold to produce artifacts and evidence."
+  ]
+}

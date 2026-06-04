@@ -1,0 +1,83 @@
+{
+  "generated_at": "2026-06-04T17:15:00-07:00",
+  "sprint_id": "TOD-HARD-PUSH-GROWTH-SPRINT-2026-06-04",
+  "status": "active",
+  "owner": "TOD + MIM with Codex direction",
+  "operator_intent": "Move the next objectives faster with Codex direction; do not wait for TOD to discover the path alone.",
+  "goal": "Push TOD toward self-reliant Codex-grade execution by improving task selection, successor dispatch, blocker repair, evidence gates, scope discipline, continuity, validation, stale recovery, escalation quality, and learning feedback.",
+  "principles": [
+    "No human intervention by default.",
+    "No terminal state without a successor state.",
+    "Resolve blockers through MIM/TOD first, then Codex, then external dependency, then Dave only when unavoidable.",
+    "Every issue becomes a learning record.",
+    "Every objective has acceptance criteria, current driving task, owner, and evidence expectation."
+  ],
+  "objectives": [
+    {
+      "order": 1,
+      "objective_id": "TOD-NEXT-ACTION-SELECTION-COMPETENCY-V1",
+      "title": "TOD Next Action Selection Competency V1",
+      "acceptance": "After any completed, blocked, failed, rejected, or superseded TOD result, TOD produces a candidate next action with lane, reason, confidence, and validation evidence."
+    },
+    {
+      "order": 2,
+      "objective_id": "TOD-RESULT-TO-SUCCESSOR-DISPATCH-LOOP-V1",
+      "title": "TOD Result to Successor Dispatch Loop V1",
+      "acceptance": "Every fresh TOD result produces either a completed closeout, a successor task, a blocker repair task, an escalation packet, or an archive decision."
+    },
+    {
+      "order": 3,
+      "objective_id": "TOD-AUTONOMOUS-BLOCKER-REPAIR-LADDER-V1",
+      "title": "TOD Autonomous Blocker Repair Ladder V1",
+      "acceptance": "For each blocked project, TOD proposes the next repair level, executes what it can, and escalates only with a clear evidence packet."
+    },
+    {
+      "order": 4,
+      "objective_id": "TOD-EVIDENCE-FIRST-COMPLETION-GATE-V1",
+      "title": "TOD Evidence First Completion Gate V1",
+      "acceptance": "TOD marks work complete only when acceptance criteria has matching proof."
+    },
+    {
+      "order": 5,
+      "objective_id": "TOD-SCOPE-SPLIT-ENFORCEMENT-V1",
+      "title": "TOD Scope Split Enforcement V1",
+      "acceptance": "TOD detects scope expansion, creates a follow-on candidate, and preserves original acceptance."
+    },
+    {
+      "order": 6,
+      "objective_id": "TOD-CONTINUITY-BRIEF-EXECUTION-GATE-V1",
+      "title": "TOD Continuity Brief Execution Gate V1",
+      "acceptance": "TOD refuses implementation until a continuity brief exists for previously touched projects."
+    },
+    {
+      "order": 7,
+      "objective_id": "TOD-SELF-VALIDATION-REGRESSION-PROBE-V1",
+      "title": "TOD Self Validation Regression Probe V1",
+      "acceptance": "Every TOD next action includes a validation probe selected from task type, risk, and acceptance criteria."
+    },
+    {
+      "order": 8,
+      "objective_id": "TOD-STALE-PROJECT-RECOVERY-SWEEP-V1",
+      "title": "TOD Stale Project Recovery Sweep V1",
+      "acceptance": "No stale/waiting project remains without promote, block, archive, bounded task, Dave decision, external dependency, or Codex escalation."
+    },
+    {
+      "order": 9,
+      "objective_id": "TOD-CODEX-ESCALATION-PACKET-QUALITY-V1",
+      "title": "TOD Codex Escalation Packet Quality V1",
+      "acceptance": "Every Codex escalation includes objective, context, acceptance, files, attempts, blockers, evidence, requested action, and validation plan."
+    },
+    {
+      "order": 10,
+      "objective_id": "TOD-EXECUTION-LEARNING-FEEDBACK-LOOP-V1",
+      "title": "TOD Execution Learning Feedback Loop V1",
+      "acceptance": "Each completed, failed, blocked, rejected, rescued, or escalated task creates a learning record and updated policy."
+    }
+  ],
+  "first_codex_direction": [
+    "Seed all ten objectives into Studio Projects.",
+    "Verify each objective receives TOD next-action candidate coverage.",
+    "Use auto-interventions to force missing acceptance/blocker/scope/stale issues into explicit driving tasks.",
+    "Backfill first learning examples from the Studio Projects Table Organization rescue and current auto-interventions."
+  ]
+}
