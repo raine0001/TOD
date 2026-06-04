@@ -3366,6 +3366,200 @@ async def _bind_tod_results_to_studio_projects(db: AsyncSession, projects: list[
     return added
 
 
+async def _run_project_auto_interventions(db: AsyncSession, projects: list[StudioProject]) -> int:
+    if not projects:
+        return 0
+    project_ids = [int(project.id) for project in projects if project.id]
+    if not project_ids:
+        return 0
+    events = (
+        await db.execute(
+            select(StudioProjectEvent)
+            .where(StudioProjectEvent.project_id.in_(project_ids))
+            .order_by(StudioProjectEvent.id.desc())
+            .limit(2000)
+        )
+    ).scalars().all()
+    today_key = datetime.now(timezone.utc).date().isoformat()
+    existing_interventions: set[tuple[int, str, str]] = set()
+    summary: dict[int, dict[str, Any]] = {}
+    for event in events:
+        item = summary.setdefault(
+            int(event.project_id),
+            {
+                "event_count": 0,
+                "follow_up_event_count": 0,
+                "reconciled_event_count": 0,
+                "mim_tod_event_count": 0,
+                "codex_event_count": 0,
+                "last_event_at": "",
+                "last_movement_at": "",
+            },
+        )
+        item["event_count"] = int(item["event_count"]) + 1
+        actor_lower = str(event.actor or "").strip().lower()
+        if event.event_type in {"follow_up", "note", "project_update", "mim_auto_intervention"}:
+            item["follow_up_event_count"] = int(item["follow_up_event_count"]) + 1
+        if event.event_type == "evidence_reconciled" or actor_lower == "mim project reconciler":
+            item["reconciled_event_count"] = int(item["reconciled_event_count"]) + 1
+        elif "codex" in actor_lower:
+            item["codex_event_count"] = int(item["codex_event_count"]) + 1
+        elif ("mim" in actor_lower or "tod" in actor_lower) and actor_lower not in {"mim studio"}:
+            item["mim_tod_event_count"] = int(item["mim_tod_event_count"]) + 1
+        if not item["last_event_at"]:
+            item["last_event_at"] = event.created_at.isoformat() if event.created_at else ""
+        if not item["last_movement_at"] and (event.metadata_json or {}).get("movement_event"):
+            item["last_movement_at"] = event.created_at.isoformat() if event.created_at else ""
+        if event.event_type == "mim_auto_intervention" and isinstance(event.metadata_json, dict):
+            rule_key = str(event.metadata_json.get("rule_key") or "").strip()
+            day_key = str(event.metadata_json.get("day_key") or "").strip()
+            if rule_key and day_key:
+                existing_interventions.add((int(event.project_id), rule_key, day_key))
+
+    def add_intervention(project: StudioProject, *, rule_key: str, title: str, detail: str, next_action: str, metadata_patch: dict[str, Any]) -> bool:
+        metadata = project.metadata_json if isinstance(project.metadata_json, dict) else {}
+        metadata = dict(metadata)
+        metadata.update(metadata_patch)
+        metadata["last_auto_intervention_at"] = _utc_now()
+        metadata["last_auto_intervention_rule"] = rule_key
+        project.metadata_json = metadata
+        project.next_action = next_action
+        if (int(project.id), rule_key, today_key) in existing_interventions:
+            return False
+        db.add(
+            StudioProjectEvent(
+                project_id=project.id,
+                event_type="mim_auto_intervention",
+                actor="MIM/TOD Auto Initiative",
+                title=title[:220],
+                detail=detail[:2000],
+                metadata_json={
+                    "source": "mim_tod_auto_initiative_v1",
+                    "rule_key": rule_key,
+                    "day_key": today_key,
+                    "movement_event": True,
+                    "next_action": next_action,
+                },
+            )
+        )
+        existing_interventions.add((int(project.id), rule_key, today_key))
+        return True
+
+    added = 0
+    for project in projects:
+        status = str(project.status or "").strip().lower()
+        if status in {"deleted", "archived", "discarded", "scrapped", "done", "complete", "completed", "deployed"}:
+            continue
+        row = _studio_project_to_dict(project)
+        row_summary = summary.get(int(project.id), {})
+        row["progress_percent"] = _project_progress(row)
+        row["blocker"] = _project_blocker(row)
+        row["follow_up_event_count"] = int(row_summary.get("follow_up_event_count") or 0)
+        row["reconciled_event_count"] = int(row_summary.get("reconciled_event_count") or 0)
+        row["mim_tod_event_count"] = int(row_summary.get("mim_tod_event_count") or 0)
+        row["codex_event_count"] = int(row_summary.get("codex_event_count") or 0)
+        row["last_movement_at"] = str(row_summary.get("last_movement_at") or "")
+        row["movement_state"] = _project_movement_state(row)
+        row["current_driving_task"] = _project_current_driving_task(row)
+        row["acceptance"] = _project_acceptance(row)
+        row["completion_pressure"] = _project_completion_pressure(row)
+        row["scope_state"] = _project_scope_state(row)
+        row["waiting_on"] = _project_waiting_on(row)
+        row["momentum"] = _project_momentum(row)
+        row["momentum_decay"] = _project_momentum_decay(row)
+
+        if row["completion_pressure"] == "Needs Acceptance":
+            if add_intervention(
+                project,
+                rule_key="needs_acceptance",
+                title="Acceptance criteria required",
+                detail="MIM/TOD cannot measure completion until this project has explicit acceptance criteria.",
+                next_action="Define acceptance criteria and one current driving task before claiming progress.",
+                metadata_patch={
+                    "work_state": "needs_acceptance",
+                    "current_driving_task": "Define acceptance criteria and one current driving task.",
+                    "blocker": "Missing acceptance criteria.",
+                },
+            ):
+                added += 1
+            continue
+        if row["scope_state"] == "Scope Expanded":
+            if add_intervention(
+                project,
+                rule_key="scope_expanded",
+                title="Scope expansion detected",
+                detail="New work appears to exceed the original project acceptance. MIM should split the extra work into a follow-on project and preserve the original closure path.",
+                next_action="Split expanded scope into a follow-on project, then finish or reclassify the original acceptance path.",
+                metadata_patch={
+                    "work_state": "scope_review",
+                    "current_driving_task": "Split expanded scope into a follow-on project and restore the original completion path.",
+                    "scope_state": "Scope Expanded",
+                },
+            ):
+                added += 1
+            continue
+        if row["completion_pressure"] == "Close or Split":
+            if add_intervention(
+                project,
+                rule_key="close_or_split",
+                title="Project needs close-or-split decision",
+                detail="Progress is high enough that MIM/TOD should close the original acceptance or create a follow-on for remaining enhancements.",
+                next_action="Decide whether original acceptance is complete; mark complete or create a follow-on project for remaining work.",
+                metadata_patch={
+                    "work_state": "close_or_split",
+                    "current_driving_task": "Close original acceptance or split remaining work into a follow-on project.",
+                },
+            ):
+                added += 1
+            continue
+        if row["momentum"] == "Blocked":
+            if add_intervention(
+                project,
+                rule_key="blocked_resolution",
+                title="Blocked project requires resolution path",
+                detail=f"Blocked on: {row.get('waiting_on') or row.get('blocker') or 'unknown blocker'}. MIM/TOD must resolve, reclassify, escalate, or archive.",
+                next_action="Resolve or reclassify the blocker; escalate to Codex, external dependency, or Dave only after MIM/TOD cannot clear it.",
+                metadata_patch={
+                    "current_driving_task": "Resolve or reclassify the active blocker.",
+                },
+            ):
+                added += 1
+            continue
+        if row["momentum_decay"] in {"Stale", "Needs Review"}:
+            if add_intervention(
+                project,
+                rule_key="momentum_decay",
+                title="Project momentum decayed",
+                detail="Project has been waiting or blocked long enough that MIM/TOD must actively review it instead of leaving it in place.",
+                next_action="Promote, block, archive, or assign a new bounded driving task; do not leave this project idle.",
+                metadata_patch={
+                    "work_state": "momentum_review",
+                    "current_driving_task": "Review decayed momentum and choose promote, block, archive, or new bounded task.",
+                },
+            ):
+                added += 1
+
+    if added:
+        await db.commit()
+    return added
+
+
+async def _project_auto_intervention_count_today(db: AsyncSession) -> int:
+    today_key = datetime.now(timezone.utc).date().isoformat()
+    rows = (
+        await db.execute(
+            select(StudioProjectEvent.metadata_json)
+            .where(StudioProjectEvent.event_type == "mim_auto_intervention")
+            .limit(5000)
+        )
+    ).scalars().all()
+    total = 0
+    for metadata in rows:
+        if isinstance(metadata, dict) and str(metadata.get("day_key") or "") == today_key:
+            total += 1
+    return total
+
+
 async def _ensure_studio_project_record(
     db: AsyncSession,
     *,
@@ -4815,6 +5009,29 @@ async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
                 "requested_by": "Dave",
             },
         },
+        {
+            "title": "MIM TOD Automatic Reality Response V1",
+            "summary": "Make MIM/TOD automatically create project interventions when the board shows missing acceptance, scope expansion, blocker drift, close-or-split pressure, or stale momentum.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "MIM + TOD",
+            "health": "active_training_objective",
+            "why_it_matters": "The next maturity jump is acting on reality without waiting for Dave or Codex to notice the same stalled projects.",
+            "origin_story": "Dave asked to continue toward MIM/TOD acting automatically on the project board reality instead of only displaying it.",
+            "next_action": "Validate that automatic interventions create project events and update driving tasks without spamming the project ledger.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "objective_id": "MIM-TOD-AUTOMATIC-REALITY-RESPONSE-V1",
+                "progress_percent": 40,
+                "work_state": "working",
+                "blocker": "Needs live intervention validation across missing acceptance, scope expansion, blockers, close-or-split, and stale momentum cases.",
+                "current_driving_task": "Validate the auto-intervention loop against current Projects board conditions and confirm MIM/TOD writes corrective events.",
+                "acceptance": "When Projects detects missing acceptance, scope expansion, close-or-split pressure, blocker drift, or stale momentum, MIM/TOD automatically writes an intervention event and updates the next driving task at most once per rule per project per day.",
+                "scope_state": "Scope Stable",
+                "requested_by": "Dave",
+            },
+        },
     ]
     for spec in requested_projects:
         metadata = spec.setdefault("metadata_json", {})
@@ -4839,6 +5056,8 @@ async def _studio_projects_state(
     reconciled_count = await _reconcile_studio_project_evidence(db, projects)
     dispatched_count = await _dispatch_next_studio_project_if_needed(db, projects)
     tod_bound_count = await _bind_tod_results_to_studio_projects(db, projects)
+    auto_intervention_run_count = await _run_project_auto_interventions(db, projects)
+    auto_intervention_count = await _project_auto_intervention_count_today(db)
     signals = (
         await db.execute(select(StudioProjectSignal).order_by(StudioProjectSignal.id.desc()).limit(50))
     ).scalars().all()
@@ -4990,6 +5209,8 @@ async def _studio_projects_state(
         "reconciled_count": reconciled_count,
         "dispatched_count": dispatched_count,
         "tod_bound_count": tod_bound_count,
+        "auto_intervention_count": auto_intervention_count,
+        "auto_intervention_run_count": auto_intervention_run_count,
         "selected_project": selected_project,
         "selected_events": selected_events,
         "view": view,
@@ -6208,6 +6429,7 @@ def _projects_body(state: dict[str, Any]) -> str:
         ("Blocked", counts.get("blocked", 0), "blocked"),
         ("Scope Expanded", counts.get("scope_expanded", 0), "scope_expanded"),
         ("Needs Acceptance", counts.get("needs_acceptance", 0), "needs_acceptance"),
+        ("Auto Actions", state.get("auto_intervention_count", 0), "all"),
         ("Abandoned", counts.get("abandoned", 0), "abandoned"),
         ("Dave Needed", counts.get("dave_needed", 0), "dave_needed"),
     ]

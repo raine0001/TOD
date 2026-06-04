@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-06-04T16:05:00-07:00",
+  "objective_id": "MIM-TOD-AUTOMATIC-REALITY-RESPONSE-V1",
+  "project_title": "MIM TOD Automatic Reality Response V1",
+  "status": "active",
+  "owner": "MIM + TOD",
+  "priority": "P0",
+  "goal": "Make MIM/TOD act on project-board reality automatically instead of waiting for Dave or Codex to notice stalled, drifting, or unmeasurable projects.",
+  "intervention_rules": [
+    {
+      "rule_key": "needs_acceptance",
+      "trigger": "Project has no explicit acceptance criteria.",
+      "action": "Write a MIM/TOD intervention event and set current driving task to define acceptance criteria."
+    },
+    {
+      "rule_key": "scope_expanded",
+      "trigger": "Project scope expands beyond the original acceptance path.",
+      "action": "Write a MIM/TOD intervention event and set next action to split expanded work into a follow-on project."
+    },
+    {
+      "rule_key": "close_or_split",
+      "trigger": "Project progress is high but not accepted.",
+      "action": "Require a close-or-split decision."
+    },
+    {
+      "rule_key": "blocked_resolution",
+      "trigger": "Project is blocked or frozen.",
+      "action": "Require blocker resolution, reclassification, escalation, or archive."
+    },
+    {
+      "rule_key": "momentum_decay",
+      "trigger": "Project remains waiting or blocked long enough to become stale or needs review.",
+      "action": "Require promote, block, archive, or assign a new bounded driving task."
+    }
+  ],
+  "spam_control": "At most one automatic intervention per rule per project per UTC day.",
+  "acceptance_criteria": [
+    "Projects API returns auto_intervention_count for the current page load.",
+    "Automatic interventions create StudioProjectEvent rows with event_type mim_auto_intervention.",
+    "Automatic interventions update next_action/current_driving_task instead of only reporting status.",
+    "Missing acceptance and scope expansion are acted on before ordinary improvement work.",
+    "Completed projects are skipped."
+  ]
+}
