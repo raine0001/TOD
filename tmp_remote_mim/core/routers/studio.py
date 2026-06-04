@@ -5286,6 +5286,38 @@ def _compose_training_attention_reply(prompt: str, state: dict[str, Any]) -> str
 
 
 def _compose_training_page_reply(prompt: str, state: dict[str, Any]) -> str:
+    prompt_lower = prompt.lower()
+    if "context-sync" in prompt_lower or "context sync" in prompt_lower or "data accuracy repair" in prompt_lower:
+        objective = _load_json("MIM_CONTEXT_SYNC_DATA_ACCURACY_REPAIR_OBJECTIVE.latest.json")
+        validation = _load_json("MIM_CONTEXT_SYNC_DATA_ACCURACY_VALIDATION.latest.json")
+        started = _load_json("MIM_CONTEXT_SYNC_DATA_ACCURACY_REPAIR_STARTED_2026_06_04.latest.json")
+        sync_status = _load_json("MIM_CONTEXT_SYNC_STATUS.latest.json")
+        objective_id = _first_text(
+            objective.get("objective_id"),
+            started.get("objective_id"),
+            default="MIM-CONTEXT-SYNC-DATA-ACCURACY-REPAIR-V1",
+        )
+        status = _first_text(started.get("status"), objective.get("status"), default="started")
+        validation_status = _first_text(validation.get("status"), default="unknown")
+        current_task = _first_text(validation.get("current_task_id"), default="unknown")
+        findings = validation.get("findings") if isinstance(validation.get("findings"), list) else []
+        repair = sync_status.get("latest_truth_repair") if isinstance(sync_status.get("latest_truth_repair"), dict) else {}
+        repaired_count = _first_text(repair.get("repaired_count"), default=str(len(findings)))
+        next_action = _first_text(
+            started.get("next_action"),
+            objective.get("next_action"),
+            validation.get("remaining_action"),
+            default="Keep monitoring context-sync latest files until they remain clean without repeated supersession repairs.",
+        )
+        return (
+            f"Objective {objective_id} is {status}.\n\n"
+            f"Current evidence: validation is {validation_status}; latest TOD task is {current_task}; "
+            f"context-sync repair count is {repaired_count}.\n\n"
+            f"MIM owner: {_first_text(started.get('owner'), objective.get('owner'), default='MIM')}. "
+            f"TOD executor: {_first_text(started.get('executor'), objective.get('executor'), default='TOD')}.\n\n"
+            f"Next action: {next_action}"
+        )
+
     if _is_training_attention_prompt(prompt):
         return _compose_training_attention_reply(prompt, state)
 

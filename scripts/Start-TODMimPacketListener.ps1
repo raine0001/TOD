@@ -5524,6 +5524,16 @@ try {
             }
         }
 
+        $contextSyncTruthRepairScript = Join-Path $PSScriptRoot "Repair-ContextSyncLatestTruth.ps1"
+        if (Test-Path -LiteralPath $contextSyncTruthRepairScript) {
+            try {
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $contextSyncTruthRepairScript | Out-Null
+            }
+            catch {
+                Write-Host ("[TOD-LISTENER] Context-sync latest truth repair failed: {0}" -f ([string]::Join(' ', @($_.Exception.Message -split '\s+'))))
+            }
+        }
+
         $integrationStatusPath = Get-LocalPath -PathValue "shared_state/integration_status.json"
         $integrationStatus = Read-JsonFileIfExists -PathValue $integrationStatusPath
         $statusPublishedThisCycle = $false

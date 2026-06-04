@@ -1,0 +1,22 @@
+{
+  "artifact_id": "MIM-CONTEXT-SYNC-DATA-ACCURACY-REPAIR-STARTED-2026-06-04",
+  "objective_id": "MIM-CONTEXT-SYNC-DATA-ACCURACY-REPAIR-V1",
+  "generated_at": "2026-06-04T11:44:30-07:00",
+  "status": "started",
+  "owner": "MIM",
+  "executor": "TOD",
+  "start_method": "Codex published objective and validation artifacts to MIM shared runtime after Dave requested MIM start the repair objective.",
+  "live_mim_routing_result": {
+    "first_request": "MIM routed the objective to Studio Training.",
+    "second_request": "Studio Training chat returned the general training attention answer instead of objective-specific acknowledgement.",
+    "interpretation": "The objective is started in artifact truth; MIM chat needs a follow-up routing improvement for objective-specific start confirmations."
+  },
+  "evidence": {
+    "objective_artifact": "runtime/shared/MIM_CONTEXT_SYNC_DATA_ACCURACY_REPAIR_OBJECTIVE.latest.json",
+    "validation_artifact": "runtime/shared/MIM_CONTEXT_SYNC_DATA_ACCURACY_VALIDATION.latest.json",
+    "context_sync_status": "runtime/shared/MIM_CONTEXT_SYNC_STATUS.latest.json",
+    "local_validation_status": "passed",
+    "local_suspect_count_after_daemon_cycles": 0
+  },
+  "next_action": "MIM should track this objective as active until context-sync latest truth remains clean without repeated supersession repairs, then mark it complete with validation evidence."
+}

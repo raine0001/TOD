@@ -32,6 +32,24 @@ function Write-SyncStatus {
         [string]$Message,
         [string[]]$SyncedFiles = @()
     )
+    $path = Join-Path $Destination "MIM_CONTEXT_SYNC_STATUS.latest.json"
+    $existing = $null
+    if (Test-Path -LiteralPath $path) {
+        try {
+            $existing = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        }
+        catch {
+            $existing = $null
+        }
+    }
+    $latestTruthRepair = $null
+    if ($null -ne $existing -and $existing.PSObject.Properties["latest_truth_repair"]) {
+        $latestTruthRepair = $existing.latest_truth_repair
+    }
+    $syncScope = "scoped_status_files"
+    if ($null -ne $latestTruthRepair) {
+        $syncScope = "scoped_status_files_with_preserved_latest_truth_repair"
+    }
     $payload = [ordered]@{
         state = $State
         message = $Message
@@ -39,9 +57,12 @@ function Write-SyncStatus {
         interval_seconds = $IntervalSeconds
         remote_root = $RemoteRoot
         destination = $Destination
+        sync_scope = $syncScope
         synced_files = $SyncedFiles
     }
-    $path = Join-Path $Destination "MIM_CONTEXT_SYNC_STATUS.latest.json"
+    if ($null -ne $latestTruthRepair) {
+        $payload.latest_truth_repair = $latestTruthRepair
+    }
     $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $path -Encoding UTF8
 }
 

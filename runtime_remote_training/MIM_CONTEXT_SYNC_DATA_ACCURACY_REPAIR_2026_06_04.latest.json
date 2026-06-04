@@ -1,0 +1,45 @@
+{
+  "artifact_id": "MIM-CONTEXT-SYNC-DATA-ACCURACY-REPAIR-2026-06-04",
+  "objective_id": "MIM-CONTEXT-SYNC-DATA-ACCURACY-REPAIR-V1",
+  "created_at": "2026-06-04T11:30:00-07:00",
+  "status": "active",
+  "owner": "MIM",
+  "executor": "TOD",
+  "codex_role": "repair implementation and validation support",
+  "priority": "P0",
+  "trigger": "Dave asked to audit today's saved context-sync status files and fix inaccurate data updates.",
+  "problem": "Several files under tod/out/context-sync/listener had fresh filesystem timestamps while embedded payloads were stale, pending, failed, or pointed at older request/task identities than the current successful TOD result.",
+  "goal": "Make context-sync latest status files truthful: latest means current, historical failures are marked superseded/resolved, and stale embedded payloads cannot masquerade as live state.",
+  "acceptance_criteria": [
+    "Audit report exists for today's context-sync status files.",
+    "Fresh wrapper with old embedded generated_at is either refreshed with current payload or marked superseded/historical.",
+    "Active latest request/result/decision/status files agree on the current request_id and task_id, or explicitly declare they are separate coordination records.",
+    "Resolved older runtime contract violations and stall alerts are marked superseded by the newer successful request.",
+    "MIM_CONTEXT_SYNC_STATUS.latest.json distinguishes scoped sync status from full context-sync truth.",
+    "MIM can start/track this objective and next action without needing Dave."
+  ],
+  "initial_findings": {
+    "current_successful_request_id": "objective-3458-task-1780597078",
+    "current_successful_task_id": "objective-3458-task-1780597078",
+    "stale_wrappers": [
+      "listener/MIM_TOD_GO_ORDER.latest.json",
+      "listener/MIM_TOD_REVIEW_DECISION.latest.json",
+      "listener/MIM_TO_TOD_PING.latest.json"
+    ],
+    "older_request_latest_surfaces": [
+      "listener/MIM_TOD_COORDINATION_ACK.latest.json",
+      "listener/TOD_MIM_COORDINATION_REQUEST.latest.json",
+      "listener/TOD_MIM_EMERGENCY_REQUEST.latest.json",
+      "listener/TOD_MIM_RECOVERY_ALERT.latest.json",
+      "listener/TOD_MIM_RUNTIME_CONTRACT_VIOLATION.latest.json",
+      "listener/TOD_MIM_STALL_ALERT.latest.json"
+    ],
+    "healthy_surfaces": [
+      "listener/TOD_MIM_TASK_RESULT.latest.json",
+      "listener/TOD_MIM_COMMAND_STATUS.latest.json",
+      "listener/TOD_INTEGRATION_STATUS.latest.json",
+      "listener/TOD_MIM_RUNTIME_BINDING_STATE.latest.json"
+    ]
+  },
+  "next_action": "TOD should run the context-sync latest truth repair, publish a validation summary, and keep the objective active until the audit reports no stale wrappers and no unresolved older latest surfaces."
+}
