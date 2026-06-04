@@ -1,0 +1,42 @@
+{
+  "artifact_id": "MIM-PROACTIVE-MOMENTUM-MANAGEMENT-V1",
+  "objective_id": "MIM-PROACTIVE-MOMENTUM-MANAGEMENT-V1",
+  "created_at": "2026-06-04T13:18:00-07:00",
+  "status": "active",
+  "owner": "MIM",
+  "executor": "TOD",
+  "priority": "P0",
+  "goal": "No project may remain Waiting, Blocked, Frozen, Stale, or Needs Review without an owner, current driving task, escalation path, and review date.",
+  "blocked_rule": {
+    "meaning": "A blocked project cannot safely continue until a named unblock action happens.",
+    "required_next_step": "Name the blocker, name the owner, resolve or reclassify the blocker, then escalate or archive if no unblock path exists.",
+    "allowed_outcomes": [
+      "Moving",
+      "Waiting on Dave",
+      "Waiting on external dependency",
+      "Escalated to TOD",
+      "Escalated to Codex",
+      "Archived"
+    ]
+  },
+  "heat_rules": {
+    "hot": "Moving with recent movement.",
+    "active": "Moving but not hot.",
+    "waiting": "Waiting under the stale threshold.",
+    "blocked": "Blocked or Needs Review.",
+    "cold": "Abandoned or inactive without a live path."
+  },
+  "aging_rules": {
+    "waiting_under_3_days": "Waiting",
+    "waiting_3_days": "Stale",
+    "waiting_7_days": "Needs Review",
+    "blocked_7_days": "Escalate or archive unless an owner has an active unblock plan."
+  },
+  "studio_changes": [
+    "Add MIM Command Brief above the Projects table.",
+    "Add project heat labels.",
+    "Add momentum decay from Waiting to Stale to Needs Review.",
+    "Show blocked next-step rule directly in the Waiting On column."
+  ],
+  "next_action": "MIM should use the command brief to choose the next project action instead of letting Waiting or Blocked projects sit silently."
+}

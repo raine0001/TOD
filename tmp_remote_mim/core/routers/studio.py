@@ -2666,6 +2666,14 @@ def _project_waiting_on(row: dict[str, Any]) -> str:
     return "none"
 
 
+def _project_age_hours(row: dict[str, Any]) -> float | None:
+    value = row.get("last_movement_at") or row.get("last_event_at") or row.get("created_at")
+    parsed = _studio_parse_created_at(value)
+    if parsed is None:
+        return None
+    return max(0.0, (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds() / 3600)
+
+
 def _project_momentum(row: dict[str, Any]) -> str:
     status = str(row.get("status") or "").strip().lower()
     movement = str(row.get("movement_state") or "").strip().lower()
@@ -2681,11 +2689,52 @@ def _project_momentum(row: dict[str, Any]) -> str:
     return "Waiting"
 
 
+def _project_momentum_decay(row: dict[str, Any]) -> str:
+    momentum = str(row.get("momentum") or "").strip()
+    age_hours = _project_age_hours(row)
+    if momentum not in {"Waiting", "Blocked"}:
+        return momentum
+    if age_hours is None:
+        return "Needs Review"
+    if age_hours >= 24 * 7:
+        return "Needs Review"
+    if age_hours >= 24 * 3:
+        return "Stale"
+    return momentum
+
+
+def _project_heat(row: dict[str, Any]) -> str:
+    momentum = str(row.get("momentum") or "").strip()
+    decay = str(row.get("momentum_decay") or momentum).strip()
+    age_hours = _project_age_hours(row)
+    if momentum == "Blocked" or decay == "Needs Review":
+        return "🔴 Blocked"
+    if momentum == "Abandoned":
+        return "⚫ Cold"
+    if decay == "Stale":
+        return "🟡 Waiting"
+    if momentum == "Moving":
+        if age_hours is not None and age_hours <= 24:
+            return "🔥 Hot"
+        return "🟢 Active"
+    if momentum == "Waiting":
+        return "🟡 Waiting"
+    return "⚫ Cold"
+
+
+def _project_blocked_next_step(row: dict[str, Any]) -> str:
+    if str(row.get("momentum") or "") != "Blocked":
+        return ""
+    waiting_on = _first_text(row.get("waiting_on"), default="blocker resolution")
+    owner = _first_text(row.get("owner"), default="MIM + TOD")
+    return f"Resolve or reclassify blocker: {waiting_on}. Owner: {owner}. If no unblock path exists, escalate or archive."
+
+
 def _project_momentum_class(value: object) -> str:
     momentum = str(value or "").strip().lower()
     if momentum == "moving":
         return "green"
-    if momentum in {"blocked", "abandoned"}:
+    if momentum in {"blocked", "abandoned", "needs review"}:
         return "red"
     return "yellow"
 
@@ -4667,6 +4716,9 @@ async def _studio_projects_state(
         row["current_driving_task"] = _project_current_driving_task(row)
         row["waiting_on"] = _project_waiting_on(row)
         row["momentum"] = _project_momentum(row)
+        row["momentum_decay"] = _project_momentum_decay(row)
+        row["heat"] = _project_heat(row)
+        row["blocked_next_step"] = _project_blocked_next_step(row)
         row["is_deleted"] = str(row.get("status") or "").strip().lower() in {"deleted", "archived", "discarded", "scrapped"}
         project_rows[index] = row
     visible_project_rows = [row for row in project_rows if not row.get("is_deleted")]
@@ -4695,6 +4747,9 @@ async def _studio_projects_state(
             selected_project["current_driving_task"] = _project_current_driving_task(selected_project)
             selected_project["waiting_on"] = _project_waiting_on(selected_project)
             selected_project["momentum"] = _project_momentum(selected_project)
+            selected_project["momentum_decay"] = _project_momentum_decay(selected_project)
+            selected_project["heat"] = _project_heat(selected_project)
+            selected_project["blocked_next_step"] = _project_blocked_next_step(selected_project)
             events = (
                 await db.execute(
                     select(StudioProjectEvent)
@@ -5970,6 +6025,82 @@ def _projects_body(state: dict[str, Any]) -> str:
     projects = state.get("projects") if isinstance(state.get("projects"), list) else []
     inbox_examples = state.get("signals") if isinstance(state.get("signals"), list) else []
 
+    command_candidates: list[dict[str, str]] = []
+    for item in projects:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "")
+        blocker = str(item.get("waiting_on") or "")
+        task = str(item.get("current_driving_task") or "")
+        momentum = str(item.get("momentum") or "")
+        if momentum == "Blocked":
+            command_candidates.append(
+                {
+                    "title": f"Resolve {title} blocker.",
+                    "impact": f"Unblocks: {task}" if task else f"Unblocks {title}.",
+                    "href": f"/studio/projects?project_id={_html(item.get('id', ''))}",
+                    "priority": "1",
+                }
+            )
+        elif "forum graphics" in title.lower() and momentum in {"Waiting", "Blocked"}:
+            command_candidates.append(
+                {
+                    "title": "Run Forum Graphics continuity brief.",
+                    "impact": "Enables the first Continuity V1 validation.",
+                    "href": f"/studio/projects?project_id={_html(item.get('id', ''))}",
+                    "priority": "2",
+                }
+            )
+        elif "projects table" in title.lower():
+            command_candidates.append(
+                {
+                    "title": "Complete Studio Projects Table Organization.",
+                    "impact": "Finishes the Project Command Board V1 path.",
+                    "href": f"/studio/projects?project_id={_html(item.get('id', ''))}",
+                    "priority": "3",
+                }
+            )
+        elif str(item.get("momentum_decay") or "") in {"Stale", "Needs Review"}:
+            command_candidates.append(
+                {
+                    "title": f"Review momentum on {title}.",
+                    "impact": f"Prevents {blocker or 'waiting work'} from rotting silently.",
+                    "href": f"/studio/projects?project_id={_html(item.get('id', ''))}",
+                    "priority": "4",
+                }
+            )
+    command_seen: set[str] = set()
+    command_rows: list[dict[str, str]] = []
+    for item in sorted(command_candidates, key=lambda row: row.get("priority", "9")):
+        title = item.get("title", "")
+        if title in command_seen:
+            continue
+        command_seen.add(title)
+        command_rows.append(item)
+        if len(command_rows) >= 3:
+            break
+    if not command_rows:
+        command_rows = [
+            {
+                "title": "Pick the next project to move.",
+                "impact": "Keeps MIM focused on completion instead of inventory.",
+                "href": "/studio/projects?view=waiting",
+                "priority": "1",
+            }
+        ]
+    command_html = "".join(
+        f"""
+        <a class="project-row" href="{_html(item.get("href", "/studio/projects"))}">
+          <div>
+            <strong>{_html(index)}. {_html(item.get("title", ""))}</strong>
+            <div class="muted">Impact: {_html(item.get("impact", ""))}</div>
+          </div>
+          <span class="health-pill yellow">Next</span>
+        </a>
+        """
+        for index, item in enumerate(command_rows, start=1)
+    )
+
     def project_visible(item: dict[str, Any]) -> bool:
         status = str(item.get("status") or "").strip().lower()
         if view == "active":
@@ -5988,10 +6119,11 @@ def _projects_body(state: dict[str, Any]) -> str:
         f"""
         <tr class="row-link" onclick="window.location.href='/studio/projects?project_id={_html(item.get("id", ""))}&view={_html(view)}'">
           <td><strong>{_html(item.get("title", ""))}</strong><div class="muted">{_html(item.get("project_type", ""))}</div></td>
-          <td><span class="health-pill {_project_momentum_class(item.get("momentum"))}">{_html(item.get("momentum", "Waiting"))}</span><div class="muted">{_html(item.get("status", ""))}</div></td>
+          <td><span class="health-pill {_project_momentum_class(item.get("momentum_decay") or item.get("momentum"))}">{_html(item.get("momentum_decay") or item.get("momentum", "Waiting"))}</span><div class="muted">{_html(item.get("status", ""))}</div></td>
+          <td>{_html(item.get("heat", ""))}</td>
           <td>{_html(item.get("owner", ""))}</td>
           <td>{_html(item.get("current_driving_task", ""))}<div class="muted">Progress: {_html(item.get("progress_percent", 0))}% / {_html(item.get("progress_basis", "estimate"))}</div></td>
-          <td>{_html(item.get("waiting_on", "none"))}</td>
+          <td>{_html(item.get("waiting_on", "none"))}<div class="muted">{_html(item.get("blocked_next_step", ""))}</div></td>
           <td><span class="health-pill {'red' if str(item.get("movement_state") or "") == "frozen" else 'yellow'}">{_html(item.get("last_movement_age", "none"))}</span><div class="muted">{_html(item.get("movement_state", ""))} / M-T {_html(item.get("mim_tod_event_count", 0))} / C {_html(item.get("codex_event_count", 0))}</div></td>
           <td>{'yes' if item.get("dave_needed") else 'no'}</td>
         </tr>
@@ -6000,7 +6132,7 @@ def _projects_body(state: dict[str, Any]) -> str:
         if view != "signals" and project_visible(item)
     )
     if not project_rows and view != "signals":
-        project_rows = '<tr><td colspan="7">No projects in this view.</td></tr>'
+        project_rows = '<tr><td colspan="8">No projects in this view.</td></tr>'
 
     signal_rows = "".join(
         f"""
@@ -6082,7 +6214,7 @@ def _projects_body(state: dict[str, Any]) -> str:
           <h2>{_html(selected_project.get("title", "Project"))}</h2>
           <div class="project-row" style="margin-bottom:12px;">
             <div><strong>{_html(selected_project.get("current_driving_task", ""))}</strong><br><span class="muted">Waiting on: {_html(selected_project.get("waiting_on", "none"))} / last movement: {_html(selected_project.get("last_movement_age", "none"))} / MIM-TOD {_html(selected_project.get("mim_tod_event_count", 0))} / Codex {_html(selected_project.get("codex_event_count", 0))}</span></div>
-            <span class="health-pill {_project_momentum_class(selected_project.get("momentum"))}">{_html(selected_project.get("momentum", "Waiting"))}</span>
+            <span class="health-pill {_project_momentum_class(selected_project.get("momentum_decay") or selected_project.get("momentum"))}">{_html(selected_project.get("heat", ""))} / {_html(selected_project.get("momentum_decay") or selected_project.get("momentum", "Waiting"))}</span>
           </div>
           {dave_action_html}
           <form method="post" action="/studio/projects/{_html(selected_project.get("id", ""))}/update" class="form-grid">
@@ -6116,6 +6248,16 @@ def _projects_body(state: dict[str, Any]) -> str:
     <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{stats_html}</section>
     {_data_sources_html(state, "projects")}
     <section class="card" style="margin-bottom:14px;">
+      <div class="status-head">
+        <div>
+          <h2>MIM Command Brief</h2>
+          <div class="muted">Blocked rule: name the blocker, name the owner, resolve or reclassify, then escalate or archive if no unblock path exists.</div>
+        </div>
+        <span class="badge"><span class="dot yellow"></span>Protect Momentum</span>
+      </div>
+      <div style="margin-top:12px;">{command_html}</div>
+    </section>
+    <section class="card" style="margin-bottom:14px;">
       <h2>Project Actions</h2>
       <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
         <a class="button primary" href="/studio/projects?new_project=1">Start Project</a>
@@ -6128,7 +6270,7 @@ def _projects_body(state: dict[str, Any]) -> str:
     <section class="card" style="margin-bottom:14px;">
       <h2>Project Inbox</h2>
       <table class="score-table">
-        <thead><tr><th>Project</th><th>Momentum</th><th>Owner</th><th>Current Driving Task</th><th>Waiting On</th><th>Last Movement</th><th>Dave</th></tr></thead>
+        <thead><tr><th>Project</th><th>Momentum</th><th>Heat</th><th>Owner</th><th>Current Driving Task</th><th>Waiting On</th><th>Last Movement</th><th>Dave</th></tr></thead>
         <tbody>{project_rows}</tbody>
       </table>
     </section>

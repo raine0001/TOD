@@ -62,6 +62,9 @@ try {
     if (Test-Path -LiteralPath (Join-Path $repoRoot "runtime_remote_training/MIM_PROJECT_MOMENTUM_AND_DRIVING_TASK_V1.latest.json")) {
         Send-RemoteFileB64 -SessionId $session.SessionId -LocalPath "runtime_remote_training/MIM_PROJECT_MOMENTUM_AND_DRIVING_TASK_V1.latest.json" -RemotePath "/home/testpilot/mim/runtime/shared/MIM_PROJECT_MOMENTUM_AND_DRIVING_TASK_V1.latest.json"
     }
+    if (Test-Path -LiteralPath (Join-Path $repoRoot "runtime_remote_training/MIM_PROACTIVE_MOMENTUM_MANAGEMENT_V1.latest.json")) {
+        Send-RemoteFileB64 -SessionId $session.SessionId -LocalPath "runtime_remote_training/MIM_PROACTIVE_MOMENTUM_MANAGEMENT_V1.latest.json" -RemotePath "/home/testpilot/mim/runtime/shared/MIM_PROACTIVE_MOMENTUM_MANAGEMENT_V1.latest.json"
+    }
     $verifyCommand = "python3 -c 'from pathlib import Path; p=Path(""/home/testpilot/mim/core/routers/studio.py""); t=p.read_text(); print(p.stat().st_size); print(t.find(""_studio_data_audit_state"")); print(t.find(""_data_sources_html(state, \""training\"")""))'"
     $verify = Invoke-RemoteChecked -SessionId $session.SessionId -Command $verifyCommand
     $verify.Output
