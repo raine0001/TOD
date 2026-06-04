@@ -658,8 +658,25 @@ def _page_audit_sources(state: dict[str, Any], page_key: str) -> list[dict[str, 
     return [source for source in sources if isinstance(source, dict)]
 
 
+def _page_audit_entry(state: dict[str, Any], page_key: str) -> dict[str, Any]:
+    audit = state.get("data_audit") if isinstance(state.get("data_audit"), dict) else _studio_data_audit_state()
+    pages = audit.get("pages") if isinstance(audit.get("pages"), dict) else {}
+    page = pages.get(page_key) if isinstance(pages.get(page_key), dict) else {}
+    return page
+
+
+def _source_trust_class(value: object) -> str:
+    trust = str(value or "").strip().lower()
+    if trust in {"trusted", "fresh"}:
+        return "green"
+    if trust == "stale":
+        return "red"
+    return "yellow"
+
+
 def _data_sources_html(state: dict[str, Any], page_key: str) -> str:
     audit = state.get("data_audit") if isinstance(state.get("data_audit"), dict) else _studio_data_audit_state()
+    page = _page_audit_entry(state, page_key)
     sources = _page_audit_sources(state, page_key)
     if not sources:
         sources = [
@@ -672,6 +689,8 @@ def _data_sources_html(state: dict[str, Any], page_key: str) -> str:
                 "last_write_utc": audit.get("generated_at", ""),
             }
         ]
+    source_trust = _first_text(page.get("source_trust"), default="Mixed" if not sources else "Watched")
+    source_trust_class = _source_trust_class(source_trust)
     rows = "".join(
         f"""
         <tr>
@@ -685,8 +704,13 @@ def _data_sources_html(state: dict[str, Any], page_key: str) -> str:
     )
     return f"""
     <section class="card" style="margin-bottom:14px;">
-      <h2>Sources</h2>
-      <div class="muted">Audit: {_html(audit.get("status", "not_run"))} / {_html(audit.get("generated_at_la", ""))}</div>
+      <div class="status-head">
+        <div>
+          <h2>Sources</h2>
+          <div class="muted">Audit: {_html(audit.get("status", "not_run"))} / {_html(audit.get("generated_at_la", ""))}</div>
+        </div>
+        <span class="badge"><span class="dot {source_trust_class}"></span>Source Trust: {_html(source_trust)}</span>
+      </div>
       <table class="score-table" style="margin-top:10px;">
         <thead><tr><th>Source</th><th>Status</th><th>Path</th><th>Time</th></tr></thead>
         <tbody>{rows}</tbody>

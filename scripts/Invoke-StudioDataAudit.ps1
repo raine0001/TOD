@@ -89,6 +89,58 @@ function Get-SourceRecord {
     }
 }
 
+function Get-SourceDate {
+    param($Source)
+    foreach ($name in @("generated_at", "last_write_utc")) {
+        $value = Get-JsonString -Object $Source -Name $name
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            try {
+                return ([DateTime]::Parse($value)).ToUniversalTime()
+            }
+            catch {
+            }
+        }
+    }
+    return $null
+}
+
+function Get-PageSourceTrust {
+    param(
+        [Parameter(Mandatory = $true)]$Page,
+        [Parameter(Mandatory = $true)][DateTime]$NowUtc
+    )
+    $sources = @($Page.sources)
+    if ($sources.Count -eq 0) { return "Mixed" }
+    $missing = @($sources | Where-Object { -not [bool]$_.exists })
+    if ($missing.Count -gt 0) { return "Mixed" }
+    $badStatus = @($sources | Where-Object {
+        $status = (Get-JsonString -Object $_ -Name "status").ToLowerInvariant()
+        $status -match "missing|unreachable|failed|error"
+    })
+    if ($badStatus.Count -gt 0) { return "Mixed" }
+    $timedSources = @($sources | Where-Object { $null -ne (Get-SourceDate -Source $_) })
+    $staleSources = @($timedSources | Where-Object {
+        $dateValue = Get-SourceDate -Source $_
+        $null -ne $dateValue -and ($NowUtc - $dateValue).TotalHours -gt 24
+    })
+    if ($timedSources.Count -gt 0 -and $staleSources.Count -eq $timedSources.Count) {
+        return "Stale"
+    }
+    if ($staleSources.Count -gt 0) {
+        return "Mixed"
+    }
+    if ($timedSources.Count -gt 0 -and @($timedSources | Where-Object {
+        $dateValue = Get-SourceDate -Source $_
+        $null -ne $dateValue -and ($NowUtc - $dateValue).TotalHours -le 4
+    }).Count -eq $timedSources.Count) {
+        return "Fresh"
+    }
+    if ((Get-JsonString -Object $Page -Name "status") -eq "source_traceable") {
+        return "Watched"
+    }
+    return "Trusted"
+}
+
 function Get-ApiRecord {
     param([string]$Label, [string]$Path)
     if ([string]::IsNullOrWhiteSpace($StudioBaseUrl)) { return $null }
@@ -191,6 +243,11 @@ $pages = @(
     }
 )
 
+foreach ($page in $pages) {
+    $trust = Get-PageSourceTrust -Page $page -NowUtc (Get-Date).ToUniversalTime()
+    $page | Add-Member -NotePropertyName source_trust -NotePropertyValue $trust -Force
+}
+
 $apiRecords = @()
 $apiChecks = @(
     @{ Label = "Projects State API"; Path = "/studio/api/projects/state" },
@@ -263,6 +320,7 @@ foreach ($page in $pages) {
     $lines.Add("### $($page.page)")
     $lines.Add("- Route: $($page.route)")
     $lines.Add("- Status: $($page.status)")
+    $lines.Add("- Source Trust: $($page.source_trust)")
     foreach ($source in $page.sources) {
         $lines.Add("- Source: $($source.label) :: $($source.kind) :: $($source.path) :: $($source.status)")
     }

@@ -1,7 +1,7 @@
 {
     "artifact_id":  "MIM-STUDIO-DATA-AUDIT-AND-RECONCILIATION-RESULT",
     "objective_id":  "MIM-STUDIO-DATA-AUDIT-AND-RECONCILIATION-V1",
-    "generated_at":  "2026-06-04T19:52:56Z",
+    "generated_at":  "2026-06-04T19:59:56Z",
     "status":  "passed_with_watch",
     "owner":  "TOD",
     "accountable_to":  "MIM",
@@ -14,7 +14,7 @@
                         },
     "context_sync":  {
                          "validation_status":  "passed",
-                         "sync_status":  "ok_with_truth_repair",
+                         "sync_status":  "ok",
                          "suspect_count":  0
                      },
     "training":  {
@@ -53,10 +53,10 @@
                                           "kind":  "artifact",
                                           "path":  "tod/out/context-sync/listener/MIM_CONTEXT_SYNC_DATA_ACCURACY_VALIDATION.latest.json",
                                           "exists":  true,
-                                          "last_write_utc":  "2026-06-04T19:52:45Z",
-                                          "generated_at":  "2026-06-04T19:52:45Z",
+                                          "last_write_utc":  "2026-06-04T19:59:26Z",
+                                          "generated_at":  "2026-06-04T19:59:25Z",
                                           "status":  "passed",
-                                          "bytes":  6787
+                                          "bytes":  6732
                                       },
                                       {
                                           "label":  "TOD Validation Result",
@@ -71,7 +71,8 @@
                                   ],
                       "findings":  [
                                        "Training must show source files for scoreboard, reflection, TOD validation, and context-sync validation."
-                                   ]
+                                   ],
+                      "source_trust":  "Mixed"
                   },
                   {
                       "page":  "health",
@@ -84,30 +85,30 @@
                                           "kind":  "artifact",
                                           "path":  "tod/out/context-sync/MIM_CONTEXT_SYNC_STATUS.latest.json",
                                           "exists":  true,
-                                          "last_write_utc":  "2026-06-04T19:52:45Z",
+                                          "last_write_utc":  "2026-06-04T19:59:41Z",
                                           "generated_at":  "",
                                           "status":  "available",
-                                          "bytes":  1149
+                                          "bytes":  1121
                                       },
                                       {
                                           "label":  "Context Sync Validation",
                                           "kind":  "artifact",
                                           "path":  "tod/out/context-sync/listener/MIM_CONTEXT_SYNC_DATA_ACCURACY_VALIDATION.latest.json",
                                           "exists":  true,
-                                          "last_write_utc":  "2026-06-04T19:52:45Z",
-                                          "generated_at":  "2026-06-04T19:52:45Z",
+                                          "last_write_utc":  "2026-06-04T19:59:26Z",
+                                          "generated_at":  "2026-06-04T19:59:25Z",
                                           "status":  "passed",
-                                          "bytes":  6787
+                                          "bytes":  6732
                                       },
                                       {
                                           "label":  "TOD Integration Status",
                                           "kind":  "artifact",
                                           "path":  "tod/out/context-sync/listener/TOD_INTEGRATION_STATUS.latest.json",
                                           "exists":  true,
-                                          "last_write_utc":  "2026-06-04T19:51:58Z",
-                                          "generated_at":  "2026-06-04T19:51:56.3351642Z",
+                                          "last_write_utc":  "2026-06-04T19:59:44Z",
+                                          "generated_at":  "2026-06-04T19:59:42.7144408Z",
                                           "status":  "available",
-                                          "bytes":  25836
+                                          "bytes":  25834
                                       },
                                       {
                                           "label":  "TOD Latest Result",
@@ -122,7 +123,8 @@
                                   ],
                       "findings":  [
                                        "Health must expose the current context-sync validation and latest TOD task/source status."
-                                   ]
+                                   ],
+                      "source_trust":  "Fresh"
                   },
                   {
                       "page":  "projects",
@@ -163,7 +165,8 @@
                                   ],
                       "findings":  [
                                        "Project counts, progress, movement, and Dave-needed flags must show DB/table and event-source accountability."
-                                   ]
+                                   ],
+                      "source_trust":  "Fresh"
                   },
                   {
                       "page":  "apps",
@@ -204,7 +207,8 @@
                                   ],
                       "findings":  [
                                        "Apps must separate registered source, TOD scan evidence, and DB binding proof."
-                                   ]
+                                   ],
+                      "source_trust":  "Stale"
                   },
                   {
                       "page":  "reports",
@@ -235,7 +239,8 @@
                                   ],
                       "findings":  [
                                        "Reports must expose dataset source metadata and generated report source path/API JSON."
-                                   ]
+                                   ],
+                      "source_trust":  "Watched"
                   }
               ],
     "studio_api_checks":  [
@@ -244,7 +249,7 @@
                                   "kind":  "studio_api",
                                   "path":  "http://192.168.1.120:18001/studio/api/projects/state",
                                   "exists":  true,
-                                  "last_write_utc":  "2026-06-04T19:52:57Z",
+                                  "last_write_utc":  "2026-06-04T19:59:57Z",
                                   "generated_at":  "",
                                   "status":  "reachable",
                                   "bytes":  0
@@ -254,7 +259,7 @@
                                   "kind":  "studio_api",
                                   "path":  "http://192.168.1.120:18001/studio/api/apps/state",
                                   "exists":  true,
-                                  "last_write_utc":  "2026-06-04T19:52:58Z",
+                                  "last_write_utc":  "2026-06-04T19:59:57Z",
                                   "generated_at":  "",
                                   "status":  "reachable",
                                   "bytes":  0
@@ -264,7 +269,7 @@
                                   "kind":  "studio_api",
                                   "path":  "http://192.168.1.120:18001/studio/api/reports/state",
                                   "exists":  true,
-                                  "last_write_utc":  "2026-06-04T19:52:58Z",
+                                  "last_write_utc":  "2026-06-04T19:59:57Z",
                                   "generated_at":  "",
                                   "status":  "reachable",
                                   "bytes":  0
