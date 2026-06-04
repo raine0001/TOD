@@ -3901,6 +3901,36 @@ function Get-TriggerFieldLong {
     return 0L
 }
 
+function Select-ContractRuntimeTrigger {
+    param(
+        [AllowNull()]$PreferredTrigger,
+        [AllowNull()]$RequestPacket,
+        [AllowNull()]$GoOrderPacket
+    )
+
+    if ((Get-TriggerFieldLong -TriggerPacket $PreferredTrigger -FieldName "sequence") -gt 0) {
+        return $PreferredTrigger
+    }
+
+    if ((Get-TriggerFieldLong -TriggerPacket $RequestPacket -FieldName "sequence") -gt 0) {
+        return $RequestPacket
+    }
+
+    if ((Get-TriggerFieldLong -TriggerPacket $GoOrderPacket -FieldName "sequence") -gt 0) {
+        return $GoOrderPacket
+    }
+
+    if ($null -ne $PreferredTrigger) {
+        return $PreferredTrigger
+    }
+
+    if ($null -ne $RequestPacket) {
+        return $RequestPacket
+    }
+
+    return $GoOrderPacket
+}
+
 function Get-NextOutboundSequence {
     param(
         [Parameter(Mandatory = $true)]$State,
@@ -4844,6 +4874,142 @@ function Publish-TriggerAck {
     Write-RemoteFileFromText -Connections $Connections -RemotePath $RemotePath -Content $triggerAckJson
 }
 
+function Get-ListenerExecutionFeedbackConfig {
+    $defaultConfig = [pscustomobject]@{
+        mim_base_url = ''
+        auth_token = ''
+    }
+
+    $configPath = Join-Path $repoRoot 'tod/config/tod-config.json'
+    if (-not (Test-Path -Path $configPath)) {
+        return $defaultConfig
+    }
+
+    try {
+        $config = ConvertFrom-JsonCaseInsensitiveSafe -Text (Get-Content -Path $configPath -Raw)
+        $baseUrl = if ($config.PSObject.Properties['mim_base_url']) { [string]$config.mim_base_url } else { '' }
+        $authToken = ''
+        if ($config.PSObject.Properties['execution_feedback'] -and $null -ne $config.execution_feedback -and $config.execution_feedback.PSObject.Properties['auth_token']) {
+            $authToken = [string]$config.execution_feedback.auth_token
+        }
+
+        return [pscustomobject]@{
+            mim_base_url = $baseUrl
+            auth_token = $authToken
+        }
+    }
+    catch {
+        return $defaultConfig
+    }
+}
+
+function Get-RequestExecutionId {
+    param([Parameter(Mandatory = $true)]$Request)
+
+    if ($Request.PSObject.Properties['execution_id'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.execution_id)) {
+        return [string]$Request.execution_id
+    }
+    if ($Request.PSObject.Properties['remote_execution_id'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.remote_execution_id)) {
+        return [string]$Request.remote_execution_id
+    }
+
+    return ''
+}
+
+function Resolve-ExecutionFeedbackEndpoint {
+    param([Parameter(Mandatory = $true)]$Request)
+
+    $feedbackEndpoint = if ($Request.PSObject.Properties['feedback_endpoint']) { [string]$Request.feedback_endpoint } else { '' }
+    if ([string]::IsNullOrWhiteSpace($feedbackEndpoint)) {
+        return ''
+    }
+
+    if ([System.Uri]::IsWellFormedUriString($feedbackEndpoint, [System.UriKind]::Absolute)) {
+        return $feedbackEndpoint
+    }
+
+    $config = Get-ListenerExecutionFeedbackConfig
+    $baseUrl = ([string]$config.mim_base_url).Trim()
+    if ([string]::IsNullOrWhiteSpace($baseUrl)) {
+        return ''
+    }
+
+    try {
+        $baseUri = [System.Uri]$baseUrl
+        $resolvedUri = [System.Uri]::new($baseUri, $feedbackEndpoint)
+        return $resolvedUri.AbsoluteUri
+    }
+    catch {
+        return ''
+    }
+}
+
+function Publish-ExecutionFeedbackFromRequest {
+    param(
+        [Parameter(Mandatory = $true)]$Request,
+        [Parameter(Mandatory = $true)][string]$Status,
+        [Parameter(Mandatory = $true)][string]$TaskId,
+        [string]$HostReceivedTimestamp = '',
+        [string]$HostCompletedTimestamp = '',
+        [string]$ResultReasonCode = '',
+        [string]$ExecutionMode = '',
+        [string]$FailureCategory = '',
+        [string]$ErrorDetail = '',
+        [bool]$GuardrailBlocked = $false,
+        [bool]$Recovered = $false,
+        [bool]$UnrecoveredFailure = $false,
+        [bool]$ReviewGatePassed = $true,
+        [bool]$ValidatorPassed = $true
+    )
+
+    $executionId = Get-RequestExecutionId -Request $Request
+    if ([string]::IsNullOrWhiteSpace($executionId)) {
+        return [pscustomobject]@{ attempted = $false; published = $false; reason = 'missing_execution_id' }
+    }
+
+    $feedbackUri = Resolve-ExecutionFeedbackEndpoint -Request $Request
+    if ([string]::IsNullOrWhiteSpace($feedbackUri)) {
+        return [pscustomobject]@{ attempted = $true; published = $false; reason = 'missing_feedback_endpoint'; execution_id = $executionId }
+    }
+
+    $details = [ordered]@{
+        task_id = $TaskId
+        result_reason_code = $ResultReasonCode
+        execution_mode = $ExecutionMode
+        failure_category = $FailureCategory
+        error_detail = $ErrorDetail
+        guardrail_blocked = [bool]$GuardrailBlocked
+        recovered = [bool]$Recovered
+        unrecovered_failure = [bool]$UnrecoveredFailure
+        review_gate_passed = [bool]$ReviewGatePassed
+        validator_passed = [bool]$ValidatorPassed
+        host_received_timestamp = $HostReceivedTimestamp
+        host_completed_timestamp = $HostCompletedTimestamp
+        executor_timestamps = [ordered]@{
+            host_received_timestamp = $HostReceivedTimestamp
+            host_completed_timestamp = $HostCompletedTimestamp
+        }
+    }
+
+    $payload = [ordered]@{
+        status = $Status
+        details = $details
+    }
+    $headers = @{}
+    $config = Get-ListenerExecutionFeedbackConfig
+    if (-not [string]::IsNullOrWhiteSpace([string]$config.auth_token)) {
+        $headers['Authorization'] = ("Bearer {0}" -f [string]$config.auth_token)
+    }
+
+    try {
+        Invoke-RestMethod -Uri $feedbackUri -Method Post -ContentType 'application/json' -Headers $headers -Body ($payload | ConvertTo-Json -Depth 12) | Out-Null
+        return [pscustomobject]@{ attempted = $true; published = $true; reason = ''; execution_id = $executionId; endpoint = $feedbackUri }
+    }
+    catch {
+        return [pscustomobject]@{ attempted = $true; published = $false; reason = $_.Exception.Message; execution_id = $executionId; endpoint = $feedbackUri }
+    }
+}
+
 function Invoke-RequestExecution {
     param(
         [Parameter(Mandatory = $true)][string]$TodScriptAbs,
@@ -5559,156 +5725,6 @@ try {
             ""
         }
         $currentCorrelationId = if (-not [string]::IsNullOrWhiteSpace($triggerCorrelationId)) {
-
-            function Get-ListenerExecutionFeedbackConfig {
-                $defaultConfig = [pscustomobject]@{
-                    mim_base_url = ''
-                    auth_token = ''
-                }
-
-                $configPath = Join-Path $repoRoot 'tod/config/tod-config.json'
-                if (-not (Test-Path -Path $configPath)) {
-                    return $defaultConfig
-                }
-
-                try {
-                    $config = ConvertFrom-JsonCaseInsensitiveSafe -Text (Get-Content -Path $configPath -Raw)
-                    $baseUrl = if ($config.PSObject.Properties['mim_base_url']) { [string]$config.mim_base_url } else { '' }
-                    $authToken = ''
-                    if ($config.PSObject.Properties['execution_feedback'] -and $null -ne $config.execution_feedback -and $config.execution_feedback.PSObject.Properties['auth_token']) {
-                        $authToken = [string]$config.execution_feedback.auth_token
-                    }
-
-                    return [pscustomobject]@{
-                        mim_base_url = $baseUrl
-                        auth_token = $authToken
-                    }
-                }
-                catch {
-                    return $defaultConfig
-                }
-            }
-
-            function Get-RequestExecutionId {
-                param([Parameter(Mandatory = $true)]$Request)
-
-                if ($Request.PSObject.Properties['execution_id'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.execution_id)) {
-                    return [string]$Request.execution_id
-                }
-                if ($Request.PSObject.Properties['remote_execution_id'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.remote_execution_id)) {
-                    return [string]$Request.remote_execution_id
-                }
-
-                return ''
-            }
-
-            function Resolve-ExecutionFeedbackEndpoint {
-                param([Parameter(Mandatory = $true)]$Request)
-
-                $feedbackEndpoint = if ($Request.PSObject.Properties['feedback_endpoint']) { [string]$Request.feedback_endpoint } else { '' }
-                if ([string]::IsNullOrWhiteSpace($feedbackEndpoint)) {
-                    return ''
-                }
-
-                if ([System.Uri]::IsWellFormedUriString($feedbackEndpoint, [System.UriKind]::Absolute)) {
-                    return $feedbackEndpoint
-                }
-
-                $config = Get-ListenerExecutionFeedbackConfig
-                $baseUrl = ([string]$config.mim_base_url).Trim()
-                if ([string]::IsNullOrWhiteSpace($baseUrl)) {
-                    return ''
-                }
-
-                try {
-                    $baseUri = [System.Uri]$baseUrl
-                    $resolvedUri = [System.Uri]::new($baseUri, $feedbackEndpoint)
-                    return $resolvedUri.AbsoluteUri
-                }
-                catch {
-                    return ''
-                }
-            }
-
-            function Publish-ExecutionFeedbackFromRequest {
-                param(
-                    [Parameter(Mandatory = $true)]$Request,
-                    [Parameter(Mandatory = $true)][string]$Status,
-                    [Parameter(Mandatory = $true)][string]$TaskId,
-                    [string]$HostReceivedTimestamp = '',
-                    [string]$HostCompletedTimestamp = '',
-                    [string]$ResultReasonCode = '',
-                    [string]$ExecutionMode = '',
-                    [string]$FailureCategory = '',
-                    [string]$ErrorDetail = '',
-                    [bool]$GuardrailBlocked = $false,
-                    [bool]$Recovered = $false,
-                    [bool]$UnrecoveredFailure = $false,
-                    [bool]$ReviewGatePassed = $true,
-                    [bool]$ValidatorPassed = $true
-                )
-
-                $executionId = Get-RequestExecutionId -Request $Request
-                if ([string]::IsNullOrWhiteSpace($executionId)) {
-                    return [pscustomobject]@{ attempted = $false; published = $false; reason = 'missing_execution_id' }
-                }
-
-                $feedbackUri = Resolve-ExecutionFeedbackEndpoint -Request $Request
-                if ([string]::IsNullOrWhiteSpace($feedbackUri)) {
-                    return [pscustomobject]@{ attempted = $false; published = $false; reason = 'missing_feedback_endpoint'; execution_id = $executionId }
-                }
-
-                $details = [ordered]@{
-                    request_id = if ($Request.PSObject.Properties['request_id']) { [string]$Request.request_id } else { '' }
-                    objective_id = if ($Request.PSObject.Properties['objective_id']) { [string]$Request.objective_id } else { '' }
-                    action = if ($Request.PSObject.Properties['action']) { [string]$Request.action } else { '' }
-                    capability = if ($Request.PSObject.Properties['capability_name']) { [string]$Request.capability_name } else { '' }
-                    execution_mode = $ExecutionMode
-                    result_reason_code = $ResultReasonCode
-                    guardrail_blocked = $GuardrailBlocked
-                    recovered = $Recovered
-                    unrecovered_failure = $UnrecoveredFailure
-                    failure_category = $FailureCategory
-                    review_gate_passed = $ReviewGatePassed
-                    validator_passed = $ValidatorPassed
-                    executor_timestamps = [ordered]@{}
-                }
-
-                if (-not [string]::IsNullOrWhiteSpace($HostReceivedTimestamp)) {
-                    $details.host_received_timestamp = $HostReceivedTimestamp
-                    $details.executor_timestamps.host_received_timestamp = $HostReceivedTimestamp
-                }
-                if (-not [string]::IsNullOrWhiteSpace($HostCompletedTimestamp)) {
-                    $details.host_completed_timestamp = $HostCompletedTimestamp
-                    $details.executor_timestamps.host_completed_timestamp = $HostCompletedTimestamp
-                }
-                if (-not [string]::IsNullOrWhiteSpace($ErrorDetail)) {
-                    $details.error = $ErrorDetail
-                }
-
-                $payload = [ordered]@{
-                    status = $Status
-                    source = 'tod-listener'
-                    task_id = $TaskId
-                    timestamp = (Get-Date).ToUniversalTime().ToString('o')
-                    details = [pscustomobject]$details
-                }
-
-                $config = Get-ListenerExecutionFeedbackConfig
-                $headers = @{}
-                if (-not [string]::IsNullOrWhiteSpace([string]$config.auth_token)) {
-                    $headers['Authorization'] = 'Bearer ' + [string]$config.auth_token
-                }
-
-                try {
-                    $response = Invoke-RestMethod -Method Post -Uri $feedbackUri -ContentType 'application/json' -Headers $headers -Body (($payload | ConvertTo-Json -Depth 12) -replace "`r`n", "`n")
-                    return [pscustomobject]@{ attempted = $true; published = $true; reason = 'ok'; execution_id = $executionId; endpoint = $feedbackUri; response = $response }
-                }
-                catch {
-                    return [pscustomobject]@{ attempted = $true; published = $false; reason = 'error'; execution_id = $executionId; endpoint = $feedbackUri; error = [string]$_.Exception.Message }
-                }
-            }
-
             $triggerCorrelationId
         }
         elseif ($requestPreview -and $requestPreview.PSObject.Properties["correlation_id"] -and -not [string]::IsNullOrWhiteSpace([string]$requestPreview.correlation_id)) {
@@ -6334,7 +6350,7 @@ try {
             next_step_recommendation = [string]$requestDecision.next_step_recommendation
             bridge_runtime = $bridgeRuntime
         }
-        $taskAckTrigger = if ($null -ne $livenessTrigger) { $livenessTrigger } else { $goOrder }
+        $taskAckTrigger = Select-ContractRuntimeTrigger -PreferredTrigger $livenessTrigger -RequestPacket $request -GoOrderPacket $goOrder
         $null = Add-ContractPacketEnvelope -Packet $ack -BindingMetadata $contractBinding -PacketType 'tod-mim-task-ack-v1' -MessageKind 'ack' -ObjectiveId ([string]$ack.objective_id) -TaskId ([string]$ack.task_id) -RequestId $requestId -CorrelationId ([string]$ack.correlation_id)
         $null = Add-SequenceRuntimeFields -Packet $ack -TriggerPacket $taskAckTrigger -ListenerState $listenerState -ListenerStatePath $listenerStatePath
         $ackValidation = Test-ContractRuntimePacket -PythonCommand $pythonCommand -ValidatorScript $runtimeContractValidatorAbs -BindingMetadata $contractBinding -PacketKind 'ack' -Packet $ack
@@ -6549,7 +6565,7 @@ try {
             bridge_runtime = $bridgeRuntime
             output_preview = if ([string]::IsNullOrWhiteSpace([string]$execution.output)) { "" } else { ([string]$execution.output).Substring(0, [Math]::Min(1200, ([string]$execution.output).Length)) }
         }
-        $resultTrigger = if ($null -ne $livenessTrigger) { $livenessTrigger } else { $goOrder }
+        $resultTrigger = Select-ContractRuntimeTrigger -PreferredTrigger $livenessTrigger -RequestPacket $request -GoOrderPacket $goOrder
         $resultPacket.result_reason_code = Get-ResultReasonCode -Status ([string]$resultPacket.status) -Execution $execution -ReviewGate $reviewGate -ValidatorResult $validatorResult
         $null = Add-ContractPacketEnvelope -Packet $resultPacket -BindingMetadata $contractBinding -PacketType 'tod-mim-task-result-v1' -MessageKind 'result' -ObjectiveId ([string]$resultPacket.objective_id) -TaskId ([string]$resultPacket.task_id) -RequestId $requestId -CorrelationId ([string]$resultPacket.correlation_id)
         $null = Add-SequenceRuntimeFields -Packet $resultPacket -TriggerPacket $resultTrigger -ListenerState $listenerState -ListenerStatePath $listenerStatePath
@@ -6781,6 +6797,7 @@ try {
         if (-not [string]::IsNullOrWhiteSpace($syncError)) {
             $resultPacket | Add-Member -NotePropertyName sync_warning -NotePropertyValue $syncError -Force
         }
+        $resultPacket.result_status = [string]$resultPacket.status
         $resultValidation = Test-ContractRuntimePacket -PythonCommand $pythonCommand -ValidatorScript $runtimeContractValidatorAbs -BindingMetadata $contractBinding -PacketKind 'result' -Packet $resultPacket
         if (-not [bool]$resultValidation.passed) {
             $violation = Publish-RuntimeContractViolation -ViolationPath $localRuntimeViolationPath -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding -PacketKind 'result' -Packet $resultPacket -ValidationResult $resultValidation

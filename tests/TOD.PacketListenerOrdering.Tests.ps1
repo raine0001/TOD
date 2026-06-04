@@ -168,6 +168,8 @@ Describe 'TOD packet listener ordering hardening' {
         Import-ListenerFunction -Name 'Convert-JsonDeserializedValue'
         Import-ListenerFunction -Name 'ConvertFrom-JsonCaseInsensitiveSafe'
         Import-ListenerFunction -Name 'Get-ObjectFieldLong'
+        Import-ListenerFunction -Name 'Get-TriggerFieldLong'
+        Import-ListenerFunction -Name 'Select-ContractRuntimeTrigger'
         Import-ListenerFunction -Name 'Get-TaskOrdinalInfo'
         Import-ListenerFunction -Name 'Get-RequestOrderingInfo'
         Import-ListenerFunction -Name 'Test-RequestOrderingIsStale'
@@ -184,6 +186,24 @@ Describe 'TOD packet listener ordering hardening' {
         Import-ListenerFunction -Name 'Get-TriggerContext'
         Import-ListenerFunction -Name 'Publish-CommandStatus'
         Import-ListenerFunction -Name 'Publish-ExecutionLock'
+    }
+
+    It 'falls back to request sequence when the liveness trigger is a superseded wrapper' {
+        $supersededTrigger = [pscustomobject]@{
+            packet_type = 'context-sync-superseded-status-v1'
+            status = 'superseded_by_newer_success'
+            original_task_id = 'objective-3458-task-1780598875'
+        }
+        $request = [pscustomobject]@{
+            request_id = 'objective-3458-task-1780598875'
+            task_id = 'objective-3458-task-1780598875'
+            sequence = 1780598875
+        }
+
+        $selected = Select-ContractRuntimeTrigger -PreferredTrigger $supersededTrigger -RequestPacket $request -GoOrderPacket $null
+
+        [long](Get-TriggerFieldLong -TriggerPacket $selected -FieldName 'sequence') | Should Be 1780598875
+        [string]$selected.request_id | Should Be 'objective-3458-task-1780598875'
     }
 
     It 'ignores inactive authority reset ceilings' {
