@@ -150,6 +150,75 @@ def tod_artifact_metric_snapshot() -> dict[str, Any]:
     }
 
 
+def tod_next_action_accuracy_snapshot() -> dict[str, Any]:
+    training_set = load_json(TRAINING_ROOT / "TOD_NEXT_ACTION_SELECTION_TRAINING_SET.latest.json")
+    scorer = load_json(TRAINING_ROOT / "TOD_NEXT_ACTION_SELECTION_SCHEMA_AND_SCORER_V1.latest.json")
+    records = training_set.get("records") if isinstance(training_set.get("records"), list) else []
+    dimensions = scorer.get("scoring_dimensions") if isinstance(scorer.get("scoring_dimensions"), list) else []
+    dimension_keys = [str(item.get("key") or "").strip() for item in dimensions if isinstance(item, dict) and item.get("key")]
+    if not dimension_keys:
+        dimension_keys = [
+            "moved_project",
+            "reduced_blocker_age",
+            "closed_acceptance",
+            "avoided_scope_expansion",
+            "avoided_fake_completion",
+            "avoided_unnecessary_dave",
+        ]
+    scored_records: list[dict[str, Any]] = []
+    pending_records: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        outcome_score = record.get("outcome_score") if isinstance(record.get("outcome_score"), dict) else {}
+        dimension_results = (
+            outcome_score.get("dimensions")
+            if isinstance(outcome_score.get("dimensions"), dict)
+            else {}
+        )
+        if not dimension_results:
+            pending_records.append(
+                {
+                    "situation": sanitize_operator_text(record.get("situation")),
+                    "lane": record.get("lane"),
+                    "candidate_next_action": sanitize_operator_text(record.get("candidate_next_action")),
+                    "status": "outcome_pending",
+                }
+            )
+            continue
+        passed_dimensions = [
+            key for key in dimension_keys if bool(dimension_results.get(key))
+        ]
+        fake_completion_failed = dimension_results.get("avoided_fake_completion") is False
+        passed = len(passed_dimensions) >= 5 and not fake_completion_failed
+        scored_records.append(
+            {
+                "situation": sanitize_operator_text(record.get("situation")),
+                "lane": record.get("lane"),
+                "candidate_next_action": sanitize_operator_text(record.get("candidate_next_action")),
+                "passed_dimensions": passed_dimensions,
+                "score": len(passed_dimensions),
+                "max_score": len(dimension_keys),
+                "passed": passed,
+            }
+        )
+    passed_count = sum(1 for item in scored_records if item.get("passed"))
+    pass_rate = pct(passed_count, len(scored_records)) if scored_records else None
+    return {
+        "source": "TOD_NEXT_ACTION_SELECTION_TRAINING_SET.latest.json",
+        "scorer": "TOD_NEXT_ACTION_SELECTION_SCHEMA_AND_SCORER_V1.latest.json",
+        "status": "measured" if scored_records else "baseline_needed",
+        "record_count": len(records),
+        "scored_count": len(scored_records),
+        "pending_count": len(pending_records),
+        "passed_count": passed_count,
+        "pass_rate_percent": pass_rate,
+        "score_dimensions": dimension_keys,
+        "scored_records": scored_records[:20],
+        "pending_records": pending_records[:20],
+    }
+
+
 def post_gateway(base_url: str, prompt: str) -> str:
     payload = {
         "source": "text",
@@ -336,6 +405,7 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
     meaningful_inspection = bool(((drill4.get("validation") or {}).get("meaningful_result_detected")))
     false_completion_prevented = 1 if meaningful_inspection else 0
     tod_artifact_metrics = tod_artifact_metric_snapshot()
+    tod_next_action_accuracy = tod_next_action_accuracy_snapshot()
     no_op_rejections = tod_artifact_metrics["no_op_rejections"]
     validated_edits = tod_artifact_metrics["validated_edits"]
 
@@ -487,8 +557,21 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
                     "unit": "count",
                     "source": "tod_result_artifacts",
                 },
+                "next_action_accuracy": {
+                    "yesterday": baseline_needed("no prior daily TOD next-action outcome scoreboard"),
+                    "today": tod_next_action_accuracy.get("pass_rate_percent"),
+                    "unit": "percent",
+                    "source": "tod_next_action_training_set",
+                },
+                "next_action_outcome_pending": {
+                    "yesterday": baseline_needed("no prior daily TOD next-action outcome scoreboard"),
+                    "today": tod_next_action_accuracy.get("pending_count"),
+                    "unit": "count",
+                    "source": "tod_next_action_training_set",
+                },
             },
             "artifact_metrics": tod_artifact_metrics,
+            "next_action_accuracy": tod_next_action_accuracy,
             "blocker_classes": (((directive.get("tod_training") or {}).get("active_blocker_clearing_drill") or {}).get("classes") or triage.get("classes") or {}),
             "latest_drill": {
                 "id": drill4.get("drill_id"),
@@ -630,6 +713,24 @@ def write_markdown(scoreboard: dict[str, Any], path: Path) -> None:
         lines.append(
             f"| {key.replace('_', ' ').title()} | {metric_value(item.get('yesterday'))} | {metric_value(today)} | {item.get('source')} |"
         )
+    next_action_accuracy = scoreboard["tod_score"].get("next_action_accuracy")
+    if isinstance(next_action_accuracy, dict):
+        lines.extend([
+            "",
+            "## TOD Next Action Accuracy",
+            "",
+            f"- Status: {next_action_accuracy.get('status') or 'unknown'}",
+            f"- Records: {metric_value(next_action_accuracy.get('record_count'))}",
+            f"- Scored: {metric_value(next_action_accuracy.get('scored_count'))}",
+            f"- Pending outcomes: {metric_value(next_action_accuracy.get('pending_count'))}",
+            f"- Passed: {metric_value(next_action_accuracy.get('passed_count'))}",
+            f"- Pass rate: {metric_value(next_action_accuracy.get('pass_rate_percent'))}%",
+            "",
+            "| Dimension |",
+            "|---|",
+        ])
+        for dimension in next_action_accuracy.get("score_dimensions") or []:
+            lines.append(f"| {str(dimension).replace('_', ' ').title()} |")
     latest = scoreboard["tod_score"].get("latest_drill") or {}
     lines.extend([
         "",

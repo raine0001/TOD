@@ -12,7 +12,18 @@
       "reason": "Original acceptance is complete.",
       "confidence": 0.95,
       "required_evidence": "Project status remains completed, progress is 100, and table controls remain live.",
-      "escalation_path": "Keep closed; reopen only on regression evidence."
+      "escalation_path": "Keep closed; reopen only on regression evidence.",
+      "outcome_score": {
+        "dimensions": {
+          "moved_project": true,
+          "reduced_blocker_age": true,
+          "closed_acceptance": true,
+          "avoided_scope_expansion": true,
+          "avoided_fake_completion": true,
+          "avoided_unnecessary_dave": true
+        },
+        "evidence": "Studio Projects Table Organization is completed at 100% with accepted table controls and no Dave intervention required."
+      }
     },
     {
       "situation": "LAB Workbench Servo Tester has active hardware work but lacks explicit acceptance criteria.",
@@ -72,7 +83,18 @@
       "reason": "The system has an explicit validation task with observable project events.",
       "confidence": 0.72,
       "required_evidence": "mim_auto_intervention events exist and next_action/current_driving_task are updated.",
-      "escalation_path": "MIM/TOD local intervention; Codex only if the Studio intervention code fails."
+      "escalation_path": "MIM/TOD local intervention; Codex only if the Studio intervention code fails.",
+      "outcome_score": {
+        "dimensions": {
+          "moved_project": true,
+          "reduced_blocker_age": true,
+          "closed_acceptance": false,
+          "avoided_scope_expansion": true,
+          "avoided_fake_completion": true,
+          "avoided_unnecessary_dave": true
+        },
+        "evidence": "Projects API reported 17 then 30 auto interventions and updated current driving tasks without Dave action. Acceptance remains open."
+      }
     },
     {
       "situation": "TOD Next Action Selection Competency V1 has the selector implemented but needs more real examples.",
@@ -82,7 +104,18 @@
       "reason": "The selector needs real situation/outcome/successor examples to improve beyond rules.",
       "confidence": 0.78,
       "required_evidence": "Training-set artifact exists with real project-state examples.",
-      "escalation_path": "TOD mines artifacts; Codex only if extraction tooling or schema changes are needed."
+      "escalation_path": "TOD mines artifacts; Codex only if extraction tooling or schema changes are needed.",
+      "outcome_score": {
+        "dimensions": {
+          "moved_project": true,
+          "reduced_blocker_age": true,
+          "closed_acceptance": false,
+          "avoided_scope_expansion": true,
+          "avoided_fake_completion": true,
+          "avoided_unnecessary_dave": true
+        },
+        "evidence": "Starter training-set, schema, scorer, and live API coverage were created. Full competency acceptance remains open."
+      }
     }
   ],
   "next_dataset_expansion": [
