@@ -2826,6 +2826,149 @@ async def _dispatch_next_studio_project_if_needed(db: AsyncSession, projects: li
     return 1
 
 
+def _project_by_title(projects: list[StudioProject], title: str) -> StudioProject | None:
+    normalized = title.strip().lower()
+    for project in projects:
+        if str(project.title or "").strip().lower() == normalized:
+            return project
+    return None
+
+
+def _tod_binding_fresh_enough(payload: dict[str, Any], *, max_age_seconds: int = 36 * 60 * 60) -> bool:
+    timestamp = _first_text(
+        payload.get("generated_at"),
+        payload.get("updated_at"),
+        payload.get("completed_at"),
+        payload.get("started_at"),
+        default="",
+    )
+    parsed = _studio_parse_created_at(timestamp)
+    if parsed is None:
+        return False
+    return (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds() <= max_age_seconds
+
+
+async def _bind_tod_results_to_studio_projects(db: AsyncSession, projects: list[StudioProject]) -> int:
+    target = _project_by_title(projects, "TOD Local PowerShell Migration")
+    if target is None:
+        return 0
+    task_result = _load_json("TOD_MIM_TASK_RESULT.latest.json")
+    command_status = _load_json("TOD_MIM_COMMAND_STATUS.latest.json")
+    candidates: list[dict[str, Any]] = []
+    if task_result and _tod_binding_fresh_enough(task_result):
+        candidates.append(
+            {
+                "source_name": "TOD_MIM_TASK_RESULT.latest.json",
+                "payload": task_result,
+                "status": _first_text(task_result.get("result_status"), task_result.get("status"), default="unknown"),
+                "summary": _first_text(task_result.get("summary"), task_result.get("result"), default="TOD result published."),
+                "request_id": _first_text(task_result.get("request_id"), task_result.get("task_id"), default=""),
+                "task_id": _first_text(task_result.get("task_id"), task_result.get("task"), default=""),
+            }
+        )
+    if command_status and _tod_binding_fresh_enough(command_status):
+        candidates.append(
+            {
+                "source_name": "TOD_MIM_COMMAND_STATUS.latest.json",
+                "payload": command_status,
+                "status": _first_text(command_status.get("status"), default="unknown"),
+                "summary": _first_text(command_status.get("detail"), command_status.get("status"), default="TOD command status published."),
+                "request_id": _first_text(command_status.get("request_id"), default=""),
+                "task_id": _first_text(command_status.get("task_id"), default=""),
+            }
+        )
+    if not candidates:
+        return 0
+
+    existing_event_rows = (
+        await db.execute(
+            select(StudioProjectEvent.event_type, StudioProjectEvent.metadata_json)
+            .where(StudioProjectEvent.event_type.in_(["tod_result_bound", "tod_result_rejected"]))
+            .where(StudioProjectEvent.project_id == target.id)
+            .limit(5000)
+        )
+    ).all()
+    existing_ids: set[str] = set()
+    existing_bound_count = 0
+    existing_rejected_count = 0
+    for event_type, metadata in existing_event_rows:
+        existing_bound_count += 1
+        if event_type == "tod_result_rejected":
+            existing_rejected_count += 1
+        if isinstance(metadata, dict):
+            binding_id = str(metadata.get("binding_id") or "").strip()
+            if binding_id:
+                existing_ids.add(binding_id)
+
+    added = 0
+    worst_status = ""
+    worst_summary = ""
+    for item in candidates:
+        payload = item["payload"]
+        binding_id = ":".join(
+            [
+                str(item.get("source_name") or ""),
+                str(item.get("request_id") or ""),
+                str(payload.get("request_signature") or ""),
+                str(payload.get("generated_at") or payload.get("updated_at") or ""),
+                str(item.get("status") or ""),
+            ]
+        )
+        if binding_id in existing_ids:
+            continue
+        status_lower = str(item.get("status") or "").strip().lower()
+        rejected = status_lower in {"contract_violation_rejected", "rejected", "failed", "blocked"} or "rejected" in status_lower
+        event_type = "tod_result_rejected" if rejected else "tod_result_bound"
+        title = "TOD result rejected" if rejected else "TOD result bound"
+        detail = str(item.get("summary") or "").strip()
+        db.add(
+            StudioProjectEvent(
+                project_id=target.id,
+                event_type=event_type,
+                actor="TOD Result Binder",
+                title=title,
+                detail=detail[:2000],
+                evidence_json=payload,
+                metadata_json={
+                    "source": "studio_tod_result_binding_v1",
+                    "binding_id": binding_id,
+                    "source_name": item.get("source_name"),
+                    "request_id": item.get("request_id"),
+                    "task_id": item.get("task_id"),
+                    "movement_event": True,
+                    "status": item.get("status"),
+                },
+            )
+        )
+        existing_ids.add(binding_id)
+        added += 1
+        if rejected:
+            worst_status = str(item.get("status") or "")
+            worst_summary = detail
+
+    metadata = target.metadata_json if isinstance(target.metadata_json, dict) else {}
+    metadata = dict(metadata)
+    if worst_status:
+        target.status = "blocked"
+        metadata["work_state"] = "blocked"
+        metadata["progress_percent"] = max(_project_progress(target), 25)
+        metadata["validation_evidence"] = "fresh TOD result/status bound with rejection evidence"
+        metadata["blocker"] = worst_summary or worst_status
+        target.next_action = "Repair TOD result contract validation so accepted TOD results bind cleanly to Studio project evidence."
+    elif added or existing_bound_count:
+        target.status = "working"
+        metadata["work_state"] = "working"
+        metadata["progress_percent"] = max(_project_progress(target), 30)
+        metadata["validation_evidence"] = "fresh TOD task result/status bound to Studio project ledger"
+        target.next_action = "Continue TOD listener migration and publish the next bounded result with contract-valid status."
+    metadata["last_tod_result_bound_at"] = _utc_now()
+    target.metadata_json = metadata
+
+    if added or existing_bound_count or existing_rejected_count:
+        await db.commit()
+    return added
+
+
 async def _ensure_studio_project_record(
     db: AsyncSession,
     *,
@@ -2936,7 +3079,10 @@ async def _upsert_studio_project_record(
             merged_metadata.setdefault(key, value)
         existing.metadata_json = merged_metadata
         return existing
-    existing_has_reconciled_evidence = bool(existing_metadata.get("last_reconciled_at"))
+    existing_has_reconciled_evidence = bool(
+        existing_metadata.get("last_reconciled_at")
+        or existing_metadata.get("last_tod_result_bound_at")
+    )
     existing.summary = summary
     if not existing_has_reconciled_evidence or not existing.status:
         existing.status = status
@@ -2959,6 +3105,7 @@ async def _upsert_studio_project_record(
             "completion_evidence",
             "last_reconciled_at",
             "last_reconciled_evidence_count",
+            "last_tod_result_bound_at",
         ):
             if key in existing_metadata:
                 merged_metadata[key] = existing_metadata[key]
@@ -4271,6 +4418,7 @@ async def _studio_projects_state(
     ).scalars().all()
     reconciled_count = await _reconcile_studio_project_evidence(db, projects)
     dispatched_count = await _dispatch_next_studio_project_if_needed(db, projects)
+    tod_bound_count = await _bind_tod_results_to_studio_projects(db, projects)
     signals = (
         await db.execute(select(StudioProjectSignal).order_by(StudioProjectSignal.id.desc()).limit(50))
     ).scalars().all()
@@ -4394,6 +4542,7 @@ async def _studio_projects_state(
         "counts": counts,
         "reconciled_count": reconciled_count,
         "dispatched_count": dispatched_count,
+        "tod_bound_count": tod_bound_count,
         "selected_project": selected_project,
         "selected_events": selected_events,
         "view": view,

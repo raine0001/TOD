@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-06-04T10:08:00-07:00",
+  "objective_id": "MIM-TOD-RESULT-BINDING-V1",
+  "status": "active",
+  "priority": "P0",
+  "goal": "Bind fresh TOD result/status artifacts into Studio project events so dispatched work cannot remain invisible or falsely complete.",
+  "trigger": "After MIM/TOD dispatch, the project ledger still needed TOD acceptance/completion/stall/rejection events.",
+  "live_observation": {
+    "fresh_tod_task_result": "TOD_MIM_TASK_RESULT.latest.json published succeeded for objective-3458-task-1780591678.",
+    "fresh_tod_command_status": "TOD_MIM_COMMAND_STATUS.latest.json rejected RESULT because runtime contract validation failed: result_status_mismatch:packet.result_status.",
+    "interpretation": "The correct project result is not clean completion. It is a TOD bridge/listener contract blocker that belongs in the TOD Local PowerShell Migration project."
+  },
+  "implemented_v1": [
+    "Read fresh TOD_MIM_TASK_RESULT.latest.json and TOD_MIM_COMMAND_STATUS.latest.json from runtime/shared.",
+    "Bind fresh TOD result/status to the TOD Local PowerShell Migration project.",
+    "Create tod_result_bound for accepted result evidence.",
+    "Create tod_result_rejected for contract rejection evidence.",
+    "Update project blocker/next action when TOD command status rejects a result.",
+    "Deduplicate bindings by source, request id, signature, timestamp, and status."
+  ],
+  "truth_rule": "TOD result binding must prefer contract truth over optimistic result text. If TOD says succeeded but the command contract rejects the RESULT, Studio must show the rejection as the active blocker.",
+  "next_required_layer": "Generalize result-to-project matching beyond TOD Local PowerShell Migration using dispatch correlation ids and project ids in MIM_TOD_TASK_REQUEST."
+}
