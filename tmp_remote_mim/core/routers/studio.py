@@ -7884,6 +7884,25 @@ def _training_body(state: dict[str, Any]) -> str:
     )
     attention_items = state.get("attention_items") if isinstance(state.get("attention_items"), list) else []
     top_objective = state.get("top_training_objective") if isinstance(state.get("top_training_objective"), dict) else {}
+    attention_count = len(attention_items)
+    dave_attention_count = sum(
+        1
+        for item in attention_items
+        if "dave" in str(item.get("owner", "")).lower()
+        or "dave" in str(item.get("resolution_process", "")).lower()
+    )
+    if state.get("are_improving") is True:
+        training_badge_label = "Improving"
+        training_badge_dot = "green"
+    elif dave_attention_count > 0:
+        training_badge_label = f"Dave action needed ({dave_attention_count})"
+        training_badge_dot = "yellow"
+    elif attention_count > 0:
+        training_badge_label = f"Action plan active ({attention_count})"
+        training_badge_dot = "yellow"
+    else:
+        training_badge_label = "Current"
+        training_badge_dot = "green"
     attention_html = "".join(
         f"""
         <article class="attention-item" id="{_html(item.get("key", ""))}">
@@ -7897,6 +7916,23 @@ def _training_body(state: dict[str, Any]) -> str:
         """
         for item in attention_items
     ) or '<article class="attention-item"><strong>No current attention item.</strong><div class="muted">Training evidence currently has no active attention flag.</div></article>'
+    attention_brief_items = attention_items[:3]
+    attention_brief_rows = "".join(
+        f"""
+        <li>
+          <a href="{_html(item.get("href", "#what_needs_attention"))}">{_html(item.get("title", "Attention item"))}</a>
+          <span class="muted"> - {_html(item.get("what_needs_attention", ""))}</span>
+        </li>
+        """
+        for item in attention_brief_items
+    ) or "<li>No current attention item.</li>"
+    attention_brief = (
+        "MIM/TOD have the next training repairs queued; Dave is not needed right now."
+        if attention_count and dave_attention_count == 0
+        else "Dave has one or more training decisions/actions to review."
+        if dave_attention_count
+        else "Training evidence is current and has no active attention item."
+    )
     top_objective_html = ""
     if top_objective:
         top_objective_html = f"""
@@ -7955,15 +7991,20 @@ def _training_body(state: dict[str, Any]) -> str:
           <h2>MIM Training Summary</h2>
           <p class="focus">{_html(state["outcome_verdict"])}</p>
         </div>
-        <span class="badge"><span class="dot {'green' if state.get('are_improving') is True else 'yellow'}"></span>{_html(state["assessment"])}</span>
+        <a class="badge" href="#what_needs_attention" title="Open what needs attention">
+          <span class="dot {training_badge_dot}"></span>{_html(training_badge_label)}
+        </a>
       </div>
       <div class="label">Page Load / Evidence Time</div>
       <p>Loaded: {_html(state["page_loaded_at_la"])} / Evidence updated: {_html(state["generated_at_la"])} ({_html(state["generated_age"])}) / Directive: {_html(state["directive_status"])} / Improving: {_html(state.get("are_improving"))}</p>
       <div class="label">Resolution Ownership</div>
       <p>{_html(state.get("resolution_owner_model", ""))}</p>
+      <div class="label">MIM Attention Brief</div>
+      <p>{_html(attention_brief)}</p>
+      <ul class="clean">{attention_brief_rows}</ul>
     </section>
     {_data_sources_html(state, "training")}
-    <section class="card" style="margin-top:14px;">
+    <section class="card" id="what_needs_attention" style="margin-top:14px;">
       <h2>What Needs Attention</h2>
       <div class="attention-list" style="margin-top:10px;">{attention_html}</div>
     </section>
