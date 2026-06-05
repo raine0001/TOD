@@ -2849,7 +2849,13 @@ def _studio_age_label(value: object) -> str:
     return f"{days}d"
 
 
-PROJECT_NON_MOVEMENT_EVENT_TYPES = {"project_seeded", "project_created", "promoted_from_signal", "project_audit"}
+PROJECT_NON_MOVEMENT_EVENT_TYPES = {
+    "project_seeded",
+    "project_created",
+    "promoted_from_signal",
+    "project_audit",
+    "mim_auto_intervention",
+}
 
 
 def _project_movement_state(row: dict[str, Any]) -> str:
@@ -3109,6 +3115,16 @@ def _project_momentum(row: dict[str, Any]) -> str:
 def _project_momentum_decay(row: dict[str, Any]) -> str:
     momentum = str(row.get("momentum") or "").strip()
     age_hours = _project_age_hours(row)
+    priority = str(row.get("priority") or "").strip().upper()
+    project_type = str(row.get("project_type") or "").strip().lower()
+    if momentum == "Moving" and priority in {"P0", "P1", "HIGH", "CRITICAL"} and project_type == "training_objective":
+        if age_hours is None:
+            return "Needs Review"
+        if age_hours >= 6:
+            return "Needs Review"
+        if age_hours >= 2:
+            return "Stale"
+        return momentum
     if momentum not in {"Waiting", "Blocked"}:
         return momentum
     if age_hours is None:
@@ -3820,11 +3836,18 @@ async def _run_project_auto_interventions(db: AsyncSession, projects: list[Studi
                 added += 1
             continue
         if row["momentum_decay"] in {"Stale", "Needs Review"}:
+            rule_key = "moving_training_inactivity" if row["momentum"] == "Moving" else "momentum_decay"
+            detail = (
+                "Hot/moving training work has not published fresh movement inside the expected hard-push window. "
+                "MIM/TOD must execute the current driving task, publish evidence, split scope, or explicitly block it."
+                if row["momentum"] == "Moving"
+                else "Project has been waiting or blocked long enough that MIM/TOD must actively review it instead of leaving it in place."
+            )
             if add_intervention(
                 project,
-                rule_key="momentum_decay",
+                rule_key=rule_key,
                 title="Project momentum decayed",
-                detail="Project has been waiting or blocked long enough that MIM/TOD must actively review it instead of leaving it in place.",
+                detail=detail,
                 next_action=str(candidate.get("action") or "Promote, block, archive, or assign a new bounded driving task; do not leave this project idle."),
                 metadata_patch={
                     "work_state": "momentum_review",
