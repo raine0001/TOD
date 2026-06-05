@@ -13,4 +13,13 @@ Acceptance:
 
 First driving task: review the highest-priority Needs Review project and convert it into a successor state with an evidence requirement.
 
+Baseline:
+- Review entered: 15
+- Review resolved: 0
+- Still review: 15
+- Reopened: 0
+- Review resolution rate: 0%
+
+Metric: Review Resolution Rate measures whether Needs Review projects become real successor states instead of notes.
+
 Policy: Needs Review is not a resting state. MIM/TOD must decide and record the next execution, evidence, or closure path.

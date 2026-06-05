@@ -2883,6 +2883,53 @@ def _project_movement_state(row: dict[str, Any]) -> str:
     return "moving"
 
 
+def _project_review_resolution_metrics(project_rows: list[dict[str, Any]], events: list[StudioProjectEvent]) -> dict[str, Any]:
+    rows_by_id = {int(row.get("id") or 0): row for row in project_rows if row.get("id")}
+    review_entered: set[int] = set()
+    reopened: set[int] = set()
+    review_event_counts: dict[int, int] = {}
+
+    for event in events:
+        project_id = int(event.project_id or 0)
+        if not project_id:
+            continue
+        metadata = event.metadata_json if isinstance(event.metadata_json, dict) else {}
+        rule_key = str(metadata.get("rule_key") or "").strip()
+        if event.event_type == "mim_auto_intervention" and rule_key in {"momentum_decay", "moving_training_inactivity"}:
+            review_entered.add(project_id)
+            review_event_counts[project_id] = review_event_counts.get(project_id, 0) + 1
+            if review_event_counts[project_id] > 1:
+                reopened.add(project_id)
+
+    current_needs_review = {
+        int(row.get("id") or 0)
+        for row in project_rows
+        if str(row.get("momentum_decay") or "").strip() == "Needs Review"
+    }
+    current_stale = {
+        int(row.get("id") or 0)
+        for row in project_rows
+        if str(row.get("momentum_decay") or "").strip() == "Stale"
+    }
+    review_entered.update(current_needs_review)
+    still_review = current_needs_review | current_stale
+    resolved = {
+        project_id
+        for project_id in review_entered
+        if project_id in rows_by_id and project_id not in still_review
+    }
+    entered_count = len(review_entered)
+    resolved_count = len(resolved)
+    rate = round((resolved_count / entered_count) * 100) if entered_count else 100
+    return {
+        "entered": entered_count,
+        "resolved": resolved_count,
+        "still_review": len(still_review),
+        "reopened": len(reopened),
+        "resolution_rate": rate,
+    }
+
+
 def _project_current_driving_task(row: dict[str, Any]) -> str:
     metadata = _project_metadata(row)
     metadata_task = _first_text(metadata.get("current_driving_task"), metadata.get("driving_task"), default="")
@@ -5795,10 +5842,12 @@ async def _studio_projects_state(
         "no_driving_task": sum(1 for item in visible_project_rows if item.get("current_driving_task") == "Define current driving task."),
         "dave_needed": sum(1 for item in visible_project_rows if item["dave_needed"]),
     }
+    review_resolution = _project_review_resolution_metrics(visible_project_rows, all_events)
     return {
         "projects": visible_project_rows,
         "signals": signal_rows,
         "counts": counts,
+        "review_resolution": review_resolution,
         "data_audit": _studio_data_audit_state(),
         "reconciled_count": reconciled_count,
         "dispatched_count": dispatched_count,
@@ -7017,6 +7066,7 @@ def _projects_body(state: dict[str, Any]) -> str:
     selected_project = state.get("selected_project") if isinstance(state.get("selected_project"), dict) else None
     selected_events = state.get("selected_events") if isinstance(state.get("selected_events"), list) else []
     new_project = bool(state.get("new_project"))
+    review_resolution = state.get("review_resolution") if isinstance(state.get("review_resolution"), dict) else {}
     project_stats = [
         ("Moving", counts.get("moving", 0), "moving"),
         ("Waiting", counts.get("waiting", 0), "waiting"),
@@ -7030,6 +7080,13 @@ def _projects_body(state: dict[str, Any]) -> str:
         ("Abandoned", counts.get("abandoned", 0), "abandoned"),
         ("Dave Needed", counts.get("dave_needed", 0), "dave_needed"),
     ]
+    review_stats = [
+        ("Review Rate", f"{review_resolution.get('resolution_rate', 0)}%", "resolved / entered"),
+        ("Review Entered", review_resolution.get("entered", 0), "projects needing decision"),
+        ("Review Resolved", review_resolution.get("resolved", 0), "successor state chosen"),
+        ("Still Review", review_resolution.get("still_review", 0), "must drain"),
+        ("Reopened", review_resolution.get("reopened", 0), "returned to review"),
+    ]
     stats_html = "".join(
         f"""
         <a class="card" href="/studio/projects?view={_html(key)}">
@@ -7038,6 +7095,16 @@ def _projects_body(state: dict[str, Any]) -> str:
         </a>
         """
         for label, value, key in project_stats
+    )
+    review_stats_html = "".join(
+        f"""
+        <div class="card">
+          <div class="label">{_html(label)}</div>
+          <div class="entity">{_html(value)}</div>
+          <div class="muted">{_html(detail)}</div>
+        </div>
+        """
+        for label, value, detail in review_stats
     )
     projects = state.get("projects") if isinstance(state.get("projects"), list) else []
     inbox_examples = state.get("signals") if isinstance(state.get("signals"), list) else []
@@ -7322,6 +7389,7 @@ def _projects_body(state: dict[str, Any]) -> str:
 
     return f"""
     <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{stats_html}</section>
+    <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{review_stats_html}</section>
     {_data_sources_html(state, "projects")}
     <section class="card" style="margin-bottom:14px;">
       <div class="status-head">

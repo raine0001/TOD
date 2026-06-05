@@ -13,6 +13,13 @@
     "blocked": 0,
     "dave_needed": 0
   },
+  "review_resolution_baseline": {
+    "entered": 15,
+    "resolved": 0,
+    "still_review": 15,
+    "reopened": 0,
+    "resolution_rate": 0
+  },
   "acceptance_criteria": [
     "Needs Review drops from 15 to under 5.",
     "Every reviewed project gets a successor action and evidence requirement.",
@@ -29,5 +36,6 @@
     "waiting_on_Dave",
     "archived"
   ],
-  "policy": "Needs Review is not a resting state. MIM/TOD must decide and record the next execution, evidence, or closure path."
+  "policy": "Needs Review is not a resting state. MIM/TOD must decide and record the next execution, evidence, or closure path.",
+  "measurement": "Review Resolution Rate measures whether Needs Review projects become real successor states instead of notes."
 }
