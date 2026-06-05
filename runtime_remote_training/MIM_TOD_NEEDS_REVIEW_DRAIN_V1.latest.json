@@ -34,6 +34,39 @@
     "verified_success": true,
     "verified_result": "Needs Review drained to zero; Stale remained zero; reviewed projects have recorded successor states and evidence requirements."
   },
+  "successor_quality_baseline": {
+    "generated_at": "2026-06-05T15:35:00-07:00",
+    "total": 15,
+    "terminal_success": 0,
+    "active_follow_through": 15,
+    "pending_outcome": 15,
+    "failed_or_reopened": 0,
+    "terminal_success_rate": 0,
+    "follow_through_rate": 100,
+    "by_successor_state": {
+      "dispatched_to_TOD": {
+        "total": 12,
+        "terminal_success": 0,
+        "active_follow_through": 12,
+        "pending_outcome": 12,
+        "failed_or_reopened": 0
+      },
+      "waiting_on_evidence": {
+        "total": 2,
+        "terminal_success": 0,
+        "active_follow_through": 2,
+        "pending_outcome": 2,
+        "failed_or_reopened": 0
+      },
+      "escalated_to_Codex": {
+        "total": 1,
+        "terminal_success": 0,
+        "active_follow_through": 1,
+        "pending_outcome": 1,
+        "failed_or_reopened": 0
+      }
+    }
+  },
   "acceptance_criteria": [
     "Needs Review drops from 15 to under 5.",
     "Every reviewed project gets a successor action and evidence requirement.",
@@ -52,5 +85,5 @@
     "archived"
   ],
   "policy": "Needs Review is not a resting state. MIM/TOD must decide and record the next execution, evidence, or closure path.",
-  "measurement": "Review Resolution Rate measures whether Needs Review projects become real successor states instead of notes."
+  "measurement": "Review Resolution Rate measures whether Needs Review projects become real successor states instead of notes. Successor Quality measures whether those successor states later become terminal success, active follow-through, pending outcomes, or failed/reopened work."
 }

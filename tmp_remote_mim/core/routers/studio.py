@@ -2937,6 +2937,77 @@ def _project_review_resolution_metrics(project_rows: list[dict[str, Any]], event
     }
 
 
+def _project_successor_quality_metrics(project_rows: list[dict[str, Any]], events: list[StudioProjectEvent]) -> dict[str, Any]:
+    excluded_ids = {
+        int(row.get("id") or 0)
+        for row in project_rows
+        if str(_project_metadata(row).get("objective_id") or "").strip() == "MIM-TOD-NEEDS-REVIEW-DRAIN-V1"
+    }
+    rows_by_id = {
+        int(row.get("id") or 0): row
+        for row in project_rows
+        if row.get("id") and int(row.get("id") or 0) not in excluded_ids
+    }
+    latest_review_by_project: dict[int, dict[str, str]] = {}
+    for event in events:
+        project_id = int(event.project_id or 0)
+        if not project_id or project_id in excluded_ids or project_id in latest_review_by_project:
+            continue
+        metadata = event.metadata_json if isinstance(event.metadata_json, dict) else {}
+        evidence = event.evidence_json if isinstance(event.evidence_json, dict) else {}
+        if event.event_type != "review_resolved" or not metadata.get("review_resolution"):
+            continue
+        successor_state = _first_text(metadata.get("successor_state"), evidence.get("successor_state"), default="unknown")
+        latest_review_by_project[project_id] = {
+            "successor_state": successor_state,
+            "successor_action": _first_text(metadata.get("successor_action"), evidence.get("successor_action"), default=""),
+            "required_evidence": _first_text(metadata.get("required_evidence"), evidence.get("required_evidence"), default=""),
+        }
+
+    by_state: dict[str, dict[str, int]] = {}
+    total = terminal_success = active_follow_through = pending_outcome = failed_or_reopened = 0
+    for project_id, review in latest_review_by_project.items():
+        row = rows_by_id.get(project_id)
+        if not row:
+            continue
+        state_key = str(review.get("successor_state") or "unknown").strip() or "unknown"
+        bucket = by_state.setdefault(
+            state_key,
+            {"total": 0, "terminal_success": 0, "active_follow_through": 0, "pending_outcome": 0, "failed_or_reopened": 0},
+        )
+        total += 1
+        bucket["total"] += 1
+        status = str(row.get("status") or "").strip().lower()
+        momentum_decay = str(row.get("momentum_decay") or "").strip()
+        if status in {"done", "complete", "completed", "deployed"}:
+            terminal_success += 1
+            bucket["terminal_success"] += 1
+        elif momentum_decay in {"Stale", "Needs Review"} or status in {"blocked", "stalled"}:
+            failed_or_reopened += 1
+            bucket["failed_or_reopened"] += 1
+        elif momentum_decay in {"Moving", "Waiting"}:
+            active_follow_through += 1
+            pending_outcome += 1
+            bucket["active_follow_through"] += 1
+            bucket["pending_outcome"] += 1
+        else:
+            pending_outcome += 1
+            bucket["pending_outcome"] += 1
+
+    terminal_rate = round((terminal_success / total) * 100) if total else 100
+    follow_through_rate = round(((total - failed_or_reopened) / total) * 100) if total else 100
+    return {
+        "total": total,
+        "terminal_success": terminal_success,
+        "active_follow_through": active_follow_through,
+        "pending_outcome": pending_outcome,
+        "failed_or_reopened": failed_or_reopened,
+        "terminal_success_rate": terminal_rate,
+        "follow_through_rate": follow_through_rate,
+        "by_successor_state": by_state,
+    }
+
+
 def _project_current_driving_task(row: dict[str, Any]) -> str:
     metadata = _project_metadata(row)
     metadata_task = _first_text(metadata.get("current_driving_task"), metadata.get("driving_task"), default="")
@@ -5869,11 +5940,13 @@ async def _studio_projects_state(
         "dave_needed": sum(1 for item in visible_project_rows if item["dave_needed"]),
     }
     review_resolution = _project_review_resolution_metrics(visible_project_rows, all_events)
+    successor_quality = _project_successor_quality_metrics(visible_project_rows, all_events)
     return {
         "projects": visible_project_rows,
         "signals": signal_rows,
         "counts": counts,
         "review_resolution": review_resolution,
+        "successor_quality": successor_quality,
         "data_audit": _studio_data_audit_state(),
         "reconciled_count": reconciled_count,
         "dispatched_count": dispatched_count,
@@ -7093,6 +7166,7 @@ def _projects_body(state: dict[str, Any]) -> str:
     selected_events = state.get("selected_events") if isinstance(state.get("selected_events"), list) else []
     new_project = bool(state.get("new_project"))
     review_resolution = state.get("review_resolution") if isinstance(state.get("review_resolution"), dict) else {}
+    successor_quality = state.get("successor_quality") if isinstance(state.get("successor_quality"), dict) else {}
     project_stats = [
         ("Moving", counts.get("moving", 0), "moving"),
         ("Waiting", counts.get("waiting", 0), "waiting"),
@@ -7113,6 +7187,13 @@ def _projects_body(state: dict[str, Any]) -> str:
         ("Still Review", review_resolution.get("still_review", 0), "must drain"),
         ("Reopened", review_resolution.get("reopened", 0), "returned to review"),
     ]
+    successor_stats = [
+        ("Successor Quality", f"{successor_quality.get('terminal_success_rate', 0)}%", "terminal success / reviewed"),
+        ("Follow-Through", f"{successor_quality.get('follow_through_rate', 0)}%", "not stale, blocked, or reopened"),
+        ("Pending Outcome", successor_quality.get("pending_outcome", 0), "needs downstream proof"),
+        ("Terminal Success", successor_quality.get("terminal_success", 0), "closed after successor"),
+        ("Failed/Reopened", successor_quality.get("failed_or_reopened", 0), "bad successor signal"),
+    ]
     stats_html = "".join(
         f"""
         <a class="card" href="/studio/projects?view={_html(key)}">
@@ -7131,6 +7212,16 @@ def _projects_body(state: dict[str, Any]) -> str:
         </div>
         """
         for label, value, detail in review_stats
+    )
+    successor_stats_html = "".join(
+        f"""
+        <div class="card">
+          <div class="label">{_html(label)}</div>
+          <div class="entity">{_html(value)}</div>
+          <div class="muted">{_html(detail)}</div>
+        </div>
+        """
+        for label, value, detail in successor_stats
     )
     projects = state.get("projects") if isinstance(state.get("projects"), list) else []
     inbox_examples = state.get("signals") if isinstance(state.get("signals"), list) else []
@@ -7416,6 +7507,7 @@ def _projects_body(state: dict[str, Any]) -> str:
     return f"""
     <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{stats_html}</section>
     <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{review_stats_html}</section>
+    <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{successor_stats_html}</section>
     {_data_sources_html(state, "projects")}
     <section class="card" style="margin-bottom:14px;">
       <div class="status-head">

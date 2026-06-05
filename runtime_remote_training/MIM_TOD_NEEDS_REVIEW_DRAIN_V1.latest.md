@@ -32,6 +32,16 @@ Latest:
 
 Verified success: Needs Review drained to zero, stale remained zero, and reviewed projects now have recorded successor states and evidence requirements.
 
-Metric: Review Resolution Rate measures whether Needs Review projects become real successor states instead of notes.
+Successor Quality baseline:
+- Total successors: 15
+- Terminal success: 0
+- Active follow-through: 15
+- Pending outcome: 15
+- Failed or reopened: 0
+- Terminal success rate: 0%
+- Follow-through rate: 100%
+- By path: dispatched to TOD 12, waiting on evidence 2, escalated to Codex 1.
+
+Metric: Review Resolution Rate measures whether Needs Review projects become real successor states instead of notes. Successor Quality measures whether those successor states later become terminal success, active follow-through, pending outcomes, or failed/reopened work.
 
 Policy: Needs Review is not a resting state. MIM/TOD must decide and record the next execution, evidence, or closure path.
