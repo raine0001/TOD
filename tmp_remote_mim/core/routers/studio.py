@@ -5725,6 +5725,9 @@ async def _studio_projects_state(
                 "last_event_type": "",
                 "last_movement_at": "",
                 "last_movement_type": "",
+                "review_successor_state": "",
+                "review_successor_action": "",
+                "review_required_evidence": "",
             },
         )
         summary["event_count"] = int(summary["event_count"]) + 1
@@ -5743,6 +5746,12 @@ async def _studio_projects_state(
             if not summary["last_movement_at"]:
                 summary["last_movement_at"] = event.created_at.isoformat() if event.created_at else ""
                 summary["last_movement_type"] = event.event_type
+        if event.event_type == "review_resolved" and not summary["review_successor_action"]:
+            metadata = event.metadata_json if isinstance(event.metadata_json, dict) else {}
+            evidence = event.evidence_json if isinstance(event.evidence_json, dict) else {}
+            summary["review_successor_state"] = _first_text(metadata.get("successor_state"), evidence.get("successor_state"), default="")
+            summary["review_successor_action"] = _first_text(metadata.get("successor_action"), evidence.get("successor_action"), default="")
+            summary["review_required_evidence"] = _first_text(metadata.get("required_evidence"), evidence.get("required_evidence"), default="")
     signal_rows = [_studio_signal_to_dict(row) for row in signals]
     project_rows = [_studio_project_to_dict(row) for row in projects]
     for index, row in enumerate(project_rows):
@@ -5762,7 +5771,12 @@ async def _studio_projects_state(
         row["last_movement_at"] = str(summary.get("last_movement_at") or "")
         row["last_movement_age"] = _studio_age_label(row["last_movement_at"])
         row["movement_state"] = _project_movement_state(row)
+        row["review_successor_state"] = str(summary.get("review_successor_state") or "")
+        row["review_successor_action"] = str(summary.get("review_successor_action") or "")
+        row["review_required_evidence"] = str(summary.get("review_required_evidence") or "")
         row["current_driving_task"] = _project_current_driving_task(row)
+        if row["review_successor_action"]:
+            row["current_driving_task"] = row["review_successor_action"]
         row["acceptance"] = _project_acceptance(row)
         row["completion_pressure"] = _project_completion_pressure(row)
         row["scope_state"] = _project_scope_state(row)
@@ -5797,7 +5811,12 @@ async def _studio_projects_state(
             selected_project["last_movement_at"] = str(selected_summary.get("last_movement_at") or "")
             selected_project["last_movement_age"] = _studio_age_label(selected_project["last_movement_at"])
             selected_project["movement_state"] = _project_movement_state(selected_project)
+            selected_project["review_successor_state"] = str(selected_summary.get("review_successor_state") or "")
+            selected_project["review_successor_action"] = str(selected_summary.get("review_successor_action") or "")
+            selected_project["review_required_evidence"] = str(selected_summary.get("review_required_evidence") or "")
             selected_project["current_driving_task"] = _project_current_driving_task(selected_project)
+            if selected_project["review_successor_action"]:
+                selected_project["current_driving_task"] = selected_project["review_successor_action"]
             selected_project["acceptance"] = _project_acceptance(selected_project)
             selected_project["completion_pressure"] = _project_completion_pressure(selected_project)
             selected_project["scope_state"] = _project_scope_state(selected_project)

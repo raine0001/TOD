@@ -21,16 +21,18 @@
     "resolution_rate": 0
   },
   "latest_review_resolution": {
-    "generated_at": "2026-06-05T15:10:09-07:00",
+    "generated_at": "2026-06-05T15:25:00-07:00",
     "entered": 15,
-    "resolved": 1,
-    "still_review": 14,
+    "resolved": 15,
+    "still_review": 0,
     "reopened": 0,
-    "resolution_rate": 7,
+    "resolution_rate": 100,
     "stale": 0,
     "first_resolved_project_id": 22,
     "first_resolved_project_title": "MIM TOD Automatic Reality Response V1",
-    "successor_state": "waiting_on_evidence"
+    "successor_state": "waiting_on_evidence",
+    "verified_success": true,
+    "verified_result": "Needs Review drained to zero; Stale remained zero; reviewed projects have recorded successor states and evidence requirements."
   },
   "acceptance_criteria": [
     "Needs Review drops from 15 to under 5.",
@@ -40,7 +42,7 @@
     "Public TOD route repair remains separate and does not mix into this objective."
   ],
   "first_driving_task": "Completed: project 22 was converted from Needs Review into waiting_on_evidence with an evidence requirement.",
-  "next_driving_task": "Review the next highest-priority Needs Review project and convert it into dispatch, close, split, archive, escalate, wait_for_evidence, or wait_for_Dave.",
+  "next_driving_task": "Keep the drain policy active in the watchdog: every future Needs Review row must become dispatch, close, split, archive, escalate, wait_for_evidence, or wait_for_Dave.",
   "successor_states": [
     "closed",
     "split",
