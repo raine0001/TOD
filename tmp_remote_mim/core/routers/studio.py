@@ -2671,22 +2671,62 @@ def _is_project_completion_prompt(prompt: str) -> bool:
     normalized = str(prompt or "").strip().lower()
     if not normalized:
         return False
+    question_terms = [
+        "what needs",
+        "what is needed",
+        "what's needed",
+        "what needs to be done",
+        "what needs done",
+        "what do we need",
+        "what does it need",
+        "what needs to happen",
+        "what must happen",
+        "what must be done",
+        "what should happen",
+        "what should be done",
+        "how do we complete",
+        "how to complete",
+        "needed to complete",
+        "to complete?",
+        "complete?",
+        "complete this?",
+        "done to complete",
+    ]
+    if any(term in normalized for term in question_terms):
+        return False
     completion_terms = [
         "close this",
         "close this one",
+        "close the project",
+        "close project",
+        "close it as",
         "can close",
         "mark complete",
         "mark completed",
+        "mark this complete",
+        "mark this completed",
+        "mark the project complete",
         "complete this",
-        "completed",
+        "complete this project",
+        "project is complete",
+        "project is completed",
+        "this is complete",
+        "this is completed",
+        "this one is complete",
+        "this one is completed",
         "success and complete",
         "successfully complete",
+        "successfully completed",
         "meets the objective",
         "met the objective",
         "objective met",
         "works great",
         "working great",
-        "done",
+        "we are done",
+        "we're done",
+        "it is done",
+        "it's done",
+        "this is done",
     ]
     return any(term in normalized for term in completion_terms)
 
@@ -2751,7 +2791,7 @@ def _apply_studio_project_completion(
     row.status = "completed"
     row.health = "good"
     row.dave_needed = False
-    row.next_action = "Closed as successful. Monitor for regression evidence; reopen only if the LAB servo tool stops meeting the objective."
+    row.next_action = "Closed as successful. Monitor for regression evidence; reopen only if acceptance stops being true."
     row.metadata_json = metadata
     return metadata
 
@@ -2984,7 +3024,9 @@ def _tod_next_action_candidate(row: dict[str, Any]) -> dict[str, Any]:
         )
     if blocker_like:
         return _tod_decision_record(
-            action="Run blocker repair: identify the smallest unblock step, attempt it, then escalate only if MIM/TOD cannot clear it.",
+            action=current_task
+            if current_task != "Define current driving task."
+            else "Run blocker repair: identify the smallest unblock step, attempt it, then escalate only if MIM/TOD cannot clear it.",
             lane="blocker_repair",
             reason=f"Project is blocked on {waiting_on if waiting_on.lower() != 'none' else blocker}.",
             confidence=0.82,
@@ -3051,6 +3093,8 @@ def _project_momentum(row: dict[str, Any]) -> str:
     waiting_on = _project_waiting_on(row)
     if status in {"done", "complete", "completed", "deployed"}:
         return "Completed"
+    if status in {"ongoing", "program", "active_program"}:
+        return "Moving"
     if status in {"archived", "scrapped", "discarded", "deleted", "abandoned", "cancelled", "canceled"}:
         return "Abandoned"
     if status in {"blocked", "stalled"} or movement == "frozen":
@@ -3118,10 +3162,10 @@ PROJECT_RECONCILIATION_RULES: list[dict[str, Any]] = [
     {
         "title": "LAB Workbench Servo Tester",
         "tokens": ["servo", "servobenchtester", "pca9685", "uno", "pwm", "smoothservobenchtester", "lab servo"],
-        "min_progress": 55,
-        "status": "implementation",
-        "blocker": "hardware smoothness, power supply, and servo-profile validation still in progress",
-        "next_action": "Continue hardware validation: confirm smooth movement under the correct servo power supply, profile limits, and firmware version evidence.",
+        "min_progress": 100,
+        "status": "completed",
+        "blocker": "none",
+        "next_action": "Closed as successful. Monitor for regression evidence; reopen only if acceptance stops being true.",
     },
     {
         "title": "Studio Projects Table Organization",
@@ -3136,15 +3180,15 @@ PROJECT_RECONCILIATION_RULES: list[dict[str, Any]] = [
         "tokens": ["static text", "studio reports canvas", "studio mim", "studio tod", "reports canvas", "clean studio"],
         "min_progress": 35,
         "status": "working",
-        "blocker": "page-by-page verification required",
+        "blocker": "none",
         "next_action": "Continue page-by-page Studio cleanup and validate that pages contain action areas and dynamic results instead of filler text.",
     },
     {
         "title": "AgentMIM Reports DB Binding",
         "tokens": ["reports db", "comm_app", "comm app", "database url", "agentmim reports", "db binding"],
         "min_progress": 25,
-        "status": "queued",
-        "blocker": "Needs AgentMIM/comm_app Render database URL or service-level secret binding.",
+        "status": "blocked",
+        "blocker": "Needs COMM_APP_DATABASE_URL value/binding for the AgentMIM Render Postgres database.",
         "next_action": "Bind COMM_APP_DATABASE_URL on the MIM Studio service and verify live AgentMIM tables from the Reports canvas.",
     },
     {
@@ -3158,10 +3202,10 @@ PROJECT_RECONCILIATION_RULES: list[dict[str, Any]] = [
     {
         "title": "TOD Local PowerShell Migration",
         "tokens": ["powershell", "watchdog", "sync cleanliness", "elevated-watchdog", "mim box"],
-        "min_progress": 20,
-        "status": "queued",
-        "blocker": "Elevated Windows task change still requires elevated local registration or MIM BOX migration.",
-        "next_action": "Re-register the elevated watchdog hidden from an elevated shell, then move eligible automation to the MIM BOX.",
+        "min_progress": 35,
+        "status": "blocked",
+        "blocker": "Visible/elevated local PowerShell watchdog behavior still needs runtime migration validation.",
+        "next_action": "Re-register TOD watchdog hidden or move eligible daemon/watchdog work to the MIM BOX, then validate no visible prompts interrupt Dave.",
     },
     {
         "title": "MIM Mobile Login SSL Loop",
