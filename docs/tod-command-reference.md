@@ -153,3 +153,11 @@ TOD completed a clean multiline first task after repairing selected task identit
 ## TOD Successor Loop Evidence 004B
 
 TOD completed the automatically selected successor task after the first task finished. Evidence marker: TOD-GROWTH-SUCCESSOR-004B.
+
+## TOD Chain Proof A
+
+TOD completed task A and should select task B next. Evidence marker: TOD-CHAIN-A-SUCCESS-001.
+
+## TOD Chain Proof C
+
+TOD selected the safe recovery task after the intentional blocker. Evidence marker: TOD-CHAIN-C-SAFE-001.

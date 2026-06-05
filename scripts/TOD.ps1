@@ -2070,6 +2070,65 @@ function New-Id {
     return "{0}-{1}" -f $Prefix, (($Count + 1).ToString("0000"))
 }
 
+function New-StateUniqueId {
+    param(
+        [Parameter(Mandatory = $true)][string]$Prefix,
+        [AllowNull()]$Items = @()
+    )
+
+    $max = 0
+    foreach ($item in @($Items)) {
+        if ($null -eq $item -or -not $item.PSObject.Properties['id']) {
+            continue
+        }
+
+        $match = [regex]::Match([string]$item.id, ('^{0}-(\d+)$' -f [regex]::Escape($Prefix)))
+        if ($match.Success) {
+            $value = 0
+            if ([int]::TryParse($match.Groups[1].Value, [ref]$value) -and $value -gt $max) {
+                $max = $value
+            }
+        }
+    }
+
+    return "{0}-{1}" -f $Prefix, (($max + 1).ToString("0000"))
+}
+
+function Get-StateMutationMutexName {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $resolved = [System.IO.Path]::GetFullPath($Path).ToLowerInvariant()
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($resolved)
+    $hashBytes = [System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes)
+    $hash = [System.BitConverter]::ToString($hashBytes).Replace('-', '')
+    return 'Global\TOD-StateMutation-' + $hash.Substring(0, 32)
+}
+
+function Invoke-WithStateMutationLock {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$ScriptBlock,
+        [int]$TimeoutMilliseconds = 30000
+    )
+
+    $mutexName = Get-StateMutationMutexName -Path $statePath
+    $mutex = [System.Threading.Mutex]::new($false, $mutexName)
+    $acquired = $false
+    try {
+        $acquired = $mutex.WaitOne($TimeoutMilliseconds)
+        if (-not $acquired) {
+            throw "Timed out waiting for TOD state mutation lock '$mutexName'."
+        }
+
+        & $ScriptBlock
+    }
+    finally {
+        if ($acquired) {
+            $mutex.ReleaseMutex()
+        }
+        $mutex.Dispose()
+    }
+}
+
 function Add-Journal {
     param(
         [Parameter(Mandatory = $true)]$State,
@@ -8736,6 +8795,22 @@ function New-TodNextTaskSelectionPlan {
         }
     }
 
+    if ($null -eq $selectedTask -and $null -eq $createTaskSpec -and [string]$TerminalOutcome.classification -eq 'failed_recoverable') {
+        $sameObjectiveRecoveryTasks = @($State.tasks | Where-Object {
+                [string]$_.objective_id -eq $currentObjectiveId -and
+                [string]$_.id -ne $currentTaskId -and
+                (Test-TodTaskReadyStatus -Task $_)
+            })
+        $preferredSameObjectiveRecovery = @(Get-PreferredTaskSelection -Tasks $sameObjectiveRecoveryTasks)
+        if (@($preferredSameObjectiveRecovery).Count -gt 0) {
+            $selectedTask = $preferredSameObjectiveRecovery[0]
+            $selectionKind = 'same_objective_recovery_after_blocker'
+            $reasonSelected = 'The previous task blocked with recoverable evidence, so TOD selected the next ready same-objective recovery task instead of jumping to unrelated backlog work.'
+            $expectedEvidence.Add('blocker_recovery_evidence') | Out-Null
+            $validationPlan.Add('run the same-objective recovery task and confirm it either resolves the blocker or blocks with fresh evidence') | Out-Null
+        }
+    }
+
     if ($null -eq $selectedTask -and $null -eq $createTaskSpec) {
         $backlogCandidates = @(Get-TodReadyObjectiveCandidates -State $State -ExcludeObjectiveId $currentObjectiveId -ExcludeTaskId $currentTaskId)
         if (@($backlogCandidates).Count -gt 0) {
@@ -14534,12 +14609,7 @@ switch ($Action) {
         $safeScope = Limit-StateTextField -Value ([string]$Scope) -MaxLength 8192 -FieldName "task.scope"
         $safeAcceptanceCriteria = Limit-StateTextArray -Values (Split-List -Value $AcceptanceCriteria) -MaxItemLength 2048 -FieldName "task.acceptance_criteria[]"
 
-        if (Use-Local -Config $config) {
-            $objective = $state.objectives | Where-Object { $_.id -eq $ObjectiveId } | Select-Object -First 1
-            if (-not $objective) { throw "Objective not found: $ObjectiveId" }
-        }
-
-        $id = New-Id -Prefix "TSK" -Count $state.tasks.Count
+        $id = New-StateUniqueId -Prefix "TSK" -Items $state.tasks
         $task = [pscustomobject]@{
             id = $id
             objective_id = $ObjectiveId
@@ -14576,11 +14646,29 @@ switch ($Action) {
             $task | Add-Member -NotePropertyName remote_task_id -NotePropertyValue ([string]$remoteCreated.task_id) -Force
         }
 
-        if ((Use-Local -Config $config) -or ((([string]$config.mode).ToLowerInvariant() -eq "hybrid") -and $null -eq $remoteCreated -and [bool]$config.fallback_to_local)) {
-            $state.tasks += $task
-            $journalAction = if ($remoteCreated) { "add_task_remote_cached" } else { "add_task" }
-            Add-Journal -State $state -Actor "tod" -ActionName $journalAction -EntityType "task" -EntityId ([string]$task.id) -Payload $task
-            Save-State -State $state
+        $shouldPersistLocalTask = (Use-Local -Config $config) -or ((([string]$config.mode).ToLowerInvariant() -eq "hybrid") -and $null -eq $remoteCreated -and [bool]$config.fallback_to_local)
+        if ($shouldPersistLocalTask) {
+            Invoke-WithStateMutationLock -ScriptBlock {
+                $lockedState = Load-State
+                if (Use-Local -Config $config) {
+                    $objective = $lockedState.objectives | Where-Object { $_.id -eq $ObjectiveId } | Select-Object -First 1
+                    if (-not $objective) { throw "Objective not found: $ObjectiveId" }
+                }
+
+                if (-not $remoteCreated) {
+                    $task.id = New-StateUniqueId -Prefix "TSK" -Items $lockedState.tasks
+                }
+                elseif (@($lockedState.tasks | Where-Object { [string]$_.id -eq [string]$task.id }).Count -gt 0) {
+                    throw "Task id collision detected for remote task '$($task.id)'."
+                }
+
+                $task.updated_at = Get-UtcNow
+                $lockedState.tasks += $task
+                $journalAction = if ($remoteCreated) { "add_task_remote_cached" } else { "add_task" }
+                Add-Journal -State $lockedState -Actor "tod" -ActionName $journalAction -EntityType "task" -EntityId ([string]$task.id) -Payload $task
+                Save-State -State $lockedState
+                $script:state = $lockedState
+            }
         }
 
         if (Use-Local -Config $config) {

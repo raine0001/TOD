@@ -115,6 +115,8 @@ Describe 'TOD local fallback executor' {
         Import-ScriptFunction -ScriptPath $todScript -Name 'Resolve-LocalExecutionTaskClass'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Test-LocalExecutionPatchRequired'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Get-LocalExecutionNoOpAssessment'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Test-TodWrapperOnlyChangedPath'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-TodMaterialImplementationProofAssessment'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Publish-LocalExecutionArtifacts'
         Import-ScriptFunctionWithLiteralRoot -ScriptPath $todScript -Name 'Invoke-ExecutionEngine' -LiteralRoot (Join-Path $repoRoot 'scripts')
 
@@ -169,6 +171,31 @@ Validation Pattern: NEW_SENTINEL
         [string]$result.diff_summary | Should Match 'Replaced bounded text'
         @($result.validation_results | Where-Object { [string]$_.name -eq 'focused_validation_exit_zero' -and [bool]$_.passed }).Count | Should Be 1
         ([string](Get-Content -Path $absolutePath -Raw)) | Should Match 'NEW_SENTINEL'
+
+        Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+        Remove-Item -Path $absolutePath -Force
+    }
+
+    It 'requires explicit validation pattern for append_section when supplied' {
+        $relativePath = ('docs/local-fallback-validation-marker-{0}.md' -f [guid]::NewGuid().ToString('N'))
+        $absolutePath = Join-Path $repoRoot ($relativePath -replace '/', '\\')
+        [System.IO.File]::WriteAllText($absolutePath, "# Marker validation fixture`n", (New-Object System.Text.UTF8Encoding($false)))
+
+        $promptText = @"
+Update $relativePath.
+Edit Mode: append_section
+Section Title: Marker Validation Section
+Section Body: This body intentionally omits the required proof marker.
+Validation Pattern: REQUIRED_PROOF_MARKER_123
+"@
+        $promptPath = New-LocalFallbackPromptFile -Content $promptText
+        $context = New-LocalFallbackContext -TaskId 'TSK-LF-MARKER-STRICT' -ObjectiveId 'OBJ-LF' -Title 'Require explicit marker' -Scope ("Patch $relativePath with an append_section change.") -PromptPath $promptPath -Metadata @{ task_category = 'docs_change' }
+
+        $result = Invoke-LocalExecutionEngine -Context $context
+
+        [string]$result.status | Should Be 'failed'
+        [string]$result.reason_code | Should Be 'local_fallback_validation_failed'
+        ([string](Get-Content -Path $absolutePath -Raw)) | Should Not Match 'Marker Validation Section'
 
         Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
         Remove-Item -Path $absolutePath -Force
@@ -584,6 +611,8 @@ Describe 'TOD local ledger coverage handler' {
         Import-ScriptFunction -ScriptPath $todScript -Name 'Resolve-LocalExecutionTaskClass'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Test-LocalExecutionPatchRequired'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Get-LocalExecutionNoOpAssessment'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Test-TodWrapperOnlyChangedPath'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-TodMaterialImplementationProofAssessment'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Publish-LocalExecutionArtifacts'
         Import-ScriptFunctionWithLiteralRoot -ScriptPath $todScript -Name 'Invoke-ExecutionEngine' -LiteralRoot (Join-Path $repoRoot 'scripts')
 

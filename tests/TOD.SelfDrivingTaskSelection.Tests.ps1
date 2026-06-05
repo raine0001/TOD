@@ -218,6 +218,23 @@ Describe 'TOD self-driving next task selection' {
         [string]$plan.selected_task_id | Should Be 'TSK-2'
     }
 
+    It 'recoverable blocked task selects a ready same-objective recovery task before backlog' {
+        $state = New-SelectionState -Objectives @(
+            (New-SelectionObjective -Id 'OBJ-1' -Priority 'high'),
+            (New-SelectionObjective -Id 'OBJ-2' -Priority 'critical')
+        ) -Tasks @(
+            (New-SelectionTask -Id 'TSK-1' -ObjectiveId 'OBJ-1' -Status 'blocked'),
+            (New-SelectionTask -Id 'TSK-2' -ObjectiveId 'OBJ-1' -Status 'planned' -Title 'Same objective recovery'),
+            (New-SelectionTask -Id 'TSK-3' -ObjectiveId 'OBJ-2' -Status 'planned' -Title 'Unrelated backlog')
+        )
+        $terminalOutcome = [pscustomobject]@{ classification = 'failed_recoverable'; task_id = 'TSK-1'; objective_id = 'OBJ-1' }
+
+        $plan = New-TodNextTaskSelectionPlan -State $state -TerminalOutcome $terminalOutcome
+
+        [string]$plan.selection_kind | Should Be 'same_objective_recovery_after_blocker'
+        [string]$plan.selected_task_id | Should Be 'TSK-2'
+    }
+
     It 'selected task publication writes the activity stream and selection artifact' {
         $tempRoot = Join-Path $repoRoot ('tod/out/tests/next-task-selection-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null

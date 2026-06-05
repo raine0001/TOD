@@ -110,6 +110,18 @@ function Initialize-EngineeringLoopState {
     }
 }
 
+function Get-TestTodTaskId {
+    param($Payload)
+
+    if ($Payload -and $Payload.PSObject.Properties["id"]) {
+        return [string]$Payload.id
+    }
+    if ($Payload -and $Payload.PSObject.Properties["local"] -and $Payload.local -and $Payload.local.PSObject.Properties["id"]) {
+        return [string]$Payload.local.id
+    }
+    return ""
+}
+
 function Invoke-TodActionJson {
     param(
         [Parameter(Mandatory = $true)][string]$Action,
@@ -780,6 +792,44 @@ Describe "TOD Reliability Dashboards" {
         }
         finally {
             if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+        }
+    }
+
+    It "add-task uses collision-safe ids for concurrent local writers" {
+        $testStatePath = New-ReliabilityTestStatePath
+        $jobA = $null
+        $jobB = $null
+        try {
+            $jobScript = {
+                param($ScriptPath, $StatePath, $Title, $Scope, $AcceptanceCriteria)
+                & $ScriptPath -Action add-task -ObjectiveId "75" -Title $Title -Scope $Scope -AcceptanceCriteria $AcceptanceCriteria -StatePath $StatePath
+            }
+
+            $jobA = Start-Job -ScriptBlock $jobScript -ArgumentList @($todScript, $testStatePath, "Concurrent add A", "Record concurrent add-task collision safety for task A.", "task A persisted")
+            $jobB = Start-Job -ScriptBlock $jobScript -ArgumentList @($todScript, $testStatePath, "Concurrent add B", "Record concurrent add-task collision safety for task B.", "task B persisted")
+            Wait-Job -Job @($jobA, $jobB) -Timeout 60 | Out-Null
+
+            [string]$jobA.State | Should Be "Completed"
+            [string]$jobB.State | Should Be "Completed"
+            Receive-Job -Job $jobA -ErrorAction Stop | Out-Null
+            Receive-Job -Job $jobB -ErrorAction Stop | Out-Null
+
+            $storedState = Get-Content -Path $testStatePath -Raw | ConvertFrom-Json
+            $concurrentTasks = @($storedState.tasks | Where-Object { [string]$_.title -like 'Concurrent add *' })
+            @($concurrentTasks).Count | Should Be 2
+            @($concurrentTasks.id | Select-Object -Unique).Count | Should Be 2
+        }
+        finally {
+            foreach ($job in @($jobA, $jobB)) {
+                if ($null -ne $job) {
+                    Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+                }
+            }
+            foreach ($path in @($testStatePath)) {
+                if (-not [string]::IsNullOrWhiteSpace([string]$path) -and (Test-Path $path)) {
+                    Remove-Item $path -Force
+                }
+            }
         }
     }
 

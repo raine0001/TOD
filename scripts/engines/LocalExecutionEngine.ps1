@@ -436,12 +436,23 @@ function Get-LocalExecutionDirectiveValue {
         [Parameter(Mandatory = $true)][string]$FieldName
     )
 
-    $match = [regex]::Match($PromptText, ('(?im)^\s*{0}\s*:\s*(.+?)\s*$' -f [regex]::Escape($FieldName)))
+    $match = [regex]::Match($PromptText, ('(?im)^\s*{0}\s*:\s*([^\r\n]+)\s*$' -f [regex]::Escape($FieldName)))
     if ($match.Success) {
         return ([string]$match.Groups[1].Value).Trim()
     }
 
     return ''
+}
+
+function New-LocalExecutionPatternValidationCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$TargetFile,
+        [Parameter(Mandatory = $true)][string]$Pattern
+    )
+
+    $safeTarget = $TargetFile -replace '/', '\'
+    $safePattern = $Pattern.Replace("'", "''")
+    return "if (-not (Get-Content -Path '.\$safeTarget' | Select-String -SimpleMatch '$safePattern')) { throw 'Validation pattern not found: $safePattern' } else { 'Validation pattern found: $safePattern' }"
 }
 
 function Convert-ToLocalExecutionEditMode {
@@ -690,7 +701,9 @@ function Invoke-LocalExecutionGenericBoundedTask {
                 $actionSummary = ('Added markdown section {0}' -f $sectionSpec.title)
             }
             $updatedContent = if ($newline -eq "`r`n") { $updatedNormalized -replace "`n", "`r`n" } else { $updatedNormalized }
-            $validationCommand = "Get-Content -Path '.\\$($targetFile -replace '/', '\\')' | Select-String -SimpleMatch '$($sectionSpec.heading.Replace("'","''"))'"
+            $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
+            if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $sectionSpec.heading }
+            $validationCommand = New-LocalExecutionPatternValidationCommand -TargetFile $targetFile -Pattern $validationPattern
         }
         'insert_after' {
             $anchor = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Anchor'
@@ -714,7 +727,7 @@ function Invoke-LocalExecutionGenericBoundedTask {
             $actionSummary = ('Inserted bounded snippet after anchor in {0}' -f $targetFile)
             $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
             if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $snippet }
-            $validationCommand = "Get-Content -Path '.\\$($targetFile -replace '/', '\\')' | Select-String -SimpleMatch '$($validationPattern.Replace("'","''"))'"
+            $validationCommand = New-LocalExecutionPatternValidationCommand -TargetFile $targetFile -Pattern $validationPattern
         }
         'replace_text' {
             $oldText = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Old Text'
@@ -729,7 +742,7 @@ function Invoke-LocalExecutionGenericBoundedTask {
             $actionSummary = ('Replaced bounded text in {0}' -f $targetFile)
             $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
             if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $newText }
-            $validationCommand = "Get-Content -Path '.\\$($targetFile -replace '/', '\\')' | Select-String -SimpleMatch '$($validationPattern.Replace("'","''"))'"
+            $validationCommand = New-LocalExecutionPatternValidationCommand -TargetFile $targetFile -Pattern $validationPattern
         }
         'update_json_field' {
             $jsonField = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Json Field'
@@ -747,7 +760,7 @@ function Invoke-LocalExecutionGenericBoundedTask {
             $actionSummary = ('Updated JSON field {0} in {1}' -f $jsonField, $targetFile)
             $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
             if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $jsonField }
-            $validationCommand = "Get-Content -Path '.\\$($targetFile -replace '/', '\\')' | Select-String -SimpleMatch '$($validationPattern.Replace("'","''"))'"
+            $validationCommand = New-LocalExecutionPatternValidationCommand -TargetFile $targetFile -Pattern $validationPattern
         }
         'validation_only' {
             $actionSummary = ('Validated bounded target in {0}' -f $targetFile)
@@ -756,7 +769,7 @@ function Invoke-LocalExecutionGenericBoundedTask {
             if ([string]::IsNullOrWhiteSpace($validationCommand)) {
                 $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
                 if (-not [string]::IsNullOrWhiteSpace($validationPattern)) {
-                    $validationCommand = "Get-Content -Path '.\\$($targetFile -replace '/', '\\')' | Select-String -SimpleMatch '$($validationPattern.Replace("'","''"))'"
+                    $validationCommand = New-LocalExecutionPatternValidationCommand -TargetFile $targetFile -Pattern $validationPattern
                 }
                 else {
                     $validationCommand = "if (Test-Path -Path '.\\$($targetFile -replace '/', '\\')') { 'validated' } else { throw 'Target file missing.' }"
