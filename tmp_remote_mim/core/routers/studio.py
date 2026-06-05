@@ -2691,6 +2691,31 @@ def _is_project_completion_prompt(prompt: str) -> bool:
     return any(term in normalized for term in completion_terms)
 
 
+def _is_project_attention_explain_prompt(prompt: str) -> bool:
+    normalized = str(prompt or "").strip().lower()
+    if not normalized:
+        return False
+    explain_terms = [
+        "explain",
+        "why",
+        "what needs attention",
+        "needs attention",
+        "need attention",
+        "why this needs",
+        "why does this need",
+        "what is wrong",
+        "what's wrong",
+        "what is stuck",
+        "what's stuck",
+        "what is blocking",
+        "what's blocking",
+        "what is the blocker",
+        "why blocked",
+        "why waiting",
+    ]
+    return any(term in normalized for term in explain_terms)
+
+
 def _apply_studio_project_completion(
     row: StudioProject,
     *,
@@ -8136,6 +8161,17 @@ async def _studio_project_blocker_reply(db: AsyncSession, prompt: str) -> dict[s
             "blocked",
             "what do you need",
             "need from me",
+            "attention",
+            "needs attention",
+            "explain",
+            "why",
+            "status",
+            "what is wrong",
+            "what's wrong",
+            "what is stuck",
+            "what's stuck",
+            "what is blocking",
+            "what's blocking",
             "dave approval",
             "continue",
             "close",
@@ -8226,8 +8262,53 @@ async def _studio_project_blocker_reply(db: AsyncSession, prompt: str) -> dict[s
     project_dict["blocker"] = _project_blocker(best)
     project_dict["progress_percent"] = _project_progress(best)
     project_dict["progress_basis"] = _project_progress_basis(best)
+    project_dict["acceptance"] = _project_acceptance(best)
+    project_dict["completion_pressure"] = _project_completion_pressure(project_dict)
+    project_dict["scope_state"] = _project_scope_state(project_dict)
+    project_dict["current_driving_task"] = _project_current_driving_task(project_dict)
+    project_dict["waiting_on"] = _project_waiting_on(project_dict)
+    project_dict["momentum"] = _project_momentum(project_dict)
+    project_dict["momentum_decay"] = _project_momentum_decay(project_dict)
+    next_action_candidate = _tod_next_action_candidate(project_dict)
     dave_request = _project_dave_request(project_dict)
-    if best.dave_needed:
+    attention_explain = _is_project_attention_explain_prompt(prompt)
+    if attention_explain:
+        blocker = _first_text(project_dict.get("blocker"), default="none")
+        waiting_on = _first_text(project_dict.get("waiting_on"), default="none")
+        acceptance = _first_text(project_dict.get("acceptance"), default="Define acceptance criteria.")
+        next_action = _first_text(best.next_action, next_action_candidate.get("action"), default="No next action is recorded yet.")
+        current_driving_task = _first_text(project_dict.get("current_driving_task"), default="Define current driving task.")
+        evidence = _first_text(
+            next_action_candidate.get("required_evidence"),
+            default="Evidence that the next action moved the project toward acceptance.",
+        )
+        reason_lines = [
+            f"Status is {best.status or 'unknown'} with {project_dict.get('progress_percent')}% progress ({project_dict.get('progress_basis')}).",
+            f"Momentum is {project_dict.get('momentum')} / {project_dict.get('momentum_decay')}.",
+        ]
+        if blocker.lower() != "none":
+            reason_lines.append(f"Blocker: {blocker.rstrip('.')}.")
+        if waiting_on.lower() != "none":
+            reason_lines.append(f"Waiting on: {waiting_on.rstrip('.')}.")
+        if acceptance == "Define acceptance criteria.":
+            reason_lines.append("Acceptance criteria are not defined clearly enough to close it.")
+        elif project_dict.get("completion_pressure") != "Accepted":
+            reason_lines.append(f"Acceptance target: {acceptance}")
+        if best.dave_needed:
+            reason_lines.append(f"Dave decision needed: {dave_request['decision']}")
+        reply = (
+            f"Project mode: {best.title}.\n\n"
+            "Why this needs attention:\n- "
+            + "\n- ".join(reason_lines)
+            + "\n\nResolution path:\n"
+            f"- Owner: {best.owner or 'MIM + TOD'}.\n"
+            f"- Current driving task: {current_driving_task.rstrip('.')}.\n"
+            f"- Next action: {next_action.rstrip('.')}.\n"
+            f"- Required evidence: {evidence.rstrip('.')}.\n"
+            f"- Escalation: {next_action_candidate.get('escalation_path')}\n\n"
+            f"Dave needed: {'yes' if best.dave_needed else 'no'}."
+        )
+    elif best.dave_needed:
         reply = (
             f"Project mode: {best.title}.\n\n"
             f"What I need from Dave:\n- {dave_request['decision']}\n\n"
@@ -8245,8 +8326,8 @@ async def _studio_project_blocker_reply(db: AsyncSession, prompt: str) -> dict[s
         )
     return {
         "ok": True,
-        "source": "studio_project_blocker_context",
-        "response_mode": "project_blocker",
+        "source": "studio_project_attention_context" if attention_explain else "studio_project_blocker_context",
+        "response_mode": "project_attention_explanation" if attention_explain else "project_blocker",
         "mim_interface": {
             "reply_text": reply,
             "page_context": "Studio Projects",
