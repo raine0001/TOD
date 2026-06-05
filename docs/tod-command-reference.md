@@ -133,3 +133,23 @@ TOD active execution lane success proof task TOD-LANE-SUCCESS-PROOF-202606041739
 ## TOD Hardened Lane Proof TOD-LANE-HARDENED-PROOF-20260604175325
 
 TOD hardened lane proof task TOD-LANE-HARDENED-PROOF-20260604175325 completed through bounded docs append with source-artifact acceptance text.
+
+## TOD Useful Work Roundtrip Evidence
+
+TOD completed a bounded local docs edit through LocalExecutionEngine as part of the proactive growth lane. Evidence marker: TOD-GROWTH-ROUNDTRIP-001.
+
+## Update docs/tod-command-reference.md. Edit Mode: docs_append_section
+
+TOD can use the local fallback executor for bounded tasks in docs/tod-command-reference.md when Codex only returns wrapper output or no meaningful execution evidence.
+
+- Eligibility stays inside bounded docs, code, config, or test changes under allowed paths.
+- Published evidence includes changed files, diff summary, command output, validation results, blockers, and rollback hints.
+- The executor fails closed when it cannot infer a safe target or bounded patch.
+
+## TOD Successor Loop Evidence 004A
+
+TOD completed a clean multiline first task after repairing selected task identity and material proof count handling. Evidence marker: TOD-GROWTH-SUCCESSOR-004A.
+
+## TOD Successor Loop Evidence 004B
+
+TOD completed the automatically selected successor task after the first task finished. Evidence marker: TOD-GROWTH-SUCCESSOR-004B.

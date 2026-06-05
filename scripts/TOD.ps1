@@ -8575,18 +8575,50 @@ function Get-TodTerminalTaskOutcome {
     }
     $recentTruth = if (@($recentTruth).Count -gt 0) { $recentTruth[0] } else { $null }
 
-    $resolvedTaskId = if (-not [string]::IsNullOrWhiteSpace($TaskId)) { [string]$TaskId } elseif ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['task_id']) { [string]$ExecutionResultArtifact.task_id } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['task_id']) { [string]$ActiveTaskArtifact.task_id } elseif ($recentTruth -and $recentTruth.PSObject.Properties['task_id']) { [string]$recentTruth.task_id } else { '' }
-    $resolvedObjectiveId = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['objective_id']) { [string]$ExecutionResultArtifact.objective_id } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['objective_id']) { [string]$ActiveTaskArtifact.objective_id } elseif ($recentTruth -and $recentTruth.PSObject.Properties['objective_id']) { [string]$recentTruth.objective_id } else { '' }
-    $summary = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['summary']) { [string]$ExecutionResultArtifact.summary } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['summary']) { [string]$ActiveTaskArtifact.summary } elseif ($recentTruth -and $recentTruth.PSObject.Properties['summary']) { [string]$recentTruth.summary } else { '' }
-    $status = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['status']) { ([string]$ExecutionResultArtifact.status).ToLowerInvariant() } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['status']) { ([string]$ActiveTaskArtifact.status).ToLowerInvariant() } elseif ($recentTruth -and $recentTruth.PSObject.Properties['status']) { ([string]$recentTruth.status).ToLowerInvariant() } else { '' }
-    $executionState = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['execution_state']) { ([string]$ExecutionResultArtifact.execution_state).ToLowerInvariant() } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['execution_state']) { ([string]$ActiveTaskArtifact.execution_state).ToLowerInvariant() } elseif ($recentTruth -and $recentTruth.PSObject.Properties['execution_state']) { ([string]$recentTruth.execution_state).ToLowerInvariant() } else { '' }
-    $reasonCode = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['reason_code']) { ([string]$ExecutionResultArtifact.reason_code).ToLowerInvariant() } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['reason_code']) { ([string]$ActiveTaskArtifact.reason_code).ToLowerInvariant() } elseif ($recentTruth -and $recentTruth.PSObject.Properties['reason_code']) { ([string]$recentTruth.reason_code).ToLowerInvariant() } else { '' }
-    $recoveryState = if ($ExecutionResultArtifact -and $ExecutionResultArtifact.PSObject.Properties['recovery_state']) { ([string]$ExecutionResultArtifact.recovery_state).ToLowerInvariant() } elseif ($ActiveTaskArtifact -and $ActiveTaskArtifact.PSObject.Properties['recovery_state']) { ([string]$ActiveTaskArtifact.recovery_state).ToLowerInvariant() } elseif ($recentTruth -and $recentTruth.PSObject.Properties['recovery_state']) { ([string]$recentTruth.recovery_state).ToLowerInvariant() } else { '' }
+    $stateTask = if (-not [string]::IsNullOrWhiteSpace($TaskId)) {
+        @(Get-TaskFromState -State $State -TaskId $TaskId | Select-Object -First 1)
+    }
+    else {
+        @()
+    }
+    $stateTask = if (@($stateTask).Count -gt 0) { $stateTask[0] } else { $null }
+    $stateTerminal = if ($stateTask -and $stateTask.PSObject.Properties['terminal_state'] -and $null -ne $stateTask.terminal_state) { $stateTask.terminal_state } else { $null }
+    $stateTerminalDetails = if ($stateTerminal -and $stateTerminal.PSObject.Properties['details'] -and $null -ne $stateTerminal.details) { $stateTerminal.details } else { $null }
+    $stateTerminalPayload = if ($stateTerminal) {
+        [pscustomobject]@{
+            task_id = if ($stateTask.PSObject.Properties['id']) { [string]$stateTask.id } else { [string]$TaskId }
+            objective_id = if ($stateTask.PSObject.Properties['objective_id']) { [string]$stateTask.objective_id } else { '' }
+            summary = if ($stateTerminal.PSObject.Properties['message']) { [string]$stateTerminal.message } else { '' }
+            status = if ($stateTerminal.PSObject.Properties['status']) { [string]$stateTerminal.status } elseif ($stateTask.PSObject.Properties['status']) { [string]$stateTask.status } else { '' }
+            execution_state = if ($stateTerminal.PSObject.Properties['event_type']) { [string]$stateTerminal.event_type } else { '' }
+            reason_code = if ($stateTerminal.PSObject.Properties['reason_code']) { [string]$stateTerminal.reason_code } else { '' }
+            recovery_state = if ($stateTerminal.PSObject.Properties['status'] -and [string]$stateTerminal.status -eq 'completed') { 'not_needed' } else { 'required' }
+            files_changed = if ($stateTerminalDetails -and $stateTerminalDetails.PSObject.Properties['files_changed']) { @($stateTerminalDetails.files_changed) } else { @() }
+            tests_run = if ($stateTerminalDetails -and $stateTerminalDetails.PSObject.Properties['tests_run']) { @($stateTerminalDetails.tests_run) } else { @() }
+            review_decision = if ($stateTerminalDetails -and $stateTerminalDetails.PSObject.Properties['review_decision']) { [string]$stateTerminalDetails.review_decision } else { '' }
+        }
+    }
+    else {
+        $null
+    }
 
-    $meaningfulEvidence = Test-TodExecutionHasMeaningfulEvidence -ExecutionPayload $(if ($ExecutionResultArtifact) { $ExecutionResultArtifact } elseif ($ActiveTaskArtifact) { $ActiveTaskArtifact } else { $recentTruth })
-    $latestReview = @($State.review_decisions | Where-Object { [string]$_.task_id -eq $resolvedTaskId } | Sort-Object created_at -Descending | Select-Object -First 1)
+    $outcomeSource = if ($stateTerminalPayload) { $stateTerminalPayload } elseif ($ExecutionResultArtifact) { $ExecutionResultArtifact } elseif ($ActiveTaskArtifact) { $ActiveTaskArtifact } else { $recentTruth }
+    $resolvedTaskId = if (-not [string]::IsNullOrWhiteSpace($TaskId)) { [string]$TaskId } elseif ($outcomeSource -and $outcomeSource.PSObject.Properties['task_id']) { [string]$outcomeSource.task_id } else { '' }
+    $resolvedObjectiveId = if ($outcomeSource -and $outcomeSource.PSObject.Properties['objective_id']) { [string]$outcomeSource.objective_id } else { '' }
+    $summary = if ($outcomeSource -and $outcomeSource.PSObject.Properties['summary']) { [string]$outcomeSource.summary } else { '' }
+    $status = if ($outcomeSource -and $outcomeSource.PSObject.Properties['status']) { ([string]$outcomeSource.status).ToLowerInvariant() } else { '' }
+    $executionState = if ($outcomeSource -and $outcomeSource.PSObject.Properties['execution_state']) { ([string]$outcomeSource.execution_state).ToLowerInvariant() } else { '' }
+    $reasonCode = if ($outcomeSource -and $outcomeSource.PSObject.Properties['reason_code']) { ([string]$outcomeSource.reason_code).ToLowerInvariant() } else { '' }
+    $recoveryState = if ($outcomeSource -and $outcomeSource.PSObject.Properties['recovery_state']) { ([string]$outcomeSource.recovery_state).ToLowerInvariant() } else { '' }
+
+    $meaningfulEvidence = Test-TodExecutionHasMeaningfulEvidence -ExecutionPayload $outcomeSource
+    $latestReview = @($State.review_decisions | Where-Object {
+            $null -ne $_ -and
+            $_.PSObject.Properties['task_id'] -and
+            [string]$_.task_id -eq $resolvedTaskId
+        } | Sort-Object created_at -Descending | Select-Object -First 1)
     $latestReview = if (@($latestReview).Count -gt 0) { $latestReview[0] } else { $null }
-    $reviewDecision = if ($latestReview -and $latestReview.PSObject.Properties['decision']) { ([string]$latestReview.decision).ToLowerInvariant() } else { '' }
+    $reviewDecision = if ($stateTerminalPayload -and $stateTerminalPayload.PSObject.Properties['review_decision'] -and -not [string]::IsNullOrWhiteSpace([string]$stateTerminalPayload.review_decision)) { ([string]$stateTerminalPayload.review_decision).ToLowerInvariant() } elseif ($latestReview -and $latestReview.PSObject.Properties['decision']) { ([string]$latestReview.decision).ToLowerInvariant() } else { '' }
 
     $classification = 'unknown'
     if ($reasonCode -eq 'no_meaningful_execution_evidence' -or $executionState -eq 'no_op_rejected') {
@@ -8775,6 +8807,24 @@ function Resolve-TodSelectionActionEntity {
     return $Payload
 }
 
+function Get-TodTaskIdentity {
+    param($Task)
+
+    if ($null -eq $Task) {
+        return ''
+    }
+
+    if ($Task.PSObject.Properties['id'] -and -not [string]::IsNullOrWhiteSpace([string]$Task.id)) {
+        return [string]$Task.id
+    }
+
+    if ($Task.PSObject.Properties['task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$Task.task_id)) {
+        return [string]$Task.task_id
+    }
+
+    return ''
+}
+
 function Resolve-TodNextTaskSelectionTask {
     param(
         [Parameter(Mandatory = $true)]$State,
@@ -8855,7 +8905,7 @@ function Publish-TodNextTaskSelectionArtifacts {
     $generatedAt = Get-UtcNow
     $objectiveId = if ($SelectedTask -and $SelectedTask.PSObject.Properties['objective_id']) { [string]$SelectedTask.objective_id } else { [string]$SelectionPayload.source_objective }
     $normalizedObjectiveId = Get-NormalizedObjectiveToken -ObjectiveId $objectiveId
-    $taskId = if ($SelectedTask -and $SelectedTask.PSObject.Properties['id']) { [string]$SelectedTask.id } else { '' }
+    $taskId = Get-TodTaskIdentity -Task $SelectedTask
     $taskTitle = if ($SelectedTask -and $SelectedTask.PSObject.Properties['title']) { [string]$SelectedTask.title } else { 'No task selected' }
     $taskScope = if ($SelectedTask -and $SelectedTask.PSObject.Properties['scope']) { [string]$SelectedTask.scope } else { '' }
 
@@ -8981,14 +9031,15 @@ function Invoke-TodNextTaskSelectionLoop {
 
     $plan = New-TodNextTaskSelectionPlan -State $State -TerminalOutcome $terminalOutcome -StaleDetected:$staleDetected -StaleReason $staleReason
     $selectedTask = Resolve-TodNextTaskSelectionTask -State $State -Plan $plan -ResolvedConfigPath $ResolvedConfigPath -ResolvedStatePath $ResolvedStatePath
+    $selectedTaskId = Get-TodTaskIdentity -Task $selectedTask
 
-    $requestId = ('tod-next-task-selection-{0}-{1}' -f $(if ($selectedTask) { [string]$selectedTask.id } else { 'none' }), (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmssfff'))
+    $requestId = ('tod-next-task-selection-{0}-{1}' -f $(if (-not [string]::IsNullOrWhiteSpace($selectedTaskId)) { $selectedTaskId } else { 'none' }), (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmssfff'))
     $selectionPayload = [ordered]@{
         generated_at = Get-UtcNow
         source = 'tod-next-task-selection-v1'
         trigger_reason = $(if (-not [string]::IsNullOrWhiteSpace($TriggerReason)) { [string]$TriggerReason } else { 'automatic_terminal_outcome' })
         last_terminal_outcome = $terminalOutcome
-        selected_task_id = if ($selectedTask) { [string]$selectedTask.id } else { '' }
+        selected_task_id = $selectedTaskId
         source_objective = if ($selectedTask) { [string]$selectedTask.objective_id } else { [string]$plan.source_objective }
         reason_selected = [string]$plan.reason_selected
         rejected_candidates = @($plan.rejected_candidates)
@@ -9008,17 +9059,18 @@ function Invoke-TodNextTaskSelectionLoop {
     if ($selectedTask) {
         if (-not [string]::Equals(([string]$selectedTask.status), 'packaged', [System.StringComparison]::OrdinalIgnoreCase)) {
             $null = Invoke-TodSelfAction -ActionName 'package-task' -Arguments @{
-                TaskId = [string]$selectedTask.id
+                TaskId = $selectedTaskId
                 ConfigPath = $ResolvedConfigPath
                 StatePath = $ResolvedStatePath
             }
             $stateAfterPackaging = Load-State
-            $selectedTask = @($stateAfterPackaging.tasks | Where-Object { [string]$_.id -eq [string]$selectedTask.id } | Select-Object -First 1)
+            $selectedTask = @($stateAfterPackaging.tasks | Where-Object { (Get-TodTaskIdentity -Task $_) -eq $selectedTaskId } | Select-Object -First 1)
             $selectedTask = if (@($selectedTask).Count -gt 0) { $selectedTask[0] } else { $selectedTask }
+            $selectedTaskId = Get-TodTaskIdentity -Task $selectedTask
         }
 
         $dispatchAction = Invoke-TodSelfJsonAction -ActionName 'run-task' -Arguments @{
-            TaskId = [string]$selectedTask.id
+            TaskId = $selectedTaskId
             ObjectiveId = [string]$selectedTask.objective_id
             ConfigPath = $ResolvedConfigPath
             StatePath = $ResolvedStatePath
@@ -13435,18 +13487,21 @@ function Get-TodMaterialImplementationProofAssessment {
     $wrapperFiles = @($filesChanged | Where-Object { Test-TodWrapperOnlyChangedPath -PathValue ([string]$_) })
     $testsRun = if ($ResultPayload.PSObject.Properties['tests_run']) { @($ResultPayload.tests_run | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
     $testResults = if ($ResultPayload.PSObject.Properties['test_results']) { @($ResultPayload.test_results | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
-    $validationEvidencePresent = (@($ValidationResults).Count -gt 0) -or (@($testsRun).Count -gt 0) -or (@($CommandsRun).Count -gt 0) -or (-not [string]::IsNullOrWhiteSpace($DiffSummary))
+    $validationResultItems = @($ValidationResults)
+    $commandRunItems = @($CommandsRun)
+    $failingTestResults = @($testResults | Where-Object { ([string]$_).ToLowerInvariant() -match 'fail|blocked|error|not_run' })
+    $validationEvidencePresent = ($validationResultItems.Length -gt 0) -or ($testsRun.Length -gt 0) -or ($commandRunItems.Length -gt 0) -or (-not [string]::IsNullOrWhiteSpace($DiffSummary))
     $validationLooksPassed = $validationEvidencePresent -and (
-        (@($testResults | Where-Object { ([string]$_).ToLowerInvariant() -match 'fail|blocked|error|not_run' }).Count -eq 0) -or
-        (@($ValidationResults).Count -gt 0)
+        ($failingTestResults.Length -eq 0) -or
+        ($validationResultItems.Length -gt 0)
     )
     $noChangeRequired = ($ResultPayload.PSObject.Properties['no_change_required'] -and $null -ne $ResultPayload.no_change_required -and [bool]$ResultPayload.no_change_required)
-    $materialDiffPresent = (@($materialFiles).Count -gt 0) -or (-not [string]::IsNullOrWhiteSpace($DiffSummary) -and $DiffSummary -match '\b(updated|patched|modified|applied|created|inserted|changed|validated)\b')
-    $wrapperOnlySuccess = ($patchRequired -and @($filesChanged).Count -gt 0 -and @($materialFiles).Count -eq 0)
+    $materialDiffPresent = ($materialFiles.Length -gt 0) -or (-not [string]::IsNullOrWhiteSpace($DiffSummary) -and $DiffSummary -match '\b(updated|patched|modified|applied|created|inserted|changed|validated)\b')
+    $wrapperOnlySuccess = ($patchRequired -and $filesChanged.Length -gt 0 -and $materialFiles.Length -eq 0)
 
     $reasonCodes = @()
     if ($wrapperOnlySuccess) { $reasonCodes += 'wrapper_only_success_rejected' }
-    if ($patchRequired -and -not $noChangeRequired -and @($materialFiles).Count -eq 0) { $reasonCodes += 'material_diff_missing' }
+    if ($patchRequired -and -not $noChangeRequired -and $materialFiles.Length -eq 0) { $reasonCodes += 'material_diff_missing' }
     if ($patchRequired -and -not $validationEvidencePresent) { $reasonCodes += 'validation_evidence_missing' }
     if ($patchRequired -and $validationEvidencePresent -and -not $validationLooksPassed) { $reasonCodes += 'validation_not_proven_passed' }
 
@@ -13456,7 +13511,7 @@ function Get-TodMaterialImplementationProofAssessment {
             (-not $wrapperOnlySuccess) -and
             $validationEvidencePresent -and
             $validationLooksPassed -and
-            ((@($materialFiles).Count -gt 0) -or $noChangeRequired)
+            (($materialFiles.Length -gt 0) -or $noChangeRequired)
         )
     }
 

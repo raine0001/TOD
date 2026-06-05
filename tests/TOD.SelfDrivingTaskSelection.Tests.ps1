@@ -101,19 +101,29 @@ Describe 'TOD self-driving next task selection' {
         Import-TodFunction -Name 'Get-TodExistingFollowOnTask'
         Import-TodFunction -Name 'Resolve-TodObjectiveIdFromState'
         Import-TodFunction -Name 'Get-TodReadyObjectiveCandidates'
+        Import-TodFunction -Name 'Get-TaskFromState'
         Import-TodFunction -Name 'Test-TodExecutionSummaryLooksWrapperOnly'
         Import-TodFunction -Name 'Test-TodExecutionHasMeaningfulEvidence'
         Import-TodFunction -Name 'Get-TodTerminalTaskOutcome'
+        Import-TodFunction -Name 'Get-TaskRoutingText'
+        Import-TodFunction -Name 'Get-TaskRoutingFileHints'
+        Import-TodFunction -Name 'Get-LocalExecutionReuseSignal'
+        Import-TodFunction -Name 'Resolve-LocalExecutionSuitability'
         Import-TodFunction -Name 'Resolve-PreferredAssignedExecutor'
         Import-TodFunction -Name 'New-TodNextTaskSelectionPlan'
+        Import-TodFunction -Name 'Get-TodTaskIdentity'
         Import-TodFunction -Name 'Get-NormalizedObjectiveToken'
         Import-TodFunction -Name 'Get-TodObjectValue'
         Import-TodFunction -Name 'Get-TodActivityStreamEventLimit'
+        Import-TodFunction -Name 'Get-TodExecutionArtifactLane'
+        Import-TodFunction -Name 'Get-TodCanonicalPublishContext'
         Import-TodFunction -Name 'New-TodActivityEventRecord'
         Import-TodFunction -Name 'Convert-TodActivityPayloadToStream'
         Import-TodFunction -Name 'Merge-TodActivityStreamPayload'
         Import-TodFunction -Name 'Test-TodLatestArtifactPublishGate'
         Import-TodFunction -Name 'Write-TodBlockedLatestArtifactRecord'
+        Import-TodFunction -Name 'Read-TodExecutionJsonIfExists'
+        Import-TodFunction -Name 'Write-TodExecutionJsonAtomically'
         Import-TodFunction -Name 'Write-TodExecutionSharedJson'
         Import-TodFunction -Name 'Publish-TodNextTaskSelectionArtifacts'
     }
@@ -239,6 +249,49 @@ Describe 'TOD self-driving next task selection' {
         (Test-Path -Path (Join-Path $tempRoot 'TOD_NEXT_TASK_SELECTION.latest.json')) | Should Be $true
         (Test-Path -Path (Join-Path $tempRoot 'TOD_ACTIVITY_STREAM.latest.json')) | Should Be $true
         [string]$result.activity.event | Should Be 'next_task_selected'
+
+        Remove-Item function:\Get-TodExecutionSharedRoots -ErrorAction SilentlyContinue
+        Remove-Item function:\Get-UtcNow -ErrorAction SilentlyContinue
+        Remove-Item function:\Publish-RemoteTodExecutionArtifacts -ErrorAction SilentlyContinue
+        Remove-Item -Path $tempRoot -Recurse -Force
+    }
+
+    It 'selected task publication accepts bridge-style task_id without id' {
+        $tempRoot = Join-Path $repoRoot ('tod/out/tests/next-task-selection-task-id-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+
+        function global:Get-TodExecutionSharedRoots {
+            return ,$tempRoot
+        }
+
+        function global:Get-UtcNow {
+            return '2026-06-05T03:10:00Z'
+        }
+
+        function global:Publish-RemoteTodExecutionArtifacts {
+            param([string[]]$LocalArtifactPaths)
+            return [pscustomobject]@{ attempted = $false; published = $false; reason = 'stubbed' }
+        }
+
+        $selectionPayload = [pscustomobject]@{
+            source_objective = 'OBJ-1'
+            selection_kind = 'backlog_ready_objective'
+            reason_selected = 'Selected a bridge-style ready task.'
+            expected_evidence = @('bounded_execution_evidence')
+            validation_plan = @('dispatch and validate progress')
+        }
+        $selectedTask = [pscustomobject]@{
+            task_id = 'TSK-BRIDGE-2'
+            objective_id = 'OBJ-1'
+            title = 'Bridge style task'
+            scope = 'Bounded bridge-style scope'
+            status = 'planned'
+        }
+
+        $result = Publish-TodNextTaskSelectionArtifacts -SelectionPayload $selectionPayload -SelectedTask $selectedTask -RequestId 'selection-bridge-001'
+
+        [string]$result.active_task.task_id | Should Be 'TSK-BRIDGE-2'
+        [string]$result.activity.task_id | Should Be 'TSK-BRIDGE-2'
 
         Remove-Item function:\Get-TodExecutionSharedRoots -ErrorAction SilentlyContinue
         Remove-Item function:\Get-UtcNow -ErrorAction SilentlyContinue
