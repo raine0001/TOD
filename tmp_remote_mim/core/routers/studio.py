@@ -1306,6 +1306,8 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
         if (filter === 'dave_needed') return row.dataset.dave === 'true';
         if (filter === 'scope_expanded') return row.dataset.scope === 'scope expanded';
         if (filter === 'needs_acceptance') return row.dataset.acceptanceState === 'needs acceptance';
+        if (filter === 'stale') return row.dataset.decay === 'stale';
+        if (filter === 'needs_review') return row.dataset.decay === 'needs review';
         return true;
       }}
       function sortRows(visibleRows) {{
@@ -5787,6 +5789,8 @@ async def _studio_projects_state(
         "scope_stable": sum(1 for item in visible_project_rows if item.get("scope_state") == "Scope Stable"),
         "scope_expanded": sum(1 for item in visible_project_rows if item.get("scope_state") == "Scope Expanded"),
         "needs_acceptance": sum(1 for item in visible_project_rows if item.get("completion_pressure") == "Needs Acceptance"),
+        "stale": sum(1 for item in visible_project_rows if item.get("momentum_decay") == "Stale"),
+        "needs_review": sum(1 for item in visible_project_rows if item.get("momentum_decay") == "Needs Review"),
         "tod_next_actions": sum(1 for item in visible_project_rows if (item.get("tod_next_action") or {}).get("action")),
         "no_driving_task": sum(1 for item in visible_project_rows if item.get("current_driving_task") == "Define current driving task."),
         "dave_needed": sum(1 for item in visible_project_rows if item["dave_needed"]),
@@ -7017,6 +7021,8 @@ def _projects_body(state: dict[str, Any]) -> str:
         ("Moving", counts.get("moving", 0), "moving"),
         ("Waiting", counts.get("waiting", 0), "waiting"),
         ("Blocked", counts.get("blocked", 0), "blocked"),
+        ("Stale", counts.get("stale", 0), "stale"),
+        ("Needs Review", counts.get("needs_review", 0), "needs_review"),
         ("Scope Expanded", counts.get("scope_expanded", 0), "scope_expanded"),
         ("Needs Acceptance", counts.get("needs_acceptance", 0), "needs_acceptance"),
         ("TOD Next", counts.get("tod_next_actions", 0), "all"),
@@ -7147,6 +7153,10 @@ def _projects_body(state: dict[str, Any]) -> str:
             return str(item.get("scope_state") or "").strip().lower() == "scope expanded"
         if view == "needs_acceptance":
             return str(item.get("completion_pressure") or "").strip().lower() == "needs acceptance"
+        if view == "stale":
+            return str(item.get("momentum_decay") or "").strip().lower() == "stale"
+        if view == "needs_review":
+            return str(item.get("momentum_decay") or "").strip().lower() == "needs review"
         if view in {"moving", "waiting", "blocked", "abandoned"}:
             return str(item.get("momentum") or "").strip().lower() == view
         return True
@@ -7156,6 +7166,7 @@ def _projects_body(state: dict[str, Any]) -> str:
         <tr class="row-link" data-project-row
           data-status="{_html(str(item.get("status", "")).strip().lower())}"
           data-momentum="{_html(str(item.get("momentum", "")).strip().lower())}"
+          data-decay="{_html(str(item.get("momentum_decay") or item.get("momentum", "")).strip().lower())}"
           data-scope="{_html(str(item.get("scope_state", "")).strip().lower())}"
           data-acceptance-state="{_html(str(item.get("completion_pressure", "")).strip().lower())}"
           data-dave="{'true' if item.get("dave_needed") else 'false'}"
@@ -7334,6 +7345,7 @@ def _projects_body(state: dict[str, Any]) -> str:
     {selected_html}
     <section class="card" style="margin-bottom:14px;">
       <h2>Project Inbox</h2>
+      <p class="muted">Stale means MIM/TOD must execute, block with evidence, split, archive, or escalate. Needs Review means the stale window is beyond tolerance and requires an explicit successor state.</p>
       <div class="table-tools">
         <div class="quick">
           <button class="button selected" type="button" data-project-filter="all">All</button>
@@ -7341,6 +7353,8 @@ def _projects_body(state: dict[str, Any]) -> str:
           <button class="button" type="button" data-project-filter="in_process">In Process</button>
           <button class="button" type="button" data-project-filter="queued">Queued</button>
           <button class="button" type="button" data-project-filter="blockers">Blockers</button>
+          <button class="button" type="button" data-project-filter="stale">Stale</button>
+          <button class="button" type="button" data-project-filter="needs_review">Needs Review</button>
           <button class="button" type="button" data-project-filter="scope_expanded">Scope Expanded</button>
           <button class="button" type="button" data-project-filter="needs_acceptance">Needs Acceptance</button>
           <button class="button" type="button" data-project-filter="dave_needed">Dave Needed</button>

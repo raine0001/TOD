@@ -12,6 +12,7 @@ param(
     [int]$LongIdleProfileThresholdMinutes = 30,
     [int]$DaemonStaleMinutes = 20,
     [string]$StatusOutputPath = 'shared_state/tod_autonomy_status.latest.json',
+    [string]$StudioProjectsStateUrl = 'https://mim.mimtod.com/studio/api/projects/state',
     [switch]$EmitJson
 )
 
@@ -93,6 +94,21 @@ function Invoke-DaemonRunOnce {
     return $result.Trim()
 }
 
+function Invoke-StudioProjectsStateRefresh {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return $null
+    }
+
+    try {
+        return Invoke-RestMethod -Uri $Url -Method Get -TimeoutSec 25 -ErrorAction Stop
+    }
+    catch {
+        throw ("studio_projects_state_refresh_failed:" + [string]$_.Exception.Message)
+    }
+}
+
 function Write-Status {
     param(
         [string]$TodDidThis,
@@ -137,6 +153,8 @@ $scheduledToday = Get-Date -Hour $dailyTime.Hour -Minute $dailyTime.Minute -Seco
 $actionTaken = 'guard_check_only'
 $todState = 'executing'
 $blockers = @()
+$projectState = $null
+$projectCounts = $null
 
 if ($now -ge $scheduledToday) {
     $ranToday = $false
@@ -170,7 +188,30 @@ if ($daemonAgeMinutes -ge $DaemonStaleMinutes) {
     }
 }
 
-$statusJson = Write-Status -TodDidThis $actionTaken -TodNextAction 'Keep the daemon fresh, start scheduled training when due, and continue under the no-stall rule.' -TodState $todState -MimState 'unknown' -Blockers $blockers
+try {
+    $projectState = Invoke-StudioProjectsStateRefresh -Url $StudioProjectsStateUrl
+    if ($projectState -and $projectState.PSObject.Properties['counts']) {
+        $projectCounts = $projectState.counts
+        $staleCount = if ($projectCounts.PSObject.Properties['stale']) { [int]$projectCounts.stale } else { 0 }
+        $needsReviewCount = if ($projectCounts.PSObject.Properties['needs_review']) { [int]$projectCounts.needs_review } else { 0 }
+        if (($staleCount + $needsReviewCount) -gt 0 -and $actionTaken -eq 'guard_check_only') {
+            $actionTaken = 'refreshed_studio_project_stale_recovery'
+        }
+    }
+}
+catch {
+    $blockers += [string]$_.Exception.Message
+}
+
+$todNextAction = 'Keep the daemon fresh, start scheduled training when due, refresh Studio project stale recovery, and continue under the no-stall rule.'
+if ($projectCounts) {
+    $staleCount = if ($projectCounts.PSObject.Properties['stale']) { [int]$projectCounts.stale } else { 0 }
+    $needsReviewCount = if ($projectCounts.PSObject.Properties['needs_review']) { [int]$projectCounts.needs_review } else { 0 }
+    $autoActions = if ($projectState -and $projectState.PSObject.Properties['auto_intervention_count']) { [int]$projectState.auto_intervention_count } else { 0 }
+    $todNextAction = "Studio project guard refreshed: stale=$staleCount, needs_review=$needsReviewCount, auto_actions=$autoActions. Resolve stale rows by executing, blocking with evidence, splitting, archiving, or escalating."
+}
+
+$statusJson = Write-Status -TodDidThis $actionTaken -TodNextAction $todNextAction -TodState $todState -MimState 'unknown' -Blockers $blockers
 
 if ($EmitJson) {
     $statusJson
