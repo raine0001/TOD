@@ -13,6 +13,7 @@ DEFAULT_OUTPUT_PATH = DEFAULT_SHARED_ROOT / "TOD_MIM_SHARED_TRUTH.latest.json"
 DEFAULT_INTEGRATION_PATH = REPO_ROOT / "shared_state" / "integration_status.json"
 DEFAULT_MIM_CONTEXT_EXPORT_PATH = REPO_ROOT / "tod" / "out" / "context-sync" / "MIM_CONTEXT_EXPORT.latest.json"
 DEFAULT_MIM_CONTEXT_EXPORT_SSH_PATH = REPO_ROOT / "tod" / "out" / "context-sync" / "ssh-shared" / "MIM_CONTEXT_EXPORT.latest.json"
+DEFAULT_LISTENER_RESULT_PATH = REPO_ROOT / "tod" / "out" / "context-sync" / "listener" / "TOD_MIM_TASK_RESULT.latest.json"
 
 
 def _utc_now() -> datetime:
@@ -67,6 +68,25 @@ def _first_existing_payload(*paths: Path) -> tuple[dict[str, Any], str]:
         if payload:
             return payload, str(path)
     return {}, ""
+
+
+def _freshest_existing_payload(*paths: Path) -> tuple[dict[str, Any], str]:
+    freshest_payload: dict[str, Any] = {}
+    freshest_path = ""
+    freshest_timestamp: datetime | None = None
+    for path in paths:
+        payload = _load_json_file(path)
+        if not payload:
+            continue
+        timestamp = _parse_timestamp(_pick_first(payload.get("updated_at"), payload.get("completed_at"), payload.get("generated_at"), payload.get("emitted_at")))
+        if freshest_timestamp is None or (timestamp is not None and timestamp > freshest_timestamp):
+            freshest_payload = payload
+            freshest_path = str(path)
+            freshest_timestamp = timestamp
+        elif freshest_timestamp is None:
+            freshest_payload = payload
+            freshest_path = str(path)
+    return freshest_payload, freshest_path
 
 
 def _normalize_string_list(values: Any, limit: int = 8) -> list[str]:
@@ -163,6 +183,20 @@ def _derive_execution_lock(lock_payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _has_meaningful_evidence(execution_result: dict[str, Any], truth_row: dict[str, Any], next_task_selection: dict[str, Any]) -> tuple[bool, list[str]]:
+    if str(execution_result.get("packet_type") or "").strip() == "tod-mim-task-result-v1":
+        result_status = str(execution_result.get("result_status") or execution_result.get("status") or "").strip().lower()
+        validator = execution_result.get("validator") if isinstance(execution_result.get("validator"), dict) else {}
+        outcome = execution_result.get("execution_outcome") if isinstance(execution_result.get("execution_outcome"), dict) else {}
+        validator_passed = validator.get("passed") is True
+        outcome_ok = outcome.get("ok") is True and outcome.get("blocked") is not True
+        if result_status in {"succeeded", "success", "completed", "complete"} and (validator_passed or outcome_ok):
+            evidence = ["listener_result"]
+            if validator_passed:
+                evidence.append("validator_passed")
+            if outcome_ok:
+                evidence.append("execution_outcome_ok")
+            return True, evidence
+
     execution_evidence = execution_result.get("execution_evidence") if isinstance(execution_result.get("execution_evidence"), dict) else {}
     truth_evidence = truth_row.get("execution_evidence") if isinstance(truth_row.get("execution_evidence"), dict) else {}
     lists = [
@@ -245,6 +279,8 @@ def _derive_tod_view(artifacts: dict[str, tuple[dict[str, Any], str]], *, now: d
     )
     execution_state = _pick_first(
         execution_result.get("execution_state"),
+        execution_result.get("result_status"),
+        execution_result.get("status"),
         truth_row.get("execution_state"),
         next_task_selection.get("dispatch_status"),
         active_task.get("execution_state"),
@@ -253,6 +289,8 @@ def _derive_tod_view(artifacts: dict[str, tuple[dict[str, Any], str]], *, now: d
     validation_status = _pick_first(
         validation_payload.get("status"),
         execution_result.get("validation_status"),
+        "passed" if (isinstance(execution_result.get("validator"), dict) and execution_result.get("validator", {}).get("passed") is True) else "",
+        "failed" if (isinstance(execution_result.get("validator"), dict) and execution_result.get("validator", {}).get("passed") is False) else "",
         "passed" if execution_evidence.get("validation_passed") is True else "",
         "failed" if execution_evidence.get("validation_passed") is False else "",
         "passed" if truth_summary.get("validation_passed") is True else "",
@@ -269,12 +307,14 @@ def _derive_tod_view(artifacts: dict[str, tuple[dict[str, Any], str]], *, now: d
     meaningful_evidence_present, meaningful_evidence = _has_meaningful_evidence(execution_result, truth_row, next_task_selection)
     blocker_code = _pick_first(
         execution_result.get("reason_code"),
+        execution_result.get("result_reason_code"),
         execution_evidence.get("reason_code"),
         (next_task_selection.get("last_terminal_outcome") or {}).get("reason_code") if isinstance(next_task_selection.get("last_terminal_outcome"), dict) else "",
     )
     blocker_detail = _compact_text(_pick_first(
         execution_result.get("wait_reason"),
         execution_result.get("summary"),
+        execution_result.get("output_preview"),
         (next_task_selection.get("dispatch_result") or {}).get("review_response", {}).get("rationale") if isinstance((next_task_selection.get("dispatch_result") or {}).get("review_response"), dict) else "",
         next_task_selection.get("reason_selected"),
         next_task_selection.get("selected_task_scope"),
@@ -309,7 +349,7 @@ def _derive_tod_view(artifacts: dict[str, tuple[dict[str, Any], str]], *, now: d
 
     if execution_state in {"completed", "complete", "success", "succeeded"} and meaningful_evidence_present:
         state = "completed_with_evidence"
-        state_reason = _compact_text(_pick_first(execution_result.get("summary"), truth_summary.get("summary"), "TOD completed the current execution slice with meaningful evidence."))
+        state_reason = _compact_text(_pick_first(execution_result.get("summary"), execution_result.get("output_preview"), truth_summary.get("summary"), "TOD completed the current execution slice with meaningful evidence."))
     elif execution_state == "no_op_rejected" or str(next_outcome.get("classification") or "").strip().lower() == "no_op_rejected" or blocker_code == "no_meaningful_execution_evidence":
         state = "no_op_rejected"
         state_reason = _compact_text(_pick_first(
@@ -619,7 +659,11 @@ def reconcile_shared_truth_payload(artifacts: dict[str, tuple[dict[str, Any], st
 
 def load_runtime_artifacts(*, shared_root: Path = DEFAULT_SHARED_ROOT, integration_path: Path = DEFAULT_INTEGRATION_PATH) -> dict[str, tuple[dict[str, Any], str]]:
     return {
-        "execution_result": _first_existing_payload(shared_root / "TOD_EXECUTION_RESULT.latest.json"),
+        "execution_result": _freshest_existing_payload(
+            shared_root / "TOD_EXECUTION_RESULT.latest.json",
+            shared_root / "TOD_MIM_TASK_RESULT.latest.json",
+            DEFAULT_LISTENER_RESULT_PATH,
+        ),
         "execution_truth": _first_existing_payload(shared_root / "TOD_EXECUTION_TRUTH.latest.json"),
         "execution_lock": _first_existing_payload(shared_root / "TOD_EXECUTION_LOCK.latest.json"),
         "next_task_selection": _first_existing_payload(shared_root / "TOD_NEXT_TASK_SELECTION.latest.json"),

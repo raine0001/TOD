@@ -1017,6 +1017,9 @@ function New-CanonicalRepublishTaskRequest {
         task_id = $resolvedTaskId
         objective_id = $objectiveLabel
         correlation_id = $resolvedCorrelationId
+        title = 'Watchdog publication surface self-heal'
+        summary = 'Refresh TOD bridge visibility for the canonical MIM objective without changing project scope.'
+        tod_action = 'get-state-bus'
         sequence = $sequence
         source_service = 'tod_watchdog_autorepair'
         canonical_lane_source = 'shared_truth'

@@ -12795,10 +12795,39 @@ function Get-TodCanonicalPublishContext {
         available = $canonicalAvailable
         shared_truth_path = $sharedTruthPath
         canonical_lane_source = if ($sharedTruthPayload -and $sharedTruthPayload.PSObject.Properties['canonical_lane_source']) { [string]$sharedTruthPayload.canonical_lane_source } else { '' }
+        canonical_state = if ($sharedTruthPayload -and $sharedTruthPayload.PSObject.Properties['state']) { [string]$sharedTruthPayload.state } else { '' }
+        canonical_execution_state = if ($sharedTruthPayload -and $sharedTruthPayload.PSObject.Properties['execution_state']) { [string]$sharedTruthPayload.execution_state } else { '' }
         canonical = $canonicalLane
         live_task_request = Get-TodExecutionArtifactLane -Payload $liveTaskRequestPayload
         formal_program_truth = Get-TodExecutionArtifactLane -Payload $formalProgramTruthPayload
     }
+}
+
+function Test-TodCanonicalLaneTerminal {
+    param([Parameter(Mandatory = $true)]$CanonicalContext)
+
+    $terminalValues = @(
+        'accepted_complete',
+        'accepted_complete_pending_mim_refresh',
+        'completed',
+        'completed_with_evidence',
+        'complete',
+        'succeeded',
+        'success',
+        'in_sync'
+    )
+
+    foreach ($value in @(
+        $(if ($CanonicalContext.PSObject.Properties['canonical_state']) { [string]$CanonicalContext.canonical_state } else { '' }),
+        $(if ($CanonicalContext.PSObject.Properties['canonical_execution_state']) { [string]$CanonicalContext.canonical_execution_state } else { '' })
+    )) {
+        $normalized = ([string]$value).Trim().ToLowerInvariant()
+        if ($terminalValues -contains $normalized) {
+            return $true
+        }
+    }
+
+    return $false
 }
 
 function Test-TodArtifactMatchesCanonicalLane {
@@ -12872,6 +12901,10 @@ function Test-TodLatestArtifactPublishGate {
         if ($overrideAllowed) {
             return [pscustomobject]@{ allow = $true; path = $Path; artifact_name = $artifactName; outgoing = $outgoingLane; canonical = $canonicalContext.canonical; reason = 'override_marker' }
         }
+    }
+
+    if ((Test-TodCanonicalLaneTerminal -CanonicalContext $canonicalContext) -and $null -ne $outgoingGeneratedAt -and $null -ne $canonicalGeneratedAt -and $outgoingGeneratedAt -gt $canonicalGeneratedAt) {
+        return [pscustomobject]@{ allow = $true; path = $Path; artifact_name = $artifactName; outgoing = $outgoingLane; canonical = $canonicalContext.canonical; reason = 'newer_payload_after_terminal_canonical_lane' }
     }
 
     return [pscustomobject]@{

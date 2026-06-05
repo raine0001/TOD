@@ -65,6 +65,8 @@ Describe 'TOD recovery watchdog coordination fallback' {
         [string]$request.objective_id | Should Be 'objective-152'
         [string]$request.request_id | Should Match '^objective-152-task-\d+$'
         [string]$request.task_id | Should Be ([string]$request.request_id)
+        [string]$request.tod_action | Should Be 'get-state-bus'
+        [string]$request.title | Should Be 'Watchdog publication surface self-heal'
         [string]$request.source_service | Should Be 'tod_watchdog_autorepair'
         [int64]$request.sequence | Should BeGreaterThan 0
     }
@@ -76,6 +78,7 @@ Describe 'TOD recovery watchdog coordination fallback' {
         [string]$request.request_id | Should Be 'objective-2913-task-7144'
         [string]$request.task_id | Should Be 'objective-2913-task-7144'
         [string]$request.correlation_id | Should Be 'objective-2913-task-7144'
+        [string]$request.tod_action | Should Be 'get-state-bus'
     }
 
     It 'keeps publication divergence recovery active after local terminal completion when canonical MIM is ahead' {

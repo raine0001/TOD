@@ -117,6 +117,7 @@ Describe 'TOD canonical lane publisher gate' {
         Import-TodFunction -Name 'Get-NormalizedObjectiveToken'
         Import-TodFunction -Name 'Get-TodObjectValue'
         Import-TodFunction -Name 'Get-TodActivityStreamEventLimit'
+        Import-TodFunction -Name 'Get-TodTaskIdentity'
         Import-TodFunction -Name 'New-TodActivityEventRecord'
         Import-TodFunction -Name 'Convert-TodActivityPayloadToStream'
         Import-TodFunction -Name 'Merge-TodActivityStreamPayload'
@@ -125,6 +126,7 @@ Describe 'TOD canonical lane publisher gate' {
         Import-TodFunction -Name 'Get-TodParsedUtcDateTime'
         Import-TodFunction -Name 'Get-TodExecutionArtifactLane'
         Import-TodFunction -Name 'Get-TodCanonicalPublishContext'
+        Import-TodFunction -Name 'Test-TodCanonicalLaneTerminal'
         Import-TodFunction -Name 'Test-TodArtifactMatchesCanonicalLane'
         Import-TodFunction -Name 'Test-TodLatestArtifactPublishGate'
         Import-TodFunction -Name 'Write-TodBlockedLatestArtifactRecord'
@@ -135,6 +137,7 @@ Describe 'TOD canonical lane publisher gate' {
         Import-TodFunction -Name 'Get-LocalExecutionRollbackState'
         Import-TodFunction -Name 'Resolve-LocalExecutionTaskClass'
         Import-TodFunction -Name 'Test-LocalExecutionPatchRequired'
+        Import-TodFunction -Name 'Get-TodMaterialImplementationProofAssessment'
         Import-TodFunction -Name 'Get-LocalExecutionNoOpAssessment'
         Import-TodFunction -Name 'Publish-LocalExecutionArtifacts'
 
@@ -256,6 +259,33 @@ Describe 'TOD canonical lane publisher gate' {
         $written = Read-TestJson -Path $path
         [string]$written.request_id | Should Be 'override-with-marker'
         [string]$written.publish_override_marker | Should Be 'operator-approved-canonical-shift'
+    }
+
+    It 'allows newer execution after the canonical lane is terminal' {
+        $sharedTruth = New-CanonicalSharedTruth
+        $sharedTruth.state = 'ACCEPTED_COMPLETE'
+        $sharedTruth.execution_state = 'completed'
+        Write-TestJson -Path (Join-Path $script:sharedRoot 'TOD_MIM_SHARED_TRUTH.latest.json') -Payload $sharedTruth
+
+        $path = Join-Path $script:sharedRoot 'TOD_EXECUTION_RESULT.latest.json'
+        $payload = [ordered]@{
+            generated_at = '2026-05-05T03:10:00.0000000Z'
+            source = 'tod.local.run-task'
+            request_id = 'TSK-FRESH-1'
+            task_id = 'TSK-FRESH-1'
+            objective_id = 'TOD-SAFE-LOCAL-PATCH-APPLICATION-V1'
+            title = 'Fresh successor execution'
+            status = 'completed'
+            execution_state = 'completed'
+        }
+
+        $writeResult = Write-TodExecutionSharedJson -Path $path -Payload $payload
+
+        [bool]$writeResult.written | Should Be $true
+        [bool]$writeResult.blocked | Should Be $false
+        $written = Read-TestJson -Path $path
+        [string]$written.task_id | Should Be 'TSK-FRESH-1'
+        (Test-Path -Path (Join-Path $script:sharedRoot 'superseded/TOD_EXECUTION_RESULT.latest.json/latest.blocked.json')) | Should Be $false
     }
 
     It 'archives stale local execution publication and leaves shared truth unchanged' {
