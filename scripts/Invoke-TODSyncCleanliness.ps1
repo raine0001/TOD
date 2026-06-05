@@ -53,19 +53,45 @@ foreach ($line in $rawStatus) {
 $generatedItems = @($items | Where-Object { $_.classification -eq 'generated_runtime_state' })
 $reviewItems = @($items | Where-Object { $_.classification -ne 'generated_runtime_state' })
 $cleanedPaths = @()
+$failedCleanPaths = @()
 
 if ($CleanGeneratedRuntime.IsPresent -and $generatedItems.Count -gt 0) {
     foreach ($item in $generatedItems) {
-        & git -C $resolvedRepoRoot update-index --skip-worktree -- $item.path 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            $cleanedPaths += $item.path
+        if ($item.status -eq '??') {
+            $candidatePath = Join-Path $resolvedRepoRoot $item.path
+            try {
+                $resolvedCandidateParent = (Resolve-Path -LiteralPath (Split-Path -Parent $candidatePath) -ErrorAction Stop).Path
+                $fullCandidatePath = Join-Path $resolvedCandidateParent (Split-Path -Leaf $candidatePath)
+                if (-not $fullCandidatePath.StartsWith($resolvedRepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    throw "Refusing to clean path outside repo: $($item.path)"
+                }
+                if (Test-Path -LiteralPath $fullCandidatePath -PathType Leaf) {
+                    Remove-Item -LiteralPath $fullCandidatePath -Force
+                    $cleanedPaths += $item.path
+                }
+            } catch {
+                $failedCleanPaths += [pscustomobject]@{
+                    path = $item.path
+                    error = $_.Exception.Message
+                }
+            }
+        } else {
+            & git -C $resolvedRepoRoot update-index --skip-worktree -- $item.path 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $cleanedPaths += $item.path
+            } else {
+                $failedCleanPaths += [pscustomobject]@{
+                    path = $item.path
+                    error = "git update-index --skip-worktree failed with exit code $LASTEXITCODE"
+                }
+            }
         }
     }
 }
 
 $postStatus = @(& git -C $resolvedRepoRoot status --porcelain=v1 2>$null)
 $payload = [ordered]@{
-    ok = $true
+    ok = ($failedCleanPaths.Count -eq 0)
     packet_type = 'tod-sync-cleanliness-v1'
     generated_at = [DateTime]::UtcNow.ToString('o')
     repo_root = $resolvedRepoRoot
@@ -74,6 +100,7 @@ $payload = [ordered]@{
     generated_runtime_dirty_count = $generatedItems.Count
     review_required_dirty_count = $reviewItems.Count
     cleaned_paths = $cleanedPaths
+    failed_clean_paths = $failedCleanPaths
     remaining_dirty_count = $postStatus.Count
     remaining_dirty_paths = @(
         foreach ($line in $postStatus) {
@@ -93,3 +120,8 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedOutputPat
 $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $resolvedOutputPath -Encoding UTF8
 
 [pscustomobject]$payload
+
+if ($failedCleanPaths.Count -gt 0) {
+    exit 1
+}
+exit 0

@@ -242,6 +242,32 @@ function Invoke-HttpProbe {
     }
 }
 
+function ConvertTo-ProbeSummary {
+    param([AllowNull()]$Probe)
+
+    if ($null -eq $Probe) {
+        return $null
+    }
+
+    $content = ''
+    if ($Probe.PSObject.Properties['content']) {
+        $content = [string]$Probe.content
+    }
+    $sample = $content
+    if ($sample.Length -gt 800) {
+        $sample = $sample.Substring(0, 800)
+    }
+
+    return [pscustomobject]@{
+        ok = if ($Probe.PSObject.Properties['ok']) { [bool]$Probe.ok } else { $false }
+        url = if ($Probe.PSObject.Properties['url']) { [string]$Probe.url } else { '' }
+        http_status = if ($Probe.PSObject.Properties['http_status']) { $Probe.http_status } else { $null }
+        content_length = $content.Length
+        content_sample = $sample
+        error = if ($Probe.PSObject.Properties['error']) { [string]$Probe.error } else { '' }
+    }
+}
+
 function Get-TodPublicSurfaceClassification {
     param([AllowNull()][string]$Html)
 
@@ -521,23 +547,23 @@ $payload = [pscustomobject]@{
     summary = (@($summaryParts.ToArray()) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }) -join ' '
     blockers = @($blockers.ToArray() | Select-Object -Unique)
     public_surface = [pscustomobject]@{
-        probe = $publicHtmlProbe
+        probe = ConvertTo-ProbeSummary -Probe $publicHtmlProbe
         classification = $publicSurface
     }
     local_surface = if ($null -ne $localSurface) {
         [pscustomobject]@{
-            probe = $localHtmlProbe
+            probe = ConvertTo-ProbeSummary -Probe $localHtmlProbe
             classification = $localSurface
         }
     }
     else {
         [pscustomobject]@{
-            probe = $localHtmlProbe
+            probe = ConvertTo-ProbeSummary -Probe $localHtmlProbe
             classification = $null
         }
     }
     public_state = [pscustomobject]@{
-        probe = $publicStateProbe
+        probe = ConvertTo-ProbeSummary -Probe $publicStateProbe
         assessment = $stateAssessment
     }
     route_trace = [pscustomobject]@{

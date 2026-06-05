@@ -542,7 +542,15 @@ function Parse-PayloadJson {
         $parsed = $raw | ConvertFrom-Json
     }
     catch {
-        throw "PayloadJson is not valid JSON: $([string]$_.Exception.Message)"
+        if ($raw -match '^[A-Za-z0-9._:-]+$') {
+            $parsed = [pscustomobject]@{
+                value = $raw
+                normalized_from_bare_token = $true
+            }
+        }
+        else {
+            throw "PayloadJson is not valid JSON: $([string]$_.Exception.Message)"
+        }
     }
 
     return (ConvertTo-HashtableSafe -Value $parsed)

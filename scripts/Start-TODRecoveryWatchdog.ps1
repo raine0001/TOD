@@ -223,7 +223,15 @@ function Invoke-DialogNotice {
     }
 
     try {
-        $payloadJson = $Payload | ConvertTo-Json -Depth 12 -Compress
+        $payloadForJson = if ($null -eq $Payload -or $Payload -is [string] -or $Payload.GetType().IsPrimitive) {
+            [pscustomobject]@{
+                value = $Payload
+            }
+        }
+        else {
+            $Payload
+        }
+        $payloadJson = $payloadForJson | ConvertTo-Json -Depth 12 -Compress
         $args = @(
             '-NoProfile',
             '-ExecutionPolicy', 'Bypass',
