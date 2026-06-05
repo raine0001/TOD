@@ -2586,13 +2586,13 @@ def _project_metadata(row: StudioProject | dict[str, Any]) -> dict[str, Any]:
 
 def _project_progress(row: StudioProject | dict[str, Any]) -> int:
     metadata = _project_metadata(row)
+    status = str(row.status if isinstance(row, StudioProject) else row.get("status") or "").strip().lower()
+    if status in {"done", "complete", "completed", "deployed"}:
+        return 100
     raw = metadata.get("progress_percent")
     try:
         return max(0, min(100, int(float(raw))))
     except Exception:
-        status = str(row.status if isinstance(row, StudioProject) else row.get("status") or "").strip().lower()
-        if status in {"done", "complete", "completed", "deployed"}:
-            return 100
         if status in {"implementation", "active", "active_experiments", "working"}:
             return 45
         if status in {"planning", "discovery", "calibration"}:
@@ -2605,6 +2605,9 @@ def _project_progress(row: StudioProject | dict[str, Any]) -> int:
 
 
 def _project_blocker(row: StudioProject | dict[str, Any]) -> str:
+    status = str(row.status if isinstance(row, StudioProject) else row.get("status") or "").strip().lower()
+    if status in {"done", "complete", "completed", "deployed"}:
+        return "none"
     metadata = _project_metadata(row)
     value = metadata.get("blocker") or metadata.get("action_needed") or ""
     return _first_text(value, default="none")
@@ -2664,6 +2667,70 @@ def _project_dave_request(project: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _is_project_completion_prompt(prompt: str) -> bool:
+    normalized = str(prompt or "").strip().lower()
+    if not normalized:
+        return False
+    completion_terms = [
+        "close this",
+        "close this one",
+        "can close",
+        "mark complete",
+        "mark completed",
+        "complete this",
+        "completed",
+        "success and complete",
+        "successfully complete",
+        "meets the objective",
+        "met the objective",
+        "objective met",
+        "works great",
+        "working great",
+        "done",
+    ]
+    return any(term in normalized for term in completion_terms)
+
+
+def _apply_studio_project_completion(
+    row: StudioProject,
+    *,
+    note: str = "",
+    actor: str = "Dave",
+    source: str = "studio_project_completion",
+) -> dict[str, Any]:
+    now = _utc_now()
+    note_value = note.strip() or "Operator accepted the project as successful and complete."
+    metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+    metadata = dict(metadata)
+    metadata.update(
+        {
+            "progress_percent": 100,
+            "blocker": "none",
+            "work_state": "completed",
+            "completion_pressure": "Accepted",
+            "scope_state": "Scope Stable",
+            "operator_accepted": True,
+            "operator_completed": True,
+            "operator_completed_at": now,
+            "operator_completed_by": actor,
+            "operator_completion_note": note_value,
+            "completion_evidence": note_value,
+            "acceptance": metadata.get("acceptance")
+            or metadata.get("acceptance_criteria")
+            or metadata.get("definition_of_done")
+            or note_value,
+            "user_modified": True,
+            "completed_from": source,
+        }
+    )
+    row.status = "completed"
+    row.health = "good"
+    row.dave_needed = False
+    row.next_action = "Closed as successful. Monitor for regression evidence; reopen only if the LAB servo tool stops meeting the objective."
+    row.metadata_json = metadata
+    return metadata
+
+
 def _project_progress_basis(row: StudioProject | dict[str, Any]) -> str:
     metadata = _project_metadata(row)
     status = str(row.status if isinstance(row, StudioProject) else row.get("status") or "").strip().lower()
@@ -2677,6 +2744,8 @@ def _project_progress_basis(row: StudioProject | dict[str, Any]) -> str:
     )
     if evidence:
         return "evidence"
+    if status in {"done", "complete", "completed", "deployed"}:
+        return "accepted"
     if progress <= 0:
         return "not started"
     if status in {"queued", "candidate", "planning", "discovery"}:
@@ -2757,6 +2826,9 @@ def _project_acceptance(row: StudioProject | dict[str, Any]) -> str:
     value = metadata.get("acceptance") or metadata.get("acceptance_criteria") or metadata.get("definition_of_done")
     if isinstance(value, list):
         value = "; ".join(str(item) for item in value if str(item).strip())
+    status = str(row.status if isinstance(row, StudioProject) else row.get("status") or "").strip().lower()
+    if status in {"done", "complete", "completed", "deployed"} and not value:
+        value = metadata.get("completion_evidence") or metadata.get("operator_completion_note") or "Operator accepted completion."
     return _first_text(value, default="Define acceptance criteria.")
 
 
@@ -3244,46 +3316,58 @@ async def _reconcile_studio_project_evidence(db: AsyncSession, projects: list[St
             current_progress = _project_progress(project)
             completed_statuses = {"done", "complete", "completed", "deployed"}
             project_completed = str(project.status or "").strip().lower() in completed_statuses
+            operator_completed = bool(metadata.get("operator_completed") or metadata.get("operator_accepted"))
             rule_status = str(rule.get("status") or project.status or "working")
             rule_completed = rule_status.strip().lower() in completed_statuses
             min_progress = int(rule.get("min_progress") or current_progress)
-            if min_progress > current_progress:
+            if not operator_completed and min_progress > current_progress:
                 metadata["progress_percent"] = min_progress
-            if rule_completed:
+            if rule_completed or operator_completed:
                 metadata["progress_percent"] = max(100, int(metadata.get("progress_percent") or current_progress or 0))
                 metadata["work_state"] = "completed"
             metadata["validation_evidence"] = f"reconciled {len(matched)} evidence item(s)"
             metadata["last_reconciled_at"] = _utc_now()
             metadata["last_reconciled_evidence_count"] = int(metadata.get("last_reconciled_evidence_count") or 0) + len(matched)
-            if "blocker" in rule:
+            if operator_completed:
+                metadata["blocker"] = "none"
+            elif "blocker" in rule:
                 metadata["blocker"] = str(rule.get("blocker") or "none")
             project.metadata_json = metadata
-            if not project_completed or rule_completed:
+            if operator_completed:
+                project.status = "completed"
+            elif not project_completed or rule_completed:
                 project.status = rule_status
-            project.next_action = str(rule.get("next_action") or project.next_action or "")
+            if not operator_completed:
+                project.next_action = str(rule.get("next_action") or project.next_action or "")
         elif existing_project_evidence_counts.get(project.id, 0):
             metadata = project.metadata_json if isinstance(project.metadata_json, dict) else {}
             metadata = dict(metadata)
             current_progress = _project_progress(project)
             completed_statuses = {"done", "complete", "completed", "deployed"}
             project_completed = str(project.status or "").strip().lower() in completed_statuses
+            operator_completed = bool(metadata.get("operator_completed") or metadata.get("operator_accepted"))
             rule_status = str(rule.get("status") or project.status or "working")
             rule_completed = rule_status.strip().lower() in completed_statuses
             min_progress = int(rule.get("min_progress") or current_progress)
-            if min_progress > current_progress:
+            if not operator_completed and min_progress > current_progress:
                 metadata["progress_percent"] = min_progress
-            if rule_completed:
+            if rule_completed or operator_completed:
                 metadata["progress_percent"] = max(100, int(metadata.get("progress_percent") or current_progress or 0))
                 metadata["work_state"] = "completed"
             metadata.setdefault("validation_evidence", f"reconciled {existing_project_evidence_counts[project.id]} evidence item(s)")
             metadata.setdefault("last_reconciled_at", _utc_now())
             metadata.setdefault("last_reconciled_evidence_count", existing_project_evidence_counts[project.id])
-            if "blocker" in rule:
+            if operator_completed:
+                metadata["blocker"] = "none"
+            elif "blocker" in rule:
                 metadata["blocker"] = str(rule.get("blocker") or "none")
             project.metadata_json = metadata
-            if not project_completed or rule_completed:
+            if operator_completed:
+                project.status = "completed"
+            elif not project_completed or rule_completed:
                 project.status = rule_status
-            project.next_action = str(rule.get("next_action") or project.next_action or "")
+            if not operator_completed:
+                project.next_action = str(rule.get("next_action") or project.next_action or "")
 
     if added or existing_project_evidence_counts:
         await db.commit()
@@ -7078,6 +7162,7 @@ def _projects_body(state: dict[str, Any]) -> str:
             <label class="wide">Blocker / Action Needed<textarea name="blocker">{_html(selected_project.get("blocker", "none"))}</textarea></label>
             <div class="actions wide">
               <button class="button primary" type="submit">Save Changes</button>
+              <button class="button" type="submit" formaction="/studio/projects/{_html(selected_project.get("id", ""))}/complete">Complete</button>
               <button class="button" type="submit" formaction="/studio/projects/{_html(selected_project.get("id", ""))}/pause">Pause</button>
               <button class="button danger" type="submit" formaction="/studio/projects/{_html(selected_project.get("id", ""))}/delete">Delete</button>
               <a class="button" href="/studio/projects">Close</a>
@@ -8043,7 +8128,24 @@ async def _studio_navigation_target(db: AsyncSession, prompt: str, page_context:
 
 async def _studio_project_blocker_reply(db: AsyncSession, prompt: str) -> dict[str, Any] | None:
     prompt_lower = str(prompt or "").lower()
-    project_intent = any(term in prompt_lower for term in ["project", "blocker", "blocked", "what do you need", "need from me", "dave approval", "continue"])
+    project_intent = any(
+        term in prompt_lower
+        for term in [
+            "project",
+            "blocker",
+            "blocked",
+            "what do you need",
+            "need from me",
+            "dave approval",
+            "continue",
+            "close",
+            "complete",
+            "completed",
+            "success",
+            "meets the objective",
+            "works great",
+        ]
+    )
     if not project_intent:
         return None
     result = await db.execute(select(StudioProject).where(StudioProject.status != "deleted").order_by(StudioProject.id.desc()).limit(80))
@@ -8066,6 +8168,60 @@ async def _studio_project_blocker_reply(db: AsyncSession, prompt: str) -> dict[s
             best = project
     if best is None or best_score < 2:
         return None
+    if _is_project_completion_prompt(prompt):
+        _apply_studio_project_completion(
+            best,
+            note=prompt,
+            actor="Dave",
+            source="studio_mim_chat_completion",
+        )
+        db.add(
+            StudioProjectEvent(
+                project_id=best.id,
+                event_type="operator_completed",
+                actor="Dave",
+                title="Project accepted as complete",
+                detail=prompt.strip(),
+                metadata_json={
+                    "source": "studio_mim_chat_completion",
+                    "movement_event": True,
+                    "operator_completion": True,
+                },
+            )
+        )
+        await db.commit()
+        await db.refresh(best)
+        reply = (
+            f"Project mode: {best.title}.\n\n"
+            "Accepted. I closed this project as successful.\n\n"
+            "Status: completed.\n"
+            "Blocker: none.\n"
+            "Dave needed: no.\n"
+            "Next action: monitor for regression evidence only; reopen if the LAB servo tool stops meeting the objective."
+        )
+        return {
+            "ok": True,
+            "source": "studio_project_operator_completion",
+            "response_mode": "project_completion",
+            "mim_interface": {
+                "reply_text": reply,
+                "page_context": "Studio Projects",
+                "surface": "studio",
+            },
+            "navigation": {
+                "href": f"/studio/projects?project_id={best.id}",
+                "label": "Projects",
+                "target_area": "projects",
+                "auto_redirect": False,
+                "reason": "Dave accepted the project as complete.",
+            },
+            "evidence": {
+                "project_id": best.id,
+                "project_title": best.title,
+                "status": best.status,
+                "operator_completion": True,
+            },
+        }
     project_dict = _studio_project_to_dict(best)
     project_dict["blocker"] = _project_blocker(best)
     project_dict["progress_percent"] = _project_progress(best)
@@ -8477,6 +8633,13 @@ async def update_studio_project_form(
         }
     )
     row.metadata_json = metadata
+    if row.status.strip().lower() in {"done", "complete", "completed", "deployed"}:
+        _apply_studio_project_completion(
+            row,
+            note=summary or next_action or "Dave saved this project in a completed status.",
+            actor="Dave",
+            source="studio_projects_form_status",
+        )
     db.add(
         StudioProjectEvent(
             project_id=row.id,
@@ -8505,6 +8668,43 @@ async def pause_studio_project_form(
     metadata["user_modified"] = True
     row.metadata_json = metadata
     db.add(StudioProjectEvent(project_id=row.id, event_type="paused", actor="Dave", title="Project paused"))
+    await db.commit()
+    return RedirectResponse(url=f"/studio/projects?project_id={row.id}", status_code=303)
+
+
+@router.post("/studio/projects/{project_id}/complete")
+async def complete_studio_project_form(
+    project_id: int,
+    summary: str = Form(""),
+    next_action: str = Form(""),
+    blocker: str = Form("none"),
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    row = await db.get(StudioProject, project_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="studio_project_not_found")
+    note = summary.strip() or next_action.strip() or "Dave marked this project complete from Studio Projects."
+    _apply_studio_project_completion(
+        row,
+        note=note,
+        actor="Dave",
+        source="studio_projects_complete_button",
+    )
+    db.add(
+        StudioProjectEvent(
+            project_id=row.id,
+            event_type="operator_completed",
+            actor="Dave",
+            title="Project accepted as complete",
+            detail=note,
+            metadata_json={
+                "source": "studio_projects_complete_button",
+                "movement_event": True,
+                "operator_completion": True,
+                "prior_blocker": blocker.strip() or "none",
+            },
+        )
+    )
     await db.commit()
     return RedirectResponse(url=f"/studio/projects?project_id={row.id}", status_code=303)
 
