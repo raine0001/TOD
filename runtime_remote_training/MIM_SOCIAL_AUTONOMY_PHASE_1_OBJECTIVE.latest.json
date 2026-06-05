@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-06-05T03:18:00-07:00",
+  "objective_id": "MIM-SOCIAL-AUTONOMY-PHASE-1",
+  "status": "scheduled",
+  "target_start_after": "2026-06-12T09:00:00-07:00",
+  "priority": "P1_future",
+  "owner": "MIM",
+  "supporting_owner": "TOD",
+  "goal": "Teach MIM to operate social channels as a measurable audience-building system rather than a content-generation system.",
+  "success_criteria": [
+    "Increase application visitors.",
+    "Increase qualified followers.",
+    "Increase meaningful engagement.",
+    "Generate measurable traffic to AgentMIM.com and CoachMIM.com.",
+    "Learn from post performance.",
+    "Reduce low-value content production."
+  ],
+  "must_not_optimize_for": [
+    "post count",
+    "word count",
+    "generic AI news summaries",
+    "recycled industry headlines",
+    "engagement bait"
+  ],
+  "should_optimize_for": [
+    "conversations",
+    "community participation",
+    "demonstrations",
+    "humor",
+    "product visibility",
+    "thought leadership",
+    "real-world examples"
+  ],
+  "training_phases": [
+    {
+      "phase": 1,
+      "name": "Observe",
+      "track": [
+        "impressions",
+        "reactions",
+        "comments",
+        "reposts",
+        "click-through rates",
+        "profile visits",
+        "website visits"
+      ],
+      "categorize_successful_posts_by": [
+        "humor",
+        "technical",
+        "opinion",
+        "product_demo",
+        "industry_discussion",
+        "mim_update",
+        "robotics",
+        "ai_philosophy"
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "Learn",
+      "identify": [
+        "which topics generate comments",
+        "which topics generate clicks",
+        "which topics generate followers",
+        "which topics generate leads"
+      ],
+      "outputs": [
+        "stored patterns",
+        "confidence scores"
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "Participate",
+      "actions": [
+        "comment on industry discussions",
+        "participate in relevant groups",
+        "respond to comments",
+        "ask questions",
+        "create follow-up discussions"
+      ],
+      "rule": "MIM should spend more effort participating than posting."
+    },
+    {
+      "phase": 4,
+      "name": "Audience Building",
+      "target_audiences": [
+        "independent insurance agencies",
+        "insurance brokers",
+        "agency owners",
+        "operations managers",
+        "automation enthusiasts",
+        "robotics enthusiasts",
+        "AI builders"
+      ]
+    },
+    {
+      "phase": 5,
+      "name": "Conversion",
+      "required_questions": [
+        "Why would this person visit AgentMIM?",
+        "Why would this person try CoachMIM?",
+        "Why would this person follow MIM?",
+        "Why would this person return?"
+      ]
+    }
+  ],
+  "weekly_score_weights": {
+    "website_visitors": 40,
+    "engagement": 25,
+    "follower_growth": 20,
+    "lead_generation": 15
+  },
+  "non_metric": "Post volume is not a metric.",
+  "outcome": "MIM becomes a community participant that builds relationships and traffic rather than a content generator that creates noise.",
+  "first_driving_task": "Create the baseline measurement map for AgentMIM.com and CoachMIM.com traffic, social channel analytics, follower quality, engagement quality, and lead attribution before MIM begins active participation.",
+  "acceptance_criteria": [
+    "MIM has a baseline dashboard for website visitors, qualified followers, meaningful engagement, lead generation, and channel-to-site traffic.",
+    "Each social action is tagged by audience, channel, category, intended conversion path, and observed outcome.",
+    "MIM can distinguish participation, demonstration, product visibility, humor, thought leadership, and low-value content.",
+    "MIM produces weekly learning notes with patterns, confidence scores, and next experiments.",
+    "MIM refuses to treat post volume as success.",
+    "MIM escalates for Dave approval before taking any action that could create brand, privacy, compliance, or account-access risk."
+  ],
+  "schedule_note": "Added early on 2026-06-05 so MIM can prepare, but target start is about one week later."
+}
