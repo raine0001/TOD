@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-06-05T12:42:04-07:00",
+  "objective_id": "PUBLIC-TOD-ROUTE-HEALTH-REPAIR-V1",
+  "studio_project_id": 35,
+  "status": "queued",
+  "priority": "P1",
+  "owner": "TOD",
+  "goal": "Make public /tod and /tod/ui/state resolve correctly or intentionally redirect/disable with a clear status.",
+  "known_evidence": {
+    "public_tod_url": "https://www.agentmim.com/tod",
+    "public_tod_state_url": "https://www.agentmim.com/tod/ui/state",
+    "current_public_result": "404",
+    "local_tod_ui": "healthy"
+  },
+  "acceptance_criteria": [
+    "https://www.agentmim.com/tod resolves correctly, redirects intentionally, or reports deliberate disabled status.",
+    "https://www.agentmim.com/tod/ui/state resolves correctly, redirects intentionally, or reports deliberate disabled status.",
+    "Route health no longer reports ambiguous public_tod_unreachable or public_tod_state_missing blockers.",
+    "Repair remains separate from MIM-TOD-NEEDS-REVIEW-DRAIN-V1."
+  ],
+  "first_driving_task": "Inspect public route ownership and deployment path, then produce the smallest safe repair or intentional-disable plan."
+}
