@@ -20,6 +20,18 @@
     "reopened": 0,
     "resolution_rate": 0
   },
+  "latest_review_resolution": {
+    "generated_at": "2026-06-05T15:10:09-07:00",
+    "entered": 15,
+    "resolved": 1,
+    "still_review": 14,
+    "reopened": 0,
+    "resolution_rate": 7,
+    "stale": 0,
+    "first_resolved_project_id": 22,
+    "first_resolved_project_title": "MIM TOD Automatic Reality Response V1",
+    "successor_state": "waiting_on_evidence"
+  },
   "acceptance_criteria": [
     "Needs Review drops from 15 to under 5.",
     "Every reviewed project gets a successor action and evidence requirement.",
@@ -27,7 +39,8 @@
     "Each reviewed project is classified as closed, split, dispatched to TOD, waiting on evidence, waiting on Dave, or archived.",
     "Public TOD route repair remains separate and does not mix into this objective."
   ],
-  "first_driving_task": "Review the highest-priority Needs Review project and convert it into a successor state with an evidence requirement.",
+  "first_driving_task": "Completed: project 22 was converted from Needs Review into waiting_on_evidence with an evidence requirement.",
+  "next_driving_task": "Review the next highest-priority Needs Review project and convert it into dispatch, close, split, archive, escalate, wait_for_evidence, or wait_for_Dave.",
   "successor_states": [
     "closed",
     "split",

@@ -2884,14 +2884,19 @@ def _project_movement_state(row: dict[str, Any]) -> str:
 
 
 def _project_review_resolution_metrics(project_rows: list[dict[str, Any]], events: list[StudioProjectEvent]) -> dict[str, Any]:
-    rows_by_id = {int(row.get("id") or 0): row for row in project_rows if row.get("id")}
+    excluded_ids = {
+        int(row.get("id") or 0)
+        for row in project_rows
+        if str(_project_metadata(row).get("objective_id") or "").strip() == "MIM-TOD-NEEDS-REVIEW-DRAIN-V1"
+    }
+    rows_by_id = {int(row.get("id") or 0): row for row in project_rows if row.get("id") and int(row.get("id") or 0) not in excluded_ids}
     review_entered: set[int] = set()
     reopened: set[int] = set()
     review_event_counts: dict[int, int] = {}
 
     for event in events:
         project_id = int(event.project_id or 0)
-        if not project_id:
+        if not project_id or project_id in excluded_ids:
             continue
         metadata = event.metadata_json if isinstance(event.metadata_json, dict) else {}
         rule_key = str(metadata.get("rule_key") or "").strip()
@@ -2900,16 +2905,18 @@ def _project_review_resolution_metrics(project_rows: list[dict[str, Any]], event
             review_event_counts[project_id] = review_event_counts.get(project_id, 0) + 1
             if review_event_counts[project_id] > 1:
                 reopened.add(project_id)
+        elif event.event_type == "review_resolved" and metadata.get("review_resolution"):
+            review_entered.add(project_id)
 
     current_needs_review = {
         int(row.get("id") or 0)
         for row in project_rows
-        if str(row.get("momentum_decay") or "").strip() == "Needs Review"
+        if int(row.get("id") or 0) not in excluded_ids and str(row.get("momentum_decay") or "").strip() == "Needs Review"
     }
     current_stale = {
         int(row.get("id") or 0)
         for row in project_rows
-        if str(row.get("momentum_decay") or "").strip() == "Stale"
+        if int(row.get("id") or 0) not in excluded_ids and str(row.get("momentum_decay") or "").strip() == "Stale"
     }
     review_entered.update(current_needs_review)
     still_review = current_needs_review | current_stale

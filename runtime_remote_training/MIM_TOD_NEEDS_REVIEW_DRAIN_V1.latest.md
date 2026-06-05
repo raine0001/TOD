@@ -20,6 +20,16 @@ Baseline:
 - Reopened: 0
 - Review resolution rate: 0%
 
+Latest:
+- Review entered: 15
+- Review resolved: 1
+- Still review: 14
+- Reopened: 0
+- Review resolution rate: 7%
+- Stale: 0
+- First resolved project: `22` / MIM TOD Automatic Reality Response V1
+- Successor state: waiting on evidence
+
 Metric: Review Resolution Rate measures whether Needs Review projects become real successor states instead of notes.
 
 Policy: Needs Review is not a resting state. MIM/TOD must decide and record the next execution, evidence, or closure path.
