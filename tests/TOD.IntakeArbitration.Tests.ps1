@@ -3,6 +3,14 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $todScript = Join-Path $repoRoot 'scripts/TOD.ps1'
+$intakeArtifactRelativePaths = @(
+    'runtime/shared/TOD_ACTIVE_EXECUTION_LANE.latest.json',
+    'runtime/shared/TOD_INTAKE_QUEUE.latest.json',
+    'runtime/shared/TOD_INTAKE_ARBITRATION.latest.json',
+    'tmp_remote_mim/runtime/shared/TOD_ACTIVE_EXECUTION_LANE.latest.json',
+    'tmp_remote_mim/runtime/shared/TOD_INTAKE_QUEUE.latest.json',
+    'tmp_remote_mim/runtime/shared/TOD_INTAKE_ARBITRATION.latest.json'
+)
 
 function Write-JsonNoBom {
     param(
@@ -18,6 +26,38 @@ function Write-JsonNoBom {
     $json = $Payload | ConvertTo-Json -Depth 20
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($PathValue, $json, $utf8NoBom)
+}
+
+function Backup-IntakeSharedArtifacts {
+    $backups = @()
+    foreach ($relativePath in @($intakeArtifactRelativePaths)) {
+        $pathValue = Join-Path $repoRoot $relativePath
+        $backups += [pscustomobject]@{
+            path = $pathValue
+            exists = (Test-Path -Path $pathValue -PathType Leaf)
+            content = if (Test-Path -Path $pathValue -PathType Leaf) { [string](Get-Content -Path $pathValue -Raw) } else { '' }
+        }
+    }
+    return @($backups)
+}
+
+function Restore-IntakeSharedArtifacts {
+    param([Parameter(Mandatory = $true)]$Backups)
+
+    foreach ($backup in @($Backups)) {
+        if ([bool]$backup.exists) {
+            $parent = Split-Path -Parent ([string]$backup.path)
+            if (-not (Test-Path -Path $parent)) {
+                New-Item -ItemType Directory -Path $parent -Force | Out-Null
+            }
+
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText([string]$backup.path, [string]$backup.content, $utf8NoBom)
+        }
+        elseif (Test-Path -Path ([string]$backup.path)) {
+            Remove-Item -Path ([string]$backup.path) -Force
+        }
+    }
 }
 
 function New-IntakeStateFixture {
@@ -189,6 +229,16 @@ function New-QueuedIntakeItem {
 }
 
 Describe 'TOD intake queue arbitration' {
+    BeforeEach {
+        $script:IntakeSharedArtifactBackups = Backup-IntakeSharedArtifacts
+    }
+
+    AfterEach {
+        if ($script:IntakeSharedArtifactBackups) {
+            Restore-IntakeSharedArtifacts -Backups $script:IntakeSharedArtifactBackups
+        }
+    }
+
     It 'queues a MIM request while an operator task is active' {
         $fixture = New-IntakeStateFixture
         try {

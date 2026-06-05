@@ -6351,22 +6351,37 @@ function Resolve-TaskBoundedEditMaterialization {
 
     $taskCategory = Resolve-TaskCategory -Task $Task
     $text = Get-TaskRoutingText -Task $Task
-    $fileHints = New-Object System.Collections.Generic.List[string]
+    $structuredFileHints = New-Object System.Collections.Generic.List[string]
     $explicitTargetFile = Get-TaskExplicitFieldValue -Task $Task -Names @('target_file', 'targetFile')
     if (-not [string]::IsNullOrWhiteSpace([string]$explicitTargetFile)) {
-        $fileHints.Add((([string]$explicitTargetFile).Trim() -replace '[\\/]+', '/')) | Out-Null
+        $structuredFileHints.Add((([string]$explicitTargetFile).Trim() -replace '[\\/]+', '/')) | Out-Null
     }
-    $explicitTargetFiles = Get-TaskExplicitFieldValue -Task $Task -Names @('target_files', 'targetFiles')
-    if ($null -ne $explicitTargetFiles) {
+    foreach ($explicitTargetFiles in @(
+            (Get-TaskExplicitFieldValue -Task $Task -Names @('target_files', 'targetFiles')),
+            (Get-TaskExplicitFieldValue -Task $Task -Names @('allowed_files', 'allowedFiles')),
+            (Get-TaskExplicitFieldValue -Task $Task -Names @('files_involved', 'filesInvolved'))
+        )) {
+        if ($null -eq $explicitTargetFiles) {
+            continue
+        }
         foreach ($item in @($explicitTargetFiles)) {
             if (-not [string]::IsNullOrWhiteSpace([string]$item)) {
-                $fileHints.Add((([string]$item).Trim() -replace '[\\/]+', '/')) | Out-Null
+                $structuredFileHints.Add((([string]$item).Trim() -replace '[\\/]+', '/')) | Out-Null
             }
         }
     }
-    foreach ($item in @(Get-TaskRoutingFileHints -Task $Task)) {
-        if (-not [string]::IsNullOrWhiteSpace([string]$item)) {
+    $structuredFileHints = @($structuredFileHints | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+    $fileHints = New-Object System.Collections.Generic.List[string]
+    if (@($structuredFileHints).Count -gt 0) {
+        foreach ($item in @($structuredFileHints)) {
             $fileHints.Add([string]$item) | Out-Null
+        }
+    }
+    else {
+        foreach ($item in @(Get-TaskRoutingFileHints -Task $Task)) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$item)) {
+                $fileHints.Add([string]$item) | Out-Null
+            }
         }
     }
     $fileHints = @($fileHints | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
@@ -6698,6 +6713,51 @@ function Test-TaskAllowsLocalExecutionWithoutMaterialization {
     return ($mentionsLedger -and $mentionsCoverage)
 }
 
+function Update-TodActiveExecutionLaneTerminalProjection {
+    param(
+        [Parameter(Mandatory = $true)]$Task,
+        [Parameter(Mandatory = $true)][string]$Status,
+        [Parameter(Mandatory = $true)][string]$EventType,
+        [Parameter(Mandatory = $true)][string]$Message,
+        [AllowEmptyString()][string]$ReasonCode = '',
+        $Details = $null
+    )
+
+    try {
+        $taskId = if ($Task.PSObject.Properties['id']) { [string]$Task.id } else { '' }
+        if ([string]::IsNullOrWhiteSpace($taskId)) {
+            return $null
+        }
+
+        $activeLane = Read-TodIntakeArtifact -FileName $todActiveExecutionLaneFileName
+        if ($null -eq $activeLane -or -not $activeLane.PSObject.Properties['task_id'] -or -not [string]::Equals([string]$activeLane.task_id, $taskId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $null
+        }
+
+        $timestamp = Get-UtcNow
+        $activeLane | Add-Member -NotePropertyName generated_at -NotePropertyValue $timestamp -Force
+        $activeLane | Add-Member -NotePropertyName status -NotePropertyValue ([string]$Status) -Force
+        $activeLane | Add-Member -NotePropertyName terminal_at -NotePropertyValue $timestamp -Force
+        $activeLane | Add-Member -NotePropertyName terminal_event_type -NotePropertyValue ([string]$EventType) -Force
+        $activeLane | Add-Member -NotePropertyName terminal_reason_code -NotePropertyValue ([string]$ReasonCode) -Force
+        $activeLane | Add-Member -NotePropertyName terminal_message -NotePropertyValue ([string]$Message) -Force
+        $activeLane | Add-Member -NotePropertyName terminal_state -NotePropertyValue ([pscustomobject]@{
+                timestamp = $timestamp
+                status = [string]$Status
+                event_type = [string]$EventType
+                message = [string]$Message
+                reason_code = [string]$ReasonCode
+                details = if ($null -ne $Details) { $Details } else { [pscustomobject]@{} }
+            }) -Force
+
+        Write-TodIntakeArtifact -FileName $todActiveExecutionLaneFileName -Payload $activeLane | Out-Null
+        return $activeLane
+    }
+    catch {
+        return $null
+    }
+}
+
 function Set-PersistedTaskTerminalState {
     param(
         [Parameter(Mandatory = $true)]$Task,
@@ -6730,6 +6790,7 @@ function Set-PersistedTaskTerminalState {
             reason_code = [string]$ReasonCode
             details = if ($null -ne $Details) { $Details } else { [pscustomobject]@{} }
         }) -Force
+    Update-TodActiveExecutionLaneTerminalProjection -Task $Task -Status $Status -EventType $EventType -Message $Message -ReasonCode $ReasonCode -Details $Details | Out-Null
 }
 
 function Update-TaskTerminalStateInStore {
@@ -9216,7 +9277,20 @@ function Invoke-ExecutionEngine {
     . (Join-Path $engineDir "ExecutionEngine.ps1")
 
     $resolvedTaskCategory = Resolve-TaskCategory -Task $Task
-    $taskFileHints = @(Get-TaskRoutingFileHints -Task $Task)
+    $taskFileHints = @()
+    if ($Task.PSObject.Properties['materialization'] -and $null -ne $Task.materialization -and $Task.materialization.PSObject.Properties['target_files'] -and @($Task.materialization.target_files).Count -gt 0) {
+        $taskFileHints = @($Task.materialization.target_files | ForEach-Object { ([string]$_) -replace '[\\/]+', '/' })
+    }
+    elseif ($Task.PSObject.Properties['allowed_files'] -and $null -ne $Task.allowed_files -and @($Task.allowed_files).Count -gt 0) {
+        $taskFileHints = @($Task.allowed_files | ForEach-Object { ([string]$_) -replace '[\\/]+', '/' })
+    }
+    elseif ($Task.PSObject.Properties['files_involved'] -and $null -ne $Task.files_involved -and @($Task.files_involved).Count -gt 0) {
+        $taskFileHints = @($Task.files_involved | ForEach-Object { ([string]$_) -replace '[\\/]+', '/' })
+    }
+    else {
+        $taskFileHints = @(Get-TaskRoutingFileHints -Task $Task)
+    }
+    $taskFileHints = @($taskFileHints | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
     $context = New-EngineTaskContext `
         -TaskId $TaskId `
         -ObjectiveId ([string]$Task.objective_id) `

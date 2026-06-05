@@ -121,3 +121,15 @@ Get-Content .\tod\out\mim-http.log -Tail 20
 ```
 
 `mim-http.log` is populated when `mim_debug.enabled` is `true` in `tod/config/tod-config.json`.
+
+## TOD Execution Lane Proof
+
+TOD local execution lane proof task TOD-LANE-PROOF-20260604172442 completed through bounded docs append.
+
+## TOD Active Lane Success Proof TOD-LANE-SUCCESS-PROOF-20260604173953
+
+TOD active execution lane success proof task TOD-LANE-SUCCESS-PROOF-20260604173953 completed through bounded docs append.
+
+## TOD Hardened Lane Proof TOD-LANE-HARDENED-PROOF-20260604175325
+
+TOD hardened lane proof task TOD-LANE-HARDENED-PROOF-20260604175325 completed through bounded docs append with source-artifact acceptance text.

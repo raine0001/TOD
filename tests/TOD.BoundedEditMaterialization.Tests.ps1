@@ -160,6 +160,28 @@ Section Title: Materializer Evidence
         [string]$materialization.prompt_directives['Section Title'] | Should Be 'Materializer Evidence'
     }
 
+    It 'keeps one explicit target authoritative when acceptance mentions an evidence artifact' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-DOCS-EVIDENCE'
+            title = 'Append docs section with lane proof'
+            scope = @'
+Edit Mode: docs_append_section
+Section Title: Active Lane Projection Evidence
+Section Body: TOD active lane projection proof completed.
+Validation Pattern: TSK-MAT-DOCS-EVIDENCE
+'@
+            acceptance_criteria = @('docs/tod-command-reference.md contains TSK-MAT-DOCS-EVIDENCE and TOD_ACTIVE_EXECUTION_LANE.latest.json reaches completed.')
+            task_category = 'docs_change'
+            allowed_files = @('docs/tod-command-reference.md')
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]@($materialization.target_files)[0] | Should Be 'docs/tod-command-reference.md'
+        @($materialization.target_file_candidates).Count | Should Be 1
+    }
+
     It 'materializes validation-only tasks without a patch directive' {
         $task = [pscustomobject]@{
             id = 'TSK-MAT-VALIDATE'
