@@ -2883,9 +2883,12 @@ def _project_movement_state(row: dict[str, Any]) -> str:
 
 def _project_current_driving_task(row: dict[str, Any]) -> str:
     metadata = _project_metadata(row)
+    metadata_task = _first_text(metadata.get("current_driving_task"), metadata.get("driving_task"), default="")
+    if metadata_task.startswith("Choose promote, block, archive"):
+        metadata_task = ""
     return _first_text(
-        metadata.get("current_driving_task"),
-        metadata.get("driving_task"),
+        metadata_task,
+        metadata.get("pre_intervention_next_action"),
         row.get("next_action"),
         metadata.get("next_action"),
         default="Define current driving task.",
@@ -3039,8 +3042,13 @@ def _tod_next_action_candidate(row: dict[str, Any]) -> dict[str, Any]:
             row=row,
         )
     if str(row.get("momentum_decay") or "") in {"Stale", "Needs Review"}:
+        review_action = (
+            f"Review stale task: {current_task} Execute it now, block with evidence, split scope, archive it, or assign a new bounded driving task."
+            if current_task != "Define current driving task."
+            else "Choose promote, block, archive, or a new bounded driving task; do not leave the project idle."
+        )
         return _tod_decision_record(
-            action="Choose promote, block, archive, or a new bounded driving task; do not leave the project idle.",
+            action=review_action,
             lane="momentum_review",
             reason="Project momentum decayed and needs an explicit successor state.",
             confidence=0.8,
@@ -3117,12 +3125,31 @@ def _project_momentum_decay(row: dict[str, Any]) -> str:
     age_hours = _project_age_hours(row)
     priority = str(row.get("priority") or "").strip().upper()
     project_type = str(row.get("project_type") or "").strip().lower()
-    if momentum == "Moving" and priority in {"P0", "P1", "HIGH", "CRITICAL"} and project_type == "training_objective":
+    status = str(row.get("status") or "").strip().lower()
+    work_state = str(row.get("work_state") or "").strip().lower()
+    is_long_term = (
+        status in {"ongoing", "program", "active_program"}
+        or work_state in {"long_term", "roadmap"}
+        or project_type in {"program", "umbrella", "long_term"}
+    )
+    if momentum == "Moving":
         if age_hours is None:
             return "Needs Review"
-        if age_hours >= 6:
+        if is_long_term:
+            if age_hours >= 24 * 7:
+                return "Needs Review"
+            if age_hours >= 24:
+                return "Stale"
+            return momentum
+        if priority in {"P0", "P1", "HIGH", "CRITICAL"} or project_type == "training_objective":
+            if age_hours >= 6:
+                return "Needs Review"
+            if age_hours >= 2:
+                return "Stale"
+            return momentum
+        if age_hours >= 72:
             return "Needs Review"
-        if age_hours >= 2:
+        if age_hours >= 24:
             return "Stale"
         return momentum
     if momentum not in {"Waiting", "Blocked"}:
@@ -3142,14 +3169,16 @@ def _project_heat(row: dict[str, Any]) -> str:
     age_hours = _project_age_hours(row)
     if momentum == "Completed":
         return "Complete"
-    if momentum == "Blocked" or decay == "Needs Review":
+    if momentum == "Blocked":
         return "🔴 Blocked"
+    if decay == "Needs Review":
+        return "🔴 Needs Review"
     if momentum == "Abandoned":
         return "⚫ Cold"
     if decay == "Stale":
         return "🟡 Waiting"
     if momentum == "Moving":
-        if age_hours is not None and age_hours <= 24:
+        if age_hours is not None and age_hours <= 2:
             return "🔥 Hot"
         return "🟢 Active"
     if momentum == "Waiting":
@@ -3718,11 +3747,21 @@ async def _run_project_auto_interventions(db: AsyncSession, projects: list[Studi
     def add_intervention(project: StudioProject, *, rule_key: str, title: str, detail: str, next_action: str, metadata_patch: dict[str, Any]) -> bool:
         metadata = project.metadata_json if isinstance(project.metadata_json, dict) else {}
         metadata = dict(metadata)
+        existing_next_action = str(project.next_action or "").strip()
+        if (
+            existing_next_action
+            and not existing_next_action.startswith("Choose promote, block, archive")
+            and not metadata.get("pre_intervention_next_action")
+        ):
+            metadata["pre_intervention_next_action"] = existing_next_action
         metadata.update(metadata_patch)
         metadata["last_auto_intervention_at"] = _utc_now()
         metadata["last_auto_intervention_rule"] = rule_key
         project.metadata_json = metadata
-        project.next_action = next_action
+        if next_action.startswith("Choose promote, block, archive") and existing_next_action:
+            project.next_action = existing_next_action
+        else:
+            project.next_action = next_action
         if (int(project.id), rule_key, today_key) in existing_interventions:
             return False
         db.add(
