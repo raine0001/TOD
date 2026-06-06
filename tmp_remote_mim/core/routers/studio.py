@@ -2892,9 +2892,9 @@ def _project_review_resolution_metrics(project_rows: list[dict[str, Any]], event
     rows_by_id = {int(row.get("id") or 0): row for row in project_rows if row.get("id") and int(row.get("id") or 0) not in excluded_ids}
     review_entered: set[int] = set()
     reopened: set[int] = set()
-    review_event_counts: dict[int, int] = {}
+    resolved_once: set[int] = set()
 
-    for event in events:
+    for event in sorted(events, key=lambda item: item.created_at or datetime.min.replace(tzinfo=timezone.utc)):
         project_id = int(event.project_id or 0)
         if not project_id or project_id in excluded_ids:
             continue
@@ -2902,11 +2902,11 @@ def _project_review_resolution_metrics(project_rows: list[dict[str, Any]], event
         rule_key = str(metadata.get("rule_key") or "").strip()
         if event.event_type == "mim_auto_intervention" and rule_key in {"momentum_decay", "moving_training_inactivity"}:
             review_entered.add(project_id)
-            review_event_counts[project_id] = review_event_counts.get(project_id, 0) + 1
-            if review_event_counts[project_id] > 1:
+            if project_id in resolved_once:
                 reopened.add(project_id)
         elif event.event_type == "review_resolved" and metadata.get("review_resolution"):
             review_entered.add(project_id)
+            resolved_once.add(project_id)
 
     current_needs_review = {
         int(row.get("id") or 0)
@@ -2958,14 +2958,19 @@ def _project_successor_quality_metrics(project_rows: list[dict[str, Any]], event
         if event.event_type != "review_resolved" or not metadata.get("review_resolution"):
             continue
         successor_state = _first_text(metadata.get("successor_state"), evidence.get("successor_state"), default="unknown")
+        created_at = event.created_at if event.created_at else datetime.now(timezone.utc)
+        created_at = created_at if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
+        age_hours = max(0.0, (datetime.now(timezone.utc) - created_at.astimezone(timezone.utc)).total_seconds() / 3600)
         latest_review_by_project[project_id] = {
             "successor_state": successor_state,
             "successor_action": _first_text(metadata.get("successor_action"), evidence.get("successor_action"), default=""),
             "required_evidence": _first_text(metadata.get("required_evidence"), evidence.get("required_evidence"), default=""),
+            "age_hours": age_hours,
         }
 
     by_state: dict[str, dict[str, int]] = {}
     total = terminal_success = active_follow_through = pending_outcome = failed_or_reopened = 0
+    aging = {"watch": 0, "escalate": 0, "dave_visibility": 0, "ok": 0}
     for project_id, review in latest_review_by_project.items():
         row = rows_by_id.get(project_id)
         if not row:
@@ -2973,7 +2978,17 @@ def _project_successor_quality_metrics(project_rows: list[dict[str, Any]], event
         state_key = str(review.get("successor_state") or "unknown").strip() or "unknown"
         bucket = by_state.setdefault(
             state_key,
-            {"total": 0, "terminal_success": 0, "active_follow_through": 0, "pending_outcome": 0, "failed_or_reopened": 0},
+            {
+                "total": 0,
+                "terminal_success": 0,
+                "active_follow_through": 0,
+                "pending_outcome": 0,
+                "failed_or_reopened": 0,
+                "watch": 0,
+                "escalate": 0,
+                "dave_visibility": 0,
+                "ok": 0,
+            },
         )
         total += 1
         bucket["total"] += 1
@@ -2994,6 +3009,18 @@ def _project_successor_quality_metrics(project_rows: list[dict[str, Any]], event
             pending_outcome += 1
             bucket["pending_outcome"] += 1
 
+        age_hours = float(review.get("age_hours") or 0)
+        aging_state = "ok"
+        if status not in {"done", "complete", "completed", "deployed"}:
+            if state_key == "dispatched_to_TOD" and age_hours >= 24:
+                aging_state = "watch"
+            elif state_key == "waiting_on_evidence" and age_hours >= 48:
+                aging_state = "escalate"
+            elif state_key == "escalated_to_Codex" and age_hours >= 72:
+                aging_state = "dave_visibility"
+        aging[aging_state] += 1
+        bucket[aging_state] += 1
+
     terminal_rate = round((terminal_success / total) * 100) if total else 100
     follow_through_rate = round(((total - failed_or_reopened) / total) * 100) if total else 100
     return {
@@ -3004,6 +3031,7 @@ def _project_successor_quality_metrics(project_rows: list[dict[str, Any]], event
         "failed_or_reopened": failed_or_reopened,
         "terminal_success_rate": terminal_rate,
         "follow_through_rate": follow_through_rate,
+        "aging": aging,
         "by_successor_state": by_state,
     }
 
@@ -3254,6 +3282,22 @@ def _project_momentum_decay(row: dict[str, Any]) -> str:
     project_type = str(row.get("project_type") or "").strip().lower()
     status = str(row.get("status") or "").strip().lower()
     work_state = str(row.get("work_state") or "").strip().lower()
+    successor_state = str(row.get("review_successor_state") or "").strip()
+    if momentum == "Moving" and successor_state and status not in {"done", "complete", "completed", "deployed"}:
+        if age_hours is None:
+            return "Needs Review"
+        if successor_state == "dispatched_to_TOD":
+            if age_hours >= 24:
+                return "Stale"
+            return momentum
+        if successor_state == "waiting_on_evidence":
+            if age_hours >= 48:
+                return "Needs Review"
+            return momentum
+        if successor_state == "escalated_to_Codex":
+            if age_hours >= 72:
+                return "Needs Review"
+            return momentum
     is_long_term = (
         status in {"ongoing", "program", "active_program"}
         or work_state in {"long_term", "roadmap"}
@@ -7194,6 +7238,13 @@ def _projects_body(state: dict[str, Any]) -> str:
         ("Terminal Success", successor_quality.get("terminal_success", 0), "closed after successor"),
         ("Failed/Reopened", successor_quality.get("failed_or_reopened", 0), "bad successor signal"),
     ]
+    successor_aging = successor_quality.get("aging") if isinstance(successor_quality.get("aging"), dict) else {}
+    successor_aging_stats = [
+        ("Aging OK", successor_aging.get("ok", 0), "inside successor SLA"),
+        ("Watch", successor_aging.get("watch", 0), "TOD dispatch > 24h"),
+        ("Escalate", successor_aging.get("escalate", 0), "evidence wait > 48h"),
+        ("Dave Visibility", successor_aging.get("dave_visibility", 0), "Codex escalation > 72h"),
+    ]
     stats_html = "".join(
         f"""
         <a class="card" href="/studio/projects?view={_html(key)}">
@@ -7222,6 +7273,16 @@ def _projects_body(state: dict[str, Any]) -> str:
         </div>
         """
         for label, value, detail in successor_stats
+    )
+    successor_aging_html = "".join(
+        f"""
+        <div class="card">
+          <div class="label">{_html(label)}</div>
+          <div class="entity">{_html(value)}</div>
+          <div class="muted">{_html(detail)}</div>
+        </div>
+        """
+        for label, value, detail in successor_aging_stats
     )
     projects = state.get("projects") if isinstance(state.get("projects"), list) else []
     inbox_examples = state.get("signals") if isinstance(state.get("signals"), list) else []
@@ -7508,6 +7569,7 @@ def _projects_body(state: dict[str, Any]) -> str:
     <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{stats_html}</section>
     <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{review_stats_html}</section>
     <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{successor_stats_html}</section>
+    <section class="grid four" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom:14px;">{successor_aging_html}</section>
     {_data_sources_html(state, "projects")}
     <section class="card" style="margin-bottom:14px;">
       <div class="status-head">

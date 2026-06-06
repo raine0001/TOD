@@ -2,7 +2,7 @@
   "generated_at": "2026-06-05T12:42:04-07:00",
   "objective_id": "MIM-TOD-NEEDS-REVIEW-DRAIN-V1",
   "studio_project_id": 34,
-  "status": "active",
+  "status": "completed_with_evidence",
   "priority": "P0",
   "owner": "MIM",
   "supporting_owner": "TOD",
@@ -67,6 +67,21 @@
       }
     }
   },
+  "successor_aging_policy": {
+    "dispatched_to_TOD_pending_watch_after_hours": 24,
+    "waiting_on_evidence_escalate_after_hours": 48,
+    "escalated_to_Codex_dave_visibility_after_hours": 72
+  },
+  "successor_aging_latest": {
+    "generated_at": "2026-06-05T15:45:00-07:00",
+    "ok": 15,
+    "watch": 0,
+    "escalate": 0,
+    "dave_visibility": 0,
+    "stale": 0,
+    "needs_review": 0,
+    "note": "Generic P0/P1 stale clock was overriding successor SLAs; repaired so successor states use 24/48/72 hour aging rules."
+  },
   "acceptance_criteria": [
     "Needs Review drops from 15 to under 5.",
     "Every reviewed project gets a successor action and evidence requirement.",
@@ -75,7 +90,7 @@
     "Public TOD route repair remains separate and does not mix into this objective."
   ],
   "first_driving_task": "Completed: project 22 was converted from Needs Review into waiting_on_evidence with an evidence requirement.",
-  "next_driving_task": "Keep the drain policy active in the watchdog: every future Needs Review row must become dispatch, close, split, archive, escalate, wait_for_evidence, or wait_for_Dave.",
+  "next_driving_task": "Monitor successor quality until pending outcomes become terminal success, failed/reopened, or escalated by the successor aging policy.",
   "successor_states": [
     "closed",
     "split",
