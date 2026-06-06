@@ -1307,7 +1307,10 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
         if (filter === 'scope_expanded') return row.dataset.scope === 'scope expanded';
         if (filter === 'needs_acceptance') return row.dataset.acceptanceState === 'needs acceptance';
         if (filter === 'stale') return row.dataset.decay === 'stale';
+        if (filter === 'program_watch') return row.dataset.decay === 'program watch';
+        if (filter === 'successor_watch') return row.dataset.decay === 'successor watch';
         if (filter === 'needs_review') return row.dataset.decay === 'needs review';
+        if (filter === 'ongoing') return row.dataset.status === 'ongoing' || row.dataset.status === 'program' || row.dataset.status === 'active_program' || row.dataset.projectType === 'program' || row.dataset.projectType === 'umbrella' || row.dataset.projectType === 'long_term';
         return true;
       }}
       function sortRows(visibleRows) {{
@@ -3288,7 +3291,7 @@ def _project_momentum_decay(row: dict[str, Any]) -> str:
             return "Needs Review"
         if successor_state == "dispatched_to_TOD":
             if age_hours >= 24:
-                return "Stale"
+                return "Successor Watch"
             return momentum
         if successor_state == "waiting_on_evidence":
             if age_hours >= 48:
@@ -3310,7 +3313,7 @@ def _project_momentum_decay(row: dict[str, Any]) -> str:
             if age_hours >= 24 * 7:
                 return "Needs Review"
             if age_hours >= 24:
-                return "Stale"
+                return "Program Watch"
             return momentum
         if priority in {"P0", "P1", "HIGH", "CRITICAL"} or project_type == "training_objective":
             if age_hours >= 6:
@@ -3346,6 +3349,10 @@ def _project_heat(row: dict[str, Any]) -> str:
         return "🔴 Needs Review"
     if momentum == "Abandoned":
         return "⚫ Cold"
+    if decay == "Program Watch":
+        return "Program Watch"
+    if decay == "Successor Watch":
+        return "Successor Watch"
     if decay == "Stale":
         return "🟡 Waiting"
     if momentum == "Moving":
@@ -5978,6 +5985,14 @@ async def _studio_projects_state(
         "scope_expanded": sum(1 for item in visible_project_rows if item.get("scope_state") == "Scope Expanded"),
         "needs_acceptance": sum(1 for item in visible_project_rows if item.get("completion_pressure") == "Needs Acceptance"),
         "stale": sum(1 for item in visible_project_rows if item.get("momentum_decay") == "Stale"),
+        "program_watch": sum(1 for item in visible_project_rows if item.get("momentum_decay") == "Program Watch"),
+        "successor_watch": sum(1 for item in visible_project_rows if item.get("momentum_decay") == "Successor Watch"),
+        "ongoing": sum(
+            1
+            for item in visible_project_rows
+            if str(item.get("status") or "").strip().lower() in {"ongoing", "program", "active_program"}
+            or str(item.get("project_type") or "").strip().lower() in {"program", "umbrella", "long_term"}
+        ),
         "needs_review": sum(1 for item in visible_project_rows if item.get("momentum_decay") == "Needs Review"),
         "tod_next_actions": sum(1 for item in visible_project_rows if (item.get("tod_next_action") or {}).get("action")),
         "no_driving_task": sum(1 for item in visible_project_rows if item.get("current_driving_task") == "Define current driving task."),
@@ -7216,7 +7231,10 @@ def _projects_body(state: dict[str, Any]) -> str:
         ("Waiting", counts.get("waiting", 0), "waiting"),
         ("Blocked", counts.get("blocked", 0), "blocked"),
         ("Stale", counts.get("stale", 0), "stale"),
+        ("Program Watch", counts.get("program_watch", 0), "program_watch"),
+        ("Successor Watch", counts.get("successor_watch", 0), "successor_watch"),
         ("Needs Review", counts.get("needs_review", 0), "needs_review"),
+        ("Ongoing", counts.get("ongoing", 0), "ongoing"),
         ("Scope Expanded", counts.get("scope_expanded", 0), "scope_expanded"),
         ("Needs Acceptance", counts.get("needs_acceptance", 0), "needs_acceptance"),
         ("TOD Next", counts.get("tod_next_actions", 0), "all"),
@@ -7400,8 +7418,14 @@ def _projects_body(state: dict[str, Any]) -> str:
             return str(item.get("completion_pressure") or "").strip().lower() == "needs acceptance"
         if view == "stale":
             return str(item.get("momentum_decay") or "").strip().lower() == "stale"
+        if view == "program_watch":
+            return str(item.get("momentum_decay") or "").strip().lower() == "program watch"
+        if view == "successor_watch":
+            return str(item.get("momentum_decay") or "").strip().lower() == "successor watch"
         if view == "needs_review":
             return str(item.get("momentum_decay") or "").strip().lower() == "needs review"
+        if view == "ongoing":
+            return status in {"ongoing", "program", "active_program"} or str(item.get("project_type") or "").strip().lower() in {"program", "umbrella", "long_term"}
         if view in {"moving", "waiting", "blocked", "abandoned"}:
             return str(item.get("momentum") or "").strip().lower() == view
         return True
@@ -7410,6 +7434,7 @@ def _projects_body(state: dict[str, Any]) -> str:
         f"""
         <tr class="row-link" data-project-row
           data-status="{_html(str(item.get("status", "")).strip().lower())}"
+          data-project-type="{_html(str(item.get("project_type", "")).strip().lower())}"
           data-momentum="{_html(str(item.get("momentum", "")).strip().lower())}"
           data-decay="{_html(str(item.get("momentum_decay") or item.get("momentum", "")).strip().lower())}"
           data-scope="{_html(str(item.get("scope_state", "")).strip().lower())}"
@@ -7466,6 +7491,28 @@ def _projects_body(state: dict[str, Any]) -> str:
     )
     if not signal_rows:
         signal_rows = '<tr><td colspan="6">No signals in this view.</td></tr>'
+
+    ongoing_items = [
+        item
+        for item in projects
+        if str(item.get("status") or "").strip().lower() in {"ongoing", "program", "active_program"}
+        or str(item.get("project_type") or "").strip().lower() in {"program", "umbrella", "long_term"}
+    ]
+    ongoing_rows = "".join(
+        f"""
+        <tr class="row-link" onclick="window.location.href='/studio/projects?project_id={_html(item.get("id", ""))}&view=ongoing'">
+          <td><strong>{_html(item.get("title", ""))}</strong><div class="muted">{_html(item.get("project_type", ""))}</div></td>
+          <td><span class="health-pill {_project_momentum_class(item.get("momentum_decay") or item.get("momentum"))}">{_html(item.get("momentum_decay") or item.get("momentum", ""))}</span><div class="muted">{_html(item.get("status", ""))}</div></td>
+          <td>{_html(item.get("owner", ""))}</td>
+          <td>{_html(item.get("current_driving_task", ""))}<div class="muted">Progress: {_html(item.get("progress_percent", 0))}% / {_html(item.get("progress_basis", "estimate"))}</div></td>
+          <td>{_html(item.get("last_movement_age", "none"))}<div class="muted">{_html(item.get("movement_state", ""))}</div></td>
+          <td>{_html(item.get("next_action", ""))}</td>
+        </tr>
+        """
+        for item in ongoing_items
+    )
+    if not ongoing_rows:
+        ongoing_rows = '<tr><td colspan="6">No ongoing programs.</td></tr>'
 
     new_project_html = ""
     if new_project:
@@ -7592,6 +7639,13 @@ def _projects_body(state: dict[str, Any]) -> str:
     {new_project_html}
     {selected_html}
     <section class="card" style="margin-bottom:14px;">
+      <h2>Ongoing Programs</h2>
+      <table class="score-table">
+        <thead><tr><th>Program</th><th>State</th><th>Owner</th><th>Current Child / Driving Task</th><th>Last Movement</th><th>Next Action</th></tr></thead>
+        <tbody>{ongoing_rows}</tbody>
+      </table>
+    </section>
+    <section class="card" style="margin-bottom:14px;">
       <h2>Project Inbox</h2>
       <p class="muted">Stale means MIM/TOD must execute, block with evidence, split, archive, or escalate. Needs Review means the stale window is beyond tolerance and requires an explicit successor state.</p>
       <div class="table-tools">
@@ -7600,8 +7654,11 @@ def _projects_body(state: dict[str, Any]) -> str:
           <button class="button" type="button" data-project-filter="finished">Finished</button>
           <button class="button" type="button" data-project-filter="in_process">In Process</button>
           <button class="button" type="button" data-project-filter="queued">Queued</button>
+          <button class="button" type="button" data-project-filter="ongoing">Ongoing</button>
           <button class="button" type="button" data-project-filter="blockers">Blockers</button>
           <button class="button" type="button" data-project-filter="stale">Stale</button>
+          <button class="button" type="button" data-project-filter="program_watch">Program Watch</button>
+          <button class="button" type="button" data-project-filter="successor_watch">Successor Watch</button>
           <button class="button" type="button" data-project-filter="needs_review">Needs Review</button>
           <button class="button" type="button" data-project-filter="scope_expanded">Scope Expanded</button>
           <button class="button" type="button" data-project-filter="needs_acceptance">Needs Acceptance</button>
