@@ -1,5 +1,6 @@
 # Local secrets
 .env
+docs/carrier logins.xlsx
 
 # Runtime and generated artifacts
 logs/
@@ -7,6 +8,7 @@ runtime/
 history/
 output/
 sandbox/
+runtime_backups/
 tod/sandbox/
 tod/out/
 runtime/shared/diagnostics/
