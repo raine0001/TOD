@@ -61,6 +61,7 @@ function Get-LocalExecutionSafeRoots {
         'docs/',
         'scripts/',
         'tests/',
+        'runtime/shared/',
         'tmp_remote_mim/',
         'tmp_remote_mim/core/',
         'tmp_remote_mim/tests/',
@@ -179,6 +180,114 @@ function Test-LocalExecutionMimArmWorkspaceSafetyTask {
 
     $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
     return (@($targets | Where-Object { [string]$_ -eq 'tmp_remote_mim/routes.py' }).Count -eq 1)
+}
+
+function Test-LocalExecutionUserAppPrototypeArtifactTask {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $normalized = (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant()
+    if ($normalized -notmatch 'user app|app build|workbench|prototype artifact|app foundation') {
+        return $false
+    }
+    if ($normalized -notmatch 'prototype|artifact|foundation') {
+        return $false
+    }
+
+    $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
+    return (@($targets | Where-Object { ([string]$_).ToLowerInvariant().StartsWith('runtime/shared/user_app_builds/') -and ([string]$_).ToLowerInvariant().EndsWith('.json') }).Count -eq 1)
+}
+
+function Test-LocalExecutionUserAppPublishedPreviewTask {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $normalized = (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant()
+    if ($normalized -notmatch 'publish|published preview|preview package|package manifest|workbench presentation') {
+        return $false
+    }
+
+    $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
+    return (@($targets | Where-Object {
+                $value = ([string]$_).ToLowerInvariant()
+                $value.StartsWith('runtime/shared/user_app_published/') -and $value.EndsWith('/package.manifest.json')
+            }).Count -eq 1)
+}
+
+function Get-LocalExecutionUserAppIntakePath {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    if ($Context.PSObject.Properties['metadata'] -and $Context.metadata) {
+        foreach ($key in @('intake_path', 'source_intake', 'app_intake_path')) {
+            if ($Context.metadata.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace([string]$Context.metadata[$key])) {
+                return (Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$Context.metadata[$key]))
+            }
+        }
+    }
+
+    $combined = Get-LocalExecutionCombinedText -Context $Context
+    $match = [regex]::Match($combined, '(?im)(runtime/shared/[A-Za-z0-9_./-]+INTAKE[A-Za-z0-9_./-]*\.json|runtime_remote_training/[A-Za-z0-9_./-]+INTAKE[A-Za-z0-9_./-]*\.json)')
+    if ($match.Success) {
+        return (Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$match.Groups[1].Value))
+    }
+
+    $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
+    $target = [string](@($targets | Where-Object { ([string]$_).ToLowerInvariant().StartsWith('runtime/shared/user_app_builds/') -and ([string]$_).ToLowerInvariant().EndsWith('.json') })[0])
+    $leaf = [System.IO.Path]::GetFileName($target)
+    $prefix = ($leaf -replace '_PROTOTYPE\.latest\.json$', '')
+    if (-not [string]::IsNullOrWhiteSpace($prefix)) {
+        foreach ($candidate in @(
+            ('runtime/shared/{0}_INTAKE_V1.latest.json' -f $prefix),
+            ('runtime_remote_training/{0}_INTAKE_V1.latest.json' -f $prefix)
+        )) {
+            $absoluteCandidate = Join-Path $script:LocalEngineRepoRoot ($candidate -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+            if (Test-Path -Path $absoluteCandidate -PathType Leaf) {
+                return $candidate
+            }
+        }
+    }
+
+    return ''
+}
+
+function Get-LocalExecutionUserAppPrototypePathForPublish {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    if ($Context.PSObject.Properties['metadata'] -and $Context.metadata) {
+        foreach ($key in @('prototype_path', 'source_prototype', 'app_prototype_path')) {
+            if ($Context.metadata.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace([string]$Context.metadata[$key])) {
+                return (Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$Context.metadata[$key]))
+            }
+        }
+    }
+
+    $combined = Get-LocalExecutionCombinedText -Context $Context
+    $match = [regex]::Match($combined, '(?im)(runtime/shared/user_app_builds/[A-Za-z0-9_./-]+_PROTOTYPE\.latest\.json)')
+    if ($match.Success) {
+        return (Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$match.Groups[1].Value))
+    }
+
+    $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
+    $manifestTarget = [string](@($targets | Where-Object {
+                $value = ([string]$_).ToLowerInvariant()
+                $value.StartsWith('runtime/shared/user_app_published/') -and $value.EndsWith('/package.manifest.json')
+            })[0])
+    if ([string]::IsNullOrWhiteSpace($manifestTarget)) {
+        return ''
+    }
+    $parts = $manifestTarget -split '/'
+    if (@($parts).Count -lt 4) {
+        return ''
+    }
+    $slug = [string]$parts[3]
+    if ([string]::IsNullOrWhiteSpace($slug)) {
+        return ''
+    }
+    $constant = $slug.ToUpperInvariant()
+    $candidate = "runtime/shared/user_app_builds/$slug/${constant}_PROTOTYPE.latest.json"
+    $absoluteCandidate = Join-Path $script:LocalEngineRepoRoot ($candidate -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (Test-Path -Path $absoluteCandidate -PathType Leaf) {
+        return $candidate
+    }
+    return ''
 }
 
 function Invoke-LocalExecutionLedgerCoverage {
@@ -1804,6 +1913,465 @@ function Invoke-LocalExecutionExecutionLoopContract {
     return (Complete-EngineExecutionResult -Result $result -Status 'completed')
 }
 
+function Invoke-LocalExecutionUserAppPrototypeArtifact {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)]$Spec
+    )
+
+    $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
+    $targetFile = [string](@($targets | Where-Object { ([string]$_).ToLowerInvariant().StartsWith('runtime/shared/user_app_builds/') -and ([string]$_).ToLowerInvariant().EndsWith('.json') })[0])
+    if ([string]::IsNullOrWhiteSpace($targetFile)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_prototype_needs_target_file' -Reason 'LocalExecutionEngine needs one runtime/shared/user_app_builds/... prototype JSON target file before it can generate an app artifact.' -MissingVariable 'target_file')
+    }
+    if (-not (Test-LocalExecutionSafePath -RelativePath $targetFile)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_prototype_target_not_allowed' -Reason ('LocalExecutionEngine rejected app prototype target path {0} because it is outside safe roots.' -f $targetFile) -MissingVariable 'allowed_path')
+    }
+
+    $intakePath = Get-LocalExecutionUserAppIntakePath -Context $Context
+    if ([string]::IsNullOrWhiteSpace($intakePath)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_prototype_needs_intake' -Reason 'LocalExecutionEngine needs an intake JSON path before it can generate the app prototype artifact.' -MissingVariable 'intake_path')
+    }
+    $absoluteIntakePath = Join-Path $script:LocalEngineRepoRoot ($intakePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -Path $absoluteIntakePath -PathType Leaf)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_prototype_intake_missing' -Reason ('LocalExecutionEngine could not find the app intake artifact at {0}.' -f $intakePath) -MissingVariable 'intake_path')
+    }
+
+    $generatorPath = Join-Path $script:LocalEngineRepoRoot 'scripts\New-UserAppPrototypeArtifact.ps1'
+    if (-not (Test-Path -Path $generatorPath -PathType Leaf)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_prototype_generator_missing' -Reason 'LocalExecutionEngine could not find scripts/New-UserAppPrototypeArtifact.ps1.' -MissingVariable 'generator')
+    }
+
+    $absoluteTargetPath = Join-Path $script:LocalEngineRepoRoot ($targetFile -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    $backupRoot = Join-Path $script:LocalEngineRepoRoot 'tod/out/local-engine-backups'
+    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+    $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+    $backupPath = ''
+    $prePatchHash = ''
+    if (Test-Path -Path $absoluteTargetPath -PathType Leaf) {
+        $backupPath = Join-Path $backupRoot ('{0}.{1}.bak' -f (Split-Path -Path $absoluteTargetPath -Leaf), $timestamp)
+        Copy-Item -Path $absoluteTargetPath -Destination $backupPath -Force
+        $prePatchHash = [string](Get-FileHash -Path $absoluteTargetPath -Algorithm SHA256).Hash
+    }
+
+    $safeIntake = $intakePath.Replace("'", "''")
+    $safeTarget = $targetFile.Replace("'", "''")
+    $command = "& '.\scripts\New-UserAppPrototypeArtifact.ps1' -IntakePath '$safeIntake' -OutputPath '$safeTarget' -Source 'LocalExecutionEngine::Invoke-LocalExecutionUserAppPrototypeArtifact'"
+    $commandCapture = Invoke-LocalShellCapture -Command $command -WorkingDirectory $script:LocalEngineRepoRoot
+    $postPatchHash = if (Test-Path -Path $absoluteTargetPath -PathType Leaf) { [string](Get-FileHash -Path $absoluteTargetPath -Algorithm SHA256).Hash } else { '' }
+
+    $artifact = $null
+    $jsonRoundTrip = $false
+    if (Test-Path -Path $absoluteTargetPath -PathType Leaf) {
+        try {
+            $artifact = Get-Content -Path $absoluteTargetPath -Raw | ConvertFrom-Json
+            $jsonRoundTrip = ($null -ne $artifact -and [string]$artifact.artifact_type -eq 'user_app_workbench_prototype_v1')
+        }
+        catch {
+            $jsonRoundTrip = $false
+        }
+    }
+
+    $requiredFoundationScreens = @('front_page', 'login', 'dashboard', 'settings', 'help_support')
+    $foundationScreenCount = 0
+    if ($jsonRoundTrip) {
+        $foundationScreenCount = @($artifact.screens | Where-Object { $requiredFoundationScreens -contains [string]$_.key }).Count
+    }
+    $acceptanceAndChangeLogPresent = ($jsonRoundTrip -and @($artifact.acceptance_checklist).Count -gt 0 -and @($artifact.change_log).Count -gt 0)
+
+    $validationChecks = @(
+        [pscustomobject]@{ name = 'generator_exit_zero'; passed = ([int]$commandCapture.exit_code -eq 0) },
+        [pscustomobject]@{ name = 'target_file_exists'; passed = (Test-Path -Path $absoluteTargetPath -PathType Leaf) },
+        [pscustomobject]@{ name = 'json_round_trip'; passed = $jsonRoundTrip },
+        [pscustomobject]@{ name = 'foundation_screens_present'; passed = ($foundationScreenCount -ge 5) },
+        [pscustomobject]@{ name = 'acceptance_and_change_log_present'; passed = $acceptanceAndChangeLogPresent }
+    )
+    $passed = -not (@($validationChecks | Where-Object { -not [bool]$_.passed }).Count)
+    $rollbackState = [pscustomobject]@{
+        available = (-not [string]::IsNullOrWhiteSpace($backupPath))
+        backup_path = $backupPath
+        target_path = $absoluteTargetPath
+        pre_patch_hash = $prePatchHash
+        post_patch_hash = $postPatchHash
+        restore_command = $(if ([string]::IsNullOrWhiteSpace($backupPath)) { '' } else { "Copy-Item -Path '$backupPath' -Destination '$absoluteTargetPath' -Force" })
+    }
+
+    if (-not $passed) {
+        if (-not [string]::IsNullOrWhiteSpace($backupPath) -and (Test-Path -Path $backupPath -PathType Leaf)) {
+            Copy-Item -Path $backupPath -Destination $absoluteTargetPath -Force
+        }
+        $Result.summary = ('LocalExecutionEngine attempted to generate app prototype artifact {0} but validation failed.' -f $targetFile)
+        $Result.files_changed = @()
+        $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+        $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+        $Result.failures = @('App prototype generation failed validation; target was restored if a backup existed.')
+        $Result.recommendations = @('Inspect the generator output and keep the app artifact task bounded to one intake file and one prototype JSON output.')
+        $Result.needs_escalation = $false
+        $Result.structured_findings = @(
+            [pscustomobject]@{ type = 'validation'; checks = $validationChecks },
+            [pscustomobject]@{ type = 'command'; capture = $commandCapture },
+            [pscustomobject]@{ type = 'rollback'; rollback = $rollbackState },
+            [pscustomobject]@{ type = 'blocker'; reason_code = 'app_prototype_validation_failed'; file = 'scripts/New-UserAppPrototypeArtifact.ps1'; reason = 'Generated artifact did not satisfy prototype contract.' }
+        )
+        $Result.raw_output = [pscustomobject]@{
+            engine = $Spec
+            task_context = $Context
+            action = 'user_app_prototype_artifact_failed'
+            intake_path = $intakePath
+            target_file = $targetFile
+            validation_checks = $validationChecks
+            command_capture = $commandCapture
+            rollback = $rollbackState
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        return (Complete-EngineExecutionResult -Result $Result -Status 'failed')
+    }
+
+    $Result.summary = ('LocalExecutionEngine generated a real Workbench app prototype artifact for {0} from intake and validated the app foundation contract.' -f [string]$artifact.app_name)
+    $Result.files_changed = @($targetFile)
+    $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+    $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+    $Result.failures = @()
+    $Result.recommendations = @('Render the generated prototype in Workbench and dispatch the first app-specific interactive workflow slice.')
+    $Result.needs_escalation = $false
+    $Result.structured_findings = @(
+        [pscustomobject]@{
+            type = 'result_contract'
+            understood_task = 'Generate a reviewable app prototype artifact from an intake brief without Codex authoring the artifact.'
+            action_taken = 'Ran scripts/New-UserAppPrototypeArtifact.ps1 and validated the output JSON, foundation screens, acceptance checklist, and change log.'
+            changed_files = @($Result.files_changed)
+            evidence = @('prototype JSON created or refreshed', 'json_round_trip passed', 'foundation screens present', 'acceptance/change log present')
+            validation_result = 'passed'
+            remaining_blocker = ''
+            next_action = 'Render the artifact in Workbench and implement the first app-specific workflow.'
+            confidence = 'medium-high'
+        },
+        [pscustomobject]@{ type = 'validation'; checks = $validationChecks },
+        [pscustomobject]@{ type = 'command'; capture = $commandCapture },
+        [pscustomobject]@{ type = 'rollback'; rollback = $rollbackState }
+    )
+    $Result.raw_output = [pscustomobject]@{
+        engine = $Spec
+        task_context = $Context
+        action = 'user_app_prototype_artifact_completed'
+        intake_path = $intakePath
+        target_file = $targetFile
+        app_name = [string]$artifact.app_name
+        files_changed = @($Result.files_changed)
+        validation_checks = $validationChecks
+        command_capture = $commandCapture
+        rollback = $rollbackState
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    return (Complete-EngineExecutionResult -Result $Result -Status 'completed')
+}
+
+function Invoke-LocalExecutionUserAppPublishedPreview {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)]$Spec
+    )
+
+    $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
+    $manifestFile = [string](@($targets | Where-Object {
+                $value = ([string]$_).ToLowerInvariant()
+                $value.StartsWith('runtime/shared/user_app_published/') -and $value.EndsWith('/package.manifest.json')
+            })[0])
+    if ([string]::IsNullOrWhiteSpace($manifestFile)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_publish_needs_manifest_target' -Reason 'LocalExecutionEngine needs one runtime/shared/user_app_published/.../package.manifest.json target file before it can publish an app preview package.' -MissingVariable 'target_file')
+    }
+    if (-not (Test-LocalExecutionSafePath -RelativePath $manifestFile)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_publish_target_not_allowed' -Reason ('LocalExecutionEngine rejected app publish target path {0} because it is outside safe roots.' -f $manifestFile) -MissingVariable 'allowed_path')
+    }
+
+    $prototypePath = Get-LocalExecutionUserAppPrototypePathForPublish -Context $Context
+    if ([string]::IsNullOrWhiteSpace($prototypePath)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_publish_needs_prototype' -Reason 'LocalExecutionEngine could not find the source prototype artifact needed to publish a preview package.' -MissingVariable 'prototype_path')
+    }
+    $absolutePrototypePath = Join-Path $script:LocalEngineRepoRoot ($prototypePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -Path $absolutePrototypePath -PathType Leaf)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_publish_prototype_missing' -Reason ('LocalExecutionEngine could not find the app prototype artifact at {0}.' -f $prototypePath) -MissingVariable 'prototype_path')
+    }
+
+    $generatorPath = Join-Path $script:LocalEngineRepoRoot 'scripts\New-UserAppPublishedPreview.ps1'
+    if (-not (Test-Path -Path $generatorPath -PathType Leaf)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_publish_generator_missing' -Reason 'LocalExecutionEngine could not find scripts/New-UserAppPublishedPreview.ps1.' -MissingVariable 'generator')
+    }
+
+    $absoluteManifestPath = Join-Path $script:LocalEngineRepoRoot ($manifestFile -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    $backupRoot = Join-Path $script:LocalEngineRepoRoot 'tod/out/local-engine-backups'
+    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+    $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+    $backupPath = ''
+    $prePatchHash = ''
+    if (Test-Path -Path $absoluteManifestPath -PathType Leaf) {
+        $backupPath = Join-Path $backupRoot ('{0}.{1}.bak' -f (Split-Path -Path $absoluteManifestPath -Leaf), $timestamp)
+        Copy-Item -Path $absoluteManifestPath -Destination $backupPath -Force
+        $prePatchHash = [string](Get-FileHash -Path $absoluteManifestPath -Algorithm SHA256).Hash
+    }
+
+    $safePrototype = $prototypePath.Replace("'", "''")
+    $safeManifest = $manifestFile.Replace("'", "''")
+    $command = "& '.\scripts\New-UserAppPublishedPreview.ps1' -PrototypePath '$safePrototype' -OutputManifestPath '$safeManifest' -Source 'LocalExecutionEngine::Invoke-LocalExecutionUserAppPublishedPreview'"
+    $commandCapture = Invoke-LocalShellCapture -Command $command -WorkingDirectory $script:LocalEngineRepoRoot
+    $postPatchHash = if (Test-Path -Path $absoluteManifestPath -PathType Leaf) { [string](Get-FileHash -Path $absoluteManifestPath -Algorithm SHA256).Hash } else { '' }
+
+    $manifest = $null
+    $jsonRoundTrip = $false
+    if (Test-Path -Path $absoluteManifestPath -PathType Leaf) {
+        try {
+            $manifest = Get-Content -Path $absoluteManifestPath -Raw | ConvertFrom-Json
+            $jsonRoundTrip = ($null -ne $manifest -and [string]$manifest.artifact_type -eq 'user_app_published_preview_manifest_v1')
+        }
+        catch {
+            $jsonRoundTrip = $false
+        }
+    }
+    $previewPath = if ($manifest -and $manifest.PSObject.Properties['preview_path']) { [string]$manifest.preview_path } else { '' }
+    $summaryPath = if ($manifest -and $manifest.PSObject.Properties['completion_summary_path']) { [string]$manifest.completion_summary_path } else { '' }
+    $readmePath = if ($manifest -and $manifest.PSObject.Properties['readme_path']) { [string]$manifest.readme_path } else { '' }
+    $pathExists = {
+        param([string]$RelativePath)
+        if ([string]::IsNullOrWhiteSpace($RelativePath)) { return $false }
+        $absolute = Join-Path $script:LocalEngineRepoRoot ($RelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        return (Test-Path -Path $absolute -PathType Leaf)
+    }
+
+    $validationChecks = @(
+        [pscustomobject]@{ name = 'publisher_exit_zero'; passed = ([int]$commandCapture.exit_code -eq 0) },
+        [pscustomobject]@{ name = 'manifest_file_exists'; passed = (Test-Path -Path $absoluteManifestPath -PathType Leaf) },
+        [pscustomobject]@{ name = 'manifest_json_round_trip'; passed = $jsonRoundTrip },
+        [pscustomobject]@{ name = 'preview_html_exists'; passed = (& $pathExists $previewPath) },
+        [pscustomobject]@{ name = 'completion_summary_exists'; passed = (& $pathExists $summaryPath) },
+        [pscustomobject]@{ name = 'readme_exists'; passed = (& $pathExists $readmePath) }
+    )
+    $passed = -not (@($validationChecks | Where-Object { -not [bool]$_.passed }).Count)
+    $rollbackState = [pscustomobject]@{
+        available = (-not [string]::IsNullOrWhiteSpace($backupPath))
+        backup_path = $backupPath
+        target_path = $absoluteManifestPath
+        pre_patch_hash = $prePatchHash
+        post_patch_hash = $postPatchHash
+        restore_command = $(if ([string]::IsNullOrWhiteSpace($backupPath)) { '' } else { "Copy-Item -Path '$backupPath' -Destination '$absoluteManifestPath' -Force" })
+    }
+
+    if (-not $passed) {
+        if (-not [string]::IsNullOrWhiteSpace($backupPath) -and (Test-Path -Path $backupPath -PathType Leaf)) {
+            Copy-Item -Path $backupPath -Destination $absoluteManifestPath -Force
+        }
+        $Result.summary = ('LocalExecutionEngine attempted to publish app preview package {0} but validation failed.' -f $manifestFile)
+        $Result.files_changed = @()
+        $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+        $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+        $Result.failures = @('App publish preview generation failed validation; manifest was restored if a backup existed.')
+        $Result.recommendations = @('Inspect the publisher output and keep the publish task bounded to one prototype artifact and one manifest output.')
+        $Result.needs_escalation = $false
+        $Result.structured_findings = @(
+            [pscustomobject]@{ type = 'validation'; checks = $validationChecks },
+            [pscustomobject]@{ type = 'command'; capture = $commandCapture },
+            [pscustomobject]@{ type = 'rollback'; rollback = $rollbackState },
+            [pscustomobject]@{ type = 'blocker'; reason_code = 'app_publish_preview_validation_failed'; file = 'scripts/New-UserAppPublishedPreview.ps1'; reason = 'Published preview package did not satisfy manifest contract.' }
+        )
+        $Result.raw_output = [pscustomobject]@{
+            engine = $Spec
+            task_context = $Context
+            action = 'user_app_published_preview_failed'
+            prototype_path = $prototypePath
+            target_file = $manifestFile
+            validation_checks = $validationChecks
+            command_capture = $commandCapture
+            rollback = $rollbackState
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        return (Complete-EngineExecutionResult -Result $Result -Status 'failed')
+    }
+
+    $changedFiles = @($manifestFile, $previewPath, $summaryPath, $readmePath | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    $Result.summary = ('LocalExecutionEngine published a Workbench preview package for {0} with manifest, preview HTML, help/presentation evidence, and completion summary.' -f [string]$manifest.app_name)
+    $Result.files_changed = @($changedFiles)
+    $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+    $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+    $Result.failures = @()
+    $Result.recommendations = @('Open the published preview HTML, verify the walkthrough visually, then select a production deploy target or record the next app-specific interaction slice.')
+    $Result.needs_escalation = $false
+    $Result.structured_findings = @(
+        [pscustomobject]@{
+            type = 'result_contract'
+            understood_task = 'Publish a reviewable app preview package from an existing TOD-generated prototype artifact.'
+            action_taken = 'Ran scripts/New-UserAppPublishedPreview.ps1 and validated manifest, preview HTML, completion summary, and README.'
+            changed_files = @($Result.files_changed)
+            evidence = @('package manifest generated', 'preview HTML generated', 'completion summary generated', 'README generated')
+            validation_result = 'passed'
+            remaining_blocker = 'Production deploy target is not selected.'
+            next_action = 'Review the preview and dispatch app-specific interactive/persistence slices.'
+            confidence = 'medium-high'
+        },
+        [pscustomobject]@{ type = 'validation'; checks = $validationChecks },
+        [pscustomobject]@{ type = 'command'; capture = $commandCapture },
+        [pscustomobject]@{ type = 'rollback'; rollback = $rollbackState }
+    )
+    $Result.raw_output = [pscustomobject]@{
+        engine = $Spec
+        task_context = $Context
+        action = 'user_app_published_preview_completed'
+        prototype_path = $prototypePath
+        target_file = $manifestFile
+        app_name = [string]$manifest.app_name
+        preview_path = $previewPath
+        files_changed = @($Result.files_changed)
+        validation_checks = $validationChecks
+        command_capture = $commandCapture
+        rollback = $rollbackState
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    return (Complete-EngineExecutionResult -Result $Result -Status 'completed')
+}
+
+function Test-LocalExecutionUserAppHeroMediaTask {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
+    $heroTarget = @($targets | Where-Object {
+            $value = ([string]$_).ToLowerInvariant()
+            $value.StartsWith('runtime/shared/user_app_published/') -and $value.EndsWith('/media/hero.png')
+        } | Select-Object -First 1)
+    if (@($heroTarget).Count -gt 0) { return $true }
+
+    $scope = if ($Context.PSObject.Properties['scope']) { [string]$Context.scope } else { '' }
+    return ($scope -match 'user_app_hero_media_generation|hero media asset|hero png|bitmap hero')
+}
+
+function Invoke-LocalExecutionUserAppHeroMedia {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)]$Spec
+    )
+
+    $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
+    $assetFile = [string](@($targets | Where-Object {
+                $value = ([string]$_).ToLowerInvariant()
+                $value.StartsWith('runtime/shared/user_app_published/') -and $value.EndsWith('/media/hero.png')
+            } | Select-Object -First 1))
+    if ([string]::IsNullOrWhiteSpace($assetFile)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_hero_media_needs_asset_target' -Reason 'LocalExecutionEngine needs one runtime/shared/user_app_published/.../media/hero.png target file before it can generate user-app hero media.' -MissingVariable 'target_file')
+    }
+    if (-not (Test-LocalExecutionSafePath -RelativePath $assetFile)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_hero_media_target_not_allowed' -Reason ('LocalExecutionEngine rejected app hero media target path {0} because it is outside safe roots.' -f $assetFile) -MissingVariable 'allowed_path')
+    }
+
+    $parts = $assetFile -split '/'
+    $slug = if (@($parts).Count -ge 4) { [string]$parts[3] } else { '' }
+    if ([string]::IsNullOrWhiteSpace($slug)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_hero_media_slug_missing' -Reason 'LocalExecutionEngine could not derive app slug from hero media target path.' -MissingVariable 'app_slug')
+    }
+
+    $generatorPath = Join-Path $script:LocalEngineRepoRoot 'scripts\New-UserAppHeroMediaAsset.ps1'
+    if (-not (Test-Path -Path $generatorPath -PathType Leaf)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'app_hero_media_generator_missing' -Reason 'LocalExecutionEngine could not find scripts/New-UserAppHeroMediaAsset.ps1.' -MissingVariable 'generator')
+    }
+
+    $prompt = if ($Context.PSObject.Properties['scope'] -and -not [string]::IsNullOrWhiteSpace([string]$Context.scope)) { [string]$Context.scope } else { [string]$Context.title }
+    $safeSlug = $slug.Replace("'", "''")
+    $safePrompt = $prompt.Replace("'", "''")
+    $command = "& '.\scripts\New-UserAppHeroMediaAsset.ps1' -AppSlug '$safeSlug' -Prompt '$safePrompt' -Source 'LocalExecutionEngine::Invoke-LocalExecutionUserAppHeroMedia'"
+    $commandCapture = Invoke-LocalShellCapture -Command $command -WorkingDirectory $script:LocalEngineRepoRoot
+
+    $absoluteAssetPath = Join-Path $script:LocalEngineRepoRoot ($assetFile -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    $manifestFile = "runtime/shared/user_app_published/$slug/package.manifest.json"
+    $previewFile = "runtime/shared/user_app_published/$slug/preview.html"
+    $mediaManifestFile = "runtime/shared/user_app_published/$slug/media/media.manifest.json"
+    $absoluteManifestPath = Join-Path $script:LocalEngineRepoRoot ($manifestFile -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    $absolutePreviewPath = Join-Path $script:LocalEngineRepoRoot ($previewFile -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    $absoluteMediaManifestPath = Join-Path $script:LocalEngineRepoRoot ($mediaManifestFile -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+
+    $manifest = $null
+    $previewHtml = ''
+    $mediaManifest = $null
+    try {
+        if (Test-Path -Path $absoluteManifestPath -PathType Leaf) { $manifest = Get-Content -Path $absoluteManifestPath -Raw | ConvertFrom-Json }
+        if (Test-Path -Path $absolutePreviewPath -PathType Leaf) { $previewHtml = Get-Content -Path $absolutePreviewPath -Raw }
+        if (Test-Path -Path $absoluteMediaManifestPath -PathType Leaf) { $mediaManifest = Get-Content -Path $absoluteMediaManifestPath -Raw | ConvertFrom-Json }
+    }
+    catch {
+        $manifest = $null
+    }
+
+    $assetSize = if (Test-Path -Path $absoluteAssetPath -PathType Leaf) { (Get-Item -Path $absoluteAssetPath).Length } else { 0 }
+    $validationChecks = @(
+        [pscustomobject]@{ name = 'hero_generator_exit_zero'; passed = ([int]$commandCapture.exit_code -eq 0) },
+        [pscustomobject]@{ name = 'hero_png_exists'; passed = (Test-Path -Path $absoluteAssetPath -PathType Leaf) },
+        [pscustomobject]@{ name = 'hero_png_nontrivial_size'; passed = ($assetSize -gt 20000) },
+        [pscustomobject]@{ name = 'media_manifest_exists'; passed = (Test-Path -Path $absoluteMediaManifestPath -PathType Leaf) },
+        [pscustomobject]@{ name = 'media_manifest_source'; passed = ($mediaManifest -and [string]$mediaManifest.source -eq 'LocalExecutionEngine::Invoke-LocalExecutionUserAppHeroMedia') },
+        [pscustomobject]@{ name = 'preview_references_hero_png'; passed = ($previewHtml -match 'media/hero\.png' -and $previewHtml -match 'hero-media-img') },
+        [pscustomobject]@{ name = 'manifest_records_hero_media'; passed = ($manifest -and $manifest.PSObject.Properties['hero_media_status'] -and [string]$manifest.hero_media_status -eq 'hero_png_attached') }
+    )
+    $passed = -not (@($validationChecks | Where-Object { -not [bool]$_.passed }).Count)
+
+    if (-not $passed) {
+        $Result.summary = ('LocalExecutionEngine attempted to generate hero media for {0} but validation failed.' -f $slug)
+        $Result.files_changed = @()
+        $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+        $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+        $Result.failures = @('User-app hero media generation failed validation.')
+        $Result.recommendations = @('Inspect scripts/New-UserAppHeroMediaAsset.ps1 output and keep the task bounded to one app media asset.')
+        $Result.needs_escalation = $false
+        $Result.structured_findings = @(
+            [pscustomobject]@{ type = 'validation'; checks = $validationChecks },
+            [pscustomobject]@{ type = 'command'; capture = $commandCapture }
+        )
+        $Result.raw_output = [pscustomobject]@{
+            engine = $Spec
+            task_context = $Context
+            action = 'user_app_hero_media_failed'
+            app_slug = $slug
+            target_file = $assetFile
+            validation_checks = $validationChecks
+            command_capture = $commandCapture
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        return (Complete-EngineExecutionResult -Result $Result -Status 'failed')
+    }
+
+    $Result.summary = ('LocalExecutionEngine generated and attached hero media PNG for {0}.' -f $slug)
+    $Result.files_changed = @($assetFile, $mediaManifestFile, $previewFile, $manifestFile)
+    $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
+    $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+    $Result.failures = @()
+    $Result.recommendations = @('Open the published preview and verify the hero image supports the app design instead of replacing product UI clarity.')
+    $Result.needs_escalation = $false
+    $Result.structured_findings = @(
+        [pscustomobject]@{
+            type = 'result_contract'
+            understood_task = 'Generate and attach a real PNG hero media asset for one user app preview.'
+            action_taken = 'Ran scripts/New-UserAppHeroMediaAsset.ps1 and validated PNG, manifest, and preview HTML reference.'
+            changed_files = @($Result.files_changed)
+            evidence = @('hero PNG generated', 'media manifest generated', 'preview references media/hero.png', 'package manifest records hero_media_status')
+            validation_result = 'passed'
+            remaining_blocker = 'Visual QA still needs screenshot/browser confirmation when browser tooling is available.'
+            next_action = 'Repeat media generation for remaining sample apps after the first app is visually accepted.'
+            confidence = 'medium-high'
+        },
+        [pscustomobject]@{ type = 'validation'; checks = $validationChecks },
+        [pscustomobject]@{ type = 'command'; capture = $commandCapture }
+    )
+    $Result.raw_output = [pscustomobject]@{
+        engine = $Spec
+        task_context = $Context
+        action = 'user_app_hero_media_completed'
+        app_slug = $slug
+        target_file = $assetFile
+        files_changed = @($Result.files_changed)
+        validation_checks = $validationChecks
+        command_capture = $commandCapture
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    return (Complete-EngineExecutionResult -Result $Result -Status 'completed')
+}
+
 function Get-LocalExecutionEngineSpec {
     [pscustomobject]@{
         name = "local"
@@ -1819,7 +2387,10 @@ function Get-LocalExecutionEngineSpec {
             "python_source_patch",
             "focused_python_unittest",
             "generic_bounded_fallback",
-            "mim_arm_workspace_safety_validation"
+            "mim_arm_workspace_safety_validation",
+            "user_app_prototype_artifact_generation",
+            "user_app_published_preview_generation",
+            "user_app_hero_media_generation"
         )
         mode = "bounded_local_executor"
     }
@@ -1850,6 +2421,15 @@ function Invoke-LocalExecutionEngine {
     }
     elseif (Test-LocalExecutionMimArmWorkspaceSafetyTask -Context $Context) {
         $result = Invoke-LocalExecutionMimArmWorkspaceSafety -Context $Context -Result $result -Spec $spec
+    }
+    elseif (Test-LocalExecutionUserAppPrototypeArtifactTask -Context $Context) {
+        $result = Invoke-LocalExecutionUserAppPrototypeArtifact -Context $Context -Result $result -Spec $spec
+    }
+    elseif (Test-LocalExecutionUserAppPublishedPreviewTask -Context $Context) {
+        $result = Invoke-LocalExecutionUserAppPublishedPreview -Context $Context -Result $result -Spec $spec
+    }
+    elseif (Test-LocalExecutionUserAppHeroMediaTask -Context $Context) {
+        $result = Invoke-LocalExecutionUserAppHeroMedia -Context $Context -Result $result -Spec $spec
     }
     elseif (Test-LocalExecutionGenericBoundedTask -Context $Context) {
         $result = Invoke-LocalExecutionGenericBoundedTask -Context $Context -Result $result -Spec $spec

@@ -6334,6 +6334,9 @@ function Convert-ToCanonicalBoundedEditMode {
         'add_small_function' { return 'insert_after' }
         'update_json_field' { return 'update_json_field' }
         'validation_only' { return 'validation_only' }
+        'user_app_hero_media_generation' { return 'user_app_hero_media_generation' }
+        'hero_media_generation' { return 'user_app_hero_media_generation' }
+        'hero_media' { return 'user_app_hero_media_generation' }
         default { return '' }
     }
 }
@@ -6392,7 +6395,7 @@ function New-BoundedEditMaterializationBlockedPayload {
         required_clarification = @($RequiredClarification | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
         why_local_executor_cannot_proceed = $why
         missing_fields = @($RequiredClarification | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
-        supported_modes = @('append_marker', 'replace_exact_text', 'insert_after_anchor', 'update_json_field', 'add_small_function', 'docs_append_section', 'validation_only')
+        supported_modes = @('append_marker', 'replace_exact_text', 'insert_after_anchor', 'update_json_field', 'add_small_function', 'docs_append_section', 'validation_only', 'user_app_prototype_artifact_generation', 'user_app_published_preview_generation', 'user_app_hero_media_generation')
         prompt_directives = [ordered]@{}
     }
 }
@@ -6466,9 +6469,48 @@ function Resolve-TaskBoundedEditMaterialization {
     $jsonField = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Json Field'
     $jsonValue = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Json Value'
     $lowerText = ([string]$text).ToLowerInvariant()
+    $userAppPrototypeTargets = @($fileHints | Where-Object {
+            ([string]$_).ToLowerInvariant().Replace('\', '/').StartsWith('runtime/shared/user_app_builds/') -and
+            ([string]$_).ToLowerInvariant().EndsWith('.json')
+        })
+    $userAppPublishTargets = @($fileHints | Where-Object {
+            $value = ([string]$_).ToLowerInvariant().Replace('\', '/')
+            $value.StartsWith('runtime/shared/user_app_published/') -and $value.EndsWith('/package.manifest.json')
+        })
+    $userAppHeroMediaTargets = @($fileHints | Where-Object {
+            $value = ([string]$_).ToLowerInvariant().Replace('\', '/')
+            $value.StartsWith('runtime/shared/user_app_published/') -and $value.EndsWith('/media/hero.png')
+        })
+    $userAppPrototypeArtifactTask = (
+        ([string]$taskCategory).ToLowerInvariant() -eq 'user_app_build' -and
+        @($userAppPrototypeTargets).Count -eq 1 -and
+        ($lowerText -match 'prototype|artifact|workbench|app foundation|app build')
+    )
+    $userAppPublishPreviewTask = (
+        ([string]$taskCategory).ToLowerInvariant() -eq 'user_app_build' -and
+        @($userAppPublishTargets).Count -eq 1 -and
+        ($lowerText -match 'publish|published preview|preview package|package manifest|workbench presentation')
+    )
+    $userAppHeroMediaTask = (
+        (([string]$taskCategory).ToLowerInvariant() -eq 'user_app_build' -or ([string]$taskCategory).ToLowerInvariant() -eq 'user_app_media') -and
+        @($userAppHeroMediaTargets).Count -eq 1 -and
+        ($lowerText -match 'hero|media|image|background|mobile|visual')
+    )
 
     if ([string]::IsNullOrWhiteSpace($engineMode)) {
-        if (-not [string]::IsNullOrWhiteSpace($oldText) -and -not [string]::IsNullOrWhiteSpace($newText)) {
+        if ($userAppPrototypeArtifactTask) {
+            $engineMode = 'user_app_prototype_artifact_generation'
+            $targetFile = [string]$userAppPrototypeTargets[0]
+        }
+        elseif ($userAppPublishPreviewTask) {
+            $engineMode = 'user_app_published_preview_generation'
+            $targetFile = [string]$userAppPublishTargets[0]
+        }
+        elseif ($userAppHeroMediaTask) {
+            $engineMode = 'user_app_hero_media_generation'
+            $targetFile = [string]$userAppHeroMediaTargets[0]
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($oldText) -and -not [string]::IsNullOrWhiteSpace($newText)) {
             $engineMode = 'replace_text'
         }
         elseif (-not [string]::IsNullOrWhiteSpace($anchor) -and -not [string]::IsNullOrWhiteSpace($snippet)) {
@@ -6582,6 +6624,24 @@ function Resolve-TaskBoundedEditMaterialization {
                 $promptDirectives['Validation Command'] = $validationCommand
             }
         }
+        'user_app_prototype_artifact_generation' {
+            $promptDirectives['Edit Mode'] = 'user_app_prototype_artifact_generation'
+            if (-not [string]::IsNullOrWhiteSpace($validationCommand)) {
+                $promptDirectives['Validation Command'] = $validationCommand
+            }
+        }
+        'user_app_published_preview_generation' {
+            $promptDirectives['Edit Mode'] = 'user_app_published_preview_generation'
+            if (-not [string]::IsNullOrWhiteSpace($validationCommand)) {
+                $promptDirectives['Validation Command'] = $validationCommand
+            }
+        }
+        'user_app_hero_media_generation' {
+            $promptDirectives['Edit Mode'] = 'user_app_hero_media_generation'
+            if (-not [string]::IsNullOrWhiteSpace($validationCommand)) {
+                $promptDirectives['Validation Command'] = $validationCommand
+            }
+        }
         default {
             $blockedPayload = New-BoundedEditMaterializationBlockedPayload -Task $Task -TaskCategory $taskCategory -TargetFileCandidates @($fileHints) -RequiredClarification @('edit_mode') -Reason 'TOD could not derive a bounded edit mode from the direct-chat task. Add explicit directives or restate the request as validation-only.'
             return $blockedPayload
@@ -6616,7 +6676,7 @@ function Resolve-TaskBoundedEditMaterialization {
             task_category = [string]$taskCategory
             execution = 'local_bounded'
         }
-        supported_modes = @('append_marker', 'replace_exact_text', 'insert_after_anchor', 'update_json_field', 'add_small_function', 'docs_append_section', 'validation_only')
+        supported_modes = @('append_marker', 'replace_exact_text', 'insert_after_anchor', 'update_json_field', 'add_small_function', 'docs_append_section', 'validation_only', 'user_app_prototype_artifact_generation', 'user_app_published_preview_generation', 'user_app_hero_media_generation')
     }
 }
 
@@ -6753,6 +6813,19 @@ function Test-TaskAllowsLocalExecutionWithoutMaterialization {
     }
 
     $category = ([string]$TaskCategory).ToLowerInvariant()
+    if ($category -eq 'user_app_build') {
+        $targets = @()
+        if ($Task.PSObject.Properties['allowed_files']) { $targets += @($Task.allowed_files) }
+        if ($Task.PSObject.Properties['files_involved']) { $targets += @($Task.files_involved) }
+        $prototypeTargets = @($targets | Where-Object {
+                ([string]$_).ToLowerInvariant().Replace('\', '/').StartsWith('runtime/shared/user_app_builds/') -and
+                ([string]$_).ToLowerInvariant().EndsWith('.json')
+            })
+        if (@($prototypeTargets).Count -eq 1) {
+            return $true
+        }
+    }
+
     if (@('inspection', 'validation', 'mim_synced', 'chat_execution') -notcontains $category) {
         return $false
     }
@@ -6951,6 +7024,24 @@ function Resolve-LocalExecutionSuitability {
     $highRiskHint = ($text -match 'deploy|push|remote host|ssh|service restart|systemctl|daemon|azure|kubernetes|database|migration|schema|provision|commit|branch|merge')
     $explicitCodexRequest = ($text -match '\b(use codex|codex only|route to codex|handoff to codex|send to codex)\b')
     $avoidCodexHint = ($text -match '\b(do not call codex|without codex|local[- ]first|local only|keep local)\b')
+    $userAppPrototypeTargets = @($fileHints | Where-Object {
+            ([string]$_).ToLowerInvariant().StartsWith('runtime/shared/user_app_builds/') -and
+            ([string]$_).ToLowerInvariant().EndsWith('.json')
+        })
+    $userAppPublishTargets = @($fileHints | Where-Object {
+            $value = ([string]$_).ToLowerInvariant()
+            $value.StartsWith('runtime/shared/user_app_published/') -and $value.EndsWith('/package.manifest.json')
+        })
+    $userAppPrototypeArtifactHint = (
+        $taskCategory -eq 'user_app_build' -and
+        @($userAppPrototypeTargets).Count -eq 1 -and
+        ($text -match 'prototype|artifact|workbench|app foundation')
+    )
+    $userAppPublishPreviewHint = (
+        $taskCategory -eq 'user_app_build' -and
+        @($userAppPublishTargets).Count -eq 1 -and
+        ($text -match 'publish|published preview|preview package|package manifest|workbench presentation')
+    )
 
     $classification = 'codex_required'
     $reason = 'default_codex_required'
@@ -6958,7 +7049,17 @@ function Resolve-LocalExecutionSuitability {
     $fallbackReasonCodes = @()
     $boundedLocalSlice = $false
 
-    if ($highRiskHint) {
+    if ($userAppPrototypeArtifactHint) {
+        $classification = 'local_supported'
+        $reason = 'user_app_prototype_artifact_factory'
+        $boundedLocalSlice = $true
+    }
+    elseif ($userAppPublishPreviewHint) {
+        $classification = 'local_supported'
+        $reason = 'user_app_published_preview_factory'
+        $boundedLocalSlice = $true
+    }
+    elseif ($highRiskHint) {
         $classification = 'codex_required'
         $reason = 'high_risk_or_remote_scope'
         $codexAllowed = $true
