@@ -536,6 +536,136 @@ def _apply_response_mode_to_reply(
     return reply
 
 
+def _operator_impact_contract_applies(
+    *,
+    user_input: str,
+    context: dict[str, Any] | None,
+    response_mode: str,
+    reply_text: str,
+) -> bool:
+    normalized_context = context if isinstance(context, dict) else {}
+    query = _normalized_query_text(user_input)
+    topic = _compact_text(normalized_context.get("last_topic"), 80).lower()
+    mode = _compact_text(response_mode, 80).lower()
+    reply = _normalized_query_text(reply_text)
+    triggers = (
+        "status",
+        "recommend",
+        "recommendation",
+        "priority",
+        "priorities",
+        "what are you working on",
+        "what is tod working on",
+        "how is tod",
+        "what should",
+        "what next",
+        "next action",
+        "stuck",
+        "blocked",
+        "needs attention",
+        "what needs attention",
+        "project",
+        "objective",
+        "task",
+    )
+    if any(trigger in query for trigger in triggers):
+        return True
+    if any(trigger in topic for trigger in ("status", "project", "objective", "tod_status", "priorit")):
+        return True
+    if any(trigger in mode for trigger in ("recommend", "problem", "analysis", "status")):
+        return True
+    return any(trigger in reply for trigger in ("next step", "active objective", "active task", "current health", "tod is working"))
+
+
+def _reply_has_operator_impact_contract(reply_text: str) -> bool:
+    text_value = _normalized_query_text(reply_text)
+    return all(
+        marker in text_value
+        for marker in ("recommended action", "owner", "expected evidence", "aging", "dave needed")
+    )
+
+
+def _append_operator_impact_contract(
+    *,
+    reply_text: str,
+    user_input: str,
+    context: dict[str, Any] | None,
+) -> str:
+    reply = _normalize_reply_text_preserve_breaks(reply_text)
+    if not reply or _reply_has_operator_impact_contract(reply):
+        return reply
+    normalized_context = context if isinstance(context, dict) else {}
+    topic = _compact_text(normalized_context.get("last_topic"), 80)
+    query = _normalized_query_text(user_input)
+    owner = "MIM"
+    lower_reply = reply.lower()
+    if "tod" in lower_reply or "implementation" in lower_reply or "execute" in lower_reply:
+        owner = "TOD"
+    if "codex" in lower_reply:
+        owner = "Codex"
+    if "dave" in lower_reply and ("approval" in lower_reply or "needed" in lower_reply):
+        owner = "Dave"
+    if "cannot" in lower_reply and ("external" in lower_reply or "credential" in lower_reply):
+        owner = "Dave or external dependency"
+
+    recommended_action = "Select and execute the next bounded action."
+    if "next step:" in lower_reply:
+        after = reply.split("Next step:", 1)[1].strip().split("\n", 1)[0].strip()
+        recommended_action = after[:180].rstrip(".") + "."
+    elif "active task:" in lower_reply:
+        after = reply.split("Active task:", 1)[1].strip().split("\n", 1)[0].strip()
+        recommended_action = after[:180].rstrip(".") + "."
+    elif "name the one action" in lower_reply or "clarify" in lower_reply:
+        recommended_action = "Clarify the one concrete action before execution."
+        owner = "Dave"
+    elif "status" in query or "health" in query:
+        recommended_action = "Keep the status evidence current and act on the highest-risk stale or blocked item."
+
+    expected_evidence = "Updated project event, task result, validation artifact, or explicit blocker."
+    if "health" in query:
+        expected_evidence = "Fresh health/status artifact and any changed blocker or recovery state."
+    elif "project" in query or "objective" in query or "task" in query:
+        expected_evidence = "Project row/event update with changed status, successor action, or validation result."
+    elif owner == "Dave":
+        expected_evidence = "A clarified operator decision or approved action."
+
+    aging_rule = "Recheck within 24 hours; escalate if no movement or evidence is published."
+    if "blocked" in lower_reply or "stuck" in query:
+        aging_rule = "Recheck within 2 hours; escalate if the blocker does not get evidence or a successor state."
+    elif "external" in lower_reply or "credential" in lower_reply:
+        aging_rule = "Recheck daily while waiting on the external dependency."
+
+    dave_needed = "yes - Dave must clarify or approve the action." if owner == "Dave" else "no - MIM/TOD should continue unless authority, credentials, or a physical-world decision is required."
+    return (
+        f"{reply}\n\n"
+        f"Recommended action: {recommended_action}\n"
+        f"Owner: {owner}.\n"
+        f"Expected evidence: {expected_evidence}\n"
+        f"Aging rule: {aging_rule}\n"
+        f"Dave needed: {dave_needed}"
+    )
+
+
+def _apply_operator_impact_contract_if_needed(
+    *,
+    reply: ExpertCommunicationReply,
+    user_input: str,
+    context: dict[str, Any] | None,
+) -> ExpertCommunicationReply:
+    if _operator_impact_contract_applies(
+        user_input=user_input,
+        context=context,
+        response_mode=reply.response_mode,
+        reply_text=reply.reply_text,
+    ):
+        reply.reply_text = _append_operator_impact_contract(
+            reply_text=reply.reply_text,
+            user_input=user_input,
+            context=context,
+        )
+    return reply
+
+
 def _normalize_reply_text_preserve_breaks(value: Any) -> str:
     raw = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not raw:
@@ -612,7 +742,7 @@ def build_deterministic_communication_reply(
     memory_topics = _topic_hints_from_context(query, normalized_context)
     if topic_hint and topic_hint not in memory_topics:
         memory_topics.insert(0, topic_hint)
-    return _apply_response_mode_to_reply(
+    deterministic = _apply_response_mode_to_reply(
         reply=ExpertCommunicationReply(
         reply_text=reply,
         topic_hint=topic_hint,
@@ -621,6 +751,11 @@ def build_deterministic_communication_reply(
         memory_topics=memory_topics[:8],
         ),
         response_mode=response_mode,
+    )
+    return _apply_operator_impact_contract_if_needed(
+        reply=deterministic,
+        user_input=user_input,
+        context=normalized_context,
     )
 
 
@@ -898,8 +1033,13 @@ async def compose_expert_communication_reply(
             deterministic_reply.reply_text = answer_first
             deterministic_reply.response_mode = "answer_first"
             return deterministic_reply
-        return _apply_response_mode_to_reply(
+        rewritten = _apply_response_mode_to_reply(
             reply=model_reply,
             response_mode=deterministic_reply.response_mode,
+        )
+        return _apply_operator_impact_contract_if_needed(
+            reply=rewritten,
+            user_input=user_input,
+            context=normalized_context,
         )
     return deterministic_reply
