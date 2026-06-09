@@ -1,7 +1,9 @@
 param(
     [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [switch]$CleanGeneratedRuntime,
-    [string]$OutputPath = "shared_state/tod_sync_cleanliness.latest.json"
+    [string]$OutputPath = "shared_state/tod_sync_cleanliness.latest.json",
+    [string]$EscalationOutputPath = "shared_state/tod_sync_cleanliness.escalation.latest.json",
+    [switch]$AllowReviewRequiredDirty
 )
 
 $ErrorActionPreference = 'Stop'
@@ -91,7 +93,7 @@ if ($CleanGeneratedRuntime.IsPresent -and $generatedItems.Count -gt 0) {
 
 $postStatus = @(& git -C $resolvedRepoRoot status --porcelain=v1 2>$null)
 $payload = [ordered]@{
-    ok = ($failedCleanPaths.Count -eq 0)
+    ok = ($failedCleanPaths.Count -eq 0 -and ($reviewItems.Count -eq 0 -or $AllowReviewRequiredDirty.IsPresent))
     packet_type = 'tod-sync-cleanliness-v1'
     generated_at = [DateTime]::UtcNow.ToString('o')
     repo_root = $resolvedRepoRoot
@@ -111,7 +113,7 @@ $payload = [ordered]@{
     policy = [ordered]@{
         generated_runtime_state = 'Generated latest telemetry/state should not keep the source tree dirty. Publish it to runtime/shared and history artifacts; do not treat it as code.'
         review_required = 'Code, docs, config, and operator-authored artifacts stay dirty until reviewed, committed, or intentionally reverted.'
-        escalation = 'If review_required_dirty_count is greater than zero, MIM should create or update a Studio project/action item instead of silently cleaning it.'
+        escalation = 'If review_required_dirty_count is greater than zero, the watchdog must fail loudly and publish an escalation packet until MIM/TOD commits, archives, splits, or explicitly suppresses each item.'
     }
 }
 
@@ -119,9 +121,40 @@ $resolvedOutputPath = Join-Path $resolvedRepoRoot $OutputPath
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedOutputPath) | Out-Null
 $payload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $resolvedOutputPath -Encoding UTF8
 
+if ($reviewItems.Count -gt 0 -and -not $AllowReviewRequiredDirty.IsPresent) {
+    $escalationPayload = [ordered]@{
+        ok = $false
+        packet_type = 'tod-sync-cleanliness-escalation-v1'
+        generated_at = [DateTime]::UtcNow.ToString('o')
+        repo_root = $resolvedRepoRoot
+        severity = 'needs_attention'
+        reason = 'review_required_dirty_work_present'
+        review_required_dirty_count = $reviewItems.Count
+        generated_runtime_dirty_count = $generatedItems.Count
+        required_owner = 'MIM + TOD'
+        dave_needed = $false
+        recommended_action = 'MIM should open or update a repository hygiene work item. TOD should classify each dirty path as commit, archive, split follow-on, generated ignore, or intentional revert, then produce a clean git status.'
+        expected_evidence = @(
+            'git status --short output after TOD action',
+            'commit hash for preserved source changes or artifact path for archived generated files',
+            'explicit ignore/suppression rule for recurring generated runtime churn',
+            'project/event note showing which paths were handled'
+        )
+        time_aging_rule = 'If review-required dirt remains for more than one watchdog interval, mark Program Watch. If it remains for more than 24 hours, escalate to Codex review.'
+        dirty_paths = @($reviewItems | ForEach-Object { $_.path })
+        items = $reviewItems
+    }
+    $resolvedEscalationPath = Join-Path $resolvedRepoRoot $EscalationOutputPath
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedEscalationPath) | Out-Null
+    $escalationPayload | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $resolvedEscalationPath -Encoding UTF8
+}
+
 [pscustomobject]$payload
 
 if ($failedCleanPaths.Count -gt 0) {
     exit 1
+}
+if ($reviewItems.Count -gt 0 -and -not $AllowReviewRequiredDirty.IsPresent) {
+    exit 2
 }
 exit 0
