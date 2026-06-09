@@ -122,6 +122,106 @@ CASES = [
         "prompt": "i dropped recipts in a folder and need expence reports",
         "required": ("receipt", "report"),
     },
+    {
+        "mode": "recommendation",
+        "prompt": "wich project shoud mim push furst today",
+        "required": ("project", "next"),
+    },
+    {
+        "mode": "recommendation",
+        "prompt": "wat shuld happen befor we add anothr featre",
+        "required": ("before", "next"),
+    },
+    {
+        "mode": "recommendation",
+        "prompt": "what blokker creates the most leverge if cleered",
+        "required": ("blocker", "priority"),
+    },
+    {
+        "mode": "recommendation",
+        "prompt": "best nxt trainng objetive?",
+        "required": ("training", "next"),
+    },
+    {
+        "mode": "explanation",
+        "prompt": "explain why trainng sez needs attenshun",
+        "required": ("attention", "training"),
+    },
+    {
+        "mode": "explanation",
+        "prompt": "whats the diff between stale ledgr blokers and currnt blokers",
+        "required": ("stale", "current"),
+    },
+    {
+        "mode": "explanation",
+        "prompt": "what dose regresson gard mean",
+        "required": ("regression", "guard"),
+    },
+    {
+        "mode": "explanation",
+        "prompt": "why is 20 of 20 not enuff anymore",
+        "required": ("20", "growth"),
+    },
+    {
+        "mode": "demonstration",
+        "prompt": "show me a project compleeshun proof",
+        "required": ("proof", "evidence"),
+    },
+    {
+        "mode": "demonstration",
+        "prompt": "give me an exampel continuty brief",
+        "required": ("continuity", "brief"),
+    },
+    {
+        "mode": "demonstration",
+        "prompt": "show sample mim recomendashun breif",
+        "required": ("recommendation", "next"),
+    },
+    {
+        "mode": "demonstration",
+        "prompt": "what wuld a clean dave needed aprooval card look like",
+        "required": ("Dave", "approval"),
+    },
+    {
+        "mode": "consultative_discovery",
+        "prompt": "i want mim to manaje my social chanels",
+        "required": ("social", "audience"),
+    },
+    {
+        "mode": "consultative_discovery",
+        "prompt": "i need a project page that stops stale werk",
+        "required": ("project", "stale"),
+    },
+    {
+        "mode": "consultative_discovery",
+        "prompt": "i want tod to choose its own nxt task",
+        "required": ("tod", "task"),
+    },
+    {
+        "mode": "consultative_discovery",
+        "prompt": "agentmim reports shoud show real customr data",
+        "required": ("AgentMIM", "data"),
+    },
+    {
+        "mode": "problem_analysis",
+        "prompt": "why r projects moving but not closing",
+        "required": ("closing", "next"),
+    },
+    {
+        "mode": "problem_analysis",
+        "prompt": "why did mim answer with scorebord insted of project answr",
+        "required": ("scoreboard", "project"),
+    },
+    {
+        "mode": "problem_analysis",
+        "prompt": "why r scorecards unchaged all weak",
+        "required": ("scorecard", "expand"),
+    },
+    {
+        "mode": "problem_analysis",
+        "prompt": "why does tod stop after pickng nxt action",
+        "required": ("tod", "follow"),
+    },
 ]
 
 

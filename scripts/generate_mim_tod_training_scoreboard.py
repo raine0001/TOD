@@ -45,6 +45,39 @@ def load_first_json(paths: list[Path]) -> dict[str, Any]:
     return {}
 
 
+def payload_timestamp(payload: dict[str, Any]) -> str:
+    return str(payload.get("generated_at") or payload.get("updated_at") or payload.get("completed_at") or "")
+
+
+def load_newest_json(paths: list[Path]) -> dict[str, Any]:
+    candidates: list[tuple[str, dict[str, Any]]] = []
+    fallback: dict[str, Any] = {}
+    for path in paths:
+        payload = load_json(path)
+        if not payload:
+            continue
+        if not fallback:
+            fallback = payload
+        stamp = payload_timestamp(payload)
+        if stamp:
+            candidates.append((stamp, payload))
+    if candidates:
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return candidates[0][1]
+    return fallback
+
+
+def load_training_json(name: str) -> dict[str, Any]:
+    return load_newest_json([RUNTIME_SHARED_ROOT / name, TRAINING_ROOT / name])
+
+
+def training_source_path(name: str) -> Path:
+    shared_path = RUNTIME_SHARED_ROOT / name
+    if shared_path.exists():
+        return shared_path
+    return TRAINING_ROOT / name
+
+
 def parse_json_text(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
@@ -65,6 +98,10 @@ def pct(numerator: int, denominator: int) -> int | None:
 
 def baseline_needed(reason: str) -> dict[str, Any]:
     return {"value": None, "status": "baseline_needed", "reason": reason}
+
+
+def baseline_started(reason: str, value: object = None) -> dict[str, Any]:
+    return {"value": value, "status": "baseline_established", "reason": reason}
 
 
 def measured_count(value: int, source: str, reason: str | None = None) -> dict[str, Any]:
@@ -151,8 +188,8 @@ def tod_artifact_metric_snapshot() -> dict[str, Any]:
 
 
 def tod_next_action_accuracy_snapshot() -> dict[str, Any]:
-    training_set = load_json(TRAINING_ROOT / "TOD_NEXT_ACTION_SELECTION_TRAINING_SET.latest.json")
-    scorer = load_json(TRAINING_ROOT / "TOD_NEXT_ACTION_SELECTION_SCHEMA_AND_SCORER_V1.latest.json")
+    training_set = load_training_json("TOD_NEXT_ACTION_SELECTION_TRAINING_SET.latest.json")
+    scorer = load_training_json("TOD_NEXT_ACTION_SELECTION_SCHEMA_AND_SCORER_V1.latest.json")
     records = training_set.get("records") if isinstance(training_set.get("records"), list) else []
     dimensions = scorer.get("scoring_dimensions") if isinstance(scorer.get("scoring_dimensions"), list) else []
     dimension_keys = [str(item.get("key") or "").strip() for item in dimensions if isinstance(item, dict) and item.get("key")]
@@ -364,14 +401,14 @@ def evaluate_mim(base_url: str | None) -> dict[str, Any]:
 
 
 def build_scoreboard(base_url: str | None, operator_estimated_hours: float | None) -> dict[str, Any]:
-    directive = load_json(TRAINING_ROOT / "MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json")
-    reflection = load_json(TRAINING_ROOT / "MIM_TOD_HOURLY_REFLECTION.latest.json")
-    durability_v2 = load_json(TRAINING_ROOT / "MIM_DURABILITY_SMOKE_V2.latest.json")
+    directive = load_training_json("MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json")
+    reflection = load_training_json("MIM_TOD_HOURLY_REFLECTION.latest.json")
+    durability_v2 = load_training_json("MIM_DURABILITY_SMOKE_V2.latest.json")
     drill2 = load_json(BLOCKER_ROOT / "TOD_BLOCKED_OBJECTIVE_CLEARING_DRILL_002.latest.json")
     drill3 = load_json(BLOCKER_ROOT / "TOD_BLOCKER_RESOLUTION_DRILL_003.latest.json")
     drill4 = load_json(BLOCKER_ROOT / "TOD_BLOCKER_RESOLUTION_DRILL_004.latest.json")
     triage = load_json(BLOCKER_ROOT / "TOD_BLOCKED_OBJECTIVE_TRIAGE.latest.json")
-    previous_scoreboard = load_json(TRAINING_ROOT / "MIM_TOD_TRAINING_SCOREBOARD.latest.json")
+    previous_scoreboard = load_training_json("MIM_TOD_TRAINING_SCOREBOARD.latest.json")
     mim_eval = evaluate_mim(base_url)
 
     active_drill = ((directive.get("tod_training") or {}).get("active_blocker_clearing_drill") or {})
@@ -445,7 +482,7 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
     if not isinstance(reflection_recommendations, list):
         reflection_recommendations = []
     outcome_reflection = {
-        "source": str(TRAINING_ROOT / "MIM_TOD_HOURLY_REFLECTION.latest.json"),
+        "source": str(training_source_path("MIM_TOD_HOURLY_REFLECTION.latest.json")),
         "generated_at": reflection.get("generated_at"),
         "assessment": reflection.get("assessment") or "unknown",
         "are_they_improving": reflection.get("are_they_improving"),
@@ -467,7 +504,7 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
         else {}
     )
     judgment_mode_score = {
-        "source": str(TRAINING_ROOT / "MIM_DURABILITY_SMOKE_V2.latest.json"),
+        "source": str(training_source_path("MIM_DURABILITY_SMOKE_V2.latest.json")),
         "objective_id": durability_v2.get("objective_id") or "MIM-DURABILITY-SMOKE-V2",
         "status": durability_v2.get("status") or "unknown",
         "generated_at": durability_v2.get("generated_at"),
@@ -494,8 +531,8 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
         "outcome_reflection": outcome_reflection,
         "judgment_mode_score": judgment_mode_score,
         "training_hours": {
-            "last_7_days": baseline_needed("hourly training snapshots start with this scoreboard; prior exact hours are not reconstructable from latest-only files"),
-            "yesterday": baseline_needed("daily training-hour snapshot did not exist yesterday"),
+            "last_7_days": baseline_started("Training-hour baseline starts with current scoreboard snapshots; prior exact hours are not reconstructable from latest-only files"),
+            "yesterday": baseline_started("Prior daily training-hour snapshot was not retained; current run establishes the comparison baseline"),
             "today": {
                 "value": operator_estimated_hours,
                 "status": "operator_estimate" if operator_estimated_hours is not None else "baseline_needed",
@@ -505,25 +542,25 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
         "mim_score": {
             "metrics": {
                 "intent_understood": {
-                    "yesterday": baseline_needed("no prior daily MIM communication eval"),
+                    "yesterday": baseline_started("Current measured communication eval establishes the baseline for future comparisons", mim_metrics_today.get("intent_understood_percent")),
                     "today": mim_metrics_today.get("intent_understood_percent"),
                     "unit": "percent",
                     "source": mim_metric_source,
                 },
                 "answered_question": {
-                    "yesterday": baseline_needed("no prior daily MIM communication eval"),
+                    "yesterday": baseline_started("Current measured communication eval establishes the baseline for future comparisons", mim_metrics_today.get("answered_question_percent")),
                     "today": mim_metrics_today.get("answered_question_percent"),
                     "unit": "percent",
                     "source": mim_metric_source,
                 },
                 "internal_jargon": {
-                    "yesterday": baseline_needed("no prior daily MIM communication eval"),
+                    "yesterday": baseline_started("Current measured communication eval establishes the baseline for future comparisons", mim_metrics_today.get("internal_jargon_rate_percent")),
                     "today": mim_metrics_today.get("internal_jargon_rate_percent"),
                     "unit": "percent_rate_lower_is_better",
                     "source": mim_metric_source,
                 },
                 "recommendation_quality": {
-                    "yesterday": baseline_needed("no prior daily MIM communication eval"),
+                    "yesterday": baseline_started("Current measured communication eval establishes the baseline for future comparisons", mim_metrics_today.get("recommendation_quality_percent")),
                     "today": mim_metrics_today.get("recommendation_quality_percent"),
                     "unit": "percent",
                     "source": mim_metric_source,
@@ -534,37 +571,37 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
         "tod_score": {
             "metrics": {
                 "blockers_cleared": {
-                    "yesterday": baseline_needed("no prior daily blocker scoreboard"),
+                    "yesterday": baseline_started("Current TOD blocker evidence establishes the baseline for future comparisons", blockers_cleared),
                     "today": blockers_cleared,
                     "unit": "count",
                     "source": "blocker_drill_artifacts",
                 },
                 "false_completions_prevented": {
-                    "yesterday": baseline_needed("no prior daily false-completion scoreboard"),
+                    "yesterday": baseline_started("Current false-completion prevention evidence establishes the baseline for future comparisons", false_completion_prevented),
                     "today": false_completion_prevented,
                     "unit": "count",
                     "source": "drill_004_meaningful_evidence_self_correction",
                 },
                 "validated_edits": {
-                    "yesterday": baseline_needed("no prior daily validated-edit scoreboard"),
+                    "yesterday": baseline_started("Current validated-edit evidence establishes the baseline for future comparisons", validated_edits.get("value") if isinstance(validated_edits, dict) else validated_edits),
                     "today": validated_edits,
                     "unit": "count",
                     "source": "tod_result_artifacts",
                 },
                 "no_op_rejections": {
-                    "yesterday": baseline_needed("no prior daily no-op rejection scoreboard"),
+                    "yesterday": baseline_started("Current no-op rejection evidence establishes the baseline for future comparisons", no_op_rejections.get("value") if isinstance(no_op_rejections, dict) else no_op_rejections),
                     "today": no_op_rejections,
                     "unit": "count",
                     "source": "tod_result_artifacts",
                 },
                 "next_action_accuracy": {
-                    "yesterday": baseline_needed("no prior daily TOD next-action outcome scoreboard"),
+                    "yesterday": baseline_started("Current next-action outcome evidence establishes the baseline for future comparisons", tod_next_action_accuracy.get("pass_rate_percent")),
                     "today": tod_next_action_accuracy.get("pass_rate_percent"),
                     "unit": "percent",
                     "source": "tod_next_action_training_set",
                 },
                 "next_action_outcome_pending": {
-                    "yesterday": baseline_needed("no prior daily TOD next-action outcome scoreboard"),
+                    "yesterday": baseline_started("Current pending-outcome count establishes the baseline for future comparisons", tod_next_action_accuracy.get("pending_count")),
                     "today": tod_next_action_accuracy.get("pending_count"),
                     "unit": "count",
                     "source": "tod_next_action_training_set",
@@ -594,9 +631,9 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
             "redirect_condition": "Redirect if there is no new evidence artifact, no blocker movement, and no MIM eval improvement over a 6-hour window.",
         },
         "source_files": [
-            str(TRAINING_ROOT / "MIM_TOD_HOURLY_REFLECTION.latest.json"),
-            str(TRAINING_ROOT / "MIM_DURABILITY_SMOKE_V2.latest.json"),
-            str(TRAINING_ROOT / "MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json"),
+            str(training_source_path("MIM_TOD_HOURLY_REFLECTION.latest.json")),
+            str(training_source_path("MIM_DURABILITY_SMOKE_V2.latest.json")),
+            str(training_source_path("MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json")),
             str(BLOCKER_ROOT / "TOD_BLOCKED_OBJECTIVE_CLEARING_DRILL_002.latest.json"),
             str(BLOCKER_ROOT / "TOD_BLOCKER_RESOLUTION_DRILL_003.latest.json"),
             str(BLOCKER_ROOT / "TOD_BLOCKER_RESOLUTION_DRILL_004.latest.json"),
@@ -610,6 +647,10 @@ def metric_value(value: Any) -> str:
     if isinstance(value, dict):
         if value.get("status") == "measured" and value.get("value") is not None:
             return str(value.get("value"))
+        if value.get("status") == "baseline_established":
+            if value.get("value") is not None:
+                return str(value.get("value"))
+            return "baseline established"
         return "baseline needed"
     if value is None:
         return "baseline needed"
@@ -665,7 +706,7 @@ def write_markdown(scoreboard: dict[str, Any], path: Path) -> None:
         "",
         "## MIM Score",
         "",
-        "| Metric | Yesterday | Today | Source |",
+        "| Metric | Baseline | Current | Source |",
         "|---|---:|---:|---|",
     ])
     for key, item in mim.items():
@@ -705,7 +746,7 @@ def write_markdown(scoreboard: dict[str, Any], path: Path) -> None:
         "",
         "## TOD Score",
         "",
-        "| Metric | Yesterday | Today | Source |",
+        "| Metric | Baseline | Current | Source |",
         "|---|---:|---:|---|",
     ])
     for key, item in tod.items():
@@ -743,7 +784,8 @@ def write_markdown(scoreboard: dict[str, Any], path: Path) -> None:
         "",
         "## Notes",
         "",
-        "- Baseline-needed fields are not guessed. They become real numbers after scoreboard snapshots exist.",
+        "- Baseline-established fields use the current measured value as the comparison point going forward when older daily snapshots were not retained.",
+        "- Baseline-needed fields mean the metric still lacks current instrumentation.",
         "- Internal jargon is a lower-is-better percentage from live MIM evaluation prompts.",
     ])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

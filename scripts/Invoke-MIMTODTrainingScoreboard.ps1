@@ -8,6 +8,8 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $EnvPath = Join-Path $Root ".env"
 $ScoreboardScript = Join-Path $Root "scripts\generate_mim_tod_training_scoreboard.py"
+$JudgmentSmokeScript = Join-Path $Root "scripts\run_mim_durability_smoke_v2.py"
+$TypoSmokeScript = Join-Path $Root "scripts\run_mim_typo_tolerant_intent_smoke.py"
 $InitiativeGateScript = Join-Path $Root "scripts\generate_mim_tod_training_initiative_gate.py"
 $OutDir = Join-Path $Root "runtime_remote_training"
 $LatestScoreboard = Join-Path $OutDir "MIM_TOD_TRAINING_SCOREBOARD.latest.json"
@@ -78,6 +80,29 @@ $argsList = @(
   "--write-snapshots",
   "--out-dir", $OutDir
 )
+
+$smokeArgsList = @(
+  $JudgmentSmokeScript,
+  "--base-url", $BaseUrl,
+  "--out-dir", $OutDir
+)
+$smokeOutput = & python @smokeArgsList 2>&1
+$smokeOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_durability_smoke_v2.last.log") | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  "Judgment smoke failed; continuing scoreboard with failed smoke evidence: $smokeOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_durability_smoke_v2.failed.log") -Append | Out-Null
+}
+
+$typoArgsList = @(
+  $TypoSmokeScript,
+  "--base-url", $BaseUrl,
+  "--out-dir", $OutDir
+)
+$typoOutput = & python @typoArgsList 2>&1
+$typoOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_typo_tolerant_intent_smoke.last.log") | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  "Typo tolerance smoke failed; continuing scoreboard with failed smoke evidence: $typoOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_typo_tolerant_intent_smoke.failed.log") -Append | Out-Null
+}
+
 if ($OperatorEstimatedHours -gt 0) {
   $argsList += @("--operator-estimated-hours", [string]$OperatorEstimatedHours)
 }
@@ -108,7 +133,11 @@ $files = @(
   (Join-Path $OutDir "MIM_TOD_TRAINING_SCOREBOARD.latest.json"),
   (Join-Path $OutDir "MIM_TOD_TRAINING_SCOREBOARD.latest.md"),
   (Join-Path $OutDir "MIM_TOD_TRAINING_INITIATIVE_GATE.latest.json"),
-  (Join-Path $OutDir "MIM_TOD_TRAINING_INITIATIVE_GATE.latest.md")
+  (Join-Path $OutDir "MIM_TOD_TRAINING_INITIATIVE_GATE.latest.md"),
+  (Join-Path $OutDir "MIM_DURABILITY_SMOKE_V2.latest.json"),
+  (Join-Path $OutDir "MIM_DURABILITY_SMOKE_V2.latest.md"),
+  (Join-Path $OutDir "MIM_TYPO_TOLERANT_INTENT_SMOKE.latest.json"),
+  (Join-Path $OutDir "MIM_TYPO_TOLERANT_INTENT_SMOKE.latest.md")
 )
 foreach ($file in $files) {
   $published = $false
