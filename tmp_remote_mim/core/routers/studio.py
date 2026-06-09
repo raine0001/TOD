@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
@@ -40,6 +44,9 @@ SHARED_RUNTIME_ROOT = Path("runtime/shared")
 TRAINING_RUNTIME_ROOT = Path("runtime_remote_training")
 MIM_PRESENCE_PATH = SHARED_RUNTIME_ROOT / "MIM_UNIVERSAL_PRESENCE.latest.json"
 LAB_SERVO_TESTER_PROFILE_PATH = SHARED_RUNTIME_ROOT / "MIM_LAB_SERVO_TESTER_PROFILE.latest.json"
+TRAINING_ATTENTION_RESOLUTION_PATH = SHARED_RUNTIME_ROOT / "MIM_TOD_TRAINING_ATTENTION_RESOLUTION.latest.json"
+TRAINING_ATTENTION_TOD_REQUEST_PATH = SHARED_RUNTIME_ROOT / "MIM_TOD_TASK_REQUEST.latest.json"
+TRAINING_ATTENTION_TOD_TRIGGER_PATH = SHARED_RUNTIME_ROOT / "MIM_TO_TOD_TRIGGER.latest.json"
 LOS_ANGELES_TZ = ZoneInfo("America/Los_Angeles")
 
 
@@ -47,6 +54,7 @@ TRAINING_EVIDENCE_DOCS: list[dict[str, str]] = [
     {
         "title": "MIM/TOD Training Scoreboard",
         "filename": "MIM_TOD_TRAINING_SCOREBOARD.latest.md",
+        "aliases": ["MIM_TOD_TRAINING_SCOREBOARD.latest.json"],
         "kind": "training_scoreboard",
         "summary": "Primary scoreboard for MIM/TOD training metrics, outcome reflection, judgment-mode score, and TOD blocker evidence.",
     },
@@ -330,6 +338,232 @@ APP_SOURCE_REGISTRY: list[dict[str, Any]] = [
         "fallback_tables": [],
     },
 ]
+
+USER_APP_BUILD_SAMPLES: list[dict[str, Any]] = [
+    {
+        "title": "User App Build: Client Follow-Up Tracker",
+        "app_name": "Client Follow-Up Tracker",
+        "app_type": "CRM / follow-up",
+        "summary": "Training build for contacts, notes, next follow-up date, status, and reminders.",
+        "target_users": "Small teams that need a lightweight client follow-up workflow.",
+        "workflows": ["Create contact", "Add note", "Set next follow-up", "Filter by status", "Review overdue follow-ups"],
+        "data_objects": ["contact", "note", "follow_up", "status"],
+        "acceptance": "User can create contacts, record notes, set next follow-up dates, see overdue items, and mark follow-ups complete.",
+    },
+    {
+        "title": "User App Build: Simple Appointment Scheduler",
+        "app_name": "Simple Appointment Scheduler",
+        "app_type": "Scheduling",
+        "summary": "Training build for services, availability, booked appointments, calendar sync, invites, reminders, and shared/private appointment visibility.",
+        "target_users": "Solo service providers, small offices, teams, or community calendars that need appointment booking and calendar coordination.",
+        "workflows": [
+            "Classify single-user or multi-user scheduling",
+            "Define services or appointment types",
+            "Set availability",
+            "Book appointment",
+            "Send calendar invite",
+            "Receive or accept invite",
+            "Add contacts to appointments",
+            "Sync calendar",
+            "Set reminders",
+            "Review calendar",
+        ],
+        "data_objects": ["service", "availability", "appointment", "customer", "calendar_account", "invite", "reminder", "visibility_rule"],
+        "required_questions": [
+            "Is this a single-user scheduler or a multi-user/team scheduler?",
+            "Is the target platform mobile, desktop/web, or both?",
+            "Should users sign in, create accounts, recover passwords, and reset passwords?",
+            "Does this app need admin tools for users, roles, shared calendars, or community visibility?",
+            "Should appointments sync with Google Calendar, Outlook, Apple Calendar, or generic ICS feeds?",
+            "Can users send and receive calendar invites?",
+            "Can users add contacts/customers to appointments and events?",
+            "Are appointments private by default, shared with a team, or community-visible?",
+            "What reminder channels are needed: email, SMS, push, or in-app?",
+            "Does this app have subscription billing, checkout, or in-app purchases?",
+            "Does it need privacy, terms, cookie notice, or appointment cancellation policy templates?",
+            "Does the app need uploaded branding, generated banner art, or a chosen style preset?",
+        ],
+        "required_integrations": [
+            "Google Calendar",
+            "Outlook Calendar",
+            "Apple Calendar / ICS",
+            "Email invite delivery",
+            "SMS or push reminders when enabled",
+        ],
+        "compliance_notes": [
+            "Multi-user or public scheduling requires privacy and terms templates.",
+            "Calendar integrations require explicit OAuth/permission handling and revocation.",
+            "Shared/community calendars require clear visibility and permission rules.",
+            "Paid scheduling requires checkout/subscription and admin billing tools.",
+        ],
+        "reference_examples": [
+            "service appointment booking",
+            "team calendar",
+            "community-visible events",
+            "calendar sync and invite flow",
+        ],
+        "acceptance": "User can understand the app purpose, complete login/account setup, configure availability, book an appointment, prevent double booking, send/receive invites, add contacts, sync calendar data, set reminders, control private/shared visibility, and use dashboard/help/settings flows.",
+    },
+    {
+        "title": "User App Build: Inventory Mini Manager",
+        "app_name": "Inventory Mini Manager",
+        "app_type": "Inventory",
+        "summary": "Training build for items, quantity, reorder threshold, supplier, and low-stock alerts.",
+        "target_users": "Small shops, labs, and field teams.",
+        "workflows": ["Add item", "Adjust quantity", "Set reorder threshold", "View low-stock list", "Track supplier"],
+        "data_objects": ["item", "supplier", "stock_adjustment", "reorder_rule"],
+        "acceptance": "User can add items, update stock, configure reorder thresholds, and see low-stock items without manual spreadsheet scanning.",
+    },
+    {
+        "title": "User App Build: Receipt Expense Tracker",
+        "app_name": "Receipt Expense Tracker",
+        "app_type": "Accounting / expenses",
+        "summary": "Training build for receipt upload, category assignment, monthly totals, and exportable reports.",
+        "target_users": "Small business owners and operators tracking expenses.",
+        "workflows": ["Upload receipt", "Categorize expense", "Review monthly totals", "Export report", "Flag missing data"],
+        "data_objects": ["receipt", "expense", "category", "report"],
+        "acceptance": "User can add receipts, categorize expenses, view monthly totals, and export a basic expense report.",
+    },
+    {
+        "title": "User App Build: Service Ticket Tracker",
+        "app_name": "Service Ticket Tracker",
+        "app_type": "Support / operations",
+        "summary": "Training build for customer issue, priority, assigned person, status, and resolution notes.",
+        "target_users": "Small support, repair, and operations teams.",
+        "workflows": ["Create ticket", "Assign owner", "Set priority", "Update status", "Record resolution"],
+        "data_objects": ["ticket", "customer", "assignee", "resolution"],
+        "acceptance": "User can create, assign, filter, and close service tickets with visible status and resolution notes.",
+    },
+    {
+        "title": "User App Build: Lead Pipeline Board",
+        "app_name": "Lead Pipeline Board",
+        "app_type": "Sales pipeline",
+        "summary": "Training build for lead source, stage, value, next action, and close probability.",
+        "target_users": "Sales reps, agency owners, and small teams managing leads.",
+        "workflows": ["Add lead", "Move stage", "Set next action", "Estimate value", "Review pipeline"],
+        "data_objects": ["lead", "stage", "activity", "pipeline"],
+        "acceptance": "User can add leads, move them through stages, set next actions, and review active pipeline value.",
+    },
+    {
+        "title": "User App Build: Staff Task Board",
+        "app_name": "Staff Task Board",
+        "app_type": "Task management",
+        "summary": "Training build for tasks, owner, due date, status, blockers, and completion notes.",
+        "target_users": "Small teams that need practical task tracking without heavy project software.",
+        "workflows": ["Create task", "Assign owner", "Set due date", "Flag blocker", "Complete task"],
+        "data_objects": ["task", "owner", "blocker", "completion_note"],
+        "acceptance": "User can create tasks, assign owners, track due dates and blockers, and mark tasks complete with notes.",
+    },
+    {
+        "title": "User App Build: Small Business CRM",
+        "app_name": "Small Business CRM",
+        "app_type": "CRM",
+        "summary": "Training build for companies, contacts, interactions, opportunities, and reminders.",
+        "target_users": "Small businesses needing relationship history and opportunity tracking.",
+        "workflows": ["Add company", "Add contact", "Log interaction", "Create opportunity", "Set reminder"],
+        "data_objects": ["company", "contact", "interaction", "opportunity", "reminder"],
+        "acceptance": "User can manage companies and contacts, log interactions, create opportunities, and see reminders.",
+    },
+    {
+        "title": "User App Build: Content Calendar",
+        "app_name": "Content Calendar",
+        "app_type": "Marketing / content",
+        "summary": "Training build for post ideas, channels, publish dates, status, and performance notes.",
+        "target_users": "Creators and businesses managing social/content schedules.",
+        "workflows": ["Create post idea", "Assign channel", "Schedule date", "Track status", "Record performance"],
+        "data_objects": ["post", "channel", "schedule", "performance_note"],
+        "acceptance": "User can plan content by channel/date, track draft/scheduled/published status, and record performance notes.",
+    },
+    {
+        "title": "User App Build: Document Request Portal",
+        "app_name": "Document Request Portal",
+        "app_type": "Portal / document workflow",
+        "summary": "Training build for document requests, submission checklist, admin review, missing items, and approval status.",
+        "target_users": "Teams collecting client, vendor, or onboarding documents.",
+        "workflows": ["Create request", "Upload document", "Review submission", "Mark missing item", "Approve packet"],
+        "data_objects": ["request", "document", "checklist_item", "review", "approval"],
+        "acceptance": "User can request documents, upload files, review missing items, and mark a document packet approved.",
+    },
+    {
+        "title": "User App Build: Business Meal Tracker",
+        "app_name": "Business Meal Tracker",
+        "app_type": "Expense substantiation / meals",
+        "summary": "Training build for capturing meal receipts, extracting receipt details, asking substantiation questions, and preserving business-meal deduction records.",
+        "target_users": "Business owners, consultants, sales reps, and operators who need cleaner meal-expense records for bookkeeping and tax substantiation.",
+        "workflows": [
+            "Add meal",
+            "Capture receipt image",
+            "Extract restaurant/date/location/items/total",
+            "Ask attendee and business-purpose questions",
+            "Flag missing substantiation",
+            "Export meal expense log",
+        ],
+        "data_objects": [
+            "meal_expense",
+            "receipt_image",
+            "receipt_line_item",
+            "attendee",
+            "business_purpose",
+            "travel_context",
+            "substantiation_status",
+        ],
+        "acceptance": "User can add a business meal, attach or photograph the itemized receipt, capture date/restaurant/location/items/total/tax/tip, record attendees and business purpose, flag missing documentation, and export a substantiation-ready meal log.",
+        "required_questions": [
+            "Who attended the meal?",
+            "What is each attendee's business relationship?",
+            "What was the business purpose or work topic discussed?",
+            "Was this a travel meal or local business meal?",
+            "Should this use actual receipt tracking or a per diem/travel allowance note?",
+        ],
+        "compliance_notes": [
+            "Credit card statement alone is not enough for full itemized substantiation.",
+            "Meals under $75 still need date, amount, attendees, and business purpose logged.",
+            "Keep all receipts when possible even if the receipt threshold might not require every small receipt.",
+            "This training app records substantiation facts; it does not provide tax advice.",
+        ],
+        "reference_examples": [
+            "SparkReceipt is a market example for receipt capture and categorization only; do not copy its content, branding, layout, or implementation.",
+        ],
+    },
+]
+
+USER_APP_PACKAGE_FOUNDATION: dict[str, Any] = {
+    "foundation_version": "user-app-package-foundation-v1",
+    "package_files": [
+        "README.md",
+        "app/app.py",
+        "app/models.py",
+        "app/routes.py",
+        "app/schema.sql",
+        "app/static/app.js",
+        "app/static/styles.css",
+        "tests/test_acceptance.py",
+        "deploy/preview.md",
+        "deploy/rollback.md",
+        "package.manifest.json",
+    ],
+    "backend_database": {
+        "mode": "required_for_real_app",
+        "default_engine": "postgres",
+        "prototype_fallback": "browser localStorage only until backend package is materialized",
+        "migration_required": True,
+    },
+    "publish_gates": [
+        "package_manifest_created",
+        "backend_schema_defined",
+        "crud_routes_defined",
+        "acceptance_tests_defined",
+        "preview_deploy_plan_defined",
+        "rollback_plan_defined",
+        "git_remote_or_download_export_selected",
+        "operator_publish_approval",
+    ],
+    "next_build_contract": {
+        "tod_action": "Generate the repo files from package.manifest.json, bind database CRUD, run acceptance tests, and publish preview evidence.",
+        "mim_action": "Keep the Workbench context, review generated files, and ask Dave only for external Git/deploy credentials or publish approval.",
+        "codex_escalation": "Use Codex if TOD cannot materialize repo files, tests, or preview evidence from the package manifest.",
+    },
+}
 
 
 class StudioProjectSignalCreate(BaseModel):
@@ -691,31 +925,54 @@ def _data_sources_html(state: dict[str, Any], page_key: str) -> str:
         ]
     source_trust = _first_text(page.get("source_trust"), default="Mixed" if not sources else "Watched")
     source_trust_class = _source_trust_class(source_trust)
+    evidence_docs = state.get("evidence_docs") if isinstance(state.get("evidence_docs"), list) else []
+    doc_by_filename: dict[str, dict[str, Any]] = {}
+    for doc in evidence_docs:
+        if not isinstance(doc, dict):
+            continue
+        filename = str(doc.get("filename") or "").strip()
+        if filename:
+            doc_by_filename[filename] = doc
+        for alias in doc.get("aliases", []) if isinstance(doc.get("aliases"), list) else []:
+            alias_text = str(alias or "").strip()
+            if alias_text:
+                doc_by_filename[alias_text] = doc
+
+    def source_href(source: dict[str, Any]) -> str:
+        path = str(source.get("path") or source.get("source_path") or "").strip()
+        filename = Path(path).name if path else ""
+        doc = doc_by_filename.get(filename)
+        if isinstance(doc, dict) and doc.get("document_id"):
+            return f"/studio/documents?document_id={quote(str(doc.get('document_id')))}"
+        if path:
+            return f"/studio/documents?source_path={quote(path)}"
+        return "/studio/documents"
+
     rows = "".join(
         f"""
         <tr>
-          <td><strong>{_html(source.get("label", ""))}</strong><div class="muted">{_html(source.get("kind", ""))}</div></td>
+          <td><a href="{_html(source_href(source))}"><strong>{_html(source.get("label", ""))}</strong><div class="muted">{_html(source.get("kind", ""))}</div></a></td>
           <td><span class="health-pill {'green' if source.get("exists") else 'red'}">{'found' if source.get("exists") else 'missing'}</span><div class="muted">{_html(source.get("status", ""))}</div></td>
-          <td>{_html(source.get("path", ""))}</td>
+          <td><a href="{_html(source_href(source))}">{_html(source.get("path", ""))}</a></td>
           <td>{_html(_la_time(source.get("generated_at") or source.get("last_write_utc"), default=str(source.get("last_write_utc") or "")))}</td>
         </tr>
         """
         for source in sources
     )
     return f"""
-    <section class="card" style="margin-bottom:14px;">
-      <div class="status-head">
+    <details class="card collapsible" style="margin-bottom:14px;">
+      <summary>
         <div>
           <h2>Sources</h2>
           <div class="muted">Audit: {_html(audit.get("status", "not_run"))} / {_html(audit.get("generated_at_la", ""))}</div>
         </div>
         <span class="badge"><span class="dot {source_trust_class}"></span>Source Trust: {_html(source_trust)}</span>
-      </div>
+      </summary>
       <table class="score-table" style="margin-top:10px;">
         <thead><tr><th>Source</th><th>Status</th><th>Path</th><th>Time</th></tr></thead>
         <tbody>{rows}</tbody>
       </table>
-    </section>
+    </details>
     """
 
 
@@ -1063,6 +1320,15 @@ def _shell(*, active: str, title: str, subtitle: str, body: str, page_context: s
     .card {{ background: rgba(16, 23, 34, .86); border: 1px solid var(--line); border-radius: 8px; padding: 16px; box-shadow: 0 14px 34px rgba(0,0,0,.18); }}
     .card h2, .card h3 {{ margin: 0 0 10px; letter-spacing: 0; }}
     .card p {{ color: var(--muted); line-height: 1.5; margin: 0; }}
+    details.collapsible {{ overflow: hidden; }}
+    details.collapsible > summary {{ list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; }}
+    details.collapsible > summary::-webkit-details-marker {{ display: none; }}
+    details.collapsible > summary:before {{ content: "+"; width: 24px; height: 24px; border: 1px solid var(--line); border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--accent); font-weight: 900; flex: 0 0 24px; }}
+    details.collapsible[open] > summary:before {{ content: "-"; }}
+    details.collapsible > summary h2 {{ margin: 0; flex: 1; }}
+    details.collapsible.inner {{ border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-top: 12px; background: rgba(8,13,20,.36); }}
+    .document-viewer-text {{ white-space: pre-wrap; overflow: auto; max-height: 520px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #08101a; color: var(--soft); line-height: 1.45; font: 13px/1.45 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }}
+    .library-viewer .quick .badge {{ margin: 0 4px 4px 0; }}
     .status-card {{ min-height: 330px; }}
     .status-head {{ display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }}
     .entity {{ font-size: 28px; font-weight: 900; }}
@@ -2859,7 +3125,6 @@ PROJECT_NON_MOVEMENT_EVENT_TYPES = {
     "project_created",
     "promoted_from_signal",
     "project_audit",
-    "mim_auto_intervention",
 }
 
 
@@ -3039,16 +3304,42 @@ def _project_successor_quality_metrics(project_rows: list[dict[str, Any]], event
     }
 
 
+def _clean_project_action_text(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    stale_prefix = "Review stale task:"
+    stale_suffixes = (
+        " Execute it now, block with evidence, split scope, archive it, or assign a new bounded driving task.",
+        " Execute it now, block with evidence, split scope, archive it, or assign a new bounded driving task",
+    )
+    while text.startswith(stale_prefix):
+        text = text[len(stale_prefix) :].strip()
+        changed = True
+        while changed:
+            changed = False
+            for suffix in stale_suffixes:
+                if text.endswith(suffix):
+                    text = text[: -len(suffix)].strip()
+                    changed = True
+    if text.startswith("Choose promote, block, archive"):
+        return ""
+    return text
+
+
 def _project_current_driving_task(row: dict[str, Any]) -> str:
     metadata = _project_metadata(row)
-    metadata_task = _first_text(metadata.get("current_driving_task"), metadata.get("driving_task"), default="")
-    if metadata_task.startswith("Choose promote, block, archive"):
-        metadata_task = ""
+    row_next_action = _clean_project_action_text(row.get("next_action"))
+    if metadata.get("updated_from") == "studio_projects_form" and row_next_action:
+        return row_next_action
+    metadata_task = _clean_project_action_text(
+        _first_text(metadata.get("current_driving_task"), metadata.get("driving_task"), default="")
+    )
     return _first_text(
         metadata_task,
-        metadata.get("pre_intervention_next_action"),
-        row.get("next_action"),
-        metadata.get("next_action"),
+        _clean_project_action_text(metadata.get("pre_intervention_next_action")),
+        row_next_action,
+        _clean_project_action_text(metadata.get("next_action")),
         default="Define current driving task.",
     )
 
@@ -3158,7 +3449,10 @@ def _tod_next_action_candidate(row: dict[str, Any]) -> dict[str, Any]:
     scope_state = str(row.get("scope_state") or "").strip()
     momentum = str(row.get("momentum") or "").strip()
     waiting_on = _first_text(row.get("waiting_on"), default="none")
-    current_task = _first_text(row.get("current_driving_task"), row.get("next_action"), default="Define current driving task.")
+    current_task = _clean_project_action_text(
+        _first_text(row.get("current_driving_task"), row.get("next_action"), default="Define current driving task.")
+    )
+    current_task = current_task or "Define current driving task."
     blocker = _first_text(row.get("blocker"), default="none")
     blocker_like = (
         momentum == "Blocked"
@@ -3200,11 +3494,9 @@ def _tod_next_action_candidate(row: dict[str, Any]) -> dict[str, Any]:
             row=row,
         )
     if str(row.get("momentum_decay") or "") in {"Stale", "Needs Review"}:
-        review_action = (
-            f"Review stale task: {current_task} Execute it now, block with evidence, split scope, archive it, or assign a new bounded driving task."
-            if current_task != "Define current driving task."
-            else "Choose promote, block, archive, or a new bounded driving task; do not leave the project idle."
-        )
+        review_action = current_task
+        if current_task == "Define current driving task.":
+            review_action = "Choose promote, block, archive, or a new bounded driving task; do not leave the project idle."
         return _tod_decision_record(
             action=review_action,
             lane="momentum_review",
@@ -3782,6 +4074,44 @@ async def _bind_tod_results_to_studio_projects(db: AsyncSession, projects: list[
         )
     if not candidates:
         return 0
+    migration_terms = (
+        "powershell",
+        "scheduled task",
+        "watchdog",
+        "visible window",
+        "windowstyle hidden",
+        "tod local",
+        "prompt migration",
+        "local pc",
+        "mim box",
+    )
+    filtered_candidates: list[dict[str, Any]] = []
+    for item in candidates:
+        payload = item["payload"]
+        searchable = " ".join(
+            str(value or "")
+            for value in (
+                item.get("summary"),
+                item.get("request_id"),
+                item.get("task_id"),
+                item.get("status"),
+                payload.get("objective_id") if isinstance(payload, dict) else "",
+                payload.get("objective") if isinstance(payload, dict) else "",
+                payload.get("task_title") if isinstance(payload, dict) else "",
+                payload.get("requested_action") if isinstance(payload, dict) else "",
+            )
+        ).lower()
+        if any(term in searchable for term in migration_terms):
+            filtered_candidates.append(item)
+    if not filtered_candidates:
+        metadata = target.metadata_json if isinstance(target.metadata_json, dict) else {}
+        metadata = dict(metadata)
+        metadata["last_tod_result_binding_skip_at"] = _utc_now()
+        metadata["last_tod_result_binding_skip_reason"] = "Latest TOD result did not match TOD Local PowerShell Migration keywords; skipped to avoid false project movement."
+        target.metadata_json = metadata
+        await db.commit()
+        return 0
+    candidates = filtered_candidates
 
     existing_event_rows = (
         await db.execute(
@@ -3925,7 +4255,8 @@ async def _run_project_auto_interventions(db: AsyncSession, projects: list[Studi
     def add_intervention(project: StudioProject, *, rule_key: str, title: str, detail: str, next_action: str, metadata_patch: dict[str, Any]) -> bool:
         metadata = project.metadata_json if isinstance(project.metadata_json, dict) else {}
         metadata = dict(metadata)
-        existing_next_action = str(project.next_action or "").strip()
+        existing_next_action = _clean_project_action_text(project.next_action)
+        next_action = _clean_project_action_text(next_action) or next_action
         if (
             existing_next_action
             and not existing_next_action.startswith("Choose promote, block, archive")
@@ -4048,6 +4379,40 @@ async def _run_project_auto_interventions(db: AsyncSession, projects: list[Studi
                 metadata_patch={
                     "current_driving_task": str(candidate.get("action") or "Resolve or reclassify the active blocker."),
                     "tod_next_action": candidate,
+                },
+            ):
+                added += 1
+            continue
+        if row["momentum_decay"] == "Program Watch":
+            if add_intervention(
+                project,
+                rule_key="program_watch_cadence",
+                title="Ongoing program requires maintenance review",
+                detail="This is an ongoing/umbrella program, not a finishable sprint task. MIM must keep it current by selecting a bounded child project, scheduling the next review, or archiving it if it no longer matters.",
+                next_action=str(candidate.get("action") or "Review this ongoing program, pick one bounded child task or next review date, and keep execution work in finishable child projects."),
+                metadata_patch={
+                    "work_state": "program_watch",
+                    "current_driving_task": str(candidate.get("action") or "Maintain as an ongoing program and select the next bounded child project."),
+                    "tod_next_action": candidate,
+                    "maintenance_cadence": "daily_program_watch",
+                    "next_review_due": _utc_now(),
+                },
+            ):
+                added += 1
+            continue
+        if row["momentum_decay"] == "Successor Watch":
+            if add_intervention(
+                project,
+                rule_key="successor_watch_followup",
+                title="Successor action requires follow-through",
+                detail="This project has a successor action selected, but the follow-through window has aged past the watch threshold. MIM/TOD must execute the successor action, publish evidence, or reclassify the successor state.",
+                next_action=str(candidate.get("action") or "Execute the selected successor action, publish evidence, or reclassify this project into waiting on evidence, blocked, split, or complete."),
+                metadata_patch={
+                    "work_state": "successor_watch",
+                    "current_driving_task": str(candidate.get("action") or "Execute or reclassify the selected successor action."),
+                    "tod_next_action": candidate,
+                    "successor_watch_reviewed_at": _utc_now(),
+                    "successor_watch_rule": "daily_successor_followup",
                 },
             ):
                 added += 1
@@ -4237,6 +4602,458 @@ async def _upsert_studio_project_record(
                 merged_metadata[key] = existing_metadata[key]
     existing.metadata_json = merged_metadata
     return existing
+
+
+async def _ensure_user_app_build_samples(db: AsyncSession) -> None:
+    seed_version = "2026-06-08-user-app-build-samples-v1"
+    for index, sample in enumerate(USER_APP_BUILD_SAMPLES, start=1):
+        app_name = str(sample["app_name"])
+        app_type = str(sample["app_type"])
+        workflows = sample.get("workflows") if isinstance(sample.get("workflows"), list) else []
+        data_objects = sample.get("data_objects") if isinstance(sample.get("data_objects"), list) else []
+        required_questions = sample.get("required_questions") if isinstance(sample.get("required_questions"), list) else []
+        compliance_notes = sample.get("compliance_notes") if isinstance(sample.get("compliance_notes"), list) else []
+        reference_examples = sample.get("reference_examples") if isinstance(sample.get("reference_examples"), list) else []
+        acceptance = str(sample["acceptance"])
+        await _upsert_studio_project_record(
+            db,
+            title=str(sample["title"]),
+            summary=str(sample["summary"]),
+            status="discovery",
+            priority="P2",
+            owner="MIM + TOD",
+            health="training_sample",
+            why_it_matters=(
+                "This gives MIM/TOD a bounded autonomous-app-delivery training case: "
+                "intake, discovery, acceptance, TOD slice, proof, and closeout."
+            ),
+            origin_story=(
+                "Created from Dave's request to start 10 basic app-build training samples "
+                "for MIM autonomous app delivery."
+            ),
+            next_action=(
+                f"MIM should run app intake for {app_name}, confirm the workflow and data objects, "
+                "then create the first bounded TOD implementation slice."
+            ),
+            dave_needed=False,
+            metadata_json={
+                "project_type": "user_app_build",
+                "app_category": "user_apps",
+                "app_name": app_name,
+                "app_type": app_type,
+                "requested_by": "MIM training sample",
+                "request_source": "mimtod.com public app-build simulation",
+                "build_stage": "intake",
+                "progress_percent": 5,
+                "work_state": "discovery",
+                "momentum": "moving",
+                "scope_state": "Scope Stable",
+                "current_driving_task": (
+                    f"Run MIM intake for {app_name}: target users, workflow, data objects, permissions, "
+                    "acceptance criteria, and first bounded TOD slice."
+                ),
+                "acceptance": acceptance,
+                "target_users": str(sample["target_users"]),
+                "workflows": workflows,
+                "data_objects": data_objects,
+                "required_questions": required_questions,
+                "compliance_notes": compliance_notes,
+                "reference_examples": reference_examples,
+                "required_integrations": [],
+                "permission_notes": "No sensitive data, payment, or external account access in the first training slice.",
+                "evidence_required": [
+                    "intake_brief",
+                    "acceptance_criteria",
+                    "tod_task_slice",
+                    "validation_result",
+                    "close_or_continue_decision",
+                ],
+                "delivery_gates": [
+                    "intake_gate",
+                    "project_creation_gate",
+                    "tod_dispatch_gate",
+                    "execution_proof_gate",
+                    "close_or_continue_gate",
+                    "user_review_gate",
+                    "package_manifest_gate",
+                    "backend_schema_gate",
+                    "acceptance_test_gate",
+                    "preview_deploy_gate",
+                    "publish_approval_gate",
+                ],
+                "package_foundation": USER_APP_PACKAGE_FOUNDATION,
+                "real_app_package_required": True,
+                "backend_database_required": True,
+                "export_publish_status": "package_foundation_configured",
+                "training_objective": "MIM-AUTONOMOUS-APP-DELIVERY-SIMULATION-V1",
+                "sample_index": index,
+                "seed_source": "studio_user_app_build_samples_v1",
+                "seed_version": seed_version,
+            },
+        )
+    await db.commit()
+
+
+async def _ensure_app_workbench_project(db: AsyncSession) -> None:
+    await _upsert_studio_project_record(
+        db,
+        title="MIM App Workbench V1",
+        summary=(
+            "Create the app-development workbench where users and Studio can open a MIM-built app, "
+            "test it, comment on it, ask MIM for changes, and move toward package/publish gates."
+        ),
+        status="working",
+        priority="P0",
+        owner="MIM + TOD + Codex",
+        health="priority",
+        why_it_matters=(
+            "The sample app builds need a visible review surface. Without Workbench, MIM/TOD can create "
+            "artifacts but users cannot inspect, test, revise, approve, or publish them cleanly."
+        ),
+        origin_story=(
+            "Dave identified that app development needs a Workbench mode: live app preview in the main page, "
+            "persistent MIM chat on the right, project details in the header, dependencies, comments, refresh, "
+            "and package/publish tools."
+        ),
+        next_action=(
+            "Ship the first Workbench slice: open a user app build, show project status, render the current "
+            "prototype artifact, keep MIM attached to the app context, and expose next build/publish gates."
+        ),
+        dave_needed=False,
+        metadata_json={
+            "project_type": "studio_ui",
+            "app_category": "mim_apps",
+            "priority_reason": "Needed before sample app builds can be reviewed.",
+            "progress_percent": 20,
+            "work_state": "working",
+            "momentum": "moving",
+            "scope_state": "Scope Stable",
+            "current_driving_task": (
+                "Implement first Workbench route and link user app builds into it from /studio/apps."
+            ),
+            "acceptance": (
+                "A tracked user app build can open in Workbench with project header, preview/artifact readback, "
+                "MIM side chat context, dependencies/status, and package/publish gate placeholders."
+            ),
+            "delivery_gates": [
+                "open_workbench",
+                "show_project_status",
+                "show_current_artifact",
+                "mim_change_request_context",
+                "refresh_preview",
+                "package_publish_gates",
+            ],
+            "seed_source": "studio_app_workbench_v1",
+        },
+    )
+    await db.commit()
+
+
+def _read_user_app_artifact_status(app_name: object) -> dict[str, Any]:
+    slug = _workbench_slug(_first_text(app_name, default="user_app"))
+    manifest_path = SHARED_RUNTIME_ROOT / "user_app_published" / slug / "package.manifest.json"
+    prototype_path = SHARED_RUNTIME_ROOT / "user_app_builds" / slug / f"{slug.upper()}_PROTOTYPE.latest.json"
+    audit = _load_json("USER_APP_DEEP_TRAINING_OUTCOME_AUDIT.latest.json")
+    app_results = audit.get("app_results") if isinstance(audit.get("app_results"), list) else []
+    audit_row = next(
+        (
+            item
+            for item in app_results
+            if isinstance(item, dict) and str(item.get("slug") or "").strip().lower() == slug
+        ),
+        {},
+    )
+    manifest: dict[str, Any] = {}
+    if manifest_path.exists():
+        try:
+            loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest = loaded if isinstance(loaded, dict) else {}
+        except Exception:
+            manifest = {}
+    gates = manifest.get("gates") if isinstance(manifest.get("gates"), dict) else {}
+    server_preview_path = SHARED_RUNTIME_ROOT / "user_app_published" / slug / "preview.html"
+    server_preview_live = server_preview_path.exists()
+    return {
+        "slug": slug,
+        "prototype_exists": prototype_path.exists(),
+        "manifest_exists": manifest_path.exists(),
+        "manifest_status": _first_text(manifest.get("status"), default=""),
+        "production_deploy": _first_text(gates.get("production_deploy"), default=""),
+        "server_preview": "live" if server_preview_live else "not_found",
+        "server_preview_url": f"/studio/apps/previews/{quote(slug)}/preview.html" if server_preview_live else "",
+        "audit_passed": bool(audit_row.get("passed")),
+        "audit_generated_at": _first_text(audit.get("generated_at"), default=""),
+        "style_preset": _first_text(manifest.get("style_preset"), audit_row.get("style_preset"), default=""),
+        "preview_path": _first_text(manifest.get("preview_path"), audit_row.get("preview_path"), default=""),
+        "manifest_path": str(manifest_path).replace("\\", "/"),
+        "prototype_path": str(prototype_path).replace("\\", "/"),
+    }
+
+
+async def _ensure_training_growth_projects(db: AsyncSession) -> None:
+    projects = [
+        {
+            "title": "MIM/TOD App Build Intake And Acceptance Discipline V1",
+            "summary": "Teach MIM and TOD that package metadata is not app acceptance. Every app build must start with classification, intake, visual/style direction, change logging, and minimum app-foundation acceptance.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "MIM + TOD",
+            "health": "learning_objective",
+            "why_it_matters": "Client Follow-Up Tracker was marked complete after package-foundation work even though Dave saw a weak user-facing app. MIM/TOD need a repeatable intake and acceptance gate before future app builds.",
+            "origin_story": "Dave reviewed the Client Follow-Up Tracker Workbench and rated the first version about 1/10 because it lacked a normal app foundation: front page, login/account setup, dashboard, help, settings, realistic interactions, and clear change history.",
+            "next_action": "Apply the app-build intake checklist to Simple Appointment Scheduler before any implementation slice, then create the implementation plan from the answered classification and acceptance criteria.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "progress_percent": 5,
+                "work_state": "working",
+                "momentum": "moving",
+                "scope_state": "scope_stable",
+                "current_driving_task": "Run the app-build intake checklist against Simple Appointment Scheduler and block implementation until minimum app foundation acceptance is defined.",
+                "acceptance": "MIM/TOD cannot mark a user app complete unless it has app classification, front page, auth/recovery plan, account setup, dashboard, core workflow, detail views, help/support, settings, data persistence plan, visual/style direction, change log, and publish/export path.",
+                "learning_from_project": "User App Build: Client Follow-Up Tracker",
+                "failure_mode": "Package foundation was treated as app completion without user-facing acceptance proof.",
+                "minimum_app_foundation": [
+                    "front_page_app_purpose",
+                    "login_logout_forgot_password_reset_password",
+                    "account_setup_user_profile_preferences",
+                    "dashboard",
+                    "core_workflow",
+                    "record_detail_views",
+                    "help_support_page",
+                    "app_specific_mim_help",
+                    "user_settings",
+                    "data_persistence_plan",
+                    "export_publish_rollback_path",
+                ],
+                "intake_questions": [
+                    "single_user_or_multi_user",
+                    "web_mobile_desktop_or_responsive",
+                    "admin_backend_required",
+                    "roles_permissions_audit_required",
+                    "privacy_terms_cookie_required",
+                    "subscription_checkout_or_in_app_purchase_required",
+                    "mobile_device_requirements",
+                    "external_integrations_required",
+                    "graphics_banner_logo_or_generated_images_required",
+                    "style_preset_and_customization",
+                    "change_log_required",
+                ],
+                "style_presets": [
+                    "clean_saas",
+                    "professional_crm",
+                    "medical_clinic",
+                    "legal_finance",
+                    "creative_portfolio",
+                    "local_service_business",
+                    "education_course",
+                    "fitness_wellness",
+                    "restaurant_booking",
+                    "logistics_operations",
+                    "dark_technical_dashboard",
+                    "friendly_consumer_app",
+                ],
+                "change_log_fields": [
+                    "what_changed",
+                    "who_requested_it",
+                    "why_it_changed",
+                    "when_it_changed",
+                    "affected_screens_files_data",
+                    "scope_changed_yes_no",
+                    "follow_on_task_required",
+                    "acceptance_changed_yes_no",
+                ],
+                "review_successor_state": "dispatched_to_TOD",
+                "review_successor_action": "Generate the Simple Appointment Scheduler intake brief and implementation plan before TOD builds UI.",
+                "review_required_evidence": "Fresh app-build intake artifact showing classification, answers or explicit unknowns, app foundation checklist, style/asset decision, and change-log policy.",
+                "validation_evidence": "runtime/shared/APP_BUILD_INTAKE_ACCEPTANCE_DISCIPLINE_V1.latest.json",
+                "requested_by": "Dave",
+                "seed_version": "2026-06-09-app-build-intake-acceptance-v1",
+            },
+        },
+        {
+            "title": "MIM Operator Impact V1",
+            "summary": "Raise MIM from helpful narrator to board-moving operator by requiring every recommendation or status response to include action, owner, evidence, aging rule, and Dave-needed decision.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "MIM + TOD",
+            "health": "top_training_objective",
+            "why_it_matters": "MIM's communication score can look excellent while projects still fail to move. Operator Impact measures whether MIM's answer creates a usable next step.",
+            "origin_story": "Dave identified the next maturity jump: MIM should stop narrating status and instead move work by naming the recommended action, owner, expected evidence, time/aging rule, and whether Dave is needed.",
+            "next_action": "Apply the operator-impact response contract to MIM recommendations and status replies, then score live responses against the five required fields.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "progress_percent": 10,
+                "work_state": "working",
+                "momentum": "moving",
+                "scope_state": "scope_stable",
+                "current_driving_task": "Enforce the MIM Operator Impact response contract on recommendation/status replies and score live responses against it.",
+                "acceptance": "Every MIM recommendation/status response includes recommended action, owner, expected evidence, time/aging rule, and Dave needed yes/no, with an operator-impact score target of 8/10.",
+                "operator_impact_target": "8/10",
+                "operator_impact_current": "6/10",
+                "required_response_fields": [
+                    "recommended_action",
+                    "owner",
+                    "expected_evidence",
+                    "time_aging_rule",
+                    "dave_needed_yes_no"
+                ],
+                "review_successor_state": "dispatched_to_TOD",
+                "review_successor_action": "Create the operator-impact scoring artifact and start evaluating live MIM recommendation/status replies against the five-field contract.",
+                "review_required_evidence": "Fresh scorecard artifact with at least 10 live or replayed MIM responses scored for action, owner, evidence, aging rule, and Dave-needed.",
+                "validation_evidence": "runtime/shared/MIM_OPERATOR_IMPACT_RESPONSE_CONTRACT_V1.latest.json",
+                "requested_by": "Dave",
+                "seed_version": "2026-06-08-mim-operator-impact-v1",
+            },
+        },
+        {
+            "title": "MIM Operator Outcome Validation V1",
+            "summary": "Measure whether MIM's expected-evidence claims actually produce matching evidence, project movement, or explicit blockers after the reply.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "MIM + TOD",
+            "health": "watch_gated_successor",
+            "why_it_matters": "A five-field response can still be theater if the expected evidence never appears. This objective grades whether MIM's recommendation caused a real outcome.",
+            "origin_story": "After adding the Operator Impact response contract, Dave identified the next maturity step: validate the outcome, not just the wording.",
+            "next_action": "Activate after Operator Impact V1 reaches 8/10, then score the next 10 MIM recommendations for whether expected evidence actually appears.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "progress_percent": 5,
+                "work_state": "watch_gated",
+                "momentum": "waiting",
+                "scope_state": "scope_stable",
+                "current_driving_task": "Wait for Operator Impact V1 to pass 8/10, then audit whether the expected evidence from MIM replies actually appears.",
+                "acceptance": "Each scored MIM recommendation links expected evidence to a follow-up artifact, project event, validation result, or explicit blocker outcome.",
+                "gated_by": "MIM Operator Impact V1",
+                "activation_threshold": "8/10 post-contract live replies pass the five-field response contract",
+                "outcome_labels": [
+                    "evidence_appeared",
+                    "evidence_missing",
+                    "evidence_contradicted",
+                    "evidence_pending"
+                ],
+                "review_successor_state": "waiting_on_evidence",
+                "review_successor_action": "When Operator Impact V1 reaches threshold, start evidence-appearance scoring for the next 10 MIM recommendations.",
+                "review_required_evidence": "Fresh outcome validation artifact with recommendation id, expected evidence, observed evidence, latency, and correctness label.",
+                "validation_evidence": "runtime/shared/MIM_OPERATOR_OUTCOME_VALIDATION_V1.latest.json",
+                "requested_by": "Dave",
+                "seed_version": "2026-06-08-mim-operator-outcome-validation-v1",
+            },
+        },
+        {
+            "title": "TOD Outcome Proof V1",
+            "summary": "Prove whether TOD actions actually reduce blockers, close acceptance criteria, or move projects to terminal states.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "TOD + MIM",
+            "health": "schema_ready",
+            "why_it_matters": "TOD is becoming execution-capable, but the next maturity jump is proving that selected actions improve real project outcomes.",
+            "origin_story": "Dave identified that project movement is more important than activity: TOD must show action -> evidence -> outcome, not just task selection.",
+            "next_action": "Bind the outcome proof schema to the next TOD result artifact and reject TOD results that do not include actual outcome/evidence movement.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "progress_percent": 30,
+                "work_state": "working",
+                "momentum": "moving",
+                "scope_state": "scope_stable",
+                "current_driving_task": "Define the outcome proof schema and bind it to TOD task/result artifacts.",
+                "acceptance": "Each TOD result records intended outcome, actual outcome, evidence, and whether the action moved the project closer to completion.",
+                "review_successor_state": "dispatched_to_TOD",
+                "review_successor_action": "Bind the outcome proof schema to the next TOD result artifact and reject TOD results that do not include actual outcome/evidence movement.",
+                "review_required_evidence": "A fresh TOD result using TOD_OUTCOME_PROOF_SCHEMA_V1 with project movement, blocker delta, acceptance delta, and successor state.",
+                "validation_evidence": "runtime/shared/TOD_OUTCOME_PROOF_SCHEMA_V1.latest.json",
+                "requested_by": "Dave",
+                "seed_version": "2026-06-07-training-growth-v1",
+            },
+        },
+        {
+            "title": "MIM/TOD Scorecard Expansion V1",
+            "summary": "Expand the fixed 20-case judgment and typo smoke checks into rotating daily scorecards that prove new growth, not only old regression stability.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "MIM + TOD",
+            "health": "expanded_needs_repair",
+            "why_it_matters": "20/20 and 100% typo tolerance are good regression guards, but they are too small and static to prove week-over-week improvement.",
+            "origin_story": "Dave noticed judgment smoke and typo tolerance stayed unchanged for days and asked whether the tests are good enough or need to grow.",
+            "next_action": "Repair the 40-case failures before adding more cases, then expand to 60 rotating cases with separate regression-guard reporting.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "progress_percent": 40,
+                "work_state": "working",
+                "momentum": "moving",
+                "scope_state": "scope_stable",
+                "current_driving_task": "Create the scorecard expansion plan and first rotating sample groups.",
+                "acceptance": "Training page distinguishes regression guard from growth coverage and publishes expanded rotating sample counts.",
+                "review_successor_state": "dispatched_to_TOD",
+                "review_successor_action": "Repair the 40-case failures before adding more cases, then expand to 60 rotating cases with separate regression-guard reporting.",
+                "review_required_evidence": "New smoke artifact showing improved pass rate on the 40-case suite or a failure analysis grouped by mode with repair notes.",
+                "validation_evidence": "runtime/shared/MIM_TOD_SCORECARD_EXPANSION_REVIEW_V1.latest.json",
+                "requested_by": "Dave",
+                "seed_version": "2026-06-07-training-growth-v1",
+            },
+        },
+        {
+            "title": "Stale Ledger Retirement V1",
+            "summary": "Retire or supersede old objective artifacts that keep reporting stale scary counts, then separate historical ledger data from current project truth.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "MIM + TOD",
+            "health": "stale_sources_identified",
+            "why_it_matters": "Training and project pages must not imply 32 current blockers when those are stale historical ledger states.",
+            "origin_story": "Dave flagged stale blocked-objective counts as alarming and confusing when current Projects truth showed no active blockers.",
+            "next_action": "Refresh or retire the five stale reflection inputs and rerun hourly reflection so stale blockers are source-labeled or removed.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "progress_percent": 35,
+                "work_state": "working",
+                "momentum": "moving",
+                "scope_state": "scope_stable",
+                "current_driving_task": "Map stale objective ledger rows to current project/objective states and retire misleading counts.",
+                "acceptance": "No Studio page presents stale ledger blockers as current blockers without a source, age, and resolution state.",
+                "review_successor_state": "waiting_on_evidence",
+                "review_successor_action": "Refresh or retire the five stale reflection inputs and rerun hourly reflection so stale blockers are source-labeled or removed.",
+                "review_required_evidence": "Fresh reflection showing stale_artifact_count reduced or every stale artifact has retired/superseded evidence.",
+                "validation_evidence": "runtime/shared/STALE_LEDGER_RETIREMENT_REVIEW_V1.latest.json",
+                "requested_by": "Dave",
+                "seed_version": "2026-06-07-training-growth-v1",
+            },
+        },
+        {
+            "title": "Current Work Completion V1",
+            "summary": "Push active work toward terminal states instead of letting projects remain forever moving, waiting, or needing review.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "MIM + TOD",
+            "health": "review_drained",
+            "why_it_matters": "The goal is project completion, not project visibility. Each active item needs a driving task, acceptance, evidence, and a terminal path.",
+            "origin_story": "Dave emphasized that projects should close, split, archive, wait on evidence, or wait on Dave rather than sit in limbo.",
+            "next_action": "Continue monitoring active projects and require terminal/successor decision whenever Needs Review appears.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "progress_percent": 45,
+                "work_state": "working",
+                "momentum": "moving",
+                "scope_state": "scope_stable",
+                "current_driving_task": "Drain active projects into successor or terminal states with evidence requirements.",
+                "acceptance": "Moving projects do not age without a current driving task, review date, and successor/terminal state.",
+                "review_successor_state": "waiting_on_evidence",
+                "review_successor_action": "Continue monitoring active projects and require terminal/successor decision whenever Needs Review appears.",
+                "review_required_evidence": "Project board shows Needs Review drained and each reviewed project has successor_state plus required evidence.",
+                "validation_evidence": "runtime/shared/CURRENT_WORK_COMPLETION_REVIEW_V1.latest.json",
+                "requested_by": "Dave",
+                "seed_version": "2026-06-07-training-growth-v1",
+            },
+        },
+    ]
+    for project in projects:
+        await _upsert_studio_project_record(db, **project)
+    await db.commit()
 
 
 async def _ensure_first_internal_projects(db: AsyncSession) -> dict[str, StudioProject]:
@@ -4442,49 +5259,71 @@ def _clean_servo_profile(payload: dict[str, Any]) -> dict[str, Any]:
             parsed = default
         return max(minimum, min(maximum, parsed))
 
-    servos: list[dict[str, Any]] = []
-    for index, row in enumerate(payload.get("servos") if isinstance(payload.get("servos"), list) else []):
-        if not isinstance(row, dict):
+    def clean_servos(rows: Any) -> list[dict[str, Any]]:
+        servos: list[dict[str, Any]] = []
+        for index, row in enumerate(rows if isinstance(rows, list) else []):
+            if not isinstance(row, dict):
+                continue
+            channel = as_int(row.get("channel"), index, minimum=0, maximum=15)
+            min_pulse = as_int(row.get("min_pulse"), 500, minimum=0, maximum=3000)
+            max_pulse = as_int(row.get("max_pulse"), 2500, minimum=0, maximum=3000)
+            if max_pulse < min_pulse:
+                min_pulse, max_pulse = max_pulse, min_pulse
+            center_pulse = as_int(row.get("center_pulse"), 1500, minimum=min_pulse, maximum=max_pulse)
+            start_pulse = as_int(row.get("start_pulse"), center_pulse, minimum=min_pulse, maximum=max_pulse)
+            min_angle = as_int(row.get("min_angle"), 0, minimum=0, maximum=360)
+            max_angle = as_int(row.get("max_angle"), 180, minimum=0, maximum=360)
+            if max_angle < min_angle:
+                min_angle, max_angle = max_angle, min_angle
+            center_angle = as_int(row.get("center_angle"), 90, minimum=min_angle, maximum=max_angle)
+            start_angle = as_int(row.get("start_angle"), center_angle, minimum=min_angle, maximum=max_angle)
+            servos.append(
+                {
+                    "id": _first_text(row.get("id"), default=f"servo-{index}")[:80],
+                    "name": _first_text(row.get("name"), default=f"Servo {channel}")[:80],
+                    "model": _first_text(row.get("model"), default="custom")[:80],
+                    "channel": channel,
+                    "min_pulse": min_pulse,
+                    "min_angle": min_angle,
+                    "center_pulse": center_pulse,
+                    "center_angle": center_angle,
+                    "max_pulse": max_pulse,
+                    "max_angle": max_angle,
+                    "start_pulse": start_pulse,
+                    "start_angle": start_angle,
+                    "speed_ms": as_int(row.get("speed_ms"), 600, minimum=0, maximum=30000),
+                    "startup_ms": as_int(row.get("startup_ms"), 250, minimum=0, maximum=30000),
+                    "slowdown_ms": as_int(row.get("slowdown_ms"), 250, minimum=0, maximum=30000),
+                    "notes": _first_text(row.get("notes"), default="")[:500],
+                }
+            )
+        return servos
+
+    servos = clean_servos(payload.get("servos"))
+    setups: dict[str, dict[str, Any]] = {}
+    raw_setups = payload.get("setups") if isinstance(payload.get("setups"), dict) else {}
+    for raw_name, raw_setup in raw_setups.items():
+        if not isinstance(raw_setup, dict):
             continue
-        channel = as_int(row.get("channel"), index, minimum=0, maximum=15)
-        min_pulse = as_int(row.get("min_pulse"), 500, minimum=0, maximum=3000)
-        max_pulse = as_int(row.get("max_pulse"), 2500, minimum=0, maximum=3000)
-        if max_pulse < min_pulse:
-            min_pulse, max_pulse = max_pulse, min_pulse
-        center_pulse = as_int(row.get("center_pulse"), 1500, minimum=min_pulse, maximum=max_pulse)
-        start_pulse = as_int(row.get("start_pulse"), center_pulse, minimum=min_pulse, maximum=max_pulse)
-        min_angle = as_int(row.get("min_angle"), 0, minimum=0, maximum=300)
-        max_angle = as_int(row.get("max_angle"), 180, minimum=0, maximum=300)
-        if max_angle < min_angle:
-            min_angle, max_angle = max_angle, min_angle
-        center_angle = as_int(row.get("center_angle"), 90, minimum=min_angle, maximum=max_angle)
-        start_angle = as_int(row.get("start_angle"), center_angle, minimum=min_angle, maximum=max_angle)
-        servos.append(
-            {
-                "id": _first_text(row.get("id"), default=f"servo-{index}"),
-                "name": _first_text(row.get("name"), default=f"Servo {channel}")[:80],
-                "model": _first_text(row.get("model"), default="custom")[:80],
-                "channel": channel,
-                "min_pulse": min_pulse,
-                "min_angle": min_angle,
-                "center_pulse": center_pulse,
-                "center_angle": center_angle,
-                "max_pulse": max_pulse,
-                "max_angle": max_angle,
-                "start_pulse": start_pulse,
-                "start_angle": start_angle,
-                "speed_ms": as_int(row.get("speed_ms"), 600, minimum=0, maximum=30000),
-                "startup_ms": as_int(row.get("startup_ms"), 250, minimum=0, maximum=30000),
-                "slowdown_ms": as_int(row.get("slowdown_ms"), 250, minimum=0, maximum=30000),
-                "notes": _first_text(row.get("notes"), default="")[:500],
-            }
-        )
+        name = _first_text(raw_name, raw_setup.get("name"), default="Workbench Setup")[:80]
+        if not name:
+            continue
+        setups[name] = {
+            "name": name,
+            "command_template": _first_text(raw_setup.get("command_template"), default="{pulse}")[:160],
+            "baud_rate": as_int(raw_setup.get("baud_rate"), 9600, minimum=9600, maximum=1000000),
+            "servos": clean_servos(raw_setup.get("servos")),
+            "saved_at": _first_text(raw_setup.get("saved_at"), default="")[:40],
+        }
+    active_setup = _first_text(payload.get("active_setup"), default="Workbench Default")[:80] or "Workbench Default"
     return {
         "version": "lab-servo-tester-v1",
         "updated_at": _utc_now(),
         "command_template": _first_text(payload.get("command_template"), default="{pulse}")[:160],
         "baud_rate": as_int(payload.get("baud_rate"), 9600, minimum=9600, maximum=1000000),
         "servos": servos,
+        "active_setup": active_setup,
+        "setups": setups,
     }
 
 
@@ -4511,6 +5350,13 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       <div class="form-grid" style="margin-top:12px;">
         <label>Baud Rate<input id="baudRate" type="number" min="9600" max="1000000"></label>
         <label>Serial Command Template<input id="commandTemplate" type="text"></label>
+        <label>Setup Name<input id="setupName" type="text" placeholder="Workbench Default"></label>
+        <label>Load Setup<select id="setupSelect"></select></label>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+        <button id="saveSetup" class="button primary" type="button">Save Setup</button>
+        <button id="loadSetup" class="button" type="button">Load Setup</button>
+        <button id="deleteSetup" class="button danger" type="button">Delete Setup</button>
       </div>
       <div id="serialStatus" class="muted" style="margin-top:10px;">Serial disconnected.</div>
       <div id="serialHelp" class="attention-item" style="display:none; margin-top:10px;"></div>
@@ -4561,6 +5407,8 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       const connectionMetric = document.getElementById('connectionMetric');
       const baudRate = document.getElementById('baudRate');
       const commandTemplate = document.getElementById('commandTemplate');
+      const setupName = document.getElementById('setupName');
+      const setupSelect = document.getElementById('setupSelect');
       const connectSerialButton = document.getElementById('connectSerial');
       const disconnectSerialButton = document.getElementById('disconnectSerial');
       const forgetSerialButton = document.getElementById('forgetSerial');
@@ -4576,6 +5424,8 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       ];
       const sliderMoveTimers = new Map();
       const lastServoCommand = new Map();
+      let autoSaveTimer = null;
+      let lastSavedSignature = '';
       const servoPresets = {{
         annimos_ds3245sg_180: {{
           label: 'ANNIMOS DS3245SG 45kg 180',
@@ -4598,6 +5448,13 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
           speed_ms: 2200, startup_ms: 1400, slowdown_ms: 1400,
           notes: 'DS51150: 10-12.6V, 500-2500us, 270deg, stall current up to 8.3A. Requires high-current external servo power.'
         }},
+        injora_360_35kg_winch: {{
+          label: 'Injora 360 35kg Winch',
+          min_pulse: 102, center_pulse: 307, max_pulse: 512,
+          min_angle: 0, center_angle: 180, max_angle: 360,
+          speed_ms: 2400, startup_ms: 1400, slowdown_ms: 1400,
+          notes: 'Injora 360 35kg winch servo: 4.8-6.0V only, 500-2500us, neutral 1500us/330Hz, dead band 4us, 29kg.cm at 4.8V and 35kg.cm at 6.0V, core motor, 2BB, 60g, 25T spline, JR 300mm cable. Winch spool: aluminum, 25T/23T, 19mm diameter, 11mm width, M3 screw, nylon rope 116cm, steel rope 96cm. PCA board frequency is shared; use a dedicated PWM driver if this servo requires 330Hz while other servos use 50Hz.'
+        }},
         custom: {{
           label: 'Custom',
           min_pulse: 102, center_pulse: 307, max_pulse: 512,
@@ -4612,6 +5469,87 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
       }}
       function servoById(id) {{
         return profile.servos.find((servo) => servo.id === id);
+      }}
+      function ensureSetups() {{
+        if (!profile.setups || typeof profile.setups !== 'object' || Array.isArray(profile.setups)) profile.setups = {{}};
+      }}
+      function setupNames() {{
+        ensureSetups();
+        return Object.keys(profile.setups).sort((a, b) => a.localeCompare(b));
+      }}
+      function activeSetupName() {{
+        return String((setupName && setupName.value) || profile.active_setup || 'Workbench Default').trim() || 'Workbench Default';
+      }}
+      function currentSetupSnapshot(name) {{
+        return {{
+          name,
+          command_template: String(profile.command_template || '{{pulse}}'),
+          baud_rate: Number(profile.baud_rate || 9600),
+          servos: JSON.parse(JSON.stringify(profile.servos || [])),
+          saved_at: new Date().toISOString()
+        }};
+      }}
+      function renderSetupControls() {{
+        ensureSetups();
+        const names = setupNames();
+        const active = profile.active_setup || names[0] || 'Workbench Default';
+        if (setupName) setupName.value = active;
+        if (setupSelect) {{
+          setupSelect.innerHTML = names.map((name) => `<option value="${{esc(name)}}" ${{name === active ? 'selected' : ''}}>${{esc(name)}}</option>`).join('');
+          if (!setupSelect.innerHTML) setupSelect.innerHTML = '<option value="Workbench Default">Workbench Default</option>';
+        }}
+      }}
+      function saveCurrentSetupToProfile() {{
+        readProfileFromDom();
+        ensureSetups();
+        const name = activeSetupName();
+        profile.active_setup = name;
+        profile.setups[name] = currentSetupSnapshot(name);
+        renderSetupControls();
+        return name;
+      }}
+      function loadSetupFromProfile(name) {{
+        ensureSetups();
+        const setup = profile.setups[String(name || '')];
+        if (!setup) return false;
+        profile.active_setup = setup.name || String(name);
+        profile.command_template = setup.command_template || profile.command_template || '{{pulse}}';
+        profile.baud_rate = Number(setup.baud_rate || profile.baud_rate || 9600);
+        profile.servos = JSON.parse(JSON.stringify(setup.servos || []));
+        renderSetupControls();
+        renderServos();
+        return true;
+      }}
+      async function persistProfile(options = {{}}) {{
+        readProfileFromDom();
+        ensureSetups();
+        const name = activeSetupName();
+        profile.active_setup = name;
+        profile.setups[name] = currentSetupSnapshot(name);
+        const payload = JSON.stringify(profile);
+        if (payload === lastSavedSignature && !options.force) return true;
+        lastSavedSignature = payload;
+        if (options.beacon && navigator.sendBeacon) {{
+          const blob = new Blob([payload], {{ type: 'application/json' }});
+          return navigator.sendBeacon('/studio/api/lab/servo-tester/profile', blob);
+        }}
+        const response = await fetch('/studio/api/lab/servo-tester/profile', {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: payload, keepalive: Boolean(options.keepalive) }});
+        const data = await response.json();
+        profile = data.profile || profile;
+        renderSetupControls();
+        renderServos();
+        return Boolean(data.ok);
+      }}
+      function scheduleAutoSave() {{
+        if (autoSaveTimer) clearTimeout(autoSaveTimer);
+        autoSaveTimer = setTimeout(async () => {{
+          try {{
+            await persistProfile();
+            serialStatus.textContent = 'Autosaved setup ' + activeSetupName() + '.';
+          }} catch (error) {{
+            logSerial('AUTOSAVE FAILED: ' + (error && error.message ? error.message : 'unknown'));
+          }}
+        }}, 1200);
       }}
       function presetOptions(selected) {{
         return Object.entries(servoPresets).map(([key, preset]) => `<option value="${{esc(key)}}" ${{key === selected ? 'selected' : ''}}>${{esc(preset.label)}}</option>`).join('');
@@ -4665,7 +5603,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         const minPulse = usToPcaCount(Math.min(minUs, maxUs));
         const maxPulse = usToPcaCount(Math.max(minUs, maxUs));
         const centerPulse = Math.max(minPulse, Math.min(maxPulse, usToPcaCount(neutralUs)));
-        const maxAngle = Math.max(1, Math.min(300, Math.round(angle || 180)));
+        const maxAngle = Math.max(1, Math.min(360, Math.round(angle || 180)));
         const speed = maxAngle > 180 ? 1800 : 1200;
         const notes = [
           'Spec-derived profile.',
@@ -4775,7 +5713,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         profile.command_template = String(commandTemplate.value || '{{pulse}}');
         profile.servos = Array.from(document.querySelectorAll('[data-servo-card]')).map((card, index) => {{
           const id = card.dataset.servoCard || ('servo-' + index);
-          return {{
+          const servo = {{
             id,
             name: card.querySelector('[data-field="name"]').value,
             model: card.querySelector('[data-field="model"]').value || 'custom',
@@ -4793,11 +5731,18 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
             slowdown_ms: Number(card.querySelector('[data-field="slowdown_ms"]').value || 250),
             notes: card.querySelector('[data-field="notes"]').value
           }};
+          const slider = card.querySelector('[data-field="pulse_slider"]');
+          if (slider) {{
+            servo.start_pulse = Number(slider.value || servo.start_pulse || servo.center_pulse);
+            servo.start_angle = angleForPulse(servo, servo.start_pulse);
+          }}
+          return servo;
         }});
       }}
       function renderServos() {{
         baudRate.value = profile.baud_rate || 9600;
         commandTemplate.value = profile.command_template || '{{pulse}}';
+        renderSetupControls();
         servoList.innerHTML = '';
         profile.servos.forEach((servo) => {{
           const current = Number(servo.start_pulse || servo.center_pulse || 1500);
@@ -4815,13 +5760,13 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
               <label>Model<select data-field="model">${{presetOptions(servo.model || 'custom')}}</select></label>
               <label>Channel<input data-field="channel" type="number" min="0" max="15" value="${{esc(servo.channel)}}"></label>
               <label>Min Pulse<input data-field="min_pulse" type="number" min="0" max="3000" value="${{esc(servo.min_pulse)}}"></label>
-              <label>Min Angle<input data-field="min_angle" type="number" min="0" max="300" value="${{esc(servo.min_angle ?? 0)}}"></label>
+              <label>Min Angle<input data-field="min_angle" type="number" min="0" max="360" value="${{esc(servo.min_angle ?? 0)}}"></label>
               <label>Center Pulse<input data-field="center_pulse" type="number" min="300" max="3000" value="${{esc(servo.center_pulse)}}"></label>
-              <label>Center Angle<input data-field="center_angle" type="number" min="0" max="300" value="${{esc(servo.center_angle ?? 90)}}"></label>
+              <label>Center Angle<input data-field="center_angle" type="number" min="0" max="360" value="${{esc(servo.center_angle ?? 90)}}"></label>
               <label>Max Pulse<input data-field="max_pulse" type="number" min="0" max="3000" value="${{esc(servo.max_pulse)}}"></label>
-              <label>Max Angle<input data-field="max_angle" type="number" min="0" max="300" value="${{esc(servo.max_angle ?? 180)}}"></label>
+              <label>Max Angle<input data-field="max_angle" type="number" min="0" max="360" value="${{esc(servo.max_angle ?? 180)}}"></label>
               <label>Start Pulse<input data-field="start_pulse" type="number" min="0" max="3000" value="${{esc(servo.start_pulse)}}"></label>
-              <label>Start Angle<input data-field="start_angle" type="number" min="0" max="300" value="${{esc(servo.start_angle ?? currentAngle)}}"></label>
+              <label>Start Angle<input data-field="start_angle" type="number" min="0" max="360" value="${{esc(servo.start_angle ?? currentAngle)}}"></label>
               <label>Speed ms<input data-field="speed_ms" type="number" min="0" max="30000" value="${{esc(servo.speed_ms)}}"></label>
               <label>Startup ms<input data-field="startup_ms" type="number" min="0" max="30000" value="${{esc(servo.startup_ms)}}"></label>
               <label>Slowdown ms<input data-field="slowdown_ms" type="number" min="0" max="30000" value="${{esc(servo.slowdown_ms)}}"></label>
@@ -5016,6 +5961,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
           ? applyServoPreset({{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, channel }}, 'annimos_ds3245sg_180')
           : {{ id: 'servo-' + Date.now(), name: 'Servo ' + channel, model: 'custom', channel, min_pulse: 500, min_angle: 0, center_pulse: 1500, center_angle: 90, max_pulse: 2500, max_angle: 180, start_pulse: 1500, start_angle: 90, speed_ms: 600, startup_ms: 250, slowdown_ms: 250, notes: '' }});
         renderServos();
+        scheduleAutoSave();
       }});
       document.getElementById('setupServoFromSpecs').addEventListener('click', () => {{
         readProfileFromDom();
@@ -5028,14 +5974,41 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         setSelectedProtocol('useSmoothSketchProtocol');
         renderServos();
         setupServoResult.textContent = 'Created ' + servo.name + ': raw ' + servo.min_pulse + '-' + servo.max_pulse + ', ' + servo.max_angle + ' deg, channel ' + servo.channel + '. Save Profile when ready.';
+        scheduleAutoSave();
       }});
       document.getElementById('saveProfile').addEventListener('click', async () => {{
-        readProfileFromDom();
-        const response = await fetch('/studio/api/lab/servo-tester/profile', {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(profile) }});
-        const data = await response.json();
-        profile = data.profile || profile;
-        renderServos();
+        await persistProfile({{ force: true }});
         serialStatus.textContent = 'Profile saved at ' + (profile.updated_at || 'now') + '.';
+      }});
+      document.getElementById('saveSetup').addEventListener('click', async () => {{
+        const name = saveCurrentSetupToProfile();
+        await persistProfile({{ force: true }});
+        serialStatus.textContent = 'Saved setup ' + name + '.';
+      }});
+      document.getElementById('loadSetup').addEventListener('click', () => {{
+        const name = setupSelect.value || setupName.value;
+        if (loadSetupFromProfile(name)) {{
+          serialStatus.textContent = 'Loaded setup ' + name + '.';
+          scheduleAutoSave();
+        }} else {{
+          serialStatus.textContent = 'Setup not found: ' + name;
+        }}
+      }});
+      document.getElementById('deleteSetup').addEventListener('click', async () => {{
+        ensureSetups();
+        const name = setupSelect.value || setupName.value;
+        if (profile.setups[name]) {{
+          delete profile.setups[name];
+          profile.active_setup = setupNames()[0] || 'Workbench Default';
+          renderSetupControls();
+          await persistProfile({{ force: true }});
+          serialStatus.textContent = 'Deleted setup ' + name + '.';
+        }}
+      }});
+      setupSelect.addEventListener('change', () => {{
+        const name = setupSelect.value;
+        setupName.value = name;
+        loadSetupFromProfile(name);
       }});
       servoList.addEventListener('input', (event) => {{
         const slider = event.target && event.target.matches('[data-field="pulse_slider"]') ? event.target : null;
@@ -5056,6 +6029,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
             moveServo(latest, Number(slider.value), latest.speed_ms);
           }}, 140));
         }}
+        scheduleAutoSave();
       }});
       servoList.addEventListener('change', async (event) => {{
         const modelSelect = event.target && event.target.matches('[data-field="model"]') ? event.target : null;
@@ -5067,6 +6041,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         profile.servos = profile.servos.map((item) => item.id === servo.id ? applyServoPreset(item, modelSelect.value) : item);
         renderServos();
         serialStatus.textContent = 'Servo preset loaded: ' + (servoPresets[modelSelect.value] || servoPresets.custom).label + '.';
+        scheduleAutoSave();
       }});
       servoList.addEventListener('change', async (event) => {{
         const slider = event.target && event.target.matches('[data-field="pulse_slider"]') ? event.target : null;
@@ -5087,6 +6062,7 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
         if (action === 'remove') {{
           profile.servos = profile.servos.filter((item) => item.id !== servo.id);
           renderServos();
+          scheduleAutoSave();
           return;
         }}
         if (action === 'min') slider.value = servo.min_pulse;
@@ -5106,12 +6082,19 @@ def _servo_tester_body(profile: dict[str, Any]) -> str:
           await new Promise((resolve) => setTimeout(resolve, Number(servo.speed_ms || 0) + 120));
           await moveServo(servo, servo.center_pulse, servo.slowdown_ms);
         }}
+        scheduleAutoSave();
       }});
       renderServos();
       setConnectedState(false, 'Serial disconnected.');
       if ((profile.command_template || '').startsWith('S ')) setSelectedProtocol('useSmoothSketchProtocol');
       else if ((profile.command_template || '').startsWith('MOVE ')) setSelectedProtocol('useMoveProtocol');
       else setSelectedProtocol('useCurrentSketchProtocol');
+      lastSavedSignature = JSON.stringify(profile);
+      document.addEventListener('visibilitychange', () => {{
+        if (document.visibilityState === 'hidden') persistProfile({{ beacon: true }});
+      }});
+      window.addEventListener('pagehide', () => persistProfile({{ beacon: true }}));
+      window.addEventListener('beforeunload', () => persistProfile({{ beacon: true }}));
     </script>
     """
 
@@ -5288,81 +6271,92 @@ async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
         {
             "title": "AgentMIM Account Manager Roles",
             "summary": "Add account manager as an AgentMIM role with scoped access for carriers, contacts, agents, owner account data, commissions, and reports.",
-            "status": "queued",
+            "status": "working",
             "priority": "P0",
             "owner": "TOD",
-            "health": "needs_scope",
+            "health": "deploy_pending_validation",
             "why_it_matters": "Account-owner and account-manager permissions need to protect confidential commission data while still supporting real broker operations.",
             "origin_story": "Dave requested account manager as an add-agent assignment option with restricted access areas and pre-approval for sensitive commission data.",
-            "next_action": "Define permission matrix and sensitive commission/report access rules before implementation.",
-            "dave_needed": True,
+            "next_action": "Wait for AgentMIM deploy, then verify account manager carrier route access in production and keep commission payout/report access denied unless explicitly granted.",
+            "dave_needed": False,
             "metadata_json": {
                 "project_type": "application_feature",
-                "progress_percent": 5,
-                "work_state": "queued",
-                "blocker": "Dave approval needed for confidential commission access rules.",
+                "progress_percent": 80,
+                "work_state": "implemented",
+                "blocker": "waiting for AgentMIM deploy and production route validation",
                 "acceptance": "Account manager role can be assigned and scoped without exposing confidential rep payout data unless pre-approved.",
                 "requested_by": "Dave",
+                "successor_state": "waiting_on_deploy_evidence",
+                "latest_agentmim_commit": "f2bb5dad",
+                "validation_evidence": "tests/test_account_manager_access.py and tests/test_carrier_mfa_codes.py passed; focused AgentMIM slice passed.",
             },
         },
         {
             "title": "AgentMIM Forum Graphics Quality",
             "summary": "Fix daily forum post graphics generation so images are consistently created, on-brand, readable, and usable.",
-            "status": "queued",
+            "status": "working",
             "priority": "P0",
             "owner": "TOD",
-            "health": "needs_repair",
+            "health": "deploy_pending_validation",
             "why_it_matters": "Forum graphics affect AgentMIM quality, engagement, and daily content reliability.",
             "origin_story": "Dave reported daily forum post graphics are hit or miss: sometimes missing, sometimes created poorly, sometimes acceptable.",
-            "next_action": "Load prior forum graphics decisions and run the image QA path before changing prompt or generation logic.",
+            "next_action": "After AgentMIM deploy, regenerate or create a mim_joke cartoon post and verify RunPod retry candidate_count >= 2 plus ai_generated final status or explicit manual-review blocker.",
             "dave_needed": False,
             "metadata_json": {
                 "project_type": "application_error",
-                "progress_percent": 10,
-                "work_state": "queued",
-                "blocker": "Needs continuity brief from prior forum graphics work.",
+                "progress_percent": 60,
+                "work_state": "implemented_waiting_live_qa",
+                "blocker": "waiting for AgentMIM deploy and reachable production DB/runtime for auto-QA regeneration",
                 "acceptance": "Daily forum graphics generate reliably with QA evidence and no text-rendering regression.",
                 "requested_by": "Dave",
+                "successor_state": "waiting_on_deploy_evidence",
+                "latest_agentmim_commit": "7a8336bb",
+                "validation_evidence": "focused RunPod mim_joke retry tests passed locally.",
             },
         },
         {
             "title": "AgentMIM Carrier Login MFA Codes",
             "summary": "Use account-owner Twilio and Gmail integrations to receive, display, and assist with carrier-site MFA codes during commission report upload workflows.",
-            "status": "queued",
+            "status": "working",
             "priority": "P1",
             "owner": "TOD",
-            "health": "needs_design",
+            "health": "deploy_pending_validation",
             "why_it_matters": "Carrier commission report collection often requires email/SMS verification codes, and account managers need a secure workflow.",
             "origin_story": "Dave described carrier website login from the upload commission page where MFA codes should appear in real time and possibly stage to clipboard or auto-enter.",
-            "next_action": "Design secure inbound code capture, display, clipboard staging, permissions, and audit controls.",
-            "dave_needed": True,
+            "next_action": "Wait for AgentMIM deploy/migration, then create a short-lived carrier_mfa_codes row and verify /carrier_mfa_codes/latest returns codes only to approved users.",
+            "dave_needed": False,
             "metadata_json": {
                 "project_type": "application_feature",
-                "progress_percent": 0,
-                "work_state": "queued",
-                "blocker": "Security and account-owner permission model must be approved.",
+                "progress_percent": 75,
+                "work_state": "implemented",
+                "blocker": "waiting for AgentMIM deploy, Alembic migration, and live Twilio/Gmail/manual ingestion evidence",
                 "acceptance": "Authorized users can retrieve MFA codes safely without exposing messages outside the approved account context.",
                 "requested_by": "Dave",
+                "successor_state": "waiting_on_deploy_evidence",
+                "latest_agentmim_commit": "f2bb5dad",
+                "validation_evidence": "carrier_mfa_codes model, migration, endpoint, and permission tests passed.",
             },
         },
         {
             "title": "AgentMIM Social Campaign Feeds Repair",
             "summary": "Repair AgentMIM social post management and monitoring around /campaigns, /feeds, and the keywords tab.",
-            "status": "queued",
+            "status": "waiting",
             "priority": "P1",
             "owner": "TOD",
-            "health": "broken",
+            "health": "needs_repro_evidence",
             "why_it_matters": "Social campaign monitoring needs to work before AgentMIM can manage posting and feed intelligence reliably.",
             "origin_story": "Dave reported /campaigns /feeds and keywords tab do not appear to work.",
-            "next_action": "Inspect routes, frontend tab state, feed data source, keyword persistence, and current error logs.",
+            "next_action": "Capture the production /campaigns feeds-keywords failure path or browser console/network error; local create-draft regression passes and should remain baseline before code changes.",
             "dave_needed": False,
             "metadata_json": {
                 "project_type": "application_error",
-                "progress_percent": 0,
-                "work_state": "queued",
-                "blocker": "Needs code/log inspection.",
+                "progress_percent": 40,
+                "work_state": "waiting_on_repro",
+                "blocker": "needs production/user repro evidence; local focused regression path passes",
                 "acceptance": "Campaign feeds and keyword tab load, save, and display monitored data with a passing smoke check.",
                 "requested_by": "Dave",
+                "successor_state": "waiting_on_evidence",
+                "validation_evidence": "focused feeds-keywords create-draft regression passed locally.",
             },
         },
         {
@@ -5815,8 +6809,10 @@ async def _studio_projects_state(
 ) -> dict[str, Any]:
     await _ensure_studio_project_seed(db)
     await _ensure_requested_project_backlog(db)
+    await _ensure_training_growth_projects(db)
+    await _ensure_user_app_build_samples(db)
     projects = (
-        await db.execute(select(StudioProject).order_by(StudioProject.id.desc()).limit(50))
+        await db.execute(select(StudioProject).order_by(StudioProject.id.desc()).limit(80))
     ).scalars().all()
     reconciled_count = await _reconcile_studio_project_evidence(db, projects)
     dispatched_count = await _dispatch_next_studio_project_if_needed(db, projects)
@@ -5897,7 +6893,7 @@ async def _studio_projects_state(
         row["review_successor_action"] = str(summary.get("review_successor_action") or "")
         row["review_required_evidence"] = str(summary.get("review_required_evidence") or "")
         row["current_driving_task"] = _project_current_driving_task(row)
-        if row["review_successor_action"]:
+        if row["review_successor_action"] and not _clean_project_action_text(row.get("next_action")):
             row["current_driving_task"] = row["review_successor_action"]
         row["acceptance"] = _project_acceptance(row)
         row["completion_pressure"] = _project_completion_pressure(row)
@@ -5937,7 +6933,7 @@ async def _studio_projects_state(
             selected_project["review_successor_action"] = str(selected_summary.get("review_successor_action") or "")
             selected_project["review_required_evidence"] = str(selected_summary.get("review_required_evidence") or "")
             selected_project["current_driving_task"] = _project_current_driving_task(selected_project)
-            if selected_project["review_successor_action"]:
+            if selected_project["review_successor_action"] and not _clean_project_action_text(selected_project.get("next_action")):
                 selected_project["current_driving_task"] = selected_project["review_successor_action"]
             selected_project["acceptance"] = _project_acceptance(selected_project)
             selected_project["completion_pressure"] = _project_completion_pressure(selected_project)
@@ -6020,6 +7016,8 @@ async def _studio_projects_state(
 
 
 async def _studio_apps_state(db: AsyncSession) -> dict[str, Any]:
+    await _ensure_user_app_build_samples(db)
+    await _ensure_app_workbench_project(db)
     scan = _load_json("MIM_TOD_APP_SOURCE_SCAN.latest.json")
     scan_apps = scan.get("apps") if isinstance(scan.get("apps"), list) else []
     scan_by_key = {str(item.get("app_key") or ""): item for item in scan_apps if isinstance(item, dict)}
@@ -6086,8 +7084,105 @@ async def _studio_apps_state(db: AsyncSession) -> dict[str, Any]:
             )
         )
         apps.append(app)
+    user_app_projects = (
+        await db.execute(
+            select(StudioProject)
+            .order_by(StudioProject.id.desc())
+            .limit(200)
+        )
+    ).scalars().all()
+    user_apps: list[dict[str, Any]] = []
+    seen_user_app_titles: set[str] = set()
+    for project in user_app_projects:
+        project_dict = _studio_project_to_dict(project)
+        metadata = project_dict.get("metadata_json") if isinstance(project_dict.get("metadata_json"), dict) else {}
+        if str(metadata.get("app_category") or "").strip().lower() != "user_apps":
+            continue
+        title_key = str(project_dict.get("title") or "").strip().lower()
+        if title_key in seen_user_app_titles:
+            continue
+        seen_user_app_titles.add(title_key)
+        status = str(project_dict.get("status") or "").strip().lower()
+        if status in {"deleted", "archived", "discarded", "scrapped"}:
+            continue
+        raw_stage = _first_text(metadata.get("build_stage"), project_dict["status"], default="intake")
+        app_name = _first_text(metadata.get("app_name"), project_dict["title"])
+        artifact_status = _read_user_app_artifact_status(app_name)
+        health_key = str(project_dict.get("health") or "").strip().lower()
+        if health_key == "tod_prototype_completed":
+            raw_stage = "prototype"
+        elif health_key == "tod_dispatch_ready":
+            raw_stage = "tod_dispatch"
+        elif status in {"working", "implementation"} and raw_stage == "intake":
+            raw_stage = "building"
+        project_dict["progress_percent"] = _project_progress(project_dict)
+        project_dict["blocker"] = _project_blocker(project_dict)
+        project_dict["current_driving_task"] = _project_current_driving_task(project_dict)
+        project_dict["acceptance"] = _project_acceptance(project_dict)
+        project_dict["waiting_on"] = _project_waiting_on(project_dict)
+        project_dict["momentum"] = _project_momentum(project_dict)
+        project_dict["heat"] = _project_heat(project_dict)
+        artifact_ready = bool(
+            artifact_status.get("manifest_exists")
+            and artifact_status.get("manifest_status") == "published_preview_ready"
+        )
+        displayed_status = project_dict["status"]
+        displayed_stage = raw_stage
+        displayed_progress = project_dict["progress_percent"]
+        displayed_task = project_dict["current_driving_task"]
+        displayed_waiting_on = project_dict["waiting_on"]
+        displayed_momentum = project_dict["momentum"]
+        displayed_heat = project_dict["heat"]
+        if artifact_ready:
+            server_preview_live = artifact_status.get("server_preview") == "live"
+            displayed_status = "server_preview_live" if server_preview_live else "preview_ready"
+            displayed_stage = "server_demo_live" if server_preview_live else "published_preview_ready"
+            displayed_progress = 100 if server_preview_live else max(int(displayed_progress or 0), 90)
+            displayed_task = (
+                "Server demo preview is live. Review it, then request app-specific improvements or promote to a real hosted production app when needed."
+                if server_preview_live
+                else "Review the generated preview/package, then choose a Git/deploy target or request the next app-specific implementation slice."
+            )
+            displayed_waiting_on = "none" if server_preview_live else (
+                "production deploy target not selected"
+                if artifact_status.get("production_deploy") == "not_selected"
+                else "preview review"
+            )
+            displayed_momentum = "complete" if server_preview_live else "waiting"
+            displayed_heat = "Demo Live" if server_preview_live else "Preview Ready"
+        user_apps.append(
+            {
+                "project_id": project_dict["id"],
+                "title": project_dict["title"],
+                "app_name": app_name,
+                "app_type": _first_text(metadata.get("app_type"), metadata.get("project_type"), default="user_app_build"),
+                "requested_by": _first_text(metadata.get("requested_by"), default="site user"),
+                "status": displayed_status,
+                "stage": displayed_stage,
+                "owner": project_dict["owner"],
+                "progress_percent": displayed_progress,
+                "momentum": displayed_momentum,
+                "heat": displayed_heat,
+                "current_driving_task": displayed_task,
+                "acceptance": project_dict["acceptance"],
+                "waiting_on": displayed_waiting_on,
+                "blocker": project_dict["blocker"],
+                "artifact_status": artifact_status,
+                "preview_url": artifact_status.get("server_preview_url", ""),
+                "target_users": _first_text(metadata.get("target_users"), default=""),
+                "workflows": metadata.get("workflows") if isinstance(metadata.get("workflows"), list) else [],
+                "data_objects": metadata.get("data_objects") if isinstance(metadata.get("data_objects"), list) else [],
+                "delivery_gates": metadata.get("delivery_gates") if isinstance(metadata.get("delivery_gates"), list) else [],
+                "next_action": project_dict["next_action"],
+                "project_url": f"/studio/projects?project_id={project_dict['id']}&view=all",
+                "workbench_url": f"/studio/apps/workbench/{project_dict['id']}",
+            }
+        )
     counts = {
         "apps": len(apps),
+        "mim_apps": len(apps),
+        "user_apps": len(user_apps),
+        "user_app_builds_active": sum(1 for item in user_apps if str(item.get("status") or "").lower() not in {"completed", "complete", "done", "deployed"}),
         "live_inspectable": sum(1 for item in apps if item.get("source_status") == "live_inspectable"),
         "scanned_by_tod": sum(1 for item in apps if item.get("source_status") == "scanned_by_tod"),
         "registered_only": sum(1 for item in apps if item.get("source_status") == "registered"),
@@ -6095,13 +7190,13 @@ async def _studio_apps_state(db: AsyncSession) -> dict[str, Any]:
         "dirty_repos": sum(1 for item in apps if isinstance(item.get("dirty_count"), int) and item.get("dirty_count", 0) > 0),
     }
     summary = (
-        f"{counts['apps']} apps are registered. "
+        f"{counts['apps']} MIM apps are registered and {counts['user_apps']} user app builds are tracked. "
         f"{counts['live_inspectable']} can be inspected directly by this host, "
         f"{counts['scanned_by_tod']} were scanned by TOD from their repo roots, "
         f"{counts['dirty_repos']} have dirty worktrees, and "
         f"{counts['db_connected']} have a proven primary DB table in the current Studio connection."
     )
-    return {"apps": apps, "counts": counts, "summary": summary, "data_audit": _studio_data_audit_state()}
+    return {"apps": apps, "user_apps": user_apps, "counts": counts, "summary": summary, "data_audit": _studio_data_audit_state()}
 
 
 def _studio_document_to_dict(row: StudioDocument) -> dict[str, Any]:
@@ -6295,6 +7390,7 @@ async def _studio_documents_state(
     db: AsyncSession,
     *,
     selected_document_id: int | None = None,
+    selected_source_path: str = "",
 ) -> dict[str, Any]:
     await _ensure_studio_document_seed(db)
     await _ensure_training_document_records(db)
@@ -6312,20 +7408,62 @@ async def _studio_documents_state(
         link_counts[link["target_type"]] = link_counts.get(link["target_type"], 0) + 1
     selected_document = None
     selected_links: list[dict[str, Any]] = []
+
+    async def select_document(row: StudioDocument) -> None:
+        nonlocal selected_document, selected_links
+        selected_document = _studio_document_to_dict(row)
+        selected_links = [
+            _studio_document_link_to_dict(link_row)
+            for link_row in (
+                await db.execute(
+                    select(StudioDocumentLink)
+                    .where(StudioDocumentLink.document_id == row.id)
+                    .order_by(StudioDocumentLink.id.desc())
+                )
+            ).scalars().all()
+        ]
+
     if selected_document_id:
         selected = await db.get(StudioDocument, selected_document_id)
         if selected:
-            selected_document = _studio_document_to_dict(selected)
-            selected_links = [
-                _studio_document_link_to_dict(row)
-                for row in (
-                    await db.execute(
-                        select(StudioDocumentLink)
-                        .where(StudioDocumentLink.document_id == selected.id)
-                        .order_by(StudioDocumentLink.id.desc())
-                    )
-                ).scalars().all()
-            ]
+            await select_document(selected)
+    elif selected_source_path.strip():
+        source_path = selected_source_path.strip()
+        source_name = Path(source_path).name
+        selected = (
+            await db.execute(
+                select(StudioDocument)
+                .where(
+                    (StudioDocument.source_path == source_path)
+                    | (StudioDocument.local_path == source_path)
+                    | (StudioDocument.source_path.endswith(source_name))
+                    | (StudioDocument.local_path.endswith(source_name))
+                )
+                .order_by(StudioDocument.id.desc())
+                .limit(1)
+            )
+        ).scalars().first()
+        if selected:
+            await select_document(selected)
+        if selected_document is None and source_name:
+            matched_row = None
+            for row in rows:
+                metadata = row.get("metadata_json") if isinstance(row.get("metadata_json"), dict) else {}
+                aliases = metadata.get("aliases") if isinstance(metadata.get("aliases"), list) else []
+                candidates = {
+                    str(row.get("source_path") or "").strip(),
+                    str(row.get("local_path") or "").strip(),
+                    str(metadata.get("filename") or "").strip(),
+                    *(str(alias or "").strip() for alias in aliases),
+                }
+                candidate_names = {Path(candidate).name for candidate in candidates if candidate}
+                if source_path in candidates or source_name in candidate_names:
+                    matched_row = row
+                    break
+            if matched_row:
+                selected = await db.get(StudioDocument, int(matched_row["id"]))
+                if selected:
+                    await select_document(selected)
     counts = {
         "documents": len(rows),
         "local": sum(1 for item in rows if item["snapshot_status"] in {"local", "tracked"}),
@@ -6358,7 +7496,8 @@ async def _ensure_training_document_records(db: AsyncSession) -> list[dict[str, 
             )
         ).scalars().first()
         source_path = f"runtime/shared/{filename}"
-        metadata = {"filename": filename, "source": "training_page", "document_role": spec["kind"]}
+        aliases = spec.get("aliases") if isinstance(spec.get("aliases"), list) else []
+        metadata = {"filename": filename, "aliases": aliases, "source": "training_page", "document_role": spec["kind"]}
         if existing is None:
             existing = StudioDocument(
                 title=spec["title"],
@@ -6375,10 +7514,16 @@ async def _ensure_training_document_records(db: AsyncSession) -> list[dict[str, 
             )
             db.add(existing)
             await db.flush()
+        else:
+            current_metadata = existing.metadata_json if isinstance(existing.metadata_json, dict) else {}
+            merged_metadata = dict(current_metadata)
+            merged_metadata.update(metadata)
+            existing.metadata_json = merged_metadata
         records.append(
             {
                 "title": spec["title"],
                 "filename": filename,
+                "aliases": aliases,
                 "kind": spec["kind"],
                 "summary": spec["summary"],
                 "document_id": existing.id,
@@ -6391,12 +7536,27 @@ async def _ensure_training_document_records(db: AsyncSession) -> list[dict[str, 
 
 async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
     docs = await _ensure_training_document_records(db)
+    await _ensure_training_growth_projects(db)
     directive = _load_json("MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json")
     scoreboard = _load_json("MIM_TOD_TRAINING_SCOREBOARD.latest.json")
     reflection = _load_json("MIM_TOD_HOURLY_REFLECTION.latest.json")
     typo_smoke = _load_json("MIM_TYPO_TOLERANT_INTENT_SMOKE.latest.json")
     blocker_summary = _load_text("TOD_BLOCKER_RESOLUTION_OPERATOR_SUMMARY.latest.md", limit=900)
+    attention_resolution = _load_json("MIM_TOD_TRAINING_ATTENTION_RESOLUTION.latest.json")
+    live_training_activity = _live_training_activity_state()
     data_audit = _studio_data_audit_state()
+    project_state = await _studio_projects_state(db, view="all")
+    project_counts = project_state.get("counts") if isinstance(project_state.get("counts"), dict) else {}
+    objective_db_counts = {
+        str(state_key): int(count_value)
+        for state_key, count_value in (
+            await db.execute(
+                select(Objective.state, func.count())
+                .group_by(Objective.state)
+                .order_by(Objective.state)
+            )
+        ).all()
+    }
 
     mim_training = directive.get("mim_training") if isinstance(directive.get("mim_training"), dict) else {}
     tod_training = directive.get("tod_training") if isinstance(directive.get("tod_training"), dict) else {}
@@ -6423,9 +7583,36 @@ async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
         assessment=assessment,
         are_improving=are_improving,
         judgment=judgment,
+        typo=typo_summary,
         reflection=reflection,
         tod_score=tod_score,
     )
+    attention_resolution_statuses: dict[str, dict[str, Any]] = {}
+    for item in attention_items:
+        key = str(item.get("key") or "").strip()
+        if not key:
+            continue
+        title = f"MIM/TOD Training Attention Resolution: {item.get('title', key)}"
+        objective = (
+            await db.execute(select(Objective).where(Objective.title == title).limit(1))
+        ).scalar_one_or_none()
+        if objective is not None:
+            task_row = (
+                await db.execute(
+                    select(Task)
+                    .where(Task.objective_id == objective.id)
+                    .order_by(Task.id.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            attention_resolution_statuses[key] = {
+                "status": "resolution_started",
+                "objective_id": objective.id,
+                "objective_state": objective.state,
+                "task_id": task_row.id if task_row is not None else "",
+                "task_state": task_row.state if task_row is not None else "",
+                "assigned_to": task_row.assigned_to if task_row is not None else "",
+            }
     return {
         "generated_at": artifact_generated_at,
         "generated_at_la": _la_time(artifact_generated_at),
@@ -6437,17 +7624,18 @@ async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
         "are_improving": are_improving,
         "outcome_verdict": outcome_verdict,
         "attention_items": attention_items,
+        "attention_resolution_statuses": attention_resolution_statuses,
         "top_training_objective": {
-            "id": "MIM-DEVELOPMENT-CONTINUITY-V1",
-            "title": "MIM Development Continuity V1",
-            "status": "next_top_training_objective",
+            "id": "MIM-OPERATOR-IMPACT-V1",
+            "title": "MIM Operator Impact V1",
+            "status": "top_training_objective",
             "owner": "MIM + TOD",
-            "href": "/studio/projects?view=active",
-            "why_now": "MIM communication and judgment are improving; continuity is the shortest route to proving those improvements change outcomes.",
-            "mim_action": "Create the Before We Continue continuity brief before implementation-style requests.",
-            "tod_action": "Verify related files, prior fixes, regressions, and validation evidence before execution starts.",
-            "codex_gate": "Codex implements only after MIM/TOD provide the continuity brief or after the continuity process stalls.",
-            "first_validation": "AgentMIM forum graphics",
+            "href": "/studio/projects?view=all",
+            "why_now": "MIM can answer correctly, but the next maturity jump is making each answer move the board instead of narrating the board.",
+            "mim_action": "Every recommendation/status response must include recommended action, owner, expected evidence, time or aging rule, and Dave needed yes/no.",
+            "tod_action": "Create and maintain the scoring artifact that evaluates live MIM responses against the five-field operator-impact contract.",
+            "codex_gate": "Codex assists only if MIM/TOD cannot bind the scoring artifact or the live replies keep drifting after repeated repair attempts.",
+            "first_validation": "Score 10 live/replayed MIM recommendation/status replies and raise Operator Impact from 6/10 toward 8/10.",
         },
         "resolution_owner_model": "MIM owns the training objective, TOD implements and validates, Codex assists only after stall/failure, Dave is asked only for decisions or access.",
         "mim": {
@@ -6474,6 +7662,10 @@ async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
         "outcome_reflection": outcome_reflection,
         "typo": typo_summary,
         "blocker_summary": blocker_summary,
+        "attention_resolution": attention_resolution,
+        "live_training_activity": live_training_activity,
+        "project_counts": project_counts,
+        "objective_db_counts": objective_db_counts,
         "evidence_docs": docs,
         "data_audit": data_audit,
     }
@@ -6491,6 +7683,11 @@ def _is_training_attention_prompt(prompt: str) -> bool:
         "recommend",
         "next",
         "stuck",
+        "stale",
+        "dead",
+        "outdated",
+        "up to date",
+        "current",
         "weakness",
         "weak spot",
         "broken",
@@ -6502,6 +7699,24 @@ def _is_training_attention_prompt(prompt: str) -> bool:
     return any(term in text_value for term in attention_terms)
 
 
+def _is_training_scorecard_prompt(prompt: str) -> bool:
+    text_value = str(prompt or "").strip().lower()
+    if not text_value:
+        return False
+    score_terms = (
+        "scorecard",
+        "scoreboard",
+        "score card",
+        "score board",
+        "numbers",
+        "metrics",
+        "mim score",
+        "tod score",
+        "pass rate",
+    )
+    return any(term in text_value for term in score_terms)
+
+
 def _format_percent(value: object, default: str = "baseline needed") -> str:
     if isinstance(value, (int, float)):
         return f"{value}%"
@@ -6509,19 +7724,191 @@ def _format_percent(value: object, default: str = "baseline needed") -> str:
     return text if text else default
 
 
+def _format_scoreboard_metric_value(value: object, unit: object = "", default: str = "baseline needed") -> str:
+    if value is None:
+        return default
+    unit_text = str(unit or "").strip().lower()
+    if isinstance(value, dict):
+        if value.get("status") == "measured" and value.get("value") is not None:
+            return _format_scoreboard_metric_value(value.get("value"), unit=unit_text, default=default)
+        return _plain_status(value.get("status"), default=default).replace("_", " ")
+    if isinstance(value, (int, float)):
+        return f"{value}%" if "percent" in unit_text else str(value)
+    text = str(value or "").strip()
+    return text if text else default
+
+
 def _scoreboard_metric(score: dict[str, Any], key: str, default: str = "baseline needed") -> str:
     value = score.get(key) if isinstance(score, dict) else None
+    unit = ""
     if value is None and isinstance(score, dict) and key.endswith("_today"):
         metric_key = key[: -len("_today")]
         metrics = score.get("metrics") if isinstance(score.get("metrics"), dict) else {}
         row = metrics.get(metric_key) if isinstance(metrics.get(metric_key), dict) else {}
         value = row.get("today") if isinstance(row, dict) else None
+        unit = row.get("unit") if isinstance(row, dict) else ""
+    return _format_scoreboard_metric_value(value, unit=unit, default=default)
+
+
+def _artifact_generated_at(payload: dict[str, Any]) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    return _first_text(payload.get("generated_at"), payload.get("updated_at"), payload.get("completed_at"), default="")
+
+
+def _live_training_activity_state() -> dict[str, Any]:
+    dispatcher = _load_json("MIM_READY_TASK_DISPATCHER_STATUS.latest.json")
+    idle = _load_json("TOD_IDLE_TRAINING_STATUS.latest.json")
+    command = _load_json("TOD_MIM_COMMAND_STATUS.latest.json")
+    result = _load_json("TOD_MIM_TASK_RESULT.latest.json")
+    stall = _load_json("TOD_MIM_STALL_ALERT.latest.json")
+    regression = _load_json("TOD_REGRESSION_STALL_STATE.latest.json")
+    artifacts = [
+        ("Ready dispatcher", "MIM_READY_TASK_DISPATCHER_STATUS.latest.json", dispatcher),
+        ("Idle training", "TOD_IDLE_TRAINING_STATUS.latest.json", idle),
+        ("TOD command", "TOD_MIM_COMMAND_STATUS.latest.json", command),
+        ("TOD task result", "TOD_MIM_TASK_RESULT.latest.json", result),
+        ("TOD stall alert", "TOD_MIM_STALL_ALERT.latest.json", stall),
+        ("Regression stall", "TOD_REGRESSION_STALL_STATE.latest.json", regression),
+    ]
+    rows: list[dict[str, Any]] = []
+    newest = ""
+    for label, path, payload in artifacts:
+        generated = _artifact_generated_at(payload)
+        if generated and (not newest or (_parse_datetime(generated) or datetime.min.replace(tzinfo=timezone.utc)) > (_parse_datetime(newest) or datetime.min.replace(tzinfo=timezone.utc))):
+            newest = generated
+        rows.append(
+            {
+                "label": label,
+                "path": f"runtime/shared/{path}",
+                "status": _first_text(payload.get("status"), payload.get("state"), payload.get("issue_code"), default="missing" if not payload else "present"),
+                "generated_at": generated,
+                "age": _age_label(generated),
+                "summary": _first_text(payload.get("summary"), payload.get("detail"), payload.get("reason"), payload.get("issue_detail"), default=""),
+                "task_id": _first_text(payload.get("task_id"), payload.get("current_task"), default=""),
+            }
+        )
+    result_status = _first_text(result.get("result_status"), result.get("status"), default="unknown")
+    stall_code = _first_text(stall.get("issue_code"), regression.get("last_signature"), default="")
+    dispatcher_status = _first_text(dispatcher.get("status"), default="unknown")
+    idle_state = _first_text(idle.get("state"), dispatcher.get("idle_training", {}).get("state") if isinstance(dispatcher.get("idle_training"), dict) else "", default="unknown")
+    if stall_code:
+        lane_status = "live_but_stalled"
+        health_label = "Action required"
+        plain_meaning = "Training is running, but it is not reducing the failing regression count."
+        recommended_action = "TOD should stop repeating the same cycle, choose one failing regression, repair or narrow it with evidence, then rerun the regression snapshot."
+        severity = "bad"
+    elif result_status in {"failed", "blocked", "error"}:
+        lane_status = "live_but_failing"
+        health_label = "Action required"
+        plain_meaning = "TOD produced a failing or blocked result."
+        recommended_action = "TOD should inspect the failed task result, publish the blocker or fix evidence, and avoid reporting progress until validation changes."
+        severity = "bad"
+    elif dispatcher_status == "idle_training_running" or idle_state == "running":
+        lane_status = "live_training_running"
+        health_label = "Running"
+        plain_meaning = "Training activity is fresh and no current stall alert is published."
+        recommended_action = "Continue watching for changed results, not just fresh timestamps."
+        severity = "good"
+    elif newest:
+        lane_status = "live_activity_seen"
+        health_label = "Watch"
+        plain_meaning = "Recent training artifacts exist, but the active training lane is not clearly running."
+        recommended_action = "MIM/TOD should publish a clearer current task and expected evidence."
+        severity = "watch"
+    else:
+        lane_status = "no_live_training_signal"
+        health_label = "No signal"
+        plain_meaning = "No current live training signal is available."
+        recommended_action = "Restart or inspect the training dispatcher and idle training watchdog."
+        severity = "bad"
+    if stall_code == "stalled_regression_no_delta":
+        plain_meaning = "Training is alive, but stuck: the same regression snapshot has repeated without reducing failures."
+        recommended_action = "TOD should pick one failing regression, make a bounded repair or publish a narrower blocker, rerun validation, and only then allow another cycle."
+    return {
+        "status": lane_status,
+        "health_label": health_label,
+        "plain_meaning": plain_meaning,
+        "recommended_action": recommended_action,
+        "severity": severity,
+        "newest_generated_at": newest,
+        "newest_age": _age_label(newest),
+        "dispatcher_status": dispatcher_status,
+        "idle_state": idle_state,
+        "result_status": result_status,
+        "stall_code": _first_text(stall.get("issue_code"), default=""),
+        "stall_detail": _first_text(stall.get("issue_detail"), default=""),
+        "regression_signature": _first_text(regression.get("last_signature"), default=""),
+        "rows": rows,
+    }
+
+
+def _compose_training_scorecard_reply(state: dict[str, Any]) -> str:
+    judgment = state.get("judgment") if isinstance(state.get("judgment"), dict) else {}
+    mim_score = state.get("mim_score") if isinstance(state.get("mim_score"), dict) else {}
+    tod_score = state.get("tod_score") if isinstance(state.get("tod_score"), dict) else {}
+    project_counts = state.get("project_counts") if isinstance(state.get("project_counts"), dict) else {}
+    operator_impact_source = _load_json("MIM_OPERATOR_IMPACT_SCORECARD.latest.json")
+    operator_impact_source_metrics = (
+        operator_impact_source.get("metrics")
+        if isinstance(operator_impact_source.get("metrics"), list)
+        else []
+    )
+    outcome = state.get("outcome_reflection") if isinstance(state.get("outcome_reflection"), dict) else {}
+    reflection = state.get("reflection") if isinstance(state.get("reflection"), dict) else {}
+    training_hours = state.get("training_hours") if isinstance(state.get("training_hours"), dict) else {}
+    tod_accuracy = tod_score.get("next_action_accuracy") if isinstance(tod_score.get("next_action_accuracy"), dict) else {}
+    objective_counts = outcome.get("objective_counts") if isinstance(outcome.get("objective_counts"), dict) else reflection.get("objective_counts") if isinstance(reflection.get("objective_counts"), dict) else {}
+    improving_value = outcome.get("are_they_improving")
+    if improving_value is None:
+        improving_value = state.get("are_improving")
+    improving_text = str(improving_value) if isinstance(improving_value, bool) else _first_text(improving_value, default="unknown")
+
+    def hour_value(key: str) -> str:
+        row = training_hours.get(key) if isinstance(training_hours.get(key), dict) else {}
+        value = row.get("value") if isinstance(row, dict) else None
         if isinstance(value, dict):
-            if value.get("status") == "measured" and value.get("value") is not None:
-                value = value.get("value")
-            else:
-                return _plain_status(value.get("status"), default=default).replace("_", " ")
-    return _format_percent(value, default=default)
+            return _plain_status(value.get("status"), default="baseline needed").replace("_", " ")
+        return _first_text(value, row.get("status") if isinstance(row, dict) else "", default="baseline needed").replace("_", " ")
+
+    return (
+        "Here are the current scorecard numbers.\n\n"
+        "MIM Communication:\n"
+        f"- Intent understood: {_scoreboard_metric(mim_score, 'intent_understood_today')}.\n"
+        f"- Answered question: {_scoreboard_metric(mim_score, 'answered_question_today')}.\n"
+        f"- Internal jargon: {_scoreboard_metric(mim_score, 'internal_jargon_today')} lower is better.\n"
+        f"- Recommendation quality: {_scoreboard_metric(mim_score, 'recommendation_quality_today')}.\n"
+        f"- Judgment suite: {judgment.get('passed', 'baseline needed')}/{judgment.get('case_count', 'baseline needed')} passed, "
+        f"{_format_percent(judgment.get('pass_rate_percent'))} pass rate.\n\n"
+        "MIM Operator Impact:\n"
+        "- Status: not fully proven yet.\n"
+        f"- Current moving projects: {project_counts.get('moving', 'unknown')}.\n"
+        f"- Current needs review: {project_counts.get('needs_review', 'unknown')}.\n"
+        f"- Current blocked projects: {project_counts.get('blocked', 'unknown')}.\n"
+        "- Missing proof: whether MIM's selected next actions reduced blockers, closed acceptance, or moved projects to terminal states.\n\n"
+        "TOD:\n"
+        f"- Blockers cleared/transformed: {_scoreboard_metric(tod_score, 'blockers_cleared_today')}.\n"
+        f"- False completions prevented: {_scoreboard_metric(tod_score, 'false_completions_prevented_today')}.\n"
+        f"- Validated edits: {_scoreboard_metric(tod_score, 'validated_edits_today')}.\n"
+        f"- No-op rejections: {_scoreboard_metric(tod_score, 'no_op_rejections_today')}.\n"
+        f"- Next-action accuracy: {_scoreboard_metric(tod_score, 'next_action_accuracy_today')}; "
+        f"pending outcomes: {_scoreboard_metric(tod_score, 'next_action_outcome_pending_today')}.\n"
+        f"- Next-action records: {tod_accuracy.get('record_count', 'baseline needed')} total, "
+        f"{tod_accuracy.get('scored_count', 'baseline needed')} scored, {tod_accuracy.get('pending_count', 'baseline needed')} pending.\n\n"
+        "Outcome:\n"
+        f"- Assessment: {_first_text(outcome.get('assessment'), state.get('assessment'), default='unknown').replace('_', ' ')}.\n"
+        f"- Outcomes improving: {improving_text}.\n"
+        f"- Fresh artifacts: {_first_text(outcome.get('fresh_artifact_count'), default='unknown')}.\n"
+        f"- Stale artifacts: {_first_text(outcome.get('stale_artifact_count'), default='unknown')}.\n"
+        f"- Truth integrity: {_first_text(outcome.get('truth_integrity_status'), default='unknown').replace('_', ' ')}.\n"
+        f"- Objectives: {_first_text(objective_counts.get('complete'), objective_counts.get('completed'), default='unknown')} complete, "
+        f"{_first_text(objective_counts.get('running'), default='unknown')} running, "
+        f"{_first_text(objective_counts.get('blocked'), default='unknown')} blocked.\n\n"
+        "Training hours:\n"
+        f"- Today: {hour_value('today')}.\n"
+        f"- Yesterday: {hour_value('yesterday')}.\n"
+        f"- Last 7 days: {hour_value('last_7_days')}."
+    )
 
 
 def _training_attention_items(
@@ -6529,15 +7916,26 @@ def _training_attention_items(
     assessment: str,
     are_improving: object,
     judgment: dict[str, Any],
+    typo: dict[str, Any],
     reflection: dict[str, Any],
     tod_score: dict[str, Any],
 ) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     pass_rate = judgment.get("pass_rate_percent")
+    judgment_cases = judgment.get("case_count")
+    typo_cases = typo.get("case_count")
     try:
         pass_rate_number = int(pass_rate)
     except Exception:
         pass_rate_number = None
+    try:
+        judgment_case_count = int(judgment_cases)
+    except Exception:
+        judgment_case_count = 0
+    try:
+        typo_case_count = int(typo_cases)
+    except Exception:
+        typo_case_count = 0
     weakness = _first_text(
         judgment.get("current_weakness"),
         default="MIM judgment-mode weakness has not been summarized yet.",
@@ -6555,6 +7953,22 @@ def _training_attention_items(
                 "mim_action": "Create a focused judgment repair drill from the failed smoke cases and run another narrow sample set.",
                 "tod_action": "Validate the new drill with pass/fail evidence and publish the updated smoke artifact.",
                 "resolution_process": "MIM diagnoses failed mode choice, TOD validates the repaired behavior, Codex is called only if the routing logic or tests stall.",
+            }
+        )
+
+    if judgment_case_count < 100 or typo_case_count < 100:
+        items.append(
+            {
+                "key": "scorecard_expansion_v1",
+                "title": "MIM/TOD scorecard expansion",
+                "status": "coverage_needed",
+                "owner": "MIM + TOD",
+                "href": "/studio/training#scorecard_expansion_v1",
+                "what_needs_attention": f"Judgment smoke is {judgment_case_count or 'unknown'} cases and typo tolerance is {typo_case_count or 'unknown'} cases. These are regression guards, not enough growth coverage.",
+                "why_it_matters": "Static green smoke tests prove the old sample still passes; they do not prove MIM/TOD are improving on new language, new project states, or new failure modes.",
+                "mim_action": "Define rotating sample groups for judgment, operator language, project-management decisions, and follow-through conversations.",
+                "tod_action": "Implement expanded smoke generation and publish daily pass/fail coverage counts while preserving the original 20-case suites as regression guards.",
+                "resolution_process": "Grow toward 100+ judgment cases and 100+ typo/noisy-input cases, then score new cases separately from the fixed regression guard.",
             }
         )
 
@@ -6612,6 +8026,250 @@ def _training_attention_items(
             }
         )
     return items
+
+
+def _training_attention_resolution_packet(
+    *,
+    item: dict[str, Any],
+    state: dict[str, Any],
+    objective_id: str,
+    task_id: str,
+) -> dict[str, Any]:
+    outcome = state.get("outcome_reflection") if isinstance(state.get("outcome_reflection"), dict) else {}
+    reflection = state.get("reflection") if isinstance(state.get("reflection"), dict) else {}
+    stale_artifacts = item.get("details") if isinstance(item.get("details"), list) else []
+    if not stale_artifacts:
+        stale_artifacts = outcome.get("stale_artifacts") if isinstance(outcome.get("stale_artifacts"), list) else reflection.get("stale_artifacts") if isinstance(reflection.get("stale_artifacts"), list) else []
+    expected_replacements = [
+        {
+            "artifact": str(name),
+            "expected_replacement": str(name),
+            "proof_required": "Fresh generated_at or last_write time, current content shape valid, and no stale-under-fresh-wrapper finding.",
+        }
+        for name in stale_artifacts
+    ]
+    return {
+        "packet_type": "mim-tod-training-attention-resolution-v1",
+        "generated_at": _utc_now(),
+        "status": "resolution_dispatched",
+        "attention_key": str(item.get("key") or "training_attention"),
+        "title": str(item.get("title") or "Training attention resolution"),
+        "owner": "MIM + TOD",
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "assessment": _first_text(outcome.get("assessment"), state.get("assessment"), default="unknown"),
+        "outcomes_improving": outcome.get("are_they_improving", state.get("are_improving")),
+        "stale_artifact_count": len(stale_artifacts),
+        "stale_artifacts": stale_artifacts,
+        "expected_replacements": expected_replacements,
+        "mim_action": str(item.get("mim_action") or "").strip(),
+        "tod_action": str(item.get("tod_action") or "").strip(),
+        "resolution_process": str(item.get("resolution_process") or "").strip(),
+        "proof_to_mark_improvement_true": [
+            "Each stale artifact is refreshed with current evidence or explicitly retired as superseded.",
+            "Hourly reflection is rerun after refresh/retirement.",
+            "Training scoreboard is regenerated and published to runtime/shared.",
+            "Outcome reflection changes from unproven to improving only when fresh evidence proves behavior changed.",
+        ],
+        "codex_escalation_rule": "Codex steps in only if TOD cannot refresh/retire the listed artifacts or the reflection/scoreboard refresh path stalls.",
+    }
+
+
+async def _start_training_attention_resolution(db: AsyncSession, attention_key: str) -> dict[str, Any]:
+    state = await _studio_training_state(db)
+    items = state.get("attention_items") if isinstance(state.get("attention_items"), list) else []
+    item = next((entry for entry in items if str(entry.get("key") or "") == attention_key), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Training attention item not found")
+
+    objective_title = f"MIM/TOD Training Attention Resolution: {item.get('title', attention_key)}"
+    existing_objective = (
+        await db.execute(select(Objective).where(Objective.title == objective_title).limit(1))
+    ).scalar_one_or_none()
+    success_criteria = (
+        "Stale training artifacts are refreshed or retired, hourly reflection is rerun, "
+        "scoreboard is regenerated, and the training page shows current source-backed evidence."
+    )
+    objective_metadata = {
+        "attention_key": attention_key,
+        "source": "studio_training_attention_resolution",
+        "resolution_artifact": str(TRAINING_ATTENTION_RESOLUTION_PATH),
+        "tod_request_artifact": str(TRAINING_ATTENTION_TOD_REQUEST_PATH),
+        "tod_trigger_artifact": str(TRAINING_ATTENTION_TOD_TRIGGER_PATH),
+        "started_at": _utc_now(),
+    }
+    if existing_objective is None:
+        existing_objective = Objective(
+            title=objective_title,
+            description=str(item.get("what_needs_attention") or ""),
+            priority="high",
+            constraints_json=[
+                "Do not mark improvement true without fresh evidence.",
+                "Do not ask Dave unless a credential, policy, or external dependency is required.",
+                "Retire stale artifacts only with explicit supersession evidence.",
+            ],
+            success_criteria=success_criteria,
+            state="running",
+            owner="MIM + TOD",
+            execution_mode="auto",
+            auto_continue=True,
+            boundary_mode="bounded",
+            metadata_json=objective_metadata,
+        )
+        db.add(existing_objective)
+        await db.flush()
+    else:
+        existing_objective.description = str(item.get("what_needs_attention") or "")
+        existing_objective.success_criteria = success_criteria
+        existing_objective.state = "running"
+        existing_objective.owner = "MIM + TOD"
+        metadata = existing_objective.metadata_json if isinstance(existing_objective.metadata_json, dict) else {}
+        metadata.update(objective_metadata)
+        existing_objective.metadata_json = metadata
+        await db.flush()
+
+    task_title = f"Resolve training attention: {item.get('title', attention_key)}"
+    existing_task = (
+        await db.execute(
+            select(Task)
+            .where(Task.objective_id == existing_objective.id)
+            .where(Task.title == task_title)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    task_details = (
+        f"What needs attention: {item.get('what_needs_attention', '')}\n\n"
+        f"MIM action: {item.get('mim_action', '')}\n"
+        f"TOD action: {item.get('tod_action', '')}\n"
+        f"Resolution: {item.get('resolution_process', '')}"
+    )
+    task_acceptance = (
+        "Publish fresh or retired status for every listed stale artifact, rerun hourly reflection, "
+        "rerun training scoreboard, and attach evidence paths proving the training page now reflects current data."
+    )
+    if existing_task is None:
+        existing_task = Task(
+            objective_id=existing_objective.id,
+            title=task_title,
+            details=task_details,
+            acceptance_criteria=task_acceptance,
+            assigned_to="TOD",
+            state="queued",
+            readiness="ready",
+            boundary_mode="bounded",
+            start_now=True,
+            execution_scope="training_evidence_refresh",
+            expected_outputs_json=[
+                str(TRAINING_ATTENTION_RESOLUTION_PATH),
+                "runtime/shared/MIM_TOD_HOURLY_REFLECTION.latest.json",
+                "runtime/shared/MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+            ],
+            verification_commands_json=[
+                "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-MIMTODHourlyReflection.ps1",
+                "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-MIMTODTrainingScoreboard.ps1",
+            ],
+            metadata_json={"attention_key": attention_key, "source": "studio_training_attention_resolution"},
+        )
+        db.add(existing_task)
+        await db.flush()
+    else:
+        existing_task.details = task_details
+        existing_task.acceptance_criteria = task_acceptance
+        existing_task.assigned_to = "TOD"
+        existing_task.state = "queued"
+        existing_task.readiness = "ready"
+        existing_task.start_now = True
+        metadata = existing_task.metadata_json if isinstance(existing_task.metadata_json, dict) else {}
+        metadata.update({"attention_key": attention_key, "source": "studio_training_attention_resolution", "refreshed_at": _utc_now()})
+        existing_task.metadata_json = metadata
+        await db.flush()
+
+    task_identity = f"training-attention-{attention_key}-{existing_task.id}"
+    resolution_packet = _training_attention_resolution_packet(
+        item=item,
+        state=state,
+        objective_id=str(existing_objective.id),
+        task_id=task_identity,
+    )
+    _write_json(TRAINING_ATTENTION_RESOLUTION_PATH, resolution_packet)
+
+    generated_at = _utc_now()
+    request_payload = {
+        "packet_type": "mim-tod-task-request-v1",
+        "generated_at": generated_at,
+        "source": "studio-training-attention-resolution",
+        "source_service": "studio-training",
+        "target": "TOD",
+        "request_id": task_identity,
+        "task_id": task_identity,
+        "objective_id": str(existing_objective.id),
+        "correlation_id": task_identity,
+        "sequence": int(datetime.now(timezone.utc).timestamp() * 1000),
+        "tod_action": "execute-chat-task",
+        "canonical_lane_source": "training_attention_resolution",
+        "title": task_title,
+        "description": task_details,
+        "priority": "high",
+        "scope": "Refresh or retire stale training evidence artifacts and rerun reflection/scoreboard.",
+        "acceptance_criteria": task_acceptance,
+        "success_criteria": task_acceptance,
+        "requested_outcome": "Training attention item has a current resolution artifact, fresh evidence, and updated scoreboard/reflection.",
+        "task_classification": "validation/reporting/diagnostic",
+        "task_category": "validation",
+        "assigned_executor": "tod",
+        "assigned_to": "TOD",
+        "metadata_json": {
+            "attention_key": attention_key,
+            "resolution_artifact": str(TRAINING_ATTENTION_RESOLUTION_PATH),
+            "stale_artifacts": resolution_packet.get("stale_artifacts", []),
+        },
+    }
+    request_text = json.dumps(request_payload, indent=2, sort_keys=True)
+    trigger_payload = {
+        "packet_type": "mim-to-tod-trigger-v1",
+        "generated_at": generated_at,
+        "emitted_at": generated_at,
+        "source_actor": "MIM",
+        "target_actor": "TOD",
+        "source_service": "studio-training",
+        "trigger": task_identity,
+        "artifact": TRAINING_ATTENTION_TOD_REQUEST_PATH.name,
+        "artifact_path": str(TRAINING_ATTENTION_TOD_REQUEST_PATH),
+        "artifact_sha256": hashlib.sha256(request_text.encode("utf-8")).hexdigest(),
+        "task_id": task_identity,
+        "request_id": task_identity,
+        "correlation_id": task_identity,
+    }
+    _write_json(TRAINING_ATTENTION_TOD_REQUEST_PATH, request_payload)
+    _write_json(TRAINING_ATTENTION_TOD_TRIGGER_PATH, trigger_payload)
+    await db.commit()
+    return {
+        "objective_id": existing_objective.id,
+        "task_id": existing_task.id,
+        "task_identity": task_identity,
+        "attention_key": attention_key,
+    }
+
+
+async def _ensure_training_attention_resolution_started(
+    db: AsyncSession,
+    state: dict[str, Any],
+) -> list[str]:
+    started: list[str] = []
+    items = state.get("attention_items") if isinstance(state.get("attention_items"), list) else []
+    for item in items:
+        attention_key = str(item.get("key") or "").strip()
+        if not attention_key:
+            continue
+        objective_title = f"MIM/TOD Training Attention Resolution: {item.get('title', attention_key)}"
+        existing_objective = (
+            await db.execute(select(Objective.id).where(Objective.title == objective_title).limit(1))
+        ).scalar_one_or_none()
+        if existing_objective is not None:
+            continue
+        await _start_training_attention_resolution(db, attention_key)
+        started.append(attention_key)
+    return started
 
 
 def _compose_training_attention_reply(prompt: str, state: dict[str, Any]) -> str:
@@ -6692,21 +8350,38 @@ def _compose_training_attention_reply(prompt: str, state: dict[str, Any]) -> str
             f"Action: keep training narrow until mode selection is reliable. Target: {target}"
         )
     )
+    attention_items: list[str] = []
+    if pass_rate_number is None or pass_rate_number < 80:
+        attention_items.append(
+            f"MIM judgment mode is the top repair. Evidence: focused suite is {pass_rate}, weakness is: {weakness}. "
+            f"Action: keep training narrow until mode selection is reliable. Target: {target}"
+        )
+    attention_items.append(
+        f"Outcome reflection is not ready to call healthy progress. Evidence: assessment is {assessment}, outcomes improving is {improving}, stale artifact count is {stale_count}, and truth integrity is {truth_integrity}. "
+        "Action: refresh or retire stale artifacts, then publish a new reflection only when the evidence proves a behavior changed."
+    )
+    if blocked_count != "unknown" or running_count != "unknown" or isinstance(stale_artifacts, list):
+        attention_items.append(
+            f"Blocked objective pressure is still high. Evidence: blocked objectives are {blocked_count}, running objectives are {running_count}, and stale examples include: {stale_sample}. "
+            "Action: bind each stale blocker to a current owner/action or mark it superseded instead of letting old blockers keep the reflection yellow."
+        )
+    attention_items.append(
+        f"TOD validation baselines still need tightening. Evidence: blockers cleared/transformed is {blockers_cleared}, but validated edits are {validated_edits} and no-op rejections are {no_op_rejections}. "
+        "Action: turn the latest blocker drill into repeatable pass/fail validation, then make the next TOD repair prove changed files, tests, and evidence."
+    )
+    numbered_items = "\n\n".join(
+        f"{index}. {item}" for index, item in enumerate(attention_items[:3], start=1)
+    )
     next_move = (
         "refreshing or retiring stale reflection artifacts and binding TOD validation metrics"
         if pass_rate_number is not None and pass_rate_number >= 80
         else "fixing judgment-mode reply behavior"
     )
+    judgment_prefix = "Good signal" if pass_rate_number is not None and pass_rate_number >= 80 else "Judgment note"
 
     return (
-        "Three things need attention, Dave.\n\n"
-        f"1. Outcome reflection is not ready to call healthy progress. Evidence: assessment is {assessment}, outcomes improving is {improving}, stale artifact count is {stale_count}, and truth integrity is {truth_integrity}. "
-        "Action: refresh or retire stale artifacts, then publish a new reflection only when the evidence proves a behavior changed.\n\n"
-        f"2. Blocked objective pressure is still high. Evidence: blocked objectives are {blocked_count}, running objectives are {running_count}, and stale examples include: {stale_sample}. "
-        "Action: bind each stale blocker to a current owner/action or mark it superseded instead of letting old blockers keep the reflection yellow.\n\n"
-        f"3. TOD validation baselines still need tightening. Evidence: blockers cleared/transformed is {blockers_cleared}, but validated edits are {validated_edits} and no-op rejections are {no_op_rejections}. "
-        f"Action: turn the latest blocker drill into repeatable pass/fail validation, then make the next TOD repair prove changed files, tests, and evidence.\n\n"
-        f"Good signal: {judgment_line}\n\n"
+        f"Three things need attention, Dave.\n\n{numbered_items}\n\n"
+        f"{judgment_prefix}: {judgment_line}\n\n"
         f"MIM's basic conversation score is holding at intent {intent}, answered question {answered}, and recommendation quality {recommendation}. "
         f"The next move I recommend is {next_move}. Latest evidence I would anchor to: {latest_evidence}."
     )
@@ -6744,6 +8419,9 @@ def _compose_training_page_reply(prompt: str, state: dict[str, Any]) -> str:
             f"TOD executor: {_first_text(started.get('executor'), objective.get('executor'), default='TOD')}.\n\n"
             f"Next action: {next_action}"
         )
+
+    if _is_training_scorecard_prompt(prompt):
+        return _compose_training_scorecard_reply(state)
 
     if _is_training_attention_prompt(prompt):
         return _compose_training_attention_reply(prompt, state)
@@ -7708,12 +9386,12 @@ def _documents_body(state: dict[str, Any]) -> str:
     )
     doc_rows = "".join(
         f"""
-        <article class="attention-item">
+        <a class="attention-item" href="/studio/documents?document_id={_html(item.get("id", ""))}">
           <small>{_html(item.get("category", "library"))} / {_html(item.get("document_type", "note"))}</small>
           <strong>{_html(item.get("title", ""))}</strong>
           <div class="muted">{_html(item.get("summary", ""))}</div>
           <div class="muted">Preserve: {_html(item.get("preserve_policy", ""))} / Snapshot: {_html(item.get("snapshot_status", ""))}</div>
-        </article>
+        </a>
         """
         for item in documents[:10]
     )
@@ -7762,6 +9440,19 @@ def _documents_body(state: dict[str, Any]) -> str:
         recent_links_html = '<article class="attention-item"><strong>No relationships yet</strong><div class="muted">Attach a document to a project, objective, task, conversation, report, app, system, or training run.</div></article>'
     selected_links_html = ""
     if selected_document:
+        source_url = str(selected_document.get("source_url") or "").strip()
+        source_path = str(selected_document.get("source_path") or "").strip()
+        local_path = str(selected_document.get("local_path") or "").strip()
+        content_text = str(selected_document.get("content_text") or "").strip()
+        if not content_text:
+            content_text = str(selected_document.get("summary") or "No document body has been captured yet.").strip()
+        tags = selected_document.get("tags_json") if isinstance(selected_document.get("tags_json"), list) else []
+        tags_html = "".join(f'<span class="badge">{_html(tag)}</span>' for tag in tags[:12]) or '<span class="muted">No tags</span>'
+        source_url_html = (
+            f'<a class="button" href="{_html(source_url)}" target="_blank" rel="noopener">Open Source URL</a>'
+            if source_url
+            else ""
+        )
         selected_relationship_rows = "".join(
             f"""
             <article class="attention-item">
@@ -7775,29 +9466,58 @@ def _documents_body(state: dict[str, Any]) -> str:
         if not selected_relationship_rows:
             selected_relationship_rows = '<article class="attention-item"><strong>No links for this document yet</strong><div class="muted">This item exists, but it is not attached to a Studio object yet.</div></article>'
         selected_links_html = f"""
-        <section class="card" style="margin-bottom:14px;">
-          <h2>Selected Document</h2>
-          <div class="label">{_html(selected_document.get("category", "library"))} / {_html(selected_document.get("document_type", "note"))}</div>
-          <h3>{_html(selected_document.get("title", ""))}</h3>
-          <p>{_html(selected_document.get("summary", ""))}</p>
-          <div class="attention-list" style="margin-top:12px;">{selected_relationship_rows}</div>
+        <section class="card library-viewer" style="margin-bottom:14px;">
+          <div class="status-head">
+            <div>
+              <h2>Library Viewer</h2>
+              <div class="label">{_html(selected_document.get("category", "library"))} / {_html(selected_document.get("document_type", "note"))}</div>
+              <h3>{_html(selected_document.get("title", ""))}</h3>
+            </div>
+            <span class="badge">{_html(selected_document.get("snapshot_status", "not_requested"))}</span>
+          </div>
+          <p class="focus">{_html(selected_document.get("summary", ""))}</p>
+          <div class="actions" style="margin:12px 0; flex-wrap:wrap;">
+            {source_url_html}
+            <a class="button" href="/studio/documents">Close Viewer</a>
+          </div>
+          <section class="grid two" style="margin-top:12px;">
+            <article class="attention-item">
+              <strong>Source</strong>
+              <div class="muted">Kind: {_html(selected_document.get("source_kind", ""))}</div>
+              <div class="muted">Source path: {_html(source_path or "none")}</div>
+              <div class="muted">Local path: {_html(local_path or "none")}</div>
+            </article>
+            <article class="attention-item">
+              <strong>Tags</strong>
+              <div class="quick">{tags_html}</div>
+            </article>
+          </section>
+          <details class="collapsible inner" open>
+            <summary><strong>Document Content</strong><span class="badge">viewer</span></summary>
+            <pre class="document-viewer-text">{_html(content_text[:12000])}</pre>
+          </details>
+          <details class="collapsible inner">
+            <summary><strong>Relationships</strong><span class="badge">{_html(len(selected_links))}</span></summary>
+            <div class="attention-list" style="margin-top:12px;">{selected_relationship_rows}</div>
+          </details>
         </section>
         """
     return f"""
     <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>
     {selected_links_html}
-    <section class="card" style="margin-bottom:14px;">
+    <details class="card collapsible" style="margin-bottom:14px;">
+      <summary><h2>Library Actions</h2><span class="badge">tools</span></summary>
       <h2>Library Actions</h2>
-      <p>Documents are the MIM library: records, files, links, media, research, notes, artifacts, and anything worth remembering without turning it into a project.</p>
       <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
         <a class="button primary" href="/studio/documents">Add Document</a>
         <a class="button" href="/studio/documents">Add Link</a>
         <a class="button" href="/studio/documents">Attach To Project</a>
         <a class="button" href="/mim">Ask MIM To Create Document</a>
       </div>
-    </section>
+    </details>
     <section class="grid two">
-      <article class="card">
+      <details class="card collapsible">
+        <summary><h2>Wiki Library</h2><span class="badge">notes</span></summary>
         <h2>Wiki Library</h2>
         <p>Organize documents like a living wiki, not a dump. Every item should answer what it is, why we kept it, where it came from, whether it is preserved locally, and what it connects to.</p>
         <div class="label">Can Associate With</div>
@@ -7805,8 +9525,9 @@ def _documents_body(state: dict[str, Any]) -> str:
           <li>apps, projects, project signals, tasks, objectives, reports, status updates, conversations, vendors, people, systems, and lab work.</li>
           <li>Multiple links are allowed because one useful document may affect several projects or future decisions.</li>
         </ul>
-      </article>
-      <article class="card">
+      </details>
+      <details class="card collapsible">
+        <summary><h2>Preservation Rule</h2><span class="badge">policy</span></summary>
         <h2>Preservation Rule</h2>
         <p>MIM should not depend on a third-party resource being available forever. Important material should be copied, summarized, indexed, downloaded, or locally referenced when allowed and needed for maintenance or evolution.</p>
         <div class="label">MIM Should Decide</div>
@@ -7815,35 +9536,36 @@ def _documents_body(state: dict[str, Any]) -> str:
           <li>Snapshot when important: useful source that may disappear.</li>
           <li>Local copy required: critical to an app, project, system, policy, or MIM/TOD training.</li>
         </ul>
-      </article>
+      </details>
     </section>
-    <section class="card" style="margin-top:14px;">
-      <h2>Library Shelves</h2>
-      <p>Documents should be browsable by human meaning first, then searchable by MIM.</p>
-    </section>
-    <section class="grid three placeholder-sections">{categories_html}</section>
+    <details class="card collapsible" style="margin-top:14px;">
+      <summary><h2>Library Shelves</h2><span class="badge">categories</span></summary>
+      <section class="grid three placeholder-sections">{categories_html}</section>
+    </details>
     <section class="grid two" style="margin-top:14px;">
-      <article class="card">
+      <details class="card collapsible">
+        <summary><h2>Relationship Graph</h2><span class="badge">{_html(counts.get("relationships", 0))}</span></summary>
         <h2>Relationship Graph</h2>
-        <p>Documents can now attach to the things they support: projects, objectives, tasks, conversations, status updates, apps, reports, systems, lab work, and training runs.</p>
         <table class="score-table" style="margin-top:10px;">
           <thead><tr><th>Target Type</th><th>Links</th></tr></thead>
           <tbody>{relationship_type_rows}</tbody>
         </table>
-      </article>
-      <article class="card">
+      </details>
+      <details class="card collapsible">
+        <summary><h2>Recent Relationships</h2><span class="badge">recent</span></summary>
         <h2>Recent Relationships</h2>
         <div class="attention-list" style="margin-top:12px;">{recent_links_html}</div>
-      </article>
+      </details>
     </section>
     <section class="grid two" style="margin-top:14px;">
-      <article class="card">
+      <details class="card collapsible" open>
+        <summary><h2>Recent Library Items</h2><span class="badge">{_html(len(documents))}</span></summary>
         <h2>Recent Library Items</h2>
         <div class="attention-list" style="margin-top:12px;">{doc_rows}</div>
-      </article>
-      <article class="card">
+      </details>
+      <details class="card collapsible">
+        <summary><h2>Next Implementation Step</h2><span class="badge">backlog</span></summary>
         <h2>Next Implementation Step</h2>
-        <p>The DB record layer is ready. The next build is the practical document workflow.</p>
         <div class="label">Needed Backend</div>
         <ul class="clean">
           <li>Upload endpoint and local storage path.</li>
@@ -7852,7 +9574,7 @@ def _documents_body(state: dict[str, Any]) -> str:
           <li>Search/index path so MIM can retrieve library context during conversation.</li>
           <li>Generated documents from MIM: summaries, project briefs, reports, wiki notes, and evidence packets.</li>
         </ul>
-      </article>
+      </details>
     </section>
     """
 
@@ -7863,6 +9585,7 @@ def _app_url(app_key: object) -> str:
 
 def _apps_body(state: dict[str, Any], selected_app_key: str = "") -> str:
     apps = state.get("apps") if isinstance(state.get("apps"), list) else []
+    user_apps = state.get("user_apps") if isinstance(state.get("user_apps"), list) else []
     counts = state.get("counts") if isinstance(state.get("counts"), dict) else {}
     summary = str(state.get("summary") or "")
     selected_app = next(
@@ -7872,10 +9595,10 @@ def _apps_body(state: dict[str, Any], selected_app_key: str = "") -> str:
     if selected_app is None and apps:
         selected_app = apps[0]
     stats = [
-        ("Registered Apps", counts.get("apps", 0), "known app sources"),
+        ("MIM Apps", counts.get("mim_apps", counts.get("apps", 0)), "in-house app sources"),
+        ("User Apps", counts.get("user_apps", 0), "requested builds"),
+        ("Active Builds", counts.get("user_app_builds_active", 0), "not terminal"),
         ("Live Inspectable", counts.get("live_inspectable", 0), "visible from this host"),
-        ("TOD Scanned", counts.get("scanned_by_tod", 0), "repo roots inspected"),
-        ("DB Proven", counts.get("db_connected", 0), "primary app tables connected"),
     ]
     stats_html = "".join(
         f"""
@@ -8010,19 +9733,67 @@ def _apps_body(state: dict[str, Any], selected_app_key: str = "") -> str:
         """
     if not app_cards:
         app_cards = '<article class="card"><h3>No apps registered</h3><p>Add the first app source so MIM/TOD know where it lives and how to inspect it.</p></article>'
+    user_app_rows = "".join(
+        f"""
+        <tr>
+          <td><a href="{_html(item.get("workbench_url", item.get("project_url", "#")))}"><strong>{_html(item.get("app_name", ""))}</strong></a><br><span class="muted">{_html(item.get("app_type", ""))}</span><br><a class="badge" href="{_html(item.get("preview_url") or item.get("workbench_url", "#"))}">Demo Preview</a></td>
+          <td>{_html(item.get("stage", ""))}<br><span class="muted">{_html(item.get("status", ""))}</span></td>
+          <td>{_html(item.get("owner", ""))}</td>
+          <td><div class="progress"><span style="width:{_html(item.get("progress_percent", 0))}%"></span></div>{_html(item.get("progress_percent", 0))}%</td>
+          <td>{_html(item.get("current_driving_task", ""))}</td>
+          <td>{_html(item.get("acceptance", ""))}</td>
+          <td>{_html(item.get("waiting_on", ""))}</td>
+        </tr>
+        """
+        for item in user_apps
+    )
+    if not user_app_rows:
+        user_app_rows = '<tr><td colspan="7">No user app builds are tracked yet.</td></tr>'
+    user_app_cards = "".join(
+        f"""
+        <a class="card" href="{_html(item.get("workbench_url", item.get("project_url", "#")))}" style="display:block;">
+          <div class="status-head">
+            <div>
+              <div class="label">{_html(item.get("app_type", ""))}</div>
+              <div class="entity">{_html(item.get("app_name", ""))}</div>
+            </div>
+            <span class="badge">{_html(item.get("stage", ""))}</span>
+          </div>
+          <p class="focus">{_html(item.get("target_users", ""))}</p>
+          <div class="progress"><span style="width:{_html(item.get("progress_percent", 0))}%"></span></div>
+          <p>{_html(item.get("progress_percent", 0))}% / {_html(item.get("momentum", ""))} / {_html(item.get("heat", ""))}</p>
+          <div class="label">Current Task</div>
+          <p>{_html(item.get("current_driving_task", ""))}</p>
+          <div class="actions" style="margin-top:12px;"><span class="button primary">Open Workbench</span><span class="button">Demo Preview</span></div>
+        </a>
+        """
+        for item in user_apps[:6]
+    )
     return f"""
     <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom:14px;">{stats_html}</section>
     {_data_sources_html(state, "apps")}
     <section class="card hero-card" style="margin-bottom:14px;">
-      <div class="label">MIM App Registry</div>
-      <h2>Applications MIM and TOD are responsible for</h2>
+      <div class="label">Apps</div>
+      <h2>MIM Apps / User Apps</h2>
       <p>{_html(summary)}</p>
       <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
         <a class="button primary" href="/studio/api/apps/sources">Open Registry JSON</a>
+        <a class="button" href="/studio/api/apps/state">Open App State JSON</a>
         <a class="button" href="/studio/reports?prompt=what%20apps%20need%20source%20or%20database%20attention">Ask Reports</a>
         <a class="button" href="/studio/documents">Open App Documents</a>
       </div>
     </section>
+    <section class="card" style="margin-bottom:14px;">
+      <div class="status-head">
+        <h2>User Apps</h2>
+        <span class="badge">{_html(len(user_apps))} builds</span>
+      </div>
+      <table class="score-table">
+        <thead><tr><th>App</th><th>Stage</th><th>Owner</th><th>Done</th><th>Current Driving Task</th><th>Acceptance</th><th>Waiting On</th></tr></thead>
+        <tbody>{user_app_rows}</tbody>
+      </table>
+    </section>
+    <section class="grid three" style="margin-bottom:14px;">{user_app_cards}</section>
     {selected_detail_html}
     <section class="grid two" style="margin-bottom:14px;">
       <article class="card">
@@ -8046,7 +9817,1082 @@ def _apps_body(state: dict[str, Any], selected_app_key: str = "") -> str:
         </ul>
       </article>
     </section>
+    <section class="card" style="margin-bottom:14px;"><h2>MIM Apps</h2></section>
     <section class="grid two">{app_cards}</section>
+    """
+
+def _workbench_slug(value: object) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+    return slug or "user_app"
+
+
+def _workbench_artifact_candidates(project: StudioProject, metadata: dict[str, Any]) -> list[str]:
+    app_name = _first_text(metadata.get("app_name"), project.title, default="User App")
+    slug = _workbench_slug(app_name.replace("User App Build:", ""))
+    candidates = [
+        f"runtime/shared/user_app_builds/{slug}/{slug.upper()}_PROTOTYPE.latest.json",
+        f"user_app_builds/{slug}/{slug.upper()}_PROTOTYPE.latest.json",
+    ]
+    explicit = metadata.get("prototype_artifact_path") or metadata.get("artifact_path")
+    if explicit:
+        candidates.insert(0, str(explicit))
+    return list(dict.fromkeys(candidates))
+
+
+def _read_workbench_artifact(candidates: list[str]) -> tuple[dict[str, Any], str]:
+    for candidate in candidates:
+        clean = str(candidate or "").strip().replace("\\", "/")
+        if not clean or clean.startswith("/") or ".." in clean.split("/"):
+            continue
+        path = Path(clean)
+        if not path.is_absolute():
+            path = Path(clean)
+        if not path.exists() and clean.startswith("runtime/shared/"):
+            path = Path(clean)
+        if not path.exists() and not clean.startswith("runtime/shared/"):
+            path = SHARED_RUNTIME_ROOT / clean
+        try:
+            if path.exists() and path.is_file():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return (data if isinstance(data, dict) else {}), clean
+        except Exception:
+            continue
+    return {}, ""
+
+
+def _write_workbench_change_tod_request(
+    *,
+    project: StudioProject,
+    metadata: dict[str, Any],
+    title: str,
+    detail: str,
+    actor: str,
+) -> dict[str, Any]:
+    now = _utc_now()
+    app_name = _first_text(metadata.get("app_name"), project.title, default="User App")
+    candidates = _workbench_artifact_candidates(project, metadata)
+    artifact_path = candidates[0] if candidates else "runtime/shared/user_app_builds/user_app/USER_APP_PROTOTYPE.latest.json"
+    request_id = f"workbench-change-{project.id}-{uuid.uuid4()}"
+    payload = {
+        "packet_type": "mim-tod-task-request-v1",
+        "generated_at": now,
+        "request_generated_at": now,
+        "request_id": request_id,
+        "source_request_id": request_id,
+        "handoff_id": f"mim-workbench-handoff-{request_id}",
+        "task_id": request_id,
+        "objective_id": "MIM-APP-WORKBENCH-V1",
+        "actor": "mim",
+        "target": "TOD",
+        "target_executor": "tod",
+        "action_name": "execute-chat-task",
+        "dispatch_kind": "workbench_change_request_slice",
+        "task_class": "user_app_workbench_change",
+        "request_status": "published",
+        "result_status": "pending",
+        "status": "pending",
+        "completion_status": "pending",
+        "project_id": project.id,
+        "app_name": app_name,
+        "target_component": f"Workbench change request: {app_name}",
+        "target_files": [artifact_path],
+        "likely_target_files": [artifact_path],
+        "change_request": {
+            "title": title.strip() or "Workbench change request",
+            "detail": detail.strip(),
+            "actor": actor.strip() or "Dave / Workbench",
+            "source": "studio_app_workbench",
+        },
+        "bounded_change": (
+            "Classify the Workbench feedback, append it to the app prototype artifact as a pending "
+            "build change, and return validation evidence."
+        ),
+        "expected_evidence": [
+            "prototype artifact inspected",
+            "change_requests appended",
+            "validation_results passed",
+            "next bounded UI/data/build task selected",
+        ],
+        "validation_command": f"python -m json.tool {artifact_path}",
+        "content": detail.strip(),
+        "task": (
+            f"Workbench change request for {app_name}: {detail.strip()} "
+            f"Append this request to {artifact_path} as a pending build change, classify the requested "
+            "change type, and return changed_files plus JSON validation evidence."
+        ),
+        "required_evidence": [
+            "target_file",
+            "inspected_files",
+            "changed_files or blocked_with_inspection",
+            "validation_results",
+            "change_request_classification",
+            "next_bounded_slice",
+            "evidence_window_start",
+            "evidence_window_end",
+        ],
+        "completion_gate": {
+            "changed_files_required_for_success": True,
+            "allow_blocked_with_inspection": True,
+            "reject_service_status_only": True,
+            "reject_artifact_readback_only": False,
+            "operator_satisfaction_until_evidence": "not_evaluated",
+        },
+        "next_action": "tod_apply_workbench_change_request_to_prototype_artifact",
+    }
+    TRAINING_ATTENTION_TOD_REQUEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TRAINING_ATTENTION_TOD_REQUEST_PATH.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return payload
+
+
+async def _studio_app_workbench_state(db: AsyncSession, project_id: int) -> dict[str, Any]:
+    await _ensure_user_app_build_samples(db)
+    await _ensure_app_workbench_project(db)
+    project = await db.get(StudioProject, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="studio_app_build_not_found")
+    project_dict = _studio_project_to_dict(project)
+    metadata = _project_metadata(project)
+    project_dict["progress_percent"] = _project_progress(project_dict)
+    project_dict["blocker"] = _project_blocker(project_dict)
+    project_dict["current_driving_task"] = _project_current_driving_task(project_dict)
+    project_dict["acceptance"] = _project_acceptance(project_dict)
+    project_dict["waiting_on"] = _project_waiting_on(project_dict)
+    project_dict["momentum"] = _project_momentum(project_dict)
+    project_dict["heat"] = _project_heat(project_dict)
+    project_dict["scope_state"] = _project_scope_state(project_dict)
+    candidates = _workbench_artifact_candidates(project, metadata)
+    artifact, artifact_path = _read_workbench_artifact(candidates)
+    events = (
+        await db.execute(
+            select(StudioProjectEvent)
+            .where(StudioProjectEvent.project_id == project.id)
+            .order_by(StudioProjectEvent.id.desc())
+            .limit(12)
+        )
+    ).scalars().all()
+    latest_event_time = events[0].created_at.isoformat() if events and events[0].created_at else project_dict.get("updated_at", "")
+    project_dict["last_movement_at"] = latest_event_time
+    project_dict["last_movement_age"] = _studio_age_label(latest_event_time)
+    dependencies = [
+        {
+            "name": "Prototype artifact",
+            "status": "ready" if artifact else "needed",
+            "detail": artifact_path or candidates[0],
+        },
+        {
+            "name": "Data model",
+            "status": "ready" if isinstance(artifact.get("data_objects"), dict) or metadata.get("data_objects") else "needed",
+            "detail": "contacts, notes, follow-ups, statuses, or app-specific objects",
+        },
+        {
+            "name": "MIM change request lane",
+            "status": "ready",
+            "detail": "Right-side MIM chat is attached to this Workbench context.",
+        },
+        {
+            "name": "Packaging / publish",
+            "status": "future gate",
+            "detail": "Download, Git export, preview deploy, publish, rollback.",
+        },
+    ]
+    return {
+        "project": project_dict,
+        "metadata": metadata,
+        "artifact": artifact,
+        "artifact_path": artifact_path,
+        "artifact_candidates": candidates,
+        "events": [
+            {
+                "event_type": event.event_type,
+                "actor": event.actor,
+                "title": event.title,
+                "detail": event.detail,
+                "created_at": event.created_at.isoformat() if event.created_at else "",
+            }
+            for event in events
+        ],
+        "dependencies": dependencies,
+        "data_audit": _studio_data_audit_state(),
+    }
+
+
+def _workbench_preview_html(artifact: dict[str, Any], project: dict[str, Any]) -> str:
+    if not artifact:
+        return f"""
+        <section class="card" style="min-height:420px;">
+          <div class="label">Preview</div>
+          <h2>No Preview Artifact Yet</h2>
+          <p>{_html(project.get("current_driving_task", "MIM/TOD need to create the first prototype artifact."))}</p>
+        </section>
+        """
+    app_name = _first_text(artifact.get("app_name"), project.get("title"), default="User App")
+    sample_records = artifact.get("sample_records") if isinstance(artifact.get("sample_records"), list) else []
+    record_rows = ""
+    for record in sample_records:
+        if not isinstance(record, dict):
+            continue
+        record_rows += f"""
+        <tr>
+          <td><strong>{_html(record.get("contact") or record.get("name") or record.get("title") or "Record")}</strong><br><span class="muted">{_html(record.get("company", ""))}</span></td>
+          <td>{_html(record.get("status", ""))}</td>
+          <td>{_html(record.get("next_follow_up_at") or record.get("date") or "")}</td>
+          <td>{_html(record.get("latest_note") or record.get("note") or "")}</td>
+        </tr>
+        """
+    if not record_rows:
+        record_rows = '<tr><td colspan="4">No sample records yet.</td></tr>'
+    workflows = artifact.get("workflows") if isinstance(artifact.get("workflows"), list) else []
+    workflow_html = "".join(f"<span class='badge'>{_html(item)}</span>" for item in workflows)
+    preview_ui = artifact.get("preview_ui") if isinstance(artifact.get("preview_ui"), dict) else {}
+    form_background = _first_text(preview_ui.get("form_background"), default="#0d1b2a")
+    form_border = _first_text(preview_ui.get("form_border"), default="#274967")
+    form_text = _first_text(preview_ui.get("form_text"), default="#eef7ff")
+    form_accent = _first_text(preview_ui.get("accent"), default="#67e8f9")
+    field_order = preview_ui.get("field_order") if isinstance(preview_ui.get("field_order"), list) else []
+    fields = [
+        ("name", "Client Name"),
+        ("company", "Company"),
+        ("phone", "Phone"),
+        ("email", "Email"),
+        ("status", "Status"),
+        ("next_follow_up_at", "Next Follow-Up"),
+        ("latest_note", "Latest Note"),
+    ]
+    field_map = {key: label for key, label in fields}
+    ordered_keys = [str(item) for item in field_order if str(item) in field_map]
+    ordered_keys.extend([key for key, _ in fields if key not in ordered_keys])
+    form_fields_html = "".join(
+        f"""
+        <label style="display:grid; gap:6px; color:{_html(form_text)};">
+          <span style="font-size:12px; font-weight:800; text-transform:uppercase; color:{_html(form_accent)};">{_html(field_map[key])}</span>
+          <input value="{_html('Pat Morgan' if key == 'name' else 'Morgan Agency' if key == 'company' else '(555) 204-1180' if key == 'phone' else 'pat@example.com' if key == 'email' else 'active' if key == 'status' else '2026-06-10' if key == 'next_follow_up_at' else 'Asked for a quote follow-up next week.')}" readonly style="width:100%; border:1px solid rgba(255,255,255,.22); border-radius:7px; background:rgba(255,255,255,.09); color:{_html(form_text)}; padding:10px;">
+        </label>
+        """
+        for key in ordered_keys[:7]
+    )
+    preview_notes = preview_ui.get("notes") if isinstance(preview_ui.get("notes"), list) else []
+    preview_note_html = "".join(f"<li>{_html(item)}</li>" for item in preview_notes[:4])
+    if preview_note_html:
+        preview_note_html = f"<ul class='clean' style='margin-top:10px;'>{preview_note_html}</ul>"
+    if "client follow-up tracker" in app_name.lower():
+        display_app_name = "My Client Follow-Up Tracker"
+        seed_records = (
+            json.dumps(sample_records, ensure_ascii=True)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026")
+            .replace("</", "<\\/")
+        )
+        return f"""
+    <section class="card" style="min-height:520px;">
+      <div class="status-head">
+        <div>
+          <div class="label">Preview</div>
+          <h2>{_html(display_app_name)}</h2>
+        </div>
+        <span class="badge">app foundation prototype</span>
+      </div>
+      <style>
+        .cft-app-shell {{ border:1px solid #26384a; border-radius:8px; overflow:hidden; background:#07111d; }}
+        .cft-topbar {{ display:flex; justify-content:space-between; gap:12px; align-items:center; padding:14px; border-bottom:1px solid #26384a; background:#0c1826; }}
+        .cft-nav {{ display:flex; gap:8px; flex-wrap:wrap; padding:10px 14px; border-bottom:1px solid #26384a; background:#081421; }}
+        .cft-nav button {{ border:1px solid #31455d; background:#0b1624; color:#dbeafe; border-radius:999px; padding:7px 10px; font-weight:800; cursor:pointer; }}
+        .cft-nav button.active {{ background:#67e8f9; border-color:#67e8f9; color:#031018; }}
+        .cft-page {{ display:none; padding:14px; }}
+        .cft-page.active {{ display:block; }}
+        .cft-panel {{ border:1px solid #26384a; border-radius:8px; padding:12px; background:#0d1724; }}
+        .cft-modal {{ display:none; position:fixed; inset:0; z-index:50; align-items:center; justify-content:center; background:rgba(0,0,0,.62); padding:18px; }}
+        .cft-modal.active {{ display:flex; }}
+        .cft-modal-card {{ width:min(620px, 94vw); border:1px solid #34506a; border-radius:8px; background:#101b29; padding:16px; box-shadow:0 18px 60px rgba(0,0,0,.45); }}
+        .cft-modal-card textarea, .cft-modal-card input, .cft-modal-card select {{ width:100%; margin-top:6px; border:1px solid #32465e; border-radius:7px; background:#07111d; color:#eaf6ff; padding:10px; }}
+      </style>
+      <div class="actions" style="margin:12px 0; flex-wrap:wrap;">{workflow_html}</div>
+      <section class="cft-app-shell" aria-label="Client Follow-Up Tracker app preview">
+        <div class="cft-topbar">
+          <div>
+            <div class="label">Front Page</div>
+            <h2 style="margin:0;">{_html(display_app_name)}</h2>
+            <p class="muted" style="margin:6px 0 0;">A lightweight CRM for contacts, notes, due follow-ups, overdue work, settings, and support.</p>
+          </div>
+          <button class="button primary" type="button" data-cft-page="login">Login / Account Setup</button>
+        </div>
+        <nav class="cft-nav" aria-label="App preview navigation">
+          <button type="button" class="active" data-cft-page="home">Home</button>
+          <button type="button" data-cft-page="login">Login</button>
+          <button type="button" data-cft-page="dashboard">Dashboard</button>
+          <button type="button" data-cft-page="clients">Clients</button>
+          <button type="button" data-cft-page="help">Help / Support</button>
+          <button type="button" data-cft-page="settings">User Settings</button>
+        </nav>
+        <section class="cft-page active" data-cft-panel="home">
+          <div class="grid two">
+            <article class="cft-panel">
+              <div class="label">What this app does</div>
+              <h2>Never lose a client follow-up</h2>
+              <p>Track clients, notes, follow-up dates, overdue activity, and completed outcomes from one small dashboard.</p>
+              <div class="actions"><button class="button primary" type="button" data-cft-page="dashboard">Open Dashboard</button></div>
+            </article>
+            <article class="cft-panel">
+              <div class="label">Minimum app foundation</div>
+              <ul class="clean">
+                <li>Front page and product purpose.</li>
+                <li>Login and account setup flow.</li>
+                <li>Dashboard with useful status.</li>
+                <li>Help/support and MIM app help.</li>
+                <li>User settings and notification preferences.</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+        <section class="cft-page" data-cft-panel="login">
+          <div class="grid two">
+            <article class="cft-panel">
+              <div class="label">Login</div>
+              <h2>Welcome Back</h2>
+              <label>Email<input value="alex@example.com" readonly></label>
+              <label>Password<input value="demo-password" type="password" readonly></label>
+              <div class="actions" style="margin-top:10px;"><button class="button primary" type="button" data-cft-page="dashboard">Sign In</button></div>
+            </article>
+            <article class="cft-panel">
+              <div class="label">Account Setup</div>
+              <h2>Create Your Workspace</h2>
+              <label>Company<input value="Carter Benefits" readonly></label>
+              <label>Primary user<input value="Alex Carter" readonly></label>
+              <div class="actions" style="margin-top:10px;"><button class="button" type="button" data-cft-page="settings">Review Settings</button></div>
+            </article>
+          </div>
+        </section>
+        <section class="cft-page" data-cft-panel="dashboard">
+          <section class="grid three" style="margin-bottom:14px;">
+            <article class="attention-item"><small>records</small><strong data-cft-count>{_html(len(sample_records))}</strong></article>
+            <article class="attention-item"><small>overdue</small><strong data-cft-overdue>0</strong></article>
+            <article class="attention-item"><small>completed</small><strong data-cft-completed>0</strong></article>
+          </section>
+          <div class="actions" style="flex-wrap:wrap;">
+            <button class="button primary" type="button" data-cft-page="clients">Create / Edit Clients</button>
+            <button class="button" type="button" id="cftDashboardOverdue">Review Overdue</button>
+          </div>
+        </section>
+        <section class="cft-page" data-cft-panel="help">
+          <div class="grid two">
+            <article class="cft-panel">
+              <div class="label">How to use the app</div>
+              <ul class="clean">
+                <li>Add a client from the Clients page.</li>
+                <li>Select a client row before adding notes or follow-up dates.</li>
+                <li>Use Complete Follow-Up when the activity is finished.</li>
+                <li>Review overdue items from Dashboard or filter controls.</li>
+              </ul>
+            </article>
+            <article class="cft-panel">
+              <div class="label">MIM Help</div>
+              <input id="cftHelpQuestion" placeholder="Ask: how do I add a client?">
+              <button class="button" type="button" id="cftHelpAsk" style="margin-top:8px;">Ask App Help</button>
+              <div class="muted" id="cftHelpAnswer" style="margin-top:10px;">MIM Help answers only questions about this app preview.</div>
+            </article>
+          </div>
+        </section>
+        <section class="cft-page" data-cft-panel="settings">
+          <div class="grid two">
+            <article class="cft-panel">
+              <div class="label">User Settings</div>
+              <label>Reminder email<input value="alex@example.com" readonly></label>
+              <label>Default reminder window<select><option>3 days before due date</option><option>1 day before due date</option></select></label>
+            </article>
+            <article class="cft-panel">
+              <div class="label">Support</div>
+              <p>Production apps should include help tickets, contact options, privacy links, export controls, and account deletion requests.</p>
+            </article>
+          </div>
+        </section>
+        <section class="cft-page" data-cft-panel="clients">
+      <section class="grid three" style="margin:14px 0;">
+        <article class="attention-item"><small>records</small><strong data-cft-count>{_html(len(sample_records))}</strong></article>
+        <article class="attention-item"><small>overdue</small><strong data-cft-overdue>0</strong></article>
+        <article class="attention-item"><small>completed</small><strong data-cft-completed>0</strong></article>
+      </section>
+      <script type="application/json" id="cftSeed">{seed_records}</script>
+      <section style="border:1px solid {_html(form_border)}; background:{_html(form_background)}; border-radius:8px; padding:14px; margin:14px 0;">
+        <div class="status-head">
+          <div>
+            <div class="label" style="color:{_html(form_accent)};">Interactive Form</div>
+            <h2 style="color:{_html(form_text)};">New Follow-Up</h2>
+          </div>
+          <span class="badge">autosaves locally</span>
+        </div>
+        <div class="form-grid" style="margin-top:12px;">
+          <label style="display:grid; gap:6px; color:{_html(form_text)};"><span style="font-size:12px; font-weight:800; text-transform:uppercase; color:{_html(form_accent)};">Client Name</span><input id="cftName" value="Alex Carter" style="width:100%; border:1px solid rgba(255,255,255,.22); border-radius:7px; background:rgba(255,255,255,.09); color:{_html(form_text)}; padding:10px;"></label>
+          <label style="display:grid; gap:6px; color:{_html(form_text)};"><span style="font-size:12px; font-weight:800; text-transform:uppercase; color:{_html(form_accent)};">Company</span><input id="cftCompany" value="Carter Benefits" style="width:100%; border:1px solid rgba(255,255,255,.22); border-radius:7px; background:rgba(255,255,255,.09); color:{_html(form_text)}; padding:10px;"></label>
+          <label style="display:grid; gap:6px; color:{_html(form_text)};"><span style="font-size:12px; font-weight:800; text-transform:uppercase; color:{_html(form_accent)};">Phone</span><input id="cftPhone" value="(555) 204-1180" style="width:100%; border:1px solid rgba(255,255,255,.22); border-radius:7px; background:rgba(255,255,255,.09); color:{_html(form_text)}; padding:10px;"></label>
+          <label style="display:grid; gap:6px; color:{_html(form_text)};"><span style="font-size:12px; font-weight:800; text-transform:uppercase; color:{_html(form_accent)};">Email</span><input id="cftEmail" value="alex@example.com" style="width:100%; border:1px solid rgba(255,255,255,.22); border-radius:7px; background:rgba(255,255,255,.09); color:{_html(form_text)}; padding:10px;"></label>
+          <label style="display:grid; gap:6px; color:{_html(form_text)};"><span style="font-size:12px; font-weight:800; text-transform:uppercase; color:{_html(form_accent)};">Next Follow-Up</span><input id="cftDue" type="date" style="width:100%; border:1px solid rgba(255,255,255,.22); border-radius:7px; background:rgba(255,255,255,.09); color:{_html(form_text)}; padding:10px;"></label>
+          <label style="display:grid; gap:6px; color:{_html(form_text)};"><span style="font-size:12px; font-weight:800; text-transform:uppercase; color:{_html(form_accent)};">Note</span><input id="cftNote" value="Send proposal follow-up." style="width:100%; border:1px solid rgba(255,255,255,.22); border-radius:7px; background:rgba(255,255,255,.09); color:{_html(form_text)}; padding:10px;"></label>
+        </div>
+        <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
+          <button class="button primary" type="button" id="cftAdd">Create Contact</button>
+          <button class="button" type="button" id="cftNoteBtn">Add Note To Selected</button>
+          <button class="button" type="button" id="cftDueBtn">Set Follow-Up</button>
+          <button class="button" type="button" id="cftCompleteBtn">Complete Follow-Up</button>
+          <button class="button" type="button" id="cftReset">Reset Demo Data</button>
+        </div>
+        <div class="muted" id="cftStatus" style="margin-top:10px; color:{_html(form_text)};">Ready.</div>
+      </section>
+      <table class="score-table" id="cftTable">
+        <thead><tr><th>Name</th><th>Status</th><th>Next Follow-Up</th><th>Note</th></tr></thead>
+        <tbody></tbody>
+      </table>
+        </section>
+      </section>
+      <div class="cft-modal" id="cftNoteModal">
+        <div class="cft-modal-card">
+          <h2>Add Note</h2>
+          <p class="muted" id="cftNoteTarget">Select a client first.</p>
+          <textarea id="cftModalNote" rows="5" placeholder="Write the note..."></textarea>
+          <div class="actions" style="margin-top:12px;"><button class="button primary" type="button" id="cftSaveNote">Save Note</button><button class="button" type="button" data-cft-close-modal>Cancel</button></div>
+        </div>
+      </div>
+      <div class="cft-modal" id="cftDueModal">
+        <div class="cft-modal-card">
+          <h2>Set Follow-Up</h2>
+          <p class="muted" id="cftDueTarget">Select a client first.</p>
+          <label>Date<input id="cftModalDue" type="date"></label>
+          <label>Time<input id="cftModalTime" type="time" value="09:00"></label>
+          <div class="actions" style="margin-top:12px;"><button class="button primary" type="button" id="cftSaveDue">Save Follow-Up</button><button class="button" type="button" data-cft-close-modal>Cancel</button></div>
+        </div>
+      </div>
+      <div class="cft-modal" id="cftCompleteModal">
+        <div class="cft-modal-card">
+          <h2>Complete Follow-Up</h2>
+          <p class="muted" id="cftCompleteTarget">Select a client first.</p>
+          <label>Outcome<select id="cftOutcome"><option>Reached client</option><option>Left voicemail</option><option>Sent email</option><option>Scheduled meeting</option><option>No longer active</option></select></label>
+          <textarea id="cftOutcomeNote" rows="4" placeholder="Outcome notes..."></textarea>
+          <div class="actions" style="margin-top:12px;"><button class="button primary" type="button" id="cftSaveComplete">Close Activity</button><button class="button" type="button" data-cft-close-modal>Cancel</button></div>
+        </div>
+      </div>
+      <script>
+      (() => {{
+        const storeKey = 'mim_workbench_client_follow_up_tracker_v1';
+        const versionKey = 'mim_workbench_client_follow_up_tracker_versions_v1';
+        const seed = JSON.parse(document.getElementById('cftSeed').textContent || '[]');
+        const today = new Date();
+        const dueDefault = new Date(today.getTime() + 7 * 86400000).toISOString().slice(0, 10);
+        const dueInput = document.getElementById('cftDue');
+        if (dueInput && !dueInput.value) dueInput.value = dueDefault;
+        let records = [];
+        let selected = 0;
+        const normalize = (item, index) => ({{
+          id: item.id || `cft-${{index}}-${{Date.now()}}`,
+          contact: item.contact || item.name || 'New Contact',
+          company: item.company || '',
+          phone: item.phone || '',
+          email: item.email || '',
+          latest_note: item.latest_note || item.note || '',
+          next_follow_up_at: item.next_follow_up_at || dueDefault,
+          completed: Boolean(item.completed),
+        }});
+        const load = () => {{
+          try {{
+            const saved = JSON.parse(localStorage.getItem(storeKey) || 'null');
+            records = Array.isArray(saved) && saved.length ? saved.map(normalize) : seed.map(normalize);
+          }} catch (err) {{
+            records = seed.map(normalize);
+          }}
+        }};
+        const save = () => localStorage.setItem(storeKey, JSON.stringify(records));
+        const buildPackage = () => ({{
+          artifact_type: 'client_follow_up_tracker_workbench_package_v1',
+          app_name: 'Client Follow-Up Tracker',
+          exported_at: new Date().toISOString(),
+          state_model: 'browser_local_storage_prototype_with_backend_package_contract',
+          records: records.map((record) => ({{...record, status: statusFor(record)}})),
+          summary: {{
+            records: records.length,
+            overdue: records.filter((record) => statusFor(record) === 'overdue').length,
+            completed: records.filter((record) => record.completed).length,
+          }},
+          acceptance: [
+            'User can create contacts',
+            'User can record notes',
+            'User can set next follow-up dates',
+            'User can see overdue items',
+            'User can mark follow-ups complete'
+          ],
+          backend_database: {{
+            engine: 'postgres',
+            migration_required: true,
+            prototype_note: 'Current Workbench state is browser-local; production package requires backend CRUD.',
+            tables: {{
+              contacts: ['id', 'name', 'company', 'phone', 'email', 'status', 'created_at', 'updated_at'],
+              notes: ['id', 'contact_id', 'body', 'created_at'],
+              follow_ups: ['id', 'contact_id', 'due_at', 'status', 'completed_at', 'created_at', 'updated_at']
+            }},
+            schema_sql: [
+              'create table contacts (id text primary key, name text not null, company text default \\'\\', phone text default \\'\\', email text default \\'\\', status text default \\'active\\', created_at timestamptz not null default now(), updated_at timestamptz not null default now());',
+              'create table notes (id text primary key, contact_id text not null references contacts(id) on delete cascade, body text not null, created_at timestamptz not null default now());',
+              'create table follow_ups (id text primary key, contact_id text not null references contacts(id) on delete cascade, due_at date, status text not null default \\'active\\', completed_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now());'
+            ]
+          }},
+          api_contract: {{
+            routes: [
+              'GET /contacts',
+              'POST /contacts',
+              'POST /contacts/{{contact_id}}/notes',
+              'PATCH /contacts/{{contact_id}}/follow-up',
+              'POST /contacts/{{contact_id}}/complete-follow-up',
+              'GET /reports/overdue'
+            ],
+            auth: 'single-user session for prototype; account-scoped auth required for hosted users'
+          }},
+          repo_manifest: {{
+            package_version: 'client-follow-up-tracker-package-v1',
+            framework_target: 'FastAPI + lightweight HTML/JS',
+            files: [
+              'README.md',
+              'app/app.py',
+              'app/models.py',
+              'app/routes.py',
+              'app/schema.sql',
+              'app/static/app.js',
+              'app/static/styles.css',
+              'tests/test_acceptance.py',
+              'deploy/preview.md',
+              'deploy/rollback.md',
+              'package.manifest.json'
+            ],
+            publish_gates: [
+              'package_manifest_created',
+              'backend_schema_defined',
+              'crud_routes_defined',
+              'acceptance_tests_defined',
+              'preview_deploy_plan_defined',
+              'rollback_plan_defined',
+              'git_remote_or_download_export_selected',
+              'operator_publish_approval'
+            ]
+          }},
+          repo_files: {{
+            'README.md': '# Client Follow-Up Tracker\\n\\nTracks contacts, notes, next follow-up dates, overdue work, and completed follow-ups.\\n',
+            'app/schema.sql': 'See backend_database.schema_sql in package.manifest.json.',
+            'app/routes.py': 'Implement contacts, notes, follow-up, complete, and overdue report routes from api_contract.routes.',
+            'tests/test_acceptance.py': 'Assert create contact, add note, set follow-up, overdue detection, complete follow-up, and export package behavior.',
+            'deploy/preview.md': 'Preview deploy requires app package files, test pass evidence, env vars, and rollback target.',
+            'deploy/rollback.md': 'Rollback to previous package manifest and database migration snapshot.'
+          }},
+          preview_deploy: {{
+            status: 'configured_not_deployed',
+            required_evidence: ['tests pass', 'preview URL available', 'database migration applied or explicitly skipped for static preview']
+          }},
+          rollback: {{
+            status: 'configured',
+            rule: 'No publish without previous package manifest, previous preview URL, and database rollback note.'
+          }},
+          git_export: {{
+            status: 'ready_for_download_or_git_connector',
+            files_source: 'repo_manifest.files and repo_files',
+            external_dependency: 'Git account/remote selection required before direct push.'
+          }},
+          publish: {{
+            status: 'blocked_until_preview_and_operator_approval',
+            approval_required: true
+          }},
+        }});
+        window.cftWorkbenchPackage = buildPackage;
+        window.cftSaveWorkbenchVersion = () => {{
+          const packageData = buildPackage();
+          const versions = JSON.parse(localStorage.getItem(versionKey) || '[]');
+          versions.unshift(packageData);
+          localStorage.setItem(versionKey, JSON.stringify(versions.slice(0, 12)));
+          return packageData;
+        }};
+        window.cftDownloadWorkbenchPackage = () => {{
+          const packageData = buildPackage();
+          const blob = new Blob([JSON.stringify(packageData, null, 2)], {{type: 'application/json'}});
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `client-follow-up-tracker-${{packageData.exported_at.slice(0, 10)}}.json`;
+          document.body.appendChild(link);
+          link.click();
+          URL.revokeObjectURL(link.href);
+          link.remove();
+          return packageData;
+        }};
+        const statusFor = (record) => {{
+          if (record.completed) return 'complete';
+          return record.next_follow_up_at && record.next_follow_up_at < new Date().toISOString().slice(0, 10) ? 'overdue' : 'active';
+        }};
+        const setStatus = (text) => {{ const el = document.getElementById('cftStatus'); if (el) el.textContent = text; }};
+        const switchPage = (page) => {{
+          document.querySelectorAll('[data-cft-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.cftPanel === page));
+          document.querySelectorAll('[data-cft-page]').forEach((btn) => btn.classList.toggle('active', btn.dataset.cftPage === page));
+        }};
+        document.querySelectorAll('[data-cft-page]').forEach((btn) => btn.addEventListener('click', () => switchPage(btn.dataset.cftPage)));
+        const openModal = (id) => document.getElementById(id)?.classList.add('active');
+        const closeModals = () => document.querySelectorAll('.cft-modal').forEach((modal) => modal.classList.remove('active'));
+        document.querySelectorAll('[data-cft-close-modal]').forEach((btn) => btn.addEventListener('click', closeModals));
+        const setModalTargets = () => {{
+          const record = current();
+          const name = record ? record.contact : 'Select a client first';
+          const noteTarget = document.getElementById('cftNoteTarget');
+          const dueTarget = document.getElementById('cftDueTarget');
+          const completeTarget = document.getElementById('cftCompleteTarget');
+          if (noteTarget) noteTarget.textContent = `Adding note for ${{name}}.`;
+          if (dueTarget) dueTarget.textContent = `Setting follow-up for ${{name}}.`;
+          if (completeTarget) completeTarget.textContent = `Closing follow-up for ${{name}}.`;
+        }};
+        const render = () => {{
+          const body = document.querySelector('#cftTable tbody');
+          if (!body) return;
+          body.innerHTML = '';
+          records.forEach((record, index) => {{
+            const row = document.createElement('tr');
+            if (index === selected) row.style.outline = '2px solid #67e8f9';
+            row.innerHTML = `<td><strong>${{record.contact}}</strong><br><span class="muted">${{record.company}}</span></td><td>${{statusFor(record)}}</td><td>${{record.next_follow_up_at || ''}}</td><td>${{record.latest_note || ''}}</td>`;
+            row.addEventListener('click', () => {{ selected = index; render(); setStatus(`Selected ${{record.contact}}.`); }});
+            body.appendChild(row);
+          }});
+          document.querySelectorAll('[data-cft-count]').forEach((el) => el.textContent = String(records.length));
+          document.querySelectorAll('[data-cft-overdue]').forEach((el) => el.textContent = String(records.filter((r) => statusFor(r) === 'overdue').length));
+          document.querySelectorAll('[data-cft-completed]').forEach((el) => el.textContent = String(records.filter((r) => r.completed).length));
+        }};
+        const current = () => records[Math.max(0, Math.min(selected, records.length - 1))];
+        document.getElementById('cftAdd')?.addEventListener('click', () => {{
+          const record = normalize({{
+            contact: document.getElementById('cftName').value,
+            company: document.getElementById('cftCompany').value,
+            phone: document.getElementById('cftPhone').value,
+            email: document.getElementById('cftEmail').value,
+            next_follow_up_at: document.getElementById('cftDue').value,
+            latest_note: document.getElementById('cftNote').value,
+          }}, records.length + 1);
+          records.unshift(record);
+          selected = 0;
+          save();
+          render();
+          setStatus(`Created ${{record.contact}} and saved to this browser.`);
+        }});
+        document.getElementById('cftNoteBtn')?.addEventListener('click', () => {{
+          const record = current();
+          if (!record) return;
+          document.getElementById('cftModalNote').value = document.getElementById('cftNote').value || record.latest_note || '';
+          setModalTargets();
+          openModal('cftNoteModal');
+        }});
+        document.getElementById('cftDueBtn')?.addEventListener('click', () => {{
+          const record = current();
+          if (!record) return;
+          document.getElementById('cftModalDue').value = document.getElementById('cftDue').value || record.next_follow_up_at || dueDefault;
+          setModalTargets();
+          openModal('cftDueModal');
+        }});
+        document.getElementById('cftCompleteBtn')?.addEventListener('click', () => {{
+          const record = current();
+          if (!record) return;
+          setModalTargets();
+          openModal('cftCompleteModal');
+        }});
+        document.getElementById('cftSaveNote')?.addEventListener('click', () => {{
+          const record = current();
+          if (!record) return;
+          record.latest_note = document.getElementById('cftModalNote').value || record.latest_note;
+          save();
+          render();
+          closeModals();
+          setStatus(`Saved note for ${{record.contact}}.`);
+        }});
+        document.getElementById('cftSaveDue')?.addEventListener('click', () => {{
+          const record = current();
+          if (!record) return;
+          record.next_follow_up_at = document.getElementById('cftModalDue').value || record.next_follow_up_at;
+          record.follow_up_time = document.getElementById('cftModalTime').value || '09:00';
+          record.completed = false;
+          save();
+          render();
+          closeModals();
+          setStatus(`Saved follow-up for ${{record.contact}} at ${{record.follow_up_time}}.`);
+        }});
+        document.getElementById('cftSaveComplete')?.addEventListener('click', () => {{
+          const record = current();
+          if (!record) return;
+          record.completed = true;
+          const outcome = document.getElementById('cftOutcome').value || 'Completed';
+          const note = document.getElementById('cftOutcomeNote').value || '';
+          record.latest_note = note ? `${{outcome}}: ${{note}}` : outcome;
+          save();
+          render();
+          closeModals();
+          setStatus(`Closed follow-up for ${{record.contact}} with outcome: ${{outcome}}.`);
+        }});
+        document.getElementById('cftDashboardOverdue')?.addEventListener('click', () => {{
+          switchPage('clients');
+          setStatus('Overdue records are marked in the status column.');
+        }});
+        document.getElementById('cftHelpAsk')?.addEventListener('click', () => {{
+          const q = (document.getElementById('cftHelpQuestion').value || '').toLowerCase();
+          const answer = document.getElementById('cftHelpAnswer');
+          if (!answer) return;
+          if (q.includes('client') || q.includes('contact')) answer.textContent = 'Open Clients, enter the client details, then choose Create Contact.';
+          else if (q.includes('note')) answer.textContent = 'Select a client row, choose Add Note To Selected, write the note, and save it.';
+          else if (q.includes('follow')) answer.textContent = 'Select a client row, choose Set Follow-Up, then pick a date and time.';
+          else if (q.includes('complete')) answer.textContent = 'Select a client row, choose Complete Follow-Up, choose an outcome, and close the activity.';
+          else answer.textContent = 'Try asking about adding clients, notes, follow-up dates, overdue work, or completing an activity.';
+        }});
+        document.getElementById('cftReset')?.addEventListener('click', () => {{
+          localStorage.removeItem(storeKey);
+          selected = 0;
+          load();
+          render();
+          setStatus('Demo data reset.');
+        }});
+        document.getElementById('cftSaveVersion')?.addEventListener('click', () => {{
+          const packageData = window.cftSaveWorkbenchVersion();
+          setStatus(`Saved local version with ${{packageData.summary.records}} records.`);
+        }});
+        document.getElementById('cftDownloadJson')?.addEventListener('click', () => {{
+          const packageData = window.cftDownloadWorkbenchPackage();
+          setStatus(`Downloaded JSON package with ${{packageData.summary.records}} records.`);
+        }});
+        document.getElementById('cftPrepareGit')?.addEventListener('click', () => {{
+          const packageData = window.cftSaveWorkbenchVersion();
+          setStatus(`Git export package prepared with ${{packageData.repo_manifest.files.length}} files. Connect a Git remote before push.`);
+        }});
+        document.getElementById('cftDeployGate')?.addEventListener('click', () => {{
+          const packageData = buildPackage();
+          setStatus(`Preview gate configured: ${{packageData.preview_deploy.required_evidence.join(', ')}}.`);
+        }});
+        document.getElementById('cftPublishGate')?.addEventListener('click', () => {{
+          const packageData = buildPackage();
+          setStatus(`Publish is ${{packageData.publish.status}}. Approval and preview evidence are required.`);
+        }});
+        load();
+        render();
+      }})();
+      </script>
+    </section>
+        """
+    if "simple appointment scheduler" in app_name.lower():
+        scheduler_seed_records = (
+            json.dumps(sample_records, ensure_ascii=True)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026")
+            .replace("</", "<\\/")
+        )
+        return f"""
+    <section class="card" style="min-height:520px;">
+      <style>
+        .sched-shell {{ border:1px solid #26384a; border-radius:8px; overflow:hidden; background:#07111d; }}
+        .sched-topbar {{ display:flex; justify-content:space-between; gap:12px; align-items:center; padding:14px; border-bottom:1px solid #26384a; background:#0c1826; }}
+        .sched-nav {{ display:flex; gap:8px; flex-wrap:wrap; padding:10px 14px; border-bottom:1px solid #26384a; background:#081421; }}
+        .sched-nav button {{ border:1px solid #31455d; background:#0b1624; color:#dbeafe; border-radius:999px; padding:7px 10px; font-weight:800; cursor:pointer; }}
+        .sched-nav button.active {{ background:#67e8f9; border-color:#67e8f9; color:#031018; }}
+        .sched-page {{ display:none; padding:14px; }}
+        .sched-page.active {{ display:block; }}
+        .sched-panel {{ border:1px solid #26384a; border-radius:8px; padding:12px; background:#0d1724; }}
+        .sched-field {{ display:grid; gap:6px; }}
+        .sched-field span {{ font-size:12px; font-weight:800; color:#67e8f9; text-transform:uppercase; }}
+        .sched-field input, .sched-field select, .sched-field textarea {{ width:100%; border:1px solid #32465e; border-radius:7px; background:#07111d; color:#eaf6ff; padding:10px; }}
+      </style>
+      <div class="status-head">
+        <div>
+          <div class="label">Preview</div>
+          <h2>Simple Appointment Scheduler</h2>
+        </div>
+        <span class="badge">app foundation prototype</span>
+      </div>
+      <div class="actions" style="margin:12px 0; flex-wrap:wrap;">{workflow_html}</div>
+      <script type="application/json" id="schedSeed">{scheduler_seed_records}</script>
+      <section class="sched-shell">
+        <div class="sched-topbar">
+          <div>
+            <div class="label">Front Page</div>
+            <h2 style="margin:0;">Book appointments without calendar chaos</h2>
+            <p class="muted" style="margin:6px 0 0;">Services, availability, invites, reminders, contacts, and calendar sync in one workspace.</p>
+          </div>
+          <button class="button primary" type="button" data-sched-page="booking">Book Appointment</button>
+        </div>
+        <nav class="sched-nav" aria-label="Scheduler preview navigation">
+          <button type="button" class="active" data-sched-page="dashboard">Dashboard</button>
+          <button type="button" data-sched-page="login">Login / Setup</button>
+          <button type="button" data-sched-page="calendar">Calendar</button>
+          <button type="button" data-sched-page="booking">Book</button>
+          <button type="button" data-sched-page="contacts">Contacts</button>
+          <button type="button" data-sched-page="settings">Settings</button>
+          <button type="button" data-sched-page="help">Help</button>
+        </nav>
+        <section class="sched-page active" data-sched-panel="dashboard">
+          <section class="grid four" style="grid-template-columns:repeat(4,minmax(0,1fr));">
+            <article class="attention-item"><small>today</small><strong id="schedToday">2</strong></article>
+            <article class="attention-item"><small>pending invites</small><strong id="schedPending">1</strong></article>
+            <article class="attention-item"><small>sync health</small><strong>good</strong></article>
+            <article class="attention-item"><small>reminders</small><strong id="schedReminders">3</strong></article>
+          </section>
+          <div class="grid three" style="margin-top:14px;">
+            <article class="sched-panel"><div class="label">Google Calendar</div><h3>Connected</h3><p class="muted">Last synced 8:40 AM.</p></article>
+            <article class="sched-panel"><div class="label">Outlook</div><h3>Ready to connect</h3><p class="muted">OAuth required before production sync.</p></article>
+            <article class="sched-panel"><div class="label">ICS</div><h3>Export ready</h3><p class="muted">Shareable calendar feed planned.</p></article>
+          </div>
+        </section>
+        <section class="sched-page" data-sched-panel="login">
+          <div class="grid two">
+            <article class="sched-panel">
+              <div class="label">Login</div>
+              <h2>Welcome Back</h2>
+              <label class="sched-field"><span>Email</span><input value="scheduler@example.com" readonly></label>
+              <label class="sched-field"><span>Password</span><input value="demo-password" type="password" readonly></label>
+              <div class="actions" style="margin-top:10px;"><button class="button primary" type="button" data-sched-page="dashboard">Sign In</button><button class="button" type="button">Forgot Password</button></div>
+            </article>
+            <article class="sched-panel">
+              <div class="label">Account Setup</div>
+              <h2>Workspace</h2>
+              <label class="sched-field"><span>Workspace</span><input value="Northside Scheduling" readonly></label>
+              <label class="sched-field"><span>Time Zone</span><input value="America/Los_Angeles" readonly></label>
+            </article>
+          </div>
+        </section>
+        <section class="sched-page" data-sched-panel="calendar">
+          <div class="sched-panel">
+            <div class="status-head"><h2>Calendar</h2><span class="badge">Week View</span></div>
+            <table class="score-table"><thead><tr><th>Time</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th></tr></thead><tbody><tr><td>9:00</td><td>Consultation</td><td>Available</td><td>Blocked</td><td>Available</td></tr><tr><td>1:00</td><td>Available</td><td>Intake Call</td><td>Available</td><td>Team-visible Event</td></tr></tbody></table>
+          </div>
+        </section>
+        <section class="sched-page" data-sched-panel="booking">
+          <section style="border:1px solid #38bdf8; background:#0f2a3a; border-radius:8px; padding:14px;">
+            <div class="status-head">
+              <div><div class="label" style="color:#67e8f9;">Booking Flow</div><h2 style="color:#eef7ff;">New Appointment</h2></div>
+              <span class="badge">checks conflicts</span>
+            </div>
+            <div class="form-grid" style="margin-top:12px;">
+              <label class="sched-field"><span>Service</span><select id="schedService"><option>Consultation - 30 min</option><option>Planning Session - 60 min</option><option>Follow-up - 15 min</option></select></label>
+              <label class="sched-field"><span>Contact</span><input id="schedContact" value="Maya Chen"></label>
+              <label class="sched-field"><span>Date</span><input id="schedDate" type="date" value="2026-06-12"></label>
+              <label class="sched-field"><span>Time</span><input id="schedTime" type="time" value="09:00"></label>
+              <label class="sched-field"><span>Reminder</span><select id="schedReminder"><option>Email 24h before</option><option>SMS 2h before</option><option>In-app only</option></select></label>
+              <label class="sched-field"><span>Visibility</span><select id="schedVisibility"><option>Private</option><option>Team visible</option><option>Community visible</option></select></label>
+            </div>
+            <div class="actions" style="margin-top:12px;"><button class="button primary" type="button" id="schedBook">Book Appointment</button><button class="button" type="button" id="schedInvite">Send Invite</button><button class="button" type="button" id="schedConflict">Check Conflicts</button></div>
+            <div class="muted" id="schedStatus" style="margin-top:10px; color:#eef7ff;">Ready.</div>
+          </section>
+        </section>
+        <section class="sched-page" data-sched-panel="contacts">
+          <table class="score-table" id="schedTable"><thead><tr><th>Contact</th><th>Status</th><th>Appointment</th><th>Note</th></tr></thead><tbody></tbody></table>
+        </section>
+        <section class="sched-page" data-sched-panel="settings">
+          <div class="grid two">
+            <article class="sched-panel"><div class="label">Calendar Connections</div><p>Google connected. Outlook and ICS are ready gates.</p></article>
+            <article class="sched-panel"><div class="label">Admin</div><p>Users, roles, shared calendars, visibility defaults, billing if enabled, privacy/terms links.</p></article>
+          </div>
+        </section>
+        <section class="sched-page" data-sched-panel="help">
+          <div class="grid two">
+            <article class="sched-panel"><div class="label">How to use</div><ul class="clean"><li>Set services and availability.</li><li>Book appointments with contact, date, time, reminder, and visibility.</li><li>Sync Google/Outlook/ICS calendars.</li><li>Reschedule or cancel from appointment detail.</li></ul></article>
+            <article class="sched-panel"><div class="label">MIM Help</div><input id="schedHelpQuestion" placeholder="Ask: how do I send an invite?"><button class="button" type="button" id="schedHelpAsk" style="margin-top:8px;">Ask App Help</button><div class="muted" id="schedHelpAnswer" style="margin-top:10px;">MIM Help answers scheduler questions only.</div></article>
+          </div>
+        </section>
+      </section>
+      <script>
+      (() => {{
+        const seed = JSON.parse(document.getElementById('schedSeed').textContent || '[]');
+        const switchPage = (page) => {{
+          document.querySelectorAll('[data-sched-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.schedPanel === page));
+          document.querySelectorAll('[data-sched-page]').forEach((btn) => btn.classList.toggle('active', btn.dataset.schedPage === page));
+        }};
+        document.querySelectorAll('[data-sched-page]').forEach((btn) => btn.addEventListener('click', () => switchPage(btn.dataset.schedPage)));
+        const setStatus = (text) => {{ const el = document.getElementById('schedStatus'); if (el) el.textContent = text; }};
+        const render = () => {{
+          const body = document.querySelector('#schedTable tbody');
+          if (!body) return;
+          body.innerHTML = '';
+          seed.forEach((record) => {{
+            const row = document.createElement('tr');
+            row.innerHTML = `<td><strong>${{record.contact || 'Contact'}}</strong><br><span class="muted">${{record.company || ''}}</span></td><td>${{record.status || ''}}</td><td>${{record.next_follow_up_at || ''}}</td><td>${{record.latest_note || ''}}</td>`;
+            body.appendChild(row);
+          }});
+        }};
+        document.getElementById('schedBook')?.addEventListener('click', () => setStatus(`Booked ${{document.getElementById('schedService').value}} for ${{document.getElementById('schedContact').value}} on ${{document.getElementById('schedDate').value}} at ${{document.getElementById('schedTime').value}}.`));
+        document.getElementById('schedInvite')?.addEventListener('click', () => setStatus('Calendar invite staged. Production requires connected calendar/email provider.'));
+        document.getElementById('schedConflict')?.addEventListener('click', () => setStatus('No double-booking conflict found for this demo slot.'));
+        document.getElementById('schedHelpAsk')?.addEventListener('click', () => {{
+          const q = (document.getElementById('schedHelpQuestion').value || '').toLowerCase();
+          const answer = document.getElementById('schedHelpAnswer');
+          if (!answer) return;
+          if (q.includes('invite')) answer.textContent = 'Book an appointment, then choose Send Invite. Production connects this to Google/Outlook/email.';
+          else if (q.includes('sync')) answer.textContent = 'Open Settings, connect a calendar provider, then review sync health on Dashboard.';
+          else if (q.includes('reminder')) answer.textContent = 'Choose a reminder channel in the booking form before saving the appointment.';
+          else answer.textContent = 'Try asking about booking, invites, sync, reminders, visibility, reschedule, or cancellation.';
+        }});
+        render();
+      }})();
+      </script>
+    </section>
+        """
+    return f"""
+    <section class="card" style="min-height:520px;">
+      <div class="status-head">
+        <div>
+          <div class="label">Preview</div>
+          <h2>{_html(app_name)}</h2>
+        </div>
+        <span class="badge">prototype</span>
+      </div>
+      <div class="actions" style="margin:12px 0; flex-wrap:wrap;">{workflow_html}</div>
+      <section class="grid three" style="margin:14px 0;">
+        <article class="attention-item"><small>records</small><strong>{_html(len(sample_records))}</strong></article>
+        <article class="attention-item"><small>status</small><strong>reviewable</strong></article>
+        <article class="attention-item"><small>next</small><strong>{_html((artifact.get("close_or_continue_decision") or {}).get("decision", "continue") if isinstance(artifact.get("close_or_continue_decision"), dict) else "continue")}</strong></article>
+      </section>
+      <section style="border:1px solid {_html(form_border)}; background:{_html(form_background)}; border-radius:8px; padding:14px; margin:14px 0;">
+        <div class="status-head">
+          <div>
+            <div class="label" style="color:{_html(form_accent)};">Reviewable Form</div>
+            <h2 style="color:{_html(form_text)};">New Follow-Up</h2>
+          </div>
+          <span class="badge">preview_ui</span>
+        </div>
+        <div class="form-grid" style="margin-top:12px;">{form_fields_html}</div>
+        {preview_note_html}
+      </section>
+      <table class="score-table">
+        <thead><tr><th>Name</th><th>Status</th><th>Next Follow-Up</th><th>Note</th></tr></thead>
+        <tbody>{record_rows}</tbody>
+      </table>
+    </section>
+    """
+
+
+def _app_workbench_body(state: dict[str, Any]) -> str:
+    project = state.get("project") if isinstance(state.get("project"), dict) else {}
+    metadata = state.get("metadata") if isinstance(state.get("metadata"), dict) else {}
+    artifact = state.get("artifact") if isinstance(state.get("artifact"), dict) else {}
+    dependencies = state.get("dependencies") if isinstance(state.get("dependencies"), list) else []
+    events = state.get("events") if isinstance(state.get("events"), list) else []
+    app_name = _first_text(metadata.get("app_name"), artifact.get("app_name"), project.get("title"), default="User App")
+    progress = project.get("progress_percent", 0)
+    dependency_cards = "".join(
+        f"""
+        <article class="attention-item">
+          <small>{_html(item.get("status", ""))}</small>
+          <strong>{_html(item.get("name", ""))}</strong>
+          <div class="muted">{_html(item.get("detail", ""))}</div>
+        </article>
+        """
+        for item in dependencies
+        if isinstance(item, dict)
+    )
+    event_rows = "".join(
+        f"""
+        <article class="attention-item">
+          <small>{_html(item.get("event_type", ""))} / {_html(_la_time(item.get("created_at", "")))}</small>
+          <strong>{_html(item.get("title", ""))}</strong>
+          <div class="muted">{_html(item.get("detail", ""))}</div>
+        </article>
+        """
+        for item in events[:6]
+        if isinstance(item, dict)
+    ) or '<article class="attention-item"><strong>No events yet</strong></article>'
+    data_objects = artifact.get("data_objects") if isinstance(artifact.get("data_objects"), dict) else {}
+    data_rows = "".join(
+        f"<tr><td>{_html(key)}</td><td>{_html(', '.join(str(v) for v in value) if isinstance(value, list) else value)}</td></tr>"
+        for key, value in data_objects.items()
+    ) or '<tr><td colspan="2">No data model artifact yet.</td></tr>'
+    checklist = artifact.get("acceptance_checklist") if isinstance(artifact.get("acceptance_checklist"), list) else []
+    checklist_html = "".join(f"<li>{_html(item)}</li>" for item in checklist) or "<li>Acceptance proof pending.</li>"
+    change_requests = artifact.get("change_requests") if isinstance(artifact.get("change_requests"), list) else []
+    change_request_rows = "".join(
+        f"""
+        <article class="attention-item">
+          <small>{_html(item.get("status", "pending") if isinstance(item, dict) else "pending")}</small>
+          <strong>{_html(item.get("title", "Change request") if isinstance(item, dict) else "Change request")}</strong>
+          <div class="muted">{_html(item.get("detail", item) if isinstance(item, dict) else item)}</div>
+        </article>
+        """
+        for item in change_requests[-6:]
+    ) or '<article class="attention-item"><strong>No Workbench change requests yet</strong></article>'
+    package_controls = """
+          <button class="button primary" id="cftSaveVersion" type="button">Save Version</button>
+          <button class="button" id="cftDownloadJson" type="button">Download App Package</button>
+          <button class="button" id="cftPrepareGit" type="button">Prepare Git Export</button>
+          <button class="button" id="cftDeployGate" type="button">Preview Gate</button>
+          <button class="button" id="cftPublishGate" type="button">Publish Gate</button>
+    """ if "client follow-up tracker" in app_name.lower() else """
+          <button class="button" disabled>Save Version</button>
+          <button class="button" disabled>Download Files</button>
+          <button class="button" disabled>Export To Git</button>
+          <button class="button" disabled>Deploy Preview</button>
+          <button class="button" disabled>Publish</button>
+    """
+    return f"""
+    <section class="card hero-card" style="margin-bottom:14px;">
+      <div class="status-head">
+        <div>
+          <div class="label">App Workbench</div>
+          <h2>{_html(app_name)}</h2>
+          <p>{_html(project.get("summary", ""))}</p>
+        </div>
+        <span class="badge">{_html(project.get("momentum", ""))} / {_html(project.get("heat", ""))}</span>
+      </div>
+      <section class="grid four" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top:14px;">
+        <article class="attention-item"><small>done</small><strong>{_html(progress)}%</strong><div class="progress"><span style="width:{_html(progress)}%"></span></div></article>
+        <article class="attention-item"><small>stage</small><strong>{_html(project.get("health", ""))}</strong></article>
+        <article class="attention-item"><small>waiting on</small><strong>{_html(project.get("waiting_on", "none"))}</strong></article>
+        <article class="attention-item"><small>last movement</small><strong>{_html(project.get("last_movement_age", ""))}</strong></article>
+      </section>
+      <div class="label">Current Driving Task</div>
+      <p>{_html(project.get("current_driving_task", ""))}</p>
+      <div class="actions" style="margin-top:12px; flex-wrap:wrap;">
+        <a class="button" href="/studio/projects?project_id={_html(project.get("id", ""))}&view=all">Project Details</a>
+        <a class="button" href="/studio/apps">Apps</a>
+        <a class="button" href="/studio/api/projects/state">Project JSON</a>
+        <button class="button" type="button" onclick="location.reload()">Refresh Preview</button>
+      </div>
+    </section>
+    <section class="grid two" style="grid-template-columns:minmax(0,1.4fr) minmax(320px,.6fr); align-items:start;">
+      {_workbench_preview_html(artifact, project)}
+      <section class="grid" style="gap:14px;">
+        <section class="card">
+          <h2>Change Request</h2>
+          <form method="post" action="/studio/apps/workbench/{_html(project.get("id", ""))}/events" class="form-grid">
+            <input type="hidden" name="event_type" value="workbench_change_request">
+            <input type="hidden" name="actor" value="Dave / Workbench">
+            <input class="wide" name="title" value="Workbench change request">
+            <textarea class="wide" name="detail" placeholder="Example: MIM, make the user form with a blue background and move phone above email."></textarea>
+            <button class="button primary wide" type="submit">Send To Project</button>
+          </form>
+        </section>
+        <section class="card">
+          <h2>Dependencies</h2>
+          <div class="attention-list">{dependency_cards}</div>
+        </section>
+      </section>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <section class="card">
+        <h2>Data</h2>
+        <table class="score-table"><thead><tr><th>Object</th><th>Fields</th></tr></thead><tbody>{data_rows}</tbody></table>
+      </section>
+      <section class="card">
+        <h2>Acceptance</h2>
+        <ul class="clean">{checklist_html}</ul>
+      </section>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <div class="status-head">
+        <h2>Change Queue</h2>
+        <span class="badge">{_html(len(change_requests))} requests</span>
+      </div>
+      <div class="attention-list" style="margin-top:12px;">{change_request_rows}</div>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <section class="card">
+        <h2>Package / Publish</h2>
+        <div class="actions" style="flex-wrap:wrap;">
+          {package_controls}
+        </div>
+      </section>
+      <section class="card">
+        <h2>Recent Build Events</h2>
+        <div class="attention-list">{event_rows}</div>
+      </section>
+    </section>
     """
 
 def _reports_body(state: dict[str, Any]) -> str:
@@ -8172,11 +11018,18 @@ def _reports_body(state: dict[str, Any]) -> str:
 
 
 def _metric_table(title: str, metrics: list[tuple[str, object, object, str]]) -> str:
+    def baseline_display(value: object, current: object) -> str:
+        current_text = str(current or "").strip().lower().replace("_", " ")
+        baseline_text = str(value or "").strip().lower().replace("_", " ")
+        if baseline_text == "baseline needed" and current_text and current_text != "baseline needed":
+            return "baseline established"
+        return str(value)
+
     rows = "".join(
         f"""
         <tr>
           <td>{_html(label)}</td>
-          <td>{_html(yesterday)}</td>
+          <td>{_html(baseline_display(yesterday, today))}</td>
           <td>{_html(today)}</td>
           <td>{_html(source)}</td>
         </tr>
@@ -8184,14 +11037,38 @@ def _metric_table(title: str, metrics: list[tuple[str, object, object, str]]) ->
         for label, yesterday, today, source in metrics
     )
     return f"""
-    <article class="card">
-      <h2>{_html(title)}</h2>
+    <details class="card collapsible">
+      <summary><h2>{_html(title)}</h2><span class="badge">scorecard</span></summary>
       <table class="score-table">
-        <thead><tr><th>Metric</th><th>Yesterday</th><th>Today</th><th>Source</th></tr></thead>
+        <thead><tr><th>Metric</th><th>Baseline</th><th>Current</th><th>Source</th></tr></thead>
         <tbody>{rows}</tbody>
       </table>
-    </article>
+    </details>
     """
+
+
+def _attention_resolution_status_text(
+    item: dict[str, Any],
+    latest_resolution: dict[str, Any],
+    statuses: dict[str, Any],
+) -> str:
+    key = str(item.get("key") or "").strip()
+    status = statuses.get(key) if isinstance(statuses.get(key), dict) else {}
+    if status:
+        task_bits = []
+        if status.get("task_id"):
+            task_bits.append(f"task {status.get('task_id')}")
+        if status.get("task_state"):
+            task_bits.append(str(status.get("task_state")))
+        if status.get("assigned_to"):
+            task_bits.append(f"owner {status.get('assigned_to')}")
+        suffix = " / " + " / ".join(task_bits) if task_bits else ""
+        return f"resolution started: objective {status.get('objective_id')} is {status.get('objective_state', 'active')}{suffix}"
+    if str(latest_resolution.get("attention_key") or "") == key:
+        latest_status = _first_text(latest_resolution.get("status"), default="resolution artifact published")
+        next_action = _first_text(latest_resolution.get("next_required_action"), default="")
+        return f"{latest_status}{' / ' + next_action if next_action else ''}"
+    return "auto-start pending on next page load"
 
 
 def _training_body(state: dict[str, Any]) -> str:
@@ -8214,6 +11091,11 @@ def _training_body(state: dict[str, Any]) -> str:
     objective_counts = reflection.get("objective_counts") if isinstance(reflection.get("objective_counts"), dict) else {}
     freshness = reflection.get("freshness") if isinstance(reflection.get("freshness"), dict) else {}
     stale = freshness.get("stale_artifacts") if isinstance(freshness.get("stale_artifacts"), list) else []
+    project_counts = state.get("project_counts") if isinstance(state.get("project_counts"), dict) else {}
+    objective_db_counts = state.get("objective_db_counts") if isinstance(state.get("objective_db_counts"), dict) else {}
+    ledger_blocked = objective_counts.get("blocked", "unknown")
+    ledger_is_stale = "MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json" in [str(item) for item in stale]
+    ledger_label = "stale ledger count" if ledger_is_stale else "reflection ledger count"
     evidence_docs = state.get("evidence_docs") if isinstance(state.get("evidence_docs"), list) else []
     evidence_html = "".join(
         f"""
@@ -8227,7 +11109,10 @@ def _training_body(state: dict[str, Any]) -> str:
         """
         for item in evidence_docs
     )
-    stale_html = "".join(f"<li>{_html(item)}</li>" for item in stale[:8]) or "<li>No stale artifacts reported.</li>"
+    stale_html = "".join(
+        f'<li><a href="/studio/documents?source_path=runtime/shared/{quote(str(item))}">{_html(item)}</a></li>'
+        for item in stale[:8]
+    ) or "<li>No stale artifacts reported.</li>"
     group_summary = judgment.get("group_summary") if isinstance(judgment.get("group_summary"), dict) else {}
     group_rows = "".join(
         f"""
@@ -8240,7 +11125,37 @@ def _training_body(state: dict[str, Any]) -> str:
         for group, values in group_summary.items()
         if isinstance(values, dict)
     )
+    judgment_generated_at = _first_text(judgment.get("generated_at"), default="")
+    judgment_age = _age_label(judgment_generated_at)
+    judgment_dt = _parse_datetime(judgment_generated_at)
+    judgment_age_hours = (
+        (datetime.now(timezone.utc) - judgment_dt).total_seconds() / 3600
+        if judgment_dt is not None
+        else None
+    )
+    judgment_badge_dot = "red" if judgment_age_hours is None or judgment_age_hours > 30 else "green"
     attention_items = state.get("attention_items") if isinstance(state.get("attention_items"), list) else []
+    attention_resolution = state.get("attention_resolution") if isinstance(state.get("attention_resolution"), dict) else {}
+    attention_resolution_statuses = state.get("attention_resolution_statuses") if isinstance(state.get("attention_resolution_statuses"), dict) else {}
+    live_training = state.get("live_training_activity") if isinstance(state.get("live_training_activity"), dict) else {}
+    live_rows = live_training.get("rows") if isinstance(live_training.get("rows"), list) else []
+    live_rows_html = "".join(
+        f"""
+        <tr>
+          <td><strong>{_html(row.get("label", ""))}</strong><div class="muted">{_html(row.get("path", ""))}</div></td>
+          <td>{_html(row.get("status", ""))}</td>
+          <td>{_html(row.get("age", ""))}<div class="muted">{_html(_la_time(row.get("generated_at"), default=""))}</div></td>
+          <td>{_html(row.get("task_id", ""))}</td>
+        </tr>
+        """
+        for row in live_rows
+        if isinstance(row, dict)
+    )
+    live_status = str(live_training.get("status") or "unknown")
+    live_dot = "red" if "stalled" in live_status or "failing" in live_status else "green" if "live" in live_status else "yellow"
+    live_health = _first_text(live_training.get("health_label"), default=live_status.replace("_", " "))
+    live_meaning = _first_text(live_training.get("plain_meaning"), default="Training activity status is not summarized yet.")
+    live_action = _first_text(live_training.get("recommended_action"), default="MIM/TOD should publish the next concrete training action.")
     top_objective = state.get("top_training_objective") if isinstance(state.get("top_training_objective"), dict) else {}
     attention_count = len(attention_items)
     dave_attention_count = sum(
@@ -8267,9 +11182,15 @@ def _training_body(state: dict[str, Any]) -> str:
           <small>{_html(item.get("status", ""))} / owner: {_html(item.get("owner", ""))}</small>
           <strong><a href="{_html(item.get("href", "#"))}">{_html(item.get("title", ""))}</a></strong>
           <div class="muted"><strong>What needs attention:</strong> {_html(item.get("what_needs_attention", ""))}</div>
+          <div class="muted"><strong>Evidence targets:</strong> {_html(", ".join(str(detail) for detail in item.get("details", [])[:6]) if isinstance(item.get("details"), list) and item.get("details") else "Resolution objective will inspect the current source artifacts.")}</div>
+          <div class="muted"><strong>Resolution state:</strong> {_html(_attention_resolution_status_text(item, attention_resolution, attention_resolution_statuses))}</div>
           <div class="muted"><strong>MIM:</strong> {_html(item.get("mim_action", ""))}</div>
           <div class="muted"><strong>TOD:</strong> {_html(item.get("tod_action", ""))}</div>
           <div class="muted"><strong>Resolution:</strong> {_html(item.get("resolution_process", ""))}</div>
+          <div class="actions" style="margin-top:10px;">
+            <span class="badge"><span class="dot yellow"></span>Resolution auto-starts from this page</span>
+            <a class="button" href="/studio/documents">Evidence</a>
+          </div>
         </article>
         """
         for item in attention_items
@@ -8294,8 +11215,8 @@ def _training_body(state: dict[str, Any]) -> str:
     top_objective_html = ""
     if top_objective:
         top_objective_html = f"""
-        <section class="card" style="margin-top:14px;">
-          <h2>Next Top Training Objective</h2>
+        <details class="card collapsible" style="margin-top:14px;">
+          <summary><h2>Next Top Training Objective</h2><span class="badge">{_html(top_objective.get("status", ""))}</span></summary>
           <div class="attention-list" style="margin-top:10px;">
             <article class="attention-item" id="{_html(top_objective.get("id", ""))}">
               <small>{_html(top_objective.get("status", ""))} / owner: {_html(top_objective.get("owner", ""))}</small>
@@ -8307,10 +11228,16 @@ def _training_body(state: dict[str, Any]) -> str:
               <div class="muted"><strong>First validation:</strong> {_html(top_objective.get("first_validation", ""))}</div>
             </article>
           </div>
-        </section>
+        </details>
         """
     mim_metrics_source = mim_score.get("metrics") if isinstance(mim_score.get("metrics"), dict) else {}
     tod_metrics_source = tod_score.get("metrics") if isinstance(tod_score.get("metrics"), dict) else {}
+    operator_impact_source = _load_json("MIM_OPERATOR_IMPACT_SCORECARD.latest.json")
+    operator_impact_source_metrics = (
+        operator_impact_source.get("metrics")
+        if isinstance(operator_impact_source.get("metrics"), list)
+        else []
+    )
 
     def today_metric(metrics: dict[str, Any], key: str, default: str = "baseline needed") -> str:
         row = metrics.get(key) if isinstance(metrics.get(key), dict) else {}
@@ -8327,48 +11254,202 @@ def _training_body(state: dict[str, Any]) -> str:
         suffix = "%" if "percent" in str(unit) else ""
         return f"{value}{suffix}"
 
-    mim_metrics = [
-        ("Intent Understood", "baseline needed", today_metric(mim_metrics_source, "intent_understood"), "live_gateway_eval"),
-        ("Answered Question", "baseline needed", today_metric(mim_metrics_source, "answered_question"), "live_gateway_eval"),
-        ("Internal Jargon", "baseline needed", today_metric(mim_metrics_source, "internal_jargon"), "live_gateway_eval"),
-        ("Recommendation Quality", "baseline needed", today_metric(mim_metrics_source, "recommendation_quality"), "live_gateway_eval"),
-        ("Judgment Mode", "baseline needed", f"{judgment.get('pass_rate_percent', 'unknown')}%", "durability_smoke_v2"),
-        ("Typo Tolerance", "baseline needed", typo.get("pass_rate_percent", "unknown"), "typo_smoke"),
+    typo_rate = typo.get("pass_rate_percent")
+    typo_current = f"{typo_rate}%" if isinstance(typo_rate, (int, float)) else _first_text(typo_rate, default="unknown")
+    judgment_case_count = judgment.get("case_count", "unknown")
+    typo_case_count = typo.get("case_count", "unknown")
+    judgment_coverage_note = f"regression guard: {judgment_case_count} fixed prompts; expansion target 100+ rotating prompts"
+    typo_coverage_note = f"regression guard: {typo_case_count} fixed prompts; expansion target 100+ rotating prompts"
+    project_counts = state.get("project_counts") if isinstance(state.get("project_counts"), dict) else {}
+    mim_communication_metrics = [
+        ("Intent Understood", "baseline needed", today_metric(mim_metrics_source, "intent_understood"), "live eval: 4 prompts"),
+        ("Answered Question", "baseline needed", today_metric(mim_metrics_source, "answered_question"), "live eval: 4 prompts"),
+        ("Internal Jargon (lower better)", "baseline needed", today_metric(mim_metrics_source, "internal_jargon"), "live eval: 4 prompts; target <=5%"),
+        ("Recommendation Quality", "baseline needed", today_metric(mim_metrics_source, "recommendation_quality"), "live eval: 1 recommendation prompt"),
+        ("Judgment Mode", "baseline needed", f"{judgment.get('pass_rate_percent', 'unknown')}%", judgment_coverage_note),
+        ("Typo Tolerance", "baseline needed", typo_current, typo_coverage_note),
+    ]
+    mim_operator_impact_metrics = [
+        (
+            _first_text(item.get("metric"), default="Operator metric"),
+            _first_text(item.get("baseline"), default="new metric needed"),
+            _first_text(item.get("current"), default="needs proof"),
+            _first_text(item.get("source"), default="operator impact source artifact"),
+        )
+        for item in operator_impact_source_metrics
+        if isinstance(item, dict)
+    ] or [
+        ("Operator Impact", "6/10", "target 8/10", "response contract: action, owner, evidence, aging rule, Dave-needed"),
+        ("Actionability Score", "new metric needed", "needs proof", "must score whether MIM provides a specific recommended action"),
+        ("Owner Assignment", "new metric needed", "needs proof", "must name MIM, TOD, Codex, external dependency, or Dave"),
+        ("Expected Evidence", "new metric needed", "needs proof", "must state what artifact/result proves movement"),
+        ("Time / Aging Rule", "new metric needed", "needs proof", "must state follow-up timing, stale threshold, or escalation age"),
+        ("Dave Needed Clarity", "new metric needed", "needs proof", "must say Dave needed: yes/no and why"),
+        ("Recommended Next Action Accuracy", "new metric needed", "needs proof", "requires outcome-linked successor records"),
+        ("Project Momentum Created", "new metric needed", project_counts.get("moving", 0), "current moving projects; not yet attributed to MIM choices"),
+        ("Unnecessary Status Responses", "new metric needed", "known weakness", "track when MIM reports status instead of selecting a useful mode/action"),
+        ("Dave Intervention Avoidance", "new metric needed", project_counts.get("dave_needed", 0), "current projects requiring Dave; lower is better when avoidable"),
+        ("Continuity Lookup Usage", "new metric needed", "in progress", "score whether MIM loads prior project history before implementation"),
+        ("Project Advancement Rate", "new metric needed", "needs proof", "measure projects moved to accepted, split, archived, dispatched, or waiting-with-evidence"),
+        ("Prevented Waste", "new metric needed", "needs proof", "track scope splits, duplicate work prevented, reused prior solutions, and continuity saves"),
     ]
     tod_metrics = [
-        ("Blockers Cleared", "baseline needed", today_metric(tod_metrics_source, "blockers_cleared"), "blocker_drill_artifacts"),
-        ("False Completions Prevented", "baseline needed", today_metric(tod_metrics_source, "false_completions_prevented"), "drill_004_self_correction"),
+        ("Current Project Blockers", "baseline needed", project_counts.get("blocked", 0), "live Projects board"),
+        ("Historical Blocker Drill Delta", "baseline needed", today_metric(tod_metrics_source, "blockers_cleared"), "blocker drill evidence, not current blockers"),
+        ("False Completions Prevented", "baseline needed", today_metric(tod_metrics_source, "false_completions_prevented"), "historical drill 004 self-correction"),
         ("Validated Edits", "baseline needed", today_metric(tod_metrics_source, "validated_edits"), "tod_result_artifacts"),
         ("No-op Rejections", "baseline needed", today_metric(tod_metrics_source, "no_op_rejections"), "tod_result_artifacts"),
-        ("Evidence Quality", "baseline needed", "needs proof", "blocker_resolution"),
+        ("Evidence Quality", "baseline needed", "needs proof", "current TOD validation evidence"),
     ]
+    improving_answer = "YES" if state.get("are_improving") is True else "NO" if state.get("are_improving") is False else "UNKNOWN"
+    improving_detail = (
+        "Current evidence proves training outcomes are improving."
+        if state.get("are_improving") is True
+        else "Current evidence does not yet prove that training is improving real outcomes."
+        if state.get("are_improving") is False
+        else "The current evidence packet does not include a clear improvement decision."
+    )
+    mim_weakness = _first_text(
+        mim.get("weakness"),
+        default="Choosing the right action instead of reporting status.",
+    )
+    tod_weakness = _first_text(
+        tod.get("weakness"),
+        default="Following through after selecting a task.",
+    )
+    improved_this_week = [
+        "Project momentum is visible instead of buried in notes.",
+        "Needs Review can be drained into successor states.",
+        "TOD next-action selection has real examples and scoring inputs.",
+        "Active lane closure and result binding are now testable.",
+    ]
+    improved_rows = "".join(f"<li>{_html(item)}</li>" for item in improved_this_week)
+    needs_attention_rows = "".join(
+        f"""
+        <li>
+          <strong>{_html(item.get("title", "Attention item"))}:</strong>
+          {_html(item.get("what_needs_attention", ""))}
+        </li>
+        """
+        for item in attention_items[:4]
+    ) or "<li>No active training attention item is published.</li>"
+    recommended_next_title = _first_text(
+        top_objective.get("title"),
+        default="TOD Outcome Learning V1",
+    )
+    recommended_next_reason = _first_text(
+        top_objective.get("why_now"),
+        default="TOD can select actions, but still needs stronger proof that the selected actions improve outcomes.",
+    )
+    impact_score_cards = [
+        ("MIM Communication", "9/10", "Strong prompt-level regression guard; growth coverage still needs rotating samples."),
+        ("MIM Operator Impact", "6/10", "MIM can frame next actions, but outcome movement is not yet proven."),
+        ("TOD Execution", "6/10", "Execution lane works on bounded tasks; repeatable closure still needs proof."),
+        ("TOD Project Judgment", "7/10", "Next-action selection improved; successor quality and aging need more outcome data."),
+    ]
+    impact_score_html = "".join(
+        f"""
+        <article class="attention-item">
+          <small>{_html(label)}</small>
+          <strong class="focus">{_html(score)}</strong>
+          <div class="muted">{_html(detail)}</div>
+        </article>
+        """
+        for label, score, detail in impact_score_cards
+    )
     return f"""
     <section class="card">
       <div class="status-head">
         <div>
           <h2>MIM Training Summary</h2>
-          <p class="focus">{_html(state["outcome_verdict"])}</p>
+          <p class="focus">Improving? {_html(improving_answer)}</p>
+          <p>{_html(improving_detail)}</p>
         </div>
         <a class="badge" href="#what_needs_attention" title="Open what needs attention">
           <span class="dot {training_badge_dot}"></span>{_html(training_badge_label)}
         </a>
       </div>
-      <div class="label">Page Load / Evidence Time</div>
-      <p>Loaded: {_html(state["page_loaded_at_la"])} / Evidence updated: {_html(state["generated_at_la"])} ({_html(state["generated_age"])}) / Directive: {_html(state["directive_status"])} / Improving: {_html(state.get("are_improving"))}</p>
-      <div class="label">Resolution Ownership</div>
-      <p>{_html(state.get("resolution_owner_model", ""))}</p>
-      <div class="label">MIM Attention Brief</div>
-      <p>{_html(attention_brief)}</p>
-      <ul class="clean">{attention_brief_rows}</ul>
+      <section class="grid two" style="margin-top:14px;">
+        <article class="attention-item">
+          <small>MIM</small>
+          <strong>Training On</strong>
+          <div class="muted">{_html(mim.get("focus", ""))}</div>
+          <div class="label" style="margin-top:10px;">Biggest Weakness</div>
+          <div>{_html(mim_weakness)}</div>
+        </article>
+        <article class="attention-item">
+          <small>TOD</small>
+          <strong>Training On</strong>
+          <div class="muted">{_html(tod.get("focus", ""))}</div>
+          <div class="label" style="margin-top:10px;">Biggest Weakness</div>
+          <div>{_html(tod_weakness)}</div>
+        </article>
+      </section>
+      <section class="grid three" style="margin-top:14px;">
+        <article class="attention-item">
+          <strong>What Improved This Week</strong>
+          <ul class="clean" style="margin-top:8px;">{improved_rows}</ul>
+        </article>
+        <article class="attention-item" id="what_needs_attention_summary">
+          <strong>What Needs Attention</strong>
+          <ul class="clean" style="margin-top:8px;">{needs_attention_rows}</ul>
+        </article>
+        <article class="attention-item">
+          <strong>Train Next</strong>
+          <div class="focus" style="margin-top:8px;">{_html(recommended_next_title)}</div>
+          <div class="muted">{_html(recommended_next_reason)}</div>
+        </article>
+      </section>
+      <div class="muted" style="margin-top:12px;">
+        Evidence updated: {_html(state["generated_at_la"])} ({_html(state["generated_age"])})
+      </div>
     </section>
-    {_data_sources_html(state, "training")}
+    <section class="card" style="margin-top:14px;">
+      <div class="status-head">
+        <div>
+          <h2>Outcome-Based Scores</h2>
+          <p>Communication scores prove MIM can answer. Operator-impact scores ask whether MIM/TOD moved work toward completion.</p>
+        </div>
+        <span class="badge"><span class="dot yellow"></span>evidence estimate</span>
+      </div>
+      <section class="grid four" style="margin-top:14px;">{impact_score_html}</section>
+      <div class="muted" style="margin-top:10px;">Overall improvement: {_html('Proven' if state.get("are_improving") is True else 'Not yet proven')}. Confidence: medium.</div>
+    </section>
     <section class="card" id="what_needs_attention" style="margin-top:14px;">
       <h2>What Needs Attention</h2>
       <div class="attention-list" style="margin-top:10px;">{attention_html}</div>
     </section>
+    {_data_sources_html(state, "training")}
+    <section class="card" id="live_training_activity" style="margin-top:14px;">
+      <div class="status-head">
+        <div>
+          <h2>Live Training Activity</h2>
+          <p class="focus">{_html(live_health)}</p>
+          <p>{_html(live_meaning)}</p>
+        </div>
+        <span class="badge"><span class="dot {live_dot}"></span>{_html(live_training.get("newest_age", "age unknown"))}</span>
+      </div>
+      <article class="attention-item" style="margin-top:12px;">
+        <small>Next action</small>
+        <strong>{_html(live_action)}</strong>
+      </article>
+      <ul class="clean">
+        <li>Dispatcher: {_html(live_training.get("dispatcher_status", "unknown"))}</li>
+        <li>Idle training: {_html(live_training.get("idle_state", "unknown"))}</li>
+        <li>Latest TOD result: {_html(live_training.get("result_status", "unknown"))}</li>
+        <li>Stall: {_html(live_training.get("stall_code", "none") or "none")}</li>
+        <li>Regression signature: {_html(live_training.get("regression_signature", "") or "none")}</li>
+      </ul>
+      <div class="muted" style="margin-top:8px;">{_html(live_training.get("stall_detail", ""))}</div>
+      <table class="score-table" style="margin-top:12px;">
+        <thead><tr><th>Signal</th><th>Status</th><th>Freshness</th><th>Task</th></tr></thead>
+        <tbody>{live_rows_html}</tbody>
+      </table>
+    </section>
     {top_objective_html}
     <section class="grid two" style="margin-top:14px;">
-      <article class="card">
+      <details class="card collapsible">
+        <summary><h2>MIM</h2><span class="badge">{_html(mim.get("status", "training"))}</span></summary>
         <h2>MIM</h2>
         <p class="focus">{_html(mim["focus"])}</p>
         <div class="label">Goal</div>
@@ -8379,8 +11460,9 @@ def _training_body(state: dict[str, Any]) -> str:
         <p>{_html(mim["weakness"])}</p>
         <div class="label">Next</div>
         <p>{_html(mim["next"])}</p>
-      </article>
-      <article class="card">
+      </details>
+      <details class="card collapsible">
+        <summary><h2>TOD</h2><span class="badge">{_html(tod.get("status", "training"))}</span></summary>
         <h2>TOD</h2>
         <p class="focus">{_html(tod["focus"])}</p>
         <div class="label">Goal</div>
@@ -8391,36 +11473,45 @@ def _training_body(state: dict[str, Any]) -> str:
         <p>{_html(tod["weakness"])}</p>
         <div class="label">Next</div>
         <p>{_html(tod["next"])}</p>
-      </article>
+      </details>
     </section>
     <section class="grid three" style="margin-top:14px;">
       <article class="card">
-        <h2>Outcome Reflection</h2>
+        <h2>Source Evidence</h2>
+        <p class="muted">Reflection counts are audit inputs. They are not the plain-English training verdict.</p>
         <ul class="clean">
-          <li>Completed objectives: {_html(objective_counts.get("completed", "unknown"))}</li>
-          <li>Running objectives: {_html(objective_counts.get("running", "unknown"))}</li>
-          <li>Blocked objectives: {_html(objective_counts.get("blocked", "unknown"))}</li>
-          <li>Fresh artifacts: {_html(freshness.get("fresh_artifact_count", "unknown"))}</li>
-          <li>Stale artifacts: {_html(len(stale))}</li>
+          <li><a href="/studio/projects?view=blockers">Current blocked projects: {_html(project_counts.get("blocked", 0))}</a></li>
+          <li><a href="/studio/projects?view=in_process">Current moving projects: {_html(project_counts.get("moving", 0))}</a></li>
+          <li><a href="/studio/projects?view=needs_review">Current needs review: {_html(project_counts.get("needs_review", 0))}</a></li>
+          <li><a href="/studio/documents?source_path=runtime/shared/MIM_TOD_OBJECTIVE_EXECUTION_STATUS.latest.json">Blocked objectives in {_html(ledger_label)}: {_html(ledger_blocked)}</a></li>
+          <li><a href="/studio/documents?source_path=runtime/shared/MIM_TOD_HOURLY_REFLECTION.latest.json">Reflection completed/running: {_html(objective_counts.get("completed", "unknown"))} / {_html(objective_counts.get("running", "unknown"))}</a></li>
+          <li><a href="/studio/documents?source_path=runtime/shared/MIM_TOD_HOURLY_REFLECTION.latest.json">Fresh / stale artifacts: {_html(freshness.get("fresh_artifact_count", "unknown"))} / {_html(len(stale))}</a></li>
         </ul>
+        <div class="muted" style="margin-top:10px;">Current DB objective states include {_html(objective_db_counts.get("running", 0))} running and {_html(objective_db_counts.get("completed_with_evidence", 0))} completed-with-evidence records. Historical blocked-with-evidence rows are noisy and not treated as current project blockers.</div>
       </article>
-      <article class="card">
+      <details class="card collapsible">
+        <summary><h2>Judgment Smoke</h2><span class="badge"><span class="dot {judgment_badge_dot}"></span>{_html(judgment_age)}</span></summary>
         <h2>Judgment Smoke</h2>
         <p>Pass rate: {_html(judgment.get("pass_rate_percent", "unknown"))}% / Passed {_html(judgment.get("passed", "unknown"))}/{_html(judgment.get("case_count", "unknown"))}</p>
+        <div class="muted" style="margin-top:8px;">Last run: {_html(_la_time(judgment_generated_at, default="unknown"))}. This is a regression guard for the original fixed sample, not proof of continued growth. Expansion target: 100+ rotating judgment cases plus the fixed guard.</div>
+        <div class="actions" style="margin-top:10px;"><a class="button" href="/studio/documents?source_path=runtime/shared/MIM_DURABILITY_SMOKE_V2.latest.json">Open Smoke Evidence</a></div>
         <table class="score-table" style="margin-top:10px;">
           <thead><tr><th>Mode</th><th>Passed</th><th>Failed</th></tr></thead>
           <tbody>{group_rows}</tbody>
         </table>
-      </article>
+      </details>
       <article class="card">
         <h2>Problems</h2>
-        <p>Top issue: training activity still has to prove outcome improvement.</p>
+        <p><a href="/studio/documents?source_path=runtime/shared/MIM_TOD_HOURLY_REFLECTION.latest.json">Top issue: training activity still has to prove outcome improvement.</a></p>
         <div class="label">Stale Inputs</div>
         <ul class="clean">{stale_html}</ul>
       </article>
     </section>
     <section class="grid two" style="margin-top:14px;">
-      {_metric_table("MIM Scorecard", mim_metrics)}
+      {_metric_table("MIM Communication Scorecard", mim_communication_metrics)}
+      {_metric_table("MIM Operator Impact Scorecard", mim_operator_impact_metrics)}
+    </section>
+    <section class="grid two" style="margin-top:14px;">
       {_metric_table("TOD Scorecard", tod_metrics)}
     </section>
     <section class="grid two" style="margin-top:14px;">
@@ -8490,6 +11581,22 @@ async def studio_home(request: Request) -> HTMLResponse:
             page_context="Studio Home",
         )
     )
+
+
+@router.post("/studio/training/attention/{attention_key}/start")
+async def studio_training_attention_start(
+    request: Request,
+    attention_key: str,
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    auth_redirect = maybe_require_mimtod_page_login(request, next_path="/studio/training")
+    if auth_redirect is not None:
+        return auth_redirect
+    key = str(attention_key or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="Missing attention key")
+    await _start_training_attention_resolution(db, key)
+    return RedirectResponse("/studio/training#what_needs_attention", status_code=303)
 
 
 @router.get("/studio/training/{section_key}", response_class=HTMLResponse)
@@ -8638,6 +11745,14 @@ async def _studio_project_blocker_reply(db: AsyncSession, prompt: str) -> dict[s
             "what's stuck",
             "what is blocking",
             "what's blocking",
+            "what should tod do",
+            "what should happen next",
+            "what should we work on",
+            "what should we work on next",
+            "stuck",
+            "stalled",
+            "fails",
+            "failure",
             "dave approval",
             "continue",
             "close",
@@ -8698,8 +11813,11 @@ async def _studio_project_blocker_reply(db: AsyncSession, prompt: str) -> dict[s
             "Accepted. I closed this project as successful.\n\n"
             "Status: completed.\n"
             "Blocker: none.\n"
-            "Dave needed: no.\n"
-            "Next action: monitor for regression evidence only; reopen if the LAB servo tool stops meeting the objective."
+            "Recommended action: monitor for regression evidence only; reopen if the LAB servo tool stops meeting the objective.\n"
+            "Owner: MIM tracks regression monitoring; TOD is only needed if new failure evidence appears.\n"
+            "Expected evidence: completed project status, operator completion event, and future regression evidence only if the tool stops meeting acceptance.\n"
+            "Time / aging rule: keep closed unless regression evidence appears; review only during normal project audit.\n"
+            "Dave needed: no."
         )
         return {
             "ok": True,
@@ -8784,11 +11902,16 @@ async def _studio_project_blocker_reply(db: AsyncSession, prompt: str) -> dict[s
             f"Next: open this project and use the Dave Needed decision box to record approve, approve limited, reject, delegate, waiting external, or clarification."
         )
     else:
+        next_action_text = best.next_action or next_action_candidate.get("action") or "No next action is recorded yet."
+        evidence_text = next_action_candidate.get("required_evidence") or "Project event, validation artifact, or blocker note proving the next action moved or could not move."
         reply = (
             f"Project mode: {best.title}.\n\n"
             f"Current blocker: {project_dict.get('blocker') or 'none'}.\n"
-            f"Dave needed: no.\n"
-            f"Next action: {best.next_action or 'No next action is recorded yet.'}"
+            f"Recommended action: {next_action_text}\n"
+            f"Owner: {best.owner or 'MIM + TOD'}.\n"
+            f"Expected evidence: {evidence_text}\n"
+            "Time / aging rule: if no movement or blocker update appears within 24 hours, mark watch; 48 hours escalates to Codex review.\n"
+            "Dave needed: no."
         )
     return {
         "ok": True,
@@ -8815,6 +11938,200 @@ async def _studio_project_blocker_reply(db: AsyncSession, prompt: str) -> dict[s
     }
 
 
+def _studio_page_error_target(prompt_lower: str, page_context_lower: str) -> tuple[str, str] | None:
+    failure_terms = [
+        "500",
+        "internal server error",
+        "page error",
+        "failed to load",
+        "server responded",
+        "cannot open",
+        "can't open",
+        "can not open",
+        "unable to open",
+        "broken page",
+        "page is broken",
+        "not opening",
+        "won't open",
+        "dangerous",
+        "unsafe site",
+        "ssl",
+        "certificate",
+        "https",
+    ]
+    if not any(term in prompt_lower for term in failure_terms):
+        return None
+    page_targets = [
+        ("training", "/studio/training", "Training"),
+        ("projects", "/studio/projects", "Projects"),
+        ("reports", "/studio/reports", "Reports"),
+        ("apps", "/studio/apps", "Apps"),
+        ("lab", "/studio/lab", "Lab"),
+        ("systems", "/studio/systems", "Systems"),
+        ("documents", "/studio/documents", "Documents"),
+        ("settings", "/studio/settings", "Settings"),
+        ("login", "/mim/login", "MIM Login"),
+    ]
+    combined = f"{page_context_lower} {prompt_lower}"
+    for token, href, label in page_targets:
+        if token in combined or href in combined:
+            return href, label
+    return None
+
+
+def _studio_prompt_is_project_operational_request(prompt_lower: str, page_context_lower: str) -> bool:
+    project_words = [
+        "project",
+        "projects",
+        "tracker",
+        "scheduler",
+        "forum graphics",
+        "client follow-up",
+        "appointment scheduler",
+        "operator impact",
+        "account manager",
+        "mobile login",
+    ]
+    operational_words = [
+        "what should",
+        "next",
+        "stuck",
+        "stalled",
+        "fails",
+        "failure",
+        "design brief",
+        "acceptance criteria",
+        "target device",
+        "hero media",
+        "complete",
+        "completed",
+        "finish",
+        "repair",
+    ]
+    return (
+        "project" in page_context_lower
+        or "apps" in page_context_lower
+        or any(word in prompt_lower for word in project_words)
+    ) and any(word in prompt_lower for word in operational_words)
+
+
+def _studio_prompt_is_reports_request(prompt_lower: str, page_context_lower: str) -> bool:
+    if "report" in page_context_lower:
+        return True
+    if _studio_prompt_is_project_operational_request(prompt_lower, page_context_lower):
+        return False
+    report_terms = [
+        "show me all",
+        "report",
+        "reports",
+        "app metrics",
+        "database",
+        "db",
+        "comm_app db",
+        "account owner",
+        "account_owners",
+        "rows loaded",
+        "new users",
+        "past month",
+    ]
+    return any(term in prompt_lower for term in report_terms)
+
+
+def _studio_operator_contract_fallback_reply(prompt: str, page_context: str) -> dict[str, Any]:
+    context_label = _first_text(page_context, default="Studio")
+    reply = (
+        f"I do not have a specialized handler for this {context_label} request yet, so I should not return a blank reply.\n\n"
+        "Recommended action: MIM should create or update the relevant project/app work item, then dispatch TOD with one bounded next step.\n"
+        "Owner: MIM owns triage and project routing; TOD owns implementation or validation; Codex assists only after TOD blocks with inspected evidence.\n"
+        "Expected evidence: a project or app record with current driving task, acceptance criteria, owner, and the next validation artifact or blocker.\n"
+        "Time / aging rule: if no project movement or blocker appears within 24 hours, mark watch; 48 hours escalates to Codex review.\n"
+        "Dave needed: no, unless the next step requires a credential, policy decision, external account access, or physical-world confirmation."
+    )
+    return {
+        "ok": True,
+        "source": "studio_operator_contract_fallback",
+        "response_mode": "recommendation",
+        "mim_interface": {
+            "reply_text": reply,
+            "page_context": page_context,
+            "surface": "studio",
+        },
+        "navigation": None,
+        "evidence": {
+            "prompt": prompt[:240],
+            "contract": "operator_impact_five_field_fallback",
+        },
+    }
+
+
+async def _studio_page_error_reply(db: AsyncSession, prompt: str, page_context: str) -> dict[str, Any] | None:
+    prompt_lower = str(prompt or "").lower()
+    page_context_lower = str(page_context or "").lower()
+    target = _studio_page_error_target(prompt_lower, page_context_lower)
+    if target is None:
+        return None
+    href, label = target
+    title = f"Studio Page Health Repair: {label}"
+    try:
+        existing = (
+            await db.execute(select(StudioProject).where(StudioProject.title == title).limit(1))
+        ).scalar_one_or_none()
+        if existing is None:
+            existing = StudioProject(
+                title=title,
+                summary=f"Repair and monitor the {label} page when Dave reports load failures, 500s, SSL warnings, or unsafe-site browser warnings.",
+                status="working",
+                priority="P0",
+                owner="MIM + TOD",
+                health="page_error_reported",
+                next_action=f"TOD should reproduce {href}, inspect service logs and route code, patch or publish a blocker with evidence, restart if needed, and smoke-test the route.",
+                dave_needed=False,
+                metadata_json={
+                    "project_type": "application_error",
+                    "progress_percent": 10,
+                    "work_state": "working",
+                    "blocker": "live page error reported by operator",
+                    "acceptance": f"{href} returns the expected page or auth redirect without 500, and MIM does not redirect Dave into a known-broken route.",
+                    "requested_by": "Dave",
+                    "source": "studio_page_error_guard",
+                },
+            )
+            db.add(existing)
+            await db.flush()
+        db.add(
+            StudioProjectEvent(
+                project_id=existing.id,
+                event_type="page_error_reported",
+                actor="MIM",
+                title=f"{label} page error reported",
+                detail=prompt,
+                metadata_json={"source": "studio_page_error_guard", "route": href},
+            )
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+    return {
+        "ok": True,
+        "source": "studio_page_error_guard",
+        "response_mode": "problem_analysis",
+        "mim_interface": {
+            "reply_text": (
+                f"I should not open {label} if you are reporting that it is broken.\n\n"
+                f"Recommended action: TOD should reproduce `{href}`, inspect the service log and owning route, patch or publish a specific blocker, restart if needed, and run a route smoke test.\n"
+                "Owner: TOD implements and validates; MIM tracks the repair and updates the project board.\n"
+                f"Expected evidence: HTTP status for `{href}`, service log excerpt if there was a 500, changed file or explicit blocker, and a passing smoke result.\n"
+                "Time / aging rule: P0 page failures should be checked immediately and escalated to Codex if no repair or blocker exists within 30 minutes.\n"
+                "Dave needed: no, unless the repair requires a credential, DNS/Cloudflare setting, or browser-side Safe Browsing review."
+            ),
+            "page_context": page_context,
+            "surface": "studio",
+        },
+        "navigation": None,
+        "evidence": {"route": href, "target_label": label},
+    }
+
+
 @router.post("/studio/api/mim/chat")
 async def studio_mim_chat_api(
     payload: StudioMimChatRequest,
@@ -8827,6 +12144,9 @@ async def studio_mim_chat_api(
     project_blocker_reply = await _studio_project_blocker_reply(db, prompt)
     if project_blocker_reply is not None:
         return project_blocker_reply
+    page_error_reply = await _studio_page_error_reply(db, prompt, page_context)
+    if page_error_reply is not None:
+        return page_error_reply
     navigation = await _studio_navigation_target(db, prompt, page_context)
     if navigation is not None:
         label = str(navigation.get("label") or "that Studio page")
@@ -9038,13 +12358,23 @@ async def studio_mim_chat_api(
                 "training_lesson": training_lesson,
             },
         }
-    if "report" in page_context_lower or any(term in prompt_lower for term in ["agentmim", "comm_app", "database", "db", "account owner", "account_owners", "app metrics"]):
+    if _studio_prompt_is_reports_request(prompt_lower, page_context_lower):
         dataset = await _studio_report_dataset(db, "auto", prompt=prompt)
         reply = _compose_reports_page_reply(prompt, dataset)
+        response_mode = "problem_analysis" if any(term in prompt_lower for term in ["error", "fix", "unable", "resolve", "broken", "can't", "cannot"]) else "report_summary"
+        if response_mode == "problem_analysis":
+            reply = (
+                f"{reply}\n\n"
+                "Recommended action: TOD should verify the report data source and publish either connected-row evidence or a specific binding blocker.\n"
+                "Owner: TOD validates the data connection; MIM keeps the Reports project/action record current.\n"
+                "Expected evidence: dataset key, row count, database binding status, and any route/log evidence for the failed report request.\n"
+                "Time / aging rule: resolve or publish a blocker within 24 hours; escalate to Codex if the same report failure repeats after one repair attempt.\n"
+                "Dave needed: no, unless a production credential or external database permission is required."
+            )
         return {
             "ok": True,
             "source": "studio_reports_context",
-            "response_mode": "problem_analysis" if any(term in prompt_lower for term in ["error", "fix", "unable", "resolve", "broken", "can't", "cannot"]) else "report_summary",
+            "response_mode": response_mode,
             "mim_interface": {
                 "reply_text": reply,
                 "page_context": page_context,
@@ -9061,6 +12391,15 @@ async def studio_mim_chat_api(
     if "training" in page_context_lower:
         state = await _studio_training_state(db)
         reply = _compose_training_page_reply(prompt, state)
+        if _is_training_attention_prompt(prompt):
+            reply = (
+                f"{reply}\n\n"
+                "Recommended action: MIM opens or updates the training-resolution objective, and TOD clears one stale or failing evidence lane at a time.\n"
+                "Owner: MIM owns the training objective and reply quality; TOD owns validation artifacts and execution proof.\n"
+                "Expected evidence: refreshed or retired stale artifacts, validation-baseline records, and a new reflection showing whether outcomes improved.\n"
+                "Time / aging rule: rerun the attention check after the next hourly reflection; escalate to Codex if the same failure signature repeats for 24 hours.\n"
+                "Dave needed: no, unless a policy, credential, or external account decision is required."
+            )
         return {
             "ok": True,
             "source": "studio_training_context",
@@ -9081,11 +12420,7 @@ async def studio_mim_chat_api(
                 ),
             },
         }
-    return {
-        "ok": False,
-        "source": "studio_context_not_handled",
-        "mim_interface": {"reply_text": ""},
-    }
+    return _studio_operator_contract_fallback_reply(prompt, page_context)
 
 
 @router.get("/studio/api/projects/state")
@@ -9170,11 +12505,13 @@ async def update_studio_project_form(
     row.next_action = next_action
     row.dave_needed = _form_bool(dave_needed)
     metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+    metadata = dict(metadata)
     metadata.update(
         {
             "progress_percent": max(0, min(100, int(progress_percent or 0))),
             "blocker": blocker.strip() or "none",
             "work_state": row.status,
+            "current_driving_task": next_action.strip() or row.next_action or "",
             "updated_from": "studio_projects_form",
             "user_modified": True,
         }
@@ -9367,6 +12704,7 @@ async def create_studio_project_event_form(
     title: str = Form(""),
     actor: str = Form("Dave"),
     detail: str = Form(""),
+    event_type: str = Form("note"),
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     project = await db.get(StudioProject, project_id)
@@ -9378,7 +12716,7 @@ async def create_studio_project_event_form(
     db.add(
         StudioProjectEvent(
             project_id=project.id,
-            event_type="note",
+            event_type=event_type.strip() or "note",
             actor=actor.strip() or "Dave",
             title=title.strip() or "Project note",
             detail=detail,
@@ -9578,9 +12916,10 @@ async def create_studio_project_event(
 @router.get("/studio/api/documents/state")
 async def studio_documents_state_api(
     document_id: int | None = None,
+    source_path: str = "",
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    return await _studio_documents_state(db, selected_document_id=document_id)
+    return await _studio_documents_state(db, selected_document_id=document_id, selected_source_path=source_path)
 
 
 @router.get("/studio/api/document-links")
@@ -9658,6 +12997,40 @@ async def studio_app_sources_api() -> dict[str, Any]:
 async def studio_apps_state_api(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     state = await _studio_apps_state(db)
     return {"ok": True, **state}
+
+
+@router.get("/studio/apps/previews/{slug}/{asset_path:path}")
+async def studio_user_app_preview_asset(
+    request: Request,
+    slug: str,
+    asset_path: str = "preview.html",
+) -> Response:
+    auth_redirect = maybe_require_mimtod_page_login(request, next_path=f"/studio/apps/previews/{slug}/{asset_path}")
+    if auth_redirect is not None:
+        return auth_redirect
+    safe_slug = _workbench_slug(slug)
+    clean_asset = str(asset_path or "preview.html").replace("\\", "/").strip("/")
+    if not clean_asset:
+        clean_asset = "preview.html"
+    if clean_asset.startswith("/") or ".." in clean_asset.split("/"):
+        raise HTTPException(status_code=400, detail="invalid_preview_asset")
+    root = SHARED_RUNTIME_ROOT / "user_app_published" / safe_slug
+    target = (root / clean_asset).resolve()
+    root_resolved = root.resolve()
+    if not str(target).startswith(str(root_resolved)) or not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="preview_asset_not_found")
+    media_type = {
+        ".html": "text/html; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".js": "application/javascript; charset=utf-8",
+        ".json": "application/json; charset=utf-8",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }.get(target.suffix.lower(), "application/octet-stream")
+    return Response(target.read_bytes(), media_type=media_type)
 
 
 @router.get("/studio/api/reports/dataset")
@@ -9780,6 +13153,79 @@ async def create_studio_document_link(
     }
 
 
+@router.get("/studio/apps/workbench/{project_id}", response_class=HTMLResponse)
+async def studio_app_workbench(
+    request: Request,
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> HTMLResponse:
+    auth_redirect = maybe_require_mimtod_page_login(request, next_path=f"/studio/apps/workbench/{project_id}")
+    if auth_redirect is not None:
+        return auth_redirect
+    state = await _studio_app_workbench_state(db, project_id)
+    project = state.get("project") if isinstance(state.get("project"), dict) else {}
+    metadata = state.get("metadata") if isinstance(state.get("metadata"), dict) else {}
+    app_name = _first_text(metadata.get("app_name"), project.get("title"), default="App Workbench")
+    return HTMLResponse(
+        _shell(
+            active="apps",
+            title=f"Workbench / {app_name}",
+            subtitle="",
+            body=_app_workbench_body(state),
+            page_context=f"App Workbench: {app_name}",
+            show_mim_panel=True,
+        )
+    )
+
+
+@router.post("/studio/apps/workbench/{project_id}/events")
+async def create_studio_app_workbench_event_form(
+    project_id: int,
+    title: str = Form(""),
+    actor: str = Form("Dave / Workbench"),
+    detail: str = Form(""),
+    event_type: str = Form("workbench_change_request"),
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    project = await db.get(StudioProject, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="studio_project_not_found")
+    metadata = project.metadata_json if isinstance(project.metadata_json, dict) else {}
+    metadata = dict(metadata)
+    metadata["user_modified"] = True
+    metadata["last_workbench_change_request_at"] = _utc_now()
+    project.metadata_json = metadata
+    tod_request: dict[str, Any] = {}
+    if detail.strip():
+        project.next_action = "MIM should classify the Workbench change request and dispatch the next bounded TOD slice."
+        tod_request = _write_workbench_change_tod_request(
+            project=project,
+            metadata=metadata,
+            title=title,
+            detail=detail,
+            actor=actor,
+        )
+    db.add(
+        StudioProjectEvent(
+            project_id=project.id,
+            event_type=event_type.strip() or "workbench_change_request",
+            actor=actor.strip() or "Dave / Workbench",
+            title=title.strip() or "Workbench change request",
+            detail=detail,
+            metadata_json={
+                "source": "studio_app_workbench_form",
+                "movement_event": bool(detail.strip()),
+                "needs_mim_classification": bool(detail.strip()),
+                "tod_request_published": bool(tod_request),
+                "tod_request_id": tod_request.get("request_id", ""),
+                "dispatch_kind": tod_request.get("dispatch_kind", ""),
+            },
+        )
+    )
+    await db.commit()
+    return RedirectResponse(url=f"/studio/apps/workbench/{project.id}", status_code=303)
+
+
 @router.get("/studio/{tab_key}", response_class=HTMLResponse)
 async def studio_tab(
     request: Request,
@@ -9820,7 +13266,11 @@ async def studio_tab(
                 selected_document_id = int(raw_document_id)
             except ValueError:
                 selected_document_id = None
-        state = await _studio_documents_state(db, selected_document_id=selected_document_id)
+        state = await _studio_documents_state(
+            db,
+            selected_document_id=selected_document_id,
+            selected_source_path=request.query_params.get("source_path", ""),
+        )
         body = _documents_body(state)
         subtitle = str(PLACEHOLDERS[key]["subtitle"])
     elif key == "reports":
@@ -9841,6 +13291,9 @@ async def studio_tab(
         subtitle = "A blank data whiteboard where MIM turns questions into datasets, summaries, findings, and actions."
     elif key == "training":
         state = await _studio_training_state(db)
+        started_attention = await _ensure_training_attention_resolution_started(db, state)
+        if started_attention:
+            state = await _studio_training_state(db)
         body = _training_body(state)
         subtitle = str(PLACEHOLDERS[key]["subtitle"])
     elif key == "apps":

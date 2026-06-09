@@ -30,23 +30,30 @@ def _import_studio_module():
     responses_module = types.ModuleType("fastapi.responses")
     pydantic_module = types.ModuleType("pydantic")
     sqlalchemy_module = types.ModuleType("sqlalchemy")
+    sqlalchemy_engine_module = types.ModuleType("sqlalchemy.engine")
     sqlalchemy_ext_module = types.ModuleType("sqlalchemy.ext")
     sqlalchemy_asyncio_module = types.ModuleType("sqlalchemy.ext.asyncio")
 
     fastapi_module.APIRouter = lambda *_args, **_kwargs: _FakeRouter()
     fastapi_module.Body = _identity_value
     fastapi_module.Depends = _identity_value
+    fastapi_module.Form = _identity_value
     fastapi_module.HTTPException = Exception
     fastapi_module.Request = object
     responses_module.HTMLResponse = object
+    responses_module.RedirectResponse = object
     responses_module.Response = object
     pydantic_module.BaseModel = _FakeBaseModel
     pydantic_module.Field = _field
     sqlalchemy_module.func = types.SimpleNamespace(count=lambda: None)
     sqlalchemy_module.select = lambda *_args, **_kwargs: None
     sqlalchemy_module.text = lambda value: value
+    sqlalchemy_engine_module.make_url = lambda value: value
     sqlalchemy_asyncio_module.AsyncSession = object
+    sqlalchemy_asyncio_module.create_async_engine = lambda *_args, **_kwargs: None
 
+    core_config_module = types.ModuleType("core.config")
+    core_config_module.settings = types.SimpleNamespace()
     core_db_module = types.ModuleType("core.db")
     core_db_module.get_db = lambda: None
     core_auth_module = types.ModuleType("core.mim_ui_auth")
@@ -72,8 +79,10 @@ def _import_studio_module():
             "fastapi.responses": responses_module,
             "pydantic": pydantic_module,
             "sqlalchemy": sqlalchemy_module,
+            "sqlalchemy.engine": sqlalchemy_engine_module,
             "sqlalchemy.ext": sqlalchemy_ext_module,
             "sqlalchemy.ext.asyncio": sqlalchemy_asyncio_module,
+            "core.config": core_config_module,
             "core.db": core_db_module,
             "core.mim_ui_auth": core_auth_module,
             "core.models": core_models_module,

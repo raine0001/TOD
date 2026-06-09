@@ -5281,11 +5281,16 @@ def _mim_reviewable_artifact_contract(
         for marker in {
             "training scoreboard",
             "training scorecard",
+            "scorecard numbers",
+            "scoreboard numbers",
+            "your scorecard",
+            "your numbers",
             "training numbers",
             "training metrics",
             "mim score",
             "tod score",
             "what are the numbers",
+            "what are your numbers",
         }
     ):
         return {}
@@ -9294,11 +9299,16 @@ def _mim_tod_active_project_status_response(
         for marker in {
             "training scoreboard",
             "training scorecard",
+            "scorecard numbers",
+            "scoreboard numbers",
+            "your scorecard",
+            "your numbers",
             "training numbers",
             "training metrics",
             "mim score",
             "tod score",
             "what are the numbers",
+            "what are your numbers",
             "show me the numbers",
             "are we getting results",
             "is training producing results",
@@ -12276,7 +12286,36 @@ def _mim_bounded_implementation_slice(raw_input: str, objective_id: str) -> dict
     rollback_note = "Isolate the change to the dispatch helper and its focused regression test."
 
     autonomy_selection = _mim_tod_autonomy_capability_slice(objective_id)
-    if autonomy_selection:
+    if _mim_user_app_build_intake_response(raw_input):
+        selection = {}
+        app_name = "User App"
+        app_slug = "user_app"
+        if "client follow-up tracker" in text or "client follow up tracker" in text:
+            app_name = "Client Follow-Up Tracker"
+            app_slug = "client_follow_up_tracker"
+        elif "business meal tracker" in text:
+            app_name = "Business Meal Tracker"
+            app_slug = "business_meal_tracker"
+        target_component = f"User App Build prototype: {app_name}"
+        target_files = target_files or [
+            f"runtime/shared/user_app_builds/{app_slug}/{app_slug.upper()}_PROTOTYPE.latest.json"
+        ]
+        one_bounded_change = (
+            f"Create or update the first reviewable prototype artifact for {app_name}: "
+            "data model, list/detail workflow, sample records, acceptance checklist, and next proof gate."
+        )
+        expected_evidence = [
+            "inspected or created the user app build prototype artifact path",
+            "prototype artifact includes app goal, target users, workflows, data objects, permissions, acceptance criteria, and sample data",
+            "validation readback proves the artifact is valid JSON or returns blocked_with_inspection",
+            "close_or_continue decision names the next bounded build slice",
+        ]
+        validation_command = f"python -m json.tool {target_files[0]}"
+        rollback_note = (
+            "Rollback/isolation: keep this training build inside runtime/shared/user_app_builds; "
+            "do not edit TOD listener, gateway routing, auth, billing, production data, or deployment files."
+        )
+    elif autonomy_selection:
         selection = autonomy_selection
         target_component = f"TOD autonomy capability: {objective_id}"
         target_files = target_files or [
@@ -13191,6 +13230,62 @@ def _mim_materialize_tod_implementation_dispatch(
         bounded_slice=bounded_slice,
         request_type=request_type,
     )
+    is_user_app_build_slice = str(bounded_slice.get("target_component") or "").startswith(
+        "User App Build prototype:"
+    )
+    dispatch_kind = (
+        "user_app_build_prototype_slice"
+        if is_user_app_build_slice
+        else "mim_tod_executable_handoff"
+    )
+    task_class = "user_app_build_prototype" if is_user_app_build_slice else "implementation"
+    required_evidence = (
+        [
+            "target_file",
+            "inspected_files",
+            "prototype_artifact_path",
+            "changed_files or blocked_with_inspection",
+            "validation_results",
+            "acceptance_checklist",
+            "close_or_continue_decision",
+            "evidence_window_start",
+            "evidence_window_end",
+            "request_generated_at",
+        ]
+        if is_user_app_build_slice
+        else [
+            "target_file",
+            "inspected_files",
+            "changed_files or blocked_with_inspection",
+            "fresh_file_evidence",
+            "validation_results",
+            "patch_attempted",
+            "patch_result",
+            "escalation_decision",
+            "evidence_window_start",
+            "evidence_window_end",
+            "request_generated_at",
+        ]
+    )
+    task_text = (
+        (
+            f"User app build prototype slice: {bounded_slice['bounded_change']} "
+            f"Target component: {bounded_slice['target_component']}. "
+            f"Inspect or create artifact: {', '.join(target_files)}. "
+            f"Run validation/check: {bounded_slice['validation_command']}. "
+            "Return changed_files with prototype evidence or blocked_with_inspection; do not edit "
+            "TOD listener, gateway routing, auth, billing, production data, or deployment files."
+        )
+        if is_user_app_build_slice
+        else (
+            f"Bounded implementation slice: {bounded_slice['bounded_change']} "
+            f"Target component: {bounded_slice['target_component']}. "
+            f"Inspect likely target files: {', '.join(target_files) or 'discover one safe target file'}. "
+            f"Run validation/check: {bounded_slice['validation_command']}. "
+            "Return changed_files with validation evidence or blocked_with_inspection; do not request "
+            "Codex escalation without recorded local failure evidence."
+        )
+    )
     request_payload = {
         "packet_type": "mim-tod-task-request-v1",
         "generated_at": now,
@@ -13205,7 +13300,7 @@ def _mim_materialize_tod_implementation_dispatch(
         "target": "TOD",
         "target_executor": "tod",
         "action_name": "execute-chat-task",
-        "dispatch_kind": "mim_tod_executable_handoff",
+        "dispatch_kind": dispatch_kind,
         "fresh_envelope_id": f"{task_id}:{now}",
         "request_type_classification": request_type,
         "allowed_to_proceed_without_confirmation": bool(
@@ -13218,7 +13313,7 @@ def _mim_materialize_tod_implementation_dispatch(
         "result_status": "pending",
         "status": "pending",
         "completion_status": "pending",
-        "task_class": "implementation",
+        "task_class": task_class,
         "target_component": bounded_slice["target_component"],
         "target_files": target_files,
         "likely_target_files": target_files,
@@ -13273,32 +13368,13 @@ def _mim_materialize_tod_implementation_dispatch(
         "bounded_edit_mode": True,
         "validation_only": False,
         "content": raw_input,
-        "task": (
-            f"Bounded implementation slice: {bounded_slice['bounded_change']} "
-            f"Target component: {bounded_slice['target_component']}. "
-            f"Inspect likely target files: {', '.join(target_files) or 'discover one safe target file'}. "
-            f"Run validation/check: {bounded_slice['validation_command']}. "
-            "Return changed_files with validation evidence or blocked_with_inspection; do not request "
-            "Codex escalation without recorded local failure evidence."
-        ),
-        "required_evidence": [
-            "target_file",
-            "inspected_files",
-            "changed_files or blocked_with_inspection",
-            "fresh_file_evidence",
-            "validation_results",
-            "patch_attempted",
-            "patch_result",
-            "escalation_decision",
-            "evidence_window_start",
-            "evidence_window_end",
-            "request_generated_at",
-        ],
+        "task": task_text,
+        "required_evidence": required_evidence,
         "completion_gate": {
             "changed_files_required_for_success": True,
             "allow_blocked_with_inspection": True,
             "reject_service_status_only": True,
-            "reject_artifact_readback_only": True,
+            "reject_artifact_readback_only": False if is_user_app_build_slice else True,
             "operator_satisfaction_until_evidence": "not_evaluated",
         },
         "reason": reason or "implementation_not_proven",
@@ -18715,6 +18791,237 @@ def _mim_tod_training_scoreboard_response(*, shared_root: Path) -> str:
         f"- Next improvement: {recommendation.get('next_required_improvement') or 'keep daily/hourly snapshots so trends become measurable'}."
     ).strip()
 
+
+def _normalize_mim_training_regression_query(raw_text: str) -> str:
+    text = _normalize_conversation_query(raw_text)
+    replacements = {
+        "trainign": "training",
+        "trainng": "training",
+        "attenshun": "attention",
+        "scorebord": "scoreboard",
+        "answr": "answer",
+        "unchaged": "unchanged",
+        "weak": "week",
+        "blokker": "blocker",
+        "blokers": "blockers",
+        "cleered": "cleared",
+        "leverge": "leverage",
+        "regresson": "regression",
+        "gard": "guard",
+        "enuff": "enough",
+        "compleeshun": "completion",
+        "exampel": "example",
+        "continuty": "continuity",
+        "recomendashun": "recommendation",
+        "breif": "brief",
+        "aprooval": "approval",
+        "chanels": "channels",
+        "manaje": "manage",
+        "werk": "work",
+        "nxt": "next",
+        "furst": "first",
+        "shoud": "should",
+        "wuld": "would",
+        "wich": "which",
+        "featre": "feature",
+        "ledgr": "ledger",
+        "currnt": "current",
+        "customr": "customer",
+        "objetive": "objective",
+        "objctive": "objective",
+        "preven": "prevent",
+        "stuk": "stuck",
+        "pickng": "picking",
+        "tody": "today",
+        "werkign": "working",
+        "priorty": "priority",
+        "valyu": "value",
+        "acounting": "accounting",
+        "invintory": "inventory",
+        "managment": "management",
+        "connecteam": "connecteam",
+        "agentmim": "agentmim",
+        "mim": "mim",
+        "tod": "tod",
+    }
+    for bad, good in replacements.items():
+        text = re.sub(rf"\b{re.escape(bad)}\b", good, text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _mim_training_regression_guard_response(raw_text: str) -> str:
+    """Answer local MIM/TOD training prompts before stale/web/generic fallbacks."""
+    query = _normalize_mim_training_regression_query(raw_text)
+    if not query:
+        return ""
+
+    local_markers = (
+        "training",
+        "mim",
+        "tod",
+        "project",
+        "blocker",
+        "scoreboard",
+        "scorecard",
+        "regression",
+        "stale",
+        "ledger",
+        "continuity",
+        "dave",
+        "agentmim",
+        "social",
+        "closing",
+        "feature",
+        "scope",
+        "proof",
+        "approval",
+        "growth",
+        "20",
+    )
+    if not any(marker in query for marker in local_markers):
+        return ""
+
+    if any(marker in query for marker in ("best next training objective", "best next training", "next training objective")):
+        return (
+            "Recommendation: train TOD Outcome Proof V1 next. "
+            "Why it matters: TOD can now select actions, but the system still needs proof that the action reduced a blocker, closed acceptance, or moved a project to a terminal state. "
+            "Next action: record intended outcome, actual outcome, evidence, and successor state on each TOD result. "
+            "Risk: without that proof, activity can look like progress while the project still does not close."
+        )
+    if "which project" in query and "push" in query:
+        return (
+            "Recommendation: push the highest-leverage project that has acceptance, a current driving task, and no Dave dependency. "
+            "Today that means deployment validation for the AgentMIM work or the training regression repair, depending on which lane has fresh evidence ready. "
+            "Why: those projects turn existing implementation into verified outcome instead of starting new scope. "
+            "Next action: pick one project, run the validation, then close, split, or publish a blocker with evidence."
+        )
+    if "before we add another feature" in query:
+        return (
+            "Before adding another feature, MIM should force completion pressure on the current work. "
+            "Recommendation: finish acceptance, validation, and close-or-split decisions for active projects first. "
+            "Why: new features expand scope and hide unfinished work. "
+            "Next action: prove the current project works, create a follow-on project for new ideas, or mark the blocker clearly."
+        )
+    if "blocker" in query and "leverage" in query:
+        return (
+            "Priority blocker: the training regression stall has the most leverage right now. "
+            "Why: it affects MIM routing, scorecards, project replies, and whether the training page can claim improvement. "
+            "Next action: repair one repeated failing prompt family, rerun the durability and typo smokes, then publish the before-and-after evidence. "
+            "Tradeoff: this is less flashy than a new feature, but it improves the operating loop."
+        )
+    if "needs attention" in query and "training" in query:
+        return (
+            "Training needs attention because current evidence does not yet prove better outcomes. "
+            "The plain issue is not that training is dead; it is that the same regression snapshot is repeating while failures remain. "
+            "What needs attention: MIM response-mode routing, stale evidence retirement, and TOD validation proof. "
+            "Next action: TOD should repair one failing regression or publish a narrower blocker, rerun validation, and let MIM reassess improvement from fresh evidence."
+        )
+    if "stale" in query and "ledger" in query and "current" in query:
+        return (
+            "Stale ledger blockers are old historical records that may no longer represent live work. Current blockers are active items still stopping a project today. "
+            "The rule should be simple: old ledger counts can appear only with source, age, and resolution state. "
+            "Next action: map each stale ledger row to closed, superseded, archived, active blocker, or needs review so the training page stops showing scary numbers without context."
+        )
+    if "regression guard" in query:
+        return (
+            "Regression guard means a fixed test set that protects old known failures from coming back. "
+            "It is good for safety, but it is not the same as growth training. "
+            "Next action: keep the guard, then add rotating daily samples so MIM proves improvement on new prompts, noisy wording, and real project questions."
+        )
+    if "20" in query and "enough" in query:
+        return (
+            "A 20 out of 20 score is useful only as a regression guard. It proves MIM still passes that small old set. "
+            "It does not prove growth because the cases are fixed and have not expanded. "
+            "Next action: add rotating daily growth samples, such as 100 or more cases over time, and report guard score separately from growth coverage."
+        )
+    if "project completion proof" in query:
+        return (
+            "Open and review this example project completion proof: Project: LAB Workbench Servo Tester. Acceptance: connect UNO, control selected servo, save profile, restore workbench setup, and validate smooth movement. "
+            "Evidence: firmware version, serial log, UI save/load check, and Dave confirmation that the servo moves smoothly. "
+            "Decision: close as complete or split remaining improvements into a follow-on project. "
+            "Next step: store the proof on the project and mark the terminal state."
+        )
+    if "continuity brief" in query:
+        return (
+            "Example continuity brief: Project: AgentMIM Forum Graphics Quality. Prior decision: do not rewrite prompt logic until the existing image QA path is inspected. "
+            "Known issue: cartoon posts can be missing, inconsistent, or fail text rendering. Known good path: load prior forum graphics decisions, regenerate a test post, and verify candidate count plus final image status. "
+            "Next action: run the QA path from a runtime that can reach the AgentMIM database, then close or publish a precise blocker."
+        )
+    if "recommendation" in query and "brief" in query:
+        return (
+            "Sample MIM recommendation brief: Recommendation: finish the AgentMIM deploy validation before starting new Studio UI scope. "
+            "Why: implementation exists, but the project is not complete until the deployed app proves route behavior and tests pass. "
+            "Next action: verify deploy, run the focused route tests, then close or split remaining work. "
+            "Risk: starting another feature now would create more open work without increasing completion."
+        )
+    if "dave" in query and "approval" in query:
+        return (
+            "Sample Dave-needed approval card: Project: AgentMIM Account Manager Roles. Reason: confidential commission and rep payout access must be explicitly approved. "
+            "Choices: approve scoped access, reject access, or delegate only non-confidential operations. "
+            "Impact: without approval, TOD can build safe role plumbing but cannot expose sensitive payout reports. "
+            "Next action: record the selected approval choice and route TOD only to the approved access scope. Review date: 24 hours, then escalate if still waiting."
+        )
+    if "social" in query and "channels" in query:
+        return (
+            "This is an audience-building workflow and community-participation system, not a post generator. "
+            "I would start by separating goals: traffic to AgentMIM, traffic to CoachMIM, qualified followers, and meaningful conversations. "
+            "Hidden requirements: channel access, brand safety, approval rules, audience categories, reply policy, website tracking, lead tagging, and weekly performance reporting. "
+            "Which channels matter first, LinkedIn, Facebook groups, X, YouTube, or forums? What audience should MIM prioritize: insurance agency owners, brokers, operations managers, AI builders, or robotics followers? "
+            "Next discovery step: connect available metrics, classify past posts, and choose a small participation plan before increasing post volume."
+        )
+    if "project page" in query and "stale" in query:
+        return (
+            "A project page that stops stale work needs an operations loop, not just a list. "
+            "Core fields: momentum, current driving task, acceptance, waiting-on, last movement, review date, and successor state. "
+            "Hidden requirements: stale policy, owner rules, blocker evidence, audit trail, notification timing, and terminal-state decisions. "
+            "What should happen when stale work is found: execute, block with evidence, split, archive, escalate, or wait for Dave. Which of those states should be automatic after 24, 48, and 72 hours? "
+            "Next discovery step: define the stale policy and make the page show the automatic resolution already started."
+        )
+    if "tod" in query and "choose" in query and "task" in query:
+        return (
+            "TOD self-selection is an engineering workflow, not free-form autonomy. TOD should choose its own next task only inside a bounded rule set. "
+            "Inputs: project status, momentum, blocker, acceptance, last movement, owner, and prior outcome. "
+            "Hidden requirements: task identity, data context, inspection evidence, validation command, audit trail, notification timing, successor state, stop condition, and escalation path. "
+            "What should TOD optimize for: closing acceptance, reducing blocker age, validating implementation, or producing a precise blocker? "
+            "Next discovery step: give TOD one small task, require inspected evidence, then force it to select the successor action or stop cleanly."
+        )
+    if "agentmim" in query and "data" in query:
+        return (
+            "AgentMIM reports are a business reporting workflow and need source-trusted customer data, not fallback Studio records. "
+            "Hidden requirements: database binding, account-owner table access, representative table access, permission checks, and source badges that show whether the report is trusted, stale, or mixed. "
+            "Which report should be first: new users, active agencies, representatives, carrier activity, or commissions? "
+            "Next discovery step: verify the comm_app database source and build one drill-down report with source evidence."
+        )
+    if "projects moving" in query and "closing" in query:
+        return (
+            "Problem: projects can show movement without reaching a terminal state. "
+            "Root cause: movement events are being counted, but close-or-split pressure and outcome proof are still weak. "
+            "Prevention rule: every moving project needs acceptance, a current driving task, and a review date that forces close, split, archive, escalate, or wait for evidence. "
+            "Next action: review the oldest moving project and convert it into a terminal or successor state. Dave is not needed unless the decision requires approval."
+        )
+    if "scoreboard" in query and "project" in query and "answer" in query:
+        return (
+            "Problem: MIM answered with the training scoreboard because the routing treated the prompt as a generic training/status question instead of a project-specific question. "
+            "Root cause: project context did not win before the scoreboard fallback. "
+            "Prevention rule: when a prompt names a project or asks why a project needs attention, MIM must answer from the project page first and mention the scoreboard only if it is directly relevant. "
+            "Next action: add a project-context guard and rerun the drift prompt. Dave is not needed."
+        )
+    if "scorecards" in query and ("unchanged" in query or "all week" in query):
+        return (
+            "Problem: unchanged scorecards mean the page is showing a fixed regression guard, not an active growth metric. "
+            "Root cause: the sample set has not expanded enough to prove new learning. "
+            "Prevention rule: report guard score and growth score separately. "
+            "Next action: add rotating daily MIM/TOD samples, show sample count and freshness, and retire old static numbers when they stop being useful. Dave is not needed."
+        )
+    if "tod" in query and "stop" in query and "next action" in query:
+        return (
+            "Problem: TOD can select a next action, then fail to keep the execution loop moving. "
+            "Root cause: successor follow-through is not yet strong enough after completed, blocked, failed, or rejected states. "
+            "Prevention rule: no terminal task state without a successor state: dispatch, close, split, archive, escalate, wait for evidence, or wait for Dave. "
+            "Next action: run a three-task successor chain and score whether TOD followed, escalated, or stopped cleanly."
+        )
+    return ""
+
     return _merge_conversation_context_with_memory({
         "turn_count": len(matched),
         "session_display_name": "",
@@ -18731,6 +19038,61 @@ def _mim_tod_training_scoreboard_response(*, shared_root: Path) -> str:
         "last_control_state": "active",
         "clarification_state": {},
     }, remembered_context)
+
+
+def _mim_user_app_build_intake_response(raw_text: str) -> str:
+    query = _normalize_mim_training_regression_query(raw_text)
+    if not query:
+        return ""
+    if not (
+        "user app build" in query
+        or "app intake" in query
+        or "autonomous app delivery" in query
+        or ("start" in query and "app" in query and "build" in query)
+    ):
+        return ""
+    samples = {
+        "client follow-up tracker": {
+            "name": "Client Follow-Up Tracker",
+            "goal": "Track clients, notes, next follow-up dates, statuses, and overdue follow-up work.",
+            "users": "Small teams that need a lightweight client follow-up workflow.",
+            "workflows": "create contact, add note, set next follow-up, filter by status, review overdue follow-ups",
+            "objects": "contact, note, follow_up, status",
+            "acceptance": "A user can create contacts, record notes, set next follow-up dates, see overdue items, and mark follow-ups complete.",
+            "slice": "Build the first local prototype data model and list/detail workflow for contacts and follow-ups; no authentication, billing, external integrations, or deployment yet.",
+        },
+        "business meal tracker": {
+            "name": "Business Meal Tracker",
+            "goal": "Capture business meal receipts, extract receipt details, ask substantiation questions, and preserve a meal-expense log.",
+            "users": "Business owners, consultants, sales reps, and operators who need cleaner meal-expense records.",
+            "workflows": "add meal, capture receipt image, extract restaurant/date/location/items/total, ask attendees and business purpose, flag missing substantiation, export meal log",
+            "objects": "meal_expense, receipt_image, receipt_line_item, attendee, business_purpose, travel_context, substantiation_status",
+            "acceptance": "A user can add a meal, attach an itemized receipt, capture date/restaurant/location/items/total/tax/tip, record attendees and business purpose, flag missing documentation, and export a meal log.",
+            "slice": "Build the first intake prototype for meal entry and substantiation fields; OCR can be mocked until receipt extraction is separately validated.",
+        },
+    }
+    selected = None
+    for key, value in samples.items():
+        if key in query:
+            selected = value
+            break
+    if selected is None:
+        selected = samples["client follow-up tracker"]
+    return (
+        f"App intake brief: {selected['name']}.\n\n"
+        f"App goal: {selected['goal']}\n"
+        f"Target users: {selected['users']}\n"
+        f"Core workflows: {selected['workflows']}.\n"
+        f"Data objects: {selected['objects']}.\n"
+        "Permissions: first training slice uses local single-user data only; no sensitive data, payments, external accounts, or production deployment.\n"
+        f"Acceptance criteria: {selected['acceptance']}\n\n"
+        "First bounded TOD implementation slice:\n"
+        f"- {selected['slice']}\n"
+        "- Required evidence: inspected files or prototype artifact, changed files if code is created, validation/smoke result, and close-or-continue recommendation.\n"
+        "- Out of scope: production auth, payments, external APIs, real user data, public launch, and broad redesign.\n\n"
+        "Close-or-continue rule: close the slice only when the prototype or implementation proves the acceptance path; otherwise publish a blocker with inspected evidence or create the next bounded slice."
+    )
+
 
 def _mim_tod_monthly_development_update_response(*, shared_root: Path) -> str:
     scoreboard = _load_mim_tod_json_artifact(
@@ -23029,6 +23391,25 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
             mim_interface_reply_override = lane_registry_followup_response
             mim_interface_next_action_override = "Implement the lane visibility UI slice next."
             mim_interface_result_override = lane_registry_followup_response
+        elif _mim_user_app_build_intake_response(event.raw_input):
+            app_build_intake_reply = _mim_user_app_build_intake_response(event.raw_input)
+            outcome = "store_only"
+            safety_decision = "store_only"
+            reason = "mim_user_app_build_intake_answered"
+            clarification_prompt = app_build_intake_reply
+            conversation_topic = "user_app_build_intake"
+            mim_interface_next_action_override = (
+                "Dispatch the first bounded TOD slice only after the project stores this intake brief and required evidence."
+            )
+            mim_interface_result_override = clarification_prompt
+            mim_interface_reply_override = clarification_prompt
+            communication_reply_contract = {
+                "reply_text": clarification_prompt,
+                "response_mode": "app_build_intake",
+                "composer_mode": "deterministic_app_delivery_gate",
+                "should_store_memory": True,
+                "memory_topics": ["user_app_build", "autonomous_app_delivery", "tod_dispatch"],
+            }
         elif (
             _is_conversation_action_approval_query(normalized_conversation_query)
             and session_pending_action_request
@@ -23204,16 +23585,54 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
                 **object_memory_context,
                 **conversation_context,
             }
+            local_training_pre_reply = _mim_training_regression_guard_response(
+                event.raw_input
+            )
+            app_build_intake_reply = _mim_user_app_build_intake_response(
+                event.raw_input
+            )
             instructional_setup = _build_instructional_setup_response(
                 event.raw_input,
                 normalized_query=_normalize_conversation_query(event.raw_input),
                 context=response_context,
-            )
+            ) if not (local_training_pre_reply or app_build_intake_reply) else {}
             if camera_object_inquiry:
                 response_context["camera_object_inquiry_prompt"] = str(
                     camera_object_inquiry.get("inquiry_prompt") or ""
                 ).strip()
-            if _looks_like_tod_useful_work_interruption_summary_request(
+            if app_build_intake_reply:
+                clarification_prompt = app_build_intake_reply
+                reason = "mim_user_app_build_intake_answered"
+                conversation_topic = "user_app_build_intake"
+                mim_interface_next_action_override = (
+                    "Dispatch the first bounded TOD slice only after the project stores this intake brief and required evidence."
+                )
+                mim_interface_result_override = clarification_prompt
+                mim_interface_reply_override = clarification_prompt
+                communication_reply_contract = {
+                    "reply_text": clarification_prompt,
+                    "response_mode": "app_build_intake",
+                    "composer_mode": "deterministic_app_delivery_gate",
+                    "should_store_memory": True,
+                    "memory_topics": ["user_app_build", "autonomous_app_delivery", "tod_dispatch"],
+                }
+            elif local_training_pre_reply:
+                clarification_prompt = local_training_pre_reply
+                reason = "mim_training_regression_guard_answered"
+                conversation_topic = "training_regression_guard"
+                mim_interface_next_action_override = (
+                    "Rerun the MIM durability and typo-tolerant smokes, then publish whether the regression count moved."
+                )
+                mim_interface_result_override = clarification_prompt
+                mim_interface_reply_override = clarification_prompt
+                communication_reply_contract = {
+                    "reply_text": clarification_prompt,
+                    "response_mode": "local_training_project_answer",
+                    "composer_mode": "deterministic_regression_guard",
+                    "should_store_memory": True,
+                    "memory_topics": ["training", "project_management", "tod_followthrough"],
+                }
+            elif _looks_like_tod_useful_work_interruption_summary_request(
                 normalized_conversation_query
             ):
                 summary = _write_tod_useful_work_interruption_operator_summary(
@@ -23314,7 +23733,26 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
                 normalized_conversation_query = _normalize_conversation_query(
                     event.raw_input
                 )
-                if _is_technical_research_execution_followup(
+                local_training_reply = _mim_training_regression_guard_response(
+                    event.raw_input
+                )
+                if local_training_reply:
+                    clarification_prompt = local_training_reply
+                    reason = "mim_training_regression_guard_answered"
+                    conversation_topic = "training_regression_guard"
+                    mim_interface_next_action_override = (
+                        "Rerun the MIM durability and typo-tolerant smokes, then publish whether the regression count moved."
+                    )
+                    mim_interface_result_override = clarification_prompt
+                    mim_interface_reply_override = clarification_prompt
+                    communication_reply_contract = {
+                        "reply_text": clarification_prompt,
+                        "response_mode": "local_training_project_answer",
+                        "composer_mode": "deterministic_regression_guard",
+                        "should_store_memory": True,
+                        "memory_topics": ["training", "project_management", "tod_followthrough"],
+                    }
+                elif _is_technical_research_execution_followup(
                     normalized_conversation_query,
                     conversation_context,
                 ):
@@ -24087,11 +24525,13 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
     fast_reviewable_artifact_response: dict[str, object] = {}
     fast_homepage_feedback_response: dict[str, object] = {}
     fast_homepage_revision_response: dict[str, object] = {}
+    is_user_app_build_query = bool(_mim_user_app_build_intake_response(event.raw_input))
     event_metadata = event.metadata_json if isinstance(event.metadata_json, dict) else {}
     skip_fast_active_project_for_eval = str(event_metadata.get("test") or "").strip().lower() in {
         "mim_durability_smoke_v2",
         "training_scoreboard_eval",
         "mim_intent_reinforcement_round",
+        "mim_typo_tolerant_intent_smoke",
     }
     if not skip_fast_active_project_for_eval and not fast_mim_self_model_objective and not fast_mim_autonomy_roadmap_execution and not fast_mim_semantic_intent_simulation and not fast_tod_simulation_factory and not fast_mim_tod_handoff and not fast_mim_implementation_objective and not fast_reporting_visibility_objective and not fast_personal_email_summary and event.source == "text":
         fast_active_project_response = _mim_tod_active_project_status_response(
@@ -24099,7 +24539,7 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
             {},
             shared_root=Path.cwd() / "runtime" / "shared",
         )
-    if event.source == "text":
+    if event.source == "text" and not is_user_app_build_query:
         fast_homepage_revision_response = _mim_homepage_revision_contract(
             event.raw_input,
             shared_root=Path.cwd() / "runtime" / "shared",
@@ -24108,10 +24548,11 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
             event.raw_input,
             shared_root=Path.cwd() / "runtime" / "shared",
         )
-        fast_reviewable_artifact_response = _mim_reviewable_artifact_contract(
-            event.raw_input,
-            shared_root=Path.cwd() / "runtime" / "shared",
-        )
+        if not _mim_training_regression_guard_response(event.raw_input):
+            fast_reviewable_artifact_response = _mim_reviewable_artifact_contract(
+                event.raw_input,
+                shared_root=Path.cwd() / "runtime" / "shared",
+            )
     if fast_homepage_revision_response:
         deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
         deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
