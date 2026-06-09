@@ -98,6 +98,11 @@ runtime_remote_training/training_scoreboard_snapshots/
 runtime_remote_training/**/*.jpg
 runtime_remote_training/**/*.jpeg
 runtime_remote_training/**/*.png
+runtime_remote_training/TOD_EXECUTION_RESULT.latest.json
+runtime_remote_training/TOD_EXECUTION_TRUTH.latest.json
+runtime_remote_training/TOD_MIM_COMMAND_STATUS.latest.json
+runtime_remote_training/TOD_MIM_TASK_RESULT.latest.json
+runtime_remote_training/TOD_VALIDATION_RESULT.latest.json
 
 # Local inbox and avatar intake artifacts
 tod/inbox/
