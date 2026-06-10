@@ -1,0 +1,71 @@
+{
+  "generated_at": "2026-06-09T17:30:00-07:00",
+  "log_id": "TOD-AGENTMIM-COMMISSION-UPLOAD-RESOLUTION-LOG-2026-06-09",
+  "status": "active_reference",
+  "scope": "AgentMIM commission upload dry-run parsing and troubleshooting",
+  "source_batch": "F:/DRIVE/ahi/may_2026/downloads",
+  "dry_run_reports": {
+    "markdown": "E:/comm_app/runtime/commission_dry_run/may_2026/commission_dry_run_report.md",
+    "json": "E:/comm_app/runtime/commission_dry_run/may_2026/commission_dry_run_report.json"
+  },
+  "no_upload_or_import_performed": true,
+  "current_batch_status": {
+    "files_scanned": 35,
+    "ready_file_only_mapping_unverified": 30,
+    "duplicate_reference_ready": 1,
+    "mapping_failed": 4,
+    "total_suspicious": 0
+  },
+  "resolutions": [
+    {
+      "id": "AGENTMIM-COMMISSION-CCSB-TOP-ROW-SUBTOTAL-2026-06-09",
+      "carrier": "Covered CA Shop",
+      "file_pattern": "CCSB_Statement*.xlsx",
+      "symptom": "Parsed XLSX total was $31,666.31 while PDF cover letter said $31,744.43.",
+      "expected_total": 31744.43,
+      "previous_parsed_total": 31666.31,
+      "gap": 78.12,
+      "root_cause": "A top-of-page continuation row combined detail and subtotal content; the parser treated group 713667 as a money-like value and missed the $78.12 subtotal commission.",
+      "resolution": "Use subtotal-specific financial amount extraction and preserve the active group header when page-break text malforms the subtotal row.",
+      "validation": [
+        "pytest tests/test_simulation_parser_registry.py -k ccsb_gn_clean_data",
+        "dry-run confirms CCSB XLSX total $31,744.43"
+      ]
+    },
+    {
+      "id": "AGENTMIM-COMMISSION-KAISER-BID-REWARD-STATEMENTS-2026-06-09",
+      "carrier": "Kaiser BID rewards",
+      "file_pattern": "BID_13695_*Reward*.csv",
+      "symptom": "Reward files looked suspicious because valid payments were stored under Bonus/Reward columns; group/production reward had only a bottom TOTAL row.",
+      "expected_totals": {
+        "BID_13695_KPIFPMPM_New_Mbr_Reward_Stmt_05-27-2026.csv": 728.0,
+        "BID_13695_KPIFPMPM_Renewal_Mbr_Reward_Stmt_05-27-2026.csv": 1274.0,
+        "BID_13695_RewardStatement_ProductionReward_05-27-2026.csv": 1000.0
+      },
+      "root_cause": "Kaiser reward statements use Bonus / Reward Amount or Bonus / Reward Total as commission-like payment sources. Renewal was also vulnerable to misclassification because the word renewal contains the letters new.",
+      "resolution": "Classify renewal before new_mbr, map member reward Bonus / Reward Amount as commission paid, and create one reviewable group-reward statement-total row from the bottom TOTAL row without allocating the amount across groups.",
+      "validation": [
+        "pytest tests/test_upload_flow_regressions.py -k \"kaiser_group_reward or kaiser_bid_reward\"",
+        "dry-run confirms new reward $728.00, renewal reward $1,274.00, group reward $1,000.00"
+      ]
+    },
+    {
+      "id": "AGENTMIM-COMMISSION-CALCHOICE-CARRY-FORWARD-AND-TOTALS-2026-06-09",
+      "carrier": "California Choice",
+      "file_pattern": "CalChoice_Stmt*.csv",
+      "symptom": "Policy/client values appeared only on the first row of each group, continuation charge rows had blank policy/client cells, and subtotal rows doubled the parsed total.",
+      "expected_total": 10334.8,
+      "previous_parsed_total": 20669.6,
+      "gap": 10334.8,
+      "root_cause": "The statement uses carry-forward policy/client rows and prints both broker subtotal sections and a final grand total in the same money column as charge detail rows.",
+      "resolution": "Add a California Choice parser that detects the real header, carries policy/client forward through continuation rows, keeps charge detail rows only, and drops TOTAL COMMISSIONS, Total ... Premium, TOTAL PAID COMMISSIONS, and final grand-total rows.",
+      "validation": [
+        "pytest tests/test_upload_flow_regressions.py -k calchoice_carry_forward",
+        "direct process_file parses 58 rows, $10,334.80 total, and zero blank policy/client rows",
+        "direct prepare_historical_commission_upload preview returns 58 records and $10,334.80",
+        "dry-run confirms CalChoice_Stmt05.26.26Rec_05-28-26_JR.csv as ready with $10,334.80"
+      ]
+    }
+  ],
+  "tod_rule": "Before changing commission parser logic, run a dry-run, compare parsed totals to source statement totals, inspect companion files, top rows, subtotal rows, carry-forward rows, OCR quality, and subtotal blocks, then update this log with evidence."
+}
