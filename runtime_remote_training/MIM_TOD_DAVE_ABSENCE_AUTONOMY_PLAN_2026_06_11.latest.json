@@ -1,0 +1,68 @@
+{
+  "generated_at": "2026-06-11",
+  "objective": "MIM/TOD-AUTONOMOUS-PROGRESSION-DURING-DAVE-ABSENCE-V1",
+  "travel_window": {
+    "start_date": "2026-06-13",
+    "duration_days_estimate": 10
+  },
+  "primary_plan_path": "E:/agent MIM work/app development/Dave away from LAB 6_11_26 expanded plan.md",
+  "primary_direction": "Optimize for follow-through, evidence, safe autonomous improvement, and fewer Dave dependencies while Dave has limited access.",
+  "top_objective": "MIM-PROACTIVE-RESOLUTION-AND-FOLLOW-THROUGH-V1",
+  "priority_stack": [
+    "Safety and authority boundaries",
+    "Proactive resolution and follow-through",
+    "TOD implementation training on real objectives",
+    "MIM communication and operator-impact scoring",
+    "Application factory improvement",
+    "Lab voice/greeting and servo slider endpoint labels",
+    "Studio project inbox checkbox flags and ongoing/training project type",
+    "Stale/frozen prevention",
+    "ARM body-learning curriculum with no unsupervised physical motion",
+    "Image/media creation training from AgentMIM/comm_app evidence",
+    "Bounded social discovery and draft generation",
+    "Health, cost, and access continuity"
+  ],
+  "safety_boundaries": [
+    "No unsupervised physical robot or ARM movement",
+    "No hardware movement based only on simulation",
+    "No credential, billing, domain, DNS, production deploy, or destructive data action without an approved safe lane",
+    "No social posting as Dave unless preapproved",
+    "No completion claim without validation evidence",
+    "Dave is not the default blocker"
+  ],
+  "cadence": {
+    "every_30_minutes": "If idle, train, audit, repair, or improve.",
+    "hourly": "Run follow-through selection and publish an evidence-backed note.",
+    "daily": [
+      "follow-through sweep",
+      "one TOD implementation drill",
+      "one MIM communication scoring batch",
+      "one application-factory improvement",
+      "stale/frozen prevention check",
+      "daily operator summary"
+    ]
+  },
+  "return_scorecard": [
+    "stale objectives count",
+    "frozen training incidents",
+    "replan loop incidents",
+    "blockers reduced",
+    "TOD implementation tasks completed",
+    "validations run",
+    "MIM operator-impact score trend",
+    "app factory improvements shipped",
+    "lab voice and servo label status",
+    "ARM curriculum status",
+    "image/media benchmark status",
+    "social discovery/draft status",
+    "unresolved Dave-needed choices"
+  ],
+  "immediate_first_actions": [
+    "Create or activate the Dave-away objective in Studio",
+    "Refresh stale training evidence and rerun scoreboard/reflection",
+    "Add servo slider endpoint labels",
+    "Diagnose lab voice/greeting",
+    "Add project inbox checkbox flags and ongoing/training type",
+    "Start daily follow-through summaries"
+  ]
+}
