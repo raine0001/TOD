@@ -13685,6 +13685,17 @@ async def create_studio_app_workbench_event_form(
     return RedirectResponse(url=f"/studio/apps/workbench/{project.id}", status_code=303)
 
 
+@router.get("/studio/visitor", response_class=HTMLResponse)
+@router.get("/studio/vistors", response_class=HTMLResponse)
+@router.get("/studio/visitors/", response_class=HTMLResponse)
+async def studio_visitors_alias(request: Request) -> RedirectResponse:
+    query = str(request.url.query or "").strip()
+    target = "/studio/visitors"
+    if query:
+        target = f"{target}?{query}"
+    return RedirectResponse(url=target, status_code=308)
+
+
 @router.get("/studio/{tab_key}", response_class=HTMLResponse)
 async def studio_tab(
     request: Request,
