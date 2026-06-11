@@ -497,7 +497,7 @@ async def mim_ui_login_get(request: Request):
   dedicated_redirect = _dedicated_public_mim_redirect_target(request)
   if dedicated_redirect:
     return RedirectResponse(url=dedicated_redirect, status_code=303)
-  next_path = normalize_next_path(request.query_params.get("next"), default="/mim")
+  next_path = normalize_next_path(request.query_params.get("next"), default="/studio")
   if not mimtod_auth_required(request):
     return RedirectResponse(url=next_path, status_code=303)
   if request_has_valid_mimtod_auth(request):
@@ -512,7 +512,7 @@ async def mim_ui_login_post(request: Request):
     return RedirectResponse(url=dedicated_redirect, status_code=303)
   raw_body = (await request.body()).decode("utf-8", errors="replace")
   parsed_form = parse_qs(raw_body, keep_blank_values=True)
-  next_path = normalize_next_path((parsed_form.get("next") or ["/mim"])[0], default="/mim")
+  next_path = normalize_next_path((parsed_form.get("next") or ["/studio"])[0], default="/studio")
   username = str((parsed_form.get("username") or [""])[0]).strip()
   password = str((parsed_form.get("password") or [""])[0])
   if not credentials_match(username=username, password=password):
@@ -5703,15 +5703,18 @@ def _build_camera_state_prompt(
 
 @router.get("/mim", response_class=HTMLResponse)
 async def mim_ui_page(request: Request, db: AsyncSession = Depends(get_db)):
+  studio_embed = str(request.query_params.get("studio_embed") or "").strip().lower() in {"1", "true", "yes", "on"}
   dedicated_redirect = _dedicated_public_mim_redirect_target(request)
   if dedicated_redirect:
     return RedirectResponse(url=dedicated_redirect, status_code=307)
   redirect_target = _public_mim_redirect_target(request)
   if redirect_target:
     return RedirectResponse(url=redirect_target, status_code=307)
-  auth_redirect = maybe_require_mimtod_page_login(request, next_path="/mim")
+  auth_redirect = maybe_require_mimtod_page_login(request, next_path="/studio")
   if auth_redirect is not None:
     return auth_redirect
+  if not studio_embed:
+    return RedirectResponse(url="/studio", status_code=303)
   preloaded_chat_thread = await _load_mim_ui_chat_thread(db=db)
   return """
 <!doctype html>
