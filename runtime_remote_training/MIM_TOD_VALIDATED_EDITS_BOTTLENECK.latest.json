@@ -1,0 +1,67 @@
+{
+  "anti_gaming_rules": [
+    "Do not reward more edits by itself.",
+    "Do not count wrapper-only changes, timestamp churn, or artifacts without inspected cause.",
+    "Do not count a change without a validation command/result or explicit blocked-with-inspection proof.",
+    "Prefer one small meaningful validated edit over many unvalidated modifications."
+  ],
+  "current_reason": "latest TOD result has passing validation and changed-file/artifact-write evidence",
+  "current_value": 1,
+  "generated_at": "2026-06-11T23:49:12Z",
+  "metric": "Validated TOD Edits",
+  "next_bounded_task": {
+    "action": "Run one TOD executor drill that must inspect one stale/reflection artifact path, make one minimal corrective source or artifact change, validate it, and publish changed_files plus validation evidence.",
+    "aging_rule": "Complete or publish blocked-with-inspection within the next active cycle; stale after 2 hours.",
+    "dave_needed": "no unless the drill requires credentials, policy approval, or physical hardware confirmation.",
+    "expected_evidence": "A fresh TOD result artifact with inspected_files, changed_files, validation_results, outcome, and successor state; scoreboard Validated TOD Edits remains >=1 and trend artifact records the new sample.",
+    "owner": "TOD"
+  },
+  "packet_type": "mim-tod-validated-edits-bottleneck-v1",
+  "recommended_metric_upgrade": {
+    "from": "latest result has passing validation plus changed-file/artifact-write evidence",
+    "to": "rolling validated-edit samples with inspected_files, meaningful_change classification, validation command, changed_files, and no-op rejection signal",
+    "why": "The current number can stay at 1 forever or be reset by latest-only noise; a trend proves TOD is becoming a repeatable engineering executor."
+  },
+  "source_snapshot": {
+    "command_status_generated_at": "2026-06-11T23:43:33.3273056Z",
+    "real_movement_generated_at": "2026-06-11T23:37:11Z",
+    "scoreboard_generated_at": "2026-06-11T23:45:22Z",
+    "task_result_generated_at": "2026-06-11T23:44:31Z",
+    "validator_check_count": 0,
+    "validator_passed": true
+  },
+  "status": "primary_training_bottleneck",
+  "target_progression": [
+    {
+      "meaning": "capability exists but is fragile",
+      "stage": "current",
+      "target": "1 validated edit visible"
+    },
+    {
+      "meaning": "repeatability beginning",
+      "stage": "next",
+      "target": "3 validated edits across distinct bounded tasks"
+    },
+    {
+      "meaning": "TOD can execute varied work while Dave is away",
+      "stage": "travel_ready",
+      "target": "5+ validated edits with at least 2 source-code changes and 2 artifact/state repairs"
+    },
+    {
+      "meaning": "executor competence, not edit volume",
+      "stage": "mature",
+      "target": "validated edit trend plus low false-completion/no-op rate"
+    }
+  ],
+  "validated_edit_definition": {
+    "change": "TOD changes a source file, runtime artifact, database state, or configuration that directly advances the requested objective.",
+    "inspect": "TOD names the files/state/artifacts inspected and the reason for touching them.",
+    "prove": "TOD publishes changed_files, validation output, outcome, blocker status if any, and successor action.",
+    "validate": "TOD runs a targeted validation command, route probe, parser check, compile, unit test, or structured consistency audit."
+  },
+  "why_it_matters": [
+    "This is the engineering-executor competency: TOD inspects, changes, validates, and proves.",
+    "Communication and project management can improve without TOD becoming an implementation executor.",
+    "Validated edits should climb only when meaningful inspected work ships with validation evidence."
+  ]
+}
