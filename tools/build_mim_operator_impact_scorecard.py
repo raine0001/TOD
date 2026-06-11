@@ -11,6 +11,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 TRAINING_ROOT = ROOT / "runtime_remote_training"
 SCOREBOARD_PATH = TRAINING_ROOT / "MIM_TOD_TRAINING_SCOREBOARD.latest.json"
+LIVE_10_PATH = TRAINING_ROOT / "MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json"
 OUTPUT_PATH = TRAINING_ROOT / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json"
 OUTPUT_MD_PATH = TRAINING_ROOT / "MIM_OPERATOR_IMPACT_SCORECARD.latest.md"
 
@@ -40,6 +41,48 @@ def _metric_row(metric: str, baseline: str, current: str, source: str) -> dict[s
 
 
 def build_scorecard() -> dict[str, Any]:
+    live_10 = _load_json(LIVE_10_PATH)
+    if live_10.get("packet_type") == "mim-operator-impact-live-10-scorecard-v1" and live_10.get("sample_count"):
+        generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        live_metrics = live_10.get("metrics") if isinstance(live_10.get("metrics"), list) else []
+        metrics = []
+        for row in live_metrics:
+            if not isinstance(row, dict):
+                continue
+            metrics.append(
+                _metric_row(
+                    str(row.get("metric") or ""),
+                    str(row.get("baseline") or "live-10 baseline"),
+                    str(row.get("current") or ""),
+                    str(row.get("source") or "MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json"),
+                )
+            )
+        metrics.extend(
+            [
+                _metric_row("Recommended Next Action Accuracy", "new metric needed", "needs outcome-linked proof", "compare MIM recommendation to successor records and project movement"),
+                _metric_row("Project Momentum Created", "new metric needed", "needs attribution", "count projects moved by MIM-selected actions"),
+                _metric_row("Unnecessary Status Responses", "baseline established", "live-10 contract enforced", "track when MIM reports status without a useful action"),
+                _metric_row("Dave Intervention Avoidance", "new metric needed", "needs attribution", "track MIM/TOD/Codex resolution before asking Dave"),
+                _metric_row("Continuity Lookup Usage", "new metric needed", "needs proof", "score whether MIM loads prior project history before implementation"),
+                _metric_row("Project Advancement Rate", "new metric needed", "needs outcome-linked proof", "measure projects moved to accepted, split, archived, dispatched, or waiting-with-evidence"),
+                _metric_row("Prevented Waste", "new metric needed", "needs proof", "track scope splits, duplicate work prevented, reused prior solutions, and continuity saves"),
+            ]
+        )
+        return {
+            "packet_type": "mim-operator-impact-scorecard-v1",
+            "generated_at": generated_at,
+            "status": "target_met" if live_10.get("status") == "target_met" else "measured_contract_fields",
+            "sample_count": int(live_10.get("sample_count") or 0),
+            "required_fields": list(live_10.get("required_fields") or FIELD_RULES.keys()),
+            "operator_impact_percent": int(live_10.get("operator_impact_percent") or 0),
+            "operator_impact_score": float(live_10.get("operator_impact_score") or 0.0),
+            "target_score": 8,
+            "source_files": [str(LIVE_10_PATH)],
+            "metrics": metrics,
+            "scored_cases": live_10.get("scored_cases") if isinstance(live_10.get("scored_cases"), list) else [],
+            "next_action": "Bind expected evidence to observed project/successor records, then rerun live scoring within 24 hours.",
+        }
+
     scoreboard = _load_json(SCOREBOARD_PATH)
     cases = scoreboard.get("mim_score", {}).get("evaluation", {}).get("cases", [])
     cases = [case for case in cases if isinstance(case, dict)]

@@ -5431,6 +5431,114 @@ def _mim_clean_operator_reply_boilerplate(value: str) -> str:
     return content
 
 
+def _mim_reply_has_operator_impact_contract(reply_text: str) -> bool:
+    text = " ".join(str(reply_text or "").lower().split())
+    return all(
+        marker in text
+        for marker in (
+            "recommended action",
+            "owner",
+            "expected evidence",
+            "aging",
+            "dave needed",
+        )
+    )
+
+
+def _mim_operator_impact_contract_applies(raw_input: str, reply_text: str) -> bool:
+    query = " ".join(str(raw_input or "").lower().split())
+    reply = " ".join(str(reply_text or "").lower().split())
+    triggers = (
+        "status",
+        "recommend",
+        "recommendation",
+        "priority",
+        "what should",
+        "what next",
+        "next action",
+        "next step",
+        "training",
+        "scorecard",
+        "stuck",
+        "blocked",
+        "blocker",
+        "needs attention",
+        "project",
+        "objective",
+        "task",
+        "tod",
+    )
+    if any(trigger in query for trigger in triggers):
+        return True
+    return any(
+        trigger in reply
+        for trigger in (
+            "next step",
+            "next action",
+            "active objective",
+            "active task",
+            "current health",
+            "tod is",
+            "training",
+            "blocked",
+        )
+    )
+
+
+def _mim_append_operator_impact_contract(reply_text: str, *, raw_input: str) -> str:
+    reply = str(reply_text or "").strip()
+    if not reply or _mim_reply_has_operator_impact_contract(reply):
+        return reply
+    query = " ".join(str(raw_input or "").lower().split())
+    lower_reply = reply.lower()
+
+    owner = "MIM"
+    if any(term in lower_reply for term in ("tod", "implement", "execute", "validation", "artifact")):
+        owner = "TOD"
+    if "codex" in lower_reply:
+        owner = "Codex"
+    if "dave" in lower_reply and any(term in lower_reply for term in ("approval", "credential", "permission", "needed")):
+        owner = "Dave"
+    if any(term in lower_reply for term in ("external", "credential", "account access")):
+        owner = "Dave or external dependency"
+
+    recommended_action = "Select and execute the next bounded action."
+    if "blocked" in lower_reply or "stuck" in query:
+        recommended_action = "Inspect the blocker, publish the evidence, then repair, split, wait-with-owner, or escalate."
+    elif "training" in query or "scorecard" in query:
+        recommended_action = "Score the reply quality, enforce the five-field contract, and publish the updated scorecard."
+    elif "what should" in query or "what next" in query or "priority" in query:
+        recommended_action = "Choose the highest-value next action and bind it to an owner and proof artifact."
+
+    expected_evidence = "Updated project event, task result, validation artifact, scorecard, or explicit blocker record."
+    if "project" in query or "objective" in query or "task" in query:
+        expected_evidence = "Project/objective row update with changed status, successor action, or validation result."
+    if owner == "Dave":
+        expected_evidence = "A recorded operator decision, approval, credential handoff, or clarified requirement."
+
+    aging_rule = "Recheck within 24 hours; escalate if no movement or evidence is published."
+    if "blocked" in lower_reply or "stuck" in query:
+        aging_rule = "Recheck within 2 hours; escalate if the blocker lacks evidence or a successor state."
+    elif "training" in query or "scorecard" in query:
+        aging_rule = "Rerun after the next 10 operational replies or within 24 hours."
+    elif "external" in lower_reply or "credential" in lower_reply:
+        aging_rule = "Recheck daily while waiting on the external dependency."
+
+    dave_needed = (
+        "yes - Dave must approve, clarify, or provide access."
+        if owner == "Dave"
+        else "no - MIM/TOD should continue unless authority, credentials, or a physical-world decision is required."
+    )
+    return (
+        f"{reply}\n\n"
+        f"Recommended action: {recommended_action}\n"
+        f"Owner: {owner}.\n"
+        f"Expected evidence: {expected_evidence}\n"
+        f"Aging rule: {aging_rule}\n"
+        f"Dave needed: {dave_needed}"
+    )
+
+
 def _build_mim_interface_response(
     *,
     event: InputEvent,
@@ -5489,6 +5597,11 @@ def _build_mim_interface_response(
         reply_text = operator_reply_override or detail_value
         reply_text = _mim_clean_operator_reply_boilerplate(reply_text)
         reply_text = _mim_enforce_first_person_normal_reply(
+            reply_text,
+            raw_input=event.raw_input,
+        )
+    if _mim_operator_impact_contract_applies(event.raw_input, reply_text):
+        reply_text = _mim_append_operator_impact_contract(
             reply_text,
             raw_input=event.raw_input,
         )
