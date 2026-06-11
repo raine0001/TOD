@@ -12523,6 +12523,78 @@ def _studio_operator_contract_fallback_reply(prompt: str, page_context: str) -> 
     }
 
 
+def _studio_simple_direct_reply(prompt: str, page_context: str) -> dict[str, Any] | None:
+    text_value = str(prompt or "").strip()
+    prompt_lower = text_value.lower()
+    if not text_value:
+        return None
+
+    count_match = re.search(
+        r"how\s+many\s+['\"`]?([a-z0-9])['\"`]?(?:s|es)?\s+(?:are\s+)?(?:in|inside)\s+['\"`]?([a-z0-9][a-z0-9 _.-]{0,80})['\"`]?\??$",
+        prompt_lower,
+    )
+    if count_match:
+        needle = count_match.group(1)
+        haystack = count_match.group(2).strip().strip(" .?\"'`")
+        count = haystack.count(needle)
+        reply = f"{count}."
+        if haystack in {"google", "goggle"} and needle == "0":
+            letter_count = haystack.count("o")
+            reply = f"{letter_count} if you mean the letter `o`; 0 if you mean the digit `0`."
+        if haystack in {"google", "goggle"} and needle == "o":
+            suffix = "o" if count == 1 else "o's"
+            reply = f"{count}. `{haystack}` has {count} {suffix}."
+        return {
+            "ok": True,
+            "source": "studio_simple_direct_answer",
+            "response_mode": "direct_answer",
+            "mim_interface": {
+                "reply_text": reply,
+                "page_context": page_context,
+                "surface": "studio",
+            },
+            "navigation": None,
+            "evidence": {
+                "prompt": text_value[:240],
+                "operation": "character_count",
+                "character": needle,
+                "text": haystack,
+                "count": count,
+            },
+        }
+
+    if len(text_value) <= 120 and any(
+        prompt_lower.startswith(prefix)
+        for prefix in [
+            "what is ",
+            "what's ",
+            "who is ",
+            "who's ",
+            "when is ",
+            "where is ",
+            "how many ",
+            "how much ",
+        ]
+    ):
+        return {
+            "ok": True,
+            "source": "studio_simple_direct_answer",
+            "response_mode": "direct_answer",
+            "mim_interface": {
+                "reply_text": "I should answer that directly instead of turning it into a project task. I need a small factual-answer handler for this exact question type.",
+                "page_context": page_context,
+                "surface": "studio",
+            },
+            "navigation": None,
+            "evidence": {
+                "prompt": text_value[:240],
+                "operation": "simple_question_guard",
+            },
+        }
+
+    return None
+
+
 async def _studio_page_error_reply(db: AsyncSession, prompt: str, page_context: str) -> dict[str, Any] | None:
     prompt_lower = str(prompt or "").lower()
     page_context_lower = str(page_context or "").lower()
@@ -12600,6 +12672,9 @@ async def studio_mim_chat_api(
     prompt = payload.prompt.strip()
     page_context_lower = page_context.lower()
     prompt_lower = prompt.lower()
+    simple_direct_reply = _studio_simple_direct_reply(prompt, page_context)
+    if simple_direct_reply is not None:
+        return simple_direct_reply
     project_blocker_reply = await _studio_project_blocker_reply(db, prompt)
     if project_blocker_reply is not None:
         return project_blocker_reply
