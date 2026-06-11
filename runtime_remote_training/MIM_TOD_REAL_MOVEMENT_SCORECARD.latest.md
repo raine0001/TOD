@@ -1,6 +1,6 @@
 # MIM TOD Real Movement Training V1
 
-Generated: 2026-06-11T15:40:57Z
+Generated: 2026-06-11T23:24:15Z
 Status: action_required
 Overall: Real movement is not proven yet. Operator Impact, stale artifact retirement, and TOD execution evidence must all improve.
 

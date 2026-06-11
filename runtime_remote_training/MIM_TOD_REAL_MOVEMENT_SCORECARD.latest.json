@@ -39,7 +39,7 @@
     ],
     "status": "ready"
   },
-  "generated_at": "2026-06-11T15:40:57Z",
+  "generated_at": "2026-06-11T23:24:15Z",
   "metrics": [
     {
       "current": "4.5/10 from 4 scored replies",
@@ -89,10 +89,10 @@
   ],
   "source_snapshot": {
     "blocked_summary": "MIM/TOD assessment: needs_attention. Objectives: 24 complete, 1 running, 32 blocked, 28 blocker follow-on objective(s). Next: MIM-TOD-OBJECTIVE-LIFECYCLE-REGRESSION-SUITE-V1. Top blocker: overnight_lane_stale_without_current_heartbeat; Restart as a fresh bounded overnight run only after the current repair stack is clean.",
-    "dispatcher_generated_at": "2026-06-11T15:40:53Z",
+    "dispatcher_generated_at": "2026-06-11T23:23:39Z",
     "idle_training_generated_at": null,
-    "operator_scorecard_generated_at": "2026-06-11T15:32:51.012460Z",
-    "training_scoreboard_generated_at": "2026-06-11T14:45:21Z"
+    "operator_scorecard_generated_at": "2026-06-11T23:24:14.969266Z",
+    "training_scoreboard_generated_at": "2026-06-11T22:45:24Z"
   },
   "status": "action_required"
 }
