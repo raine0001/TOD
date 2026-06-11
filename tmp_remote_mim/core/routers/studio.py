@@ -8,7 +8,7 @@ import re
 import shutil
 import subprocess
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -27,6 +27,9 @@ from core.db import get_db
 from core.mim_ui_auth import maybe_require_mimtod_page_login
 from core.models import (
     Objective,
+    ProjectPortalAccount,
+    ProjectPortalProject,
+    PublicVisitEvent,
     StudioDocument,
     StudioDocumentLink,
     StudioProject,
@@ -657,6 +660,7 @@ TABS: list[dict[str, str]] = [
     {"key": "training", "label": "Training", "icon": "&#8756;", "href": "/studio/training", "kind": "placeholder"},
     {"key": "documents", "label": "Documents", "icon": "&#8942;", "href": "/studio/documents", "kind": "placeholder"},
     {"key": "reports", "label": "Reports", "icon": "&#8779;", "href": "/studio/reports", "kind": "placeholder"},
+    {"key": "visitors", "label": "Visitors", "icon": "&#9711;", "href": "/studio/visitors", "kind": "placeholder"},
     {"key": "systems", "label": "Systems / Health", "icon": "&#11041;", "href": "/studio/systems", "kind": "placeholder"},
     {"key": "lab", "label": "Lab / Robotics", "icon": "&#9004;", "href": "/studio/lab", "kind": "placeholder"},
     {"key": "apps", "label": "MIM Apps", "icon": "&#10038;", "href": "/studio/apps", "kind": "placeholder"},
@@ -759,6 +763,15 @@ PLACEHOLDERS: dict[str, dict[str, object]] = {
             ("Service Health", "MIM web, TOD runtime, dispatcher, database, and background jobs."),
             ("Freshness", "Stale artifact checks, heartbeat checks, and healthy-idle distinction."),
             ("Repair", "H.A.L. diagnostics, repair plans, evidence, and restart actions."),
+        ],
+    },
+    "visitors": {
+        "title": "Visitors",
+        "subtitle": "Public-site visitor, demo, account, and project activity for mimtod.com.",
+        "sections": [
+            ("Traffic", "Unique visitors, repeat visitors, page views, referrers, and public paths."),
+            ("Demo Usage", "Demo page views, template demo views, and guided workbench interactions."),
+            ("Conversion", "New users, user-created projects, visitor/demo-created projects, and account flow activity."),
         ],
     },
     "lab": {
@@ -2184,6 +2197,171 @@ async def _studio_systems_state(db: AsyncSession) -> dict[str, Any]:
     }
 
 
+def _visitor_period_cutoff(days: int | None) -> datetime | None:
+    if days is None:
+        return None
+    safe_days = max(1, min(int(days), 3650))
+    return datetime.now(timezone.utc) - timedelta(days=safe_days)
+
+
+async def _studio_visitors_state(db: AsyncSession, days: int | None = 30) -> dict[str, Any]:
+    generated_at = _utc_now()
+    cutoff = _visitor_period_cutoff(days)
+    params: dict[str, Any] = {}
+    period_clause = ""
+    if cutoff is not None:
+        params["cutoff"] = cutoff
+        period_clause = " and created_at >= :cutoff"
+
+    async def scalar(sql: str, default: object = 0, extra: dict[str, Any] | None = None) -> object:
+        try:
+            result = await db.execute(text(sql), {**params, **(extra or {})})
+            value = result.scalar()
+            return default if value is None else value
+        except Exception:
+            return default
+
+    async def rows(sql: str, extra: dict[str, Any] | None = None) -> list[Any]:
+        try:
+            result = await db.execute(text(sql), {**params, **(extra or {})})
+            return list(result.mappings().all())
+        except Exception:
+            return []
+
+    visit_table_count = await _safe_table_count(db, "public_visit_events")
+    collection_status = "ready" if visit_table_count is not None else "not_started"
+    new_users = await scalar(
+        """
+        select count(*) from project_portal_accounts
+        where lower(coalesce(email, '')) != 'demo@agentmim.com'
+        """
+        + (" and created_at >= :cutoff" if cutoff is not None else ""),
+        0,
+    )
+    user_projects = await scalar(
+        """
+        select count(*) from project_portal_projects p
+        left join project_portal_accounts a on a.id = p.account_id
+        where p.account_id is not null and lower(coalesce(a.email, '')) != 'demo@agentmim.com'
+        """
+        + (" and p.created_at >= :cutoff" if cutoff is not None else ""),
+        0,
+    )
+    visitor_projects = await scalar(
+        """
+        select count(*) from project_portal_projects p
+        left join project_portal_accounts a on a.id = p.account_id
+        where p.account_id is null or lower(coalesce(a.email, '')) = 'demo@agentmim.com'
+        """
+        + (" and p.created_at >= :cutoff" if cutoff is not None else ""),
+        0,
+    )
+    summary = {
+        "total_public_events": await scalar(
+            f"select count(*) from public_visit_events where is_internal = false{period_clause}",
+            0,
+        ),
+        "human_page_views": await scalar(
+            f"select count(*) from public_visit_events where is_internal = false and is_bot = false{period_clause}",
+            0,
+        ),
+        "bot_or_monitor_events": await scalar(
+            f"select count(*) from public_visit_events where is_internal = false and is_bot = true{period_clause}",
+            0,
+        ),
+        "unique_visitors": await scalar(
+            f"""
+            select count(distinct visitor_hash) from public_visit_events
+            where is_internal = false and is_bot = false and coalesce(visitor_hash, '') != ''{period_clause}
+            """,
+            0,
+        ),
+        "repeat_visitors": await scalar(
+            f"""
+            select count(*) from (
+                select visitor_hash
+                from public_visit_events
+                where is_internal = false and is_bot = false and coalesce(visitor_hash, '') != ''{period_clause}
+                group by visitor_hash
+                having count(*) > 1
+            ) repeaters
+            """,
+            0,
+        ),
+        "demo_page_views": await scalar(
+            f"select count(*) from public_visit_events where is_internal = false and is_bot = false and event_type = 'demo_view'{period_clause}",
+            0,
+        ),
+        "template_demo_views": await scalar(
+            f"select count(*) from public_visit_events where is_internal = false and is_bot = false and event_type = 'template_demo_view'{period_clause}",
+            0,
+        ),
+        "login_page_views": await scalar(
+            f"select count(*) from public_visit_events where is_internal = false and is_bot = false and event_type = 'login_page_view'{period_clause}",
+            0,
+        ),
+        "project_portal_actions": await scalar(
+            f"select count(*) from public_visit_events where is_internal = false and is_bot = false and event_type = 'project_portal_action'{period_clause}",
+            0,
+        ),
+        "new_users": new_users,
+        "user_projects": user_projects,
+        "visitor_projects": visitor_projects,
+    }
+    top_paths = await rows(
+        f"""
+        select path, count(*) as views, count(distinct visitor_hash) as visitors
+        from public_visit_events
+        where is_internal = false and is_bot = false{period_clause}
+        group by path
+        order by views desc, path asc
+        limit 12
+        """
+    )
+    referrers = await rows(
+        f"""
+        select nullif(referrer, '') as referrer, count(*) as visits
+        from public_visit_events
+        where is_internal = false and is_bot = false and coalesce(referrer, '') != ''{period_clause}
+        group by referrer
+        order by visits desc
+        limit 8
+        """
+    )
+    recent = await rows(
+        f"""
+        select created_at, path, event_type, status_code, referrer, substr(visitor_hash, 1, 10) as visitor
+        from public_visit_events
+        where is_internal = false and is_bot = false{period_clause}
+        order by created_at desc
+        limit 25
+        """
+    )
+    conversion = [
+        {"label": "New users", "value": summary["new_users"], "detail": "Project Portal accounts excluding the fixed demo account."},
+        {"label": "User-created projects", "value": summary["user_projects"], "detail": "Projects attached to real Project Portal accounts."},
+        {"label": "Visitor/demo projects", "value": summary["visitor_projects"], "detail": "Projects without an account or attached to the demo account."},
+        {"label": "Project actions", "value": summary["project_portal_actions"], "detail": "Public project planning/actions captured before account conversion."},
+    ]
+    return {
+        "generated_at": generated_at,
+        "days": days,
+        "cutoff": cutoff,
+        "collection_status": collection_status,
+        "visit_table_count": visit_table_count or 0,
+        "summary": summary,
+        "top_paths": top_paths,
+        "referrers": referrers,
+        "recent": recent,
+        "conversion": conversion,
+        "notes": [
+            "Raw IP addresses are not stored. Visitor and IP values are hashed before persistence.",
+            "Private, loopback, and link-local IPs are marked internal automatically.",
+            "Add Dave's public IP to MIMTOD_EXCLUDED_VISITOR_IPS to exclude this PC from production traffic stats.",
+        ],
+    }
+
+
 def _metric_card(label: str, value: object, detail: str = "") -> str:
     detail_html = f"<p>{_html(detail)}</p>" if detail else ""
     return f"""
@@ -2424,6 +2602,133 @@ def _systems_body(state: dict[str, Any]) -> str:
           <li>Keep green systems collapsed and attention items limited to the top five.</li>
         </ul>
       </article>
+    </section>
+    """
+
+
+def _visitors_body(state: dict[str, Any]) -> str:
+    summary = state.get("summary") if isinstance(state.get("summary"), dict) else {}
+    days = state.get("days")
+    period_label = "All time" if days is None else f"Last {days} days"
+    period_buttons = "".join(
+        f'<a class="button{" primary" if value == days else ""}" href="/studio/visitors?days={_html(label)}">{_html(text_label)}</a>'
+        for label, value, text_label in [
+            ("7", 7, "7d"),
+            ("30", 30, "30d"),
+            ("90", 90, "90d"),
+            ("all", None, "All"),
+        ]
+    )
+    cards = "".join(
+        [
+            _metric_card("Human Page Views", summary.get("human_page_views", 0), period_label),
+            _metric_card("Unique Visitors", summary.get("unique_visitors", 0), "Hashed visitor-cookie count"),
+            _metric_card("Repeat Visitors", summary.get("repeat_visitors", 0), "Visitors with more than one tracked view"),
+            _metric_card("Demo Views", summary.get("demo_page_views", 0), "Public /demo visits"),
+            _metric_card("Template Demo Views", summary.get("template_demo_views", 0), "Public app-template demo views"),
+            _metric_card("New Users", summary.get("new_users", 0), "Project Portal accounts, excluding demo"),
+            _metric_card("User Projects", summary.get("user_projects", 0), "Projects attached to real accounts"),
+            _metric_card("Visitor Projects", summary.get("visitor_projects", 0), "Demo/public projects before real account ownership"),
+        ]
+    )
+    top_paths = state.get("top_paths") if isinstance(state.get("top_paths"), list) else []
+    top_path_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(row.get("path", ""))}</td>
+          <td>{_html(str(row.get("views", 0)))}</td>
+          <td>{_html(str(row.get("visitors", 0)))}</td>
+        </tr>
+        """
+        for row in top_paths
+        if isinstance(row, dict)
+    ) or '<tr><td colspan="3">No public visitor events collected for this period yet.</td></tr>'
+    referrers = state.get("referrers") if isinstance(state.get("referrers"), list) else []
+    referrer_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(row.get("referrer", ""))}</td>
+          <td>{_html(str(row.get("visits", 0)))}</td>
+        </tr>
+        """
+        for row in referrers
+        if isinstance(row, dict)
+    ) or '<tr><td colspan="2">No external referrers captured for this period.</td></tr>'
+    recent = state.get("recent") if isinstance(state.get("recent"), list) else []
+    recent_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(_la_time(row.get("created_at")))}</td>
+          <td>{_html(row.get("path", ""))}</td>
+          <td>{_html(_plain_status(row.get("event_type")))}</td>
+          <td>{_html(str(row.get("status_code", "")))}</td>
+          <td>{_html(row.get("visitor", ""))}</td>
+        </tr>
+        """
+        for row in recent
+        if isinstance(row, dict)
+    ) or '<tr><td colspan="5">No recent public visitor events for this period.</td></tr>'
+    conversion = state.get("conversion") if isinstance(state.get("conversion"), list) else []
+    conversion_html = "".join(
+        f"""
+        <div class="health-row">
+          <div><strong>{_html(item.get("label", ""))}</strong><br><span class="muted">{_html(item.get("detail", ""))}</span></div>
+          <span class="badge">{_html(str(item.get("value", 0)))}</span>
+        </div>
+        """
+        for item in conversion
+        if isinstance(item, dict)
+    )
+    notes_html = "".join(f"<li>{_html(note)}</li>" for note in state.get("notes", []) if note)
+    status = _first_text(state.get("collection_status"), default="unknown")
+    status_label = "Collecting" if status == "ready" else "Waiting for first event"
+    return f"""
+    <section class="status-card">
+      <div class="status-head">
+        <div>
+          <h2>Visitor & User Report</h2>
+          <p>First-party traffic, demo, account, and project activity for public MIMTOD surfaces.</p>
+        </div>
+        <span class="badge"><span class="dot {'green' if status == 'ready' else 'yellow'}"></span>{_html(status_label)}</span>
+      </div>
+      <div class="toolbar">{period_buttons}</div>
+      <p class="muted">Generated {_html(_la_time(state.get("generated_at")))}. Raw IPs are never displayed or stored in this report.</p>
+    </section>
+    <section class="grid four" style="margin-top:14px;">{cards}</section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Top Public Pages</h2>
+        <table class="score-table">
+          <thead><tr><th>Path</th><th>Views</th><th>Visitors</th></tr></thead>
+          <tbody>{top_path_rows}</tbody>
+        </table>
+      </article>
+      <article class="card">
+        <h2>Conversion Signals</h2>
+        {conversion_html}
+      </article>
+    </section>
+    <section class="grid two" style="margin-top:14px;">
+      <article class="card">
+        <h2>Referrers</h2>
+        <table class="score-table">
+          <thead><tr><th>Referrer</th><th>Visits</th></tr></thead>
+          <tbody>{referrer_rows}</tbody>
+        </table>
+      </article>
+      <article class="card">
+        <h2>Tracking Rules</h2>
+        <ul class="clean">{notes_html}</ul>
+        <div class="label">Events stored</div>
+        <p>{_html(str(state.get("visit_table_count", 0)))} total public_visit_events rows are present in Studio DB.</p>
+      </article>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Recent Public Human Visits</h2>
+      <table class="score-table">
+        <thead><tr><th>Time</th><th>Path</th><th>Type</th><th>Status</th><th>Visitor Hash</th></tr></thead>
+        <tbody>{recent_rows}</tbody>
+      </table>
     </section>
     """
 
@@ -11843,7 +12148,7 @@ async def _studio_navigation_target(db: AsyncSession, prompt: str, page_context:
     prompt_lower = str(prompt or "").lower()
     context_lower = str(page_context or "").lower()
     current_area = "home"
-    for area in ["projects", "training", "documents", "reports", "systems", "lab", "apps", "accounting", "settings", "mim", "tod"]:
+    for area in ["projects", "training", "documents", "reports", "visitors", "systems", "lab", "apps", "accounting", "settings", "mim", "tod"]:
         if area in context_lower:
             current_area = area
             break
@@ -11852,6 +12157,7 @@ async def _studio_navigation_target(db: AsyncSession, prompt: str, page_context:
         ("lab", "/studio/lab", ["lab", "robot", "robotics", "arm", "camera", "lidar", "sensor", "calibration", "pickup", "servo", "servos", "uno", "pwm", "pca9685"], "Lab"),
         ("projects", "/studio/projects", ["project", "projects", "ticket", "tickets", "backlog", "queued", "pause", "delete", "forum graphics", "account manager", "twilio", "gmail", "2fa", "double authentication", "social post", "campaign", "mobile login", "ssl issue", "powershell migration"], "Projects"),
         ("reports", "/studio/reports", ["report", "reports", "show me all", "new users", "past month", "dataset", "metrics", "canvas", "agentmim.com app users", "comm_app", "database", "db"], "Reports"),
+        ("visitors", "/studio/visitors", ["visitor", "visitors", "traffic", "site traffic", "page views", "demo views", "demo usage", "unique visitors", "repeat visitors", "who visited", "outside myself", "outside of myself", "site users", "public users"], "Visitors"),
         ("documents", "/studio/documents", ["document", "documents", "library", "lab documents", "archive", "reference", "notes", "screenshot"], "Documents"),
         ("training", "/studio/training", ["training", "scoreboard", "smoke test", "judgment", "objective", "continuity", "tod training", "mim training"], "Training"),
         ("systems", "/studio/systems", ["system", "systems", "health", "runtime", "service", "provider", "sync", "dirty", "watchdog"], "Systems"),
@@ -13442,6 +13748,18 @@ async def studio_tab(
         )
         body = _reports_body(state)
         subtitle = "A blank data whiteboard where MIM turns questions into datasets, summaries, findings, and actions."
+    elif key == "visitors":
+        raw_days = str(request.query_params.get("days", "30") or "30").strip().lower()
+        if raw_days in {"all", "any", "total"}:
+            days = None
+        else:
+            try:
+                days = max(1, min(int(raw_days), 3650))
+            except ValueError:
+                days = 30
+        state = await _studio_visitors_state(db, days=days)
+        body = _visitors_body(state)
+        subtitle = str(PLACEHOLDERS[key]["subtitle"])
     elif key == "training":
         state = await _studio_training_state(db)
         started_attention = await _ensure_training_attention_resolution_started(db, state)
