@@ -2337,11 +2337,142 @@ async def _studio_visitors_state(db: AsyncSession, days: int | None = 30) -> dic
         limit 25
         """
     )
+    registered_users = await rows(
+        """
+        select
+            a.id,
+            a.created_at,
+            a.company_name,
+            a.contact_name,
+            a.email,
+            a.industry,
+            a.company_size,
+            a.website,
+            count(p.id) as project_count,
+            max(p.created_at) as last_project_at
+        from project_portal_accounts a
+        left join project_portal_projects p on p.account_id = a.id
+        where lower(coalesce(a.email, '')) != 'demo@agentmim.com'
+        """
+        + (" and a.created_at >= :cutoff" if cutoff is not None else "")
+        + """
+        group by a.id, a.created_at, a.company_name, a.contact_name, a.email, a.industry, a.company_size, a.website
+        order by a.created_at desc
+        limit 100
+        """
+    )
+    public_chat_sessions = await rows(
+        """
+        select
+            s.id,
+            s.created_at,
+            s.updated_at,
+            s.session_key,
+            s.status,
+            s.last_input_at,
+            s.last_output_at,
+            count(m.id) as message_count,
+            sum(case when lower(coalesce(m.direction, '')) = 'inbound' then 1 else 0 end) as visitor_messages,
+            sum(case when lower(coalesce(m.direction, '')) = 'outbound' then 1 else 0 end) as mim_messages,
+            max(case when lower(coalesce(m.direction, '')) = 'inbound' then substr(m.content, 1, 180) else '' end) as latest_question
+        from workspace_interface_sessions s
+        left join workspace_interface_messages m on m.session_id = s.id
+        where lower(coalesce(s.source, '')) = 'public_chat'
+        """
+        + (" and s.created_at >= :cutoff" if cutoff is not None else "")
+        + """
+        group by s.id, s.created_at, s.updated_at, s.session_key, s.status, s.last_input_at, s.last_output_at
+        having count(m.id) > 0
+        order by coalesce(s.last_input_at, s.updated_at, s.created_at) desc
+        limit 100
+        """
+    )
+    account_projects = await rows(
+        """
+        select
+            p.id,
+            p.created_at,
+            p.updated_at,
+            p.title,
+            p.status,
+            p.mode,
+            p.summary,
+            p.account_id,
+            a.company_name,
+            a.contact_name,
+            a.email,
+            count(d.id) as discovery_sessions,
+            count(b.id) as blueprints,
+            max(d.created_at) as last_discovery_at
+        from project_portal_projects p
+        left join project_portal_accounts a on a.id = p.account_id
+        left join project_portal_discovery_sessions d on d.project_id = p.id
+        left join project_portal_blueprints b on b.project_id = p.id
+        where p.account_id is not null and lower(coalesce(a.email, '')) != 'demo@agentmim.com'
+        """
+        + (" and p.created_at >= :cutoff" if cutoff is not None else "")
+        + """
+        group by p.id, p.created_at, p.updated_at, p.title, p.status, p.mode, p.summary, p.account_id, a.company_name, a.contact_name, a.email
+        order by p.created_at desc
+        limit 100
+        """
+    )
+    visitor_projects_rows = await rows(
+        """
+        select
+            p.id,
+            p.created_at,
+            p.updated_at,
+            p.title,
+            p.status,
+            p.mode,
+            p.summary,
+            p.account_id,
+            coalesce(a.email, '') as email,
+            count(d.id) as discovery_sessions,
+            count(b.id) as blueprints,
+            max(d.created_at) as last_discovery_at
+        from project_portal_projects p
+        left join project_portal_accounts a on a.id = p.account_id
+        left join project_portal_discovery_sessions d on d.project_id = p.id
+        left join project_portal_blueprints b on b.project_id = p.id
+        where p.account_id is null or lower(coalesce(a.email, '')) = 'demo@agentmim.com'
+        """
+        + (" and p.created_at >= :cutoff" if cutoff is not None else "")
+        + """
+        group by p.id, p.created_at, p.updated_at, p.title, p.status, p.mode, p.summary, p.account_id, a.email
+        order by p.created_at desc
+        limit 100
+        """
+    )
+    project_feedback = await rows(
+        """
+        select
+            d.created_at,
+            p.id as project_id,
+            p.title,
+            p.status as project_status,
+            d.status as discovery_status,
+            substr(d.pain_point, 1, 180) as pain_point,
+            substr(d.current_process, 1, 180) as current_process,
+            coalesce(a.email, 'visitor/demo') as owner_email
+        from project_portal_discovery_sessions d
+        join project_portal_projects p on p.id = d.project_id
+        left join project_portal_accounts a on a.id = p.account_id
+        where 1 = 1
+        """
+        + (" and d.created_at >= :cutoff" if cutoff is not None else "")
+        + """
+        order by d.created_at desc
+        limit 80
+        """
+    )
     conversion = [
-        {"label": "New users", "value": summary["new_users"], "detail": "Project Portal accounts excluding the fixed demo account."},
-        {"label": "User-created projects", "value": summary["user_projects"], "detail": "Projects attached to real Project Portal accounts."},
-        {"label": "Visitor/demo projects", "value": summary["visitor_projects"], "detail": "Projects without an account or attached to the demo account."},
-        {"label": "Project actions", "value": summary["project_portal_actions"], "detail": "Public project planning/actions captured before account conversion."},
+        {"label": "Registered accounts", "value": summary["new_users"], "detail": "Rows in project_portal_accounts, excluding the fixed demo account."},
+        {"label": "Account-owned projects", "value": summary["user_projects"], "detail": "Project Portal projects attached to real registered accounts."},
+        {"label": "Visitor/demo projects", "value": summary["visitor_projects"], "detail": "Projects without account ownership or attached to demo@agentmim.com."},
+        {"label": "Public MIM chat sessions", "value": len(public_chat_sessions), "detail": "Visitor sessions that sent messages through the public MIM chat surface."},
+        {"label": "Project actions", "value": summary["project_portal_actions"], "detail": "Tracked POSTs on the public project portal."},
     ]
     return {
         "generated_at": generated_at,
@@ -2353,11 +2484,17 @@ async def _studio_visitors_state(db: AsyncSession, days: int | None = 30) -> dic
         "top_paths": top_paths,
         "referrers": referrers,
         "recent": recent,
+        "registered_users": registered_users,
+        "public_chat_sessions": public_chat_sessions,
+        "account_projects": account_projects,
+        "visitor_projects_rows": visitor_projects_rows,
+        "project_feedback": project_feedback,
         "conversion": conversion,
         "notes": [
             "Raw IP addresses are not stored. Visitor and IP values are hashed before persistence.",
             "Private, loopback, and link-local IPs are marked internal automatically.",
             "Add Dave's public IP to MIMTOD_EXCLUDED_VISITOR_IPS to exclude this PC from production traffic stats.",
+            "Registered accounts, account projects, and visitor/demo projects are separate drill-downs below; the summary cards are not proof of external traction by themselves.",
         ],
     }
 
@@ -2626,9 +2763,9 @@ def _visitors_body(state: dict[str, Any]) -> str:
             _metric_card("Repeat Visitors", summary.get("repeat_visitors", 0), "Visitors with more than one tracked view"),
             _metric_card("Demo Views", summary.get("demo_page_views", 0), "Public /demo visits"),
             _metric_card("Template Demo Views", summary.get("template_demo_views", 0), "Public app-template demo views"),
-            _metric_card("New Users", summary.get("new_users", 0), "Project Portal accounts, excluding demo"),
-            _metric_card("User Projects", summary.get("user_projects", 0), "Projects attached to real accounts"),
-            _metric_card("Visitor Projects", summary.get("visitor_projects", 0), "Demo/public projects before real account ownership"),
+            _metric_card("Registered Accounts", summary.get("new_users", 0), "project_portal_accounts, excluding demo"),
+            _metric_card("Account Projects", summary.get("user_projects", 0), "Projects attached to registered accounts"),
+            _metric_card("Visitor/Demo Projects", summary.get("visitor_projects", 0), "No account owner or demo owner"),
         ]
     )
     top_paths = state.get("top_paths") if isinstance(state.get("top_paths"), list) else []
@@ -2680,6 +2817,93 @@ def _visitors_body(state: dict[str, Any]) -> str:
         if isinstance(item, dict)
     )
     notes_html = "".join(f"<li>{_html(note)}</li>" for note in state.get("notes", []) if note)
+    registered_users = state.get("registered_users") if isinstance(state.get("registered_users"), list) else []
+    registered_user_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(str(row.get("id", "")))}</td>
+          <td>{_html(_la_time(row.get("created_at")))}</td>
+          <td>{_html(row.get("contact_name", "") or "-")}</td>
+          <td>{_html(row.get("company_name", "") or "-")}</td>
+          <td>{_html(row.get("email", "") or "-")}</td>
+          <td>{_html(row.get("industry", "") or "-")}</td>
+          <td>{_html(str(row.get("project_count", 0)))}</td>
+          <td>{_html(_la_time(row.get("last_project_at"), default="-"))}</td>
+        </tr>
+        """
+        for row in registered_users
+        if isinstance(row, dict)
+    ) or '<tr><td colspan="8">No registered non-demo Project Portal accounts for this period.</td></tr>'
+    public_chat_sessions = state.get("public_chat_sessions") if isinstance(state.get("public_chat_sessions"), list) else []
+    public_chat_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(str(row.get("id", "")))}</td>
+          <td>{_html(_la_time(row.get("created_at")))}</td>
+          <td>{_html(_la_time(row.get("last_input_at"), default="-"))}</td>
+          <td>{_html(str(row.get("visitor_messages", 0) or 0))}</td>
+          <td>{_html(str(row.get("mim_messages", 0) or 0))}</td>
+          <td>{_html(row.get("status", "") or "-")}</td>
+          <td>{_html(str(row.get("session_key", ""))[:18])}</td>
+          <td>{_html(row.get("latest_question", "") or "-")}</td>
+        </tr>
+        """
+        for row in public_chat_sessions
+        if isinstance(row, dict)
+    ) or '<tr><td colspan="8">No public MIM chat sessions with messages for this period.</td></tr>'
+    account_projects = state.get("account_projects") if isinstance(state.get("account_projects"), list) else []
+    account_project_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(str(row.get("id", "")))}</td>
+          <td>{_html(_la_time(row.get("created_at")))}</td>
+          <td>{_html(row.get("title", "") or "-")}</td>
+          <td>{_html(row.get("status", "") or "-")}</td>
+          <td>{_html(row.get("mode", "") or "-")}</td>
+          <td>{_html(row.get("email", "") or "-")}</td>
+          <td>{_html(str(row.get("discovery_sessions", 0) or 0))}</td>
+          <td>{_html(str(row.get("blueprints", 0) or 0))}</td>
+          <td>{_html(row.get("summary", "") or "-")}</td>
+        </tr>
+        """
+        for row in account_projects
+        if isinstance(row, dict)
+    ) or '<tr><td colspan="9">No account-owned projects for this period.</td></tr>'
+    visitor_projects = state.get("visitor_projects_rows") if isinstance(state.get("visitor_projects_rows"), list) else []
+    visitor_project_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(str(row.get("id", "")))}</td>
+          <td>{_html(_la_time(row.get("created_at")))}</td>
+          <td>{_html(row.get("title", "") or "-")}</td>
+          <td>{_html(row.get("status", "") or "-")}</td>
+          <td>{_html(row.get("mode", "") or "-")}</td>
+          <td>{_html("demo account" if row.get("account_id") else "no account")}</td>
+          <td>{_html(str(row.get("discovery_sessions", 0) or 0))}</td>
+          <td>{_html(str(row.get("blueprints", 0) or 0))}</td>
+          <td>{_html(row.get("summary", "") or "-")}</td>
+        </tr>
+        """
+        for row in visitor_projects
+        if isinstance(row, dict)
+    ) or '<tr><td colspan="9">No visitor/demo projects for this period.</td></tr>'
+    project_feedback = state.get("project_feedback") if isinstance(state.get("project_feedback"), list) else []
+    feedback_rows = "".join(
+        f"""
+        <tr>
+          <td>{_html(_la_time(row.get("created_at")))}</td>
+          <td>{_html(str(row.get("project_id", "")))}</td>
+          <td>{_html(row.get("title", "") or "-")}</td>
+          <td>{_html(row.get("owner_email", "") or "-")}</td>
+          <td>{_html(row.get("project_status", "") or "-")}</td>
+          <td>{_html(row.get("discovery_status", "") or "-")}</td>
+          <td>{_html(row.get("pain_point", "") or "-")}</td>
+          <td>{_html(row.get("current_process", "") or "-")}</td>
+        </tr>
+        """
+        for row in project_feedback
+        if isinstance(row, dict)
+    ) or '<tr><td colspan="8">No project discovery/feedback rows for this period.</td></tr>'
     status = _first_text(state.get("collection_status"), default="unknown")
     status_label = "Collecting" if status == "ready" else "Waiting for first event"
     return f"""
@@ -2693,6 +2917,7 @@ def _visitors_body(state: dict[str, Any]) -> str:
       </div>
       <div class="toolbar">{period_buttons}</div>
       <p class="muted">Generated {_html(_la_time(state.get("generated_at")))}. Raw IPs are never displayed or stored in this report.</p>
+      <p class="muted">Scope: public activity from mimtod.com on the MIM box. The tables below show the rows behind each count so summary numbers do not masquerade as real traction without evidence.</p>
     </section>
     <section class="grid four" style="margin-top:14px;">{cards}</section>
     <section class="grid two" style="margin-top:14px;">
@@ -2728,6 +2953,46 @@ def _visitors_body(state: dict[str, Any]) -> str:
       <table class="score-table">
         <thead><tr><th>Time</th><th>Path</th><th>Type</th><th>Status</th><th>Visitor Hash</th></tr></thead>
         <tbody>{recent_rows}</tbody>
+      </table>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Registered Users / Accounts</h2>
+      <p class="muted">These are actual Project Portal account rows, excluding the fixed demo account. They are not inferred from page views.</p>
+      <table class="score-table">
+        <thead><tr><th>ID</th><th>Created</th><th>Contact</th><th>Company</th><th>Email</th><th>Industry</th><th>Projects</th><th>Last Project</th></tr></thead>
+        <tbody>{registered_user_rows}</tbody>
+      </table>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Visitors Who Interacted With MIM</h2>
+      <p class="muted">These are public_chat sessions with message rows. A visitor here asked MIM something; this is separate from registered accounts.</p>
+      <table class="score-table">
+        <thead><tr><th>Session</th><th>Created</th><th>Last Input</th><th>Visitor Msgs</th><th>MIM Msgs</th><th>Status</th><th>Key Prefix</th><th>Latest Question</th></tr></thead>
+        <tbody>{public_chat_rows}</tbody>
+      </table>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Account-Owned Projects</h2>
+      <p class="muted">These projects belong to registered non-demo Project Portal accounts.</p>
+      <table class="score-table">
+        <thead><tr><th>ID</th><th>Created</th><th>Title</th><th>Status</th><th>Mode</th><th>Owner</th><th>Discovery</th><th>Blueprints</th><th>Summary</th></tr></thead>
+        <tbody>{account_project_rows}</tbody>
+      </table>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Visitor / Demo Projects</h2>
+      <p class="muted">These are the rows behind the visitor-project count. They are promising only if they have discovery sessions, blueprints, or useful feedback.</p>
+      <table class="score-table">
+        <thead><tr><th>ID</th><th>Created</th><th>Title</th><th>Status</th><th>Mode</th><th>Owner Type</th><th>Discovery</th><th>Blueprints</th><th>Summary</th></tr></thead>
+        <tbody>{visitor_project_rows}</tbody>
+      </table>
+    </section>
+    <section class="card" style="margin-top:14px;">
+      <h2>Project Discovery / Feedback</h2>
+      <p class="muted">This is the closest view to "what were they, did MIM/TOD succeed, and what feedback came in" for project creation. It shows captured discovery inputs and completion status.</p>
+      <table class="score-table">
+        <thead><tr><th>Time</th><th>Project</th><th>Title</th><th>Owner</th><th>Project Status</th><th>Discovery Status</th><th>Pain Point</th><th>Current Process</th></tr></thead>
+        <tbody>{feedback_rows}</tbody>
       </table>
     </section>
     """
