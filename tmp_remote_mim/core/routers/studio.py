@@ -13685,6 +13685,34 @@ async def create_studio_app_workbench_event_form(
     return RedirectResponse(url=f"/studio/apps/workbench/{project.id}", status_code=303)
 
 
+@router.get("/studio/visitors", response_class=HTMLResponse)
+async def studio_visitors(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> HTMLResponse:
+    auth_redirect = maybe_require_mimtod_page_login(request, next_path="/studio/visitors")
+    if auth_redirect is not None:
+        return auth_redirect
+    raw_days = str(request.query_params.get("days", "30") or "30").strip().lower()
+    if raw_days in {"all", "any", "total"}:
+        days = None
+    else:
+        try:
+            days = max(1, min(int(raw_days), 3650))
+        except ValueError:
+            days = 30
+    state = await _studio_visitors_state(db, days=days)
+    return HTMLResponse(
+        _shell(
+            title="Visitors",
+            subtitle=str(PLACEHOLDERS["visitors"]["subtitle"]),
+            body=_visitors_body(state),
+            active="visitors",
+            mim_context="Studio Visitors",
+        )
+    )
+
+
 @router.get("/studio/visitor", response_class=HTMLResponse)
 @router.get("/studio/vistors", response_class=HTMLResponse)
 @router.get("/studio/visitors/", response_class=HTMLResponse)
