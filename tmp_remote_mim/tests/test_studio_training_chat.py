@@ -130,11 +130,31 @@ class StudioTrainingChatTest(unittest.TestCase):
         )
 
         self.assertTrue(reply.startswith("Three things need attention"))
-        self.assertIn("MIM judgment mode is the top repair", reply)
+        self.assertIn("My judgment-mode selection is the top repair", reply)
+        self.assertIn("I default", reply)
         self.assertIn("Outcome reflection is not ready", reply)
         self.assertIn("TOD validation baselines still need tightening", reply)
         self.assertIn("The next move I recommend", reply)
-        self.assertLess(reply.find("MIM judgment mode"), reply.find("Outcome reflection"))
+        self.assertLess(reply.find("My judgment-mode"), reply.find("Outcome reflection"))
+
+    def test_generic_training_prompt_uses_first_person(self):
+        studio = _import_studio_module()
+
+        reply = studio._compose_training_page_reply(
+            "how is training going MIM?",
+            {
+                "judgment": {
+                    "pass_rate_percent": 100,
+                    "current_weakness": "MIM defaults to status reporting instead of selecting a useful mode.",
+                },
+                "outcome_verdict": "Training is active, but outcome improvement is not proven yet.",
+            },
+        )
+
+        self.assertIn("my judgment mode is at 100%", reply)
+        self.assertIn("I default to status reporting", reply)
+        self.assertNotIn("MIM defaults", reply)
+        self.assertIn("what needs attention first", reply)
 
 
 if __name__ == "__main__":

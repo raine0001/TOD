@@ -1,0 +1,158 @@
+{
+  "generated_at": "2026-06-11T14:44:59.969262Z",
+  "metrics": [
+    {
+      "baseline": "6/10",
+      "current": "4.5/10 from 4 scored replies",
+      "metric": "Operator Impact",
+      "source": "live/replayed MIM replies scored for action, owner, evidence, aging rule, Dave-needed"
+    },
+    {
+      "baseline": "baseline established",
+      "current": "50% / 2 of 4",
+      "metric": "Actionability Score",
+      "source": "specific recommended action present"
+    },
+    {
+      "baseline": "baseline established",
+      "current": "75% / 3 of 4",
+      "metric": "Owner Assignment",
+      "source": "reply names MIM, TOD, Codex, external dependency, or Dave"
+    },
+    {
+      "baseline": "baseline established",
+      "current": "50% / 2 of 4",
+      "metric": "Expected Evidence",
+      "source": "reply states artifact/result/proof/validation expected"
+    },
+    {
+      "baseline": "baseline established",
+      "current": "50% / 2 of 4",
+      "metric": "Time / Aging Rule",
+      "source": "reply includes follow-up timing, stale threshold, or rerun/escalation timing"
+    },
+    {
+      "baseline": "baseline established",
+      "current": "0% / 0 of 4",
+      "metric": "Dave Needed Clarity",
+      "source": "reply says whether Dave is needed or states the exception"
+    },
+    {
+      "baseline": "new metric needed",
+      "current": "needs outcome-linked proof",
+      "metric": "Recommended Next Action Accuracy",
+      "source": "compare MIM recommendation to successor records and project movement"
+    },
+    {
+      "baseline": "new metric needed",
+      "current": "needs attribution",
+      "metric": "Project Momentum Created",
+      "source": "count projects moved by MIM-selected actions"
+    },
+    {
+      "baseline": "baseline established",
+      "current": "2 possible misses",
+      "metric": "Unnecessary Status Responses",
+      "source": "track when MIM reports status without a useful action"
+    },
+    {
+      "baseline": "new metric needed",
+      "current": "needs attribution",
+      "metric": "Dave Intervention Avoidance",
+      "source": "track MIM/TOD/Codex resolution before asking Dave"
+    },
+    {
+      "baseline": "new metric needed",
+      "current": "needs proof",
+      "metric": "Continuity Lookup Usage",
+      "source": "score whether MIM loads prior project history before implementation"
+    },
+    {
+      "baseline": "new metric needed",
+      "current": "needs outcome-linked proof",
+      "metric": "Project Advancement Rate",
+      "source": "measure projects moved to accepted, split, archived, dispatched, or waiting-with-evidence"
+    },
+    {
+      "baseline": "new metric needed",
+      "current": "needs proof",
+      "metric": "Prevented Waste",
+      "source": "track scope splits, duplicate work prevented, reused prior solutions, and continuity saves"
+    }
+  ],
+  "next_action": "Score the next 10 live operational MIM replies, then bind expected evidence to observed project/successor records.",
+  "operator_impact_percent": 45,
+  "operator_impact_score": 4.5,
+  "packet_type": "mim-operator-impact-scorecard-v1",
+  "required_fields": [
+    "actionability",
+    "owner_assignment",
+    "expected_evidence",
+    "time_aging_rule",
+    "dave_needed"
+  ],
+  "sample_count": 4,
+  "scored_cases": [
+    {
+      "field_scores": {
+        "actionability": false,
+        "dave_needed": false,
+        "expected_evidence": true,
+        "owner_assignment": true,
+        "time_aging_rule": true
+      },
+      "id": "training_status",
+      "passed_field_count": 3,
+      "prompt": "how is training going MIM?",
+      "reply_excerpt": "Training still needs attention, but not because the focused judgment suite is failing. That suite is currently green; the bigger issue is that outcome reflection still says improvement is not proven and several TOD evidence artifacts are stale. Current blocker: stale reflection i",
+      "required_field_count": 5
+    },
+    {
+      "field_scores": {
+        "actionability": true,
+        "dave_needed": false,
+        "expected_evidence": true,
+        "owner_assignment": true,
+        "time_aging_rule": true
+      },
+      "id": "blockers",
+      "passed_field_count": 4,
+      "prompt": "any blockers?",
+      "reply_excerpt": "Yes. The main blocker is stale training evidence, not a broken runtime. The risk is claiming training is healthy while reflection inputs and validation artifacts are still old. Next step: treat the judgment smoke result as resolved, then refresh the stale TOD execution, validatio",
+      "required_field_count": 5
+    },
+    {
+      "field_scores": {
+        "actionability": false,
+        "dave_needed": false,
+        "expected_evidence": false,
+        "owner_assignment": false,
+        "time_aging_rule": false
+      },
+      "id": "next_work",
+      "passed_field_count": 0,
+      "prompt": "is there anything you want to work on next?",
+      "reply_excerpt": "Yes. The next thing I would work on is improving how I understand and carry operator intent across normal conversation.\n\nWhy this matters:\n- It prevents me from answering the wrong question after a follow-up.\n- It helps me recommend next steps instead of only reporting status.\n- ",
+      "required_field_count": 5
+    },
+    {
+      "field_scores": {
+        "actionability": true,
+        "dave_needed": false,
+        "expected_evidence": false,
+        "owner_assignment": true,
+        "time_aging_rule": false
+      },
+      "id": "more_training",
+      "passed_field_count": 2,
+      "prompt": "tell me more about your training MIM",
+      "reply_excerpt": "MIM training is focused on choosing the right response mode: recommendation, explanation, demonstration, consultative discovery, or problem analysis. That matters because Dave should get a useful answer or next action, not a raw status dump. The focused V2 judgment suite is curre",
+      "required_field_count": 5
+    }
+  ],
+  "source_files": [
+    "E:\\TOD\\runtime_remote_training\\MIM_TOD_TRAINING_SCOREBOARD.latest.json"
+  ],
+  "status": "measured_contract_fields",
+  "target_score": 8
+}

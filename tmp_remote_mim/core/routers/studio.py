@@ -7854,6 +7854,54 @@ def _compose_training_scorecard_reply(state: dict[str, Any]) -> str:
         if isinstance(operator_impact_source.get("metrics"), list)
         else []
     )
+    operator_impact_score = _first_text(
+        operator_impact_source.get("operator_impact_score"),
+        default="not measured",
+    )
+    operator_impact_sample_count = _first_text(
+        operator_impact_source.get("sample_count"),
+        default="0",
+    )
+    operator_actionability = next(
+        (
+            _first_text(item.get("current"), default="needs proof")
+            for item in operator_impact_source_metrics
+            if isinstance(item, dict) and item.get("metric") == "Actionability Score"
+        ),
+        "needs proof",
+    )
+    operator_owner = next(
+        (
+            _first_text(item.get("current"), default="needs proof")
+            for item in operator_impact_source_metrics
+            if isinstance(item, dict) and item.get("metric") == "Owner Assignment"
+        ),
+        "needs proof",
+    )
+    operator_evidence = next(
+        (
+            _first_text(item.get("current"), default="needs proof")
+            for item in operator_impact_source_metrics
+            if isinstance(item, dict) and item.get("metric") == "Expected Evidence"
+        ),
+        "needs proof",
+    )
+    operator_aging = next(
+        (
+            _first_text(item.get("current"), default="needs proof")
+            for item in operator_impact_source_metrics
+            if isinstance(item, dict) and item.get("metric") == "Time / Aging Rule"
+        ),
+        "needs proof",
+    )
+    operator_dave = next(
+        (
+            _first_text(item.get("current"), default="needs proof")
+            for item in operator_impact_source_metrics
+            if isinstance(item, dict) and item.get("metric") == "Dave Needed Clarity"
+        ),
+        "needs proof",
+    )
     outcome = state.get("outcome_reflection") if isinstance(state.get("outcome_reflection"), dict) else {}
     reflection = state.get("reflection") if isinstance(state.get("reflection"), dict) else {}
     training_hours = state.get("training_hours") if isinstance(state.get("training_hours"), dict) else {}
@@ -7881,11 +7929,16 @@ def _compose_training_scorecard_reply(state: dict[str, Any]) -> str:
         f"- Judgment suite: {judgment.get('passed', 'baseline needed')}/{judgment.get('case_count', 'baseline needed')} passed, "
         f"{_format_percent(judgment.get('pass_rate_percent'))} pass rate.\n\n"
         "MIM Operator Impact:\n"
-        "- Status: not fully proven yet.\n"
+        f"- Contract score: {operator_impact_score}/10 from {operator_impact_sample_count} scored replies.\n"
+        f"- Actionability: {operator_actionability}.\n"
+        f"- Owner assignment: {operator_owner}.\n"
+        f"- Expected evidence: {operator_evidence}.\n"
+        f"- Time / aging rule: {operator_aging}.\n"
+        f"- Dave-needed clarity: {operator_dave}.\n"
         f"- Current moving projects: {project_counts.get('moving', 'unknown')}.\n"
         f"- Current needs review: {project_counts.get('needs_review', 'unknown')}.\n"
         f"- Current blocked projects: {project_counts.get('blocked', 'unknown')}.\n"
-        "- Missing proof: whether MIM's selected next actions reduced blockers, closed acceptance, or moved projects to terminal states.\n\n"
+        "- Remaining proof: whether my selected next actions reduced blockers, closed acceptance, or moved projects to terminal states.\n\n"
         "TOD:\n"
         f"- Blockers cleared/transformed: {_scoreboard_metric(tod_score, 'blockers_cleared_today')}.\n"
         f"- False completions prevented: {_scoreboard_metric(tod_score, 'false_completions_prevented_today')}.\n"
@@ -8287,7 +8340,14 @@ def _compose_training_attention_reply(prompt: str, state: dict[str, Any]) -> str
     weakness = _first_text(
         judgment.get("current_weakness"),
         state.get("mim", {}).get("weakness") if isinstance(state.get("mim"), dict) else "",
-        default="MIM is still selecting the wrong response mode too often.",
+        default="I am still selecting the wrong response mode too often.",
+    )
+    weakness_first_person = (
+        weakness
+        .replace("MIM defaults", "I default")
+        .replace("MIM is", "I am")
+        .replace("MIM still", "I still")
+        .replace("MIM ", "I ")
     )
     target = _first_text(
         judgment.get("target"),
@@ -8342,18 +8402,18 @@ def _compose_training_attention_reply(prompt: str, state: dict[str, Any]) -> str
         default="TOD-BLOCKER-CLEARING-DRILL-004 completed_with_evidence",
     )
     judgment_line = (
-        f"MIM judgment mode is currently green, not the top repair. Evidence: focused suite is {pass_rate}, target is {target}. "
+        f"My judgment mode is currently green, not the top repair. Evidence: focused suite is {pass_rate}, target is {target}. "
         "Action: keep it monitored and do not expand the suite until the outcome-reflection lane is clean."
         if pass_rate_number is not None and pass_rate_number >= 80
         else (
-            f"MIM judgment mode needs repair. Evidence: focused suite is {pass_rate}, weakness is: {weakness}. "
+            f"My judgment mode needs repair. Evidence: focused suite is {pass_rate}, weakness is: {weakness_first_person}. "
             f"Action: keep training narrow until mode selection is reliable. Target: {target}"
         )
     )
     attention_items: list[str] = []
     if pass_rate_number is None or pass_rate_number < 80:
         attention_items.append(
-            f"MIM judgment mode is the top repair. Evidence: focused suite is {pass_rate}, weakness is: {weakness}. "
+            f"My judgment-mode selection is the top repair. Evidence: focused suite is {pass_rate}, weakness is: {weakness_first_person}. "
             f"Action: keep training narrow until mode selection is reliable. Target: {target}"
         )
     attention_items.append(
@@ -8382,7 +8442,7 @@ def _compose_training_attention_reply(prompt: str, state: dict[str, Any]) -> str
     return (
         f"Three things need attention, Dave.\n\n{numbered_items}\n\n"
         f"{judgment_prefix}: {judgment_line}\n\n"
-        f"MIM's basic conversation score is holding at intent {intent}, answered question {answered}, and recommendation quality {recommendation}. "
+        f"My basic conversation score is holding at intent {intent}, answered question {answered}, and recommendation quality {recommendation}. "
         f"The next move I recommend is {next_move}. Latest evidence I would anchor to: {latest_evidence}."
     )
 
@@ -8432,12 +8492,19 @@ def _compose_training_page_reply(prompt: str, state: dict[str, Any]) -> str:
     weakness = _first_text(
         state.get("mim", {}).get("weakness") if isinstance(state.get("mim"), dict) else "",
         judgment.get("current_weakness"),
-        default="MIM still needs judgment-mode proof.",
+        default="I still need judgment-mode proof.",
+    )
+    weakness_first_person = (
+        weakness
+        .replace("MIM defaults", "I default")
+        .replace("MIM is", "I am")
+        .replace("MIM still", "I still")
+        .replace("MIM ", "I ")
     )
     return (
         f"{verdict}\n\n"
-        f"The short read: MIM judgment mode is at {pass_rate}, and the main weakness is {weakness} "
-        "Ask me what needs attention, what changed, or what I recommend next and I will choose a concrete response mode instead of dumping the scoreboard."
+        f"The short read: my judgment mode is at {pass_rate}, and the main weakness is that {weakness_first_person}. "
+        "When you ask about training, I should tell you what needs attention first instead of dumping the scoreboard."
     )
 
 
