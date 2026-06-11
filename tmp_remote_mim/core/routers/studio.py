@@ -13708,7 +13708,8 @@ async def studio_visitors(
             subtitle=str(PLACEHOLDERS["visitors"]["subtitle"]),
             body=_visitors_body(state),
             active="visitors",
-            mim_context="Studio Visitors",
+            page_context="Studio Visitors",
+            show_mim_panel=True,
         )
     )
 
