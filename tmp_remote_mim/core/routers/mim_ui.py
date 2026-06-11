@@ -341,11 +341,18 @@ def _public_mim_redirect_target(request: Request) -> str:
 
 
 def _dedicated_public_mim_redirect_target(request: Request) -> str:
+  request_host = _request_host_name(request)
+  if request_host in {"mimtod.com", "www.mimtod.com"}:
+    path = str(request.url.path or "").strip() or "/mim"
+    query = str(request.url.query or "").strip()
+    target = f"https://mim.mimtod.com{path}"
+    if query:
+      target = f"{target}?{query}"
+    return target
   public_base = _normalize_public_mim_base(settings.remote_shell_domain)
   if not public_base:
     return ""
   public_host = str(urlparse(public_base).hostname or "").strip().lower()
-  request_host = _request_host_name(request)
   if not public_host or request_host == public_host or _is_loopback_host(request_host):
     return ""
   path = str(request.url.path or "").strip() or "/mim"
