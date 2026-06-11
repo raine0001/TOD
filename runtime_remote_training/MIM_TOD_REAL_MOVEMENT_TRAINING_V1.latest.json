@@ -1,0 +1,48 @@
+{
+  "objective_id": "MIM-TOD-REAL-MOVEMENT-TRAINING-V1",
+  "title": "MIM TOD Real Movement Training V1",
+  "status": "active",
+  "priority": "P0",
+  "owner": "MIM + TOD",
+  "goal": "Stop rewarding better status language and start rewarding actual project movement.",
+  "required_behavior": [
+    "MIM replies must include action, owner, evidence, aging, and Dave-needed yes/no.",
+    "TOD must execute or block with inspected evidence once per active cycle.",
+    "Stale artifacts must be retired, refreshed, or mapped to current project state.",
+    "Active projects with no movement after 24 hours must be forced into completed, split, dispatched, waiting-with-evidence, blocked-with-owner, or archived.",
+    "Every MIM/TOD action must record whether it moved the project closer to completion."
+  ],
+  "success_criteria": [
+    "MIM Operator Impact score reaches 8/10 or better.",
+    "Dave-needed clarity reaches 90% or better.",
+    "TOD produces fresh execution or blocker evidence every cycle.",
+    "Stale artifact count decreases or stale artifacts are source-labeled as historical.",
+    "Blocked objective count reconciles to current project-board truth.",
+    "Fewer projects remain in vague working state without successor or terminal pressure."
+  ],
+  "cycle_policy": {
+    "cycle_interval": "every active training cycle",
+    "stale_project_threshold": "24 hours without movement",
+    "no_credit_for": [
+      "wrapper-only completion",
+      "status-only response",
+      "stale result reuse",
+      "uninspected blocker",
+      "project movement claim without evidence"
+    ],
+    "allowed_cycle_outputs": [
+      "changed files plus validation",
+      "blocked with inspected evidence",
+      "split with successor task",
+      "escalation packet with exact files, commands, acceptance, and evidence",
+      "terminal closeout"
+    ]
+  },
+  "first_cycle_artifacts": {
+    "instruction_packet": "runtime_remote_training/MIM_TOD_REAL_MOVEMENT_TRAINING_CYCLE_001.latest.json",
+    "scorecard": "runtime_remote_training/MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json"
+  },
+  "dave_needed": false,
+  "created_by": "Codex",
+  "created_at": "2026-06-11T15:10:00Z"
+}

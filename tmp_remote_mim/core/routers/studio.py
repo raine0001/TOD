@@ -4872,12 +4872,56 @@ async def _ensure_training_growth_projects(db: AsyncSession) -> None:
             },
         },
         {
+            "title": "MIM TOD Real Movement Training V1",
+            "summary": "Train MIM/TOD against real project movement instead of better status reporting.",
+            "status": "working",
+            "priority": "P0",
+            "owner": "MIM + TOD",
+            "health": "top_training_objective",
+            "why_it_matters": "Communication, scorecards, and dashboards only matter if they move projects toward completion. This objective forces every cycle to produce movement, inspected blockers, successor states, or terminal closeout.",
+            "origin_story": "Dave identified that MIM/TOD were improving status language while projects could still sit in vague working states. The new rule is simple: reward actual movement, not narration.",
+            "next_action": "Run cycle 001: score 10 MIM replies, dispatch one real TOD task, retire one stale artifact, move one vague working project, and record outcome movement evidence.",
+            "dave_needed": False,
+            "metadata_json": {
+                "project_type": "training_objective",
+                "objective_id": "MIM-TOD-REAL-MOVEMENT-TRAINING-V1",
+                "progress_percent": 5,
+                "work_state": "working",
+                "momentum": "moving",
+                "scope_state": "scope_stable",
+                "current_driving_task": "Run the first real-movement training cycle and prove at least one project or objective moved, split, closed, or blocked with inspected evidence.",
+                "acceptance": "MIM replies include action, owner, evidence, aging, and Dave-needed; TOD produces fresh execution/blocker evidence every cycle; stale artifacts decrease; vague working projects are forced into successor or terminal states.",
+                "required_behavior": [
+                    "MIM replies must include action, owner, evidence, aging, and Dave-needed yes/no.",
+                    "TOD must execute or block with inspected evidence once per active cycle.",
+                    "Stale artifacts must be retired, refreshed, or mapped to current project state.",
+                    "Active projects with no movement after 24 hours must be forced into completed, split, dispatched, waiting-with-evidence, blocked-with-owner, or archived.",
+                    "Every action must record whether it moved the project closer to completion."
+                ],
+                "success_criteria": [
+                    "MIM Operator Impact reaches 8/10+.",
+                    "Dave-needed clarity reaches 90%+.",
+                    "TOD produces fresh execution/blocker evidence every cycle.",
+                    "Stale artifact count decreases or becomes source-labeled historical.",
+                    "Blocked objective count reconciles to current project-board truth.",
+                    "Fewer projects remain in vague working state."
+                ],
+                "review_successor_state": "dispatched_to_TOD",
+                "review_successor_action": "Run cycle 001 and publish MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json with movement outcome evidence.",
+                "review_required_evidence": "Fresh scorecard plus cycle record showing one MIM reply batch score, one TOD execution/blocker result, one stale-artifact disposition, and one project successor or terminal state.",
+                "validation_evidence": "runtime_remote_training/MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json",
+                "cycle_artifact": "runtime_remote_training/MIM_TOD_REAL_MOVEMENT_TRAINING_CYCLE_001.latest.json",
+                "requested_by": "Dave",
+                "seed_version": "2026-06-11-real-movement-training-v1",
+            },
+        },
+        {
             "title": "MIM Operator Impact V1",
             "summary": "Raise MIM from helpful narrator to board-moving operator by requiring every recommendation or status response to include action, owner, evidence, aging rule, and Dave-needed decision.",
             "status": "working",
             "priority": "P0",
             "owner": "MIM + TOD",
-            "health": "top_training_objective",
+            "health": "supporting_training_objective",
             "why_it_matters": "MIM's communication score can look excellent while projects still fail to move. Operator Impact measures whether MIM's answer creates a usable next step.",
             "origin_story": "Dave identified the next maturity jump: MIM should stop narrating status and instead move work by naming the recommended action, owner, expected evidence, time/aging rule, and whether Dave is needed.",
             "next_action": "Apply the operator-impact response contract to MIM recommendations and status replies, then score live responses against the five required fields.",
@@ -6465,7 +6509,7 @@ async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
             "status": "working",
             "priority": "P0",
             "owner": "MIM + TOD",
-            "health": "top_training_objective",
+            "health": "active_training_objective",
             "why_it_matters": "Continuity is the shortest path from better judgment to better outcomes: it prevents solved development problems from becoming unsolved after Codex restarts or context is lost.",
             "origin_story": "Dave identified retrieval, not storage, as the missing layer after Codex freeze/restart pain. MIM should become Project Manager, TOD Engineering Lead, and Codex Specialist Engineer.",
             "next_action": "Validate the continuity gate against the AgentMIM forum graphics project before widening it.",
@@ -6567,7 +6611,7 @@ async def _ensure_requested_project_backlog(db: AsyncSession) -> None:
             "status": "working",
             "priority": "P0",
             "owner": "TOD + MIM",
-            "health": "top_training_objective",
+            "health": "active_training_objective",
             "why_it_matters": "A capable worker still sits idle without task selection. Next-action selection amplifies execution, continuity, blocker resolution, training, and autonomy.",
             "origin_story": "Dave identified task selection as the lowest-rated capability after Project Management reached roughly 8/10. TOD increasingly knows what happened and what failed, but still often does nothing next.",
             "next_action": "Build a real training set from existing objectives, tasks, blockers, and project events: situation, outcome, expected successor action.",
@@ -7626,16 +7670,16 @@ async def _studio_training_state(db: AsyncSession) -> dict[str, Any]:
         "attention_items": attention_items,
         "attention_resolution_statuses": attention_resolution_statuses,
         "top_training_objective": {
-            "id": "MIM-OPERATOR-IMPACT-V1",
-            "title": "MIM Operator Impact V1",
+            "id": "MIM-TOD-REAL-MOVEMENT-TRAINING-V1",
+            "title": "MIM TOD Real Movement Training V1",
             "status": "top_training_objective",
             "owner": "MIM + TOD",
             "href": "/studio/projects?view=all",
-            "why_now": "MIM can answer correctly, but the next maturity jump is making each answer move the board instead of narrating the board.",
-            "mim_action": "Every recommendation/status response must include recommended action, owner, expected evidence, time or aging rule, and Dave needed yes/no.",
-            "tod_action": "Create and maintain the scoring artifact that evaluates live MIM responses against the five-field operator-impact contract.",
-            "codex_gate": "Codex assists only if MIM/TOD cannot bind the scoring artifact or the live replies keep drifting after repeated repair attempts.",
-            "first_validation": "Score 10 live/replayed MIM recommendation/status replies and raise Operator Impact from 6/10 toward 8/10.",
+            "why_now": "MIM/TOD must prove project movement, not just better status language or cleaner scorecards.",
+            "mim_action": "Score the next 10 live operational replies for action, owner, evidence, aging, and Dave-needed, then force one vague working project into a successor or terminal state.",
+            "tod_action": "Execute one bounded real task per active cycle or block with inspected evidence, validation output, and a successor state.",
+            "codex_gate": "Codex assists only if MIM/TOD cannot produce fresh execution/blocker evidence or stale-artifact retirement after repeated cycles.",
+            "first_validation": "Publish MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json and prove one cycle moved, split, closed, or narrowed a real project/objective.",
         },
         "resolution_owner_model": "MIM owns the training objective, TOD implements and validates, Codex assists only after stall/failure, Dave is asked only for decisions or access.",
         "mim": {
@@ -7848,6 +7892,14 @@ def _compose_training_scorecard_reply(state: dict[str, Any]) -> str:
     mim_score = state.get("mim_score") if isinstance(state.get("mim_score"), dict) else {}
     tod_score = state.get("tod_score") if isinstance(state.get("tod_score"), dict) else {}
     project_counts = state.get("project_counts") if isinstance(state.get("project_counts"), dict) else {}
+    real_movement_source = _load_json("MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json")
+    real_movement_metrics = (
+        real_movement_source.get("metrics")
+        if isinstance(real_movement_source.get("metrics"), list)
+        else []
+    )
+    real_movement_status = _first_text(real_movement_source.get("status"), default="not measured").replace("_", " ")
+    real_movement_readout = _first_text(real_movement_source.get("overall_readout"), default="Real movement scorecard has not run yet.")
     operator_impact_source = _load_json("MIM_OPERATOR_IMPACT_SCORECARD.latest.json")
     operator_impact_source_metrics = (
         operator_impact_source.get("metrics")
@@ -7928,6 +7980,16 @@ def _compose_training_scorecard_reply(state: dict[str, Any]) -> str:
         f"- Recommendation quality: {_scoreboard_metric(mim_score, 'recommendation_quality_today')}.\n"
         f"- Judgment suite: {judgment.get('passed', 'baseline needed')}/{judgment.get('case_count', 'baseline needed')} passed, "
         f"{_format_percent(judgment.get('pass_rate_percent'))} pass rate.\n\n"
+        "MIM/TOD Real Movement:\n"
+        f"- Status: {real_movement_status}.\n"
+        f"- Readout: {real_movement_readout}\n"
+        + "".join(
+            f"- {_first_text(item.get('metric'), default='Metric')}: {_first_text(item.get('current'), default='unknown')} "
+            f"(target: {_first_text(item.get('target'), default='movement proof')}).\n"
+            for item in real_movement_metrics[:4]
+            if isinstance(item, dict)
+        )
+        + "\n"
         "MIM Operator Impact:\n"
         f"- Contract score: {operator_impact_score}/10 from {operator_impact_sample_count} scored replies.\n"
         f"- Actionability: {operator_actionability}.\n"
@@ -11299,6 +11361,12 @@ def _training_body(state: dict[str, Any]) -> str:
         """
     mim_metrics_source = mim_score.get("metrics") if isinstance(mim_score.get("metrics"), dict) else {}
     tod_metrics_source = tod_score.get("metrics") if isinstance(tod_score.get("metrics"), dict) else {}
+    real_movement_source = _load_json("MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json")
+    real_movement_source_metrics = (
+        real_movement_source.get("metrics")
+        if isinstance(real_movement_source.get("metrics"), list)
+        else []
+    )
     operator_impact_source = _load_json("MIM_OPERATOR_IMPACT_SCORECARD.latest.json")
     operator_impact_source_metrics = (
         operator_impact_source.get("metrics")
@@ -11335,6 +11403,23 @@ def _training_body(state: dict[str, Any]) -> str:
         ("Recommendation Quality", "baseline needed", today_metric(mim_metrics_source, "recommendation_quality"), "live eval: 1 recommendation prompt"),
         ("Judgment Mode", "baseline needed", f"{judgment.get('pass_rate_percent', 'unknown')}%", judgment_coverage_note),
         ("Typo Tolerance", "baseline needed", typo_current, typo_coverage_note),
+    ]
+    real_movement_metrics = [
+        (
+            _first_text(item.get("metric"), default="Movement metric"),
+            "active",
+            _first_text(item.get("current"), default="needs proof"),
+            _first_text(item.get("source"), default="real movement scorecard"),
+        )
+        for item in real_movement_source_metrics
+        if isinstance(item, dict)
+    ] or [
+        ("MIM Operator Impact", "active", "needs scorecard run", "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json"),
+        ("Dave Needed Clarity", "active", "needs scorecard run", "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json"),
+        ("Stale Artifact Count", "active", "needs scorecard run", "MIM_TOD_TRAINING_SCOREBOARD.latest.json"),
+        ("Validated TOD Edits", "active", "needs scorecard run", "tod_result_artifacts"),
+        ("Dispatcher State", "active", "needs scorecard run", "MIM_READY_TASK_DISPATCHER_STATUS.latest.json"),
+        ("Idle Training State", "active", "needs scorecard run", "TOD_IDLE_TRAINING_STATUS.latest.json"),
     ]
     mim_operator_impact_metrics = [
         (
@@ -11576,9 +11661,10 @@ def _training_body(state: dict[str, Any]) -> str:
     </section>
     <section class="grid two" style="margin-top:14px;">
       {_metric_table("MIM Communication Scorecard", mim_communication_metrics)}
-      {_metric_table("MIM Operator Impact Scorecard", mim_operator_impact_metrics)}
+      {_metric_table("MIM/TOD Real Movement Scorecard", real_movement_metrics)}
     </section>
     <section class="grid two" style="margin-top:14px;">
+      {_metric_table("MIM Operator Impact Scorecard", mim_operator_impact_metrics)}
       {_metric_table("TOD Scorecard", tod_metrics)}
     </section>
     <section class="grid two" style="margin-top:14px;">

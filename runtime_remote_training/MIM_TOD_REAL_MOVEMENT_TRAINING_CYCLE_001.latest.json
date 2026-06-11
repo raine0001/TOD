@@ -1,0 +1,47 @@
+{
+  "objective_id": "MIM-TOD-REAL-MOVEMENT-TRAINING-V1",
+  "cycle_id": "MIM-TOD-REAL-MOVEMENT-CYCLE-001",
+  "status": "ready",
+  "priority": "P0",
+  "owner": "MIM + TOD",
+  "actions": [
+    {
+      "action": "Score the next 10 live MIM operational replies against the five-field contract.",
+      "owner": "MIM",
+      "expected_evidence": "Updated MIM_OPERATOR_IMPACT_SCORECARD with 10 scored replies and per-field pass rates.",
+      "aging_rule": "Review after 10 replies or 24 hours, whichever comes first.",
+      "dave_needed": false
+    },
+    {
+      "action": "Dispatch one bounded TOD task that must inspect, edit or block with evidence, validate, and publish truth.",
+      "owner": "TOD",
+      "expected_evidence": "Fresh TOD result artifact with changed files or inspected blocker, validation output, and successor state.",
+      "aging_rule": "Escalate if no fresh result appears in the next active cycle.",
+      "dave_needed": false
+    },
+    {
+      "action": "Retire, refresh, or map one stale training artifact to a current project state.",
+      "owner": "MIM + TOD",
+      "expected_evidence": "Stale artifact retirement record naming the artifact, current state, owner, and reason.",
+      "aging_rule": "One stale artifact must move per cycle until the stale count is 0 or source-labeled historical.",
+      "dave_needed": false
+    },
+    {
+      "action": "Select one vague working project and force it into completed, split, dispatched, waiting-with-evidence, blocked-with-owner, or archived.",
+      "owner": "MIM",
+      "expected_evidence": "Project event showing successor or terminal state and expected evidence.",
+      "aging_rule": "Any project with 24 hours of no movement must be reviewed.",
+      "dave_needed": false
+    },
+    {
+      "action": "Record whether this cycle moved a project closer to completion.",
+      "owner": "MIM + TOD",
+      "expected_evidence": "Movement outcome label: moved, did_not_move, blocked_with_evidence, split, closed, or archived.",
+      "aging_rule": "Record before the next cycle starts.",
+      "dave_needed": false
+    }
+  ],
+  "success": "Cycle completes only when at least one real project/objective state is changed, split, blocked with inspected evidence, closed, or explicitly shown not to move with a repair action.",
+  "created_by": "Codex",
+  "created_at": "2026-06-11T15:10:00Z"
+}
