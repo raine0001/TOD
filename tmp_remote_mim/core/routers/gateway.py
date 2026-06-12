@@ -28,7 +28,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.camera_scene import (
@@ -112,6 +112,11 @@ from core.models import (
     InputEventResolution,
     MemoryEntry,
     MemoryLink,
+    ProjectPortalAccount,
+    ProjectPortalBlueprint,
+    ProjectPortalDiscoverySession,
+    ProjectPortalProject,
+    PublicVisitEvent,
     SpeechOutputAction,
     Task,
     WorkspaceMonitoringState,
@@ -124,6 +129,7 @@ from core.models import (
     WorkspaceZone,
     WorkspaceZoneRelation,
 )
+from core.interaction_quality_dashboard import build_interaction_quality_snapshot
 from core.voice_policy import (
     evaluate_voice_policy,
     load_voice_policy,
@@ -182,6 +188,272 @@ GATEWAY_GOVERNANCE_PRECEDENCE = [
     "degraded_health_confirmation",
     "benign_healthy_auto_execution",
 ]
+
+
+def _format_quality_rate(value: object) -> str:
+    if not isinstance(value, (int, float)):
+        return "n/a"
+    return f"{float(value) * 100:.1f}%"
+
+
+def _format_quality_age(seconds: object) -> str:
+    if not isinstance(seconds, (int, float)):
+        return "unknown"
+    total = max(0, int(seconds))
+    if total < 60:
+        return f"{total}s ago"
+    minutes = total // 60
+    if minutes < 60:
+        return f"{minutes}m ago"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours}h ago"
+    return f"{hours // 24}d ago"
+
+
+async def _interaction_quality_db_snapshot(db: AsyncSession) -> dict:
+    since = datetime.now(timezone.utc) - timedelta(days=7)
+
+    async def _count(model, *criteria) -> int:
+        result = await db.execute(select(func.count()).select_from(model).where(*criteria))
+        return int(result.scalar() or 0)
+
+    visits = await _count(
+        PublicVisitEvent,
+        PublicVisitEvent.created_at >= since,
+        PublicVisitEvent.is_internal.is_(False),
+        PublicVisitEvent.is_bot.is_(False),
+    )
+    unique_visitors_result = await db.execute(
+        select(func.count(func.distinct(PublicVisitEvent.visitor_hash))).where(
+            PublicVisitEvent.created_at >= since,
+            PublicVisitEvent.is_internal.is_(False),
+            PublicVisitEvent.is_bot.is_(False),
+        )
+    )
+    unique_visitors = int(unique_visitors_result.scalar() or 0)
+    project_count = await _count(ProjectPortalProject, ProjectPortalProject.created_at >= since)
+    account_count = await _count(ProjectPortalAccount, ProjectPortalAccount.created_at >= since)
+    discovery_count = await _count(
+        ProjectPortalDiscoverySession,
+        ProjectPortalDiscoverySession.created_at >= since,
+    )
+    blueprint_count = await _count(ProjectPortalBlueprint, ProjectPortalBlueprint.created_at >= since)
+    path_rows = (
+        await db.execute(
+            select(PublicVisitEvent.path, func.count())
+            .where(
+                PublicVisitEvent.created_at >= since,
+                PublicVisitEvent.is_internal.is_(False),
+                PublicVisitEvent.is_bot.is_(False),
+            )
+            .group_by(PublicVisitEvent.path)
+            .order_by(func.count().desc())
+            .limit(8)
+        )
+    ).all()
+    recent_projects = (
+        await db.execute(
+            select(ProjectPortalProject)
+            .order_by(ProjectPortalProject.created_at.desc())
+            .limit(8)
+        )
+    ).scalars().all()
+    return {
+        "window_days": 7,
+        "visits": visits,
+        "unique_visitors": unique_visitors,
+        "registered_accounts": account_count,
+        "visitor_projects": project_count,
+        "discovery_sessions": discovery_count,
+        "blueprints": blueprint_count,
+        "top_paths": [{"path": str(path or "/"), "count": int(count or 0)} for path, count in path_rows],
+        "recent_projects": [
+            {
+                "id": int(project.id),
+                "title": project.title,
+                "status": project.status,
+                "mode": project.mode,
+                "created_at": project.created_at.isoformat() if project.created_at else "",
+            }
+            for project in recent_projects
+        ],
+    }
+
+
+def _interaction_quality_html(snapshot: dict) -> str:
+    quality = snapshot.get("quality") if isinstance(snapshot.get("quality"), dict) else {}
+    activity = snapshot.get("activity") if isinstance(snapshot.get("activity"), dict) else {}
+    headline = quality.get("headline") if isinstance(quality.get("headline"), dict) else {}
+    artifacts = quality.get("artifacts") if isinstance(quality.get("artifacts"), list) else []
+    failure_analysis = quality.get("failure_analysis") if isinstance(quality.get("failure_analysis"), dict) else {}
+    actions = quality.get("next_actions") if isinstance(quality.get("next_actions"), list) else []
+
+    def esc(value: object) -> str:
+        return html.escape(str(value if value is not None else ""))
+
+    def artifact_rows() -> str:
+        rows = []
+        for item in artifacts:
+            rows.append(
+                "<tr>"
+                f"<td>{esc(item.get('key'))}</td>"
+                f"<td>{'yes' if item.get('available') else 'no'}</td>"
+                f"<td>{_format_quality_rate(item.get('weighted_pass_rate'))}</td>"
+                f"<td>{esc(item.get('scenario_count') or 0)}</td>"
+                f"<td>{esc(item.get('internal_jargon_failure_count') or 0)}</td>"
+                f"<td>{esc(_format_quality_age(item.get('age_seconds')))}</td>"
+                "</tr>"
+            )
+        return "\n".join(rows) or "<tr><td colspan='6'>No artifacts found.</td></tr>"
+
+    def surface_rows() -> str:
+        rows = []
+        for artifact in artifacts:
+            for surface in artifact.get("surfaces") or []:
+                tone = "ok" if surface.get("available") and not surface.get("failure_count") else "warn"
+                rows.append(
+                    f"<tr data-tone='{tone}'>"
+                    f"<td>{esc(artifact.get('key'))}</td>"
+                    f"<td>{esc(surface.get('surface'))}</td>"
+                    f"<td>{'yes' if surface.get('available') else 'no'}</td>"
+                    f"<td>{_format_quality_rate(surface.get('weighted_pass_rate'))}</td>"
+                    f"<td>{esc(surface.get('passed_count') or 0)}/{esc(surface.get('scenario_count') or 0)}</td>"
+                    f"<td>{esc(surface.get('unavailable_reason') or '')}</td>"
+                    "</tr>"
+                )
+        return "\n".join(rows) or "<tr><td colspan='6'>No surface data yet.</td></tr>"
+
+    def count_rows(key: str, label: str) -> str:
+        rows = []
+        for item in failure_analysis.get(key) or []:
+            rows.append(f"<tr><td>{esc(item.get(label))}</td><td>{esc(item.get('count'))}</td></tr>")
+        return "\n".join(rows) or "<tr><td colspan='2'>None</td></tr>"
+
+    def example_rows() -> str:
+        rows = []
+        for item in failure_analysis.get("examples") or []:
+            rows.append(
+                "<tr>"
+                f"<td>{esc(item.get('surface'))}</td>"
+                f"<td>{esc(item.get('bucket'))}</td>"
+                f"<td>{esc(', '.join(item.get('failures') or []))}</td>"
+                f"<td>{esc(item.get('turn'))}</td>"
+                f"<td>{esc(item.get('reply_excerpt'))}</td>"
+                "</tr>"
+            )
+        return "\n".join(rows) or "<tr><td colspan='5'>No failing examples in loaded reports.</td></tr>"
+
+    def action_cards() -> str:
+        cards = []
+        for item in actions:
+            cards.append(
+                "<article class='action'>"
+                f"<strong>{esc(item.get('priority'))}: {esc(item.get('action'))}</strong>"
+                f"<span>Owner: {esc(item.get('owner'))}</span>"
+                f"<small>Evidence: {esc(item.get('evidence'))}</small>"
+                "</article>"
+            )
+        return "\n".join(cards)
+
+    def top_path_rows() -> str:
+        return "\n".join(
+            f"<tr><td>{esc(item.get('path'))}</td><td>{esc(item.get('count'))}</td></tr>"
+            for item in activity.get("top_paths") or []
+        ) or "<tr><td colspan='2'>No visit paths recorded.</td></tr>"
+
+    def project_rows() -> str:
+        return "\n".join(
+            f"<tr><td>{esc(item.get('title'))}</td><td>{esc(item.get('status'))}</td><td>{esc(item.get('mode'))}</td><td>{esc(item.get('created_at'))}</td></tr>"
+            for item in activity.get("recent_projects") or []
+        ) or "<tr><td colspan='4'>No visitor projects recorded.</td></tr>"
+
+    generated = esc(snapshot.get("generated_at") or quality.get("generated_at") or "")
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MIM Interaction Quality</title>
+  <style>
+    :root {{ color-scheme: light; --ink:#172033; --muted:#667085; --line:#d8e0ec; --panel:#ffffff; --bg:#f5f7fb; --accent:#1267d6; --ok:#0f8a56; --warn:#b54708; }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin:0; font-family: Inter, Segoe UI, Arial, sans-serif; background:var(--bg); color:var(--ink); }}
+    header {{ padding:24px 28px 12px; background:#0f2545; color:white; }}
+    header h1 {{ margin:0 0 6px; font-size:28px; letter-spacing:0; }}
+    header p {{ margin:0; color:#c7d7ef; }}
+    main {{ padding:22px 28px 40px; max-width:1480px; margin:0 auto; }}
+    .grid {{ display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:14px; margin-bottom:18px; }}
+    .card, section {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; box-shadow:0 8px 18px rgba(16, 24, 40, .06); }}
+    .card small, .muted {{ color:var(--muted); display:block; margin-top:4px; }}
+    .metric {{ font-size:30px; font-weight:750; margin-top:8px; }}
+    .metric.ok {{ color:var(--ok); }} .metric.warn {{ color:var(--warn); }}
+    .sections {{ display:grid; grid-template-columns: minmax(0, 1.1fr) minmax(360px, .7fr); gap:18px; align-items:start; }}
+    section {{ margin-bottom:18px; }}
+    h2 {{ margin:0 0 12px; font-size:18px; }}
+    table {{ width:100%; border-collapse:collapse; font-size:13px; }}
+    th, td {{ padding:9px 8px; border-bottom:1px solid #edf1f7; text-align:left; vertical-align:top; }}
+    th {{ color:#40516d; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }}
+    tr[data-tone="warn"] td {{ background:#fff8ed; }}
+    .actions {{ display:grid; gap:10px; }}
+    .action {{ border:1px solid var(--line); border-radius:8px; padding:12px; background:#fbfcff; }}
+    .action span, .action small {{ display:block; color:var(--muted); margin-top:5px; }}
+    .wide {{ grid-column:1 / -1; }}
+    @media (max-width: 980px) {{ .grid, .sections {{ grid-template-columns:1fr; }} main {{ padding:16px; }} }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>MIM Interaction Quality</h1>
+    <p>Smoke results, customer-facing failure modes, visitor activity, and next actions. Generated {generated}.</p>
+  </header>
+  <main>
+    <div class="grid">
+      <div class="card"><strong>Best Weighted Pass</strong><div class="metric ok">{_format_quality_rate(headline.get('best_weighted_pass_rate'))}</div><small>Target is 95%+ across surfaces.</small></div>
+      <div class="card"><strong>Artifacts Loaded</strong><div class="metric">{esc(headline.get('available_artifacts') or 0)}</div><small>Universal, customer, and general smokes.</small></div>
+      <div class="card"><strong>Jargon Leaks</strong><div class="metric {'warn' if int(headline.get('internal_jargon_failure_count') or 0) else 'ok'}">{esc(headline.get('internal_jargon_failure_count') or 0)}</div><small>Must stay at zero.</small></div>
+      <div class="card"><strong>7-Day Visitors</strong><div class="metric">{esc(activity.get('unique_visitors') or 0)}</div><small>{esc(activity.get('visits') or 0)} tracked visits, bots/internal excluded.</small></div>
+    </div>
+    <div class="sections">
+      <div>
+        <section><h2>Smoke Artifacts</h2><table><thead><tr><th>Artifact</th><th>Loaded</th><th>Weighted</th><th>Scenarios</th><th>Jargon</th><th>Age</th></tr></thead><tbody>{artifact_rows()}</tbody></table></section>
+        <section><h2>Surface Certification</h2><table><thead><tr><th>Artifact</th><th>Surface</th><th>Available</th><th>Weighted</th><th>Passed</th><th>Reason</th></tr></thead><tbody>{surface_rows()}</tbody></table></section>
+        <section><h2>Failure Examples</h2><table><thead><tr><th>Surface</th><th>Category</th><th>Failures</th><th>User Turn</th><th>Reply Excerpt</th></tr></thead><tbody>{example_rows()}</tbody></table></section>
+      </div>
+      <div>
+        <section><h2>Recommended Next Actions</h2><div class="actions">{action_cards()}</div></section>
+        <section><h2>Failure Families</h2><table><thead><tr><th>Family</th><th>Count</th></tr></thead><tbody>{count_rows('family_counts', 'family')}</tbody></table></section>
+        <section><h2>Category Failures</h2><table><thead><tr><th>Category</th><th>Count</th></tr></thead><tbody>{count_rows('category_failure_counts', 'category')}</tbody></table></section>
+        <section><h2>Visitor Activity</h2><table><thead><tr><th>Path</th><th>Visits</th></tr></thead><tbody>{top_path_rows()}</tbody></table></section>
+        <section><h2>Recent Visitor Projects</h2><table><thead><tr><th>Project</th><th>Status</th><th>Mode</th><th>Created</th></tr></thead><tbody>{project_rows()}</tbody></table></section>
+      </div>
+    </div>
+  </main>
+</body>
+</html>"""
+
+
+@router.get("/mim/interaction-quality/data")
+async def mim_interaction_quality_data(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> dict:
+    ensure_authenticated_mimtod_api_request(request)
+    quality = build_interaction_quality_snapshot()
+    activity = await _interaction_quality_db_snapshot(db)
+    return {
+        "schema_version": "mim-interaction-quality-dashboard-response-v1",
+        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "quality": quality,
+        "activity": activity,
+    }
+
+
+@router.get("/mim/interaction-quality")
+async def mim_interaction_quality_page(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> Response:
+    snapshot = await mim_interaction_quality_data(request, db)
+    return Response(content=_interaction_quality_html(snapshot), media_type="text/html")
 
 
 def _coerce_web_research_concurrency(
