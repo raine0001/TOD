@@ -544,6 +544,10 @@ def _operator_impact_contract_applies(
     reply_text: str,
 ) -> bool:
     normalized_context = context if isinstance(context, dict) else {}
+    if bool(normalized_context.get("public_guest_chat")) and not bool(
+        normalized_context.get("operator_impact_contract_required")
+    ):
+        return False
     query = _normalized_query_text(user_input)
     topic = _compact_text(normalized_context.get("last_topic"), 80).lower()
     mode = _compact_text(response_mode, 80).lower()
@@ -881,6 +885,8 @@ def _model_request_payload(
             "counterpart_application": _compact_text(context.get("counterpart_application"), 80),
             "counterpart_channel": _compact_text(context.get("counterpart_channel"), 80),
             "system_identity": _compact_text(context.get("system_identity"), 320),
+            "conversation_policy": _compact_text(context.get("conversation_policy"), 260),
+            "current_datetime": _compact_context_signal(context.get("current_datetime")),
             "guardrails": _compact_list(context.get("guardrails"), 8, 120),
         },
         "response_contract": {
@@ -909,6 +915,8 @@ def _model_request_payload(
                     "You are MIM's communication composer. Rewrite the safe fallback reply into a direct, natural, expert conversation reply. "
                     "Preserve the original meaning, boundaries, and uncertainty. Do not claim actions, web research, or observations that are not already present. "
                     "If conversation_context includes assistant_identity, assistant_application, assistant_channel, counterpart_identity, or system_identity, treat them as authoritative facts about the system and keep identity answers consistent with them. "
+                    "If conversation_context includes current_datetime, use it to answer date, day, and time questions naturally. "
+                    "For public guest chat, ordinary conversation and basic factual questions are allowed; never deflect by saying the channel is only for planning, creativity, or broader thinking. "
                     "If conversation_context.response_mode is conversational_confident, do not prepend uncertainty hedges such as 'I am not totally sure' unless the context itself shows conflicting system state, missing verification data, or ambiguous execution results. "
                     "Answer first whenever the fallback reply or conversation_context contains enough signal. Ask a clarifying question only when the user input and context are both too ambiguous to answer. "
                     "Do not recursively re-explain the same setup; keep topical lock on conversation_context.last_topic and last_prompt for follow-up questions. "

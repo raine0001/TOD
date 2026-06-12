@@ -1,0 +1,147 @@
+import asyncio
+from datetime import datetime, timezone
+
+from core.communication_contract import ExpertCommunicationReply
+from core.routers.public_chat import _build_public_fallback_reply
+from core.routers.public_chat import _build_alternative_resource_query
+from core.routers import public_chat
+from core.communication_composer import build_deterministic_communication_reply
+
+
+def test_public_mim_weather_question_does_not_repeat_onboarding_prompt(monkeypatch) -> None:
+    def _fake_weather() -> str:
+        return "Right now London is cool.\n\nThis week's forecast from Open-Meteo:\n- today: cloudy, 10-15C"
+
+    monkeypatch.setattr(public_chat, "_london_weather_summary", _fake_weather)
+    reply = _build_public_fallback_reply(
+        message="what is the weather like in london today?",
+        mode="mim",
+        profile={"name": "Dave", "visit_count": 2},
+        recall_summary="I remember your name is Dave.",
+    )
+
+    assert "This week's forecast from Open-Meteo" in reply
+    assert "What are you trying to make progress on" not in reply
+    assert "This is the MIM channel" not in reply
+
+
+def test_public_mim_current_day_question_reaches_composer_with_temporal_context(monkeypatch) -> None:
+    monkeypatch.setattr(
+        public_chat,
+        "_public_chat_now",
+        lambda: datetime(2026, 6, 11, 9, 30, tzinfo=timezone.utc),
+    )
+    captured: dict[str, object] = {}
+
+    async def _fake_composer(*, user_input, context, fallback_reply):
+        captured["user_input"] = user_input
+        captured["context"] = context
+        captured["fallback_reply"] = fallback_reply
+        current = context["current_datetime"]
+        return ExpertCommunicationReply(
+            reply_text=f"Today is {current['current_date']}.",
+            topic_hint="conversation",
+            response_mode="answer_first",
+        )
+
+    monkeypatch.setattr(public_chat, "compose_expert_communication_reply", _fake_composer)
+    reply = asyncio.run(public_chat._compose_public_reply(
+        message="what day is it MIM?",
+        mode="mim",
+        profile={"name": "Dave", "visit_count": 2},
+        recall_summary="",
+        recent_messages=[],
+    ))
+
+    assert reply == "Today is Thursday, June 11, 2026."
+    assert captured["user_input"] == "what day is it MIM?"
+    assert captured["context"]["current_datetime"]["current_date"] == "Thursday, June 11, 2026"
+    assert "Answer ordinary conversation" in captured["context"]["conversation_policy"]
+    assert "This is the MIM channel" not in captured["fallback_reply"]
+    assert "focused on planning" not in captured["fallback_reply"]
+
+
+def test_public_guest_chat_does_not_get_operator_impact_contract() -> None:
+    reply = build_deterministic_communication_reply(
+        user_input="can I just chat with you to learn more?",
+        context={"public_guest_chat": True, "response_mode": "conversational_confident"},
+        fallback_reply="Absolutely. I can chat, explain MIM and TOD, or help turn a loose thought into clear next steps.",
+    )
+
+    assert "Recommended action:" not in reply.reply_text
+    assert "Dave needed:" not in reply.reply_text
+
+
+def test_public_mim_name_intro_gets_direct_acknowledgement() -> None:
+    reply = _build_public_fallback_reply(
+        message="i am Dave",
+        mode="mim",
+        profile={},
+        recall_summary="",
+    )
+
+    assert reply == "Nice to meet you, Dave. I'll remember your name for this public chat."
+
+
+def test_public_mim_weather_resource_uses_lookup_path(monkeypatch) -> None:
+    monkeypatch.setattr(
+        public_chat,
+        "_fetch_public_url_status",
+        lambda url: {"ok": False, "status": 403, "error": "HTTP 403", "source_state": "blocked_by_source"},
+    )
+    monkeypatch.setattr(
+        public_chat,
+        "_london_weather_summary",
+        lambda: "Right now London is cool.\n\nThis week's forecast from Open-Meteo:\n- today: cloudy, 10-15C",
+    )
+
+    reply = _build_public_fallback_reply(
+        message=(
+            "use this resource and let me know what the weather is going to be like this week in london: "
+            "https://www.accuweather.com/en/gb/london/ec4a-2/weather-forecast/328328"
+        ),
+        mode="mim",
+        profile={"name": "Dave", "visit_count": 2},
+        recall_summary="I remember your name is Dave.",
+    )
+
+    assert "site rejected the server-side request with HTTP 403" in reply
+    assert "This week's forecast from Open-Meteo" in reply
+    assert "What are you trying to make progress on" not in reply
+
+
+def test_public_mim_source_aware_blocked_url_does_not_claim_no_web_access(monkeypatch) -> None:
+    monkeypatch.setattr(
+        public_chat,
+        "_fetch_public_url_status",
+        lambda url: {"ok": False, "status": 403, "error": "HTTP 403", "source_state": "blocked_by_source"},
+    )
+    monkeypatch.setattr(
+        public_chat,
+        "_search_public_alternative_resources",
+        lambda query, limit=3: [
+            {"title": "Alternative public source", "url": "https://example.org/alternative"},
+        ],
+    )
+
+    reply = _build_public_fallback_reply(
+        message="use this resource and summarize it: https://example.com/protected",
+        mode="mim",
+        profile={"name": "Dave", "visit_count": 2},
+        recall_summary="I remember your name is Dave.",
+    )
+
+    assert "source blocked automated access" in reply
+    assert "does not mean MIM has no web access" in reply
+    assert "searched for alternative public resources" in reply
+    assert "https://example.org/alternative" in reply
+    assert "What are you trying to make progress on" not in reply
+
+
+def test_public_mim_alternative_query_uses_blocked_url_context() -> None:
+    query = _build_alternative_resource_query(
+        "use this resource and summarize it: https://www.accuweather.com/en/gb/london/ec4a-2/weather-forecast/328328",
+        "https://www.accuweather.com/en/gb/london/ec4a-2/weather-forecast/328328",
+    )
+
+    assert query == "London weather forecast"
