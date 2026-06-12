@@ -874,6 +874,15 @@ def _model_request_payload(
             "last_prompt": _compact_text(context.get("last_prompt"), 220),
             "last_action_request": _compact_text(context.get("last_action_request"), 180),
             "pending_action_request": _compact_text(context.get("pending_action_request"), 180),
+            "recent_conversation": _compact_list(
+                [
+                    f"{str(item.get('role') or '').strip()}: {str(item.get('content') or '').strip()}"
+                    for item in context.get("recent_conversation", [])
+                    if isinstance(item, dict)
+                ],
+                8,
+                180,
+            ),
             "assistant_name": _compact_text(context.get("assistant_name"), 40),
             "identity": _compact_text(context.get("identity"), 320),
             "assistant_identity": _compact_text(context.get("assistant_identity"), 320),
@@ -917,6 +926,8 @@ def _model_request_payload(
                     "Preserve the original meaning, boundaries, and uncertainty. Do not claim actions, web research, or observations that are not already present. "
                     "If conversation_context includes assistant_identity, assistant_application, assistant_channel, counterpart_identity, or system_identity, treat them as authoritative facts about the system and keep identity answers consistent with them. "
                     "If conversation_context includes current_datetime, use it to answer date, day, and time questions naturally. "
+                    "Use recent_conversation to resolve short follow-ups like 'what about in France?' instead of asking for clarification when the prior topic makes the referent clear. "
+                    "For location-based date/time follow-ups, use matching current_datetime.reference_datetimes entries when present before inferring ordinary civil time zones. "
                     "For public guest chat, ordinary conversation and basic factual questions are allowed; never deflect by saying the channel is only for planning, creativity, or broader thinking. "
                     "Match the language of the visitor's latest message unless they ask to translate or switch languages. "
                     "If conversation_context.response_mode is conversational_confident, do not prepend uncertainty hedges such as 'I am not totally sure' unless the context itself shows conflicting system state, missing verification data, or ambiguous execution results. "

@@ -833,7 +833,24 @@ def _format_public_time(value: datetime) -> str:
     return f"{(value.strftime('%I').lstrip('0') or '0')}:{value.strftime('%M')} {value.strftime('%p')}"
 
 
-def _public_temporal_context() -> dict[str, str]:
+def _public_zoned_temporal_context(zone_name: str, label: str) -> dict[str, str]:
+    try:
+        value = datetime.now(ZoneInfo(zone_name))
+    except Exception:
+        value = datetime.now(timezone.utc)
+    timezone_label = value.tzname() or zone_name
+    return {
+        "label": label,
+        "timezone": timezone_label,
+        "zone": zone_name,
+        "current_datetime_iso": value.isoformat(),
+        "current_day": value.strftime("%A"),
+        "current_date": _format_public_day_date(value),
+        "current_time": _format_public_time(value),
+    }
+
+
+def _public_temporal_context() -> dict[str, Any]:
     now = _public_chat_now()
     timezone_label = now.tzname() or PUBLIC_CHAT_DEFAULT_TIMEZONE
     return {
@@ -842,6 +859,10 @@ def _public_temporal_context() -> dict[str, str]:
         "current_date": _format_public_day_date(now),
         "current_time": _format_public_time(now),
         "timezone": timezone_label,
+        "reference_datetimes": {
+            "utc": _public_zoned_temporal_context("UTC", "UTC"),
+            "france": _public_zoned_temporal_context("Europe/Paris", "France"),
+        },
     }
 
 
