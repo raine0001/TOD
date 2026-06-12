@@ -896,6 +896,7 @@ def _model_request_payload(
             "system_identity": _compact_text(context.get("system_identity"), 320),
             "conversation_policy": _compact_text(context.get("conversation_policy"), 260),
             "language_policy": _compact_text(context.get("language_policy"), 180),
+            "customer_success_policy": _compact_text(context.get("customer_success_policy"), 600),
             "current_datetime": _compact_context_signal(context.get("current_datetime")),
             "guardrails": _compact_list(context.get("guardrails"), 8, 120),
         },
@@ -930,6 +931,7 @@ def _model_request_payload(
                     "For location-based date/time follow-ups, use matching current_datetime.reference_datetimes entries when present before inferring ordinary civil time zones. "
                     "For public guest chat, ordinary conversation and basic factual questions are allowed; never deflect by saying the channel is only for planning, creativity, or broader thinking. "
                     "Match the language of the visitor's latest message unless they ask to translate or switch languages. "
+                    "When customer_success_policy is present, follow it: give useful foundation before discovery, ask only critical questions, diagnose before requesting more details, and choose recommendations when asked to prioritize. "
                     "If conversation_context.response_mode is conversational_confident, do not prepend uncertainty hedges such as 'I am not totally sure' unless the context itself shows conflicting system state, missing verification data, or ambiguous execution results. "
                     "Answer first whenever the fallback reply or conversation_context contains enough signal. Ask a clarifying question only when the user input and context are both too ambiguous to answer. "
                     "Do not recursively re-explain the same setup; keep topical lock on conversation_context.last_topic and last_prompt for follow-up questions. "

@@ -164,6 +164,63 @@ def test_public_mim_composer_payload_includes_recent_followup_context() -> None:
     assert "Today is Thursday, June 11, 2026." in user_payload
 
 
+def test_public_mim_composer_payload_includes_customer_success_policy() -> None:
+    payload = _model_request_payload(
+        user_input="Build me a CRM",
+        context={
+            "public_guest_chat": True,
+            "response_mode": "conversational_confident",
+            "customer_success_policy": (
+                "For build requests, identify the app/workflow, give a first-version blueprint or prototype path, "
+                "then ask no more than three critical questions."
+            ),
+        },
+        fallback_reply="I can help build a CRM.",
+        deterministic_reply=ExpertCommunicationReply(reply_text="I can help build a CRM."),
+    )
+
+    user_payload = payload["messages"][1]["content"]
+    assert "customer_success_policy" in user_payload
+    assert "first-version blueprint" in user_payload
+    assert "no more than three critical questions" in user_payload
+
+
+def test_public_mim_build_request_seed_gives_foundation_before_questions() -> None:
+    reply = _build_public_fallback_reply(
+        message="Build me a simple booking app",
+        mode="mim",
+        profile={},
+        recall_summary="",
+    )
+
+    assert "first-version workflow" in reply
+    assert "Ask no more than three critical questions" in reply
+
+
+def test_public_mim_troubleshooting_seed_gives_diagnostic_step() -> None:
+    reply = _build_public_fallback_reply(
+        message="The commission total looks off",
+        mode="mim",
+        profile={},
+        recall_summary="",
+    )
+
+    assert "most likely causes" in reply
+    assert "dashboard/report calculation paths" in reply
+
+
+def test_public_mim_project_manager_seed_interprets_move_without_me() -> None:
+    reply = _build_public_fallback_reply(
+        message="What can move without me?",
+        mode="mim",
+        profile={},
+        recall_summary="",
+    )
+
+    assert "recommended next action" in reply
+    assert "autonomous project progress" in reply
+
+
 def test_public_guest_chat_does_not_get_operator_impact_contract() -> None:
     reply = build_deterministic_communication_reply(
         user_input="can I just chat with you to learn more?",

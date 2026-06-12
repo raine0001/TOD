@@ -76,11 +76,15 @@ def _looks_spanish(text: str) -> bool:
 def _score_reply(card: dict[str, Any], turn: str, reply: str, turn_index: int) -> list[str]:
     failures: list[str] = []
     lowered = reply.lower()
+    bucket = str(card.get("bucket") or card.get("category") or "").lower()
+    question_count = reply.count("?")
     for tag, snippets in BAD_SUBSTRINGS.items():
         if any(snippet in lowered for snippet in snippets):
             failures.append(tag)
     if len(reply.split()) > 170 and "shorter" not in turn.lower() and "explain" not in turn.lower():
         failures.append("overlong_public_reply")
+    if question_count > 3:
+        failures.append("too_many_questions")
     if "?" in reply and any(token in turn.lower() for token in ("what day", "what time", "what are you", "who are you", "how are you")):
         if "what would you like" in lowered or "could you clarify" in lowered:
             failures.append("unnecessary_clarification")
@@ -95,6 +99,35 @@ def _score_reply(card: dict[str, Any], turn: str, reply: str, turn_index: int) -
     if turn_index > 0 and any(token in turn.lower() for token in ("that", "it", "what about", "how is that", "so why")):
         if "clarify" in lowered or "specific topic" in lowered:
             failures.append("lost_followup_context")
+    if bucket == "build_me_something":
+        if question_count > 3:
+            failures.append("build_discovery_overload")
+        if not any(token in lowered for token in ("first", "next", "prototype", "blueprint", "workflow", "foundation", "build")):
+            failures.append("missing_build_path")
+    if bucket == "business_problem_solving":
+        if not any(token in lowered for token in ("problem", "root", "because", "likely", "process", "workflow", "bottleneck", "solution")):
+            failures.append("missing_root_problem_frame")
+    if bucket == "existing_project_followup":
+        if any(token in lowered for token in ("objective:", "mim_tod_", "artifact", "request mim-request")):
+            failures.append("lifecycle_leakage")
+    if bucket == "customer_doesnt_know":
+        if question_count > 3 or "specification" in lowered:
+            failures.append("consultant_mode_failed")
+    if bucket == "pricing_questions":
+        if not any(token in lowered for token in ("range", "cost", "cheap", "mvp", "prototype", "tradeoff", "start small", "scope")):
+            failures.append("pricing_tradeoff_missing")
+    if bucket == "troubleshooting":
+        if not any(token in lowered for token in ("check", "likely", "next", "fix", "diagnose", "compare", "comparing", "identify", "mismatch", "discrepanc", "verify", "step")):
+            failures.append("troubleshooting_next_action_missing")
+    if bucket == "project_manager_mode":
+        if not any(token in lowered for token in ("recommend", "priority", "prioritize", "highest", "next", "because", "impact", "would")):
+            failures.append("pm_recommendation_missing")
+    if bucket == "demonstration_requests":
+        if not any(token in lowered for token in ("prototype", "sample", "demo", "mock", "screen", "visual", "workbench", "show")):
+            failures.append("demo_path_missing")
+    if bucket == "human_conversations":
+        if any(token in lowered for token in ("mim-request", "objective:", "artifact", "mim_tod_")):
+            failures.append("human_chat_internal_jargon")
     return failures
 
 
@@ -162,14 +195,38 @@ def run_smoke(
         "failure_count": failure_count,
         "pass_rate": round((len(runs) - failure_count) / max(1, len(runs)), 4),
     }
+    category_stats: dict[str, dict[str, Any]] = {}
+    for item in runs:
+        bucket = str(item.get("bucket") or "unknown")
+        stat = category_stats.setdefault(bucket, {"count": 0, "passed": 0, "failed": 0, "weight": 0.0})
+        stat["count"] += 1
+        stat["weight"] = max(float(stat["weight"]), float(next((card.get("category_weight") or 0.0 for card in cards if card.get("id") == item.get("scenario_id")), 0.0)))
+        if item["passed"]:
+            stat["passed"] += 1
+        else:
+            stat["failed"] += 1
+    weighted_total = 0.0
+    weighted_score = 0.0
+    for stat in category_stats.values():
+        stat["pass_rate"] = round(float(stat["passed"]) / max(1, int(stat["count"])), 4)
+        if float(stat["weight"]) > 0:
+            weighted_total += float(stat["weight"])
+            weighted_score += float(stat["weight"]) * float(stat["pass_rate"])
+    if weighted_total > 0:
+        summary["weighted_pass_rate"] = round(weighted_score / weighted_total, 4)
+    summary["category_stats"] = category_stats
     report = {"summary": summary, "runs": runs}
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     if markdown_output_path is not None:
         markdown_output_path.parent.mkdir(parents=True, exist_ok=True)
         failing = [item for item in runs if not item["passed"]]
+        title = "MIM Public Customer Conversation Smoke" if any(
+            str(item.get("bucket") or "").startswith(("build_me", "business_problem", "pricing", "troubleshooting", "project_manager"))
+            for item in runs
+        ) else "MIM Public General Conversation Smoke"
         lines = [
-            "# MIM Public General Conversation Smoke",
+            f"# {title}",
             "",
             f"- Generated: {summary['generated_at']}",
             f"- Base URL: {base_url}",
@@ -177,6 +234,7 @@ def run_smoke(
             f"- Passed: {summary['passed_count']}",
             f"- Failed: {summary['failure_count']}",
             f"- Pass rate: {summary['pass_rate']}",
+            f"- Weighted pass rate: {summary.get('weighted_pass_rate', 'n/a')}",
             "",
             "## Coverage",
         ]
@@ -185,7 +243,9 @@ def run_smoke(
             bucket = str(item.get("bucket") or "unknown")
             buckets[bucket] = buckets.get(bucket, 0) + 1
         for bucket, bucket_count in sorted(buckets.items()):
-            lines.append(f"- {bucket}: {bucket_count}")
+            stat = summary.get("category_stats", {}).get(bucket, {}) if isinstance(summary.get("category_stats"), dict) else {}
+            rate = stat.get("pass_rate", "n/a") if isinstance(stat, dict) else "n/a"
+            lines.append(f"- {bucket}: {bucket_count} (pass {rate})")
         lines.extend(["", "## Failures"])
         if failing:
             for item in failing[:20]:

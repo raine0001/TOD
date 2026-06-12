@@ -818,6 +818,67 @@ def _looks_like_public_weather_question(text: str) -> bool:
     )
 
 
+def _public_customer_success_seed_reply(query: str) -> str:
+    lowered = str(query or "").lower()
+    build_markers = (
+        "build",
+        "create",
+        "make",
+        "i need",
+        "i want",
+    )
+    product_markers = (
+        "crm",
+        "inventory",
+        "scheduling",
+        "booking",
+        "mobile app",
+        "app",
+        "system",
+        "dashboard",
+        "tracker",
+        "portal",
+        "membership",
+        "memberships",
+    )
+    if any(marker in lowered for marker in build_markers) and any(marker in lowered for marker in product_markers):
+        return (
+            "This is a build request. Start by naming the likely app foundation and first-version workflow, then give a practical next step before asking questions. "
+            "A useful first version should usually include the core records, the main workflow, a simple dashboard or list view, and one action that proves the app works. "
+            "Ask no more than three critical questions, focused on users, workflow, and the first success screen."
+        )
+
+    if any(marker in lowered for marker in ("reporting sucks", "employees don't follow up", "lose inventory", "losing inventory", "data everywhere", "too much time entering", "nobody knows", "month end")):
+        return (
+            "This is a business problem, not automatically a software request. Start by naming the likely root problem in plain language, then recommend a solution direction and explain why it helps. "
+            "Only after that, suggest what kind of system or workflow could support it."
+        )
+
+    if any(marker in lowered for marker in ("failed", "wrong", "doesn't work", "does not work", "broken", "looks off", "does not match", "doesn't match", "missing", "can't log in", "cannot log in")):
+        return (
+            "This is a troubleshooting request. Start with the most likely causes and one immediate diagnostic or fix step. "
+            "For totals or mismatched numbers, recommend comparing source rows, filters, date ranges, manual entries, and dashboard/report calculation paths before asking for more details."
+        )
+
+    if any(marker in lowered for marker in ("what should we work", "highest value", "prioritize", "what can move without me", "what is the one thing", "pick the next task", "if you were managing")):
+        return (
+            "This is project-manager mode. Choose a recommended next action first, give the reason and expected impact, then mention what evidence would prove movement. "
+            "If the user asks what can move without them, interpret it as autonomous project progress rather than physical movement."
+        )
+
+    if any(marker in lowered for marker in ("how much", "cheapest", "cost", "mvp cost", "expensive", "avoid wasting money", "realistic range")):
+        return (
+            "This is a pricing or cost-control question. Give a realistic range framework or cost drivers, explain tradeoffs, and recommend the lowest-risk starting option such as a prototype or MVP scope."
+        )
+
+    if any(marker in lowered for marker in ("show me", "see a sample", "prototype", "mock up", "visual example", "quick demo")):
+        return (
+            "This is a demonstration request. Offer a prototype, sample screen, workbench path, or visual mockup direction first. Avoid a text-only explanation if the user needs to see the idea."
+        )
+
+    return ""
+
+
 def _public_chat_now() -> datetime:
     try:
         return datetime.now(ZoneInfo(PUBLIC_CHAT_DEFAULT_TIMEZONE))
@@ -1065,6 +1126,10 @@ def _build_public_fallback_reply(
                 "If you want a specific source evaluated, send the URL or upload the text and I'll work from that material directly. "
                 f"{_next_learning_prompt(profile, normalized_mode)}"
             )
+        customer_seed = _public_customer_success_seed_reply(query)
+        if customer_seed:
+            recall_prefix = f"{recall_summary} " if recall_summary else ""
+            return f"{recall_prefix}{customer_seed}"
         recall_prefix = f"{recall_summary} " if recall_summary else ""
         return (
             f"{recall_prefix}I can chat normally, answer simple questions, explain MIM and TOD, explore ideas, or help turn a loose thought into a next step. "
@@ -1136,6 +1201,13 @@ async def _compose_public_reply(
         ),
         "language_policy": (
             "Use the same language as the visitor's latest message unless they ask to translate or switch languages."
+        ),
+        "customer_success_policy": (
+            "For customer-facing product conversations, lead with a useful answer or foundation before discovery. "
+            "For build requests, identify the app/workflow, give a first-version blueprint or prototype path, then ask no more than three critical questions. "
+            "For business pain, name the likely root problem and solution direction before suggesting software. "
+            "For troubleshooting, provide a likely cause and next diagnostic/fix step before asking for details. "
+            "For prioritization, choose a recommendation with rationale and expected impact instead of only reporting status."
         ),
         "current_datetime": temporal_context,
         "identity": str(channel_context["identity"]),
