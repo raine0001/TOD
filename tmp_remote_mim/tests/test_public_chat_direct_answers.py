@@ -61,6 +61,35 @@ def test_public_mim_current_day_question_reaches_composer_with_temporal_context(
     assert "focused on planning" not in captured["fallback_reply"]
 
 
+def test_public_mim_spanish_chat_keeps_language_policy(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def _fake_composer(*, user_input, context, fallback_reply):
+        captured["user_input"] = user_input
+        captured["context"] = context
+        captured["fallback_reply"] = fallback_reply
+        return ExpertCommunicationReply(
+            reply_text="Estoy bien. Podemos conversar en espanol y explorar lo que quieras.",
+            topic_hint="conversation",
+            response_mode="conversational_confident",
+        )
+
+    monkeypatch.setattr(public_chat, "compose_expert_communication_reply", _fake_composer)
+    reply = asyncio.run(public_chat._compose_public_reply(
+        message="Como estas?",
+        mode="mim",
+        profile={},
+        recall_summary="",
+        recent_messages=[],
+    ))
+
+    assert reply.startswith("Estoy bien.")
+    assert captured["user_input"] == "Como estas?"
+    assert "same language" in captured["context"]["language_policy"]
+    assert "This is the MIM channel" not in captured["fallback_reply"]
+    assert "Recommended action:" not in reply
+
+
 def test_public_guest_chat_does_not_get_operator_impact_contract() -> None:
     reply = build_deterministic_communication_reply(
         user_input="can I just chat with you to learn more?",

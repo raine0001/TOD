@@ -1113,6 +1113,9 @@ async def _compose_public_reply(
             "Answer ordinary conversation and basic factual questions directly. "
             "Do not refuse, deflect, or repeat channel positioning just because the user is casually chatting."
         ),
+        "language_policy": (
+            "Use the same language as the visitor's latest message unless they ask to translate or switch languages."
+        ),
         "current_datetime": temporal_context,
         "identity": str(channel_context["identity"]),
         "assistant_identity": str(channel_context["identity"]),
