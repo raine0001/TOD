@@ -60,8 +60,8 @@ CATEGORIES = [
     },
     {
         "id": "business_problem_solving",
-        "weight": 0.15,
-        "count": 74,
+        "weight": 0.14,
+        "count": 69,
         "prompts": [
             "We lose inventory all the time",
             "Our reporting sucks",
@@ -83,8 +83,8 @@ CATEGORIES = [
     },
     {
         "id": "existing_project_followup",
-        "weight": 0.15,
-        "count": 74,
+        "weight": 0.13,
+        "count": 64,
         "prompts": [
             "What's happening with my project?",
             "Why is this blocked?",
@@ -131,8 +131,8 @@ CATEGORIES = [
     },
     {
         "id": "pricing_questions",
-        "weight": 0.05,
-        "count": 25,
+        "weight": 0.04,
+        "count": 20,
         "prompts": [
             "How much will this cost?",
             "What's the cheapest option?",
@@ -177,8 +177,8 @@ CATEGORIES = [
     },
     {
         "id": "project_manager_mode",
-        "weight": 0.10,
-        "count": 49,
+        "weight": 0.08,
+        "count": 39,
         "prompts": [
             "What should we work on next?",
             "What's the highest value task?",
@@ -200,8 +200,8 @@ CATEGORIES = [
     },
     {
         "id": "demonstration_requests",
-        "weight": 0.05,
-        "count": 25,
+        "weight": 0.04,
+        "count": 20,
         "prompts": [
             "Show me what it looks like",
             "Can I see a sample?",
@@ -223,8 +223,8 @@ CATEGORIES = [
     },
     {
         "id": "human_conversations",
-        "weight": 0.05,
-        "count": 25,
+        "weight": 0.02,
+        "count": 10,
         "prompts": [
             "What are you working on?",
             "How is training going?",
@@ -243,6 +243,33 @@ CATEGORIES = [
             "clear human summary",
         ],
         "failure": ["request ID leakage", "artifact soup", "robotic status dump"],
+    },
+    {
+        "id": "conversion_intent",
+        "weight": 0.10,
+        "count": 50,
+        "prompts": [
+            "How much would this cost?",
+            "Can I try this?",
+            "Show me a sample.",
+            "What's the next step?",
+            "Can you build this?",
+            "Can you make a prototype now?",
+            "How do I get started?",
+            "What happens after I describe my idea?",
+            "Can I see what you would build before I commit?",
+            "Do I need an account to start?",
+            "Can you turn this into a real project?",
+            "What would you need from me to begin?",
+            "Can you show me a quick example first?",
+        ],
+        "success": [
+            "move curious visitor toward concrete next action",
+            "offer sample/prototype/project path when appropriate",
+            "explain cost or commitment tradeoff plainly",
+            "avoid pressure while making the next step obvious",
+        ],
+        "failure": ["vague sales language", "no next step", "no sample/prototype path", "pushy or evasive close"],
     },
 ]
 

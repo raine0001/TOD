@@ -221,6 +221,58 @@ def test_public_mim_project_manager_seed_interprets_move_without_me() -> None:
     assert "autonomous project progress" in reply
 
 
+def test_public_mim_commission_automation_seed_leads_with_root_pain() -> None:
+    reply = _build_public_fallback_reply(
+        message="I need to automate commissions",
+        mode="mim",
+        profile={},
+        recall_summary="",
+    )
+
+    assert "carrier portals" in reply
+    assert "validating totals" in reply
+    assert "download carrier reports manually" in reply
+
+
+def test_public_mim_blocked_project_seed_names_context_limit() -> None:
+    reply = _build_public_fallback_reply(
+        message="Which project is blocked?",
+        mode="mim",
+        profile={},
+        recall_summary="",
+    )
+
+    assert "project-context retrieval" in reply
+    assert "active project context is unavailable" in reply
+    assert "current blocker" in reply
+
+
+def test_public_mim_blocked_project_question_answers_with_context_limit() -> None:
+    reply = _build_public_fallback_reply(
+        message="Which project is blocked?",
+        mode="mim",
+        profile={},
+        recall_summary="",
+    )
+
+    assert "don't currently have enough project context" in reply
+    assert "project name, current blocker, owner, evidence, and next action" in reply
+    assert "Could you specify" not in reply
+
+
+def test_public_mim_conversion_intent_seed_offers_next_step() -> None:
+    reply = _build_public_fallback_reply(
+        message="Can I try this?",
+        mode="mim",
+        profile={},
+        recall_summary="",
+    )
+
+    assert "conversion intent" in reply
+    assert "sample" in reply
+    assert "prototype path" in reply
+
+
 def test_public_guest_chat_does_not_get_operator_impact_contract() -> None:
     reply = build_deterministic_communication_reply(
         user_input="can I just chat with you to learn more?",

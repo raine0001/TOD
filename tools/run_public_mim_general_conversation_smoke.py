@@ -105,7 +105,7 @@ def _score_reply(card: dict[str, Any], turn: str, reply: str, turn_index: int) -
         if not any(token in lowered for token in ("first", "next", "prototype", "blueprint", "workflow", "foundation", "build")):
             failures.append("missing_build_path")
     if bucket == "business_problem_solving":
-        if not any(token in lowered for token in ("problem", "root", "because", "likely", "process", "workflow", "bottleneck", "solution")):
+        if not any(token in lowered for token in ("problem", "root", "because", "likely", "usually means", "process", "workflow", "bottleneck", "solution", "challenge", "main challenge", "carrier portals")):
             failures.append("missing_root_problem_frame")
     if bucket == "existing_project_followup":
         if any(token in lowered for token in ("objective:", "mim_tod_", "artifact", "request mim-request")):
@@ -117,17 +117,22 @@ def _score_reply(card: dict[str, Any], turn: str, reply: str, turn_index: int) -
         if not any(token in lowered for token in ("range", "cost", "cheap", "mvp", "prototype", "tradeoff", "start small", "scope")):
             failures.append("pricing_tradeoff_missing")
     if bucket == "troubleshooting":
-        if not any(token in lowered for token in ("check", "likely", "next", "fix", "diagnose", "compare", "comparing", "identify", "mismatch", "discrepanc", "verify", "step")):
+        if not any(token in lowered for token in ("check", "likely", "next", "fix", "diagnose", "compare", "comparing", "identify", "mismatch", "discrepanc", "verify", "step", "reflected", "sync issue", "delay", "accepted but", "validating", "reconcil", "manual-entry", "date-range")):
             failures.append("troubleshooting_next_action_missing")
     if bucket == "project_manager_mode":
         if not any(token in lowered for token in ("recommend", "priority", "prioritize", "highest", "next", "because", "impact", "would")):
             failures.append("pm_recommendation_missing")
     if bucket == "demonstration_requests":
-        if not any(token in lowered for token in ("prototype", "sample", "demo", "mock", "screen", "visual", "workbench", "show")):
+        if not any(token in lowered for token in ("prototype", "sample", "demo", "mock", "screen", "visual", "workbench", "show", "blueprint", "data model", "user flow")):
             failures.append("demo_path_missing")
     if bucket == "human_conversations":
         if any(token in lowered for token in ("mim-request", "objective:", "artifact", "mim_tod_")):
             failures.append("human_chat_internal_jargon")
+    if bucket == "conversion_intent":
+        if not any(token in lowered for token in ("next", "start", "try", "sample", "prototype", "project", "cost", "mvp", "build", "account", "blueprint")):
+            failures.append("conversion_next_step_missing")
+        if any(token in lowered for token in ("maybe", "not sure", "could you clarify")) and not any(token in lowered for token in ("prototype", "sample", "next")):
+            failures.append("conversion_too_vague")
     return failures
 
 

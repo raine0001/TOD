@@ -845,7 +845,14 @@ def _public_customer_success_seed_reply(query: str) -> str:
         return (
             "This is a build request. Start by naming the likely app foundation and first-version workflow, then give a practical next step before asking questions. "
             "A useful first version should usually include the core records, the main workflow, a simple dashboard or list view, and one action that proves the app works. "
-            "Ask no more than three critical questions, focused on users, workflow, and the first success screen."
+            "The final reply must include that concrete foundation or prototype path. Ask no more than three critical questions, focused on users, workflow, and the first success screen."
+        )
+
+    if "commission" in lowered and any(marker in lowered for marker in ("automate", "automation", "total", "commissions")):
+        return (
+            "This is a commission automation problem. Lead with understanding: the biggest pain is usually collecting monthly reports from multiple carrier portals, validating totals, catching manual-entry or date-range mismatches, then uploading and reconciling payouts. "
+            "Recommend automating report retrieval, validation, upload, and reconciliation before asking discovery questions. "
+            "Ask one critical question first: does the customer currently download carrier reports manually?"
         )
 
     if any(marker in lowered for marker in ("reporting sucks", "employees don't follow up", "lose inventory", "losing inventory", "data everywhere", "too much time entering", "nobody knows", "month end")):
@@ -858,6 +865,13 @@ def _public_customer_success_seed_reply(query: str) -> str:
         return (
             "This is a troubleshooting request. Start with the most likely causes and one immediate diagnostic or fix step. "
             "For totals or mismatched numbers, recommend comparing source rows, filters, date ranges, manual entries, and dashboard/report calculation paths before asking for more details."
+        )
+
+    if "which project is blocked" in lowered or "what project is blocked" in lowered:
+        return (
+            "This is a project-context retrieval request. If the active project context is unavailable, say that directly instead of guessing. "
+            "Then explain the ideal answer shape: most recently active project, current blocker, owner, evidence, and next action. "
+            "If context is available, summarize the blocked project in that shape without exposing internal artifact IDs."
         )
 
     if any(marker in lowered for marker in ("what should we work", "highest value", "prioritize", "what can move without me", "what is the one thing", "pick the next task", "if you were managing")):
@@ -874,6 +888,12 @@ def _public_customer_success_seed_reply(query: str) -> str:
     if any(marker in lowered for marker in ("show me", "see a sample", "prototype", "mock up", "visual example", "quick demo")):
         return (
             "This is a demonstration request. Offer a prototype, sample screen, workbench path, or visual mockup direction first. Avoid a text-only explanation if the user needs to see the idea."
+        )
+
+    if any(marker in lowered for marker in ("can i try", "next step", "can you build this", "get started", "real project", "before i commit", "what would you need from me", "how much would this cost")):
+        return (
+            "This is conversion intent. Make the next step obvious without pressure: offer a sample, prototype path, lightweight blueprint, or project-start path depending on the ask. "
+            "If cost is involved, explain that a small prototype/MVP is the lowest-risk first step and that final pricing depends on scope."
         )
 
     return ""
@@ -961,6 +981,13 @@ def _public_direct_conversational_reply(
             f"{recall_prefix}Absolutely. I'll continue the project-planning flow instead of restarting the conversation. "
             "Next I would turn the idea into a first-version plan: define the main workflow, identify the data that needs to be captured, map the reports and smart actions, list the integrations or file sources, and then ask only the few questions needed to remove uncertainty. "
             "For an app idea like this, the next useful output is a simple blueprint with: capture/import, data model, user workflow, reports, automation rules, risks, and open questions."
+        )
+
+    if normalized_mode == "mim" and re.search(r"\b(which|what)\s+project\s+is\s+blocked\b", lowered):
+        return (
+            f"{recall_prefix}I don't currently have enough project context in this public chat to identify which specific project you mean. "
+            "If you mean your most recently active project, I would answer in this shape: project name, current blocker, owner, evidence, and next action. "
+            "Share the project name or open it from your account and I can narrow this to the actual blocked item."
         )
 
     if _looks_like_public_weather_question(query):
@@ -1205,6 +1232,7 @@ async def _compose_public_reply(
         "customer_success_policy": (
             "For customer-facing product conversations, lead with a useful answer or foundation before discovery. "
             "For build requests, identify the app/workflow, give a first-version blueprint or prototype path, then ask no more than three critical questions. "
+            "Do not turn build requests into 'what features do you want?' before providing a concrete foundation. "
             "For business pain, name the likely root problem and solution direction before suggesting software. "
             "For troubleshooting, provide a likely cause and next diagnostic/fix step before asking for details. "
             "For prioritization, choose a recommendation with rationale and expected impact instead of only reporting status."
