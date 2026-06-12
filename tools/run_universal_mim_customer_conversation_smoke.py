@@ -106,6 +106,10 @@ class SurfaceClient:
         try:
             with self._open(request) as response:
                 html = response.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            self.available = False
+            self.unavailable_reason = f"bootstrap_error:HTTPError_{exc.code}"
+            return
         except Exception as exc:  # noqa: BLE001
             self.available = False
             self.unavailable_reason = f"bootstrap_error:{type(exc).__name__}"
@@ -147,6 +151,10 @@ class SurfaceClient:
             with self._open(login_request) as response:
                 final_url = response.geturl()
                 html = response.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            self.available = False
+            self.unavailable_reason = f"login_error:HTTPError_{exc.code}"
+            return
         except Exception as exc:  # noqa: BLE001
             self.available = False
             self.unavailable_reason = f"login_error:{type(exc).__name__}"
@@ -362,7 +370,10 @@ def run_surface(
                 failures = _score_reply(card, turn, reply, turn_index)
                 if _has_internal_jargon(reply):
                     failures.append("internal_jargon_leakage")
-            except (OSError, TimeoutError, urllib.error.HTTPError, ValueError) as exc:
+            except urllib.error.HTTPError as exc:
+                reply = ""
+                failures = [f"request_error:HTTPError_{exc.code}"]
+            except (OSError, TimeoutError, ValueError) as exc:
                 reply = ""
                 failures = [f"request_error:{type(exc).__name__}"]
             card_failures.extend(failures)
