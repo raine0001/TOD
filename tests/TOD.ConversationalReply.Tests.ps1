@@ -93,15 +93,39 @@ function Write-ExecutionReadyTodConfig {
 }
 
 function Backup-ChatDispatchArtifacts {
+    $isolatedSharedRoot = Join-Path $repoRoot ('tod/out/tests/chat-dispatch-shared-' + [guid]::NewGuid().ToString('N'))
+    $isolatedRuntimeRoot = Join-Path $isolatedSharedRoot 'runtime/shared'
+    $isolatedRemoteRoot = Join-Path $isolatedSharedRoot 'tmp_remote_mim/runtime/shared'
+    New-Item -ItemType Directory -Path $isolatedRuntimeRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $isolatedRemoteRoot -Force | Out-Null
+
     $paths = @(
         (Join-Path $repoRoot 'runtime/shared/MIM_TOD_TASK_REQUEST.latest.json'),
         (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVITY_STREAM.latest.json'),
+        (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVE_EXECUTION_LANE.latest.json'),
+        (Join-Path $repoRoot 'runtime/shared/TOD_INTAKE_QUEUE.latest.json'),
+        (Join-Path $repoRoot 'runtime/shared/TOD_INTAKE_ARBITRATION.latest.json'),
         (Join-Path $repoRoot 'tmp_remote_mim/runtime/shared/MIM_TOD_TASK_REQUEST.latest.json'),
         (Join-Path $repoRoot 'tmp_remote_mim/runtime/shared/TOD_ACTIVITY_STREAM.latest.json'),
-        (Join-Path $repoRoot 'tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json')
+        (Join-Path $repoRoot 'tmp_remote_mim/runtime/shared/TOD_ACTIVE_EXECUTION_LANE.latest.json'),
+        (Join-Path $repoRoot 'tmp_remote_mim/runtime/shared/TOD_INTAKE_QUEUE.latest.json'),
+        (Join-Path $repoRoot 'tmp_remote_mim/runtime/shared/TOD_INTAKE_ARBITRATION.latest.json'),
+        (Join-Path $repoRoot 'tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json'),
+        (Join-Path $repoRoot 'tod/out/context-sync/listener/TOD_ACTIVE_EXECUTION_LANE.latest.json'),
+        (Join-Path $repoRoot 'tod/out/context-sync/listener/TOD_INTAKE_QUEUE.latest.json'),
+        (Join-Path $repoRoot 'tod/out/context-sync/listener/TOD_INTAKE_ARBITRATION.latest.json')
     )
 
-    $records = @()
+    $records = @(
+        [pscustomobject]@{
+            path = '__ENV_TOD_EXECUTION_SHARED_ROOTS__'
+            exists = $false
+            content = [string]$env:TOD_EXECUTION_SHARED_ROOTS
+            isolated_root = $isolatedSharedRoot
+        }
+    )
+    $env:TOD_EXECUTION_SHARED_ROOTS = (($isolatedRuntimeRoot, $isolatedRemoteRoot) -join ';')
+
     foreach ($path in $paths) {
         $records += [pscustomobject]@{
             path = $path
@@ -117,6 +141,18 @@ function Restore-ChatDispatchArtifacts {
     param([object[]]$Records)
 
     foreach ($record in @($Records)) {
+        if ([string]$record.path -eq '__ENV_TOD_EXECUTION_SHARED_ROOTS__') {
+            if ([string]::IsNullOrWhiteSpace([string]$record.content)) {
+                Remove-Item Env:\TOD_EXECUTION_SHARED_ROOTS -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:TOD_EXECUTION_SHARED_ROOTS = [string]$record.content
+            }
+            if ($record.PSObject.Properties['isolated_root'] -and -not [string]::IsNullOrWhiteSpace([string]$record.isolated_root) -and (Test-Path -Path ([string]$record.isolated_root))) {
+                Remove-Item -Path ([string]$record.isolated_root) -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            continue
+        }
         if ([bool]$record.exists) {
             $directory = Split-Path -Parent ([string]$record.path)
             if (-not (Test-Path -Path $directory)) {
@@ -131,11 +167,27 @@ function Restore-ChatDispatchArtifacts {
     }
 }
 
+function Get-TestExecutionSharedRoot {
+    if (-not [string]::IsNullOrWhiteSpace([string]$env:TOD_EXECUTION_SHARED_ROOTS)) {
+        $root = @(([string]$env:TOD_EXECUTION_SHARED_ROOTS) -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -First 1)
+        if (@($root).Count -gt 0) {
+            return [string]$root[0]
+        }
+    }
+
+    return (Join-Path $repoRoot 'runtime/shared')
+}
+
+function Get-TestExecutionSharedArtifactPath {
+    param([Parameter(Mandatory = $true)][string]$FileName)
+    return (Join-Path (Get-TestExecutionSharedRoot) $FileName)
+}
+
 function Get-TaskActivityEvents {
     param([Parameter(Mandatory = $true)][string]$TaskId)
 
     $paths = @(
-        (Join-Path $repoRoot 'runtime/shared/TOD_ACTIVITY_STREAM.latest.json'),
+        (Get-TestExecutionSharedArtifactPath -FileName 'TOD_ACTIVITY_STREAM.latest.json'),
         (Join-Path $repoRoot 'tmp_remote_mim/runtime/shared/TOD_ACTIVITY_STREAM.latest.json')
     )
 
@@ -371,6 +423,83 @@ ACCEPTANCE: /api/tod-conversation responds quickly and background execution cont
         }
     }
 
+    It 'keeps evidence-only report contracts out of implementation scaffolding' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        try {
+            Write-JsonNoBom -PathValue $fixture.BuildStatePath -Payload ([pscustomobject]@{
+                objective_id = 'objective-stale'
+                status = 'active'
+                task = 'Stale current work should not leak'
+            })
+            Write-JsonNoBom -PathValue $fixture.ObjectivesPath -Payload ([pscustomobject]@{
+                objectives = @(
+                    [pscustomobject]@{ objective_id = 'objective-stale'; title = 'Stale objective' }
+                )
+            })
+            Write-JsonNoBom -PathValue $fixture.MaintenancePath -Payload ([pscustomobject]@{
+                overall_status = 'needs_attention'
+                overall_severity = 'critical'
+            })
+            Write-JsonNoBom -PathValue $fixture.WatchdogPath -Payload ([pscustomobject]@{
+                state = 'error'
+            })
+            Write-JsonNoBom -PathValue $fixture.VoiceConfigPath -Payload ([pscustomobject]@{
+                enabled = $true
+            })
+            Write-JsonNoBom -PathValue $fixture.CommitmentPath -Payload ([pscustomobject]@{
+                objective_id = '170'
+                state = 'abandoned'
+                action_label = 'Refresh Governance Snapshot'
+                summary = 'Operator abandoned the commitment for Refresh Governance Snapshot.'
+                reasoning_bundle_id = 'bundle-170'
+            })
+            Write-JsonNoBom -PathValue $fixture.ReasoningPath -Payload ([pscustomobject]@{
+                reasoning_bundle_id = 'bundle-170'
+                operator_summary = 'Stale reasoning is still centered on objective 170.'
+                recommended_next_step = 'refresh-governance-snapshot'
+                evidence_count = 8
+                evidence_flags = @('objective_170_stale')
+            })
+            Write-JsonNoBom -PathValue $fixture.ActionAuditPath -Payload ([pscustomobject]@{
+                audit_id = 'audit-170'
+                action_label = 'Refresh Governance Snapshot'
+                outcome_status = 'previewed'
+                evidence_flags = @('stale_context_present')
+            })
+
+            $query = @'
+Evidence-only report drill. Use only this evidence:
+file_changed=scripts/Start-TOD-Elevated.ps1
+parse_validation=parse_ok
+Answer only these fields:
+what_was_applied:
+evidence_used:
+what_not_to_claim:
+current_owner:
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -CommitmentPath $fixture.CommitmentPath -ReasoningPath $fixture.ReasoningPath -ActionAuditPath $fixture.ActionAuditPath -ProviderConfigPath $fixture.VoiceConfigPath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+
+            [bool]$result.ok | Should Be $true
+            [string]$result.request_kind | Should Be 'evidence_report'
+            [string]$result.intent.intent | Should Be 'CONVERSATION'
+            [string]$result.intent.action | Should Be 'evidence-only report'
+            [string]$result.reply_text | Should Not Match 'Current Work:'
+            [string]$result.reply_text | Should Not Match 'Communication Skills:'
+            [string]$result.reply_text | Should Not Match 'Bounded Steps:'
+            [string]$result.reply_text | Should Not Match 'Durable Memory:'
+            [string]$result.reply_text | Should Not Match 'Refresh Governance Snapshot'
+            [string]$result.reply_text | Should Not Match 'objective 170'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
     It 'creates a task, writes the live request artifact, and emits activity for OBJECTIVE chat input' {
         (Test-Path -Path $scriptUnderTest) | Should Be $true
 
@@ -415,7 +544,7 @@ STOP CONDITION: TOD chat creates a task, writes the live request artifact, and e
 
             $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
 
-            $requestArtifactPath = Join-Path $repoRoot 'runtime/shared/MIM_TOD_TASK_REQUEST.latest.json'
+            $requestArtifactPath = Get-TestExecutionSharedArtifactPath -FileName 'MIM_TOD_TASK_REQUEST.latest.json'
             $requestArtifact = Get-Content -Path $requestArtifactPath -Raw | ConvertFrom-Json
             $eventTypes = @($result.command_dispatch.payload.activity_event_types | ForEach-Object { [string]$_ })
 
@@ -527,7 +656,7 @@ STOP CONDITION: TOD chat creates a task, writes the live request artifact, and e
                 }
             }
 
-            Write-JsonNoBom -PathValue (Join-Path $repoRoot 'runtime/shared/MIM_TOD_TASK_REQUEST.latest.json') -Payload $staleRequest
+            Write-JsonNoBom -PathValue (Get-TestExecutionSharedArtifactPath -FileName 'MIM_TOD_TASK_REQUEST.latest.json') -Payload $staleRequest
             Write-JsonNoBom -PathValue (Join-Path $repoRoot 'tmp_remote_mim/runtime/shared/MIM_TOD_TASK_REQUEST.latest.json') -Payload $staleRequest
             Write-JsonNoBom -PathValue (Join-Path $repoRoot 'tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json') -Payload $staleRequest
 
@@ -545,7 +674,7 @@ STOP CONDITION: TOD direct chat creates a second fresh executable task lane.
             $resultA = (& $scriptUnderTest -Query $queryA -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
             $resultB = (& $scriptUnderTest -Query $queryB -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -ProviderConfigPath $fixture.VoiceConfigPath -TodConfigPath $fixture.TodConfigPath -TodStatePath $fixture.TodStatePath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
 
-            $latestRequestArtifact = Get-Content -Path (Join-Path $repoRoot 'runtime/shared/MIM_TOD_TASK_REQUEST.latest.json') -Raw | ConvertFrom-Json
+            $latestRequestArtifact = Get-Content -Path (Get-TestExecutionSharedArtifactPath -FileName 'MIM_TOD_TASK_REQUEST.latest.json') -Raw | ConvertFrom-Json
             $stateAfter = Get-Content -Path $fixture.TodStatePath -Raw | ConvertFrom-Json
             $legacyTask = @($stateAfter.tasks | Where-Object { [string]$_.id -eq 'objective-14-task-79' } | Select-Object -First 1)
             $taskA = @($stateAfter.tasks | Where-Object { [string]$_.id -eq [string]$resultA.command_dispatch.task_id } | Select-Object -First 1)

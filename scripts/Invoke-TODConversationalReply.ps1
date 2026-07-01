@@ -112,6 +112,23 @@ function Get-RequestKind {
     param([Parameter(Mandatory = $true)][string]$QueryText)
 
     $normalized = $QueryText.ToLowerInvariant()
+    $hasEvidenceOnlyContract = (
+        $normalized -match 'evidence[- ]only' -or
+        $normalized -match 'use only (this|the) evidence' -or
+        $normalized -match 'answer only these fields' -or
+        $normalized -match 'return exactly' -or
+        $normalized -match 'return one json object only'
+    )
+    $hasReportFields = (
+        $normalized -match 'evidence_used' -or
+        $normalized -match 'what_not_to_claim' -or
+        $normalized -match 'pass_or_fail' -or
+        $normalized -match 'what_was_applied' -or
+        $normalized -match 'current_owner'
+    )
+    if ($hasEvidenceOnlyContract -and $hasReportFields) {
+        return 'evidence_report'
+    }
     if ($normalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:') {
         return 'implementation_request'
     }
@@ -122,6 +139,126 @@ function Get-RequestKind {
         return 'status_request'
     }
     return 'general_request'
+}
+
+function Get-EvidenceReportLines {
+    param([Parameter(Mandatory = $true)][string]$QueryText)
+
+    $match = [regex]::Match($QueryText, '(?is)use only (?:this|the) evidence:\s*(?<evidence>.*?)(?:required json keys exactly:|answer only these fields:|return exactly:|$)')
+    if (-not $match.Success) {
+        return @()
+    }
+
+    return @(([string]$match.Groups['evidence'].Value -split "`r?`n") | ForEach-Object { $_.Trim() } | Where-Object {
+        -not [string]::IsNullOrWhiteSpace($_)
+    })
+}
+
+function ConvertTo-EvidenceMap {
+    param([string[]]$EvidenceLines)
+
+    $map = [ordered]@{}
+    foreach ($line in @($EvidenceLines)) {
+        $parts = [string]$line -split '=', 2
+        if (@($parts).Count -eq 2) {
+            $key = $parts[0].Trim()
+            if (-not [string]::IsNullOrWhiteSpace($key)) {
+                $map[$key] = $parts[1].Trim()
+            }
+        }
+    }
+    return $map
+}
+
+function Get-RequestedEvidenceReportFields {
+    param([Parameter(Mandatory = $true)][string]$QueryText)
+
+    $fields = New-Object System.Collections.Generic.List[string]
+    foreach ($match in [regex]::Matches($QueryText, '"(?<field>[A-Za-z_][A-Za-z0-9_]*)"\s*:')) {
+        $field = [string]$match.Groups['field'].Value
+        if (-not $fields.Contains($field)) {
+            [void]$fields.Add($field)
+        }
+    }
+
+    if ($fields.Count -eq 0) {
+        $fieldSectionMatch = [regex]::Match($QueryText, '(?is)(?:required json keys exactly:|answer only these fields:|return exactly:)\s*(?<fields>.*)$')
+        if ($fieldSectionMatch.Success) {
+            $fieldSection = [string]$fieldSectionMatch.Groups['fields'].Value
+            foreach ($match in [regex]::Matches($fieldSection, '(?<field>[A-Za-z_][A-Za-z0-9_]*)\s*:')) {
+                $field = [string]$match.Groups['field'].Value
+                if (-not $fields.Contains($field)) {
+                    [void]$fields.Add($field)
+                }
+            }
+        }
+    }
+
+    return @($fields)
+}
+
+function New-EvidenceReportReply {
+    param([Parameter(Mandatory = $true)][string]$QueryText)
+
+    $evidenceLines = @(Get-EvidenceReportLines -QueryText $QueryText)
+    $evidenceMap = ConvertTo-EvidenceMap -EvidenceLines $evidenceLines
+    $requestedFields = @(Get-RequestedEvidenceReportFields -QueryText $QueryText)
+    if (@($requestedFields).Count -eq 0) {
+        $requestedFields = @('evidence_used')
+    }
+
+    $payload = [ordered]@{}
+    foreach ($field in $requestedFields) {
+        switch ($field) {
+            'what_was_applied' {
+                $change = if ($evidenceMap.Contains('change')) { [string]$evidenceMap['change'] } else { '' }
+                $file = if ($evidenceMap.Contains('file_changed')) { [string]$evidenceMap['file_changed'] } else { '' }
+                if (-not [string]::IsNullOrWhiteSpace($change) -and -not [string]::IsNullOrWhiteSpace($file)) {
+                    $payload[$field] = ('{0} in {1}' -f $change, $file)
+                }
+                elseif (-not [string]::IsNullOrWhiteSpace($change)) {
+                    $payload[$field] = $change
+                }
+                elseif (-not [string]::IsNullOrWhiteSpace($file)) {
+                    $payload[$field] = ('changed {0}' -f $file)
+                }
+                else {
+                    $payload[$field] = 'not specified by evidence'
+                }
+            }
+            'evidence_used' {
+                $payload[$field] = @($evidenceLines)
+            }
+            'what_not_to_claim' {
+                $notPerformed = @($evidenceMap.GetEnumerator() | Where-Object {
+                    [string]$_.Value -match '(?i)\bnot performed\b|\bnot done\b|\bnot executed\b|\bnot validated\b'
+                } | ForEach-Object { ('{0}={1}' -f [string]$_.Key, [string]$_.Value) })
+                $payload[$field] = if (@($notPerformed).Count -gt 0) { @($notPerformed) } else { @('nothing beyond supplied evidence') }
+            }
+            'current_owner' {
+                $payload[$field] = if ($evidenceMap.Contains('authority')) { [string]$evidenceMap['authority'] } else { 'not specified by evidence' }
+            }
+            'active_continuation' {
+                $payload[$field] = if ($evidenceMap.Contains('active_continuation')) { [string]$evidenceMap['active_continuation'] } else { 'none specified by evidence' }
+            }
+            'whether_mim_is_involved' {
+                if ($evidenceMap.Contains('mim_authority')) {
+                    $payload[$field] = [string]$evidenceMap['mim_authority']
+                }
+                elseif ($evidenceMap.Contains('mim_involved')) {
+                    $payload[$field] = [string]$evidenceMap['mim_involved']
+                }
+                else {
+                    $payload[$field] = 'not specified by evidence'
+                }
+            }
+            default {
+                $payload[$field] = if ($evidenceMap.Contains($field)) { [string]$evidenceMap[$field] } else { 'not specified by evidence' }
+            }
+        }
+    }
+
+    return ($payload | ConvertTo-Json -Depth 8 -Compress)
 }
 
 function Get-IntentTarget {
@@ -152,7 +289,11 @@ function Get-IntentRoute {
     $requestKind = Get-RequestKind -QueryText $QueryText
     $hasStructuredTaskRequest = ($normalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:')
 
-    if ($normalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic)\s*:') {
+    if ([string]::Equals($requestKind, 'evidence_report', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $intent = 'CONVERSATION'
+        $action = 'evidence-only report'
+    }
+    elseif ($normalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic)\s*:') {
         $intent = 'COMMAND'
         $action = 'create + dispatch task'
         $requestKind = 'implementation_request'
@@ -823,6 +964,19 @@ function Test-ProviderReplyUsable {
     }
 
     $normalized = $ReplyText.ToLowerInvariant()
+    if ([string]::Equals($RequestKind, 'evidence_report', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return (
+            $normalized -notmatch '```' -and
+            $normalized -notmatch 'current work' -and
+            $normalized -notmatch 'communication skills' -and
+            $normalized -notmatch 'bounded steps' -and
+            $normalized -notmatch 'durable memory' -and
+            $ReplyText -notmatch '"what_was_applied"\s*:\s*""' -and
+            $ReplyText -notmatch '"current_owner"\s*:\s*""' -and
+            $ReplyText -notmatch '"active_continuation"\s*:\s*""'
+        )
+    }
+
     if ($normalized.Length -lt 160) {
         return $false
     }
@@ -1412,7 +1566,13 @@ elseif ([string]::Equals([string]$intentRoute.intent, 'SYSTEM', [System.StringCo
     $systemDispatch = Invoke-IntentSystemDispatch -IntentRoute $intentRoute -ResolvedObjectiveId $resolvedObjectiveId -QueryText $Query
 }
 
-if ($SkipModel) {
+if ([string]::Equals($requestKind, 'evidence_report', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $replyText = New-EvidenceReportReply -QueryText $Query
+    $providerStatus.succeeded = $true
+    $providerStatus.source = 'evidence_report_formatter'
+    $providerStatus.detail = 'Evidence-only report generated from explicit operator evidence fields.'
+}
+elseif ($SkipModel) {
     [void]$limitations.Add('Local conversation provider was skipped intentionally for this run.')
 }
 elseif ($useFastBoundedReply) {
@@ -1427,7 +1587,27 @@ else {
         $providerStatus.attempted = $true
         $skillsSummary = @($communicationSkills | ForEach-Object { "- {0}: {1}. {2}" -f [string]$_.name, [string]$_.status, [string]$_.summary }) -join "`n"
         $stepsSummary = @($boundedSteps | ForEach-Object { "{0}. {1} - {2}" -f [int]$_.id, [string]$_.title, [string]$_.summary }) -join "`n"
-        $providerPrompt = @"
+        if ([string]::Equals($requestKind, 'evidence_report', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $providerPrompt = @"
+You are TOD producing an evidence-only report for your operator.
+
+Follow the operator's requested output fields exactly.
+Use only evidence included in the operator query.
+Populate each requested field from the supplied evidence.
+Do not leave requested fields blank when the evidence contains the value.
+For what_not_to_claim, prefer evidence explicitly marked not performed, not generic scaffold names.
+For active_continuation, name the safest evidence-supported continuation or say none specified by evidence.
+Do not wrap JSON in Markdown fences.
+Do not add Current Work, Communication Skills, Durable Memory, Bounded Steps, initiative, or stale objective context.
+Do not claim completion beyond the evidence.
+
+Operator query:
+$Query
+"@
+            $providerObjectiveSummary = 'Evidence-only report mode: operator query is the only evidence source.'
+        }
+        else {
+            $providerPrompt = @"
 You are TOD speaking directly to your operator.
 
 Operator name: $($conversationMemory.operator_name)
@@ -1452,7 +1632,7 @@ Do not omit the bounded steps.
 Do not invent missing data.
 Keep it concise but specific.
 "@
-        $providerObjectiveSummary = @"
+            $providerObjectiveSummary = @"
     $($conversationMemory.summary)
 $objectiveSummary
     Initiative: $($initiative.summary)
@@ -1467,6 +1647,7 @@ $skillsSummary
 Bounded steps:
 $stepsSummary
 "@
+        }
         $providerReply = & $conversationProviderScript -Action chat -Prompt $providerPrompt -ObjectiveSummary $providerObjectiveSummary -TaskState $requestKind -ObjectiveId $resolvedObjectiveId -AsJson | ConvertFrom-Json
         if ($providerReply -and [bool]$providerReply.ok -and (Test-ProviderReplyUsable -ReplyText ([string]$providerReply.reply_text) -RequestKind $requestKind)) {
             $replyText = [string]$providerReply.reply_text
@@ -1475,7 +1656,24 @@ $stepsSummary
             $providerStatus.detail = 'Direct TOD reply generated by the local conversation provider.'
         }
         else {
-            $strictPrompt = @"
+            if ([string]::Equals($requestKind, 'evidence_report', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $strictPrompt = @"
+Rewrite the answer as an evidence-only report.
+Use only evidence included in the operator query.
+Use the operator's requested fields exactly.
+Populate each requested field from the supplied evidence.
+Do not leave requested fields blank when the evidence contains the value.
+For what_not_to_claim, prefer evidence explicitly marked not performed, not generic scaffold names.
+For active_continuation, name the safest evidence-supported continuation or say none specified by evidence.
+Do not wrap JSON in Markdown fences.
+Do not add Current Work, Communication Skills, Durable Memory, Bounded Steps, initiative, or stale objective context.
+
+Operator query:
+$Query
+"@
+            }
+            else {
+                $strictPrompt = @"
 Rewrite the answer using these exact headings:
 Current Work:
 Communication Skills:
@@ -1488,6 +1686,7 @@ Requirements:
 - Include the numbered bounded steps.
 - Keep it under 220 words.
 "@
+            }
             $strictReply = & $conversationProviderScript -Action chat -Prompt $strictPrompt -ObjectiveSummary $providerObjectiveSummary -TaskState $requestKind -ObjectiveId $resolvedObjectiveId -AsJson | ConvertFrom-Json
             if ($strictReply -and [bool]$strictReply.ok -and (Test-ProviderReplyUsable -ReplyText ([string]$strictReply.reply_text) -RequestKind $requestKind)) {
                 $replyText = [string]$strictReply.reply_text
@@ -1512,7 +1711,10 @@ if ([string]::IsNullOrWhiteSpace($replyText)) {
     $stepSummary = @($boundedSteps | ForEach-Object { "{0}) {1}" -f [int]$_.id, [string]$_.title }) -join '; '
     $operatorLead = if ([string]::IsNullOrWhiteSpace($conversationMemory.operator_name)) { 'Operator' } else { $conversationMemory.operator_name }
     $blockerText = if ([string]::IsNullOrWhiteSpace($initiative.blocker)) { 'no hard blocker is active.' } else { "$($initiative.blocker)." }
-    if ([string]::Equals([string]$intentRoute.intent, 'COMMAND', [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ([string]::Equals($requestKind, 'evidence_report', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $replyText = "evidence_report_status: blocked`nreason: local conversation provider did not produce a valid evidence-only report`nwhat_not_to_claim: current work, communication skills, bounded steps, durable memory, or completion beyond supplied evidence"
+    }
+    elseif ([string]::Equals([string]$intentRoute.intent, 'COMMAND', [System.StringComparison]::OrdinalIgnoreCase)) {
         $dispatchDetail = if ($commandDispatch.created) {
             ('task {0} created under {1}; classification {2}; next step {3}; codex_needed={4}' -f $commandDispatch.task_id, $commandDispatch.objective_id, $commandDispatch.classification, $commandDispatch.next_step, $commandDispatch.codex_needed.ToString().ToLowerInvariant())
         }

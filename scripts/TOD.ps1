@@ -7918,6 +7918,17 @@ function Set-PersistedTaskTerminalState {
         [AllowEmptyString()][string]$TaskStatus = ''
     )
 
+    if (
+        $Task.PSObject.Properties['terminal_state'] -and
+        $null -ne $Task.terminal_state -and
+        $Task.terminal_state.PSObject.Properties['reason_code'] -and
+        [string]::Equals([string]$Task.terminal_state.reason_code, 'blocked_missing_bounded_edit_mode', [System.StringComparison]::OrdinalIgnoreCase) -and
+        [string]::Equals($EventType, 'blocked', [System.StringComparison]::OrdinalIgnoreCase) -and
+        -not [string]::Equals($ReasonCode, 'blocked_missing_bounded_edit_mode', [System.StringComparison]::OrdinalIgnoreCase)
+    ) {
+        return
+    }
+
     $timestamp = Get-UtcNow
     $resolvedTaskStatus = if (-not [string]::IsNullOrWhiteSpace($TaskStatus)) {
         [string]$TaskStatus
@@ -8124,7 +8135,7 @@ function Resolve-LocalExecutionSuitability {
                 $reason = 'packet_formation_artifact_write'
                 $boundedLocalSlice = $true
             }
-            { $_ -in @('code_change', 'implementation') } {
+            { $_ -in @('code_change', 'implementation', 'diagnostic_implementation_repair') } {
                 if (($singleFileHint -or $targetFileDirectiveHint) -and $boundedEditHint) {
                     $classification = 'local_supported'
                     $reason = 'single_file_bounded_code_change'
