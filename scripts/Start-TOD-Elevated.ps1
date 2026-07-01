@@ -2,6 +2,8 @@ param(
     [string]$WorkspacePath = '',
     [string]$CodePath = '',
     [string]$StatusPath = '',
+    [string]$RequestPath = '',
+    [string]$ResultPath = '',
     [switch]$ReuseWindow,
     [switch]$NoLaunch
 )
@@ -30,6 +32,59 @@ function Write-JsonFile {
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     $json = ($Payload | ConvertTo-Json -Depth $Depth) + [Environment]::NewLine
     [System.IO.File]::WriteAllText($PathValue, $json, $utf8NoBom)
+}
+
+function Invoke-ReadOnlyElevatedDiagnosticRequest {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$RequestPath,
+        [Parameter(Mandatory = $true)][string]$ResultPath
+    )
+
+    if (-not (Test-Path -LiteralPath $RequestPath -PathType Leaf)) {
+        throw "Request file not found: $RequestPath"
+    }
+    if ([string]::IsNullOrWhiteSpace($ResultPath)) {
+        throw 'ResultPath is required.'
+    }
+
+    $request = Get-Content -LiteralPath $RequestPath -Raw | ConvertFrom-Json
+    $requestId = [string]$request.request_id
+    $objectiveId = [string]$request.objective_id
+    $action = [string]$request.action
+
+    if ($action -ne 'elevated_self_check') {
+        Write-JsonFile -PathValue $ResultPath -Payload ([pscustomobject]@{
+            request_id = $requestId
+            objective_id = $objectiveId
+            action = $action
+            status = 'blocked'
+            is_admin = Test-IsAdministrator
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            evidence = [pscustomobject]@{}
+            errors = @("Unsupported action: $action")
+        }) -Depth 8
+        return
+    }
+
+    $evidence = [pscustomobject]@{
+        script_path = $PSCommandPath
+        process_id = $PID
+        user_name = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+        request_path = $RequestPath
+        result_path = $ResultPath
+    }
+    Write-JsonFile -PathValue $ResultPath -Payload ([pscustomobject]@{
+        request_id = $requestId
+        objective_id = $objectiveId
+        action = $action
+        status = 'succeeded'
+        is_admin = Test-IsAdministrator
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        evidence = $evidence
+        errors = @()
+    }) -Depth 8
+    return
 }
 
 function Resolve-CodePath {
@@ -106,6 +161,16 @@ function Resolve-StatusPath {
     }
 
     return (Join-Path $repoRoot $ExplicitPath)
+}
+
+$hasRequestPath = -not [string]::IsNullOrWhiteSpace($RequestPath)
+$hasResultPath = -not [string]::IsNullOrWhiteSpace($ResultPath)
+if ($hasRequestPath -and $hasResultPath) {
+    Invoke-ReadOnlyElevatedDiagnosticRequest -RequestPath $RequestPath -ResultPath $ResultPath
+    return
+}
+if ($hasRequestPath -or $hasResultPath) {
+    throw 'RequestPath and ResultPath must both be provided for elevated request mode.'
 }
 
 $resolvedCodePath = Resolve-CodePath -ExplicitPath $CodePath
