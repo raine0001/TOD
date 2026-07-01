@@ -31,7 +31,11 @@ function New-BridgeSmokeFixture {
         [string]$HighWatermarkTaskId = '',
         [bool]$EmitResult = $true,
         [string]$LatestCompletedObjective = '',
-        [string]$TriggerAckAcknowledges = ''
+        [string]$TriggerAckAcknowledges = '',
+        [AllowNull()]$LocalSequence = '381549',
+        [AllowNull()]$RemoteSequence = '381549',
+        [string]$RemoteSha256 = '',
+        [string]$ObjectiveAlignmentStatus = 'in_sync'
     )
 
     $base = Join-Path $repoRoot ('tod/out/tests/bridge-smoke-' + [guid]::NewGuid().ToString('N'))
@@ -42,12 +46,14 @@ function New-BridgeSmokeFixture {
     $remoteBoundaryPath = Join-Path $base 'remote_boundary.json'
     $now = (Get-Date).ToUniversalTime()
 
-    Write-JsonNoBom -PathValue (Join-Path $listener 'MIM_TOD_TASK_REQUEST.latest.json') -Payload ([pscustomobject]@{
+    $requestPath = Join-Path $listener 'MIM_TOD_TASK_REQUEST.latest.json'
+    Write-JsonNoBom -PathValue $requestPath -Payload ([pscustomobject]@{
         generated_at = $now.AddSeconds(-30).ToString('o')
         task_id = $RequestTaskId
         objective_id = $RequestObjective
-        sequence = 381549
+        sequence = $LocalSequence
     })
+    $requestSha = (Get-FileHash -Path $requestPath -Algorithm SHA256).Hash.ToLowerInvariant()
     Write-JsonNoBom -PathValue (Join-Path $listener 'TOD_TO_MIM_TRIGGER_ACK.latest.json') -Payload ([pscustomobject]@{
         generated_at = $now.AddSeconds(-20).ToString('o')
         acknowledges = if ([string]::IsNullOrWhiteSpace($TriggerAckAcknowledges)) { $RequestTaskId } else { $TriggerAckAcknowledges }
@@ -78,7 +84,7 @@ function New-BridgeSmokeFixture {
     })
     Write-JsonNoBom -PathValue $integrationPath -Payload ([pscustomobject]@{
         objective_alignment = [pscustomobject]@{
-            status = 'in_sync'
+            status = $ObjectiveAlignmentStatus
             tod_current_objective = ($ExpectedObjective -replace '^objective-', '')
             mim_objective_active = ($ExpectedObjective -replace '^objective-', '')
         }
@@ -106,10 +112,10 @@ function New-BridgeSmokeFixture {
         inode = '649265'
         mtime = $now.AddSeconds(-30).ToString('o')
         size = 875
-        sha256 = '2ef2574dd4dfc7889da67f98296f06ca2c38801e3bc046e870da371a03bde105'
+        sha256 = if ([string]::IsNullOrWhiteSpace($RemoteSha256)) { $requestSha } else { $RemoteSha256 }
         objective_id = $RequestObjective
         task_id = $RequestTaskId
-        sequence = '381549'
+        sequence = $RemoteSequence
     })
     Write-JsonNoBom -PathValue $remoteBoundaryPath -Payload ([pscustomobject]@{
         available = $true
@@ -171,6 +177,91 @@ Describe 'TOD bridge smoke' {
             [bool]$doc.passed | Should Be $true
             [string]$doc.classification | Should Be 'pass'
             @($doc.failure_modes).Count | Should Be 0
+        }
+        finally {
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'passes when a live non-formal chat objective supersedes stale numeric objective alignment' {
+        $fixture = New-BridgeSmokeFixture -ExpectedObjective 'objective-3458' -RequestObjective 'wat-shuld-happen-befor-we-add-anothr-featre' -RequestTaskId 'wat-shuld-happen-befor-we-add-anothr-featre-mim-request-f140a49c-replan-1'
+        try {
+            $raw = & $bridgeSmokeScript -ListenerStageDir $fixture.Listener -IntegrationStatusPath $fixture.Integration -OutputPath $fixture.Output -RemoteProbeJsonPath $fixture.RemoteProbe -RemoteBoundaryDiagnosticJsonPath $fixture.RemoteBoundary
+            $doc = ($raw | Out-String | ConvertFrom-Json)
+            [bool]$doc.passed | Should Be $true
+            [string]$doc.classification | Should Be 'pass'
+            [string]$doc.canonical_request.expected_objective_id | Should Be 'wat-shuld-happen-befor-we-add-anothr-featre'
+            [string]$doc.canonical_request.expected_task_id | Should Be 'wat-shuld-happen-befor-we-add-anothr-featre-mim-request-f140a49c-replan-1'
+            @($doc.failure_modes).Count | Should Be 0
+        }
+        finally {
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'does not treat blank and null optional sequence metadata as canonical divergence' {
+        $fixture = New-BridgeSmokeFixture -ExpectedObjective 'objective-3458' -RequestObjective 'wat-shuld-happen-befor-we-add-anothr-featre' -RequestTaskId 'wat-shuld-happen-befor-we-add-anothr-featre-mim-request-f140a49c-replan-1' -LocalSequence '' -RemoteSequence $null
+        try {
+            $raw = & $bridgeSmokeScript -ListenerStageDir $fixture.Listener -IntegrationStatusPath $fixture.Integration -OutputPath $fixture.Output -RemoteProbeJsonPath $fixture.RemoteProbe -RemoteBoundaryDiagnosticJsonPath $fixture.RemoteBoundary
+            $doc = ($raw | Out-String | ConvertFrom-Json)
+            [bool]$doc.passed | Should Be $true
+            [string]$doc.classification | Should Be 'pass'
+            [bool]$doc.canonical_request.canonical_request_mismatch | Should Be $false
+        }
+        finally {
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'does not treat matching request identity with different mirror payload hash as canonical divergence' {
+        $fixture = New-BridgeSmokeFixture -ExpectedObjective 'objective-3458' -RequestObjective 'wat-shuld-happen-befor-we-add-anothr-featre' -RequestTaskId 'wat-shuld-happen-befor-we-add-anothr-featre-mim-request-f140a49c-replan-1' -LocalSequence '' -RemoteSequence $null -RemoteSha256 '446347d289531f1fa590a3d76e60efa9e5bfbc7f563e801c615cc3163ef54f4f'
+        try {
+            $raw = & $bridgeSmokeScript -ListenerStageDir $fixture.Listener -IntegrationStatusPath $fixture.Integration -OutputPath $fixture.Output -RemoteProbeJsonPath $fixture.RemoteProbe -RemoteBoundaryDiagnosticJsonPath $fixture.RemoteBoundary
+            $doc = ($raw | Out-String | ConvertFrom-Json)
+            [bool]$doc.passed | Should Be $true
+            [bool]$doc.canonical_request.canonical_request_mismatch | Should Be $false
+        }
+        finally {
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'passes while a fresh accepted request is still in flight before a matching result exists' {
+        $fixture = New-BridgeSmokeFixture -ExpectedObjective 'objective-3458' -RequestObjective 'wat-shuld-happen-befor-we-add-anothr-featre' -RequestTaskId 'wat-shuld-happen-befor-we-add-anothr-featre-mim-request-f140a49c-replan-1' -EmitResult $false
+        try {
+            $raw = & $bridgeSmokeScript -ListenerStageDir $fixture.Listener -IntegrationStatusPath $fixture.Integration -OutputPath $fixture.Output -RemoteProbeJsonPath $fixture.RemoteProbe -RemoteBoundaryDiagnosticJsonPath $fixture.RemoteBoundary
+            $doc = ($raw | Out-String | ConvertFrom-Json)
+            [bool]$doc.passed | Should Be $true
+            [bool]$doc.local_bridge.request_in_flight_healthy | Should Be $true
+            (@($doc.failure_modes) -contains 'listener_contract_stalled') | Should Be $false
+        }
+        finally {
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'passes while a fresh request is awaiting listener ack before the freshness window expires' {
+        $fixture = New-BridgeSmokeFixture -ExpectedObjective 'objective-3458' -RequestObjective 'wat-shuld-happen-befor-we-add-anothr-featre' -RequestTaskId 'wat-shuld-happen-befor-we-add-anothr-featre-mim-request-cd582c45-replan-1' -EmitResult $false -TriggerAckAcknowledges 'wat-shuld-happen-befor-we-add-anothr-featre-mim-request-previous-replan-1'
+        try {
+            $raw = & $bridgeSmokeScript -ListenerStageDir $fixture.Listener -IntegrationStatusPath $fixture.Integration -OutputPath $fixture.Output -RemoteProbeJsonPath $fixture.RemoteProbe -RemoteBoundaryDiagnosticJsonPath $fixture.RemoteBoundary
+            $doc = ($raw | Out-String | ConvertFrom-Json)
+            [bool]$doc.passed | Should Be $true
+            [bool]$doc.local_bridge.request_awaiting_ack_healthy | Should Be $true
+            (@($doc.failure_modes) -contains 'listener_contract_stalled') | Should Be $false
+        }
+        finally {
+            Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })
+        }
+    }
+
+    It 'treats matching TOD and MIM objective values as aligned when the status text lags' {
+        $fixture = New-BridgeSmokeFixture -ExpectedObjective 'objective-3458' -RequestObjective 'wat-shuld-happen-befor-we-add-anothr-featre' -RequestTaskId 'wat-shuld-happen-befor-we-add-anothr-featre-mim-request-f140a49c-replan-1' -ObjectiveAlignmentStatus 'mismatch'
+        try {
+            $raw = & $bridgeSmokeScript -ListenerStageDir $fixture.Listener -IntegrationStatusPath $fixture.Integration -OutputPath $fixture.Output -RemoteProbeJsonPath $fixture.RemoteProbe -RemoteBoundaryDiagnosticJsonPath $fixture.RemoteBoundary
+            $doc = ($raw | Out-String | ConvertFrom-Json)
+            [bool]$doc.passed | Should Be $true
+            [bool]$doc.objective_alignment.in_sync | Should Be $true
+            (@($doc.failure_modes) -contains 'objective_alignment_not_in_sync') | Should Be $false
         }
         finally {
             Remove-TestFixturePath -PathValue $(if ($fixture) { [string]$fixture.Base } else { '' })

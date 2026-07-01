@@ -13,7 +13,11 @@ from core import models  # noqa: F401
 from core.config import settings
 from core.db import Base, SessionLocal, engine
 from core.logging_journal import configure_logging, journal_event
-from core.mim_ui_auth import login_redirect_url, request_has_valid_mimtod_auth
+from core.mim_ui_auth import (
+    login_redirect_url,
+    request_has_valid_mim_studio_test_auth,
+    request_has_valid_mimtod_auth,
+)
 from core.models import PublicVisitEvent
 from core.routers import api_router
 
@@ -207,6 +211,19 @@ def _operator_auth_required_path(path: str) -> bool:
     )
 
 
+def _operator_test_auth_allowed(request: Request) -> bool:
+    path = request.url.path or "/"
+    method = request.method.upper()
+    allowed_studio_chat = path == "/studio/api/mim/chat" and method == "POST"
+    allowed_training_page = (
+        method in {"GET", "HEAD"}
+        and (path == "/studio/training" or path.startswith("/studio/training/"))
+    )
+    if not (allowed_studio_chat or allowed_training_page):
+        return False
+    return request_has_valid_mim_studio_test_auth(request)
+
+
 def _request_ip(request: Request) -> str:
     forwarded = str(request.headers.get("x-forwarded-for") or "").split(",", 1)[0].strip()
     if forwarded:
@@ -341,7 +358,11 @@ async def require_operator_for_internal_surfaces(request: Request, call_next) ->
         canonical_redirect.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
         canonical_redirect.headers["Cache-Control"] = "no-store"
         return canonical_redirect
-    if _operator_auth_required_path(path) and not request_has_valid_mimtod_auth(request):
+    if (
+        _operator_auth_required_path(path)
+        and not request_has_valid_mimtod_auth(request)
+        and not _operator_test_auth_allowed(request)
+    ):
         if "text/html" in str(request.headers.get("accept") or "").lower() or request.method.upper() == "GET":
             next_path = path
             if request.url.query:

@@ -179,6 +179,27 @@ Describe 'TOD no-op execution detector' {
         ((@($assessment.meaningful_evidence) -contains 'result_artifact')) | Should Be $true
     }
 
+    It 'rejects accepted result text when artifact_changed is explicitly false and no file changed' {
+        $task = New-NoOpTestTask
+        $result = New-NoOpResultPayload -Summary 'LocalExecutionEngine completed the bounded fallback.' -StructuredFindings @(
+            [pscustomobject]@{
+                type = 'result_contract'
+                action_taken = 'Replaced bounded text in tmp_remote_mim/core/routers/studio.py'
+                changed_files = @()
+                evidence = @('Replaced bounded text in tmp_remote_mim/core/routers/studio.py')
+                accepted = $true
+                artifact_changed = $false
+            }
+        )
+
+        $assessment = Get-LocalExecutionNoOpAssessment -Task $task -ResultPayload $result
+
+        [string]$assessment.patch_writer_status | Should Be 'not_needed'
+        [bool]$assessment.patch_writer_rejected | Should Be $true
+        [bool]$assessment.detected | Should Be $true
+        ((@($assessment.meaningful_evidence) -contains 'result_artifact')) | Should Be $false
+    }
+
     It 'prevents authoritative completion when a pass result is actually a no-op' {
         $task = New-NoOpTestTask
         $result = New-NoOpResultPayload
@@ -190,6 +211,21 @@ Describe 'TOD no-op execution detector' {
         [string]$published.execution_result.status | Should Be 'blocked'
         [string]$published.execution_result.execution_state | Should Be 'no_op_rejected'
         [string]$published.execution_result.reason_code | Should Be 'no_meaningful_execution_evidence'
+    }
+
+    It 'prevents stale MIM request ids from leaking into the active execution mission' {
+        $currentTaskId = 'wat-shuld-happen-befor-we-add-anothr-featre-mim-request-04614a4b-7809-4b98-aa6b-164c428d22fc-replan-1'
+        $task = New-NoOpTestTask -Id $currentTaskId -Title 'Current replan task' -Scope 'Replan bounded slice for current MIM request 04614a4b.'
+        $objective = [pscustomobject]@{
+            description = 'Synchronized from MIM request wat-shuld-happen-befor-we-add-anothr-featre-mim-request-b571e800-06af-4493-8f83-ae2e8c2c43ef-replan-1.'
+            success_criteria = 'Publish bounded execution evidence and validation output.'
+        }
+        $result = New-NoOpResultPayload
+
+        $published = Publish-LocalExecutionArtifacts -Task $task -Objective $objective -ResultPayload $result -ReviewDecision 'pass' -ExecutionId $currentTaskId -PackagePath "E:\TOD\tod\out\prompts\$currentTaskId.md" -ExecutionReadiness ([pscustomobject]@{ status = 'valid' })
+
+        [string]$published.execution_result.execution_contract.task_intake.mission | Should Be 'Replan bounded slice for current MIM request 04614a4b.'
+        [string]$published.execution_result.execution_contract.task_intake.mission | Should Not Match 'b571e800'
     }
 
     It 'blocks authoritative completion when accepted result evidence has no material diff' {
@@ -218,6 +254,38 @@ Describe 'TOD no-op execution detector' {
         [string]$published.active_task.execution_contract.command_runner.status | Should Be 'completed'
         [string]$published.active_task.execution_contract.patch_writer.status | Should Be 'evidence_only'
         [bool]$published.execution_result.material_implementation_proof.allows_authoritative_completion | Should Be $false
+    }
+
+    It 'blocks validation-only implementation completion even when no_change_required is true' {
+        $task = New-NoOpTestTask -Scope 'Target File: scripts/TOD.ps1
+Edit Mode: validation_only
+Validation Command: Select-String -Path scripts/TOD.ps1 -Pattern validation_only_no_material_change'
+        $result = New-NoOpResultPayload -Summary 'Validated bounded target in scripts/TOD.ps1' -TestsRun @('target_file_exists', 'focused_validation_exit_zero', 'validation_only_no_file_change_expected') -TestResults @('pass', 'pass', 'pass') -StructuredFindings @(
+            [pscustomobject]@{
+                type = 'result_contract'
+                action_taken = 'Validated bounded target in scripts/TOD.ps1.'
+                changed_files = @()
+                accepted = $true
+            },
+            [pscustomobject]@{
+                type = 'command'
+                capture = [pscustomobject]@{
+                    command = "Select-String -Path scripts/TOD.ps1 -Pattern 'validation_only_no_material_change'"
+                    stdout = 'validation_only_no_material_change'
+                    exit_code = 0
+                }
+            }
+        )
+        $result | Add-Member -NotePropertyName no_change_required -NotePropertyValue $true -Force
+        $result | Add-Member -NotePropertyName diff_summary -NotePropertyValue 'Validated bounded target in scripts/TOD.ps1 [scripts/TOD.ps1] line_count 17024->17024 delta=0' -Force
+
+        $published = Publish-LocalExecutionArtifacts -Task $task -Objective $null -ResultPayload $result -ReviewDecision 'pass' -ExecutionId 'EXEC-004' -PackagePath 'E:\TOD\tod\out\prompts\objective-2913-task-7144.md' -ExecutionReadiness ([pscustomobject]@{ status = 'valid' })
+
+        [string]$published.active_task.status | Should Be 'blocked'
+        [string]$published.execution_result.execution_state | Should Be 'material_implementation_not_proven'
+        [bool]$published.execution_result.material_implementation_proof.no_change_required | Should Be $true
+        [bool]$published.execution_result.material_implementation_proof.allows_authoritative_completion | Should Be $false
+        @($published.execution_result.material_implementation_proof.reason_codes) -contains 'validation_only_no_material_change' | Should Be $true
     }
 
     It 'signals replay_or_replan_required for rejected no-op executions' {

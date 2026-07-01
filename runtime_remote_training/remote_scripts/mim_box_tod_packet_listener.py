@@ -6773,6 +6773,102 @@ def _is_mim_self_model_request(request: dict[str, Any]) -> bool:
     return any(marker in raw for marker in markers)
 
 
+def _normalize_operator_text(text_value: str) -> str:
+    raw = str(text_value or "").strip().lower()
+    if not raw:
+        return ""
+    raw = re.sub(r"[^a-z0-9\s]+", " ", raw)
+    tokens = [
+        {
+            "wat": "what",
+            "shuld": "should",
+            "befor": "before",
+            "anothr": "another",
+            "featre": "feature",
+        }.get(token, token)
+        for token in raw.split()
+    ]
+    return " ".join(tokens)
+
+
+def _is_false_positive_conversation_replan(request: dict[str, Any]) -> bool:
+    raw = " ".join(
+        str(request.get(key) or "").strip()
+        for key in ("content", "task", "objective_id", "request_id", "task_id")
+    )
+    query = _normalize_operator_text(raw)
+    if not query:
+        return False
+    question_prefixes = (
+        "what should happen before",
+        "what should we do before",
+        "what would you",
+        "what would your",
+        "if you could",
+        "if you had to",
+        "would you rather",
+        "do you think",
+    )
+    return any(query.startswith(prefix) for prefix in question_prefixes)
+
+
+def _false_positive_conversation_replan_result(
+    request: dict[str, Any],
+    *,
+    signature: str,
+    started_at: str,
+    completed_at: str,
+) -> dict[str, Any]:
+    request_id = text(request, "request_id", "task_id")
+    task_id = text(request, "task_id", "request_id")
+    return {
+        "generated_at": completed_at,
+        "source": "mim-box-tod-packet-listener-v1",
+        "listener_version": "mim-box-service-ownership-v1",
+        "status": "ignored",
+        "result_status": "blocked_false_positive_conversation_dispatch",
+        "completion_status": "closed_no_tod_action",
+        "reason_code": "false_positive_conversation_replan",
+        "next_action": "answer_as_conversation_or_planning_question",
+        "action": text(request, "tod_action", "action") or "execute-chat-task",
+        "execution_mode": "mim_box_owned_listener",
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "error": "",
+        "request_id": request_id,
+        "task_id": task_id,
+        "objective_id": text(request, "objective_id"),
+        "handoff_id": text(request, "handoff_id"),
+        "task_class": text(request, "task_class") or "conversation_or_planning",
+        "inspected_files": [],
+        "changed_files": [],
+        "validation_results": [
+            {
+                "command": "false_positive_conversation_replan_guard",
+                "status": "passed",
+                "detail": "Conversation/planning question was not republished as a TOD implementation replan.",
+            }
+        ],
+        "patch_attempted": False,
+        "patch_result": "not_applicable_conversation_question",
+        "validation_only": False,
+        "result": "TOD ignored a false-positive implementation replan for a conversational/planning question.",
+        "summary": "False-positive conversation replan closed without TOD implementation dispatch.",
+        "source_identity": source_identity(),
+        "request_signature": signature,
+        "request_path": str(REQUEST_FILE.resolve()),
+        "evidence_files": [str(RESULT_FILE.resolve()), str(REQUEST_FILE.resolve())],
+        "validation_commands": ["false_positive_conversation_replan_guard"],
+        "operator_satisfaction_status": "not_evaluated",
+        "replan_required": False,
+        "boundary": {
+            "arm_movement": "disabled",
+            "gpu_model_migration": "not_requested",
+            "duplicate_listener_ownership": "prevented_by_flock",
+        },
+    }
+
+
 def _mim_self_model_not_tod_result(
     request: dict[str, Any],
     *,
@@ -6860,6 +6956,7 @@ def _implementation_replan_request(request: dict[str, Any], rejection: dict[str,
         "actor": "tod",
         "target": "TOD",
         "target_executor": "tod",
+        "tod_action": "execute-chat-task",
         "action_name": "execute-chat-task",
         "dispatch_kind": "tod_rejected_implementation_replan",
         "request_status": "published",
@@ -7083,6 +7180,94 @@ def build_result(request: dict[str, Any], signature: str, started_at: str) -> di
     task_id = text(request, "task_id", "request_id")
     action = text(request, "tod_action", "action") or "validation-only"
     validation_only = bool(request.get("validation_only", True))
+    authority_required = str(request.get("authority_required") or "").strip().lower()
+    target_executor = str(request.get("target_executor") or "").strip().lower()
+    remote_authority_required = authority_required == "remote_tod" or target_executor in {"tod", "remote_tod"}
+    authority_status = str(request.get("status") or request.get("result_status") or "").strip().lower()
+    inspected_files = _as_list(request.get("inspected_files"))
+    if remote_authority_required and authority_status in {"blocked", "rejected"} and inspected_files:
+        preserved_status = "rejected" if authority_status == "rejected" else "blocked"
+        preserved_reason = text(request, "reason_code") or f"remote_tod_authority_{preserved_status}"
+        return {
+            "generated_at": completed_at,
+            "source": "mim-box-tod-packet-listener-v1",
+            "listener_version": "mim-box-service-ownership-v1",
+            "status": preserved_status,
+            "result_status": preserved_status,
+            "completion_status": f"{preserved_status}_with_inspection",
+            "reason_code": preserved_reason,
+            "next_action": text(request, "next_action") or "review_remote_tod_authority_blocker",
+            "action": action,
+            "execution_mode": "mim_box_owned_listener_authority_guard",
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "error": "",
+            "request_id": request_id,
+            "task_id": task_id,
+            "objective_id": text(request, "objective_id"),
+            "handoff_id": text(request, "handoff_id"),
+            "validation_only": validation_only,
+            "inspected_files": inspected_files,
+            "changed_files": [],
+            "fresh_file_evidence": False,
+            "validation_results": request.get("validation_results") or [
+                {
+                    "command": "remote_tod_authority_blocker_preserved",
+                    "status": preserved_status,
+                    "detail": "Remote TOD authority reported an inspected blocked/rejected result; local MIM-box listener preserved the terminal status instead of claiming success.",
+                }
+            ],
+            "patch_attempted": bool(request.get("patch_attempted", False)),
+            "patch_result": text(request, "patch_result") or preserved_status,
+            "blocked_with_reason": text(request, "blocked_with_reason") or text(request, "reason") or "Remote TOD authority reported an inspected blocked/rejected result.",
+            "evidence_files": [str(RESULT_FILE.resolve()), str(REQUEST_FILE.resolve())],
+            "validation_commands": _as_list(request.get("validation_commands")) or ["remote_tod_authority_blocker_preserved"],
+            "operator_satisfaction_status": "not_evaluated",
+            "replan_required": True,
+            "source_identity": source_identity(),
+            "request_signature": signature,
+            "request_path": str(REQUEST_FILE.resolve()),
+        }
+    if remote_authority_required and not _has_meaningful_implementation_evidence(request):
+        return {
+            "generated_at": completed_at,
+            "source": "mim-box-tod-packet-listener-v1",
+            "listener_version": "mim-box-service-ownership-v1",
+            "status": "blocked",
+            "result_status": "blocked_remote_authority_required",
+            "completion_status": "blocked_with_inspection",
+            "reason_code": "blocked_remote_authority_required",
+            "next_action": "forward_to_remote_tod_or_wait_for_tod_authority_result",
+            "action": action,
+            "execution_mode": "mim_box_owned_listener_authority_guard",
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "error": "",
+            "request_id": request_id,
+            "task_id": task_id,
+            "objective_id": text(request, "objective_id"),
+            "handoff_id": text(request, "handoff_id"),
+            "validation_only": validation_only,
+            "changed_files": [],
+            "fresh_file_evidence": False,
+            "validation_results": [
+                {
+                    "command": "remote_tod_authority_evidence_required",
+                    "status": "blocked",
+                    "detail": "Remote TOD authority evidence is required before the local MIM-box listener can claim execution success.",
+                }
+            ],
+            "patch_attempted": False,
+            "patch_result": "blocked_remote_authority_required",
+            "blocked_with_reason": "Remote TOD authority evidence is required before the local MIM-box listener can claim execution success.",
+            "evidence_files": [str(RESULT_FILE.resolve()), str(REQUEST_FILE.resolve())],
+            "validation_commands": ["remote_tod_authority_evidence_required"],
+            "operator_satisfaction_status": "not_evaluated",
+            "replan_required": True,
+            "source_identity": source_identity(),
+            "request_signature": signature,
+            "request_path": str(REQUEST_FILE.resolve()),
+        }
     return {
         "generated_at": completed_at,
         "source": "mim-box-tod-packet-listener-v1",
@@ -7357,7 +7542,15 @@ def process_once() -> bool:
 
     started_at = now_iso()
     ack = build_ack(request, signature)
-    result = build_result(request, signature, started_at)
+    if _is_false_positive_conversation_replan(request):
+        result = _false_positive_conversation_replan_result(
+            request,
+            signature=signature,
+            started_at=started_at,
+            completed_at=now_iso(),
+        )
+    else:
+        result = build_result(request, signature, started_at)
     write_json(ACK_FILE, ack)
     write_json(RESULT_FILE, result)
     update_operator_status(request, result)

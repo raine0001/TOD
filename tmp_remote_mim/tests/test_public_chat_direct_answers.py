@@ -63,6 +63,25 @@ def test_public_mim_current_day_question_reaches_composer_with_temporal_context(
     assert "focused on planning" not in captured["fallback_reply"]
 
 
+def test_public_mim_current_day_fallback_answers_directly_before_intro(monkeypatch) -> None:
+    monkeypatch.setattr(
+        public_chat,
+        "_public_chat_now",
+        lambda: datetime(2026, 6, 18, 9, 30, tzinfo=timezone.utc),
+    )
+
+    reply = _build_public_fallback_reply(
+        message="What day of the week is it?",
+        mode="mim",
+        profile={},
+        recall_summary="",
+    )
+
+    assert reply == "Today is Thursday, June 18, 2026."
+    assert "I can chat normally" not in reply
+    assert "What should I call you" not in reply
+
+
 def test_public_mim_spanish_chat_keeps_language_policy(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -195,6 +214,36 @@ def test_public_mim_build_request_seed_gives_foundation_before_questions() -> No
 
     assert "first-version workflow" in reply
     assert "Ask no more than three critical questions" in reply
+
+
+def test_public_mim_identity_is_visitor_facing_not_operator_facing() -> None:
+    reply = _build_public_fallback_reply(
+        message="What are you MIM?",
+        mode="mim",
+        profile={},
+        recall_summary="",
+    )
+
+    assert "I'm MIM" in reply
+    assert "business problems" in reply
+    assert "operator-facing" not in reply
+    assert "multi-agent system" not in reply
+    assert "objective" not in reply.lower()
+
+
+def test_public_mim_ai_business_question_leads_with_workflow_diagnosis() -> None:
+    reply = _build_public_fallback_reply(
+        message="Can you help me decide if AI can help my business?",
+        mode="mim",
+        profile={},
+        recall_summary="",
+    )
+
+    assert "workflows" in reply
+    assert "manual work" in reply
+    assert "follow-up" in reply
+    assert "reports" in reply
+    assert "tell me a bit about your business" not in reply.lower()
 
 
 def test_public_mim_troubleshooting_seed_gives_diagnostic_step() -> None:

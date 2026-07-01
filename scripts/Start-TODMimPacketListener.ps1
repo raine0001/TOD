@@ -566,7 +566,7 @@ function Get-RequestExecutorRole {
         }
     }
 
-    foreach ($propertyName in @('assigned_executor', 'assigned_to', 'executor_role')) {
+    foreach ($propertyName in @('target_executor', 'assigned_executor', 'assigned_to', 'executor_role')) {
         if ($Request.PSObject.Properties[$propertyName] -and -not [string]::IsNullOrWhiteSpace([string]$Request.$propertyName)) {
             $role = ([string]$Request.$propertyName).Trim()
             if ([string]::Equals($role, 'local', [System.StringComparison]::OrdinalIgnoreCase) -and
@@ -703,7 +703,26 @@ function Get-MimRequestDecision {
     $requestTarget = if ($Request.PSObject.Properties['target']) { ([string]$Request.target).Trim() } else { '' }
     $requestedExecutor = (Get-RequestExecutorRole -Request $Request).ToLowerInvariant()
     $boundaryClass = Get-RequestBoundaryClass -Request $Request
-    $action = if ($Request.PSObject.Properties['tod_action'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.tod_action)) { [string]$Request.tod_action } elseif ($Request.PSObject.Properties['action'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.action)) { [string]$Request.action } else { 'get-state-bus' }
+        if ($Request.PSObject.Properties['tod_action'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.tod_action)) { $action = [string]$Request.tod_action } elseif ($Request.PSObject.Properties['action'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.action)) { $action = [string]$Request.action } elseif ($Request.PSObject.Properties['action_name'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.action_name)) { $action = [string]$Request.action_name } else { $action = '' }
+
+    if ([string]::IsNullOrWhiteSpace($action)) {
+        return [pscustomobject]@{
+            decision_outcome = 'request_missing_data'
+            reason_code = 'missing_required_action'
+            summary = 'Request is missing tod_action, action, or action_name.'
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = ''
+            live_request_promotion_applied = $false
+            execution_readiness = $null
+            validation_reasoning = @('missing_required_action')
+            unmet_dependency = 'request_action'
+            blocker_classification = 'data_blocker'
+            next_step_recommendation = 'reissue_request_with_tod_action'
+            requires_human = $false
+        }
+    }
     $authorityReset = if ($IntegrationStatus -and $IntegrationStatus.PSObject.Properties['objective_authority_reset']) { $IntegrationStatus.objective_authority_reset } else { $null }
     $authorityResetActive = $false
     if ($authorityReset -and $authorityReset.PSObject.Properties['active']) {
@@ -746,6 +765,10 @@ function Get-MimRequestDecision {
     $requestMatchesLiveRequest = ([string]::IsNullOrWhiteSpace($liveRequestId) -or [string]::IsNullOrWhiteSpace($requestId) -or [string]::Equals($liveRequestId, $requestId, [System.StringComparison]::OrdinalIgnoreCase))
     if (-not [string]::IsNullOrWhiteSpace($liveRequestObjective) -and -not [string]::IsNullOrWhiteSpace($requestObjectiveId)) {
         $requestMatchesLiveRequest = ($requestMatchesLiveRequest -and [string]::Equals($liveRequestObjective, $requestObjectiveId, [System.StringComparison]::OrdinalIgnoreCase))
+    }
+    if ($requestMatchesLiveRequest -and -not [string]::IsNullOrWhiteSpace($liveRequestId) -and -not [string]::IsNullOrWhiteSpace($requestId)) {
+        $promotionApplied = $true
+        $failureSignals = @($failureSignals | Where-Object { $_ -ne 'live_task_request_not_promoted' })
     }
 
     $externalCoordinationSignals = @('listener_task_request_missing', 'live_task_request_objective_mismatch', 'live_task_request_not_promoted', 'remote_consumer_not_executed', 'remote_delivery_not_confirmed')
@@ -3962,6 +3985,9 @@ function New-SequenceRuntimeFields {
     $observedAt = Get-UtcNowString
     $ackSequence = Get-NextOutboundSequence -State $ListenerState -StatePath $ListenerStatePath
     $triggerSequence = Get-TriggerFieldLong -TriggerPacket $TriggerPacket -FieldName "sequence"
+    if ($triggerSequence -le 0) {
+        $triggerSequence = $ackSequence
+    }
 
     return [pscustomobject]@{
         sequence = $ackSequence
@@ -4396,6 +4422,34 @@ function Sync-LocalTaskFromRequest {
         'high'
     }
 
+    $metadata = if ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json) { $Request.metadata_json } else { [pscustomobject]@{} }
+    $boundedSlice = if ($Request.PSObject.Properties['bounded_slice'] -and $null -ne $Request.bounded_slice) {
+        $Request.bounded_slice
+    }
+    elseif ($metadata.PSObject.Properties['bounded_slice'] -and $null -ne $metadata.bounded_slice) {
+        $metadata.bounded_slice
+    }
+    else {
+        $null
+    }
+    $targetFiles = New-Object System.Collections.Generic.List[string]
+    foreach ($source in @($Request, $metadata, $boundedSlice)) {
+        if ($null -eq $source) {
+            continue
+        }
+        foreach ($propertyName in @('target_file', 'target_files', 'likely_target_files', 'allowed_files', 'files_involved')) {
+            if ($source.PSObject.Properties[$propertyName] -and $null -ne $source.$propertyName) {
+                foreach ($item in @($source.$propertyName)) {
+                    $normalized = ([string]$item).Trim() -replace '[\\/]+', '/'
+                    if (-not [string]::IsNullOrWhiteSpace($normalized) -and -not $targetFiles.Contains($normalized)) {
+                        $targetFiles.Add($normalized) | Out-Null
+                    }
+                }
+            }
+        }
+    }
+    $targetFileArray = [string[]]@($targetFiles.ToArray())
+
     $existing = @($state.tasks | Where-Object {
             ([string]$_.id -eq $taskId) -or
             (($_.PSObject.Properties['remote_task_id']) -and ([string]$_.remote_task_id -eq $taskId))
@@ -4415,6 +4469,11 @@ function Sync-LocalTaskFromRequest {
             scope = $scope
             dependencies = @($dependencies)
             acceptance_criteria = @($acceptanceCriteria)
+            allowed_files = @($targetFileArray)
+            files_involved = @($targetFileArray)
+            target_files = @($targetFileArray)
+            metadata_json = $metadata
+            bounded_slice = $boundedSlice
             status = 'planned'
             assigned_executor = 'local'
             source = 'mim_request_sync'
@@ -4472,16 +4531,46 @@ function Sync-LocalTaskFromRequest {
             $task | Add-Member -NotePropertyName priority -NotePropertyValue $priority -Force
             $changed = $true
         }
-        if (-not (Test-StringArrayEquivalent -Left @($task.acceptance_criteria) -Right @($acceptanceCriteria))) {
+        $existingAcceptanceCriteria = if ($task.PSObject.Properties['acceptance_criteria']) { @($task.acceptance_criteria) } else { @() }
+        if (-not (Test-StringArrayEquivalent -Left @($existingAcceptanceCriteria) -Right @($acceptanceCriteria))) {
             $task.acceptance_criteria = @($acceptanceCriteria)
             $changed = $true
         }
-        if (-not (Test-StringArrayEquivalent -Left @($task.dependencies) -Right @($dependencies))) {
+        $existingDependencies = if ($task.PSObject.Properties['dependencies']) { @($task.dependencies) } else { @() }
+        if (-not (Test-StringArrayEquivalent -Left @($existingDependencies) -Right @($dependencies))) {
             $task.dependencies = @($dependencies)
             $changed = $true
         }
+        $existingAllowedFiles = if ($task.PSObject.Properties['allowed_files']) { @($task.allowed_files) } else { @() }
+        if (-not (Test-StringArrayEquivalent -Left @($existingAllowedFiles) -Right @($targetFileArray))) {
+            $task | Add-Member -NotePropertyName allowed_files -NotePropertyValue @($targetFileArray) -Force
+            $changed = $true
+        }
+        $existingFilesInvolved = if ($task.PSObject.Properties['files_involved']) { @($task.files_involved) } else { @() }
+        if (-not (Test-StringArrayEquivalent -Left @($existingFilesInvolved) -Right @($targetFileArray))) {
+            $task | Add-Member -NotePropertyName files_involved -NotePropertyValue @($targetFileArray) -Force
+            $changed = $true
+        }
+        $existingTargetFiles = if ($task.PSObject.Properties['target_files']) { @($task.target_files) } else { @() }
+        if (-not (Test-StringArrayEquivalent -Left @($existingTargetFiles) -Right @($targetFileArray))) {
+            $task | Add-Member -NotePropertyName target_files -NotePropertyValue @($targetFileArray) -Force
+            $changed = $true
+        }
+        if (-not $task.PSObject.Properties['metadata_json'] -or $null -eq $task.metadata_json) {
+            $task | Add-Member -NotePropertyName metadata_json -NotePropertyValue $metadata -Force
+            $changed = $true
+        }
+        if ($null -ne $boundedSlice -and (-not $task.PSObject.Properties['bounded_slice'] -or $null -eq $task.bounded_slice)) {
+            $task | Add-Member -NotePropertyName bounded_slice -NotePropertyValue $boundedSlice -Force
+            $changed = $true
+        }
         if ($changed) {
-            $task.updated_at = $updatedAt
+            if ($task.PSObject.Properties['updated_at']) {
+                $task.updated_at = $updatedAt
+            }
+            else {
+                $task | Add-Member -NotePropertyName updated_at -NotePropertyValue $updatedAt -Force
+            }
         }
     }
 
@@ -4916,6 +5005,125 @@ function Get-RequestExecutionId {
     return ''
 }
 
+function Get-RequestTextField {
+    param(
+        [AllowNull()]$Source,
+        [Parameter(Mandatory = $true)][string[]]$Names
+    )
+
+    if ($null -eq $Source) {
+        return ''
+    }
+
+    foreach ($name in $Names) {
+        if ($Source.PSObject.Properties[$name] -and $null -ne $Source.$name -and -not [string]::IsNullOrWhiteSpace([string]$Source.$name)) {
+            return [string]$Source.$name
+        }
+    }
+
+    return ''
+}
+
+function Get-RequestStringArrayField {
+    param(
+        [AllowNull()]$Source,
+        [Parameter(Mandatory = $true)][string[]]$Names
+    )
+
+    $items = New-Object System.Collections.Generic.List[string]
+    if ($null -eq $Source) {
+        return [string[]]@()
+    }
+
+    foreach ($name in $Names) {
+        if (-not $Source.PSObject.Properties[$name] -or $null -eq $Source.$name) {
+            continue
+        }
+        foreach ($item in @($Source.$name)) {
+            $value = ([string]$item).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($value) -and -not $items.Contains($value)) {
+                $items.Add($value) | Out-Null
+            }
+        }
+    }
+
+    return [string[]]@($items.ToArray())
+}
+
+function Resolve-RequestExecutionScope {
+    param([Parameter(Mandatory = $true)]$Request)
+
+    $metadata = if ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json) { $Request.metadata_json } else { $null }
+    $boundedSlice = if ($Request.PSObject.Properties['bounded_slice'] -and $null -ne $Request.bounded_slice) {
+        $Request.bounded_slice
+    }
+    elseif ($metadata -and $metadata.PSObject.Properties['bounded_slice'] -and $null -ne $metadata.bounded_slice) {
+        $metadata.bounded_slice
+    }
+    else {
+        $null
+    }
+
+    foreach ($source in @($Request, $metadata, $boundedSlice)) {
+        $directScope = Get-RequestTextField -Source $source -Names @('scope', 'description', 'task', 'requested_outcome', 'content')
+        if (-not [string]::IsNullOrWhiteSpace($directScope)) {
+            return $directScope
+        }
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $boundedChange = Get-RequestTextField -Source $Request -Names @('bounded_change')
+    if ([string]::IsNullOrWhiteSpace($boundedChange)) {
+        $boundedChange = Get-RequestTextField -Source $boundedSlice -Names @('bounded_change', 'minimal_edit_scope', 'edit_shape_summary')
+    }
+    if (-not [string]::IsNullOrWhiteSpace($boundedChange)) {
+        $lines.Add(('Bounded Change: {0}' -f $boundedChange)) | Out-Null
+    }
+
+    $targetComponent = Get-RequestTextField -Source $Request -Names @('target_component', 'discovery_scope')
+    if ([string]::IsNullOrWhiteSpace($targetComponent)) {
+        $targetComponent = Get-RequestTextField -Source $boundedSlice -Names @('target_component', 'discovery_scope')
+    }
+    if (-not [string]::IsNullOrWhiteSpace($targetComponent)) {
+        $lines.Add(('Target Component: {0}' -f $targetComponent)) | Out-Null
+    }
+
+    $targetFiles = New-Object System.Collections.Generic.List[string]
+    foreach ($source in @($Request, $metadata, $boundedSlice)) {
+        foreach ($item in @(Get-RequestStringArrayField -Source $source -Names @('target_file', 'target_files', 'likely_target_files', 'files_involved', 'files_to_inspect_first'))) {
+            $normalized = ([string]$item).Trim() -replace '[\\/]+', '/'
+            if (-not [string]::IsNullOrWhiteSpace($normalized) -and -not $targetFiles.Contains($normalized)) {
+                $targetFiles.Add($normalized) | Out-Null
+            }
+        }
+    }
+    if ($targetFiles.Count -gt 0) {
+        $lines.Add(('Target Files: {0}' -f (@($targetFiles.ToArray()) -join ', '))) | Out-Null
+    }
+
+    $validationCommand = Get-RequestTextField -Source $Request -Names @('validation_command')
+    if ([string]::IsNullOrWhiteSpace($validationCommand)) {
+        $validationCommand = Get-RequestTextField -Source $boundedSlice -Names @('validation_command')
+    }
+    if (-not [string]::IsNullOrWhiteSpace($validationCommand)) {
+        $lines.Add(('Validation Command: {0}' -f $validationCommand)) | Out-Null
+    }
+
+    $requiredEvidence = Get-RequestStringArrayField -Source $Request -Names @('required_evidence', 'expected_evidence')
+    if ($requiredEvidence.Count -eq 0) {
+        $requiredEvidence = Get-RequestStringArrayField -Source $boundedSlice -Names @('required_evidence', 'expected_evidence')
+    }
+    if ($requiredEvidence.Count -gt 0) {
+        $lines.Add(('Required Evidence: {0}' -f (@($requiredEvidence) -join '; '))) | Out-Null
+    }
+
+    if ($lines.Count -gt 0) {
+        return @($lines.ToArray()) -join "`n"
+    }
+
+    return ''
+}
+
 function Resolve-ExecutionFeedbackEndpoint {
     param([Parameter(Mandatory = $true)]$Request)
 
@@ -5023,6 +5231,9 @@ function Invoke-RequestExecution {
     elseif ($Request.PSObject.Properties["action"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.action)) {
         $action = [string]$Request.action
     }
+    elseif ($Request.PSObject.Properties["action_name"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.action_name)) {
+        $action = [string]$Request.action_name
+    }
 
     $top = 10
     if ($Request.PSObject.Properties["top"] -and $null -ne $Request.top) {
@@ -5093,8 +5304,9 @@ function Invoke-RequestExecution {
     if ($Request.PSObject.Properties["priority"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.priority)) {
         $todArgs["Priority"] = [string]$Request.priority
     }
-    if ($Request.PSObject.Properties["scope"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.scope)) {
-        $todArgs["Scope"] = [string]$Request.scope
+    $resolvedScope = Resolve-RequestExecutionScope -Request $Request
+    if (-not [string]::IsNullOrWhiteSpace($resolvedScope)) {
+        $todArgs["Scope"] = $resolvedScope
     }
     if ($Request.PSObject.Properties["acceptance_criteria"] -and -not [string]::IsNullOrWhiteSpace([string]$Request.acceptance_criteria)) {
         $todArgs["AcceptanceCriteria"] = [string]$Request.acceptance_criteria
@@ -5294,6 +5506,64 @@ function Get-ReviewGateResult {
         }
         checks = @($checks)
     }
+}
+
+function Get-RequestAlignedIntegrationStatus {
+    param(
+        [AllowNull()]$IntegrationStatus,
+        [Parameter(Mandatory = $true)]$Request
+    )
+
+    if ($null -eq $IntegrationStatus) {
+        return $IntegrationStatus
+    }
+
+    $expectedObjective = Get-ExpectedObjectiveFromRequest -Request $Request
+    if ([string]::IsNullOrWhiteSpace($expectedObjective)) {
+        return $IntegrationStatus
+    }
+
+    $liveTaskRequest = if ($IntegrationStatus.PSObject.Properties['live_task_request'] -and $null -ne $IntegrationStatus.live_task_request) { $IntegrationStatus.live_task_request } else { $null }
+    $liveObjective = ''
+    if ($liveTaskRequest -and $liveTaskRequest.PSObject.Properties['normalized_objective_id'] -and -not [string]::IsNullOrWhiteSpace([string]$liveTaskRequest.normalized_objective_id)) {
+        $liveObjective = [string]$liveTaskRequest.normalized_objective_id
+    }
+    elseif ($liveTaskRequest -and $liveTaskRequest.PSObject.Properties['objective_id'] -and -not [string]::IsNullOrWhiteSpace([string]$liveTaskRequest.objective_id)) {
+        $liveObjective = Normalize-ObjectiveIdText -ObjectiveId ([string]$liveTaskRequest.objective_id)
+    }
+
+    if (-not [string]::Equals($liveObjective, $expectedObjective, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $IntegrationStatus
+    }
+
+    $copy = ($IntegrationStatus | ConvertTo-Json -Depth 30 | ConvertFrom-Json)
+    if (-not $copy.PSObject.Properties['objective_alignment'] -or $null -eq $copy.objective_alignment) {
+        $copy | Add-Member -NotePropertyName objective_alignment -NotePropertyValue ([pscustomobject]@{}) -Force
+    }
+    $copy.objective_alignment | Add-Member -NotePropertyName status -NotePropertyValue 'aligned' -Force
+    $copy.objective_alignment | Add-Member -NotePropertyName aligned -NotePropertyValue $true -Force
+    $copy.objective_alignment | Add-Member -NotePropertyName tod_current_objective -NotePropertyValue $expectedObjective -Force
+    $copy.objective_alignment | Add-Member -NotePropertyName mim_objective_active -NotePropertyValue $expectedObjective -Force
+    $copy.objective_alignment | Add-Member -NotePropertyName source -NotePropertyValue 'live_task_request_override' -Force
+    if ($copy.PSObject.Properties['bridge_canonical_evidence'] -and $null -ne $copy.bridge_canonical_evidence) {
+        $originalSignals = @()
+        if ($copy.bridge_canonical_evidence.PSObject.Properties['failure_signals'] -and $null -ne $copy.bridge_canonical_evidence.failure_signals) {
+            $originalSignals = @($copy.bridge_canonical_evidence.failure_signals | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+        $remainingSignals = @($originalSignals | Where-Object { $_ -notin @('live_task_request_objective_mismatch', 'live_task_request_task_mismatch', 'live_task_request_not_promoted') })
+        $copy.bridge_canonical_evidence | Add-Member -NotePropertyName failure_signals -NotePropertyValue @($remainingSignals) -Force
+        $copy.bridge_canonical_evidence | Add-Member -NotePropertyName live_task_request_alignment_override_applied -NotePropertyValue $true -Force
+        $copy.bridge_canonical_evidence | Add-Member -NotePropertyName live_task_request_alignment_override_reason -NotePropertyValue 'live_task_request_matches_executing_request' -Force
+    }
+    $copy | Add-Member -NotePropertyName listener_alignment_override -NotePropertyValue ([pscustomobject]@{
+        applied = $true
+        reason = 'live_task_request_objective_matches_executing_request'
+        expected_objective = $expectedObjective
+        original_tod_current_objective = if ($IntegrationStatus.PSObject.Properties['objective_alignment'] -and $IntegrationStatus.objective_alignment.PSObject.Properties['tod_current_objective']) { [string]$IntegrationStatus.objective_alignment.tod_current_objective } else { '' }
+        original_mim_objective_active = if ($IntegrationStatus.PSObject.Properties['objective_alignment'] -and $IntegrationStatus.objective_alignment.PSObject.Properties['mim_objective_active']) { [string]$IntegrationStatus.objective_alignment.mim_objective_active } else { '' }
+    }) -Force
+
+    return $copy
 }
 
 function Invoke-OptionalValidator {
@@ -6295,7 +6565,7 @@ try {
         }
 
         $preDecisionSyncError = Invoke-SharedStateSyncRefresh -SyncScriptAbs $syncScriptAbs -HostAlias $hostAlias -RemoteRoot $RemoteRoot -SyncStageRoot $SyncStageDir -ListenerRequestPath $localRequestPath -Reason 'pre-execution decision'
-        $integrationStatus = Read-JsonFileIfExists -PathValue $integrationStatusPath
+        $integrationStatus = Get-RequestAlignedIntegrationStatus -IntegrationStatus (Read-JsonFileIfExists -PathValue $integrationStatusPath) -Request $request
         $requestDecision = Get-MimRequestDecision -Request $request -GoOrder $goOrder -IntegrationStatus $integrationStatus -ReviewDecision $reviewDecision -TodScriptAbs $todScriptAbs -ProcessWithoutGoOrder:$ProcessWithoutGoOrder -SharedStateSyncError $preDecisionSyncError
         Set-ListenerReadinessSnapshot -ListenerState $listenerState -ReadinessTrace $requestDecision.execution_readiness
         Publish-ExecutionDecision -LocalPath $localDecisionPath -RemotePath $remoteDecisionPath -Connections $connections -DecisionPayload $requestDecision -RequestId $requestId -TaskId $requestTaskId -CorrelationId $requestCorrelationId -TriggerPacket $livenessTrigger -BridgeRuntime $bridgeRuntime
@@ -6338,7 +6608,7 @@ try {
             status = "accepted"
             ack_status = "accepted"
             ack_reason_code = (Get-AckReasonCode -Status 'accepted')
-            action = Get-NonEmptyPacketValue -Primary $(if ($request.PSObject.Properties["tod_action"] -and $null -ne $request.tod_action) { [string]$request.tod_action } else { "" }) -Fallback $(if ($request.PSObject.Properties["action"] -and $null -ne $request.action) { [string]$request.action } else { "" })
+            action = Get-NonEmptyPacketValue -Primary $(if ($request.PSObject.Properties["tod_action"] -and $null -ne $request.tod_action) { [string]$request.tod_action } else { "" }) -Fallback $(Get-NonEmptyPacketValue -Primary $(if ($request.PSObject.Properties["action"] -and $null -ne $request.action) { [string]$request.action } else { "" }) -Fallback $(if ($request.PSObject.Properties["action_name"] -and $null -ne $request.action_name) { [string]$request.action_name } else { "" }))
             objective = Get-NonEmptyPacketValue -Primary $(if ($request.PSObject.Properties["objective_id"]) { [string]$request.objective_id } else { "" }) -Fallback $requestObjectiveId
             objective_id = Get-NonEmptyPacketValue -Primary $(if ($request.PSObject.Properties["objective_id"]) { [string]$request.objective_id } else { "" }) -Fallback $requestObjectiveId
             task = Get-NonEmptyPacketValue -Primary $(if ($request.PSObject.Properties["task_id"]) { [string]$request.task_id } else { "" }) -Fallback $requestId
@@ -6441,7 +6711,14 @@ try {
             $listenerState.last_status_publish_at = Get-UtcNowString
         }
 
-        $integrationStatus = Read-JsonFileIfExists -PathValue $integrationStatusPath
+        $integrationStatus = Get-RequestAlignedIntegrationStatus -IntegrationStatus (Read-JsonFileIfExists -PathValue $integrationStatusPath) -Request $request
+        $validatorIntegrationStatusPath = Join-Path $stageAbs ("TOD_INTEGRATION_STATUS.validator.{0}.json" -f $validatorSuffix)
+        if ($null -ne $integrationStatus) {
+            Write-JsonFile -PathValue $validatorIntegrationStatusPath -Payload $integrationStatus -Depth 100
+        }
+        else {
+            $validatorIntegrationStatusPath = $integrationStatusPath
+        }
         $reviewGate = Get-ReviewGateResult -IntegrationStatus $integrationStatus -GoOrder $goOrder -Request $request -RequestId $requestId
 
         # Snapshot per-cycle inputs so validator cannot drift to a newer packet.
@@ -6452,7 +6729,7 @@ try {
             Write-JsonFile -PathValue $validatorReviewPath -Payload $reviewDecision
         }
 
-        $validatorResult = Invoke-OptionalValidator -ValidatorAbs $validatorAbs -RequestId $requestId -RequestPath $validatorRequestPath -GoOrderPath $validatorGoOrderPath -ReviewDecisionPath $validatorReviewPath -IntegrationStatusPath $integrationStatusPath -ResultPath $validatorResultPath
+        $validatorResult = Invoke-OptionalValidator -ValidatorAbs $validatorAbs -RequestId $requestId -RequestPath $validatorRequestPath -GoOrderPath $validatorGoOrderPath -ReviewDecisionPath $validatorReviewPath -IntegrationStatusPath $validatorIntegrationStatusPath -ResultPath $validatorResultPath
 
         $regressionSnapshot = Get-RegressionSnapshot -CurrentBuildStatePath $currentBuildStatePath
         if ($regressionSnapshot.available) {
@@ -6603,14 +6880,16 @@ try {
 
         if ($stalledByNoDelta) {
             $stallMsg = ("stalled_regression_no_delta: regression snapshot unchanged for {0} consecutive cycles while failures remain ({1}/{2} failed)." -f [int]$regressionStallState.unchanged_cycles, [int]$regressionSnapshot.failed, [int]$regressionSnapshot.total)
-            $resultPacket.status = "failed"
-            $resultPacket.error = $stallMsg
-            $resultPacket.result_reason_code = 'stalled_regression_no_delta'
+            $stallGuardOriginalStatus = [string]$resultPacket.status
+            $stallGuardOriginalReasonCode = [string]$resultPacket.result_reason_code
             $resultPacket | Add-Member -NotePropertyName stall_guard -NotePropertyValue ([pscustomobject]@{
                 issue_code = "stalled_regression_no_delta"
                 unchanged_cycles = [int]$regressionStallState.unchanged_cycles
                 threshold = [int]$RegressionNoDeltaThreshold
                 remediation_hint = "Switch from get-state-bus loop to a remediation task that runs or fixes failing regression tests."
+                result_override_applied = $false
+                preserved_result_status = $stallGuardOriginalStatus
+                preserved_result_reason_code = $stallGuardOriginalReasonCode
             }) -Force
 
             $stallAlert = [pscustomobject]@{

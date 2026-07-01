@@ -60,7 +60,13 @@ def _post_message(base_url: str, session_key: str, message: str, timeout: int) -
     request = urllib.request.Request(
         base_url.rstrip("/") + "/public/chat/message",
         data=payload,
-        headers={"Content-Type": "application/json; charset=utf-8"},
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "Accept": "application/json, text/plain, */*",
+            "User-Agent": "MIM public conversation smoke/1.0",
+            "Origin": base_url.rstrip("/"),
+            "Referer": base_url.rstrip("/") + "/",
+        },
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:

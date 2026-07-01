@@ -58,6 +58,35 @@ function Get-ValidationHarnessQueryFragment {
     return 'validation_harness={0}' -f [uri]::EscapeDataString([string]$ValidationHarness)
 }
 
+function Get-LocalDotEnvValue {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    foreach ($relativePath in @('tmp_remote_mim/.env', '.env')) {
+        $candidatePath = Join-Path $repoRoot $relativePath
+        if (-not (Test-Path -Path $candidatePath -PathType Leaf)) {
+            continue
+        }
+        foreach ($line in Get-Content -Path $candidatePath) {
+            if ($line -match ('^\s*' + [regex]::Escape($Name) + '\s*=(.*)$')) {
+                return ([string]$matches[1]).Trim().Trim('"').Trim("'")
+            }
+        }
+    }
+
+    return ''
+}
+
+function Get-MimTodAuthHeaders {
+    $username = if (-not [string]::IsNullOrWhiteSpace($env:MIMTOD_USER)) { [string]$env:MIMTOD_USER } else { Get-LocalDotEnvValue -Name 'MIMTOD_USER' }
+    $password = if (-not [string]::IsNullOrWhiteSpace($env:MIMTOD_PASSWORD)) { [string]$env:MIMTOD_PASSWORD } else { Get-LocalDotEnvValue -Name 'MIMTOD_PASSWORD' }
+    if ([string]::IsNullOrWhiteSpace($username) -or [string]::IsNullOrWhiteSpace($password)) {
+        return @{}
+    }
+
+    $token = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(('{0}:{1}' -f $username, $password)))
+    return @{ Authorization = "Basic $token" }
+}
+
 function Invoke-JsonPost {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -66,7 +95,7 @@ function Invoke-JsonPost {
 
     $json = $Body | ConvertTo-Json -Depth 8
     try {
-        $response = Invoke-WebRequest -UseBasicParsing -Uri ("$baseUrl$Path") -Method Post -Body $json -ContentType 'application/json' -TimeoutSec 60 -DisableKeepAlive
+        $response = Invoke-WebRequest -UseBasicParsing -Uri ("$baseUrl$Path") -Method Post -Body $json -ContentType 'application/json' -Headers (Get-MimTodAuthHeaders) -TimeoutSec 60 -DisableKeepAlive
         $payloadText = [string]$response.Content
         return [pscustomobject]@{
             status_code = [int]$response.StatusCode
@@ -81,7 +110,7 @@ function Invoke-JsonPost {
 function Invoke-JsonGet {
     param([Parameter(Mandatory = $true)][string]$Uri)
 
-    $response = Invoke-WebRequest -UseBasicParsing -Uri $Uri -Method Get -TimeoutSec 60 -DisableKeepAlive
+    $response = Invoke-WebRequest -UseBasicParsing -Uri $Uri -Method Get -Headers (Get-MimTodAuthHeaders) -TimeoutSec 60 -DisableKeepAlive
     if ([string]::IsNullOrWhiteSpace([string]$response.Content)) {
         return [pscustomobject]@{}
     }
@@ -257,7 +286,7 @@ function Convert-TodUiStateToProjectStatusPayload {
 function Invoke-TextGet {
     param([Parameter(Mandatory = $true)][string]$Uri)
 
-    return [string](Invoke-WebRequest -UseBasicParsing -Uri $Uri -Method Get -TimeoutSec 60 -DisableKeepAlive).Content
+    return [string](Invoke-WebRequest -UseBasicParsing -Uri $Uri -Method Get -Headers (Get-MimTodAuthHeaders) -TimeoutSec 60 -DisableKeepAlive).Content
 }
 
 function Write-Utf8NoBomJson {

@@ -1,0 +1,501 @@
+{
+  "schema_version": "MIM-CONTEXT-GROUNDED-CONVERSATION-SUITE-V1",
+  "objective_id": "MIM-CONTEXT-GROUNDED-CONVERSATION-V1",
+  "description": "Scenarios that verify MIM answers from the current turn, prior chat, page/surface context, uploaded data context, and evidence boundaries instead of spilling preset training text.",
+  "target_pass_rate": 0.9,
+  "scoring_dimensions": [
+    "direct_question_answered",
+    "context_reference",
+    "prior_turn_continuity",
+    "page_surface_grounding",
+    "evidence_boundary",
+    "no_canned_dump",
+    "no_lazy_clarification",
+    "no_internal_jargon"
+  ],
+  "scenario_cards": [
+    {
+      "id": "context-001",
+      "bucket": "direct_answer_with_prior_turn",
+      "weight": 0.1,
+      "surface": "public_chat",
+      "turns": [
+        "MIM, what day of the week is it?",
+        "what about in France?"
+      ],
+      "context_sources": [
+        "current_turn",
+        "prior_turn"
+      ],
+      "required_terms_any": [
+        [
+          "France",
+          "French"
+        ],
+        [
+          "day",
+          "date",
+          "time"
+        ]
+      ],
+      "forbidden_terms": [
+        "Could you clarify what specific topic or context",
+        "This is the MIM channel"
+      ],
+      "ideal_reply": "In France, that is still a date/time follow-up, not a new unrelated France question. I would answer with the weekday/date in France and mention the time-zone difference if relevant. If live time is unavailable, I should say that clearly instead of pretending or asking a lazy clarification."
+    },
+    {
+      "id": "context-002",
+      "bucket": "dashboard_missing_data",
+      "weight": 0.12,
+      "surface": "agentmim_dashboard",
+      "page_context": {
+        "page": "dashboard",
+        "widget": "Missing Data",
+        "month": "May 2026",
+        "visible_issue": "duplicate policy IDs appear multiple times because each commission row is listed separately",
+        "user_goal": "assign policy IDs once and apply that association to all matching May commission rows"
+      },
+      "turns": [
+        "Why do I see the same policy ID over and over in Missing Data?"
+      ],
+      "context_sources": [
+        "current_turn",
+        "page_context"
+      ],
+      "required_terms_any": [
+        [
+          "policy ID",
+          "policy"
+        ],
+        [
+          "one row",
+          "unique",
+          "distinct",
+          "group"
+        ],
+        [
+          "all matching rows",
+          "all rows",
+          "same id",
+          "every May row"
+        ]
+      ],
+      "forbidden_terms": [
+        "objective",
+        "artifact",
+        "dispatcher",
+        "lifecycle"
+      ],
+      "ideal_reply": "You are seeing repeated commission rows for the same policy, but the assignment should be policy-level. The better dashboard behavior is to show one unresolved policy ID, then apply the selected agent/sub-agent association to every May row with that same policy ID. Evidence is the before/after count of distinct unassigned policy IDs and a sample policy showing every matching row updated."
+    },
+    {
+      "id": "context-003",
+      "bucket": "upload_truth_file",
+      "weight": 0.14,
+      "surface": "agentmim_commission_upload",
+      "page_context": {
+        "page": "dashboard assistant",
+        "pending_upload": "policy-rep_May 2026.xlsx",
+        "month": "May 2026",
+        "rows": 3921,
+        "carrier_paid_total": 179180.5,
+        "columns": [
+          "Policy ID",
+          "Client Name",
+          "Carrier",
+          "Carrier Service",
+          "Agent",
+          "Agent%",
+          "Referring Agent",
+          "Referring Agent%",
+          "Carrier Paid"
+        ],
+        "user_declared_truth": true
+      },
+      "turns": [
+        "Apply this file as the truth for May commissions and reconcile the online data to match."
+      ],
+      "context_sources": [
+        "current_turn",
+        "upload_context",
+        "page_context"
+      ],
+      "required_terms_any": [
+        [
+          "May 2026",
+          "May"
+        ],
+        [
+          "3,921",
+          "3921"
+        ],
+        [
+          "$179,180.50",
+          "179,180.50",
+          "179180.50"
+        ],
+        [
+          "audit",
+          "reconcile",
+          "compare"
+        ],
+        [
+          "policy ID",
+          "policy"
+        ]
+      ],
+      "forbidden_terms": [
+        "confirm the carrier",
+        "currently guessed",
+        "agent roster",
+        "policy + agent mapping list only"
+      ],
+      "ideal_reply": "I should treat the uploaded workbook as the May 2026 commission truth because it has 3,921 rows and a $179,180.50 Carrier Paid total. The correct action is a reconciliation, not a carrier-confirmation loop: compare May online rows by policy ID plus carrier/client/month, update missing agent and referring-agent associations, correct client/carrier fields when the file is more complete, and only change paid amounts where the row-level source comparison supports it. Evidence is a reconciliation report showing added, updated, unchanged, and conflict rows before saving."
+    },
+    {
+      "id": "context-004",
+      "bucket": "commission_root_problem",
+      "weight": 0.1,
+      "surface": "agentmim_workspace",
+      "turns": [
+        "I want commission automation."
+      ],
+      "context_sources": [
+        "current_turn",
+        "domain_memory"
+      ],
+      "required_terms_any": [
+        [
+          "carrier portal",
+          "carrier reports",
+          "statements"
+        ],
+        [
+          "validate",
+          "validating",
+          "reconcile",
+          "reconciling",
+          "verify"
+        ],
+        [
+          "download",
+          "collect",
+          "retrieve"
+        ]
+      ],
+      "forbidden_terms": [
+        "Let's discuss requirements",
+        "provide specifications"
+      ],
+      "ideal_reply": "The root pain is usually collecting carrier statements, validating totals, and reconciling payouts before upload. I would start by mapping which carriers are manual, which files already parse cleanly, and where the dashboard totals diverge from row-level commissions. Then MIM can recommend the smallest automation path instead of asking for a full specification first."
+    },
+    {
+      "id": "context-005",
+      "bucket": "support_ticket_from_chat",
+      "weight": 0.09,
+      "surface": "agentmim_dashboard",
+      "page_context": {
+        "page": "dashboard",
+        "chat_thread_available": true,
+        "support_ticket_button": true,
+        "expected_flow": "confirm share chat thread, collect user note, send full transcript and note to TOD, prioritize until resolution, alert user, close after confirmation or passing smoke"
+      },
+      "turns": [
+        "I clicked open support ticket. Where did it go and what should happen?"
+      ],
+      "context_sources": [
+        "current_turn",
+        "page_context",
+        "current_chat_dialog"
+      ],
+      "required_terms_any": [
+        [
+          "ticket",
+          "support"
+        ],
+        [
+          "chat thread",
+          "transcript"
+        ],
+        [
+          "TOD",
+          "troubleshoot"
+        ],
+        [
+          "confirmation",
+          "confirm"
+        ]
+      ],
+      "forbidden_terms": [
+        "generic apology",
+        "mim-request"
+      ],
+      "ideal_reply": "That support ticket should preserve the current chat thread, ask your permission to share it with TOD, let you add a short suspected-problem note, then create a Help-page ticket with the transcript and note attached. TOD should treat it as high priority until resolution evidence exists, MIM should notify you when a fix is ready, and the ticket should close after your confirmation or a passing follow-up smoke test."
+    },
+    {
+      "id": "context-006",
+      "bucket": "general_identity_without_static_dump",
+      "weight": 0.07,
+      "surface": "public_chat",
+      "turns": [
+        "What are you MIM?"
+      ],
+      "context_sources": [
+        "current_turn",
+        "product_identity"
+      ],
+      "required_terms_any": [
+        [
+          "MIM"
+        ],
+        [
+          "help",
+          "assistant",
+          "work",
+          "projects",
+          "business"
+        ]
+      ],
+      "forbidden_terms": [
+        "As an AI language model",
+        "pretrained",
+        "this is the MIM channel",
+        "objective id",
+        "operator-facing",
+        "multi-agent system"
+      ],
+      "ideal_reply": "I am MIM, an assistant built to help people talk through ideas, business problems, projects, and practical next steps. I can chat normally, help shape software ideas, look at the context you give me, and explain what I can or cannot know from the current conversation."
+    },
+    {
+      "id": "context-007",
+      "bucket": "broad_system_change",
+      "weight": 0.1,
+      "surface": "studio_operator_chat",
+      "turns": [
+        "Rewrite the whole image system."
+      ],
+      "context_sources": [
+        "current_turn",
+        "system_scope"
+      ],
+      "required_terms_any": [
+        [
+          "audit",
+          "inspect",
+          "trace"
+        ],
+        [
+          "split",
+          "bounded",
+          "scope"
+        ],
+        [
+          "risk",
+          "evidence",
+          "before changing"
+        ]
+      ],
+      "forbidden_terms": [
+        "I will rewrite the whole image system",
+        "completed",
+        "all set"
+      ],
+      "ideal_reply": "I would not accept a whole-system rewrite as one action. First I would audit the existing image pipeline, identify the smallest failing path, split provider routing, prompt generation, review state, and UI/debug cleanup into separate tasks, and only then choose the first safe change. Evidence before changing would be the routes, provider config, current review-state fields, and one failing regeneration trace."
+    },
+    {
+      "id": "context-008",
+      "bucket": "language_and_context",
+      "weight": 0.07,
+      "surface": "public_chat",
+      "turns": [
+        "Cómo estás?",
+        "Puedes ayudarme con una app para citas de peluquería canina?"
+      ],
+      "context_sources": [
+        "current_turn",
+        "prior_turn",
+        "language"
+      ],
+      "required_terms_any": [
+        [
+          "citas",
+          "agenda",
+          "reservas"
+        ],
+        [
+          "perros",
+          "canina",
+          "peluquería"
+        ],
+        [
+          "puedo",
+          "claro",
+          "sí"
+        ]
+      ],
+      "forbidden_terms": [
+        "Please clarify",
+        "I only speak"
+      ],
+      "ideal_reply": "Sí, claro. Para una peluquería canina, empezaría con una agenda simple: cliente, perro, servicio, hora de la cita, estado y recordatorios. La primera versión puede ser pequeña y útil: crear cita, ver el calendario del día y marcar completado o reprogramado."
+    },
+    {
+      "id": "context-009",
+      "bucket": "insufficient_context_done_right",
+      "weight": 0.08,
+      "surface": "agentmim_workspace",
+      "turns": [
+        "Which project is blocked?"
+      ],
+      "context_sources": [
+        "current_turn",
+        "project_context_if_available"
+      ],
+      "required_terms_any": [
+        [
+          "not enough context",
+          "don't have enough context",
+          "if you mean",
+          "most recently active"
+        ],
+        [
+          "project",
+          "blocker",
+          "blocked"
+        ],
+        [
+          "evidence",
+          "record",
+          "state",
+          "current"
+        ]
+      ],
+      "forbidden_terms": [
+        "The project is blocked",
+        "completed",
+        "objective id"
+      ],
+      "ideal_reply": "I do not have enough context in this message to identify which project you mean. If you mean the most recently active project, I should look up that record and then answer with the project name, blocker, owner, and evidence. Without that lookup, the honest answer is that the blocker is unknown."
+    },
+    {
+      "id": "context-010",
+      "bucket": "typo_tolerant_grounding",
+      "weight": 0.07,
+      "surface": "public_chat",
+      "turns": [
+        "build me an invintory managment app for montly expences"
+      ],
+      "context_sources": [
+        "current_turn"
+      ],
+      "required_terms_any": [
+        [
+          "inventory",
+          "expenses",
+          "monthly"
+        ],
+        [
+          "app",
+          "tracker",
+          "system"
+        ],
+        [
+          "first version",
+          "prototype",
+          "start",
+          "first action",
+          "foundation"
+        ]
+      ],
+      "forbidden_terms": [
+        "I don't understand"
+      ],
+      "ideal_reply": "Yes. I read that as an inventory management app with monthly expense tracking. I would start with items, stock level, purchase cost, monthly expense category, vendor, and a simple dashboard showing low inventory and monthly spend. The first prototype can be small enough to test with real entries."
+    },
+    {
+      "id": "context-011",
+      "bucket": "forum_image_regeneration_context",
+      "weight": 0.07,
+      "surface": "agentmim_forum_admin",
+      "page_context": {
+        "page": "forum post admin",
+        "post_id": 786,
+        "status": "manual_review_required",
+        "stale_provider": "runpod_forum_image_diffusion",
+        "current_policy": "RunPod disabled; local GPU should be used through Cloudflare Tunnel"
+      },
+      "turns": [
+        "Why is regenerate image still showing RunPod and manual review?"
+      ],
+      "context_sources": [
+        "current_turn",
+        "page_context",
+        "provider_config"
+      ],
+      "required_terms_any": [
+        [
+          "RunPod",
+          "provider"
+        ],
+        [
+          "manual review",
+          "review state"
+        ],
+        [
+          "local GPU",
+          "Cloudflare",
+          "tunnel"
+        ],
+        [
+          "stale",
+          "clear",
+          "debug"
+        ]
+      ],
+      "forbidden_terms": [
+        "generate another abstract variant",
+        "RunPod job"
+      ],
+      "ideal_reply": "That page is showing two different issues: stale RunPod provider metadata and a manual-review escalation state. Since RunPod is disabled, regeneration should route through the secured local GPU endpoint, and the admin debug panel should show local GPU metadata. Separately, approving or regenerating should clear stale escalation fields only when the review state actually changes. Evidence is a fresh generation trace with no RunPod call and a saved asset from the local GPU provider."
+    },
+    {
+      "id": "context-012",
+      "bucket": "avoid_training_language_dump",
+      "weight": 0.06,
+      "surface": "public_chat",
+      "turns": [
+        "Can you help me decide if AI can help my business?"
+      ],
+      "context_sources": [
+        "current_turn"
+      ],
+      "required_terms_any": [
+        [
+          "business",
+          "workflow",
+          "process"
+        ],
+        [
+          "start",
+          "first",
+          "small"
+        ],
+        [
+          "repetitive",
+          "manual",
+          "follow-up",
+          "reports"
+        ]
+      ],
+      "forbidden_terms": [
+        "Category 1",
+        "Category Smoke Test",
+        "Success:",
+        "Failure:",
+        "weighted pass"
+      ],
+      "ideal_reply": "Yes. The best first question is where your business repeats the same work: entering data, following up, checking reports, answering common questions, or reconciling numbers. I would start with one painful workflow, estimate the time lost each week, and then decide whether AI should automate it, assist a human, or simply organize the information better."
+    }
+  ]
+}

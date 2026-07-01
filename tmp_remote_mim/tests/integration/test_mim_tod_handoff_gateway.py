@@ -53,11 +53,15 @@ def _load_gateway_handoff_helpers() -> types.SimpleNamespace:
         "_mim_tod_active_project_status_response",
         "_compact_text",
         "_compact_interface_text",
+        "_normalize_operator_query_for_routing",
         "_mim_interface_understanding",
         "_mim_interface_status",
         "_mim_interface_next_action",
         "_mim_interface_result",
         "_mim_operator_requested_response_wrapper_detail",
+        "_mim_operator_impact_contract_applies",
+        "_mim_reply_has_operator_impact_contract",
+        "_mim_append_operator_impact_contract",
         "_mim_interface_wrapper_text",
         "_mim_operator_reply_from_wrapper_text",
         "_mim_clean_operator_reply_boilerplate",
@@ -103,6 +107,12 @@ def _load_gateway_handoff_helpers() -> types.SimpleNamespace:
         "_create_reporting_visibility_task",
         "_write_mim_operator_status",
         "_mim_tod_autonomy_capability_slice",
+        "_normalize_conversation_query",
+        "_looks_like_vague_thing_request",
+        "_looks_like_development_integration_query",
+        "_looks_like_continuation_validation_request",
+        "_normalize_mim_training_regression_query",
+        "_mim_user_app_build_intake_response",
         "_mim_bounded_implementation_slice",
         "_mim_materialize_tod_implementation_dispatch",
         "_route_mim_implementation_objective_to_tod",
@@ -121,9 +131,11 @@ def _load_gateway_handoff_helpers() -> types.SimpleNamespace:
         "_looks_like_mim_tod_executable_handoff_request",
         "_deterministic_mim_tod_classifier_matches",
         "_dispatch_mim_tod_executable_handoff_request",
+        "_looks_like_bounded_implementation_request",
         "_should_use_web_research",
     }
     constant_names = {
+        "_OPERATOR_QUERY_TYPO_NORMALIZATIONS",
         "REPORTING_VISIBILITY_OBJECTIVES",
     }
     helper_nodes = [
@@ -592,7 +604,9 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
             execution=None,
         )
 
-        self.assertEqual(response["reply_text"], "MIM and TOD are both active.")
+        self.assertTrue(response["reply_text"].startswith("MIM and TOD are both active."))
+        self.assertIn("Recommended action:", response["reply_text"])
+        self.assertIn("Owner: TOD.", response["reply_text"])
         self.assertNotIn("Request mim-request-cleanup", response["reply_text"])
         self.assertNotIn("I understood", response["reply_text"])
         self.assertNotIn("Next action", response["reply_text"])
@@ -663,7 +677,9 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
             execution=None,
         )
 
-        self.assertEqual(response["reply_text"], "Dispatched to TOD.")
+        self.assertTrue(response["reply_text"].startswith("Dispatched to TOD."))
+        self.assertIn("Recommended action:", response["reply_text"])
+        self.assertIn("Dave needed: no", response["reply_text"])
         self.assertNotIn("I understood", response["reply_text"])
         self.assertNotIn("Next action", response["reply_text"])
 
@@ -1285,14 +1301,30 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
             request_artifact["target_component"],
             "MIM bounded implementation slice generator",
         )
-        self.assertIn("core/routers/gateway.py", request_artifact["likely_target_files"])
+        self.assertEqual(request_artifact["target_file"], "core/routers/gateway.py")
+        self.assertEqual(request_artifact["target_files"], ["core/routers/gateway.py"])
+        self.assertEqual(request_artifact["likely_target_files"], ["core/routers/gateway.py"])
         self.assertIn(
             "tests/integration/test_mim_tod_handoff_gateway.py",
-            request_artifact["likely_target_files"],
+            request_artifact["inspection_files"],
         )
         self.assertIn("one target component", request_artifact["bounded_change"])
         self.assertIn("expected_evidence", request_artifact)
         self.assertTrue(request_artifact["expected_evidence"])
+        self.assertEqual(request_artifact["edit_mode"], "replace_exact_text")
+        self.assertIn("blocked_with_inspection", request_artifact["old_text_or_anchor"])
+        self.assertIn("target_file_exactly_one", request_artifact["new_text_or_snippet"])
+        self.assertEqual(
+            request_artifact["exact_current_anchor_or_old_text"],
+            request_artifact["old_text_or_anchor"],
+        )
+        self.assertEqual(
+            request_artifact["different_new_text"],
+            request_artifact["new_text_or_snippet"],
+        )
+        self.assertIn("changed_files", request_artifact["closure_evidence"])
+        self.assertIn("bounded edit directives", request_artifact["prevention_lesson"])
+        self.assertEqual(request_artifact["dave_needed"], "no")
         self.assertIn("test_bounded_implementation_slice_generator", request_artifact["validation_command"])
         self.assertIn("rollback", request_artifact["rollback_isolation_note"].lower())
         self.assertEqual(request_artifact["bounded_slice"]["target_component"], request_artifact["target_component"])
@@ -1947,6 +1979,35 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
         self.assertEqual(updated["state_contract"]["lifecycle_state"], "finish")
         self.assertEqual(updated["state_contract"]["operator_satisfaction_status"], "satisfied")
         self.assertFalse(updated["state_contract"]["implementation_dispatch"])
+
+    def test_casual_hypothetical_name_question_is_not_bounded_implementation(self) -> None:
+        self.assertFalse(
+            self.gateway._looks_like_bounded_implementation_request(
+                "if you could change your name what would it be?",
+                "discussion",
+                [],
+            )
+        )
+        self.assertFalse(
+            self.gateway._looks_like_bounded_implementation_request(
+                "MIM, if you could change your name what would it be?",
+                "unknown",
+                [],
+            )
+        )
+
+    def test_before_next_feature_typo_question_is_not_bounded_implementation(self) -> None:
+        normalized = self.gateway._normalize_conversation_query(
+            "wat shuld happen befor we add anothr featre?"
+        )
+        self.assertEqual(normalized, "what should happen before we add another feature")
+        self.assertFalse(
+            self.gateway._looks_like_bounded_implementation_request(
+                "wat shuld happen befor we add anothr featre?",
+                "unknown",
+                [],
+            )
+        )
 
     def test_implementation_objective_with_changed_files_can_finish(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

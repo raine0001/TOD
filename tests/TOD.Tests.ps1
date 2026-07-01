@@ -795,6 +795,30 @@ Describe "TOD Reliability Dashboards" {
         }
     }
 
+    It "add-task honors an explicit TaskId in local mode" {
+        $testStatePath = New-ReliabilityTestStatePath
+        try {
+            $result = Invoke-TodActionJson -Action "add-task" -ExtraArgs @{
+                ObjectiveId = "75"
+                TaskId = "TSK-EXPLICIT-LOCAL"
+                Title = "Explicit local task id fixture"
+                Scope = "Record explicit task id persistence for local TOD drills."
+                AcceptanceCriteria = "explicit task id is runnable after add-task"
+                StatePath = $testStatePath
+            }
+
+            $storedState = (Get-Content -Path $testStatePath -Raw) | ConvertFrom-Json
+            $task = @($storedState.tasks | Where-Object { [string]$_.id -eq "TSK-EXPLICIT-LOCAL" })
+
+            [string]$result.id | Should Be "TSK-EXPLICIT-LOCAL"
+            @($task).Count | Should Be 1
+            [string]$task[0].title | Should Be "Explicit local task id fixture"
+        }
+        finally {
+            if (Test-Path $testStatePath) { Remove-Item $testStatePath -Force }
+        }
+    }
+
     It "add-task uses collision-safe ids for concurrent local writers" {
         $testStatePath = New-ReliabilityTestStatePath
         $jobA = $null

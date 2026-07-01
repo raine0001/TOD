@@ -161,3 +161,7 @@ TOD completed task A and should select task B next. Evidence marker: TOD-CHAIN-A
 ## TOD Chain Proof C
 
 TOD selected the safe recovery task after the intentional blocker. Evidence marker: TOD-CHAIN-C-SAFE-001.
+
+## Dave-Away Bounded Dispatch Lessons 2026-06-14
+
+During the Dave-away training loop, quote-heavy direct chat dispatches produced malformed task packets when exact Python replacement text was embedded in command-line arguments. Future TOD code-change nudges should prefer explicit -TargetFile metadata and file-backed or simple bounded directives. If a task lacks exactly one target_file, TOD must block with blocked_missing_bounded_edit_mode instead of claiming wrapper or validation-only progress.

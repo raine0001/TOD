@@ -77,7 +77,9 @@ function Write-Utf8NoBomJson {
 
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     $json = ($Payload | ConvertTo-Json -Depth $Depth) -replace "`r`n", "`n"
-    [System.IO.File]::WriteAllText($PathValue, $json, $utf8NoBom)
+    Invoke-FileWriteWithRetry -Description "write json $PathValue" -ScriptBlock {
+        [System.IO.File]::WriteAllText($PathValue, $json, $utf8NoBom)
+    }
 }
 
 function Append-Utf8NoBomJsonLine {
@@ -94,7 +96,34 @@ function Append-Utf8NoBomJsonLine {
 
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     $line = (($Payload | ConvertTo-Json -Depth $Depth -Compress) + "`n")
-    [System.IO.File]::AppendAllText($PathValue, $line, $utf8NoBom)
+    Invoke-FileWriteWithRetry -Description "append jsonl $PathValue" -ScriptBlock {
+        [System.IO.File]::AppendAllText($PathValue, $line, $utf8NoBom)
+    }
+}
+
+function Invoke-FileWriteWithRetry {
+    param(
+        [Parameter(Mandatory = $true)][string]$Description,
+        [Parameter(Mandatory = $true)][scriptblock]$ScriptBlock,
+        [int]$MaxAttempts = 6
+    )
+
+    $lastError = $null
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            & $ScriptBlock
+            return
+        }
+        catch [System.IO.IOException] {
+            $lastError = $_
+            if ($attempt -ge $MaxAttempts) {
+                break
+            }
+            Start-Sleep -Milliseconds (150 * $attempt)
+        }
+    }
+
+    throw "File write failed after $MaxAttempts attempts during ${Description}: $($lastError.Exception.Message)"
 }
 
 function Get-DotEnvValue {
@@ -549,7 +578,11 @@ function Parse-PayloadJson {
             }
         }
         else {
-            throw "PayloadJson is not valid JSON: $([string]$_.Exception.Message)"
+            $parsed = [pscustomobject]@{
+                raw_payload_json = $raw
+                normalized_from_invalid_json = $true
+                parse_error = [string]$_.Exception.Message
+            }
         }
     }
 
@@ -587,13 +620,20 @@ function Get-OpenReplyExpectation {
         }
 
         $messageType = if ($message.PSObject.Properties['message_type']) { [string]$message.message_type } else { '' }
+        $replyToTurn = if ($message.PSObject.Properties['reply_to_turn']) { [int]$message.reply_to_turn } else { 0 }
+        $isReplyToOpenTurn = $false
+        $isLaterTurn = $false
+        if ($null -ne $open) {
+            $isReplyToOpenTurn = ($replyToTurn -gt 0 -and $replyToTurn -eq [int]$open.turn_id)
+            $isLaterTurn = ($turnId -gt [int]$open.turn_id)
+        }
 
-        if ($null -ne $open -and [string]::Equals($messageType, 'resolution_notice', [System.StringComparison]::OrdinalIgnoreCase) -and $turnId -gt [int]$open.turn_id) {
+        if ($null -ne $open -and [string]::Equals($messageType, 'resolution_notice', [System.StringComparison]::OrdinalIgnoreCase) -and ($isLaterTurn -or $isReplyToOpenTurn)) {
             $open = $null
             continue
         }
 
-        if ($null -ne $open -and $fromActor -eq $open.to -and $toActor -eq $open.from -and $turnId -gt [int]$open.turn_id) {
+        if ($null -ne $open -and $fromActor -eq $open.to -and $toActor -eq $open.from -and ($isLaterTurn -or $isReplyToOpenTurn)) {
             $open = $null
         }
     }
@@ -740,13 +780,16 @@ function Get-RefreshedSessionState {
     param(
         [Parameter(Mandatory = $true)][string]$DialogDirValue,
         [Parameter(Mandatory = $true)][string]$SessionIdValue,
-        [int]$MaxOpenMinutesValue = 30
+        [int]$MaxOpenMinutesValue = 30,
+        [switch]$NoWriteArtifacts
     )
 
     $paths = Get-SessionPaths -DialogDirValue $DialogDirValue -SessionValue $SessionIdValue
     $messages = @(Get-SessionMessages -SessionPath $paths.session_path)
     $sessionState = Get-SessionState -SessionIdValue $SessionIdValue -Messages $messages -SessionPath $paths.session_path -MaxOpenMinutesValue $MaxOpenMinutesValue
-    Write-SessionStateArtifacts -Paths $paths -SessionState $sessionState
+    if (-not $NoWriteArtifacts) {
+        Write-SessionStateArtifacts -Paths $paths -SessionState $sessionState
+    }
     return $sessionState
 }
 
@@ -836,6 +879,10 @@ switch ($Action) {
             session_state = $sessionState
             remote = $remotePublish
         }
+        $deliveryStatus = 'local_mirror_only'
+        if ($null -ne $remotePublish -and [bool]$remotePublish.uploaded) { $deliveryStatus = 'authority_delivered' }
+        elseif ($null -ne $remotePublish -and -not [bool]$remotePublish.uploaded) { $deliveryStatus = 'remote_failed' }
+        $result | Add-Member -NotePropertyName delivery_status -NotePropertyValue $deliveryStatus -Force
 
         if ($EmitJson) {
             $result | ConvertTo-Json -Depth 16
@@ -903,6 +950,8 @@ switch ($Action) {
     'read-inbox' {
         $actorName = Normalize-Actor -Value $Actor
         $inbox = @()
+        $actionableInboxStatuses = @('awaiting_reply', 'timed_out', 'open')
+        $seenSessionIds = @{}
         $remoteRefresh = $null
         if ($RefreshFromRemote) {
             $refreshPaths = Get-SessionPaths -DialogDirValue $dialogDirAbs -SessionValue ("inbox-{0}" -f $actorName.ToLowerInvariant())
@@ -910,18 +959,25 @@ switch ($Action) {
         }
 
         $indexPath = Join-Path $dialogDirAbs 'MIM_TOD_DIALOG.sessions.latest.json'
+        $indexReadSucceeded = $false
         if (Test-Path -Path $indexPath) {
             try {
                 $indexDoc = Get-Content -Path $indexPath -Raw | ConvertFrom-Json
+                $indexReadSucceeded = $true
                 foreach ($sessionState in @($indexDoc.sessions)) {
                     $sessionIdValue = if ($sessionState.PSObject.Properties['session_id']) { [string]$sessionState.session_id } else { '' }
                     if ([string]::IsNullOrWhiteSpace($sessionIdValue)) {
                         continue
                     }
+                    $indexedStatus = if ($sessionState.PSObject.Properties['status']) { [string]$sessionState.status } else { '' }
+                    $indexedOpenReply = if ($sessionState.PSObject.Properties['open_reply']) { $sessionState.open_reply } else { $null }
+                    if (-not $indexedOpenReply -or -not ($actionableInboxStatuses -contains $indexedStatus)) {
+                        continue
+                    }
 
-                    $refreshedState = Get-RefreshedSessionState -DialogDirValue $dialogDirAbs -SessionIdValue $sessionIdValue -MaxOpenMinutesValue $MaxOpenMinutes
-                    if ($refreshedState.open_reply -and [string]::Equals([string]$refreshedState.open_reply.to, $actorName, [System.StringComparison]::OrdinalIgnoreCase) -and [string]::Equals([string]$refreshedState.status, 'awaiting_reply', [System.StringComparison]::OrdinalIgnoreCase)) {
-                        $inbox += $refreshedState
+                    if ([string]::Equals([string]$indexedOpenReply.to, $actorName, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        $inbox += $sessionState
+                        $seenSessionIds[$sessionIdValue] = $true
                     }
                 }
             }
@@ -930,13 +986,20 @@ switch ($Action) {
             }
         }
 
-        if (@($inbox).Count -eq 0) {
+        if (@($inbox).Count -eq 0 -or $indexReadSucceeded) {
             $sessionFiles = @(Get-ChildItem -Path $dialogDirAbs -Filter 'MIM_TOD_DIALOG.session-*.jsonl' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending)
+            if ($Tail -gt 0) {
+                $sessionFiles = @($sessionFiles | Select-Object -First $Tail)
+            }
             foreach ($file in $sessionFiles) {
                 $sessionIdValue = [string]($file.BaseName -replace '^MIM_TOD_DIALOG\.session-', '')
-                $sessionState = Get-RefreshedSessionState -DialogDirValue $dialogDirAbs -SessionIdValue $sessionIdValue -MaxOpenMinutesValue $MaxOpenMinutes
-                if ($sessionState.open_reply -and [string]::Equals([string]$sessionState.open_reply.to, $actorName, [System.StringComparison]::OrdinalIgnoreCase) -and [string]::Equals([string]$sessionState.status, 'awaiting_reply', [System.StringComparison]::OrdinalIgnoreCase)) {
+                if ($seenSessionIds.ContainsKey($sessionIdValue)) {
+                    continue
+                }
+                $sessionState = Get-RefreshedSessionState -DialogDirValue $dialogDirAbs -SessionIdValue $sessionIdValue -MaxOpenMinutesValue $MaxOpenMinutes -NoWriteArtifacts
+                if ($sessionState.open_reply -and [string]::Equals([string]$sessionState.open_reply.to, $actorName, [System.StringComparison]::OrdinalIgnoreCase) -and ($actionableInboxStatuses -contains [string]$sessionState.status)) {
                     $inbox += $sessionState
+                    $seenSessionIds[$sessionIdValue] = $true
                 }
             }
         }

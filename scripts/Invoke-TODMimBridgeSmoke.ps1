@@ -91,6 +91,12 @@ function Get-StringField {
     return [string]$InputObject.$FieldName
 }
 
+function Normalize-ComparableString {
+    param([AllowNull()]$Value)
+
+    return ([string]$Value).Trim()
+}
+
 function Get-DotEnvMap {
     param([Parameter(Mandatory = $true)][string]$PathValue)
 
@@ -446,6 +452,20 @@ $staleTerminalAckHealthy =
     ([long]$highWatermarkTaskRef.task_number -gt [long]$requestRef.task_number)
 $requestMatchesAck = (-not [string]::IsNullOrWhiteSpace($requestId)) -and [string]::Equals($requestId, $acknowledges, [System.StringComparison]::OrdinalIgnoreCase)
 $resultMatchesRequest = (-not [string]::IsNullOrWhiteSpace($requestId)) -and [string]::Equals($requestId, $resultTaskId, [System.StringComparison]::OrdinalIgnoreCase)
+$requestAwaitingAckHealthy = (
+    (-not [bool]$requestMatchesAck) -and
+    (-not [bool]$resultMatchesRequest) -and
+    (-not [string]::IsNullOrWhiteSpace($requestId)) -and
+    ($requestAgeSeconds -lt $FreshnessSeconds) -and
+    ($listenerCycleAgeSeconds -lt $FreshnessSeconds)
+)
+$requestInFlightHealthy = (
+    (-not [bool]$resultMatchesRequest) -and
+    [bool]$requestMatchesAck -and
+    @('accepted', 'processing', 'in_progress', 'running') -contains $taskAckStatus -and
+    ($requestAgeSeconds -lt $FreshnessSeconds) -and
+    ($ackAgeSeconds -lt $FreshnessSeconds)
+)
 
 if ($staleBackfillSuperseded -or $staleTerminalAckHealthy) {
     $requestMatchesAck = $true
@@ -470,6 +490,16 @@ $objectiveInSync = $false
 if ($integration -and $integration.PSObject.Properties["objective_alignment"] -and $integration.objective_alignment -and $integration.objective_alignment.PSObject.Properties["status"]) {
     $objectiveInSync = ([string]$integration.objective_alignment.status -eq "in_sync")
 }
+if (-not $objectiveInSync -and $integration -and $integration.PSObject.Properties["objective_alignment"] -and $integration.objective_alignment) {
+    $todAlignedObjective = Get-StringField -InputObject $integration.objective_alignment -FieldName "tod_current_objective"
+    $mimAlignedObjective = Get-StringField -InputObject $integration.objective_alignment -FieldName "mim_objective_active"
+    if (
+        -not [string]::IsNullOrWhiteSpace($todAlignedObjective) -and
+        [string]::Equals($todAlignedObjective, $mimAlignedObjective, [System.StringComparison]::OrdinalIgnoreCase)
+    ) {
+        $objectiveInSync = $true
+    }
+}
 
 $latestCompletedObjectiveId = ''
 if ($integration -and $integration.PSObject.Properties['mim_handshake'] -and $integration.mim_handshake) {
@@ -487,6 +517,30 @@ $remotePublishVerified = Get-BoolField -InputObject $bridgeEvidence -FieldName "
 if (-not $remotePublishVerified -and $integration -and $integration.PSObject.Properties["tod_status_publish"]) {
     $publish = $integration.tod_status_publish
     $remotePublishVerified = ([string](Get-StringField -InputObject $publish -FieldName "status") -eq "uploaded") -and ([string](Get-StringField -InputObject $publish -FieldName "mim_mirror_status") -eq "mirrored") -and ([string](Get-StringField -InputObject $publish -FieldName "remote_access_status") -eq "full_access_granted") -and ([string](Get-StringField -InputObject $publish -FieldName "consumer_status") -eq "executed")
+}
+$bridgeFailureSignals = @()
+if ($bridgeEvidence -and $bridgeEvidence.PSObject.Properties["failure_signals"] -and $null -ne $bridgeEvidence.failure_signals) {
+    $bridgeFailureSignals = @($bridgeEvidence.failure_signals | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+$localResultTerminal = @('completed', 'succeeded', 'failed', 'blocked', 'already_processed', 'stale_request_ignored') -contains $resultStatus
+$terminalMatchedResultHealthy = (
+    (-not [bool]$localBridgeHealthy) -and
+    [bool]$resultMatchesRequest -and
+    [bool]$localResultTerminal -and
+    [bool]$reviewGatePassed -and
+    [bool]$objectiveInSync -and
+    [bool]$remotePublishVerified -and
+    ($bridgeEvidence -and $bridgeEvidence.PSObject.Properties["status"] -and [string]::Equals([string]$bridgeEvidence.status, "pass", [System.StringComparison]::OrdinalIgnoreCase)) -and
+    (@($bridgeFailureSignals).Count -eq 0)
+)
+if ($terminalMatchedResultHealthy) {
+    $localBridgeHealthy = $true
+}
+if ($requestInFlightHealthy) {
+    $localBridgeHealthy = $true
+}
+if ($requestAwaitingAckHealthy) {
+    $localBridgeHealthy = $true
 }
 
 $failureModes = @()
@@ -515,6 +569,17 @@ if ($integration -and $integration.PSObject.Properties['mim_handshake'] -and $in
         }
     }
 }
+$localRequestObjectiveId = if ($localRequestFingerprint -and $localRequestFingerprint.PSObject.Properties['objective_id']) { [string]$localRequestFingerprint.objective_id } else { Get-StringField -InputObject $requestPacket -FieldName 'objective_id' }
+$localRequestTaskId = if ($localRequestFingerprint -and $localRequestFingerprint.PSObject.Properties['task_id']) { [string]$localRequestFingerprint.task_id } else { Get-StringField -InputObject $requestPacket -FieldName 'task_id' }
+if (
+    -not [string]::IsNullOrWhiteSpace($localRequestObjectiveId) -and
+    $localRequestObjectiveId -notmatch '^(?i)(objective-)?\d+$'
+) {
+    $expectedObjectiveId = $localRequestObjectiveId
+    if ([string]::IsNullOrWhiteSpace($expectedTaskId) -and -not [string]::IsNullOrWhiteSpace($localRequestTaskId)) {
+        $expectedTaskId = $localRequestTaskId
+    }
+}
 
 $remoteProbeAvailable = [bool]($remoteRequestFingerprint -and $remoteRequestFingerprint.PSObject.Properties['available'] -and [bool]$remoteRequestFingerprint.available)
 $remoteBoundaryAvailable = [bool]($remoteBoundaryDiagnostic -and $remoteBoundaryDiagnostic.PSObject.Properties['available'] -and [bool]$remoteBoundaryDiagnostic.available)
@@ -525,11 +590,16 @@ $remoteTaskId = if ($remoteProbeAvailable -and $remoteRequestFingerprint.PSObjec
 $remoteSequence = if ($remoteProbeAvailable -and $remoteRequestFingerprint.PSObject.Properties['sequence']) { [string]$remoteRequestFingerprint.sequence } else { '' }
 $canonicalRequestMismatch = $false
 if ($remoteProbeAvailable -and $localRequestFingerprint) {
+    $localSequence = Normalize-ComparableString -Value $localRequestFingerprint.sequence
+    $remoteSequenceComparable = Normalize-ComparableString -Value $remoteSequence
+    $sequenceMismatch = $false
+    if (-not [string]::IsNullOrWhiteSpace($localSequence) -or -not [string]::IsNullOrWhiteSpace($remoteSequenceComparable)) {
+        $sequenceMismatch = -not [string]::Equals($localSequence, $remoteSequenceComparable, [System.StringComparison]::OrdinalIgnoreCase)
+    }
     $canonicalRequestMismatch = @(
-        [string]$localRequestFingerprint.sha256 -ne [string]$remoteRequestFingerprint.sha256,
-        [string]$localRequestFingerprint.objective_id -ne $remoteObjectiveId,
-        [string]$localRequestFingerprint.task_id -ne $remoteTaskId,
-        [string]$localRequestFingerprint.sequence -ne $remoteSequence
+        -not [string]::Equals((Normalize-ComparableString -Value $localRequestFingerprint.objective_id), (Normalize-ComparableString -Value $remoteObjectiveId), [System.StringComparison]::OrdinalIgnoreCase),
+        -not [string]::Equals((Normalize-ComparableString -Value $localRequestFingerprint.task_id), (Normalize-ComparableString -Value $remoteTaskId), [System.StringComparison]::OrdinalIgnoreCase),
+        $sequenceMismatch
     ) -contains $true
 }
 
@@ -651,6 +721,9 @@ $smoke = [pscustomobject]@{
         authoritative_result_task_id = if ($localResultFingerprint) { [string]$localResultFingerprint.task_id } else { '' }
         stale_backfill_superseded = [bool]$staleBackfillSuperseded
         stale_terminal_ack_healthy = [bool]$staleTerminalAckHealthy
+        terminal_matched_result_healthy = [bool]$terminalMatchedResultHealthy
+        request_awaiting_ack_healthy = [bool]$requestAwaitingAckHealthy
+        request_in_flight_healthy = [bool]$requestInFlightHealthy
         recent_bridge_mutation = [bool]$recentBridgeMutation
         request_age_seconds = $requestAgeSeconds
         ack_age_seconds = $ackAgeSeconds

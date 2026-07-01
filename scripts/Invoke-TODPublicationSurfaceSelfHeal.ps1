@@ -63,6 +63,7 @@ $localRepairPacketAbs = Get-RepoPath -PathValue $LocalRepairPacketPath
     'Convert-ToObjectiveLabel',
     'Get-CanonicalObjectiveForSelfHeal',
     'Get-CanonicalTaskIdForSelfHeal',
+    'Get-WatchdogRestoreSuppression',
     'New-CanonicalRepublishTaskRequest',
     'Invoke-PublicationSurfaceSelfHeal'
 ) | ForEach-Object {

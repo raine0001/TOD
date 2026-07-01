@@ -60,14 +60,39 @@ function Get-LocalExecutionSafeRoots {
         'README.md',
         'docs/',
         'scripts/',
+        'tools/',
         'tests/',
         'runtime/shared/',
+        'runtime_remote_training/remote_scripts/',
+        'runtime_remote_training/tod_result_artifacts/',
+        'runtime_remote_training/tod_independent_resolution_attempts/',
+        'runtime_remote_training/TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json',
         'tmp_remote_mim/',
         'tmp_remote_mim/core/',
         'tmp_remote_mim/tests/',
         'tod/config/',
         'tod/out/tests/'
     )
+}
+
+function Resolve-LocalExecutionBackupRoot {
+    $candidateRoots = @(
+        (Join-Path $script:LocalEngineRepoRoot 'tod/out/local-engine-backups'),
+        (Join-Path $script:LocalEngineRepoRoot 'tod/out/context-sync/listener/local-engine-backups')
+    )
+    foreach ($candidateRoot in $candidateRoots) {
+        try {
+            New-Item -ItemType Directory -Path $candidateRoot -Force -ErrorAction Stop | Out-Null
+            $probePath = Join-Path $candidateRoot ([System.IO.Path]::GetRandomFileName())
+            [System.IO.File]::WriteAllText($probePath, 'probe', [System.Text.UTF8Encoding]::new($false))
+            Remove-Item -Path $probePath -Force -ErrorAction SilentlyContinue
+            return $candidateRoot
+        }
+        catch {
+            continue
+        }
+    }
+    throw 'LocalExecutionEngine could not find a writable backup root.'
 }
 
 function Convert-ToLocalExecutionRepoRelativePath {
@@ -77,6 +102,12 @@ function Convert-ToLocalExecutionRepoRelativePath {
     $normalized = $normalized.TrimStart('.')
     $normalized = $normalized.TrimStart('/')
     if ($normalized -notmatch '/' -and $normalized -match '^[A-Za-z0-9_.-]+\.(?:py|html|js|json|css)$') {
+        $mirrorCandidate = Join-Path $script:LocalEngineRepoRoot ('tmp_remote_mim/{0}' -f $normalized)
+        if (Test-Path -Path $mirrorCandidate -PathType Leaf) {
+            return ('tmp_remote_mim/{0}' -f $normalized)
+        }
+    }
+    if ($normalized -match '^(core|static|templates|tests)/[A-Za-z0-9_./-]+\.(?:py|html|js|json|css|md|txt)$') {
         $mirrorCandidate = Join-Path $script:LocalEngineRepoRoot ('tmp_remote_mim/{0}' -f $normalized)
         if (Test-Path -Path $mirrorCandidate -PathType Leaf) {
             return ('tmp_remote_mim/{0}' -f $normalized)
@@ -98,7 +129,7 @@ function Test-LocalExecutionSafePath {
 
     foreach ($root in Get-LocalExecutionSafeRoots) {
         $safeRoot = Convert-ToLocalExecutionRepoRelativePath -PathValue $root
-        if ($safeRoot -eq 'README.md' -and [string]::Equals($normalized, 'README.md', [System.StringComparison]::OrdinalIgnoreCase)) {
+        if (-not $safeRoot.EndsWith('/') -and [string]::Equals($normalized, $safeRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
             return $true
         }
         if ($safeRoot.EndsWith('/') -and $normalized.StartsWith($safeRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -107,6 +138,176 @@ function Test-LocalExecutionSafePath {
     }
 
     return $false
+}
+
+function Get-LocalExecutionBoundedSliceEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath,
+        [string[]]$Patterns = @(),
+        [int]$ContextLines = 4
+    )
+
+    $normalized = Convert-ToLocalExecutionRepoRelativePath -PathValue $RelativePath
+    if ([string]::IsNullOrWhiteSpace($normalized) -or -not (Test-LocalExecutionSafePath -RelativePath $normalized)) {
+        return $null
+    }
+
+    $targetPath = Join-Path $script:LocalEngineRepoRoot ($normalized -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -Path $targetPath -PathType Leaf)) {
+        return $null
+    }
+
+    $lines = @(Get-Content -Path $targetPath -ErrorAction Stop)
+    if (@($lines).Count -eq 0) {
+        return $null
+    }
+
+    $matchLine = -1
+    $matchPattern = ''
+    foreach ($pattern in @($Patterns)) {
+        if ([string]::IsNullOrWhiteSpace([string]$pattern)) {
+            continue
+        }
+        for ($index = 0; $index -lt $lines.Count; $index++) {
+            if (([string]$lines[$index]).Contains([string]$pattern)) {
+                $matchLine = $index
+                $matchPattern = [string]$pattern
+                break
+            }
+        }
+        if ($matchLine -ge 0) {
+            break
+        }
+    }
+
+    if ($matchLine -lt 0) {
+        $matchLine = 0
+        $matchPattern = 'file_start'
+    }
+
+    if ($ContextLines -lt 1) {
+        $ContextLines = 1
+    }
+
+    $start = [Math]::Max(0, $matchLine - $ContextLines)
+    $end = [Math]::Min($lines.Count - 1, $matchLine + $ContextLines)
+    $sliceLines = New-Object System.Collections.Generic.List[string]
+    for ($index = $start; $index -le $end; $index++) {
+        $sliceLines.Add(('{0}: {1}' -f ($index + 1), [string]$lines[$index])) | Out-Null
+    }
+
+    return [ordered]@{
+        target_file = $normalized
+        matched_pattern = $matchPattern
+        start_line = $start + 1
+        end_line = $end + 1
+        slice = @($sliceLines.ToArray())
+        instruction = 'Use this bounded slice as inspected evidence only. TOD must still choose exact old_text/new_text and validate before implementation credit.'
+    }
+}
+
+function Test-LocalExecutionTextContains {
+    param(
+        [AllowNull()][string]$Haystack,
+        [AllowNull()][string]$Needle
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Needle)) {
+        return $false
+    }
+    $normalizedHaystack = ([string]$Haystack) -replace "`r`n", "`n"
+    $normalizedNeedle = ([string]$Needle) -replace "`r`n", "`n"
+    return $normalizedHaystack.Contains($normalizedNeedle)
+}
+
+function Get-LocalExecutionPacketAnchorPatterns {
+    param(
+        [string]$TargetFile = '',
+        [string]$CandidateName = '',
+        [string]$ValidationPattern = '',
+        [string]$OldText = ''
+    )
+
+    $patterns = New-Object System.Collections.Generic.List[string]
+    foreach ($value in @($ValidationPattern, $CandidateName)) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$value) -and -not $patterns.Contains([string]$value)) {
+            $patterns.Add([string]$value) | Out-Null
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($OldText)) {
+        foreach ($line in @($OldText -split "`r?`n")) {
+            $trimmed = ([string]$line).Trim()
+            if ($trimmed.Length -ge 12 -and -not $patterns.Contains($trimmed)) {
+                $patterns.Add($trimmed) | Out-Null
+                break
+            }
+        }
+    }
+
+    $normalizedTarget = (Convert-ToLocalExecutionRepoRelativePath -PathValue $TargetFile)
+    if ([string]::Equals($normalizedTarget, 'tmp_remote_mim/core/routers/studio.py', [System.StringComparison]::OrdinalIgnoreCase)) {
+        foreach ($pattern in @(
+            '_studio_conversation_mode_guard_reply',
+            'what are you working on',
+            'response_mode',
+            'recommendation_mode',
+            '_compose_training_page_reply',
+            'training_summary'
+        )) {
+            if (-not $patterns.Contains($pattern)) {
+                $patterns.Add($pattern) | Out-Null
+            }
+        }
+    }
+    elseif ([string]::Equals($normalizedTarget, 'tmp_remote_mim/core/routers/public_chat.py', [System.StringComparison]::OrdinalIgnoreCase)) {
+        foreach ($pattern in @('france', 'Europe/Paris', 'prior', 'follow-up', 'what about')) {
+            if (-not $patterns.Contains($pattern)) {
+                $patterns.Add($pattern) | Out-Null
+            }
+        }
+    }
+    elseif ([string]::Equals($normalizedTarget, 'tmp_remote_mim/core/routers/operator.py', [System.StringComparison]::OrdinalIgnoreCase)) {
+        foreach ($pattern in @('operator_action_required', 'exception_reason', 'replan_required')) {
+            if (-not $patterns.Contains($pattern)) {
+                $patterns.Add($pattern) | Out-Null
+            }
+        }
+    }
+    elseif ([string]::Equals($normalizedTarget, 'tmp_remote_mim/core/routers/inquiry.py', [System.StringComparison]::OrdinalIgnoreCase)) {
+        foreach ($pattern in @('answer_inquiry_question_endpoint', 'applied_effect', 'selected_path_id', 'question')) {
+            if (-not $patterns.Contains($pattern)) {
+                $patterns.Add($pattern) | Out-Null
+            }
+        }
+    }
+    elseif ([string]::Equals($normalizedTarget, 'tmp_remote_mim/core/routers/results.py', [System.StringComparison]::OrdinalIgnoreCase)) {
+        foreach ($pattern in @('create_result', 'recompute_objective_state', 'continuation', 'execution_tracking')) {
+            if (-not $patterns.Contains($pattern)) {
+                $patterns.Add($pattern) | Out-Null
+            }
+        }
+    }
+    elseif ([string]::Equals($normalizedTarget, 'tmp_remote_mim/core/routers/improvement.py', [System.StringComparison]::OrdinalIgnoreCase)) {
+        foreach ($pattern in @('accept_improvement_proposal_endpoint', 'reject_improvement_proposal_endpoint', 'artifact_id', 'improvement_proposal_accepted')) {
+            if (-not $patterns.Contains($pattern)) {
+                $patterns.Add($pattern) | Out-Null
+            }
+        }
+    }
+
+    foreach ($pattern in @(
+        'Forbidden target paths for this packet',
+        'Required output: publish one tod_independent_resolution_attempts packet candidate artifact',
+        'blocked_no_viable_behavior_candidate',
+        'packet_candidate_ready'
+    )) {
+        if (-not $patterns.Contains($pattern)) {
+            $patterns.Add($pattern) | Out-Null
+        }
+    }
+
+    return @($patterns.ToArray())
 }
 
 function Get-LocalExecutionTargetFiles {
@@ -132,18 +333,42 @@ function Get-LocalExecutionTargetFiles {
             }
         }
     }
-    foreach ($candidate in @($Context.allowed_files)) {
-        $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$candidate)
-        if (-not [string]::IsNullOrWhiteSpace($value) -and -not $paths.Contains($value)) {
-            $paths.Add($value)
+    if ($Context.PSObject.Properties['allowed_files'] -and $null -ne $Context.allowed_files) {
+        foreach ($candidate in @($Context.allowed_files)) {
+            $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$candidate)
+            if (-not [string]::IsNullOrWhiteSpace($value) -and -not $paths.Contains($value)) {
+                $paths.Add($value)
+            }
         }
     }
     if ($paths.Count -gt 0) {
         return @($paths.ToArray())
     }
 
+    $promptText = Get-LocalExecutionPromptText -Context $Context
+    foreach ($targetDirectiveName in @('Target File', 'Inspect Target File')) {
+        $explicitTarget = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName $targetDirectiveName
+        if (-not [string]::IsNullOrWhiteSpace($explicitTarget)) {
+            $explicitTarget = ([regex]::Split([string]$explicitTarget, "\r?\n") | Select-Object -First 1).Trim()
+            $value = Convert-ToLocalExecutionRepoRelativePath -PathValue $explicitTarget
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                return @($value)
+            }
+        }
+    }
+
+    $suggestedTargetLine = [regex]::Match($promptText, '(?im)^\s*Suggested current target paths from training interventions\s*:\s*(?<targets>[^\r\n]+)\s*$')
+    if ($suggestedTargetLine.Success) {
+        foreach ($candidate in ([string]$suggestedTargetLine.Groups['targets'].Value -split ',')) {
+            $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$candidate)
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                return @($value)
+            }
+        }
+    }
+
     $combined = Get-LocalExecutionCombinedText -Context $Context
-    $matches = [regex]::Matches($combined, '(?im)(?<![A-Za-z0-9_./-])(README\.md|docs/[A-Za-z0-9_./-]+\.(?:md|txt)|scripts/[A-Za-z0-9_./-]+\.(?:ps1|psm1|py|json|md|txt)|tests/[A-Za-z0-9_./-]+\.(?:ps1|py|md|txt)|tmp_remote_mim/[A-Za-z0-9_./-]+\.(?:py|html|js|json|css|md|txt)|tod/config/[A-Za-z0-9_./-]+\.json|tod/out/tests/[A-Za-z0-9_./-]+\.txt)(?=$|[\s''""`,:;\.\!\?\)\]])')
+    $matches = [regex]::Matches($combined, '(?im)(?<![A-Za-z0-9_./-])(README\.md|docs/[A-Za-z0-9_./-]+\.(?:md|txt)|scripts/[A-Za-z0-9_./-]+\.(?:ps1|psm1|py|json|md|txt)|tools/[A-Za-z0-9_./-]+\.(?:py|json|md|txt)|tests/[A-Za-z0-9_./-]+\.(?:ps1|py|md|txt)|runtime_remote_training/(?:TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1\.latest\.json|tod_result_artifacts/[A-Za-z0-9_./-]+\.json|tod_independent_resolution_attempts/[A-Za-z0-9_./-]+\.json)|tmp_remote_mim/[A-Za-z0-9_./-]+\.(?:py|html|js|json|css|md|txt)|tod/config/[A-Za-z0-9_./-]+\.json|tod/out/tests/[A-Za-z0-9_./-]+\.txt)(?=$|[\s''""`,:;\.\!\?\)\]])')
     $paths = New-Object System.Collections.Generic.List[string]
     foreach ($match in $matches) {
         $value = Convert-ToLocalExecutionRepoRelativePath -PathValue ([string]$match.Groups[1].Value)
@@ -157,8 +382,27 @@ function Get-LocalExecutionTargetFiles {
 function Test-LocalExecutionGenericRisk {
     param([Parameter(Mandatory = $true)]$Context)
 
+    $promptTextForRisk = Get-LocalExecutionPromptText -Context $Context
     $normalized = (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant()
-    return ($normalized -match 'credential|secret|password|private key|certificate|firewall|production deploy|prod deploy|public exposure|open network|reboot host|shutdown host|human safety|operator approval')
+    $riskText = $normalized
+    foreach ($fieldName in @('Old Text', 'New Text')) {
+        $directiveValue = Get-LocalExecutionDirectiveValue -PromptText $promptTextForRisk -FieldName $fieldName
+        if (-not [string]::IsNullOrWhiteSpace($directiveValue)) {
+            $riskText = $riskText.Replace(([string]$directiveValue).ToLowerInvariant(), '')
+        }
+    }
+    $riskText = $riskText -replace '\bno\s+production\s+secrets?\b', ''
+    $riskText = $riskText -replace '\bno\s+secrets?\b', ''
+    $riskText = $riskText -replace '\bno\s+credentials?\b', ''
+    $riskText = $riskText -replace '\bwithout\s+(?:using\s+)?(?:secrets?|credentials?)\b', ''
+    $riskText = $riskText -replace '\bunless\s+(?:credentials?|secrets?|external\s+service)\s+(?:are\s+)?required\b', ''
+    $riskText = $riskText -replace '\bunless\s+an\s+external\s+credential/account\s+decision\s+is\s+genuinely\s+required\b', ''
+    $riskText = $riskText -replace '\bunless\s+an\s+external\s+account\s+decision\s+is\s+genuinely\s+required\b', ''
+    $riskText = $riskText -replace '\bunless\s+credentials?/external\s+service\s+(?:are\s+)?required\b', ''
+    $riskText = $riskText -replace '\bdave\s+needed:\s*no,\s*unless[^\r\n.]*credentials?[^\r\n.]*\.', ''
+    $riskText = $riskText -replace '\bno\s+production\s+deploy(?:ment)?s?\b', ''
+    $riskText = $riskText -replace '\bdo\s+not\s+(?:touch|modify|change|use)\s+(?:production|prod|secrets?|credentials?)\b', ''
+    return ($riskText -match 'credential|secret|password|private key|certificate|firewall|production deploy|prod deploy|public exposure|open network|reboot host|shutdown host|human safety|operator approval')
 }
 
 function Test-LocalExecutionLedgerCoverageTask {
@@ -532,7 +776,7 @@ function Test-LocalExecutionGenericBoundedTask {
     if (Test-LocalExecutionGenericRisk -Context $Context) { return $false }
 
     $taskCategory = Get-LocalExecutionTaskCategory -Context $Context
-    if (@('code_change', 'config_change', 'test_change', 'docs_change') -contains $taskCategory) {
+    if (@('code_change', 'config_change', 'test_change', 'docs_change', 'packet_formation') -contains $taskCategory) {
         return $true
     }
 
@@ -545,9 +789,51 @@ function Get-LocalExecutionDirectiveValue {
         [Parameter(Mandatory = $true)][string]$FieldName
     )
 
-    $match = [regex]::Match($PromptText, ('(?im)^\s*{0}\s*:\s*([^\r\n]+)\s*$' -f [regex]::Escape($FieldName)))
+    $knownDirectiveNames = @(
+        'Target File',
+        'Edit Mode',
+        'Occurrence',
+        'Minimum Occurrences',
+        'Old Text',
+        'Old Text Source File',
+        'New Text',
+        'New Text Source File',
+        'Validation Pattern',
+        'Validation Command',
+        'Closure Evidence',
+        'Anchor',
+        'Snippet',
+        'Section Title',
+        'Section Body',
+        'Json Field',
+        'Json Value',
+        'Recovery Mode',
+        'Required behavior',
+        'Original scope',
+        'Dependencies',
+        'Acceptance Criteria',
+        'Prevention Lesson',
+        'Dave Needed',
+        'Required Packet Fields',
+        'Packet Source',
+        'Inspect Target File'
+    )
+    $directiveBoundary = (@($knownDirectiveNames | ForEach-Object { [regex]::Escape([string]$_) }) -join '|')
+    $directivePattern = '(?ms)^\s*{0}\s*:[ \t]*(?<inline>[^\r\n]*)\r?\n(?<block>.*?)(?=^\s*(?:{1})\s*:|##\s+|\z)' -f [regex]::Escape($FieldName), $directiveBoundary
+    $match = [regex]::Match($PromptText, $directivePattern)
     if ($match.Success) {
-        return ([string]$match.Groups[1].Value).Trim()
+        $inlineValue = ([string]$match.Groups['inline'].Value).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($inlineValue)) {
+            return $inlineValue
+        }
+
+        return ([string]$match.Groups['block'].Value).Trim("`r", "`n")
+    }
+
+    $inlinePattern = '(?im)^\s*{0}\s*:[ \t]*(.+?)\s*$' -f [regex]::Escape($FieldName)
+    $inlineMatch = [regex]::Match($PromptText, $inlinePattern)
+    if ($inlineMatch.Success) {
+        return ([string]$inlineMatch.Groups[1].Value).Trim()
     }
 
     return ''
@@ -564,6 +850,81 @@ function New-LocalExecutionPatternValidationCommand {
     return "if (-not (Get-Content -Path '.\$safeTarget' | Select-String -SimpleMatch '$safePattern')) { throw 'Validation pattern not found: $safePattern' } else { 'Validation pattern found: $safePattern' }"
 }
 
+function Convert-LocalExecutionValidationCommandPaths {
+    param(
+        [Parameter(Mandatory = $true)][string]$Command,
+        [Parameter(Mandatory = $true)][string]$TargetFile
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Command) -or -not $TargetFile.StartsWith('tmp_remote_mim/', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $Command
+    }
+
+    $remoteRelative = $TargetFile.Substring('tmp_remote_mim/'.Length)
+    $remoteSlash = $remoteRelative -replace '\\', '/'
+    $remoteBackslash = $remoteSlash -replace '/', '\'
+    $localSlash = $TargetFile -replace '\\', '/'
+    $localBackslash = $localSlash -replace '/', '\'
+    if ($Command.Contains($localSlash) -or $Command.Contains($localBackslash) -or $Command.Contains(".\$localBackslash") -or $Command.Contains("./$localSlash")) {
+        return $Command
+    }
+    $replacements = @(
+        [pscustomobject]@{ Old = ".\$remoteBackslash"; New = ".\$localBackslash" },
+        [pscustomobject]@{ Old = "./$remoteSlash"; New = "./$localSlash" },
+        [pscustomobject]@{ Old = $remoteBackslash; New = $localBackslash },
+        [pscustomobject]@{ Old = $remoteSlash; New = $localSlash }
+    )
+    foreach ($entry in $replacements) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$entry.Old) -and $Command.Contains([string]$entry.Old)) {
+            return $Command.Replace([string]$entry.Old, [string]$entry.New)
+        }
+    }
+    if ($Command -match '(^|\s)python\s+-m\s+unittest\s+tests\.integration\.') {
+        return ($Command -replace '(^|\s)(python\s+-m\s+unittest\s+)tests\.integration\.', '$1$2tmp_remote_mim.tests.integration.')
+    }
+    return $Command
+}
+
+function New-LocalExecutionPacketCandidateValidationCommand {
+    param([Parameter(Mandatory = $true)][string]$TargetFile)
+
+    $safeTarget = $TargetFile -replace '/', '\'
+    $template = @'
+$p = '.\{{TARGET}}'
+$j = Get-Content -Path $p -Raw | ConvertFrom-Json
+if ($j.packet_candidate_ready -eq $true) {
+    $packet = $j.packet
+    $required = @('target_file', 'intended_edit_mode', 'old_text', 'new_text', 'validation_command', 'validation_pattern', 'closure_evidence', 'prevention_lesson', 'dave_needed')
+    $missing = @()
+    foreach ($name in $required) {
+        if ($null -eq $packet -or $null -eq $packet.PSObject.Properties[$name] -or [string]::IsNullOrWhiteSpace([string]$packet.$name)) {
+            $missing += $name
+        }
+    }
+    if ($missing.Count -gt 0) {
+        throw ('Packet candidate ready is missing required fields: ' + ($missing -join ', '))
+    }
+    if ([string]$packet.old_text -eq [string]$packet.new_text) {
+        throw 'Packet candidate ready has identical old_text and new_text.'
+    }
+    if ([string]$packet.dave_needed -ne 'no') {
+        throw 'Packet candidate ready must set dave_needed=no for autonomous dispatch.'
+    }
+    'Packet candidate ready with complete structured fields.'
+}
+elseif ($j.packet_candidate_ready -eq $false -and $null -ne $j.blocker -and -not [string]::IsNullOrWhiteSpace([string]$j.blocker.target_file) -and -not [string]::IsNullOrWhiteSpace([string]$j.blocker.reason) -and -not [string]::IsNullOrWhiteSpace([string]$j.blocker.required_next_action)) {
+    'Packet candidate blocked with inspected evidence: ' + [string]$j.blocker.reason + ' Next action: ' + [string]$j.blocker.required_next_action
+}
+elseif ($j.packet_candidate_ready -eq $false -and $null -ne $j.blocker) {
+    throw 'Blocked packet candidate is missing required blocker evidence: target_file, reason, required_next_action.'
+}
+else {
+    throw 'Packet candidate artifact is neither ready nor a precise blocker.'
+}
+'@
+    return $template.Replace('{{TARGET}}', $safeTarget)
+}
+
 function Convert-ToLocalExecutionEditMode {
     param([AllowEmptyString()][string]$Mode)
 
@@ -575,11 +936,61 @@ function Convert-ToLocalExecutionEditMode {
         'docs_append_section' { return 'append_section' }
         'insert_after' { return 'insert_after' }
         'insert_after_anchor' { return 'insert_after' }
+        'insert_before' { return 'insert_before' }
+        'insert_before_anchor' { return 'insert_before' }
         'append_marker' { return 'insert_after' }
         'add_small_function' { return 'insert_after' }
         'update_json_field' { return 'update_json_field' }
+        'artifact_write' { return 'artifact_write' }
+        'structured_artifact_write' { return 'artifact_write' }
+        'practice_artifact_write' { return 'artifact_write' }
         'validation_only' { return 'validation_only' }
         default { return '' }
+    }
+}
+
+function Get-LocalExecutionFileAnchor {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath,
+        [Parameter(Mandatory = $true)][string[]]$Patterns
+    )
+
+    $absolutePath = Join-Path $script:LocalEngineRepoRoot ($RelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -Path $absolutePath -PathType Leaf)) {
+        return [pscustomobject]@{
+            file = $RelativePath
+            found = $false
+            line = 0
+            text = ''
+            sha256 = ''
+        }
+    }
+
+    $lines = [System.IO.File]::ReadAllLines($absolutePath, [System.Text.UTF8Encoding]::new($false))
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        $line = [string]$lines[$index]
+        foreach ($pattern in @($Patterns)) {
+            if ($line.Contains([string]$pattern)) {
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($line.Trim())
+                $sha = [System.Security.Cryptography.SHA256]::Create()
+                $hash = [BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant()
+                return [pscustomobject]@{
+                    file = $RelativePath
+                    found = $true
+                    line = ($index + 1)
+                    text = $line.Trim()
+                    sha256 = $hash
+                }
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        file = $RelativePath
+        found = $false
+        line = 0
+        text = ''
+        sha256 = ''
     }
 }
 
@@ -773,21 +1184,42 @@ function Invoke-LocalExecutionGenericBoundedTask {
     }
 
     $absoluteTargetPath = Join-Path $script:LocalEngineRepoRoot ($targetFile -replace '/', [System.IO.Path]::DirectorySeparatorChar)
-    if (-not (Test-Path -Path $absoluteTargetPath)) {
+    $rawEditMode = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Edit Mode'
+    if (-not [string]::IsNullOrWhiteSpace($rawEditMode)) {
+        $rawEditMode = ([regex]::Split([string]$rawEditMode, "\r?\n") | Select-Object -First 1).Trim()
+    }
+    $mode = Convert-ToLocalExecutionEditMode -Mode $rawEditMode
+    $targetExistedBefore = Test-Path -Path $absoluteTargetPath
+    if (-not $targetExistedBefore -and [string]::Equals($mode, 'artifact_write', [System.StringComparison]::OrdinalIgnoreCase)) {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $absoluteTargetPath) -Force | Out-Null
+    }
+    elseif (-not $targetExistedBefore) {
         return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason ('LocalExecutionEngine requires an existing target file, but {0} was not found.' -f $targetFile) -MissingVariable 'existing_target_file')
     }
     if (Test-LocalExecutionGenericRisk -Context $Context) {
         return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_risk_blocked' -Reason 'LocalExecutionEngine rejected the bounded fallback because the task mentions a risky security, production, or safety surface.' -MissingVariable 'safe_scope')
     }
 
-    $originalContent = [string](Get-Content -Path $absoluteTargetPath -Raw)
+    $originalContent = if ($targetExistedBefore) { [System.IO.File]::ReadAllText($absoluteTargetPath, [System.Text.UTF8Encoding]::new($false)) } else { "{}" }
     $updatedContent = $originalContent
     $actionSummary = ''
     $validationCommand = ''
     $skipWriteBack = $false
-    $mode = Convert-ToLocalExecutionEditMode -Mode (Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Edit Mode')
+    $staleRecoveryAlreadySatisfied = $false
     if ([string]::IsNullOrWhiteSpace($mode) -and $targetFile.ToLowerInvariant().EndsWith('.md') -and (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant() -match '\bsection\b') {
         $mode = 'append_section'
+    }
+    $combinedTaskText = Get-LocalExecutionCombinedText -Context $Context
+    $validationOnlyForbidden = (
+        [string]::Equals($mode, 'validation_only', [System.StringComparison]::OrdinalIgnoreCase) -and
+        (
+            [string]$combinedTaskText -match '(?is)\bno\s+validation[-_ ]?only\b|\breject\s+validation[-_ ]?only\b|\bvalidation[-_ ]?only\s+completion\b' -or
+            [string]$combinedTaskText -match '(?is)\bRecovery\s+Mode\s*:\s*failed_material_patch\b' -or
+            [string]$combinedTaskText -match '(?is)\bchanged\s+target\s+file\b|\bfull\s+fix/validate/close\s+loop\b|\bbehavior-changing\s+patch\b'
+        )
+    )
+    if ($validationOnlyForbidden) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_validation_only_forbidden' -Reason 'LocalExecutionEngine rejected validation_only materialization because the task requires a behavior-changing recovery patch or an explicit blocker.' -MissingVariable 'behavior_changing_edit')
     }
 
     switch ($mode) {
@@ -849,9 +1281,12 @@ function Invoke-LocalExecutionGenericBoundedTask {
             }
             $updatedContent = Set-StrictTextReplacement -Content $originalContent -OldText $oldText -NewText $newText -Label ('bounded replacement in ' + $targetFile)
             $actionSummary = ('Replaced bounded text in {0}' -f $targetFile)
-            $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
-            if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $newText }
-            $validationCommand = New-LocalExecutionPatternValidationCommand -TargetFile $targetFile -Pattern $validationPattern
+            $validationCommand = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Command'
+            if ([string]::IsNullOrWhiteSpace($validationCommand)) {
+                $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
+                if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $newText }
+                $validationCommand = New-LocalExecutionPatternValidationCommand -TargetFile $targetFile -Pattern $validationPattern
+            }
         }
         'update_json_field' {
             $jsonField = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Json Field'
@@ -870,6 +1305,20 @@ function Invoke-LocalExecutionGenericBoundedTask {
             $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
             if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $jsonField }
             $validationCommand = New-LocalExecutionPatternValidationCommand -TargetFile $targetFile -Pattern $validationPattern
+        }
+        'artifact_write' {
+            $newText = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'New Text'
+            if ([string]::IsNullOrWhiteSpace($newText)) {
+                return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine requires a New Text directive for artifact_write mode.' -MissingVariable 'new_text')
+            }
+            $updatedContent = $newText
+            $actionSummary = ('Wrote artifact content to {0}' -f $targetFile)
+            $validationCommand = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Command'
+            if ([string]::IsNullOrWhiteSpace($validationCommand)) {
+                $validationPattern = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Pattern'
+                if ([string]::IsNullOrWhiteSpace($validationPattern)) { $validationPattern = $newText }
+                $validationCommand = New-LocalExecutionPatternValidationCommand -TargetFile $targetFile -Pattern $validationPattern
+            }
         }
         'validation_only' {
             $actionSummary = ('Validated bounded target in {0}' -f $targetFile)
@@ -891,40 +1340,71 @@ function Invoke-LocalExecutionGenericBoundedTask {
         }
     }
 
-    $backupRoot = Join-Path $script:LocalEngineRepoRoot 'tod/out/local-engine-backups'
-    New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+    $backupRoot = Resolve-LocalExecutionBackupRoot
     $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
     $fileLeaf = Split-Path -Path $absoluteTargetPath -Leaf
     $backupPath = Join-Path $backupRoot ('{0}.{1}.bak' -f $fileLeaf, $timestamp)
-    $prePatchHash = [string](Get-FileHash -Path $absoluteTargetPath -Algorithm SHA256).Hash
+    $prePatchHash = if ($targetExistedBefore) { [string](Get-FileHash -Path $absoluteTargetPath -Algorithm SHA256).Hash } else { '' }
     $changeApplied = ((-not $skipWriteBack) -and ($updatedContent -ne $originalContent))
     if (-not $skipWriteBack) {
-        Copy-Item -Path $absoluteTargetPath -Destination $backupPath -Force
+        $writeSizeCheck = Test-LocalExecutionWriteSizeSafe -OriginalContent $originalContent -UpdatedContent $updatedContent -EditMode $mode
+        if (-not [bool]$writeSizeCheck.safe) {
+            return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_write_size_guard' -Reason ('LocalExecutionEngine blocked writeback for {0} because the bounded edit expanded the file from {1} bytes to {2} bytes, exceeding the limit of {3} bytes.' -f $targetFile, [int64]$writeSizeCheck.original_bytes, [int64]$writeSizeCheck.updated_bytes, [int64]$writeSizeCheck.max_allowed_bytes) -MissingVariable 'bounded_write_size')
+        }
+        if ($targetExistedBefore) {
+            Copy-Item -Path $absoluteTargetPath -Destination $backupPath -Force
+        }
         Write-Utf8NoBomFile -Path $absoluteTargetPath -Content $updatedContent
     }
 
+    $validationCommand = Convert-LocalExecutionValidationCommandPaths -Command $validationCommand -TargetFile $targetFile
     $commandCapture = Invoke-LocalShellCapture -Command $validationCommand -WorkingDirectory $script:LocalEngineRepoRoot
     $validatedContent = [string](Get-Content -Path $absoluteTargetPath -Raw)
     $postPatchHash = [string](Get-FileHash -Path $absoluteTargetPath -Algorithm SHA256).Hash
-    $passed = ([int]$commandCapture.exit_code -eq 0)
+    $validationExitZero = ([int]$commandCapture.exit_code -eq 0)
+    $validationStderrEmpty = Test-LocalShellStderrClean -Stderr ([string]$commandCapture.stderr)
+    $validationStdout = [string]$commandCapture.stdout
+    $validationStderr = [string]$commandCapture.stderr
+    $validationCombinedOutput = "$validationStdout`n$validationStderr"
+    $pythonUnittestOk = (
+        ([string]$validationCommand -match '^\s*python\s+-m\s+unittest\b') -and
+        $validationExitZero -and
+        ($validationCombinedOutput -match '(?ms)Ran\s+\d+\s+tests?.*?\bOK\b')
+    )
+    $pythonUnittestFinalizerResidue = (
+        ([string]$validationCommand -match '^\s*python\s+-m\s+unittest\b') -and
+        ($validationCombinedOutput -match '(?ms)Ran\s+\d+\s+tests?.*?\bOK\b') -and
+        ($validationStderr -match 'Fatal Python error: none_dealloc|refcount error in a C extension|Python runtime state: finalizing')
+    )
+    $passed = (($validationExitZero -and $validationStderrEmpty) -or $pythonUnittestOk -or $pythonUnittestFinalizerResidue)
     $diffSummary = Get-LocalExecutionDiffSummary -RelativePath $targetFile -BeforeContent $originalContent -AfterContent $updatedContent -ActionSummary $actionSummary
     $rollbackState = [pscustomobject]@{
         available = (-not $skipWriteBack)
-        backup_path = $(if ($skipWriteBack) { '' } else { $backupPath })
+        backup_path = $(if ($skipWriteBack -or -not $targetExistedBefore) { '' } else { $backupPath })
         target_path = $absoluteTargetPath
         pre_patch_hash = $prePatchHash
         post_patch_hash = $postPatchHash
-        restore_command = $(if ($skipWriteBack) { '' } else { "Copy-Item -Path '$backupPath' -Destination '$absoluteTargetPath' -Force" })
+        restore_command = $(if ($skipWriteBack) { '' } elseif ($targetExistedBefore) { "Copy-Item -Path '$backupPath' -Destination '$absoluteTargetPath' -Force" } else { "Remove-Item -Path '$absoluteTargetPath' -Force" })
     }
+    $changeCheckName = if ($staleRecoveryAlreadySatisfied) { 'stale_recovery_already_satisfied_no_file_change_expected' } elseif ($skipWriteBack) { 'validation_only_no_file_change_expected' } else { 'change_or_requested_state_present' }
+    $changeCheckPassed = if ($skipWriteBack) { $passed } else { ($changeApplied -or ($validatedContent -eq $updatedContent)) }
     $validationChecks = @(
         [pscustomobject]@{ name = 'target_file_exists'; passed = (Test-Path -Path $absoluteTargetPath) },
-        [pscustomobject]@{ name = 'focused_validation_exit_zero'; passed = $passed },
-        [pscustomobject]@{ name = 'change_or_requested_state_present'; passed = ($changeApplied -or ($validatedContent -eq $updatedContent)) }
+        [pscustomobject]@{ name = 'focused_validation_exit_zero'; passed = $validationExitZero },
+        [pscustomobject]@{ name = 'focused_validation_stderr_empty'; passed = $validationStderrEmpty },
+        [pscustomobject]@{ name = 'python_unittest_ok'; passed = $pythonUnittestOk },
+        [pscustomobject]@{ name = 'python_unittest_ok_with_finalizer_residue'; passed = $pythonUnittestFinalizerResidue },
+        [pscustomobject]@{ name = $changeCheckName; passed = $changeCheckPassed }
     )
 
     if (-not $passed) {
         if (-not $skipWriteBack) {
-            Copy-Item -Path $backupPath -Destination $absoluteTargetPath -Force
+            if ($targetExistedBefore) {
+                Copy-Item -Path $backupPath -Destination $absoluteTargetPath -Force
+            }
+            elseif (Test-Path -Path $absoluteTargetPath) {
+                Remove-Item -Path $absoluteTargetPath -Force
+            }
         }
         $Result.summary = ('LocalExecutionEngine rolled back the bounded local fallback for {0} because focused validation failed.' -f $targetFile)
         $Result.files_changed = [string[]]@()
@@ -962,7 +1442,8 @@ function Invoke-LocalExecutionGenericBoundedTask {
     }
 
     $Result.summary = ('LocalExecutionEngine completed the bounded local fallback for {0} and published real execution evidence.' -f $targetFile)
-    $Result.files_changed = [string[]]$(if ($changeApplied) { @($targetFile) } else { @() })
+    $Result.files_changed = if ($changeApplied) { [string[]]@($targetFile) } else { [string[]]@() }
+    $nonEmptyChangedFiles = @($Result.files_changed | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
     $Result.tests_run = @($validationChecks | ForEach-Object { [string]$_.name })
     $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
     $Result.failures = @()
@@ -973,7 +1454,7 @@ function Invoke-LocalExecutionGenericBoundedTask {
             type = 'result_contract'
             understood_task = ('Apply a bounded local fallback patch to {0}.' -f $targetFile)
             action_taken = $actionSummary
-            changed_files = @($Result.files_changed)
+            changed_files = @($nonEmptyChangedFiles)
             evidence = @($diffSummary)
             validation_result = 'passed'
             remaining_blocker = ''
@@ -1051,14 +1532,48 @@ function Invoke-LocalShellCapture {
     $stderrPath = [System.IO.Path]::GetTempFileName()
     $started = Get-Date
     try {
-        $process = Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-Command", $Command) -WorkingDirectory $WorkingDirectory -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -Wait -PassThru -WindowStyle Hidden
+        $processFile = "powershell.exe"
+        $processArgs = @("-NoProfile")
+        $nestedCommandMatch = [regex]::Match($Command, '^\s*(?:powershell|pwsh)(?:\.exe)?\s+-NoProfile\s+-Command\s+(["''])(?<inner>.*)\1\s*$', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+        if ($nestedCommandMatch.Success) {
+            $innerCommand = [string]$nestedCommandMatch.Groups['inner'].Value
+            $processArgs += @("-EncodedCommand", [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($innerCommand)))
+        }
+        else {
+            $processArgs += @("-EncodedCommand", [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($Command)))
+        }
+        Push-Location -LiteralPath $WorkingDirectory
+        $previousErrorActionPreference = $ErrorActionPreference
+        $previousPythonPycachePrefix = $env:PYTHONPYCACHEPREFIX
+        try {
+            $ErrorActionPreference = 'Continue'
+            if ([string]::IsNullOrWhiteSpace($env:PYTHONPYCACHEPREFIX)) {
+                $pycacheRoot = Join-Path $WorkingDirectory 'tod/out/context-sync/listener/pycache'
+                New-Item -ItemType Directory -Force -Path $pycacheRoot -ErrorAction SilentlyContinue | Out-Null
+                if (Test-Path -Path $pycacheRoot -PathType Container) {
+                    $env:PYTHONPYCACHEPREFIX = $pycacheRoot
+                }
+            }
+            & $processFile @processArgs > $stdoutPath 2> $stderrPath
+            $exitCode = if ($null -ne $global:LASTEXITCODE) { [int]$global:LASTEXITCODE } else { 0 }
+        }
+        finally {
+            if ($null -eq $previousPythonPycachePrefix) {
+                Remove-Item Env:\PYTHONPYCACHEPREFIX -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:PYTHONPYCACHEPREFIX = $previousPythonPycachePrefix
+            }
+            $ErrorActionPreference = $previousErrorActionPreference
+            Pop-Location
+        }
         $completed = Get-Date
         [pscustomobject]@{
             command = $Command
             working_directory = $WorkingDirectory
             stdout = [string](Get-Content -Path $stdoutPath -Raw)
             stderr = [string](Get-Content -Path $stderrPath -Raw)
-            exit_code = [int]$process.ExitCode
+            exit_code = $exitCode
             duration_ms = [int][math]::Round(($completed - $started).TotalMilliseconds)
             started_at = $started.ToUniversalTime().ToString("o")
             completed_at = $completed.ToUniversalTime().ToString("o")
@@ -1067,6 +1582,25 @@ function Invoke-LocalShellCapture {
     finally {
         Remove-Item -Path $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Test-LocalShellStderrClean {
+    param([AllowEmptyString()][string]$Stderr)
+
+    if ([string]::IsNullOrWhiteSpace($Stderr)) {
+        return $true
+    }
+
+    $trimmed = ([string]$Stderr).Trim()
+    if ($trimmed.StartsWith('#< CLIXML', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return (
+            $trimmed -match '<Obj\s+S="progress"' -and
+            $trimmed -notmatch '<Obj\s+S="(?:Error|error)"' -and
+            $trimmed -notmatch 'CategoryInfo|FullyQualifiedErrorId|Exception|ParserError|CommandNotFoundException|NativeCommandFailed'
+        )
+    }
+
+    return $false
 }
 
 function Write-Utf8NoBomFile {
@@ -1079,12 +1613,48 @@ function Write-Utf8NoBomFile {
     [System.IO.File]::WriteAllText($Path, $Content, $utf8NoBom)
 }
 
+function Test-LocalExecutionWriteSizeSafe {
+    param(
+        [Parameter(Mandatory = $true)][string]$OriginalContent,
+        [Parameter(Mandatory = $true)][string]$UpdatedContent,
+        [Parameter(Mandatory = $true)][string]$EditMode
+    )
+
+    if ([string]::Equals($EditMode, 'artifact_write', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{
+            safe = $true
+            original_bytes = 0
+            updated_bytes = 0
+            max_allowed_bytes = 0
+            reason = ''
+        }
+    }
+
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    $originalBytes = [int64]$encoding.GetByteCount([string]$OriginalContent)
+    $updatedBytes = [int64]$encoding.GetByteCount([string]$UpdatedContent)
+    $maxAllowed = [Math]::Max(
+        [int64]($originalBytes + 1048576),
+        [int64]($originalBytes * 2 + 65536)
+    )
+
+    return [pscustomobject]@{
+        safe = ($updatedBytes -le $maxAllowed)
+        original_bytes = $originalBytes
+        updated_bytes = $updatedBytes
+        max_allowed_bytes = $maxAllowed
+        reason = if ($updatedBytes -le $maxAllowed) { '' } else { 'updated_content_exceeds_bounded_growth_limit' }
+    }
+}
+
 function Set-StrictTextReplacement {
     param(
         [Parameter(Mandatory = $true)][string]$Content,
         [Parameter(Mandatory = $true)][string]$OldText,
         [Parameter(Mandatory = $true)][string]$NewText,
-        [Parameter(Mandatory = $true)][string]$Label
+        [Parameter(Mandatory = $true)][string]$Label,
+        [string]$Occurrence = 'first',
+        [int]$MinimumOccurrences = 1
     )
 
     $normalizedOldText = $OldText -replace "`r`n", "`n"
@@ -1117,7 +1687,39 @@ function Set-StrictTextReplacement {
         throw "LocalExecutionEngine could not find the expected $Label snippet to replace."
     }
 
-    return $Content.Replace($matchedOldText, $replacementText)
+    $occurrenceMode = if ([string]::IsNullOrWhiteSpace($Occurrence)) { 'first' } else { ([string]$Occurrence).Trim().ToLowerInvariant() }
+    if (@('first', 'last') -notcontains $occurrenceMode) {
+        throw "LocalExecutionEngine unsupported occurrence '$Occurrence' for $Label. Use first or last."
+    }
+    if ($MinimumOccurrences -lt 1) {
+        throw "LocalExecutionEngine unsupported minimum occurrence count '$MinimumOccurrences' for $Label. Use 1 or greater."
+    }
+
+    $matchCount = 0
+    $scanIndex = 0
+    while ($scanIndex -lt $Content.Length) {
+        $nextIndex = $Content.IndexOf($matchedOldText, $scanIndex, [System.StringComparison]::Ordinal)
+        if ($nextIndex -lt 0) {
+            break
+        }
+        $matchCount++
+        $scanIndex = $nextIndex + $matchedOldText.Length
+    }
+    if ($matchCount -lt $MinimumOccurrences) {
+        throw "LocalExecutionEngine found $matchCount occurrence(s) of the expected $Label snippet, but $MinimumOccurrences were required."
+    }
+
+    $matchIndex = if ([string]::Equals($occurrenceMode, 'last', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $Content.LastIndexOf($matchedOldText, [System.StringComparison]::Ordinal)
+    }
+    else {
+        $Content.IndexOf($matchedOldText, [System.StringComparison]::Ordinal)
+    }
+    if ($matchIndex -lt 0) {
+        throw "LocalExecutionEngine could not find the expected $Label snippet to replace."
+    }
+
+    return ($Content.Substring(0, $matchIndex) + $replacementText + $Content.Substring($matchIndex + $matchedOldText.Length))
 }
 
 function Test-LocalExecutionPromptTokenExtractionTask {
@@ -1946,7 +2548,7 @@ function Invoke-LocalExecutionUserAppPrototypeArtifact {
     $absoluteTargetPath = Join-Path $script:LocalEngineRepoRoot ($targetFile -replace '/', [System.IO.Path]::DirectorySeparatorChar)
     $backupRoot = Join-Path $script:LocalEngineRepoRoot 'tod/out/local-engine-backups'
     New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
-    $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+    $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')
     $backupPath = ''
     $prePatchHash = ''
     if (Test-Path -Path $absoluteTargetPath -PathType Leaf) {

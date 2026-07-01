@@ -16,6 +16,7 @@ from core.config import PROJECT_ROOT, settings
 
 
 MIMTOD_AUTH_COOKIE_NAME = "mimtod_operator_session"
+MIM_STUDIO_TEST_AUTH_HEADER = "x-mim-studio-test-auth"
 
 
 @lru_cache(maxsize=1)
@@ -199,14 +200,52 @@ def request_has_valid_mimtod_auth(request: Request) -> bool:
     return expires_at >= int(time.time())
 
 
+def mim_studio_test_auth_enabled() -> bool:
+    raw = str(
+        getattr(settings, "mim_studio_test_auth_enabled", "")
+        or _dotenv_overrides().get("MIM_STUDIO_TEST_AUTH_ENABLED")
+        or ""
+    ).strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _configured_mim_studio_test_token() -> str:
+    return str(
+        getattr(settings, "mim_studio_test_token", "")
+        or _dotenv_overrides().get("MIM_STUDIO_TEST_TOKEN")
+        or ""
+    ).strip()
+
+
+def request_has_valid_mim_studio_test_auth(request: Request) -> bool:
+    if not mim_studio_test_auth_enabled():
+        return False
+    expected = _configured_mim_studio_test_token()
+    if not expected:
+        return False
+    header_token = str(request.headers.get(MIM_STUDIO_TEST_AUTH_HEADER) or "").strip()
+    authorization = str(request.headers.get("authorization") or "").strip()
+    bearer_token = ""
+    if authorization.lower().startswith("bearer "):
+        bearer_token = authorization.split(" ", 1)[1].strip()
+    return hmac.compare_digest(header_token, expected) or hmac.compare_digest(bearer_token, expected)
+
+
 def ensure_authenticated_mimtod_api_request(request: Request) -> None:
     if request_has_valid_mimtod_auth(request):
         return
     raise HTTPException(status_code=401, detail="mimtod_login_required")
 
 
-def maybe_require_mimtod_page_login(request: Request, *, next_path: str) -> RedirectResponse | None:
+def maybe_require_mimtod_page_login(
+    request: Request,
+    *,
+    next_path: str,
+    allow_test_auth: bool = False,
+) -> RedirectResponse | None:
     if request_has_valid_mimtod_auth(request):
+        return None
+    if allow_test_auth and request_has_valid_mim_studio_test_auth(request):
         return None
     return RedirectResponse(url=login_redirect_url(next_path), status_code=303)
 

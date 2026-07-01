@@ -809,17 +809,24 @@ $competency = [pscustomobject]@{
     runtime_interaction = [Math]::Min($runtimeScore, 5)
 }
 
+$trainingExecutionPolicy = [pscustomobject]@{
+    implementation_owner = "TOD"
+    codex_role = "coach_validator_safety_monitor"
+    rule = "TOD owns code changes, patch authoring, validation, and evidence publication during idle training."
+    codex_exception = "Codex-authored implementation is training_failure_observed unless emergency_repair or escalation_after_TOD_attempt applies."
+}
+
 $nextDrills = @(
     [pscustomobject]@{
         id = "drill-root-cause"
         title = "Root cause over patching"
-        objective = "Fix one failing behavior with minimal surface area and explicit root-cause notes."
+        objective = "TOD fixes one failing behavior with minimal surface area, explicit root-cause notes, validation, and evidence."
         evidence = @("tests/*.Tests.ps1", "show-failure-taxonomy", "recent journal entries")
     },
     [pscustomobject]@{
         id = "drill-multi-file"
         title = "Cross-module feature slice"
-        objective = "Ship one feature requiring coordinated runtime + UI + tests + docs updates."
+        objective = "TOD ships one feature requiring coordinated runtime + UI + tests + docs updates, with Codex limited to coaching or validation."
         evidence = @("get-state-bus", "get-engineering-signal", "Invoke-TODTests")
     },
     [pscustomobject]@{
@@ -837,7 +844,7 @@ $nextDrills = @(
     [pscustomobject]@{
         id = "drill-policy-enforcement"
         title = "Policy-gated implementation"
-        objective = "Validate proposed edits against allowed/blocked path boundaries before patching."
+        objective = "TOD validates proposed edits against allowed/blocked path boundaries before patching and rejects Codex-authored implementation credit."
         evidence = @("scripts/Test-TODProjectAccessPolicy.ps1", "tod/config/project-registry.json")
     },
     [pscustomobject]@{
@@ -879,6 +886,7 @@ $report = [pscustomobject]@{
         project_library = $projectLibrary
     }
     competency_snapshot = $competency
+    training_execution_policy = $trainingExecutionPolicy
     next_drills = @($nextDrills)
 }
 
@@ -899,6 +907,12 @@ $md += "- Governance and control: $($report.competency_snapshot.governance_and_c
 $md += "- Reliability awareness: $($report.competency_snapshot.reliability_awareness)/5"
 $md += "- Workflow structure: $($report.competency_snapshot.workflow_structure)/5"
 $md += "- Runtime interaction: $($report.competency_snapshot.runtime_interaction)/5"
+$md += ""
+$md += "## Training Execution Policy"
+$md += "- Implementation owner: $($report.training_execution_policy.implementation_owner)"
+$md += "- Codex role: $($report.training_execution_policy.codex_role)"
+$md += "- Rule: $($report.training_execution_policy.rule)"
+$md += "- Exception: $($report.training_execution_policy.codex_exception)"
 $md += ""
 $md += "## Existing Consumable Resources"
 $md += "- Total files: $($report.resources.total)"

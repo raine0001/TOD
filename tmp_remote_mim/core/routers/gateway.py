@@ -2088,6 +2088,8 @@ def _looks_like_development_integration_query(normalized_query: str) -> bool:
         "fastest path to implement",
         "what should we inspect first",
         "what should i inspect first",
+        "what should happen before",
+        "what should happen before we add",
         "how do we implement",
         "how should we implement",
         "integration request",
@@ -4595,10 +4597,14 @@ def _mim_interface_result(
 
     if prompt:
         operator_status = _load_mim_tod_json_artifact(Path.cwd() / "runtime" / "shared" / "MIM_OPERATOR_STATUS.latest.json")
+        append_operator_status_note = bool(
+            communication_contract.get("append_operator_status_note")
+        )
         if (
+            append_operator_status_note
+            and
             operator_status
             and not str(prompt).startswith("Current work:")
-            and communication_contract.get("response_mode") not in {"self_model_grounded", "roadmap_execution_grounded", "semantic_simulation_grounded"}
         ):
             phase = str(operator_status.get("current_phase") or "").strip().lower()
             objective = str(operator_status.get("current_objective_id") or "").strip()
@@ -6186,7 +6192,7 @@ def _looks_like_mim_tod_executable_handoff_request(
             or "accountability artifacts" in raw
             or "latest mim" in raw
             or "latest handoff" in raw
-            or "latest mim→tod" in raw
+            or "latest mim to tod" in raw
             or "latest mim->tod" in raw
         )
         and (
@@ -7040,7 +7046,7 @@ def _mim_tod_lane_visibility_continuation_response(
     return "\n".join(clean_reply_lines)
     return "\n".join(
         [
-            "Understood. I’ll continue with the lane-visibility UI slice.",
+            "Understood. I will continue with the lane-visibility UI slice.",
             "",
             "Objective:",
             "- MIM-TOD-LANE-VISIBILITY-UI-V1",
@@ -9945,9 +9951,14 @@ def _mim_tod_active_project_status_response(
             "mim/tod",
             "mim tod",
             "tod runtime",
+            "tod-runtime",
             "runtime ownership",
+            "runtime-ownership",
+            "tod-runtime-ownership-migration-mim-box-v1",
             "mim box",
+            "mim-box",
             "dave pc",
+            "dave-pc",
             "lane registry",
             "lane visibility",
             "execution lane",
@@ -9982,15 +9993,21 @@ def _mim_tod_active_project_status_response(
         }
     )
 
-    if _looks_like_mim_tod_activity_question(query) or status_followup_requested:
+    runtime_objective = str(runtime_ownership.get("objective_id") or "").strip()
+    next_objective_id = str(next_objective.get("objective_id") or "").strip()
+    if (
+        (_looks_like_mim_tod_activity_question(query) or status_followup_requested)
+        and not (
+            project_context_requested
+            and runtime_objective == "TOD-RUNTIME-OWNERSHIP-MIGRATION-MIM-BOX-V1"
+        )
+    ):
         return _mim_tod_combined_activity_response(
             shared_root=root,
             technical_detail=technical_detail,
             query=query,
         )
 
-    runtime_objective = str(runtime_ownership.get("objective_id") or "").strip()
-    next_objective_id = str(next_objective.get("objective_id") or "").strip()
     if not project_context_requested and not runtime_objective and not next_objective_id:
         return ""
 
@@ -11535,6 +11552,7 @@ def _create_tod_consistency_audit_task(
         "actor": "mim",
         "target": "TOD",
         "target_executor": "tod",
+        "tod_action": "execute-chat-task",
         "action_name": "execute-chat-task",
         "dispatch_kind": "tod_regular_audit_task",
         "request_status": "published",
@@ -11892,6 +11910,7 @@ def _create_reporting_visibility_task(
         "actor": "mim",
         "target": "TOD",
         "target_executor": "tod",
+        "tod_action": "execute-chat-task",
         "action_name": "execute-chat-task",
         "dispatch_kind": "reporting_visibility_behavior_proof",
         "request_status": "published",
@@ -12661,7 +12680,7 @@ def _mim_bounded_implementation_slice(raw_input: str, objective_id: str) -> dict
     target_component = "MIM implementation objective dispatch"
     one_bounded_change = "Add or adjust one deterministic dispatch rule for this objective."
     expected_evidence = [
-        "fresh changed_files for the target gateway/test files or blocked_with_inspection",
+        "fresh changed_files for the target gateway/test files or blocked_with_inspection naming target_file_exactly_one",
         "focused validation command output",
     ]
     validation_command = (
@@ -13153,6 +13172,32 @@ def _mim_bounded_implementation_slice(raw_input: str, objective_id: str) -> dict
             if target_component == "MIM validation plan selection"
             else
             {
+                "edit_mode": "replace_exact_text",
+                "target_file": "core/routers/gateway.py",
+                "old_text": (
+                    '        "fresh changed_files for the target gateway/test files or blocked_with_inspection",'
+                ),
+                "new_text": (
+                    '        "fresh changed_files for the target gateway/test files or blocked_with_inspection naming target_file_exactly_one",'
+                ),
+                "scope": "one exact expected-evidence line replacement in the MIM implementation dispatch builder",
+            }
+            if target_component == "MIM implementation objective dispatch"
+            else
+            {
+                "edit_mode": "replace_exact_text",
+                "target_file": "core/routers/gateway.py",
+                "old_text": (
+                    '        "fresh changed_files for the target gateway/test files or blocked_with_inspection",'
+                ),
+                "new_text": (
+                    '        "fresh changed_files for the target gateway/test files or blocked_with_inspection naming target_file_exactly_one",'
+                ),
+                "scope": "one exact expected-evidence line replacement in the bounded implementation slice generator",
+            }
+            if target_component == "MIM bounded implementation slice generator"
+            else
+            {
                 "edit_mode": "insert_before_anchor",
                 "patch_type": "insert_before_anchor",
                 "target_file": "scripts/mim_box_tod_packet_listener.py",
@@ -13607,6 +13652,8 @@ def _mim_materialize_tod_implementation_dispatch(
     target_files = _mim_implementation_dispatch_target_files(raw_input)
     bounded_slice = _mim_bounded_implementation_slice(raw_input, objective_id)
     target_files = list(bounded_slice.get("likely_target_files") or target_files)
+    inspection_files = list(target_files)
+    executable_target_files = list(target_files[:1])
     discovery_scope = "implementation objective dispatch gate"
     request_type = _mim_first_pass_request_type(raw_input)
     confirmation_policy = _mim_first_pass_confirmation_policy(raw_input, request_type)
@@ -13614,6 +13661,29 @@ def _mim_materialize_tod_implementation_dispatch(
         raw_input=raw_input,
         bounded_slice=bounded_slice,
         request_type=request_type,
+    )
+    patch_plan = bounded_slice.get("minimal_patch_plan")
+    if not isinstance(patch_plan, dict):
+        patch_plan = {}
+    edit_mode = str(patch_plan.get("edit_mode") or patch_plan.get("patch_type") or "").strip()
+    old_text_or_anchor = str(
+        patch_plan.get("old_text")
+        or patch_plan.get("anchor")
+        or patch_plan.get("guard")
+        or patch_plan.get("literal_name")
+        or ""
+    ).strip()
+    new_text_or_snippet = str(
+        patch_plan.get("new_text")
+        or patch_plan.get("block")
+        or patch_plan.get("new_value")
+        or ""
+    ).strip()
+    closure_evidence = (
+        "changed_files plus focused validation output, or blocked_with_inspection naming the missing exact anchor"
+    )
+    prevention_lesson = (
+        "Implementation handoffs must include exact bounded edit directives before TOD invokes LocalExecutionEngine for code_change work."
     )
     is_user_app_build_slice = str(bounded_slice.get("target_component") or "").startswith(
         "User App Build prototype:"
@@ -13656,7 +13726,7 @@ def _mim_materialize_tod_implementation_dispatch(
         (
             f"User app build prototype slice: {bounded_slice['bounded_change']} "
             f"Target component: {bounded_slice['target_component']}. "
-            f"Inspect or create artifact: {', '.join(target_files)}. "
+            f"Inspect or create artifact: {', '.join(executable_target_files)}. "
             f"Run validation/check: {bounded_slice['validation_command']}. "
             "Return changed_files with prototype evidence or blocked_with_inspection; do not edit "
             "TOD listener, gateway routing, auth, billing, production data, or deployment files."
@@ -13665,7 +13735,8 @@ def _mim_materialize_tod_implementation_dispatch(
         else (
             f"Bounded implementation slice: {bounded_slice['bounded_change']} "
             f"Target component: {bounded_slice['target_component']}. "
-            f"Inspect likely target files: {', '.join(target_files) or 'discover one safe target file'}. "
+            f"Inspect selected target file: {', '.join(executable_target_files) or 'discover one safe target file'}. "
+            f"Use related inspection context only after the selected target is bounded: {', '.join(inspection_files) or 'none'}. "
             f"Run validation/check: {bounded_slice['validation_command']}. "
             "Return changed_files with validation evidence or blocked_with_inspection; do not request "
             "Codex escalation without recorded local failure evidence."
@@ -13684,6 +13755,7 @@ def _mim_materialize_tod_implementation_dispatch(
         "actor": "mim",
         "target": "TOD",
         "target_executor": "tod",
+        "tod_action": "execute-chat-task",
         "action_name": "execute-chat-task",
         "dispatch_kind": dispatch_kind,
         "fresh_envelope_id": f"{task_id}:{now}",
@@ -13700,12 +13772,22 @@ def _mim_materialize_tod_implementation_dispatch(
         "completion_status": "pending",
         "task_class": task_class,
         "target_component": bounded_slice["target_component"],
-        "target_files": target_files,
-        "likely_target_files": target_files,
+        "target_file": executable_target_files[0] if executable_target_files else "",
+        "target_files": executable_target_files,
+        "likely_target_files": executable_target_files,
+        "inspection_files": inspection_files,
         "bounded_change": bounded_slice["bounded_change"],
         "expected_evidence": bounded_slice["expected_evidence"],
         "validation_command": bounded_slice["validation_command"],
         "rollback_isolation_note": bounded_slice["rollback_isolation_note"],
+        "edit_mode": edit_mode,
+        "old_text_or_anchor": old_text_or_anchor,
+        "new_text_or_snippet": new_text_or_snippet,
+        "exact_current_anchor_or_old_text": old_text_or_anchor,
+        "different_new_text": new_text_or_snippet,
+        "closure_evidence": closure_evidence,
+        "prevention_lesson": prevention_lesson,
+        "dave_needed": "no",
         "probable_root_cause": bounded_slice.get("probable_root_cause", ""),
         "supporting_evidence": bounded_slice.get("supporting_evidence", []),
         "least_risky_fix_path": bounded_slice.get("least_risky_fix_path", ""),
@@ -14723,6 +14805,7 @@ def _dispatch_mim_tod_executable_handoff_request(
         "actor": str(actor or "mim").strip() or "mim",
         "target": "TOD",
         "target_executor": "tod",
+        "tod_action": "execute-chat-task",
         "action_name": "execute-chat-task",
         "dispatch_kind": "mim_tod_executable_handoff",
         "request_status": "published",
@@ -14965,6 +15048,7 @@ def _dispatch_mim_tod_executable_handoff_request(
         "handoff_id": handoff_id,
         "task_id": task_id,
         "objective_id": objective_id,
+        "tod_action": "execute-chat-task",
         "action_name": "execute-chat-task",
         "dispatch_kind": "mim_tod_executable_handoff",
         "status": result_status,
@@ -15680,11 +15764,25 @@ def _looks_like_bounded_implementation_request(
         "what is the fastest path",
         "what should we inspect first",
         "what should i inspect first",
+        "what should happen before",
+        "what should happen before we add",
     )
     if any(simplified_query.startswith(prefix) for prefix in planning_prefixes):
         return False
 
     if _looks_like_development_integration_query(simplified_query):
+        return False
+
+    casual_hypothetical_prefixes = (
+        "if you could ",
+        "if you had to ",
+        "what would you ",
+        "what would your ",
+        "would you rather ",
+        "do you think ",
+        "what is your ",
+    )
+    if any(simplified_query.startswith(prefix) for prefix in casual_hypothetical_prefixes):
         return False
 
     if _looks_like_continuation_validation_request(simplified_query):
@@ -17085,6 +17183,11 @@ def _normalize_conversation_query(text: str) -> str:
     normalized = re.sub(r"\bwhens\b", "when is", normalized)
     normalized = re.sub(r"\bwhy s\b", "why is", normalized)
     normalized = re.sub(r"\bwhys\b", "why is", normalized)
+    normalized = re.sub(r"\bwat\b", "what", normalized)
+    normalized = re.sub(r"\bshuld\b", "should", normalized)
+    normalized = re.sub(r"\bbefor\b", "before", normalized)
+    normalized = re.sub(r"\banothr\b", "another", normalized)
+    normalized = re.sub(r"\bfeatre\b", "feature", normalized)
     normalized = re.sub(r"\btod s\b", "tods", normalized)
     normalized = re.sub(r"\b(u)\b", "you", normalized)
     normalized = re.sub(r"\bur\b", "your", normalized)
@@ -24447,7 +24550,7 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
         health_secondary_prompt = str(system_health_signal.get("secondary_prompt", "")).strip()
         if health_prompt:
             if clarification_prompt:
-                # Safety inquiry is already the primary blocker — use the shorter secondary note
+                # Safety inquiry is already the primary blocker; use the shorter secondary note
                 # so the operator isn't shown two redundant "confirmation required" clauses.
                 addendum = health_secondary_prompt or health_prompt
                 if addendum not in clarification_prompt:
@@ -30037,3 +30140,7 @@ async def get_voice_policy() -> dict:
             policy.get("allowed_output_priorities", ["low", "normal", "high"])
         ),
     }
+    expected_evidence = [
+        "fresh changed_files for the target gateway/test files or blocked_with_inspection",
+        "focused validation command output",
+    ]

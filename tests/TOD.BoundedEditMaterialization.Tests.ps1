@@ -112,6 +112,10 @@ Describe 'TOD bounded edit materialization' {
         Import-TodFunction -Name 'Get-BoundedEditDirectiveValue'
         Import-TodFunction -Name 'Convert-ToCanonicalBoundedEditMode'
         Import-TodFunction -Name 'Get-BoundedEditSectionTitle'
+        Import-TodFunction -Name 'Get-CanonicalBoundedTargetFileHints'
+        Import-TodFunction -Name 'Get-InferredBoundedValidationCommand'
+        Import-TodFunction -Name 'Get-InferredBoundedReplaceDirective'
+        Import-TodFunction -Name 'Get-BoundedEditSourceFileText'
         Import-TodFunction -Name 'New-BoundedEditMaterializationBlockedPayload'
         Import-TodFunction -Name 'Resolve-TaskBoundedEditMaterialization'
     }
@@ -140,6 +144,114 @@ Validation Pattern: NEW_SENTINEL
         [string]$materialization.prompt_directives['New Text'] | Should Be 'NEW_SENTINEL'
     }
 
+    It 'preserves multiline replace_text directives for Python block patches' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-MULTILINE-PY'
+            title = 'Recover Python scoreboard patch'
+            scope = @'
+Target File: scripts/generate_mim_tod_training_scoreboard.py
+Edit Mode: replace_text
+Old Text:
+    durability_current_passed = (
+        durability_v2.get("status") == "passed"
+        and isinstance(durability_summary.get("case_count"), int)
+        and int(durability_summary.get("case_count") or 0) > 0
+        and durability_summary.get("failed") == 0
+    )
+    mim_visible_evaluation = mim_eval
+New Text:
+    durability_current_passed = (
+        durability_v2.get("status") == "passed"
+        and isinstance(durability_summary.get("case_count"), int)
+        and int(durability_summary.get("case_count") or 0) > 0
+        and durability_summary.get("failed") == 0
+    )
+    current_evidence_supersedes_stale_reflection = (
+        reflection_says_not_improving
+        and durability_current_passed
+    )
+    mim_visible_evaluation = mim_eval
+Validation Pattern: current_evidence_supersedes_stale_reflection
+'@
+            task_category = 'code_change'
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]$materialization.edit_mode | Should Be 'replace_text'
+        [string]@($materialization.target_files)[0] | Should Be 'scripts/generate_mim_tod_training_scoreboard.py'
+        [string]$materialization.prompt_directives['Old Text'] | Should Match 'mim_visible_evaluation = mim_eval'
+        [string]$materialization.prompt_directives['Old Text'] | Should Match 'durability_summary.get\("failed"\) == 0'
+        [string]$materialization.prompt_directives['New Text'] | Should Match 'current_evidence_supersedes_stale_reflection'
+        [string]$materialization.prompt_directives['New Text'] | Should Match 'mim_visible_evaluation = mim_eval'
+    }
+
+    It 'blocks replace_text materialization when old and new text are identical' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-NOOP-REPLACE'
+            title = 'Reject no-op replacement'
+            scope = @'
+Target File: scripts/TOD.ps1
+Edit Mode: replace_text
+Old Text:
+            $validationPlan.Add('inspect current target files before dispatch') | Out-Null
+New Text:
+            $validationPlan.Add('inspect current target files before dispatch') | Out-Null
+Validation Pattern: inspect current target files before dispatch
+'@
+            task_category = 'code_change'
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'blocked'
+        [string]$materialization.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
+        (@($materialization.required_clarification) -contains 'new_text_differs_from_old_text') | Should Be $true
+        [string]$materialization.why_local_executor_cannot_proceed | Should Match 'identical replacement text is a no-op candidate'
+    }
+
+    It 'refreshes stale cached replace_text materialization when multiline directives are richer' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-REFRESH-STALE'
+            title = 'Refresh stale collapsed materialization'
+            scope = @'
+Target File: scripts/generate_mim_tod_training_scoreboard.py
+Edit Mode: replace_text
+Old Text:
+    durability_current_passed = (
+        durability_v2.get("status") == "passed"
+    )
+    mim_visible_evaluation = mim_eval
+New Text:
+    durability_current_passed = (
+        durability_v2.get("status") == "passed"
+    )
+    current_evidence_supersedes_stale_reflection = True
+    mim_visible_evaluation = mim_eval
+Validation Pattern: current_evidence_supersedes_stale_reflection
+'@
+            task_category = 'code_change'
+            materialization = [pscustomobject]@{
+                status = 'materialized'
+                edit_mode = 'replace_text'
+                target_files = @('scripts/generate_mim_tod_training_scoreboard.py')
+                prompt_directives = [pscustomobject]@{
+                    'Target File' = 'scripts/generate_mim_tod_training_scoreboard.py'
+                    'Edit Mode' = 'replace_text'
+                    'Old Text' = 'durability_current_passed = ('
+                    'New Text' = 'durability_current_passed = ('
+                }
+            }
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]$materialization.prompt_directives['Old Text'] | Should Match 'mim_visible_evaluation = mim_eval'
+        [string]$materialization.prompt_directives['New Text'] | Should Match 'current_evidence_supersedes_stale_reflection'
+    }
+
     It 'materializes docs append requests into append_section mode' {
         $task = [pscustomobject]@{
             id = 'TSK-MAT-DOCS'
@@ -158,6 +270,33 @@ Section Title: Materializer Evidence
         [string]$materialization.status | Should Be 'materialized'
         [string]$materialization.edit_mode | Should Be 'append_section'
         [string]$materialization.prompt_directives['Section Title'] | Should Be 'Materializer Evidence'
+    }
+
+    It 'materializes Studio training response-mode metadata repair from behavior request' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-STUDIO-RESPONSE-MODE'
+            title = 'Repair Studio training response mode metadata'
+            scope = @'
+Inspect the Studio training API path and repair the response_mode metadata so recommendation-style training prompts such as next work, status dump regression, Validated TOD Edits, and auth blocker questions are not labeled as generic training_summary.
+'@
+            task_category = 'code_change'
+            allowed_files = @('tmp_remote_mim/core/routers/studio.py')
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]@($materialization.target_files)[0] | Should Be 'tmp_remote_mim/core/routers/studio.py'
+        $studioSource = Get-Content -Path (Join-Path $repoRoot 'tmp_remote_mim/core/routers/studio.py') -Raw
+        if ($studioSource.Contains('"response_mode": "recommendation" if attention_prompt else "training_summary",')) {
+            [string]$materialization.edit_mode | Should Be 'replace_text'
+            [string]$materialization.prompt_directives['New Text'] | Should Match 'anything you want to work on next'
+            [string]$materialization.validation_plan.command | Should Be 'python -m py_compile tmp_remote_mim/core/routers/studio.py'
+        }
+        else {
+            [string]$materialization.edit_mode | Should Be 'validation_only'
+            [string]$materialization.prompt_directives['Validation Command'] | Should Be 'python -m py_compile .\tmp_remote_mim\core\routers\studio.py'
+        }
     }
 
     It 'keeps one explicit target authoritative when acceptance mentions an evidence artifact' {
@@ -182,6 +321,73 @@ Validation Pattern: TSK-MAT-DOCS-EVIDENCE
         @($materialization.target_file_candidates).Count | Should Be 1
     }
 
+    It 'uses Target File directive instead of validation command file paths as the bounded target' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-DIRECTIVE-TARGET'
+            title = 'Repair canonical publisher gate freshness'
+            scope = @'
+Target File: scripts/TOD.ps1
+Edit Mode: replace_exact_text
+Old Text: $generatedAt = ''
+New Text: $generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+Validation Pattern: Get-TodObjectValue -InputObject $Payload -Name 'updated_at'
+Validation Command: powershell -NoProfile -ExecutionPolicy Bypass -File tests\TOD.CanonicalLanePublisherGate.Tests.ps1; powershell -NoProfile -Command "$null = [scriptblock]::Create((Get-Content -Raw 'scripts\TOD.ps1')); Write-Output 'TOD syntax ok'"
+'@
+            task_category = 'code_change'
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]@($materialization.target_files)[0] | Should Be 'scripts/TOD.ps1'
+        @($materialization.target_file_candidates).Count | Should Be 1
+        [string]$materialization.prompt_directives['Validation Command'] | Should Match 'TOD.CanonicalLanePublisherGate.Tests.ps1'
+    }
+
+    It 'uses nested bounded_slice likely_target_files when top-level target fields are absent' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-BOUNDED-SLICE-TARGET'
+            title = 'Repair MIM handoff gateway'
+            scope = @'
+Edit Mode: validation_only
+Validation Command: python -m unittest tests.integration.test_mim_tod_handoff_gateway.MimTodHandoffGatewayTest.test_implementation_objective_route_writes_current_tod_request
+'@
+            task_category = 'validation'
+            bounded_slice = [pscustomobject]@{
+                likely_target_files = @('core/routers/gateway.py')
+            }
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]@($materialization.target_files)[0] | Should Be 'core/routers/gateway.py'
+        @($materialization.target_file_candidates).Count | Should Be 1
+    }
+
+    It 'uses metadata_json bounded_slice likely_target_files when task fields are wrapped' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-METADATA-BOUNDED-SLICE-TARGET'
+            title = 'Repair MIM handoff gateway'
+            scope = @'
+Edit Mode: validation_only
+Validation Command: python -m unittest tests.integration.test_mim_tod_handoff_gateway.MimTodHandoffGatewayTest.test_implementation_objective_route_writes_current_tod_request
+'@
+            task_category = 'validation'
+            metadata_json = [pscustomobject]@{
+                bounded_slice = [pscustomobject]@{
+                    likely_target_files = @('core/routers/gateway.py')
+                }
+            }
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]@($materialization.target_files)[0] | Should Be 'core/routers/gateway.py'
+        @($materialization.target_file_candidates).Count | Should Be 1
+    }
+
     It 'materializes validation-only tasks without a patch directive' {
         $task = [pscustomobject]@{
             id = 'TSK-MAT-VALIDATE'
@@ -199,6 +405,78 @@ Validation Pattern: function Invoke-ExecuteChatTaskRequest
         [string]$materialization.status | Should Be 'materialized'
         [string]$materialization.edit_mode | Should Be 'validation_only'
         [string]$materialization.prompt_directives['Validation Pattern'] | Should Match 'Invoke-ExecuteChatTaskRequest'
+    }
+
+    It 'blocks behavior-changing code_change requests instead of downgrading them to validation_only' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-CODECHANGE-NO-DIRECTIVE'
+            title = 'TOD independent split: gateway single-target materialization'
+            scope = @'
+Target File: tmp_remote_mim/core/routers/gateway.py
+Validation Command: cd tmp_remote_mim; python -m unittest tests.integration.test_mim_tod_handoff_gateway.MimTodHandoffGatewayTest.test_implementation_objective_route_writes_current_tod_request
+Validation Pattern: OK
+Inspect the current gateway implementation. If a bounded behavior-changing edit is supported by current code, TOD must materialize exact old_text/new_text itself, apply it, validate, and publish evidence.
+'@
+            task_category = 'code_change'
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'blocked'
+        [string]$materialization.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
+        [string]$materialization.why_local_executor_cannot_proceed | Should Match 'cannot downgrade'
+        @($materialization.required_clarification) -contains 'old_text_or_anchor' | Should Be $true
+        @($materialization.required_clarification) -contains 'new_text_or_snippet' | Should Be $true
+        [string]$materialization.recovery_contract.status | Should Be 'packet_required_before_local_execution'
+        [string]$materialization.recovery_contract.target_file | Should Be 'tmp_remote_mim/core/routers/gateway.py'
+        [string]$materialization.recovery_contract.validation_command | Should Match 'test_implementation_objective_route_writes_current_tod_request'
+        @($materialization.recovery_contract.required_packet_fields) -contains 'exact_current_anchor_or_old_text' | Should Be $true
+        @($materialization.recovery_contract.required_packet_fields) -contains 'different_new_text' | Should Be $true
+    }
+
+    It 'blocks MIM replan implementation packets with inferred validation checks instead of downgrading to validation_only' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-MIM-REPLAN-NO-DIRECTIVE'
+            title = 'Replan bounded slice: Add or adjust one deterministic dispatch rule for this objective.'
+            scope = 'Replan bounded slice: Add or adjust one deterministic dispatch rule for this objective.. Target component: MIM implementation objective dispatch. Validation/check: python -m unittest tests.integration.test_mim_tod_handoff_gateway.MimTodHandoffGatewayTest.test_implementation_objective_route_writes_current_tod_request. Inspect the target files or discovery scope first, then either apply the smallest safe patch with validation results or return blocked_with_reason with inspected_files.'
+            task_category = 'code_change'
+            target_file = 'core/routers/gateway.py'
+            bounded_edit_mode = $true
+            validation_only = $false
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'blocked'
+        [string]$materialization.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
+        [string]$materialization.why_local_executor_cannot_proceed | Should Match 'cannot downgrade'
+        @($materialization.required_clarification) -contains 'old_text_or_anchor' | Should Be $true
+        @($materialization.required_clarification) -contains 'new_text_or_snippet' | Should Be $true
+        [string]$materialization.recovery_contract.status | Should Be 'packet_required_before_local_execution'
+        [string]$materialization.recovery_contract.target_file | Should Be 'core/routers/gateway.py'
+        @($materialization.recovery_contract.required_packet_fields) -contains 'closure_evidence' | Should Be $true
+        [string]$materialization.recovery_contract.dave_needed | Should Be 'no'
+    }
+
+    It 'materializes corrected patch synthesis practice as artifact_write' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-PRACTICE-ARTIFACT'
+            title = 'TOD corrected patch synthesis practice'
+            scope = @'
+Target File: runtime_remote_training/TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json
+Practice-only task for TOD-CORRECTED-PATCH-SYNTHESIS-PRACTICE-V1.
+Produce a result artifact that fills these required_output fields: inspected_target_file, current_anchor_line_or_hash, proposed_edit_mode.
+Do not modify scripts/generate_mim_tod_training_scoreboard.py in this practice task.
+'@
+            task_category = 'code_change'
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]$materialization.edit_mode | Should Be 'artifact_write'
+        [string]@($materialization.target_files)[0] | Should Be 'runtime_remote_training/TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json'
+        [string]$materialization.prompt_directives['Edit Mode'] | Should Be 'artifact_write'
     }
 
     It 'blocks abstract code changes with blocked_missing_bounded_edit_mode' {
@@ -234,6 +512,28 @@ Validation Pattern: function Invoke-ExecuteChatTaskRequest
         (@($materialization.required_clarification) -contains 'target_file') | Should Be $true
         (@($materialization.missing_fields) -contains 'target_file') | Should Be $true
         [string]$materialization.why_local_executor_cannot_proceed | Should Match 'no target_file was provided'
+    }
+
+    It 'does not treat forbidden target examples as bounded target candidates' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-FORBIDDEN-TARGETS'
+            title = 'Select fresh target without reusing consumed anchors'
+            scope = @'
+Problem: choose a fresh target.
+Forbidden repeated targets:
+- scripts/run_mim_durability_smoke_v2.py
+- tmp_remote_mim/core/routers/gateway.py
+- scripts/TOD.ps1
+Required behavior: inspect current code and choose one different live-path target file.
+'@
+            task_category = 'code_change'
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'blocked'
+        [string]$materialization.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
+        @($materialization.target_file_candidates).Count | Should Be 0
     }
 
     It 'materializes exactly one explicit target_file for objective 2914 validation repair' {
@@ -345,6 +645,15 @@ Validation Pattern: function Invoke-ExecuteChatTaskRequest
             @($result.engine_invocation.attempted_engines).Count | Should Be 0
             [string]$result.engine_invocation.result.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
             [string]$result.engine_invocation.result.recovery_state | Should Be 'blocked_with_reason'
+            [bool]$result.post_completion_tail_skipped | Should Be $true
+            @($result.published_artifacts.artifact_paths | Where-Object { [System.IO.Path]::GetFileName([string]$_) -eq 'TOD_EXECUTION_RESULT.latest.json' }).Count | Should BeGreaterThan 0
+
+            $executionResultPath = Join-Path $repoRoot 'runtime/shared/TOD_EXECUTION_RESULT.latest.json'
+            (Test-Path -Path $executionResultPath) | Should Be $true
+            $executionResult = Get-Content -Raw $executionResultPath | ConvertFrom-Json
+            [string]$executionResult.task_id | Should Be 'TSK-MAT-RUN'
+            [string]$executionResult.status | Should Be 'blocked'
+            [string]$executionResult.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
         }
         finally {
             if (Test-Path -Path $fixture.Base) {

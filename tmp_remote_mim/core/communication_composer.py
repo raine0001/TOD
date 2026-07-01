@@ -461,6 +461,10 @@ def _contextual_answer_first_reply(
         )
         if focus:
             return _compact_text(f"I'm focused on {focus.rstrip('.')}.", limit)
+        return _compact_text(
+            "I'm focused on helping you get a clear answer or next useful action without turning the conversation into an internal status dump.",
+            limit,
+        )
 
     if "tod" in query and any(marker in query for marker in ("working on", "focused on", "doing")):
         tod_focus = first_context_value(

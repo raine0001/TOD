@@ -130,7 +130,9 @@ Describe 'TOD canonical lane publisher gate' {
         Import-TodFunction -Name 'Test-TodArtifactMatchesCanonicalLane'
         Import-TodFunction -Name 'Test-TodLatestArtifactPublishGate'
         Import-TodFunction -Name 'Write-TodBlockedLatestArtifactRecord'
+        Import-TodFunction -Name 'Write-TodSharedArtifactWriteFailureRecord'
         Import-TodFunction -Name 'Write-TodExecutionSharedJson'
+        Import-TodFunction -Name 'Write-TodIntakeArtifact'
         Import-TodFunction -Name 'Publish-TodNextTaskSelectionArtifacts'
         Import-TodFunction -Name 'Get-LocalExecutionValidationChecks'
         Import-TodFunction -Name 'Get-LocalExecutionCommandCapture'
@@ -170,6 +172,8 @@ Describe 'TOD canonical lane publisher gate' {
         }
         Remove-Item function:\Get-TodExecutionSharedRoots -ErrorAction SilentlyContinue
         Remove-Item function:\Get-UtcNow -ErrorAction SilentlyContinue
+        Remove-Item function:\Write-TodSharedArtifactWriteFailureRecord -ErrorAction SilentlyContinue
+        Import-TodFunction -Name 'Write-TodSharedArtifactWriteFailureRecord'
     }
 
     It 'blocks stale 0631 next-task publication when shared truth anchors to objective 2913' {
@@ -286,6 +290,79 @@ Describe 'TOD canonical lane publisher gate' {
         $written = Read-TestJson -Path $path
         [string]$written.task_id | Should Be 'TSK-FRESH-1'
         (Test-Path -Path (Join-Path $script:sharedRoot 'superseded/TOD_EXECUTION_RESULT.latest.json/latest.blocked.json')) | Should Be $false
+    }
+
+    It 'returns a structured write failure when the shared artifact path is unauthorized' {
+        $path = Join-Path $script:sharedRoot 'TOD_UNWRITABLE.latest.json'
+        New-Item -ItemType Directory -Path $path -Force | Out-Null
+        $script:FailureRecordTarget = ''
+
+        function global:Write-TodSharedArtifactWriteFailureRecord {
+            param(
+                [Parameter(Mandatory = $true)][string]$TargetPath,
+                [Parameter(Mandatory = $true)][string]$ReasonCode,
+                [AllowEmptyString()][string]$ErrorMessage = '',
+                [AllowNull()]$Payload = $null
+            )
+
+            $script:FailureRecordTarget = $TargetPath
+            return [pscustomobject]@{
+                record_path = 'stubbed-record'
+                latest_path = 'stubbed-latest'
+            }
+        }
+
+        $payload = [ordered]@{
+            generated_at = '2026-05-05T03:12:00.0000000Z'
+            source = 'tod.local.run-task'
+            request_id = 'unauthorized-write'
+            task_id = 'unauthorized-write'
+            objective_id = 'TOD-SAFE-LOCAL-PATCH-APPLICATION-V1'
+            publish_override_marker = 'operator-approved-canonical-shift'
+        }
+
+        $writeResult = Write-TodExecutionSharedJson -Path $path -Payload $payload
+
+        [bool]$writeResult.written | Should Be $false
+        [bool]$writeResult.blocked | Should Be $true
+        [bool]$writeResult.write_failed | Should Be $true
+        [string]$writeResult.reason_code | Should Be 'shared_artifact_write_unauthorized'
+        [string]$writeResult.blocked_record_path | Should Be 'stubbed-record'
+        [string]$script:FailureRecordTarget | Should Be $path
+    }
+
+    It 'does not report an intake artifact path when the shared write is unauthorized' {
+        $fileName = 'TOD_UNWRITABLE_INTAKE.latest.json'
+        $path = Join-Path $script:sharedRoot $fileName
+        New-Item -ItemType Directory -Path $path -Force | Out-Null
+        $script:FailureRecordTarget = ''
+
+        function global:Write-TodSharedArtifactWriteFailureRecord {
+            param(
+                [Parameter(Mandatory = $true)][string]$TargetPath,
+                [Parameter(Mandatory = $true)][string]$ReasonCode,
+                [AllowEmptyString()][string]$ErrorMessage = '',
+                [AllowNull()]$Payload = $null
+            )
+
+            $script:FailureRecordTarget = $TargetPath
+            return [pscustomobject]@{
+                record_path = 'stubbed-record'
+                latest_path = 'stubbed-latest'
+            }
+        }
+
+        $payload = [ordered]@{
+            generated_at = '2026-05-05T03:13:00.0000000Z'
+            packet_type = 'tod-active-execution-lane-v1'
+            task_id = 'TSK-UNWRITABLE'
+            status = 'superseded'
+        }
+
+        $writtenPaths = @(Write-TodIntakeArtifact -FileName $fileName -Payload $payload)
+
+        @($writtenPaths).Count | Should Be 0
+        [string]$script:FailureRecordTarget | Should Be $path
     }
 
     It 'archives stale local execution publication and leaves shared truth unchanged' {

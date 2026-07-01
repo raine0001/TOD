@@ -52,6 +52,19 @@ class SurfaceConfig:
     page_context: dict[str, Any] | None = None
 
 
+def normalize_agentmim_base_url(base_url: str) -> str:
+    normalized = str(base_url or "https://www.agentmim.com").strip().rstrip("/")
+    parsed = urllib.parse.urlparse(normalized)
+    if not parsed.scheme:
+        parsed = urllib.parse.urlparse("https://" + normalized)
+    if (parsed.hostname or "").lower() != "agentmim.com":
+        return urllib.parse.urlunparse(parsed._replace(path="", params="", query="", fragment="")).rstrip("/")
+    netloc = "www.agentmim.com"
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    return urllib.parse.urlunparse(parsed._replace(netloc=netloc, path="", params="", query="", fragment="")).rstrip("/")
+
+
 class SurfaceClient:
     def __init__(
         self,
@@ -61,12 +74,19 @@ class SurfaceClient:
         agentmim_username: str | None = None,
         agentmim_password: str | None = None,
         agentmim_cookie: str | None = None,
+        agentmim_test_auth_token: str | None = None,
     ) -> None:
         self.config = config
         self.timeout = timeout
         self.agentmim_username = agentmim_username
         self.agentmim_password = agentmim_password
         self.agentmim_cookie = agentmim_cookie
+        self.agentmim_test_auth_token = agentmim_test_auth_token
+        self.agentmim_base_url = (
+            normalize_agentmim_base_url(config.base_url)
+            if config.kind == "agentmim"
+            else config.base_url.rstrip("/")
+        )
         self.cookie_jar = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cookie_jar))
         self.csrf_token = ""
@@ -82,7 +102,7 @@ class SurfaceClient:
         return self.opener.open(request, timeout=self.timeout)
 
     def _agentmim_url(self, path: str) -> str:
-        return self.config.base_url.rstrip("/") + path
+        return self.agentmim_base_url + path
 
     def _extract_csrf(self, html: str) -> str:
         patterns = [
@@ -123,6 +143,34 @@ class SurfaceClient:
             return
         if self.agentmim_cookie:
             return
+        if self.agentmim_test_auth_token:
+            auth_request = urllib.request.Request(
+                self._agentmim_url("/agent/test_auth/session"),
+                data=b"{}",
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Authorization": f"Bearer {self.agentmim_test_auth_token}",
+                    "Referer": login_url,
+                    "Origin": self.agentmim_base_url,
+                    "User-Agent": "MIM universal smoke/1.0",
+                },
+                method="POST",
+            )
+            try:
+                with self._open(auth_request) as response:
+                    payload = json.loads(response.read().decode("utf-8", errors="replace"))
+            except urllib.error.HTTPError as exc:
+                self.available = False
+                self.unavailable_reason = f"test_auth_error:HTTPError_{exc.code}"
+                return
+            except Exception as exc:  # noqa: BLE001
+                self.available = False
+                self.unavailable_reason = f"test_auth_error:{type(exc).__name__}"
+                return
+            if str(payload.get("message") or "") != "test_auth_session_created":
+                self.available = False
+                self.unavailable_reason = "test_auth_not_created"
+            return
         if not self.agentmim_username or not self.agentmim_password:
             self.available = False
             self.unavailable_reason = "auth_required"
@@ -142,7 +190,7 @@ class SurfaceClient:
             headers={
                 "Content-Type": "application/x-www-form-urlencoded",
                 "Referer": login_url,
-                "Origin": self.config.base_url.rstrip("/"),
+                "Origin": self.agentmim_base_url,
                 "User-Agent": "MIM universal smoke/1.0",
             },
             method="POST",
@@ -176,7 +224,13 @@ class SurfaceClient:
         request = urllib.request.Request(
             self.config.base_url.rstrip("/") + "/public/chat/message",
             data=payload,
-            headers={"Content-Type": "application/json; charset=utf-8"},
+            headers={
+                "Content-Type": "application/json; charset=utf-8",
+                "User-Agent": "MIM universal smoke/1.0",
+                "Accept": "application/json, text/plain, */*",
+                "Origin": self.config.base_url.rstrip("/"),
+                "Referer": self.config.base_url.rstrip("/") + "/",
+            },
             method="POST",
         )
         with self._open(request) as response:
@@ -198,7 +252,7 @@ class SurfaceClient:
                 "Content-Type": "application/json; charset=utf-8",
                 "X-CSRFToken": self.csrf_token,
                 "Referer": self._agentmim_url("/login"),
-                "Origin": self.config.base_url.rstrip("/"),
+                "Origin": self.agentmim_base_url,
                 "User-Agent": "MIM universal smoke/1.0",
             },
             method="POST",
@@ -335,6 +389,7 @@ def run_surface(
     agentmim_username: str | None,
     agentmim_password: str | None,
     agentmim_cookie: str | None,
+    agentmim_test_auth_token: str | None,
 ) -> dict[str, Any]:
     client = SurfaceClient(
         config,
@@ -342,6 +397,7 @@ def run_surface(
         agentmim_username=agentmim_username,
         agentmim_password=agentmim_password,
         agentmim_cookie=agentmim_cookie,
+        agentmim_test_auth_token=agentmim_test_auth_token,
     )
     client.bootstrap()
     if not client.available:
@@ -482,6 +538,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
                 agentmim_username=args.agentmim_username or os.getenv("AGENTMIM_USERNAME"),
                 agentmim_password=args.agentmim_password or os.getenv("AGENTMIM_PASSWORD"),
                 agentmim_cookie=args.agentmim_cookie or os.getenv("AGENTMIM_COOKIE"),
+                agentmim_test_auth_token=args.agentmim_test_auth_token or os.getenv("AGENTMIM_TEST_AUTH_TOKEN"),
             )
         )
     report = {
@@ -510,6 +567,7 @@ def main() -> None:
     parser.add_argument("--agentmim-username", default=None)
     parser.add_argument("--agentmim-password", default=None)
     parser.add_argument("--agentmim-cookie", default=None)
+    parser.add_argument("--agentmim-test-auth-token", default=None)
     parser.add_argument("--surface", dest="surfaces", action="append", choices=sorted(SURFACE_WEIGHTS))
     parser.add_argument("--count", type=int, default=50)
     parser.add_argument("--seed", type=int, default=20260612)

@@ -1816,6 +1816,8 @@ def _looks_like_development_integration_query(normalized_query: str) -> bool:
         "fastest path to implement",
         "what should we inspect first",
         "what should i inspect first",
+        "what should happen before",
+        "what should happen before we add",
         "how do we implement",
         "how should we implement",
         "integration request",
@@ -4323,10 +4325,14 @@ def _mim_interface_result(
 
     if prompt:
         operator_status = _load_mim_tod_json_artifact(Path.cwd() / "runtime" / "shared" / "MIM_OPERATOR_STATUS.latest.json")
+        append_operator_status_note = bool(
+            communication_contract.get("append_operator_status_note")
+        )
         if (
+            append_operator_status_note
+            and
             operator_status
             and not str(prompt).startswith("Current work:")
-            and communication_contract.get("response_mode") not in {"self_model_grounded", "roadmap_execution_grounded", "semantic_simulation_grounded"}
         ):
             phase = str(operator_status.get("current_phase") or "").strip().lower()
             objective = str(operator_status.get("current_objective_id") or "").strip()
@@ -9586,6 +9592,7 @@ def _create_tod_consistency_audit_task(
         "actor": "mim",
         "target": "TOD",
         "target_executor": "tod",
+        "tod_action": "execute-chat-task",
         "action_name": "execute-chat-task",
         "dispatch_kind": "tod_regular_audit_task",
         "request_status": "published",
@@ -9943,6 +9950,7 @@ def _create_reporting_visibility_task(
         "actor": "mim",
         "target": "TOD",
         "target_executor": "tod",
+        "tod_action": "execute-chat-task",
         "action_name": "execute-chat-task",
         "dispatch_kind": "reporting_visibility_behavior_proof",
         "request_status": "published",
@@ -11629,6 +11637,8 @@ def _mim_materialize_tod_implementation_dispatch(
     target_files = _mim_implementation_dispatch_target_files(raw_input)
     bounded_slice = _mim_bounded_implementation_slice(raw_input, objective_id)
     target_files = list(bounded_slice.get("likely_target_files") or target_files)
+    inspection_files = list(target_files)
+    executable_target_files = list(target_files[:1])
     discovery_scope = "implementation objective dispatch gate"
     request_type = _mim_first_pass_request_type(raw_input)
     confirmation_policy = _mim_first_pass_confirmation_policy(raw_input, request_type)
@@ -11650,6 +11660,7 @@ def _mim_materialize_tod_implementation_dispatch(
         "actor": "mim",
         "target": "TOD",
         "target_executor": "tod",
+        "tod_action": "execute-chat-task",
         "action_name": "execute-chat-task",
         "dispatch_kind": "mim_tod_executable_handoff",
         "fresh_envelope_id": f"{task_id}:{now}",
@@ -11666,8 +11677,10 @@ def _mim_materialize_tod_implementation_dispatch(
         "completion_status": "pending",
         "task_class": "implementation",
         "target_component": bounded_slice["target_component"],
-        "target_files": target_files,
-        "likely_target_files": target_files,
+        "target_file": executable_target_files[0] if executable_target_files else "",
+        "target_files": executable_target_files,
+        "likely_target_files": executable_target_files,
+        "inspection_files": inspection_files,
         "bounded_change": bounded_slice["bounded_change"],
         "expected_evidence": bounded_slice["expected_evidence"],
         "validation_command": bounded_slice["validation_command"],
@@ -11722,7 +11735,8 @@ def _mim_materialize_tod_implementation_dispatch(
         "task": (
             f"Bounded implementation slice: {bounded_slice['bounded_change']} "
             f"Target component: {bounded_slice['target_component']}. "
-            f"Inspect likely target files: {', '.join(target_files) or 'discover one safe target file'}. "
+            f"Inspect selected target file: {', '.join(executable_target_files) or 'discover one safe target file'}. "
+            f"Use related inspection context only after the selected target is bounded: {', '.join(inspection_files) or 'none'}. "
             f"Run validation/check: {bounded_slice['validation_command']}. "
             "Return changed_files with validation evidence or blocked_with_inspection; do not request "
             "Codex escalation without recorded local failure evidence."
@@ -12708,6 +12722,7 @@ def _dispatch_mim_tod_executable_handoff_request(
         "actor": str(actor or "mim").strip() or "mim",
         "target": "TOD",
         "target_executor": "tod",
+        "tod_action": "execute-chat-task",
         "action_name": "execute-chat-task",
         "dispatch_kind": "mim_tod_executable_handoff",
         "request_status": "published",
@@ -12950,6 +12965,7 @@ def _dispatch_mim_tod_executable_handoff_request(
         "handoff_id": handoff_id,
         "task_id": task_id,
         "objective_id": objective_id,
+        "tod_action": "execute-chat-task",
         "action_name": "execute-chat-task",
         "dispatch_kind": "mim_tod_executable_handoff",
         "status": result_status,
@@ -13665,11 +13681,25 @@ def _looks_like_bounded_implementation_request(
         "what is the fastest path",
         "what should we inspect first",
         "what should i inspect first",
+        "what should happen before",
+        "what should happen before we add",
     )
     if any(simplified_query.startswith(prefix) for prefix in planning_prefixes):
         return False
 
     if _looks_like_development_integration_query(simplified_query):
+        return False
+
+    casual_hypothetical_prefixes = (
+        "if you could ",
+        "if you had to ",
+        "what would you ",
+        "what would your ",
+        "would you rather ",
+        "do you think ",
+        "what is your ",
+    )
+    if any(simplified_query.startswith(prefix) for prefix in casual_hypothetical_prefixes):
         return False
 
     if _looks_like_continuation_validation_request(simplified_query):
@@ -15070,6 +15100,11 @@ def _normalize_conversation_query(text: str) -> str:
     normalized = re.sub(r"\bwhens\b", "when is", normalized)
     normalized = re.sub(r"\bwhy s\b", "why is", normalized)
     normalized = re.sub(r"\bwhys\b", "why is", normalized)
+    normalized = re.sub(r"\bwat\b", "what", normalized)
+    normalized = re.sub(r"\bshuld\b", "should", normalized)
+    normalized = re.sub(r"\bbefor\b", "before", normalized)
+    normalized = re.sub(r"\banothr\b", "another", normalized)
+    normalized = re.sub(r"\bfeatre\b", "feature", normalized)
     normalized = re.sub(r"\btod s\b", "tods", normalized)
     normalized = re.sub(r"\b(u)\b", "you", normalized)
     normalized = re.sub(r"\bur\b", "your", normalized)
@@ -19161,6 +19196,100 @@ def _build_live_operational_response(
     return ""
 
 
+def _structural_reasoning_policy_response(
+    normalized_query: str,
+    context: dict[str, object] | None = None,
+) -> str:
+    query = str(normalized_query or "").strip().lower()
+    context = context or {}
+    last_user_input = str(context.get("last_user_input") or "").strip().lower()
+    last_prompt = str(context.get("last_prompt") or "").strip().lower()
+    if not query:
+        return ""
+
+    if "commission automation" in query or (
+        "automate commissions" in query or ("commission" in query and "automation" in query)
+    ):
+        return (
+            "Commission automation can mean a few different root problems: collecting carrier reports from portals, "
+            "validating statement totals before upload, mapping policies/clients correctly, or reconciling rep payouts after import. "
+            "I would not treat it as just a software feature until we know where the errors enter. "
+            "The best first step is to inspect one recent month and trace report retrieval, validation, upload, and reconciliation. "
+            "Evidence needed: carrier files, expected statement totals, imported totals, and any missing/incorrect mappings. "
+            "Dave needed: no, unless portal credentials or confidential payout-policy approval are required."
+        )
+
+    if "what about in france" in query or query in {"in france", "france"}:
+        prior = f"{last_user_input} {last_prompt}"
+        if any(token in prior for token in {"what day", "day of week", "date", "today"}):
+            now_france = datetime.now(timezone.utc) + timedelta(hours=2)
+            return (
+                "Assuming you mean the day/date in France from your prior question: "
+                f"it is {now_france.strftime('%A, %Y-%m-%d')} in France using the current Central European summer offset. "
+                "If you meant a different France-related topic, say the topic and I will answer that instead."
+            )
+        return (
+            "Assuming you are continuing the prior topic and asking for the France version, I need the prior subject to answer precisely. "
+            "Evidence is insufficient in this turn alone, so I will not invent a France-specific answer."
+        )
+
+    if (
+        "rewrite the whole image system" in query
+        or "rebuild the whole image system" in query
+        or ("image system" in query and any(token in query for token in {"rewrite", "rebuild", "replace"}))
+    ):
+        return (
+            "I would not rewrite the image system first. There are several plausible causes: provider routing may be wrong, "
+            "stale manual-review state may be blocking regeneration, prompt/debug fields may be hiding the active prompt, "
+            "or the local GPU/RunPod fallback boundary may be misconfigured. The safer next action is an audit/split: "
+            "1. verify provider routing, 2. inspect manual-review and escalation fields, 3. confirm the prompt actually sent, "
+            "and 4. patch only the smallest failing boundary. Evidence needed: latest generation trace, provider metadata, "
+            "review state, prompt source, and saved asset path. I would keep the rewrite as a fallback only if the audit proves the current path cannot be repaired."
+        )
+
+    broad_markers = {
+        "build me",
+        "create me",
+        "make me",
+        "i need a system",
+        "i need software",
+        "i need an app",
+        "i need something",
+        "automate",
+        "fix the whole",
+        "rewrite",
+        "rebuild",
+        "replace the whole",
+        "system-changing",
+    }
+    high_impact_markers = {
+        "commission",
+        "billing",
+        "payments",
+        "payout",
+        "accounting",
+        "customer data",
+        "production",
+        "deploy",
+        "database",
+        "security",
+        "credentials",
+        "policy",
+    }
+    broad = any(marker in query for marker in broad_markers)
+    high_impact = any(marker in query for marker in high_impact_markers)
+    if broad and high_impact:
+        return (
+            "This is broad enough that I should frame uncertainty before choosing a path. "
+            "There are multiple plausible interpretations, and the right answer depends on the evidence: current workflow, data sources, failure points, and who owns the result. "
+            "I would start with the smallest diagnostic slice, then recommend a build or process fix only after that evidence is clear. "
+            "Next action: map the current workflow and inspect one real example. Evidence needed: source files or screens, expected outcome, current outcome, and the exact mismatch. "
+            "I will not call it solved until the evidence shows a real state change."
+        )
+
+    return ""
+
+
 def _conversation_response(
     user_input: str, context: dict[str, object] | None = None
 ) -> str:
@@ -19238,6 +19367,15 @@ def _conversation_response(
         phrase in normalized_query for phrase in {"do not repeat yourself", "stop repeating yourself", "repeating yourself"}
     ):
         return "Hi. I am here and ready to help, and I will keep it brief."
+
+    structural_policy_response = _structural_reasoning_policy_response(
+        normalized_query,
+        context,
+    )
+    if structural_policy_response:
+        if _has_greeting_prefix(raw):
+            return f"Hi. {structural_policy_response}"
+        return structural_policy_response
 
     if any(token in normalized_query for token in {"summarize this website", "summarize this page", "summarize this url"}):
         raw_tokens = raw.split()

@@ -103,6 +103,15 @@ runtime_remote_training/TOD_EXECUTION_TRUTH.latest.json
 runtime_remote_training/TOD_MIM_COMMAND_STATUS.latest.json
 runtime_remote_training/TOD_MIM_TASK_RESULT.latest.json
 runtime_remote_training/TOD_VALIDATION_RESULT.latest.json
+runtime_remote_training/codex_training_interventions/
+runtime_remote_training/tod_independent_resolution_attempts/
+runtime_remote_training/tod_result_artifacts/
+
+# Generated local fallback probes and dispatch scratch files
+docs/local-fallback-*.md
+scripts/chat-local-dispatch-*.ps1
+scripts/local-fallback-*.ps1
+tests/local-fallback-size-guard-new-text-*.txt
 
 # Local inbox and avatar intake artifacts
 tod/inbox/
@@ -120,6 +129,7 @@ tod/data/state.repair-*.json.pending
 tod/data/state.*-history.json
 tod/data/state.rewrite-*.json.bak
 tod/data/state.json.repairing
+tod/data/state.pre-line-compact-*.json.bak
 
 # Local editor and scratch artifacts
 .vscode/
@@ -137,6 +147,13 @@ Thumbs.db
 # Additional generated runtime artifacts
 shared_state/objective_authority_reset.json
 shared_state/remote-recovery/
+shared_state/ack_closure_dryrun/
+shared_state/superseded/
+shared_state/tod_shared_artifact_write_failures/
+shared_state/TSK-*.dispatch-output.json
+shared_state/MIM_DIRECT_CONVERSATION_COACHING_40_CYCLE_MONITOR.jsonl
+shared_state/mim_next_step_dialog_responder.jsonl
+shared_state/tod_codex_coordination_lane_state*.json
 
 # Local helper binaries
 tools/cloudflared/

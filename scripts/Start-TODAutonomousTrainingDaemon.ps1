@@ -34,6 +34,7 @@ $supervisedScript = Join-Path $PSScriptRoot 'Invoke-TODSupervisedExecution.ps1'
 $trainingLoopScript = Join-Path $PSScriptRoot 'Invoke-TODTrainingLoop.ps1'
 $simulationBundleScript = Join-Path $PSScriptRoot 'Invoke-TODAutonomousSimulationBundle.ps1'
 $repoEditRecoverSimulationScript = Join-Path $PSScriptRoot 'Invoke-TODRepoEditTestRecoverSimulationDaily.ps1'
+$auditPublisherScript = Join-Path $PSScriptRoot 'Invoke-MIMTOD7DayTrainingAudit.ps1'
 $statusScript = Join-Path $PSScriptRoot 'Write-TODCompletionStatus.ps1'
 $todStatePath = Join-Path $repoRoot 'tod/data/state.json'
 $maxStateReadBytes = 256MB
@@ -227,6 +228,9 @@ function Get-DaemonState {
             last_simulation_run_utc = ''
             last_recovery_run_utc = ''
             last_startup_health_check_utc = ''
+            last_inbound_dialog_session_id = ''
+            last_inbound_dialog_handled_at_utc = ''
+            last_inbound_dialog_status = ''
             last_status = 'loaded_legacy_state'
             updated_at_utc = ''
         }
@@ -252,6 +256,9 @@ function Get-DaemonState {
         last_simulation_run_utc = ''
         last_recovery_run_utc = ''
         last_startup_health_check_utc = ''
+        last_inbound_dialog_session_id = ''
+        last_inbound_dialog_handled_at_utc = ''
+        last_inbound_dialog_status = ''
         last_status = 'never'
         updated_at_utc = ''
     }
@@ -486,6 +493,193 @@ function Invoke-CriticalRecovery {
         $State.last_recovery_run_utc = (Get-Date).ToUniversalTime().ToString('o')
         $State.last_status = 'critical_recovery_error'
         Write-DaemonLog ('critical recovery failed: ' + [string]$_.Exception.Message)
+    }
+}
+
+function Get-RequestedBlockerPathFromDialog {
+    param([AllowNull()]$SessionDetail)
+
+    if ($null -eq $SessionDetail -or -not $SessionDetail.PSObject.Properties['messages']) {
+        return ''
+    }
+
+    foreach ($message in @($SessionDetail.messages | Sort-Object {
+                if ($_.PSObject.Properties['turn_id']) { [int]$_.turn_id } else { 0 }
+            } -Descending)) {
+        if (-not $message.PSObject.Properties['payload'] -or $null -eq $message.payload) {
+            continue
+        }
+
+        $payload = $message.payload
+        if ($payload.PSObject.Properties['required_blocker_if_not_complete'] -and $payload.required_blocker_if_not_complete -and $payload.required_blocker_if_not_complete.PSObject.Properties['path']) {
+            $path = [string]$payload.required_blocker_if_not_complete.path
+            if (-not [string]::IsNullOrWhiteSpace($path)) {
+                return $path
+            }
+        }
+    }
+
+    return ''
+}
+
+function Get-RequiredArtifactsFromDialog {
+    param([AllowNull()]$SessionDetail)
+
+    if ($null -eq $SessionDetail -or -not $SessionDetail.PSObject.Properties['messages']) {
+        return @()
+    }
+
+    foreach ($message in @($SessionDetail.messages | Sort-Object {
+                if ($_.PSObject.Properties['turn_id']) { [int]$_.turn_id } else { 0 }
+            } -Descending)) {
+        if (-not $message.PSObject.Properties['payload'] -or $null -eq $message.payload) {
+            continue
+        }
+
+        $payload = $message.payload
+        if ($payload.PSObject.Properties['required_artifacts']) {
+            return @($payload.required_artifacts | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        }
+    }
+
+    return @()
+}
+
+function Resolve-InboundTodHandoffRequest {
+    param([Parameter(Mandatory = $true)]$State)
+
+    try {
+        $inbox = Invoke-JsonScriptInline -ScriptPath $dialogScript -Arguments @{
+            Action = 'read-inbox'
+            DialogDir = $resolvedDialogDir
+            Actor = 'TOD'
+            PeerActor = 'MIM'
+            Tail = 10
+            EmitJson = $true
+        }
+
+        $session = @($inbox.open_sessions | Where-Object {
+                $_.open_reply -and
+                [string]::Equals([string]$_.open_reply.from, 'MIM', [System.StringComparison]::OrdinalIgnoreCase) -and
+                [string]::Equals([string]$_.open_reply.to, 'TOD', [System.StringComparison]::OrdinalIgnoreCase) -and
+                [string]::Equals([string]$_.open_reply.message_type, 'handoff_request', [System.StringComparison]::OrdinalIgnoreCase)
+            } | Select-Object -First 1)
+
+        if (@($session).Count -eq 0) {
+            return $false
+        }
+
+        $sessionId = [string]$session[0].session_id
+        $detail = Invoke-JsonScriptInline -ScriptPath $dialogScript -Arguments @{
+            Action = 'read-session'
+            DialogDir = $resolvedDialogDir
+            SessionId = $sessionId
+            EmitJson = $true
+        }
+
+        $blockerPath = Get-RequestedBlockerPathFromDialog -SessionDetail $detail
+        if ([string]::IsNullOrWhiteSpace($blockerPath)) {
+            $blockerPath = 'runtime_remote_training/TOD_GOVERNED_INBOX_CONSUMER_BLOCKER.latest.json'
+        }
+
+        $requiredArtifacts = @(Get-RequiredArtifactsFromDialog -SessionDetail $detail)
+        $isSevenDayAuditRequest = @($requiredArtifacts | Where-Object { $_ -match 'MIM_TOD_7DAY_TRAINING_AUDIT' }).Count -gt 0
+
+        if ($isSevenDayAuditRequest -and (Test-Path -Path $auditPublisherScript)) {
+            $auditResult = Invoke-JsonScriptInline -ScriptPath $auditPublisherScript -Arguments @{
+                EmitJson = $true
+            }
+
+            if ($auditResult -and $auditResult.PSObject.Properties['ok'] -and [bool]$auditResult.ok) {
+                $replyPayload = [pscustomobject]@{
+                    status = 'completed_with_evidence'
+                    consumed_session_id = $sessionId
+                    audit_artifact = [string]$auditResult.audit_path
+                    next_objectives_artifact = [string]$auditResult.next_objectives_path
+                    autonomous_plan_artifact = [string]$auditResult.autonomous_plan_path
+                    objective_count = [int]$auditResult.objective_count
+                    validation = $auditResult.validation
+                    dave_needed = 'no'
+                    prevention_lesson = 'TOD autonomous training now runs the 7-day audit publisher for matching inbound MIM handoffs before idle simulations.'
+                }
+
+                $null = Invoke-JsonScriptInline -ScriptPath $dialogScript -Arguments @{
+                    Action = 'send'
+                    DialogDir = $resolvedDialogDir
+                    SessionId = $sessionId
+                    Actor = 'TOD'
+                    PeerActor = 'MIM'
+                    MessageType = 'handoff_response'
+                    Intent = 'governed_inbound_handoff_completed_with_audit_artifacts'
+                    TaskId = 'TOD-GOVERNED-INBOX-CONSUMER-V1'
+                    Summary = 'TOD consumed the inbound 7-day audit handoff and published the requested audit, next-objectives, and autonomous-plan artifacts.'
+                    PayloadJson = ($replyPayload | ConvertTo-Json -Depth 12 -Compress)
+                    EmitJson = $true
+                }
+
+                $State.last_inbound_dialog_session_id = $sessionId
+                $State.last_inbound_dialog_handled_at_utc = (Get-Date).ToUniversalTime().ToString('o')
+                $State.last_inbound_dialog_status = 'completed_with_evidence'
+                $State.last_status = 'inbound_dialog_completed'
+                Write-DaemonLog ('completed inbound MIM-to-TOD 7-day audit handoff session ' + $sessionId + '; audit=' + [string]$auditResult.audit_path)
+                Publish-CompletionStatus -State $State -TodDidThis 'inbound_mim_handoff_completed_with_audit_artifacts' -TodNextAction 'Continue the ordered 7-day training objectives without idle-simulation credit until the governed handoff queue is clear.' -TodState 'completed_with_evidence' -MimState 'notified' -Blockers @()
+                return $true
+            }
+        }
+
+        $blocker = [pscustomobject]@{
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+            source = 'tod-governed-inbox-consumer-v1'
+            session_id = $sessionId
+            blocker_owner = 'TOD'
+            blocking_file_or_endpoint = 'scripts/Start-TODAutonomousTrainingDaemon.ps1 inbound governed handoff consumer'
+            last_attempted_command_or_check = 'scripts/Invoke-TODMimDialog.ps1 -Action read-inbox -Actor TOD -PeerActor MIM -Tail 10 -EmitJson'
+            exact_error = 'Inbound MIM-to-TOD handoff was visible, but no audit-artifact executor is bound in the autonomous daemon; daemon consumed the handoff and published this blocker instead of claiming audit completion.'
+            next_smallest_unblocked_action = 'Dispatch or implement the OBJ-0254 audit artifact publisher so TOD writes the required audit, next-objectives, and autonomous-plan artifacts; if dispatcher blocks, publish the dispatcher blocker with owner and exact error.'
+            required_artifacts = @($requiredArtifacts)
+            dave_needed = 'no'
+            aging_rule = 'Recheck on the next daemon cycle; escalate only if the audit artifact publisher or dispatcher blocker is still absent after the next visible TOD consumption cycle.'
+            prevention_lesson = 'TOD autonomous training must consume MIM-initiated governed handoffs before running idle simulations, and must publish a blocker when it cannot execute the requested artifact contract.'
+        }
+
+        $blockerAbs = Resolve-RepoPath -PathValue $blockerPath
+        Write-Utf8NoBomJson -PathValue $blockerAbs -Payload $blocker -Depth 16
+
+        $replyPayload = [pscustomobject]@{
+            status = 'blocked_with_evidence'
+            consumed_session_id = $sessionId
+            blocker_artifact = $blockerPath
+            required_artifacts = @($requiredArtifacts)
+            dave_needed = 'no'
+            next_action = $blocker.next_smallest_unblocked_action
+        }
+
+        $null = Invoke-JsonScriptInline -ScriptPath $dialogScript -Arguments @{
+            Action = 'send'
+            DialogDir = $resolvedDialogDir
+            SessionId = $sessionId
+            Actor = 'TOD'
+            PeerActor = 'MIM'
+            MessageType = 'handoff_response'
+            Intent = 'governed_inbound_handoff_consumed_blocker_published'
+            TaskId = 'TOD-GOVERNED-INBOX-CONSUMER-V1'
+            Summary = 'TOD consumed the inbound governed handoff and published a blocker artifact instead of claiming audit completion.'
+            PayloadJson = ($replyPayload | ConvertTo-Json -Depth 12 -Compress)
+            EmitJson = $true
+        }
+
+        $State.last_inbound_dialog_session_id = $sessionId
+        $State.last_inbound_dialog_handled_at_utc = (Get-Date).ToUniversalTime().ToString('o')
+        $State.last_inbound_dialog_status = 'blocked_with_evidence'
+        $State.last_status = 'inbound_dialog_consumed'
+        Write-DaemonLog ('consumed inbound MIM-to-TOD handoff session ' + $sessionId + '; blocker=' + $blockerPath)
+        Publish-CompletionStatus -State $State -TodDidThis 'inbound_mim_handoff_consumed_blocker_published' -TodNextAction $blocker.next_smallest_unblocked_action -TodState 'blocked' -MimState 'waiting' -Blockers @($blocker.exact_error)
+        return $true
+    }
+    catch {
+        Write-DaemonLog ('failed to consume inbound MIM-to-TOD handoff: ' + [string]$_.Exception.Message)
+        Publish-CompletionStatus -State $State -TodDidThis 'inbound_mim_handoff_consume_failed' -TodNextAction 'Retry inbound MIM/TOD dialog consumption on the next daemon cycle.' -TodState 'reconciling' -MimState 'unknown' -Blockers @([string]$_.Exception.Message)
+        return $false
     }
 }
 
@@ -738,6 +932,9 @@ try {
                 if (-not [string]::IsNullOrWhiteSpace([string]$state.pending_mim_session_id)) {
                     Resolve-PendingMimRequest -State $state
                 }
+                elseif (Resolve-InboundTodHandoffRequest -State $state) {
+                    # The inbound handoff was consumed; defer fallback training until the next cycle.
+                }
                 elseif ($isIdle) {
                     $idleMinutes = Get-ElapsedMinutes -WhenUtc ([string]$state.idle_started_at_utc)
                     $minutesSinceSimulation = Get-ElapsedMinutes -WhenUtc ([string]$state.last_simulation_run_utc)
@@ -757,8 +954,15 @@ try {
                     }
                 }
                 else {
-                    Write-DaemonLog 'runtime active; autonomous idle solicitation skipped this cycle'
-                    Publish-CompletionStatus -State $state -TodDidThis 'runtime_active' -TodNextAction 'Keep executing the current objective and training fallback rules in reserve.' -TodState 'executing' -MimState 'unknown'
+                    $minutesSinceSimulation = Get-ElapsedMinutes -WhenUtc ([string]$state.last_simulation_run_utc)
+                    if ($minutesSinceSimulation -ge $SimulationCooldownMinutes) {
+                        Write-DaemonLog 'runtime active; running Dave-away runtime-safe training fallback'
+                        Invoke-SimulationFallback -State $state -Reason 'runtime_active_dave_away' -IdleMinutes 0
+                    }
+                    else {
+                        Write-DaemonLog ('runtime active; Dave-away training waits for simulation cooldown (simulation_cooldown=' + ('{0:n1}' -f $minutesSinceSimulation) + 'm)')
+                        Publish-CompletionStatus -State $state -TodDidThis 'runtime_active_training_cooldown' -TodNextAction 'Resume runtime-safe Dave-away training on the next cooldown-eligible cycle.' -TodState 'executing' -MimState 'unknown'
+                    }
                 }
 
                 Save-DaemonState -State $state

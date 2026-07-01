@@ -296,6 +296,11 @@ def build_interaction_quality_snapshot(project_root: Path = PROJECT_ROOT) -> dic
         "failure_analysis": failure_analysis,
         "headline": {
             "available_artifacts": sum(1 for item in artifacts if item.get("available")),
+            "stale_artifacts": sum(
+                1
+                for item in artifacts
+                if item.get("available") and isinstance(item.get("age_seconds"), int) and item.get("age_seconds") > 86400
+            ),
             "best_weighted_pass_rate": max(best_weighted) if best_weighted else None,
             "total_failure_examples": len(failure_analysis.get("examples") or []),
             "internal_jargon_failure_count": sum(

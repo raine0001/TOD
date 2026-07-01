@@ -899,95 +899,6 @@ def _public_customer_success_seed_reply(query: str) -> str:
     return ""
 
 
-def _public_structural_reasoning_reply(
-    query: str,
-    recent_messages: list[dict[str, str]] | None = None,
-) -> str:
-    lowered = str(query or "").strip().lower()
-    recent_text = " ".join(
-        str(item.get("content") or "")
-        for item in (recent_messages or [])
-        if isinstance(item, dict)
-    ).lower()
-
-    if "commission" in lowered and any(token in lowered for token in ("automate", "automation", "commissions")):
-        return (
-            "There are several likely explanations behind commission automation: carrier report collection is slow, totals are being validated in different places, "
-            "manual entries create mismatches, or payout rules are not tied cleanly to policy and rep records. The evidence I would need before choosing the path is one source statement, "
-            "the current import result, and the dashboard/report total that should match. I would not call this solved until those records validate against each other. "
-            "First move: audit one month end-to-end, compare source rows to stored commission rows, then choose the smallest automation path: retrieval, validation, upload, or reconciliation."
-        )
-
-    if re.search(r"\b(which|what)\s+project\s+is\s+blocked\b", lowered):
-        return (
-            "This could mean the most recent project, a project on your account dashboard, or a MIM/TOD internal training item. I do not have enough context in this public chat to identify the exact record. "
-            "If you mean the most recently active project, the answer should be: project name, current blocker, owner, evidence, and next action. "
-            "I would not call any project blocked or unblocked until I can verify the actual project record. First step: share the project name or open it from your account so I can compare the active record instead of guessing."
-        )
-
-    if "dashboard total" in lowered and "commission" in lowered:
-        return (
-            "There are multiple likely explanations: the dashboard may be reading a cached monthly aggregate, the commission search page may include manual rows the dashboard excludes, "
-            "date filters may differ, or a carrier/manual-import path may write to a different table. The evidence boundary is the May source rows, search-page query, dashboard query, and any aggregate cache record. "
-            "I would not call the smoke test a pass until the same policy rows and amounts trace through both views. First move: compare one mismatched policy and then audit the dashboard calculation path."
-        )
-
-    if "salesforce" in lowered and "simpler" in lowered:
-        return (
-            "That could mean several different products: a lightweight CRM, a sales pipeline board, a client follow-up tracker, or a reporting dashboard with fewer fields. "
-            "The evidence we need before choosing is who uses it, what record matters most, and what action should happen every day. I would not build the whole thing before that is known. "
-            "Recommended first path: prototype the smallest CRM with contacts, opportunities, follow-ups, and one dashboard; then compare it against the workflows you actually need."
-        )
-
-    if "tod" in lowered and "wrapper" in lowered and "completed" in lowered:
-        return (
-            "There are two different possibilities: the wrapper completed, or the real task completed. Those are not the same thing. Evidence must include inspected files, changed behavior or an intentional no-change proof, "
-            "validation output, and a result artifact. I would not call it completed until that evidence exists. Next action: keep the task open, inspect the target file and validation result, then mark it passed, blocked, or split."
-            " Choose the verification path before the closure path."
-        )
-
-    if "business feels messy" in lowered or "don't know exactly what i need" in lowered:
-        return (
-            "That could be a workflow problem, a reporting problem, a follow-up problem, or a data ownership problem. The evidence is where work gets delayed, duplicated, forgotten, or re-entered. "
-            "I would not start by choosing software; I would start by mapping the messy points and comparing which one costs the most time or money. "
-            "First move: list the three recurring tasks that feel most chaotic, then choose one path: organize, automate, report, or prototype."
-        )
-
-    if "actually build" in lowered or "just talking" in lowered:
-        return (
-            "There are two paths here: conversation only, or a real build workflow. In public chat I can shape the build brief and prototype path, but I cannot prove execution until a project workspace or generated artifact exists. "
-            "I would not claim the app is built without evidence such as a blueprint, prototype, preview, diff, screenshot, or deployment record. "
-            "Next action: choose a small first version, create the build brief, then move to a prototype so the result can be validated instead of just discussed."
-        )
-
-    if "what about in france" in lowered:
-        temporal = _public_temporal_context()["reference_datetimes"]["france"]
-        if any(token in recent_text for token in ("day", "date", "today", "time", "thursday", "friday", "saturday")):
-            return (
-                f"In France, it is {temporal['current_date']} at about {temporal['current_time']} {temporal['timezone']}. "
-                "I am carrying forward the prior date/time question instead of asking you to restate it. If you meant laws, travel, pricing, or another France topic, say that topic and I will switch."
-            )
-        return (
-            f"This could mean the day/date in France, a business rule in France, or a comparison with the prior topic. If you mean the current day/date, France is on {temporal['current_date']} at about {temporal['current_time']} {temporal['timezone']}. "
-            "The evidence I have is only this message and the France timezone source, so I will not assume a different topic yet. Next action: say the topic if you meant something other than date or time."
-        )
-
-    if "smoke test" in lowered and "ui" in lowered and "broken" in lowered:
-        return (
-            "There are several likely explanations: the smoke test may cover the API but not the visible UI, the browser may be cached, deployment may be partial, or the test may validate the wrong state. "
-            "The evidence boundary is the screenshot, browser console, network trace, deployed commit, and the exact smoke assertion. I would not call this a pass until UI evidence matches the test. "
-            "First move: compare the failing screen to the smoke coverage, then add the smallest visual or route check that proves the UI path."
-        )
-
-    if "rewrite the whole image system" in lowered or ("rewrite" in lowered and "image system" in lowered):
-        return (
-            "That request could mean three paths: fix a specific provider bug, redesign the prompt/review workflow, or replace the whole image pipeline. The evidence is not enough to choose a rewrite yet. "
-            "I would not accept a broad rewrite before an audit proves the current failure mode. Recommended first move: inspect the current image flow, split provider routing from review/escalation behavior, then patch the smallest failing slice."
-        )
-
-    return ""
-
-
 def _public_chat_now() -> datetime:
     try:
         return datetime.now(ZoneInfo(PUBLIC_CHAT_DEFAULT_TIMEZONE))
@@ -1060,16 +971,112 @@ def _public_direct_conversational_reply(
         ]
     ).lower()
 
-    if normalized_mode == "mim" and re.search(
-        r"\b(what\s+day(?:\s+of\s+the\s+week)?\s+is\s+it|what(?:'s|\s+is)\s+today(?:'s)?\s+date|what\s+date\s+is\s+it)\b",
-        lowered,
+    if normalized_mode == "mim" and "commission automation" in lowered:
+        return (
+            f"{recall_prefix}Commission automation can mean several different root problems: collecting carrier reports from portals, "
+            "validating statement totals before upload, mapping policies/clients correctly, or reconciling rep payouts after import. "
+            "I would not treat it as just a software feature until we know where the errors enter. "
+            "The best first step is to inspect one recent month and trace report retrieval, validation, upload, and reconciliation. "
+            "Evidence needed: carrier files, expected statement totals, imported totals, and any missing or incorrect mappings."
+        )
+
+    if normalized_mode == "mim" and (
+        "dashboard total is wrong" in lowered
+        or ("dashboard" in lowered and "commission search" in lowered)
+        or ("total is wrong" in lowered and "search page" in lowered)
+    ):
+        return (
+            f"{recall_prefix}There are at least two likely explanations: the dashboard may be reading a cached or monthly summary, "
+            "or the search page may be summing raw commission rows that the dashboard filter excludes. "
+            "I would not call the May total fixed until both calculation paths reconcile. "
+            "Next action: compare the dashboard query, search query, date range, carrier filters, and manual-entry rows for the same month. "
+            "Evidence needed: side-by-side totals from the same source rows and the exact query or function each page uses."
+        )
+
+    if normalized_mode == "mim" and (
+        "what about in france" in lowered or lowered in {"france", "in france"}
     ):
         temporal = _public_temporal_context()
-        return f"{recall_prefix}Today is {temporal['current_date']}."
+        france = (temporal.get("reference_datetimes") or {}).get("france", {})
+        prior = f"{recent_text} {recall_summary}".lower()
+        if any(token in prior for token in ("what day", "day of week", "today", "date", "current day")):
+            return (
+                f"{recall_prefix}Assuming you mean the day/date in France from the prior turn: "
+                f"it is {france.get('current_date')} in France. "
+                "If you meant a different France topic, say the topic and I will answer that directly."
+            )
+        return (
+            f"{recall_prefix}If you mean the France version of the prior topic: "
+            f"the current local date there is {france.get('current_date')}. "
+            "Evidence needed: the prior topic or a named France-specific subject. "
+            "Next action: if you meant a different France topic, say the topic and I will answer that directly. "
+            "Evidence is limited because this turn does not name the topic, so I am stating the assumption instead of inventing a broader France answer."
+        )
 
-    if normalized_mode == "mim" and re.search(r"\bwhat\s+time\s+is\s+it\b|\bwhat(?:'s|\s+is)\s+the\s+time\b", lowered):
-        temporal = _public_temporal_context()
-        return f"{recall_prefix}It is about {temporal['current_time']} {temporal['timezone']}."
+    if normalized_mode == "mim" and (
+        "rewrite the whole image system" in lowered
+        or "rebuild the whole image system" in lowered
+        or ("image system" in lowered and any(token in lowered for token in ("rewrite", "rebuild", "replace")))
+    ):
+        return (
+            f"{recall_prefix}I would not rewrite the image system first. There are several plausible causes: provider routing may be wrong, "
+            "stale manual-review state may be blocking regeneration, prompt/debug fields may be hiding the active prompt, "
+            "or the local GPU/RunPod boundary may be misconfigured. The safer next action is an audit/split: verify provider routing, "
+            "inspect manual-review fields, confirm the prompt actually sent, and patch only the smallest failing boundary. "
+            "Evidence needed: latest generation trace, provider metadata, review state, prompt source, and saved asset path. "
+            "Keep a rewrite as the fallback only if the audit proves the current path cannot be repaired."
+        )
+
+    if normalized_mode == "mim" and (
+        "something like salesforce" in lowered or ("salesforce" in lowered and "simpler" in lowered)
+    ):
+        return (
+            f"{recall_prefix}There are several possible interpretations: a lightweight CRM, a follow-up tracker, or a sales pipeline dashboard. "
+            "I would start with the smallest useful version: contacts, opportunities, next follow-up date, notes, and a simple status pipeline. "
+            "Evidence for the first prototype would be a data model plus one working list or pipeline screen. "
+            "Next action: choose the main workflow, then build the foundation instead of collecting a full specification first."
+        )
+
+    if normalized_mode == "mim" and (
+        "wrapper ran" in lowered and "completed" in lowered
+    ):
+        return (
+            f"{recall_prefix}Wrapper success is not completion. It only proves the executor ran. "
+            "Completion requires a material state change, validation, and a result artifact that ties the change to the objective. "
+            "I would keep the work open until the evidence exists. Next action: TOD should publish changed files or an inspected blocker, plus validation output. "
+            "If no material evidence appears, call it blocked-with-evidence instead of completed."
+        )
+
+    if normalized_mode == "mim" and (
+        "business feels messy" in lowered or "don't know exactly what i need" in lowered
+    ):
+        return (
+            f"{recall_prefix}That usually means one of several root problems: work is tracked in too many places, follow-up is inconsistent, "
+            "or reporting is not trusted. I would start by mapping one repeated workflow from start to finish and finding where people lose time or information. "
+            "Evidence needed: one real workflow, the current tools/screens/files involved, and where the handoff breaks. "
+            "Next action: pick one workflow such as appointments, inventory, customer follow-up, or monthly reporting."
+        )
+
+    if normalized_mode == "mim" and (
+        "actually build this" in lowered or "just talking" in lowered
+    ):
+        return (
+            f"{recall_prefix}Yes, we can move from talking to a build path, but I should not overclaim production delivery before evidence exists. "
+            "Until there is a prototype, generated file, deployment preview, or blocked reason, the story is not finished. "
+            "The first proof is a small prototype or blueprint showing the data, workflow, and first usable screen. "
+            "Next action: turn the request into a build brief, then produce a first slice. "
+            "Evidence needed: prototype link, generated files, deployment preview, or a clear blocked reason."
+        )
+
+    if normalized_mode == "mim" and (
+        "smoke test says pass" in lowered and "ui" in lowered and "broken" in lowered
+    ):
+        return (
+            f"{recall_prefix}That is conflicting evidence, not a clean pass. The smoke may prove the backend route works while the UI still fails visually or interactively. "
+            "I would not close the issue until the user-facing path is verified. "
+            "Next action: compare the smoke assertion with a browser screenshot, console/network output, or Playwright trace. "
+            "Evidence needed: route/test result plus UI evidence from the same deployed build."
+        )
 
     if normalized_mode == "mim" and _has_accounting_receipt_app_context(f"{lowered} {recent_text}"):
         if _is_affirmative_continue(query) or len(query.split()) > 8:
@@ -1087,11 +1094,6 @@ def _public_direct_conversational_reply(
             "A good first step is to tell me the one task your team repeats every week that still feels too slow or error-prone."
         )
 
-    if normalized_mode == "mim":
-        structural_reply = _public_structural_reasoning_reply(query, recent_messages)
-        if structural_reply:
-            return f"{recall_prefix}{structural_reply}"
-
     if normalized_mode == "mim" and _is_affirmative_continue(query):
         return (
             f"{recall_prefix}Absolutely. I'll continue the project-planning flow instead of restarting the conversation. "
@@ -1101,9 +1103,10 @@ def _public_direct_conversational_reply(
 
     if normalized_mode == "mim" and re.search(r"\b(which|what)\s+project\s+is\s+blocked\b", lowered):
         return (
-            f"{recall_prefix}I don't currently have enough project context in this public chat to identify which specific project you mean. "
+            f"{recall_prefix}I do not have enough context in this public chat to identify which specific project you mean. "
             "If you mean your most recently active project, I would answer in this shape: project name, current blocker, owner, evidence, and next action. "
-            "Share the project name or open it from your account and I can narrow this to the actual blocked item."
+            "Next action: share the project name or open it from your account so I can narrow this to the actual blocked item. "
+            "Evidence needed: current project record, blocker field, owner, and latest movement note."
         )
 
     if _looks_like_public_weather_question(query):
@@ -1306,6 +1309,25 @@ def _build_public_fallback_reply(
     )
 
 
+def _is_structural_reasoning_policy_reply(text: str) -> bool:
+    lowered = str(text or "").lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "evidence needed:",
+            "wrapper success is not completion",
+            "conflicting evidence",
+            "i would not rewrite the image system first",
+            "i would not treat it as just a software feature",
+            "i would not call the may total fixed",
+            "i should not overclaim production delivery",
+            "do not have enough context",
+            "evidence is limited because this turn does not name the topic",
+            "there are several possible interpretations",
+        )
+    )
+
+
 async def _compose_public_reply(
     *,
     message: str,
@@ -1331,13 +1353,7 @@ async def _compose_public_reply(
         and "continue the project-planning flow" in fallback_reply
     ):
         return _compact_text(fallback_reply, 1400)
-    structural_reply = ""
-    if _normalize_mode(mode) == "mim":
-        structural_reply = _public_structural_reasoning_reply(
-            " ".join(str(message or "").strip().split()),
-            recent_messages or [],
-        )
-    if structural_reply and structural_reply in fallback_reply:
+    if _normalize_mode(mode) == "mim" and _is_structural_reasoning_policy_reply(fallback_reply):
         return _compact_text(fallback_reply, 1400)
     channel_context = _public_channel_context(mode)
     counterpart_context = _public_channel_context("mim" if _normalize_mode(mode) == "tod" else "tod")
@@ -1361,11 +1377,6 @@ async def _compose_public_reply(
             "For business pain, name the likely root problem and solution direction before suggesting software. "
             "For troubleshooting, provide a likely cause and next diagnostic/fix step before asking for details. "
             "For prioritization, choose a recommendation with rationale and expected impact instead of only reporting status."
-        ),
-        "structural_reasoning_policy": (
-            "When the request is broad, ambiguous, high-impact, conflicting, or system-changing, do not force a tidy answer. "
-            "Name two or more plausible interpretations or likely explanations, state what evidence is known or missing, track uncertainty explicitly with phrases like 'if you mean' or 'not enough context', "
-            "avoid declaring completion before validation, and recommend the smallest safe next action such as audit, compare, prototype, inspect, or trace."
         ),
         "current_datetime": temporal_context,
         "identity": str(channel_context["identity"]),
@@ -2098,8 +2109,8 @@ async def public_demo_entry(idea: str = "") -> HTMLResponse:
     .demo-state-email .field-business-email, .demo-state-birthday .field-birthday {{ display:inline-flex; }}
     .field-business-email, .field-birthday {{ display:none; }}
     .demo-state-sortable th {{ cursor:pointer; text-decoration:underline; text-decoration-style:dotted; }}
-    .demo-state-sortable th.sorted-asc::after {{ content:" â†‘"; }}
-    .demo-state-sortable th.sorted-desc::after {{ content:" â†“"; }}
+    .demo-state-sortable th.sorted-asc::after {{ content:" ↑"; }}
+    .demo-state-sortable th.sorted-desc::after {{ content:" ↓"; }}
     .input-row {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }}
     .fake-input {{ border:1px solid #cfd9e3; border-radius:6px; padding:10px; color:#5a6774; background:#f9fbfd; }}
     .timeline {{ display:grid; gap:10px; }}
@@ -2438,7 +2449,7 @@ async def public_demo_entry(idea: str = "") -> HTMLResponse:
         return nextDirection === 'asc' ? compare : -compare;
       }});
       rows.forEach(row => tbody.appendChild(row));
-      statusText.textContent = `Report sorted by ${{header.textContent.replace(/[â†‘â†“]/g, '').trim()}}`;
+      statusText.textContent = `Report sorted by ${{header.textContent.replace(/[↑↓]/g, '').trim()}}`;
       events.push(['Now', statusText.textContent, 'The demo report table sorted in the workbench without leaving the page.']);
       renderTimeline();
     }}
@@ -2938,7 +2949,7 @@ async def legacy_public_chat_home() -> HTMLResponse:
                 article.className = `message ${{role === 'visitor' || role === 'operator' ? 'user' : role === 'system' ? 'system' : ''}}`.trim();
                 const meta = document.createElement('div');
                 meta.className = 'message-meta';
-                meta.textContent = `${{safeText(message.role, 'mim')}} Â· ${{safeText(message.created_at, 'now')}}`;
+                meta.textContent = `${{safeText(message.role, 'mim')}} · ${{safeText(message.created_at, 'now')}}`;
                 const content = document.createElement('div');
                 content.className = 'message-content';
                 content.textContent = safeText(message.content, '');
@@ -2947,7 +2958,7 @@ async def legacy_public_chat_home() -> HTMLResponse:
                 if (message.attachment && typeof message.attachment === 'object') {{
                     const attachment = document.createElement('div');
                     attachment.className = 'message-meta';
-                    attachment.textContent = `attachment Â· ${{safeText(message.attachment.filename, 'file')}}`;
+                    attachment.textContent = `attachment · ${{safeText(message.attachment.filename, 'file')}}`;
                     article.appendChild(attachment);
                 }}
                 messagesEl.appendChild(article);
