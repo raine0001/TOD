@@ -231,12 +231,21 @@ function New-EvidenceReportReply {
             }
             'what_not_to_claim' {
                 $notPerformed = @($evidenceMap.GetEnumerator() | Where-Object {
-                    [string]$_.Value -match '(?i)\bnot performed\b|\bnot done\b|\bnot executed\b|\bnot validated\b'
+                    ([string]$_.Key -match '(?i)^not_(performed|validated|executed|done)$') -or
+                    ([string]$_.Value -match '(?i)\bnot performed\b|\bnot done\b|\bnot executed\b|\bnot validated\b')
                 } | ForEach-Object { ('{0}={1}' -f [string]$_.Key, [string]$_.Value) })
                 $payload[$field] = if (@($notPerformed).Count -gt 0) { @($notPerformed) } else { @('nothing beyond supplied evidence') }
             }
             'current_owner' {
-                $payload[$field] = if ($evidenceMap.Contains('authority')) { [string]$evidenceMap['authority'] } else { 'not specified by evidence' }
+                if ($evidenceMap.Contains('current_owner')) {
+                    $payload[$field] = [string]$evidenceMap['current_owner']
+                }
+                elseif ($evidenceMap.Contains('authority')) {
+                    $payload[$field] = [string]$evidenceMap['authority']
+                }
+                else {
+                    $payload[$field] = 'not specified by evidence'
+                }
             }
             'active_continuation' {
                 $payload[$field] = if ($evidenceMap.Contains('active_continuation')) { [string]$evidenceMap['active_continuation'] } else { 'none specified by evidence' }

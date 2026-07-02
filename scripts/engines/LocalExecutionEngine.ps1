@@ -71,7 +71,8 @@ function Get-LocalExecutionSafeRoots {
         'tmp_remote_mim/core/',
         'tmp_remote_mim/tests/',
         'tod/config/',
-        'tod/out/tests/'
+        'tod/out/tests/',
+        'tod/out/pc-maintenance/'
     )
 }
 
