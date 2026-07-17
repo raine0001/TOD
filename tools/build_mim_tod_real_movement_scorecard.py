@@ -2006,7 +2006,12 @@ def _selector_supersedes_dialog_blocker(
     if not blocker or not selector:
         return False
     selector_kind = str(selector.get("selection_kind") or "").strip()
-    if selector_kind != "blocked_no_viable_behavior_candidate":
+    dispatch_status = str(selector.get("dispatch_status") or "").strip().lower()
+    selector_is_complete_candidate = (
+        dispatch_status in {"completed", "dispatching", "selected_for_dispatch"}
+        and not _selector_missing_bounded_fields(selector)
+    )
+    if selector_kind != "blocked_no_viable_behavior_candidate" and not selector_is_complete_candidate:
         return False
     selector_ts = _generated_at_timestamp(selector)
     blocker_ts = _generated_at_timestamp(blocker)

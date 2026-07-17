@@ -2001,3 +2001,32 @@ def test_tod_material_execution_prefers_matching_completed_execution_result():
     assert "task=TSK-3270" in current
     assert "changed_files=1" in current
     assert "validation=passed" in current
+
+
+def test_completed_field_complete_selector_supersedes_historical_blocker():
+    module = load_module()
+
+    blocker = {
+        "status": "active_blocker",
+        "generated_at": "2026-06-15T11:39:24Z",
+        "blocker_type": "smaller_task_selection_not_returned",
+    }
+    selector = {
+        "generated_at": "2026-07-16T21:08:23Z",
+        "selection_kind": "backlog_ready_objective",
+        "dispatch_status": "completed",
+        "selected_task_id": "TSK-0075",
+        "target_file": "runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json",
+        "target_function_or_rule": "bounded live-path rule/function in runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json",
+        "behavior_delta_one_sentence": "Materialize one exact current-code bounded edit packet for the selected target before LocalExecutionEngine dispatch.",
+        "validation_command": "Select-String -Path runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json -SimpleMatch packet_candidate_ready",
+        "expected_changed_files": [
+            "runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json"
+        ],
+        "rollback_note": "Rollback by restoring the selected target file from backup.",
+        "prevention_lesson": "Do not keep historical smaller-task blockers active after TOD publishes field-complete selector evidence.",
+        "dave_needed": "no",
+    }
+
+    assert module._selector_supersedes_dialog_blocker(blocker, selector) is True
+

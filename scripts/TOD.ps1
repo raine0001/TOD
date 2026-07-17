@@ -15292,6 +15292,45 @@ function Invoke-ExecuteChatTaskRequest {
     $task[0] | Add-Member -NotePropertyName materialization -NotePropertyValue $materialization -Force
     $request.metadata_json | Add-Member -NotePropertyName materialization -NotePropertyValue $materialization -Force
     $request.metadata_json | Add-Member -NotePropertyName task_source -NotePropertyValue 'direct_chat' -Force
+
+    $implementationTargetFiles = @()
+    if (-not [string]::IsNullOrWhiteSpace($TargetFile)) {
+        $implementationTargetFiles = [string[]]@((([string]$TargetFile) -replace '[\\/]+', '/'))
+    }
+    elseif ($materialization.PSObject.Properties['target_files']) {
+        $implementationTargetFiles = [string[]]@($materialization.target_files | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { ([string]$_) -replace '[\\/]+', '/' } | Select-Object -Unique)
+    }
+    $implementationEditMode = if (-not [string]::IsNullOrWhiteSpace($EditMode)) { [string]$EditMode } elseif ($materialization.PSObject.Properties['edit_mode']) { [string]$materialization.edit_mode } else { '' }
+    $implementationValidationPlan = New-Object System.Collections.Generic.List[string]
+    if (-not [string]::IsNullOrWhiteSpace($ValidationCommand)) {
+        [void]$implementationValidationPlan.Add([string]$ValidationCommand)
+    }
+    elseif ($materialization.PSObject.Properties['validation_plan'] -and $materialization.validation_plan -and $materialization.validation_plan.PSObject.Properties['command'] -and -not [string]::IsNullOrWhiteSpace([string]$materialization.validation_plan.command)) {
+        [void]$implementationValidationPlan.Add([string]$materialization.validation_plan.command)
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($resolvedAcceptance)) {
+        [void]$implementationValidationPlan.Add([string]$resolvedAcceptance)
+    }
+    $implementationShape = [pscustomobject]@{
+        target_files = [string[]]@($implementationTargetFiles)
+        edit_mode = $implementationEditMode
+        expected_changed_files = [string[]]@($implementationTargetFiles)
+    }
+    $completionGate = [pscustomobject]@{
+        changed_files_required_for_success = -not [bool]$requestIsValidationOnly
+        allow_blocked_with_inspection = $true
+        reject_artifact_readback_only = $true
+        reject_service_status_only = $true
+    }
+    $request | Add-Member -NotePropertyName task_class -NotePropertyValue 'implementation' -Force
+    $request | Add-Member -NotePropertyName completion_gate -NotePropertyValue $completionGate -Force
+    $request | Add-Member -NotePropertyName minimal_patch_plan -NotePropertyValue $implementationShape -Force
+    $request | Add-Member -NotePropertyName validation_plan -NotePropertyValue ([string[]]@($implementationValidationPlan.ToArray())) -Force
+    $request.metadata_json | Add-Member -NotePropertyName task_class -NotePropertyValue 'implementation' -Force
+    $request.metadata_json | Add-Member -NotePropertyName completion_gate -NotePropertyValue $completionGate -Force
+    $request.metadata_json | Add-Member -NotePropertyName minimal_patch_plan -NotePropertyValue $implementationShape -Force
+    $request.metadata_json | Add-Member -NotePropertyName validation_plan -NotePropertyValue ([string[]]@($implementationValidationPlan.ToArray())) -Force
+
     $task[0].updated_at = Get-UtcNow
     foreach ($requestArtifactPath in @($requestArtifactPaths)) {
         Write-TodExecutionJsonAtomically -Path ([string]$requestArtifactPath) -Payload $request
