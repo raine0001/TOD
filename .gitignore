@@ -106,6 +106,12 @@ runtime_remote_training/TOD_VALIDATION_RESULT.latest.json
 runtime_remote_training/codex_training_interventions/
 runtime_remote_training/tod_independent_resolution_attempts/
 runtime_remote_training/tod_result_artifacts/
+runtime_remote_training/*.latest.json
+runtime_remote_training/*.latest.md
+runtime_remote_training/learned_capabilities/
+runtime_remote_training/read_only_audit_artifacts/
+runtime_remote_training/training_debt/
+runtime_remote_training/worktree_hygiene/
 
 # Generated local fallback probes and dispatch scratch files
 docs/local-fallback-*.md
@@ -130,6 +136,7 @@ tod/data/state.*-history.json
 tod/data/state.rewrite-*.json.bak
 tod/data/state.json.repairing
 tod/data/state.pre-line-compact-*.json.bak
+tod/data/state.*.json.bak
 
 # Local editor and scratch artifacts
 .vscode/
