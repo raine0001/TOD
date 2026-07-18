@@ -1,5 +1,6 @@
 import importlib.util
 import unittest
+from argparse import Namespace
 from pathlib import Path
 
 
@@ -41,6 +42,38 @@ class OperatorImpactLive10Tests(unittest.TestCase):
         scored = module.score_reply(reply)
         self.assertFalse(scored["status_leakage"])
         self.assertTrue(scored["passed"])
+
+    def test_blocked_report_keeps_live_failure_auditable(self):
+        module = load_module()
+        args = Namespace(studio_base_url="https://mimtod.com", timeout=45)
+        report = module.build_blocked_report(args, RuntimeError("socket blocked"))
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["sample_count"], 0)
+        self.assertEqual(report["pass_count"], 0)
+        self.assertEqual(report["operator_impact_score"], 0.0)
+        self.assertEqual(report["dave_needed"], "no unless all TOD/MIM live-validation runtimes lack network or credentials")
+        self.assertIn("socket blocked", report["error"])
+        self.assertIn("durable blocked artifact", report["prevention_lesson"])
+        self.assertTrue(report["expected_evidence"])
+
+    def test_blocked_report_preserves_prior_operator_score(self, tmp_path=None):
+        module = load_module()
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            training_root = Path(tmp)
+            module.OPERATOR_SCORECARD_PATH = training_root / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json"
+            module.REAL_MOVEMENT_PATH = training_root / "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json"
+            module.OPERATOR_SCORECARD_PATH.parent.mkdir(parents=True, exist_ok=True)
+            module.OPERATOR_SCORECARD_PATH.write_text(
+                '{"operator_impact_score": 7.0, "sample_count": 10}',
+                encoding="utf-8",
+            )
+            args = Namespace(studio_base_url="https://mimtod.com", timeout=45)
+            report = module.build_blocked_report(args, RuntimeError("socket blocked"))
+
+        self.assertEqual(report["last_verified_operator_impact"], "7.0/10 from 10 live replies")
 
 
 if __name__ == "__main__":

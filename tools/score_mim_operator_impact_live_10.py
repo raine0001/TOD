@@ -6,6 +6,8 @@ import base64
 import json
 import os
 import re
+import sys
+import traceback
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +17,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = ROOT / "runtime_remote_training" / "MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json"
 OUTPUT_MD_PATH = ROOT / "runtime_remote_training" / "MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.md"
+OPERATOR_SCORECARD_PATH = ROOT / "runtime_remote_training" / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json"
+REAL_MOVEMENT_PATH = ROOT / "runtime_remote_training" / "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json"
 
 FIELD_RULES = {
     "actionability": re.compile(r"\b(next step|next action|action:|recommended action|recommendation:|i recommend|should|start|run|inspect|repair|rerun)\b", re.I),
@@ -64,6 +68,33 @@ def load_dotenv(path: Path) -> None:
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def prior_operator_impact_summary() -> str:
+    operator = load_json(OPERATOR_SCORECARD_PATH)
+    score = operator.get("operator_impact_score")
+    sample_count = operator.get("sample_count")
+    try:
+        if float(score) > 0 and int(sample_count) > 0:
+            return f"{float(score):.1f}/10 from {int(sample_count)} live replies"
+    except (TypeError, ValueError):
+        pass
+    real_movement = load_json(REAL_MOVEMENT_PATH)
+    for row in real_movement.get("metrics") if isinstance(real_movement.get("metrics"), list) else []:
+        if not isinstance(row, dict) or row.get("metric") != "MIM Operator Impact":
+            continue
+        current = str(row.get("current") or "").strip()
+        if re.search(r"\b(?!0\.0/10 from 0 live replies)\d+(?:\.\d+)?/10 from \d+ live replies\b", current):
+            return current
+    return ""
 
 
 def post_studio_turn(base_url: str, username: str, password: str, session_key: str, message: str, timeout: int) -> str:
@@ -210,6 +241,65 @@ def write_report(report: dict[str, Any]) -> None:
     OUTPUT_MD_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def build_blocked_report(args: argparse.Namespace, exc: BaseException) -> dict[str, Any]:
+    generated = utc_now()
+    prior_summary = prior_operator_impact_summary()
+    attempted_command = " ".join(
+        [
+            "python",
+            "tools/score_mim_operator_impact_live_10.py",
+            "--studio-base-url",
+            str(args.studio_base_url),
+            "--timeout",
+            str(args.timeout),
+        ]
+    )
+    error_text = f"{exc.__class__.__name__}: {exc}"
+    return {
+        "packet_type": "mim-operator-impact-live-10-scorecard-v1",
+        "objective_id": "MIM-OPERATOR-IMPACT-REGRESSION-REPAIR-V1",
+        "generated_at": generated,
+        "status": "blocked",
+        "blocker_class": "live_validation_blocked",
+        "reason_code": "studio_live_post_failed",
+        "attempted_command": attempted_command,
+        "error": error_text,
+        "traceback_excerpt": traceback.format_exc(limit=6),
+        "sample_count": 0,
+        "pass_count": 0,
+        "operator_impact_score": 0.0,
+        "operator_impact_percent": 0,
+        "required_fields": list(FIELD_RULES.keys()),
+        "metrics": [
+            {
+                "metric": "Operator Impact",
+                "baseline": "6/10",
+                "current": "blocked: live scorer could not collect Studio replies",
+                "source": "MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json",
+            },
+            {
+                "metric": "Live Validation Blocker",
+                "baseline": "live Studio POST succeeds",
+                "current": error_text,
+                "source": "tools/score_mim_operator_impact_live_10.py",
+            },
+        ],
+        "scored_cases": [],
+        "last_verified_operator_impact": prior_summary,
+        "owner": "TOD/MIM live-validation lane",
+        "expected_evidence": [
+            "POST to /studio/api/mim/chat succeeds from the scorer runtime",
+            "10 Studio replies are scored",
+            "MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json has sample_count=10",
+            "operator_impact_score reaches at least 8.0",
+        ],
+        "aging_rule": "Retry from an authorized live-validation runtime within 24h; if blocked again, publish the scorer error and keep the prior real-movement score as the displayed truth.",
+        "dave_needed": "no unless all TOD/MIM live-validation runtimes lack network or credentials",
+        "prevention_lesson": "A blocked live scorer must still write a durable blocked artifact so Studio Training can distinguish missing evidence from successful-but-unpublished scoring.",
+        "next_action": "Run this scorer from a runtime that can reach Studio, then rebuild operator-impact and real-movement scorecards.",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--studio-base-url", default=os.getenv("MIM_STUDIO_BASE_URL", "https://mimtod.com"))
@@ -217,7 +307,24 @@ def main() -> int:
     parser.add_argument("--studio-password", default=None)
     parser.add_argument("--timeout", type=int, default=45)
     args = parser.parse_args()
-    report = build_report(args)
+    try:
+        report = build_report(args)
+    except Exception as exc:
+        report = build_blocked_report(args, exc)
+        write_report(report)
+        print(
+            json.dumps(
+                {
+                    "status": report["status"],
+                    "blocker_class": report["blocker_class"],
+                    "error": report["error"],
+                    "artifact": str(OUTPUT_PATH),
+                },
+                indent=2,
+            ),
+            file=sys.stderr,
+        )
+        return 2
     write_report(report)
     print(json.dumps({"status": report["status"], "operator_impact_score": report["operator_impact_score"], "pass_count": report["pass_count"], "sample_count": report["sample_count"]}, indent=2))
     return 0

@@ -12,12 +12,14 @@ ROOT = Path(__file__).resolve().parents[1]
 TRAINING_ROOT = ROOT / "runtime_remote_training"
 SCOREBOARD_PATH = TRAINING_ROOT / "MIM_TOD_TRAINING_SCOREBOARD.latest.json"
 LIVE_10_PATH = TRAINING_ROOT / "MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json"
+REAL_MOVEMENT_PATH = TRAINING_ROOT / "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json"
 STRUCTURAL_PATH = TRAINING_ROOT / "MIM_STRUCTURAL_REASONING_DIVERSITY_SCORECARD.latest.json"
 CROSS_SURFACE_PATH = TRAINING_ROOT / "MIM_STRUCTURAL_REASONING_CROSS_SURFACE_SCORECARD.latest.json"
 CONTEXT_GROUNDING_PATH = TRAINING_ROOT / "MIM_CONTEXT_GROUNDED_CONVERSATION_SCORECARD.latest.json"
 OUTCOME_BINDING_PATH = TRAINING_ROOT / "MIM_OPERATOR_IMPACT_OUTCOME_BINDING.latest.json"
 OUTPUT_PATH = TRAINING_ROOT / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json"
 OUTPUT_MD_PATH = TRAINING_ROOT / "MIM_OPERATOR_IMPACT_SCORECARD.latest.md"
+INTERVENTIONS_ROOT = TRAINING_ROOT / "codex_training_interventions"
 
 FIELD_RULES = {
     "actionability": re.compile(r"\b(next step|next action|action:|recommended action|recommendation:|i recommend|should)\b", re.I),
@@ -30,7 +32,7 @@ FIELD_RULES = {
 
 def _load_json(path: Path) -> dict[str, Any]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
@@ -195,6 +197,102 @@ def _outcome_binding_metric_rows() -> list[dict[str, str]]:
     ]
 
 
+def _real_movement_operator_summary() -> dict[str, Any]:
+    real_movement = _load_json(REAL_MOVEMENT_PATH)
+    metrics = real_movement.get("metrics") if isinstance(real_movement.get("metrics"), list) else []
+    for row in metrics:
+        if not isinstance(row, dict) or row.get("metric") != "MIM Operator Impact":
+            continue
+        current = str(row.get("current") or "").strip()
+        match = re.search(r"(?P<score>\d+(?:\.\d+)?)/10\s+from\s+(?P<sample>\d+)\s+live replies", current, re.I)
+        if not match:
+            continue
+        return {
+            "score": float(match.group("score")),
+            "sample_count": int(match.group("sample")),
+            "current": current,
+            "generated_at": real_movement.get("generated_at"),
+            "overall_readout": real_movement.get("overall_readout"),
+            "source_metric": row,
+        }
+    return {}
+
+
+def _operator_summary_from_text(current: str, source: str = "") -> dict[str, Any]:
+    match = re.search(r"(?P<score>\d+(?:\.\d+)?)/10\s+from\s+(?P<sample>\d+)\s+live replies", current, re.I)
+    if not match:
+        return {}
+    return {
+        "score": float(match.group("score")),
+        "sample_count": int(match.group("sample")),
+        "current": current,
+        "source": source,
+    }
+
+
+def _latest_preserved_operator_summary() -> dict[str, Any]:
+    candidates = sorted(
+        [
+            *INTERVENTIONS_ROOT.glob("CODEX_MIM_OPERATOR_IMPACT_LIVE10_RERUN_BLOCKED_*.json"),
+            *INTERVENTIONS_ROOT.glob("CODEX_MIM_OPERATOR_IMPACT_LIVE_DEPLOY_AND_SCORER_TRANSPORT_BLOCKED_*.json"),
+            *INTERVENTIONS_ROOT.glob("CODEX_TOD_SELECTOR_CONTRACT_RESPONDER_SILENCE_*.json"),
+            LIVE_10_PATH,
+        ],
+        key=lambda path: path.stat().st_mtime if path.exists() else 0,
+        reverse=True,
+    )
+    for path in candidates:
+        if not path.exists():
+            continue
+        payload = _load_json(path)
+        if not payload:
+            continue
+        observed_state = payload.get("observed_state") if isinstance(payload.get("observed_state"), dict) else {}
+        for value in (
+            payload.get("last_verified_operator_impact"),
+            observed_state.get("operator_impact_score"),
+            payload.get("last_verified_live_result"),
+        ):
+            summary = _operator_summary_from_text(str(value or ""), path.name)
+            if summary and summary["sample_count"] > 0 and summary["score"] > 0:
+                return summary
+    return {}
+
+
+def _latest_live_validation_blocker() -> tuple[Path | None, dict[str, Any]]:
+    candidate_paths = [
+        *INTERVENTIONS_ROOT.glob("CODEX_MIM_OPERATOR_IMPACT_LIVE10_RERUN_BLOCKED_*.json"),
+        *INTERVENTIONS_ROOT.glob("CODEX_MIM_OPERATOR_IMPACT_LIVE_DEPLOY_AND_SCORER_TRANSPORT_BLOCKED_*.json"),
+        *INTERVENTIONS_ROOT.glob("CODEX_TOD_SELECTOR_CONTRACT_RESPONDER_SILENCE_*.json"),
+    ]
+    if LIVE_10_PATH.exists():
+        candidate_paths.append(LIVE_10_PATH)
+    candidates = sorted(candidate_paths, key=lambda path: path.stat().st_mtime, reverse=True)
+    for path in candidates:
+        payload = _load_json(path)
+        if path == LIVE_10_PATH and not (
+            str(payload.get("status") or "").lower() == "blocked"
+            or payload.get("blocker_class")
+            or payload.get("error")
+        ):
+            continue
+        if payload:
+            return path, payload
+    return None, {}
+
+
+def _blocker_live_detail(blocker: dict[str, Any]) -> str:
+    explicit_error = str(blocker.get("error") or "").strip()
+    if explicit_error:
+        return f"live-10 rerun blocked: {explicit_error}"
+    summary = str(blocker.get("summary") or blocker.get("why_forward_motion_is_blocked") or "unknown live-validation blocker").strip()
+    return f"live validation blocked: {summary}"
+
+
+def _blocker_fallback_reason(blocker: dict[str, Any], default: str) -> str:
+    return str(blocker.get("impact") or blocker.get("summary") or blocker.get("why_forward_motion_is_blocked") or default)
+
+
 def build_scorecard() -> dict[str, Any]:
     live_10 = _load_json(LIVE_10_PATH)
     live_10_metrics = live_10.get("metrics") if isinstance(live_10.get("metrics"), list) else []
@@ -254,6 +352,71 @@ def build_scorecard() -> dict[str, Any]:
             "metrics": metrics,
             "scored_cases": live_10.get("scored_cases") if isinstance(live_10.get("scored_cases"), list) else [],
             "next_action": "Bind expected evidence to observed project/successor records, then rerun live scoring within 24 hours.",
+        }
+
+    real_movement_operator = _real_movement_operator_summary()
+    if real_movement_operator:
+        if real_movement_operator.get("score") == 0 and real_movement_operator.get("sample_count") == 0:
+            preserved_operator = _latest_preserved_operator_summary()
+            if preserved_operator:
+                real_movement_operator = {**real_movement_operator, **preserved_operator}
+        blocker_path, live10_blocker = _latest_live_validation_blocker()
+        generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        operator_impact_score = float(real_movement_operator.get("score") or 0.0)
+        sample_count = int(real_movement_operator.get("sample_count") or 0)
+        live_detail_current = "summary fallback only; rerun live-10 scorer for per-reply field detail"
+        live_detail_source = "MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json"
+        source_files = [str(REAL_MOVEMENT_PATH)]
+        status = "measured_contract_fields_from_real_movement_summary"
+        next_action = "Restore or rerun the live-10 scorer, then rebuild this scorecard with per-reply field detail."
+        fallback_reason = "MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json is unavailable; preserved latest real-movement live summary instead of falling back to stale reply excerpts."
+        if live10_blocker:
+            live_detail_current = _blocker_live_detail(live10_blocker)
+            live_detail_source = blocker_path.name if blocker_path else "CODEX_MIM_OPERATOR_IMPACT_LIVE_VALIDATION_BLOCKED"
+            if blocker_path is not None:
+                source_files.append(str(blocker_path))
+            status = "live_detail_blocked"
+            next_action = str(live10_blocker.get("aging_rule") or next_action)
+            fallback_reason = _blocker_fallback_reason(live10_blocker, fallback_reason)
+        metrics = [
+            _metric_row(
+                "Operator Impact",
+                "6/10",
+                str(real_movement_operator.get("current") or f"{operator_impact_score}/10 from {sample_count} live replies"),
+                "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json",
+            ),
+            _metric_row(
+                "Live Reply Detail",
+                "live-10 preferred",
+                live_detail_current,
+                live_detail_source,
+            ),
+            *_structural_metric_rows(),
+            *_outcome_binding_metric_rows(),
+            _metric_row("Project Momentum Created", "new metric needed", "needs attribution", "count projects moved by MIM-selected actions"),
+            _metric_row("Unnecessary Status Responses", "baseline established", "summary fallback; live-10 detail unavailable", "track when MIM reports status without a useful action"),
+            _metric_row("Dave Intervention Avoidance", "new metric needed", "needs attribution", "track MIM/TOD/Codex resolution before asking Dave"),
+            _metric_row("Continuity Lookup Usage", "new metric needed", "needs proof", "score whether MIM loads prior project history before implementation"),
+            _metric_row("Project Advancement Rate", "new metric needed", "needs outcome-linked proof", "measure projects moved to accepted, split, archived, dispatched, or waiting-with-evidence"),
+            _metric_row("Prevented Waste", "new metric needed", "needs proof", "track scope splits, duplicate work prevented, reused prior solutions, and continuity saves"),
+        ]
+        return {
+            "packet_type": "mim-operator-impact-scorecard-v1",
+            "generated_at": generated_at,
+            "status": status,
+            "sample_count": sample_count,
+            "pass_count": None,
+            "required_fields": list(FIELD_RULES.keys()),
+            "operator_impact_percent": int(round(operator_impact_score * 10)),
+            "operator_impact_score": operator_impact_score,
+            "target_score": 8,
+            "source_files": source_files,
+            "summary_fallback_only": True,
+            "summary_fallback_reason": fallback_reason,
+            "live_detail_blocker": live10_blocker or None,
+            "metrics": metrics,
+            "scored_cases": [],
+            "next_action": next_action,
         }
 
     scoreboard = _load_json(SCOREBOARD_PATH)
