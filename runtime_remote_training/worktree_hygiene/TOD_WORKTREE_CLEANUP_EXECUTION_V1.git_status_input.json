@@ -1,0 +1,630 @@
+﻿{
+    "dirty_count_before":  156,
+    "remaining_dirty_count":  156,
+    "items":  [
+                  {
+                      "path":  "CODEX.md",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "runtime_remote_training/remote_scripts/mim_box_tod_packet_listener.py",
+                      "status":  "D"
+                  },
+                  {
+                      "path":  "scripts/Check-TODRecouplingGate.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Connect-Mim.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Invoke-MIMStationFileMirror.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Invoke-MIMTODTrainingScoreboard.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Invoke-TODConversationalReply.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Invoke-TODManagedWork.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Invoke-TODMimDialog.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Invoke-TODNextStepPolicy.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Invoke-TODPublicRouteHealthCheck.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Invoke-TODSelfHealthMaintenance.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Invoke-TODSharedStateSync.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Register-TODListenerTask.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Repair-ContextSyncLatestTruth.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Start-TOD-UI.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Start-TODAutonomousTrainingDaemon.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Start-TODMimListenerStartup.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Start-TODMimPacketListener.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Start-TODRecoveryWatchdog.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/TOD.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Test-TODProjectAccessPolicy.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/Write-TODCompletionStatus.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/engines/LocalExecutionEngine.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/generate_mim_tod_training_scoreboard.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "scripts/tod_ui_lan_proxy.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.BoundedEditMaterialization.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.CanonicalLanePublisherGate.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.ConversationalReply.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.IntakeArbitration.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.LedgerPhaseACoverageReport.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.LocalFallbackExecutor.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.LocalFirstRouting.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.ManagedWorkCleanup.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.MimTaskTroubleshooting.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.NoOpExecutionDetector.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.PacketListenerOrdering.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.ProjectManagedWork.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.PublicRouteHealth.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.Retry.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.SelfDrivingTaskSelection.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/TOD.SharedStateSyncAwareness.Tests.ps1",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/test_mim_operator_impact_live_10.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/test_mim_tod_real_movement_scorecard.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tests/test_mim_tod_training_scoreboard_validated_edits.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/core/communication_composer.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/core/interaction_quality_dashboard.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/core/mim_ui_auth.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/core/models.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/core/routers/gateway.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/core/routers/public_chat.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/core/routers/studio.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/core/routers/tod_ui.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/tests/integration/test_mim_tod_handoff_gateway.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/tests/test_interaction_quality_dashboard.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/tests/test_public_chat_direct_answers.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tmp_remote_mim/tests/test_studio_training_chat.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tod/config/project-registry.json",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tools/build_mim_operator_impact_scorecard.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tools/build_mim_tod_real_movement_scorecard.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "tools/score_mim_operator_impact_live_10.py",
+                      "status":  "M"
+                  },
+                  {
+                      "path":  "docs/patch-packets/",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_ACTIVE_CONTEXT_TRANSITION_BEFORE_EXPLORATION_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_COGNITIVE_DEVELOPMENT_LOOP_1000_CONVERSATION_TRAINING_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_COGNITIVE_DEVELOPMENT_LOOP_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_COMMUNICATION_INPUT_PROCESS_AUDIT_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_CONTEXT_FIRST_DIALOG_CONTRACT_FAILURE_V1.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_CONTEXT_FIRST_INPUT_INTERPRETATION_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_CONTEXT_FIRST_SEMANTIC_ACK_CONTRACT_RESULT_V1.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_CONTEXT_FIRST_SEMANTIC_INTERPRETATION_OBJECT_BASELINE_RESULT_V1.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_CONTEXT_FIRST_SEMANTIC_INTERPRETATION_OBJECT_DRILL_001.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_CONTEXT_FIRST_SEMANTIC_VALIDATION_REQUEST_V1.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_CONTEXT_FIRST_SEMANTIC_VALIDATION_RESULT_V1.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_CONVERSATIONAL_CURIOSITY_AND_RESEARCH_EVOLUTION_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_ENTERPRISE_EXPERIENCE_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_ENTERPRISE_OBSERVATORY_FIRST_REAL_WORKFLOW_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_ENTERPRISE_TENANT_CLEAN_SLATE_ENTRY_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_EXPLORATORY_REASONING_CONTEXT_AND_INTENT_VERIFICATION_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_HARDCODED_ANSWER_AUDIT_AND_REPLACEMENT_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_REALITY_DEVELOPMENT_CYCLES_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_RESEARCH_EVOLUTION_CONVERSATIONAL_INTEGRATION_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_SELF_STATUS_PROMPT_CONTEXT_ROUTING_REPAIR_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/MIM_TOD_DIRECT_FIX_BACKFILL_TRAINING_PLAN.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/RESEARCH_EVIDENCE_BOUNDARY_PROMOTION_RUBRIC.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/TOD_AGENTMIM_DETERMINISTIC_APP_DATA_FAST_PATH_APPRENTICESHIP_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/TOD_APPRENTICESHIP_REGISTRY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/TOD_CLOSURE_UNDERSTANDING_GATE_FAILURE_001.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/TOD_DOCUMENT_VIEWER_AUTHORING_TRAINING_PLAN.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/TOD_EMERGENCY_REPAIR_APPRENTICESHIP_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/TOD_HELPDESK_DURABLE_INBOX_AUDIT_001.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/TOD_PUBLIC_TOD_ROUTE_STATE_HEALTH_OWNERSHIP_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/TOD_TECHNICAL_OPERATIONS_RELIABILITY_V1.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/CROSS_SURFACE_CONVERSATION_PURPOSE_ROUTING_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/ENT_001_CAPABILITY_FREEZE.latest.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/MIM_ACK_CONTRACT_FIELD_PROJECTION_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/MIM_PUBLIC_CHAT_CONTEXT_BOUNDARY_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/MIM_RESEARCH_NUMERIC_ANSWER_FROM_EVIDENCE_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/MIM_RESPONSE_CONTRACT_AND_SOLAIR_EQUIPMENT_ANSWER_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/RESEARCH_DOCUMENT_LIBRARY_METADATA_BOUNDARY_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/RESEARCH_EVIDENCE_BOUNDARY_REASONING_AND_OWNER_CONTRACT_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/SOLAIR_EVIDENCE_ROUTING_AND_ANSWER_COMPRESSION_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/STUDIO_ROUTE_SEED_CONTRACT_MIXED_TYPE_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/TOD_BLOCKER_POLICY_COMMUNICATION_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/TOD_DOCUMENT_VIEWER_PACKET_AUTHORING_AND_SELF_ASSESSMENT_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/TOD_EXECUTOR_BINDING_BLOCKER_SELF_RECOVERY_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/TOD_PYTHON_ROUTE_PACKET_MATERIALIZATION_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/TOD_READ_ONLY_AUDIT_ARTIFACT_LANE_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/TOD_SEMANTIC_SOURCE_AUDIT_BODY_SYNTHESIS_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/TOD_SOURCE_EVIDENCE_ARTIFACT_BODY_SYNTHESIS_AND_CLOSURE_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/TOD_SOURCE_PAYLOAD_INTENT_SHIELDING_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "docs/training/learned-capabilities/TOD_UNIQUE_ANCHOR_BOUNDED_EDIT_MATERIALIZATION_LEARNED_CAPABILITY.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_CONTEXT_GROUNDED_CONVERSATION_SCORECARD.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_CONTEXT_GROUNDED_CONVERSATION_SCORECARD.latest.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_READY_TASK_DISPATCHER_STATUS.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_STRUCTURAL_REASONING_CROSS_SURFACE_SCORECARD.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_STRUCTURAL_REASONING_CROSS_SURFACE_SCORECARD.latest.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_STRUCTURAL_REASONING_DIVERSITY_SCORECARD.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_STRUCTURAL_REASONING_DIVERSITY_SCORECARD.latest.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_TOD_DEPLOY_APPLICATION_MANIFEST.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_TOD_DEPLOY_APPLICATION_MANIFEST.latest.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_TOD_DEPLOY_APPLICATION_PREFLIGHT.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_TOD_DEPLOY_APPLICATION_PREFLIGHT.latest.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_TOD_DEPLOY_VERIFICATION_QUEUE.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_TOD_DEPLOY_VERIFICATION_QUEUE.latest.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/MIM_TOD_STALE_ARTIFACT_DISPOSITION.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/TOD_IDLE_TRAINING_STATUS.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_NEXT_TASK.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_NEXT_TASK.latest.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_OBJECTIVE.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_OBJECTIVE.latest.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_SCORECARD.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_SCORECARD.latest.md",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/TOD_PROACTIVE_AUTONOMY.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/TOD_PROACTIVE_TASK.latest.json",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/learned_capabilities/",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/read_only_audit_artifacts/",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/remote_scripts/apply_mim_self_directed_focus_selection.py",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/training_debt/",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "runtime_remote_training/worktree_hygiene/",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "scripts/check_remote_preactive_trace_readiness.py",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "scripts/generate_remote_preactive_field_trace_package.py",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "scripts/materialize_tod_worktree_cleanup_execution.py",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "scripts/materialize_tod_worktree_path_classification.py",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "scripts/research_document_assimilator.py",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "tests/TOD.ContextSyncTruthRepair.Tests.ps1",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "tests/TOD.PythonSnippetBodySynthesis.Tests.ps1",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "tests/TOD.ReadOnlyAuditRegression.Tests.ps1",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "tests/test_mim_operator_impact_scorecard.py",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "tests/test_tod_worktree_cleanup_execution_materializer.py",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "tests/test_tod_worktree_path_classification_materializer.py",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "tod/data/state.before-observatory-enterprise-sanitize-20260716T1845Z.json.bak",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "tod/data/state.zero-byte-20260707T164547.json.bak",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "tools/publish_mim_response_authority_audit.py",
+                      "status":  "??"
+                  },
+                  {
+                      "path":  "tools/publish_tod_execution_authority_audit.py",
+                      "status":  "??"
+                  }
+              ]
+}

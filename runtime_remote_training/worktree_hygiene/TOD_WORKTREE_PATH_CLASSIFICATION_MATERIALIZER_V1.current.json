@@ -1,0 +1,1506 @@
+{
+  "ok": true,
+  "objective_id": "TOD-WORKTREE-PATH-CLASSIFICATION-MATERIALIZER-V1",
+  "artifact_type": "tod_worktree_path_classification_manifest",
+  "generated_at": "2026-07-18T15:46:23Z",
+  "source_artifact": "runtime_remote_training\\worktree_hygiene\\TOD_WORKTREE_CLEANUP_EXECUTION_V1.git_status_input.json",
+  "intervention_class": "escalation_after_TOD_attempt",
+  "tod_independent_capability_acquired": false,
+  "training_debt": "TOD-WORKTREE-PATH-CLASSIFICATION-MATERIALIZER-ASSIMILATION-V1",
+  "non_destructive": true,
+  "source_modified": false,
+  "summary": {
+    "total_paths": 156,
+    "classified_paths": 156,
+    "duplicate_paths_skipped": 0,
+    "unclassified_paths": 0,
+    "bucket_counts": {
+      "deleted_path_review": 1,
+      "generated_runtime_artifact": 26,
+      "governance_document_change": 1,
+      "learned_capability_document": 19,
+      "local_state_backup": 2,
+      "patch_packet_archive": 1,
+      "remote_mim_product_patch": 12,
+      "scorecard_or_audit_tool": 5,
+      "tod_configuration_change": 1,
+      "tod_control_plane_script": 22,
+      "tod_control_plane_tool": 7,
+      "training_or_objective_document": 30,
+      "training_runtime_artifact": 4,
+      "validation_test_change": 25
+    },
+    "owner_counts": {
+      "Dave + MIM + TOD": 1,
+      "MIM + TOD": 61,
+      "TOD": 94
+    },
+    "action_counts": {
+      "archive_or_ignore_generated_output_after_evidence_review": 26,
+      "archive_or_link_to_executed_result_before_commit": 1,
+      "archive_or_promote_intentional_artifact_then_ignore_generated_churn": 4,
+      "group_by_objective_and_commit_only_with_current_evidence": 30,
+      "inspect_config_diff_validate_schema_then_commit_or_split": 1,
+      "move_to_ignored_backup_location_or_delete_only_after_snapshot_review": 2,
+      "pair_with_matching_behavior_change_or_commit_as_regression_guard": 25,
+      "promote_if_supported_by_evidence_artifact_else_hold_for_review": 19,
+      "review_diff_run_focused_validation_then_commit_or_split": 7,
+      "review_diff_validate_control_plane_then_commit_or_split": 22,
+      "review_explicitly_and_commit_only_as_governance_slice": 1,
+      "review_tool_diff_run_unit_validation_then_commit_or_split": 5,
+      "split_into_reviewable_product_patch_with_tests_before_commit": 12,
+      "verify_replacement_or_intent_before_staging_deletion": 1
+    }
+  },
+  "next_slices": [
+    {
+      "slice": "governance_and_tod_control_plane",
+      "buckets": [
+        "governance_document_change",
+        "tod_control_plane_script",
+        "tod_control_plane_tool",
+        "tod_configuration_change"
+      ],
+      "rule": "Review exact diffs, run focused validation, and commit only coherent control-plane changes."
+    },
+    {
+      "slice": "remote_mim_product_patch",
+      "buckets": [
+        "remote_mim_product_patch"
+      ],
+      "rule": "Split live-product mirror edits by feature and test before deploy."
+    },
+    {
+      "slice": "training_memory_and_evidence",
+      "buckets": [
+        "training_or_objective_document",
+        "learned_capability_document",
+        "training_runtime_artifact"
+      ],
+      "rule": "Promote only artifacts with validation evidence; archive or ignore generated churn."
+    },
+    {
+      "slice": "local_generated_state",
+      "buckets": [
+        "generated_runtime_artifact",
+        "generated_or_shared_state",
+        "local_state_backup"
+      ],
+      "rule": "Do not commit by default; archive or add ignore rules after evidence review."
+    }
+  ],
+  "validation": {
+    "every_input_path_has_bucket_owner_action": true,
+    "all_paths_represented_once": true,
+    "source_dirty_count_before": 156,
+    "source_remaining_dirty_count": 156
+  },
+  "duplicates": [],
+  "unclassified": [],
+  "paths": [
+    {
+      "path": "CODEX.md",
+      "git_status": "M",
+      "owner": "Dave + MIM + TOD",
+      "bucket": "governance_document_change",
+      "action": "review_explicitly_and_commit_only_as_governance_slice",
+      "risk": "high",
+      "reason": "CODEX.md defines operating authority and should not be swept into unrelated commits."
+    },
+    {
+      "path": "runtime_remote_training/remote_scripts/mim_box_tod_packet_listener.py",
+      "git_status": "D",
+      "owner": "TOD",
+      "bucket": "deleted_path_review",
+      "action": "verify_replacement_or_intent_before_staging_deletion",
+      "risk": "high",
+      "reason": "Deleted paths can remove runtime capability and need explicit intent evidence."
+    },
+    {
+      "path": "scripts/Check-TODRecouplingGate.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Connect-Mim.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Invoke-MIMStationFileMirror.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Invoke-MIMTODTrainingScoreboard.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Invoke-TODConversationalReply.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Invoke-TODManagedWork.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Invoke-TODMimDialog.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Invoke-TODNextStepPolicy.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Invoke-TODPublicRouteHealthCheck.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Invoke-TODSelfHealthMaintenance.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Invoke-TODSharedStateSync.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Register-TODListenerTask.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Repair-ContextSyncLatestTruth.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Start-TOD-UI.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Start-TODAutonomousTrainingDaemon.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Start-TODMimListenerStartup.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Start-TODMimPacketListener.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Start-TODRecoveryWatchdog.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/TOD.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Test-TODProjectAccessPolicy.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/Write-TODCompletionStatus.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/engines/LocalExecutionEngine.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_script",
+      "action": "review_diff_validate_control_plane_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD PowerShell control-plane changes affect execution, routing, or health loops."
+    },
+    {
+      "path": "scripts/generate_mim_tod_training_scoreboard.py",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_tool",
+      "action": "review_diff_run_focused_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "TOD script/tool changes should be validated and grouped by capability."
+    },
+    {
+      "path": "scripts/tod_ui_lan_proxy.py",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_tool",
+      "action": "review_diff_run_focused_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "TOD script/tool changes should be validated and grouped by capability."
+    },
+    {
+      "path": "tests/TOD.BoundedEditMaterialization.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.CanonicalLanePublisherGate.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.ConversationalReply.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.IntakeArbitration.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.LedgerPhaseACoverageReport.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.LocalFallbackExecutor.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.LocalFirstRouting.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.ManagedWorkCleanup.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.MimTaskTroubleshooting.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.NoOpExecutionDetector.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.PacketListenerOrdering.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.ProjectManagedWork.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.PublicRouteHealth.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.Retry.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.SelfDrivingTaskSelection.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.SharedStateSyncAwareness.Tests.ps1",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/test_mim_operator_impact_live_10.py",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/test_mim_tod_real_movement_scorecard.py",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/test_mim_tod_training_scoreboard_validated_edits.py",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tmp_remote_mim/core/communication_composer.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tmp_remote_mim/core/interaction_quality_dashboard.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tmp_remote_mim/core/mim_ui_auth.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tmp_remote_mim/core/models.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tmp_remote_mim/core/routers/gateway.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tmp_remote_mim/core/routers/public_chat.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tmp_remote_mim/core/routers/studio.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tmp_remote_mim/core/routers/tod_ui.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tmp_remote_mim/tests/integration/test_mim_tod_handoff_gateway.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tmp_remote_mim/tests/test_interaction_quality_dashboard.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tmp_remote_mim/tests/test_public_chat_direct_answers.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tmp_remote_mim/tests/test_studio_training_chat.py",
+      "git_status": "M",
+      "owner": "MIM + TOD",
+      "bucket": "remote_mim_product_patch",
+      "action": "split_into_reviewable_product_patch_with_tests_before_commit",
+      "risk": "high",
+      "reason": "Remote MIM mirror changes may be live product behavior and must be reviewed by feature slice."
+    },
+    {
+      "path": "tod/config/project-registry.json",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "tod_configuration_change",
+      "action": "inspect_config_diff_validate_schema_then_commit_or_split",
+      "risk": "high",
+      "reason": "TOD config changes can alter active project/task routing."
+    },
+    {
+      "path": "tools/build_mim_operator_impact_scorecard.py",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "scorecard_or_audit_tool",
+      "action": "review_tool_diff_run_unit_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "Tools usually support scoring/audit publication and need validation evidence."
+    },
+    {
+      "path": "tools/build_mim_tod_real_movement_scorecard.py",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "scorecard_or_audit_tool",
+      "action": "review_tool_diff_run_unit_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "Tools usually support scoring/audit publication and need validation evidence."
+    },
+    {
+      "path": "tools/score_mim_operator_impact_live_10.py",
+      "git_status": "M",
+      "owner": "TOD",
+      "bucket": "scorecard_or_audit_tool",
+      "action": "review_tool_diff_run_unit_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "Tools usually support scoring/audit publication and need validation evidence."
+    },
+    {
+      "path": "docs/patch-packets/",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "patch_packet_archive",
+      "action": "archive_or_link_to_executed_result_before_commit",
+      "risk": "low",
+      "reason": "Patch packets are useful evidence only when linked to execution results."
+    },
+    {
+      "path": "docs/training/MIM_ACTIVE_CONTEXT_TRANSITION_BEFORE_EXPLORATION_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_COGNITIVE_DEVELOPMENT_LOOP_1000_CONVERSATION_TRAINING_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_COGNITIVE_DEVELOPMENT_LOOP_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_COMMUNICATION_INPUT_PROCESS_AUDIT_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_CONTEXT_FIRST_DIALOG_CONTRACT_FAILURE_V1.json",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_CONTEXT_FIRST_INPUT_INTERPRETATION_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_CONTEXT_FIRST_SEMANTIC_ACK_CONTRACT_RESULT_V1.json",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_CONTEXT_FIRST_SEMANTIC_INTERPRETATION_OBJECT_BASELINE_RESULT_V1.json",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_CONTEXT_FIRST_SEMANTIC_INTERPRETATION_OBJECT_DRILL_001.json",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_CONTEXT_FIRST_SEMANTIC_VALIDATION_REQUEST_V1.json",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_CONTEXT_FIRST_SEMANTIC_VALIDATION_RESULT_V1.json",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_CONVERSATIONAL_CURIOSITY_AND_RESEARCH_EVOLUTION_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_ENTERPRISE_EXPERIENCE_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_ENTERPRISE_OBSERVATORY_FIRST_REAL_WORKFLOW_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_ENTERPRISE_TENANT_CLEAN_SLATE_ENTRY_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_EXPLORATORY_REASONING_CONTEXT_AND_INTENT_VERIFICATION_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_HARDCODED_ANSWER_AUDIT_AND_REPLACEMENT_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_REALITY_DEVELOPMENT_CYCLES_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_RESEARCH_EVOLUTION_CONVERSATIONAL_INTEGRATION_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_SELF_STATUS_PROMPT_CONTEXT_ROUTING_REPAIR_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/MIM_TOD_DIRECT_FIX_BACKFILL_TRAINING_PLAN.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/RESEARCH_EVIDENCE_BOUNDARY_PROMOTION_RUBRIC.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/TOD_AGENTMIM_DETERMINISTIC_APP_DATA_FAST_PATH_APPRENTICESHIP_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/TOD_APPRENTICESHIP_REGISTRY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/TOD_CLOSURE_UNDERSTANDING_GATE_FAILURE_001.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/TOD_DOCUMENT_VIEWER_AUTHORING_TRAINING_PLAN.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/TOD_EMERGENCY_REPAIR_APPRENTICESHIP_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/TOD_HELPDESK_DURABLE_INBOX_AUDIT_001.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/TOD_PUBLIC_TOD_ROUTE_STATE_HEALTH_OWNERSHIP_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/TOD_TECHNICAL_OPERATIONS_RELIABILITY_V1.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "training_or_objective_document",
+      "action": "group_by_objective_and_commit_only_with_current_evidence",
+      "risk": "medium",
+      "reason": "Training documents should be grouped by objective so the worktree stays reviewable."
+    },
+    {
+      "path": "docs/training/learned-capabilities/CROSS_SURFACE_CONVERSATION_PURPOSE_ROUTING_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/ENT_001_CAPABILITY_FREEZE.latest.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/MIM_ACK_CONTRACT_FIELD_PROJECTION_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/MIM_PUBLIC_CHAT_CONTEXT_BOUNDARY_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/MIM_RESEARCH_NUMERIC_ANSWER_FROM_EVIDENCE_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/MIM_RESPONSE_CONTRACT_AND_SOLAIR_EQUIPMENT_ANSWER_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/RESEARCH_DOCUMENT_LIBRARY_METADATA_BOUNDARY_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/RESEARCH_EVIDENCE_BOUNDARY_REASONING_AND_OWNER_CONTRACT_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/SOLAIR_EVIDENCE_ROUTING_AND_ANSWER_COMPRESSION_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/STUDIO_ROUTE_SEED_CONTRACT_MIXED_TYPE_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/TOD_BLOCKER_POLICY_COMMUNICATION_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/TOD_DOCUMENT_VIEWER_PACKET_AUTHORING_AND_SELF_ASSESSMENT_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/TOD_EXECUTOR_BINDING_BLOCKER_SELF_RECOVERY_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/TOD_PYTHON_ROUTE_PACKET_MATERIALIZATION_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/TOD_READ_ONLY_AUDIT_ARTIFACT_LANE_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/TOD_SEMANTIC_SOURCE_AUDIT_BODY_SYNTHESIS_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/TOD_SOURCE_EVIDENCE_ARTIFACT_BODY_SYNTHESIS_AND_CLOSURE_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/TOD_SOURCE_PAYLOAD_INTENT_SHIELDING_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "docs/training/learned-capabilities/TOD_UNIQUE_ANCHOR_BOUNDED_EDIT_MATERIALIZATION_LEARNED_CAPABILITY.md",
+      "git_status": "??",
+      "owner": "MIM + TOD",
+      "bucket": "learned_capability_document",
+      "action": "promote_if_supported_by_evidence_artifact_else_hold_for_review",
+      "risk": "medium",
+      "reason": "Capability freezes must be backed by validation evidence, not only narrative."
+    },
+    {
+      "path": "runtime_remote_training/MIM_CONTEXT_GROUNDED_CONVERSATION_SCORECARD.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_CONTEXT_GROUNDED_CONVERSATION_SCORECARD.latest.md",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.md",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_READY_TASK_DISPATCHER_STATUS.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_STRUCTURAL_REASONING_CROSS_SURFACE_SCORECARD.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_STRUCTURAL_REASONING_CROSS_SURFACE_SCORECARD.latest.md",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_STRUCTURAL_REASONING_DIVERSITY_SCORECARD.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_STRUCTURAL_REASONING_DIVERSITY_SCORECARD.latest.md",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_TOD_DEPLOY_APPLICATION_MANIFEST.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_TOD_DEPLOY_APPLICATION_MANIFEST.latest.md",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_TOD_DEPLOY_APPLICATION_PREFLIGHT.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_TOD_DEPLOY_APPLICATION_PREFLIGHT.latest.md",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_TOD_DEPLOY_VERIFICATION_QUEUE.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_TOD_DEPLOY_VERIFICATION_QUEUE.latest.md",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/MIM_TOD_STALE_ARTIFACT_DISPOSITION.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/TOD_IDLE_TRAINING_STATUS.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_NEXT_TASK.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_NEXT_TASK.latest.md",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_OBJECTIVE.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_OBJECTIVE.latest.md",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_SCORECARD.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/TOD_INDEPENDENT_RESOLUTION_LADDER_V1_SCORECARD.latest.md",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/TOD_PROACTIVE_AUTONOMY.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/TOD_PROACTIVE_TASK.latest.json",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "runtime_remote_training/learned_capabilities/",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "training_runtime_artifact",
+      "action": "archive_or_promote_intentional_artifact_then_ignore_generated_churn",
+      "risk": "medium",
+      "reason": "Runtime training outputs are evidence-bearing but should be promoted intentionally, not left as anonymous dirt."
+    },
+    {
+      "path": "runtime_remote_training/read_only_audit_artifacts/",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "training_runtime_artifact",
+      "action": "archive_or_promote_intentional_artifact_then_ignore_generated_churn",
+      "risk": "medium",
+      "reason": "Runtime training outputs are evidence-bearing but should be promoted intentionally, not left as anonymous dirt."
+    },
+    {
+      "path": "runtime_remote_training/remote_scripts/apply_mim_self_directed_focus_selection.py",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "training_runtime_artifact",
+      "action": "archive_or_promote_intentional_artifact_then_ignore_generated_churn",
+      "risk": "medium",
+      "reason": "Runtime training outputs are evidence-bearing but should be promoted intentionally, not left as anonymous dirt."
+    },
+    {
+      "path": "runtime_remote_training/training_debt/",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "training_runtime_artifact",
+      "action": "archive_or_promote_intentional_artifact_then_ignore_generated_churn",
+      "risk": "medium",
+      "reason": "Runtime training outputs are evidence-bearing but should be promoted intentionally, not left as anonymous dirt."
+    },
+    {
+      "path": "runtime_remote_training/worktree_hygiene/",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "generated_runtime_artifact",
+      "action": "archive_or_ignore_generated_output_after_evidence_review",
+      "risk": "low",
+      "reason": "Generated runtime outputs should not keep the source tree dirty."
+    },
+    {
+      "path": "scripts/check_remote_preactive_trace_readiness.py",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_tool",
+      "action": "review_diff_run_focused_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "TOD script/tool changes should be validated and grouped by capability."
+    },
+    {
+      "path": "scripts/generate_remote_preactive_field_trace_package.py",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_tool",
+      "action": "review_diff_run_focused_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "TOD script/tool changes should be validated and grouped by capability."
+    },
+    {
+      "path": "scripts/materialize_tod_worktree_cleanup_execution.py",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_tool",
+      "action": "review_diff_run_focused_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "TOD script/tool changes should be validated and grouped by capability."
+    },
+    {
+      "path": "scripts/materialize_tod_worktree_path_classification.py",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_tool",
+      "action": "review_diff_run_focused_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "TOD script/tool changes should be validated and grouped by capability."
+    },
+    {
+      "path": "scripts/research_document_assimilator.py",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "tod_control_plane_tool",
+      "action": "review_diff_run_focused_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "TOD script/tool changes should be validated and grouped by capability."
+    },
+    {
+      "path": "tests/TOD.ContextSyncTruthRepair.Tests.ps1",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.PythonSnippetBodySynthesis.Tests.ps1",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/TOD.ReadOnlyAuditRegression.Tests.ps1",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/test_mim_operator_impact_scorecard.py",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/test_tod_worktree_cleanup_execution_materializer.py",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tests/test_tod_worktree_path_classification_materializer.py",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "validation_test_change",
+      "action": "pair_with_matching_behavior_change_or_commit_as_regression_guard",
+      "risk": "medium",
+      "reason": "Test changes should either guard a specific behavior change or be a standalone regression slice."
+    },
+    {
+      "path": "tod/data/state.before-observatory-enterprise-sanitize-20260716T1845Z.json.bak",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "local_state_backup",
+      "action": "move_to_ignored_backup_location_or_delete_only_after_snapshot_review",
+      "risk": "low",
+      "reason": "State backups are local recovery artifacts and usually should not be committed."
+    },
+    {
+      "path": "tod/data/state.zero-byte-20260707T164547.json.bak",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "local_state_backup",
+      "action": "move_to_ignored_backup_location_or_delete_only_after_snapshot_review",
+      "risk": "low",
+      "reason": "State backups are local recovery artifacts and usually should not be committed."
+    },
+    {
+      "path": "tools/publish_mim_response_authority_audit.py",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "scorecard_or_audit_tool",
+      "action": "review_tool_diff_run_unit_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "Tools usually support scoring/audit publication and need validation evidence."
+    },
+    {
+      "path": "tools/publish_tod_execution_authority_audit.py",
+      "git_status": "??",
+      "owner": "TOD",
+      "bucket": "scorecard_or_audit_tool",
+      "action": "review_tool_diff_run_unit_validation_then_commit_or_split",
+      "risk": "medium",
+      "reason": "Tools usually support scoring/audit publication and need validation evidence."
+    }
+  ]
+}
