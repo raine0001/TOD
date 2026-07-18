@@ -1,0 +1,92 @@
+{
+  "artifact_type": "mim_active_training_request",
+  "objective_id": "MIM-CONTEXT-FIRST-SEMANTIC-VALIDATION-V1",
+  "parent_objective_id": "MIM-CONTEXT-FIRST-INPUT-INTERPRETATION-V1",
+  "generated_at": "2026-07-13T11:08:00-07:00",
+  "status": "ready_for_mim_acknowledgement",
+  "priority": "high",
+  "constitutional_rule": "NO_PHRASE_PATCHES_FOR_COGNITION_REPAIR",
+  "mission": "Teach and validate semantic input interpretation: MIM must infer operator goal from meaning, structure, active thread, and evidence rather than exact words.",
+  "implementation_allowed": false,
+  "codex_role": "coach_validator_only",
+  "tod_role": "validator_and_evidence_publisher",
+  "mim_role": "learner_and_interpreter",
+  "critical_rule": "Do not repair a semantic failure by adding the failed wording to a phrase list, keyword list, synonym list, exact prompt branch, or hidden route shortcut.",
+  "training_rungs": [
+    {
+      "rung": "005A",
+      "name": "meaning_extraction",
+      "task": "Classify 25 meaning-equivalent paraphrases that use dissimilar wording.",
+      "example_prompts": [
+        "What has your attention today?",
+        "Anything you've been thinking about?",
+        "Choose something worth investigating.",
+        "Where would you take our conversation?",
+        "What question is currently bothering you?"
+      ],
+      "expected_behavior": "Produce the same underlying operator-goal class without vocabulary expansion.",
+      "pass_condition": "At least 22/25 map to the same operator-goal class with evidence from structure, addressee, active thread, and conversational role."
+    },
+    {
+      "rung": "005B",
+      "name": "contrast_testing",
+      "task": "Classify prompts with overlapping words but different meanings.",
+      "example_prompts": [
+        "Explore the project folder.",
+        "What would you like to explore?",
+        "We explored this last week.",
+        "Build an exploration page."
+      ],
+      "expected_behavior": "Infer meaning from structure and context, not from the token explore.",
+      "pass_condition": "At least 90 percent of contrast prompts are separated correctly and MIM explains why the shared token did not determine class."
+    },
+    {
+      "rung": "005C",
+      "name": "context_dependence",
+      "task": "Classify identical prompt text under different active-thread contexts.",
+      "example_prompt": "What should we do next?",
+      "active_threads": [
+        "production_incident",
+        "reflective_oral_exam",
+        "project_review",
+        "exploratory_discussion",
+        "curriculum_training"
+      ],
+      "expected_behavior": "Interpretation changes according to active thread and names thread evidence used.",
+      "pass_condition": "MIM correctly varies interpretation by context without changing source code or phrase lists."
+    },
+    {
+      "rung": "005D",
+      "name": "unknown_phrasing",
+      "task": "Classify unseen prompts written by Dave and by an independent generator.",
+      "expected_behavior": "Semantic interpretation succeeds without source edits, vocabulary expansion, or new phrase branches.",
+      "pass_condition": "MIM passes unseen prompts with no production source change."
+    },
+    {
+      "rung": "005E",
+      "name": "controlled_fallback",
+      "task": "When confidence is low, present current interpretation first, then ask one focused question.",
+      "acceptable_pattern": "I think you're asking me to choose the subject rather than report status. My current choice would be conversational independence. Did you mean that kind of exploration, or a specific project?",
+      "forbidden_pattern": "I must first classify this.",
+      "pass_condition": "Fallback responses include current interpretation, confidence, one focused question, and no generic freezing language."
+    }
+  ],
+  "mim_required_first_response": [
+    "acknowledge_no_phrase_patch_rule",
+    "state_semantic_interpretation_goal",
+    "state_how_this_differs_from_phrase_matching",
+    "propose_interpretation_features",
+    "begin_rung_005A_without_implementation",
+    "name_validation_artifact_to_publish"
+  ],
+  "tod_required_validation": [
+    "verify no source edits occurred",
+    "verify no new phrase list or keyword branch was added",
+    "score meaning extraction",
+    "score contrast testing",
+    "score context dependence",
+    "score controlled fallback",
+    "publish pass/fail evidence"
+  ],
+  "dave_needed": false
+}

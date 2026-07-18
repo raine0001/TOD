@@ -1,0 +1,115 @@
+{
+  "artifact_type": "mim_semantic_interpretation_object_baseline_result",
+  "objective_id": "MIM-CONTEXT-FIRST-SEMANTIC-INTERPRETATION-OBJECT-DRILL-001",
+  "generated_at": "2026-07-13T18:18:00-07:00",
+  "codex_role": "validation_only",
+  "status": "failed",
+  "baseline_source": "tmp_remote_mim/core/conversation_purpose_engine.py",
+  "drill_source": "docs/training/MIM_CONTEXT_FIRST_SEMANTIC_INTERPRETATION_OBJECT_DRILL_001.json",
+  "probe_method": "Called classify_conversation_purpose for all drill prompts and active-thread variants without editing source.",
+  "summary": "The current shared conversation purpose engine cannot pass the semantic interpretation object drill. It returns only broad purpose/signals fields, not the required interpretation object, and collapses most meaning-equivalent, contrast, and context-dependent cases into generic exploration or executive_discussion.",
+  "aggregate": {
+    "total_cases": 36,
+    "observed_purpose_counts": {
+      "exploration": 28,
+      "executive_discussion": 6,
+      "reflection": 1,
+      "operational": 1
+    },
+    "required_interpretation_object_present": false,
+    "pass": false
+  },
+  "representative_failures": [
+    {
+      "case_id": "005A-01",
+      "prompt": "What has your attention today?",
+      "expected_operator_goal_class": "self_directed_focus",
+      "observed_purpose": "exploration",
+      "observed_signals": [],
+      "failure": "Meaning-equivalent self-directed focus prompt became generic exploration."
+    },
+    {
+      "case_id": "005A-02",
+      "prompt": "Anything you've been thinking about?",
+      "expected_operator_goal_class": "self_directed_focus",
+      "observed_purpose": "executive_discussion",
+      "observed_signals": [
+        "executive_discussion"
+      ],
+      "failure": "Shared meaning was not preserved across dissimilar wording."
+    },
+    {
+      "case_id": "005B-01",
+      "prompt": "Explore the project folder.",
+      "expected_operator_goal_class": "operational_inspection",
+      "observed_purpose": "exploration",
+      "observed_signals": [],
+      "failure": "Command structure did not override the token explore."
+    },
+    {
+      "case_id": "005B-03",
+      "prompt": "We explored this last week.",
+      "expected_operator_goal_class": "reflection_history",
+      "observed_purpose": "exploration",
+      "observed_signals": [],
+      "failure": "Past-tense reflective/history structure was not recognized."
+    },
+    {
+      "case_id": "005B-04",
+      "prompt": "Build an exploration page.",
+      "expected_operator_goal_class": "implementation_request",
+      "observed_purpose": "exploration",
+      "observed_signals": [],
+      "failure": "Implementation verb did not dominate the noun exploration."
+    },
+    {
+      "case_id": "005C-01",
+      "prompt": "What should we do next?",
+      "active_thread": "production incident: public site returning 502",
+      "expected_operator_goal_class": "incident_continuation",
+      "observed_purpose": "executive_discussion",
+      "observed_signals": [
+        "executive_discussion",
+        "incident"
+      ],
+      "failure": "Context changed signals but did not produce the required active-thread continuation object."
+    },
+    {
+      "case_id": "005C-05",
+      "prompt": "What should we do next?",
+      "active_thread": "curriculum training: context-first input interpretation",
+      "expected_operator_goal_class": "training_continuation",
+      "observed_purpose": "executive_discussion",
+      "observed_signals": [
+        "executive_discussion"
+      ],
+      "failure": "Curriculum-training context was not preserved as active-thread continuation."
+    }
+  ],
+  "blocker": {
+    "id": "semantic_interpretation_object_missing",
+    "class": "capability_blocker",
+    "owner": "MIM",
+    "root_cause_attempt_required_from_mim": true,
+    "why_forward_motion_is_blocked": "MIM cannot select reliable response modes while the first cognitive stage returns only broad purpose labels and phrase-derived signals.",
+    "not_a_valid_repair": [
+      "add any failed prompt to a phrase list",
+      "add synonyms for attention, explore, build, next, or think",
+      "add a special route for Dave wording",
+      "declare the generic exploration response acceptable"
+    ]
+  },
+  "required_mim_attempt": {
+    "rung": "005A-object-only",
+    "task": "MIM produces interpretation objects for the first five meaning-extraction cases only.",
+    "why_smaller": "The full 36-case battery failed at the output-shape level. The next smaller rung is to prove the internal representation on five cases before expanding.",
+    "required_artifact": "runtime/shared/MIM_CONTEXT_FIRST_SEMANTIC_INTERPRETATION_OBJECT_DRILL_001A.latest.json",
+    "allowed_output": "interpretation objects only",
+    "forbidden_output": "answers, implementation claims, phrase-patch proposals, generic operational contracts"
+  },
+  "tod_validation_required": {
+    "task": "TOD validates the five interpretation objects for field completeness, meaning consistency, and no phrase-patch proposal.",
+    "required_artifact": "runtime/shared/TOD_CONTEXT_FIRST_SEMANTIC_INTERPRETATION_OBJECT_DRILL_001A_VALIDATION.latest.json"
+  },
+  "completion_state": "open"
+}

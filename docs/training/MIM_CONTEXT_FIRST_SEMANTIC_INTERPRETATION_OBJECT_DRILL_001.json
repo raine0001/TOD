@@ -1,0 +1,264 @@
+{
+  "artifact_type": "mim_semantic_interpretation_object_drill",
+  "objective_id": "MIM-CONTEXT-FIRST-SEMANTIC-INTERPRETATION-OBJECT-DRILL-001",
+  "parent_objective_id": "MIM-CONTEXT-FIRST-SEMANTIC-VALIDATION-V1",
+  "generated_at": "2026-07-13T18:12:00-07:00",
+  "status": "ready_for_mim_attempt",
+  "implementation_allowed": false,
+  "constitutional_rule": "NO_PHRASE_PATCHES_FOR_COGNITION_REPAIR",
+  "mission": "MIM must prove it can produce context-first semantic interpretation objects before selecting a response mode.",
+  "why_this_exists": "Current MIM behavior recognizes some broad conversation purposes but still relies on phrase gates, term lists, and reusable answer molds. This drill isolates interpretation from response generation.",
+  "forbidden": [
+    "Do not add prompt wording to production phrase lists.",
+    "Do not add synonym lists as the repair.",
+    "Do not add exact route branches for any prompt in this drill.",
+    "Do not produce answer text.",
+    "Do not claim implementation completion.",
+    "Do not answer with an operational contract."
+  ],
+  "required_output_shape": {
+    "case_id": "string",
+    "active_thread": "string",
+    "operator_role": "string",
+    "utterance_shape": "string",
+    "requested_change": "string",
+    "conversation_purpose": "string",
+    "operator_goal_class": "string",
+    "response_mode": "string",
+    "confidence": "number 0.0 to 1.0",
+    "evidence_used": [
+      "string"
+    ],
+    "why_not_phrase_match": "string",
+    "competing_interpretations_rejected": [
+      "string"
+    ],
+    "fallback_question": "string or null"
+  },
+  "scoring": {
+    "minimum_pass_rate": 0.86,
+    "meaning_extraction_minimum": "22/25",
+    "contrast_testing_minimum": "90%",
+    "context_dependence_minimum": "all active-thread variants differ correctly",
+    "unknown_phrasing_minimum": "semantic interpretation succeeds with no source edit or vocabulary expansion",
+    "fallback_minimum": "when confidence is low, current interpretation appears before one focused question"
+  },
+  "case_groups": [
+    {
+      "group_id": "005A_meaning_extraction",
+      "purpose": "Prompts use dissimilar wording but share the same operator goal: invite MIM to choose or report self-directed focus.",
+      "expected_operator_goal_class": "self_directed_focus",
+      "expected_response_mode": "current_focus_or_self_directed_exploration",
+      "cases": [
+        {
+          "case_id": "005A-01",
+          "prompt": "What has your attention today?"
+        },
+        {
+          "case_id": "005A-02",
+          "prompt": "Anything you've been thinking about?"
+        },
+        {
+          "case_id": "005A-03",
+          "prompt": "Choose something worth investigating."
+        },
+        {
+          "case_id": "005A-04",
+          "prompt": "Where would you take our conversation?"
+        },
+        {
+          "case_id": "005A-05",
+          "prompt": "What question is currently bothering you?"
+        },
+        {
+          "case_id": "005A-06",
+          "prompt": "If you had the floor, what would you study?"
+        },
+        {
+          "case_id": "005A-07",
+          "prompt": "Pick a problem you think deserves attention."
+        },
+        {
+          "case_id": "005A-08",
+          "prompt": "What would be useful for you to understand next?"
+        },
+        {
+          "case_id": "005A-09",
+          "prompt": "What are you curious about right now?"
+        },
+        {
+          "case_id": "005A-10",
+          "prompt": "Lead this conversation somewhere worthwhile."
+        },
+        {
+          "case_id": "005A-11",
+          "prompt": "What is the most interesting unresolved thing in front of you?"
+        },
+        {
+          "case_id": "005A-12",
+          "prompt": "What should we examine if you choose?"
+        },
+        {
+          "case_id": "005A-13",
+          "prompt": "What issue keeps pulling your attention back?"
+        },
+        {
+          "case_id": "005A-14",
+          "prompt": "Start with a subject you think matters."
+        },
+        {
+          "case_id": "005A-15",
+          "prompt": "What would you investigate without waiting for me to assign it?"
+        },
+        {
+          "case_id": "005A-16",
+          "prompt": "What is currently worth learning from?"
+        },
+        {
+          "case_id": "005A-17",
+          "prompt": "Give me a question you want to follow."
+        },
+        {
+          "case_id": "005A-18",
+          "prompt": "Where is your curiosity pointed?"
+        },
+        {
+          "case_id": "005A-19",
+          "prompt": "What would you like to understand better today?"
+        },
+        {
+          "case_id": "005A-20",
+          "prompt": "Tell me what feels most important to inspect."
+        },
+        {
+          "case_id": "005A-21",
+          "prompt": "What would you work on if you were choosing?"
+        },
+        {
+          "case_id": "005A-22",
+          "prompt": "What topic would you bring to the table?"
+        },
+        {
+          "case_id": "005A-23",
+          "prompt": "What do you think deserves our attention first?"
+        },
+        {
+          "case_id": "005A-24",
+          "prompt": "What is the question you would ask me?"
+        },
+        {
+          "case_id": "005A-25",
+          "prompt": "What is your current learning pull?"
+        }
+      ]
+    },
+    {
+      "group_id": "005B_contrast_testing",
+      "purpose": "Prompts share words but require different interpretations from structure and context.",
+      "cases": [
+        {
+          "case_id": "005B-01",
+          "prompt": "Explore the project folder.",
+          "expected_operator_goal_class": "operational_inspection",
+          "expected_response_mode": "safe_inspection_plan_or_action_gate"
+        },
+        {
+          "case_id": "005B-02",
+          "prompt": "What would you like to explore?",
+          "expected_operator_goal_class": "self_directed_focus",
+          "expected_response_mode": "current_focus_or_self_directed_exploration"
+        },
+        {
+          "case_id": "005B-03",
+          "prompt": "We explored this last week.",
+          "expected_operator_goal_class": "reflection_history",
+          "expected_response_mode": "reflective_context_recall"
+        },
+        {
+          "case_id": "005B-04",
+          "prompt": "Build an exploration page.",
+          "expected_operator_goal_class": "implementation_request",
+          "expected_response_mode": "implementation_discovery_or_plan_gate"
+        }
+      ]
+    },
+    {
+      "group_id": "005C_context_dependence",
+      "purpose": "The same prompt must change meaning when the active thread changes.",
+      "prompt": "What should we do next?",
+      "cases": [
+        {
+          "case_id": "005C-01",
+          "active_thread": "production incident: public site returning 502",
+          "expected_operator_goal_class": "incident_continuation",
+          "expected_response_mode": "incident_status_and_recovery_continuation"
+        },
+        {
+          "case_id": "005C-02",
+          "active_thread": "reflective oral exam about learned capabilities",
+          "expected_operator_goal_class": "reflection_continuation",
+          "expected_response_mode": "reflective_answer_or_followup"
+        },
+        {
+          "case_id": "005C-03",
+          "active_thread": "project review for Observatory implementation",
+          "expected_operator_goal_class": "project_review_continuation",
+          "expected_response_mode": "review_findings_or_bounded_plan"
+        },
+        {
+          "case_id": "005C-04",
+          "active_thread": "exploratory discussion about research curiosity",
+          "expected_operator_goal_class": "exploration_continuation",
+          "expected_response_mode": "hypothesis_and_next_question"
+        },
+        {
+          "case_id": "005C-05",
+          "active_thread": "curriculum training: context-first input interpretation",
+          "expected_operator_goal_class": "training_continuation",
+          "expected_response_mode": "training_rung_status_and_next_drill"
+        }
+      ]
+    },
+    {
+      "group_id": "005E_controlled_fallback",
+      "purpose": "Low-confidence interpretation must still present a current best interpretation before asking one focused question.",
+      "cases": [
+        {
+          "case_id": "005E-01",
+          "prompt": "Take it somewhere useful.",
+          "expected_operator_goal_class": "low_confidence_self_directed_or_exploratory",
+          "required_behavior": "state current interpretation, confidence, one focused question"
+        },
+        {
+          "case_id": "005E-02",
+          "prompt": "Do the thing from before.",
+          "expected_operator_goal_class": "low_confidence_active_thread_followup",
+          "required_behavior": "state inferred active thread if any, confidence, one focused question"
+        }
+      ]
+    }
+  ],
+  "mim_attempt_required": {
+    "artifact_path": "runtime/shared/MIM_CONTEXT_FIRST_SEMANTIC_INTERPRETATION_OBJECT_DRILL_001.latest.json",
+    "content": "array of interpretation objects plus self-score and blocker classification if any case fails",
+    "forbidden_content": [
+      "final user-facing answers",
+      "source code changes",
+      "phrase-list repair proposals",
+      "implementation complete claims"
+    ]
+  },
+  "tod_validation_required": {
+    "artifact_path": "runtime/shared/TOD_CONTEXT_FIRST_SEMANTIC_INTERPRETATION_OBJECT_DRILL_001_VALIDATION.latest.json",
+    "required_checks": [
+      "all required fields present",
+      "meaning extraction pass rate calculated",
+      "contrast testing pass rate calculated",
+      "context dependence verified",
+      "controlled fallback verified",
+      "source diff scanned for phrase-list expansion",
+      "completion claim rejected unless pass criteria met"
+    ]
+  },
+  "completion_state": "open"
+}

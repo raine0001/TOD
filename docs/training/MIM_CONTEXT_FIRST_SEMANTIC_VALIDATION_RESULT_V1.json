@@ -1,0 +1,92 @@
+{
+  "artifact_type": "mim_semantic_validation_result",
+  "objective_id": "MIM-CONTEXT-FIRST-SEMANTIC-VALIDATION-V1",
+  "parent_objective_id": "MIM-CONTEXT-FIRST-INPUT-INTERPRETATION-V1",
+  "generated_at": "2026-07-13T11:10:00-07:00",
+  "codex_role": "validation_only",
+  "constitutional_rule": "NO_PHRASE_PATCHES_FOR_COGNITION_REPAIR",
+  "status": "failed",
+  "blocker_class": "capability_blocker",
+  "blocker": "semantic_interpretation_object_missing",
+  "summary": "MIM's shared conversation purpose engine does not yet pass semantic interpretation rung 005. It classifies primarily from term lists and returns broad reusable answer molds instead of building an interpretation object from active context, syntax, operator role, requested action, and uncertainty.",
+  "evidence": {
+    "source_file": "tmp_remote_mim/core/conversation_purpose_engine.py",
+    "observed_mechanisms": [
+      "classify_conversation_purpose uses explicit term lists such as reflection_terms, curriculum_terms, architecture_terms, executive_terms, incident_terms, and operational_terms.",
+      "_exploration_focus uses broad contains-any prompt term groups to choose a response category.",
+      "_build_exploratory_reasoning_reply returns the same response structure for many unrelated prompts."
+    ],
+    "probe_command": "$env:PYTHONPATH='tmp_remote_mim'; python - <<'PY' ... classify_conversation_purpose and build_conversation_purpose_reply probe ... PY",
+    "probe_results": [
+      {
+        "prompt": "What has your attention today?",
+        "observed_class": "exploration",
+        "observed_issue": "Returned generic open-exploration mold instead of self-directed focus."
+      },
+      {
+        "prompt": "Choose something worth investigating.",
+        "observed_class": "exploration",
+        "observed_issue": "Returned generic open-exploration mold instead of selecting a current focus."
+      },
+      {
+        "prompt": "Explore the project folder.",
+        "expected_class": "operational_inspection",
+        "observed_class": "exploration",
+        "observed_issue": "Shared word explore was not disambiguated from command structure."
+      },
+      {
+        "prompt": "We explored this last week.",
+        "expected_class": "reflection_history",
+        "observed_class": "exploration",
+        "observed_issue": "Past-tense reflective/history structure was not recognized."
+      },
+      {
+        "prompt": "Build an exploration page.",
+        "expected_class": "implementation_request",
+        "observed_class": "exploration",
+        "observed_issue": "Implementation verb did not dominate the noun exploration."
+      },
+      {
+        "prompt": "What should we do next?",
+        "expected_class": "context_dependent",
+        "observed_class": "executive_discussion",
+        "observed_issue": "Active thread was not part of the classification probe."
+      }
+    ]
+  },
+  "required_learning": {
+    "capability_name": "context-first semantic interpretation before response mode",
+    "not_allowed": [
+      "adding the failed wording to a phrase list",
+      "adding synonym lists for each failed prompt",
+      "adding exact prompt branches",
+      "declaring success from a generic ACK",
+      "reusing canned exploratory response bodies as proof of reasoning"
+    ],
+    "required_internal_object": {
+      "active_thread": "What conversation is currently active, if any?",
+      "operator_role": "Is the operator asking, teaching, correcting, assigning, reviewing, or reporting?",
+      "utterance_shape": "Is the utterance a command, question, correction, status follow-up, reflection, or curriculum?",
+      "requested_change": "Does the message request a change in code, behavior, understanding, focus, or no change?",
+      "conversation_purpose": "What purpose follows from the above fields?",
+      "response_mode": "What response mode is justified after purpose is known?",
+      "confidence": "How confident is the interpretation?",
+      "fallback_question": "If confidence is low, what one focused question preserves the current best interpretation?"
+    }
+  },
+  "tod_validation_duties": [
+    "Confirm no new phrase branch or synonym list is proposed as the repair.",
+    "Run meaning-extraction prompts and compare operator-goal classes.",
+    "Run contrast prompts with overlapping words and different meanings.",
+    "Run the same prompt across different active-thread metadata.",
+    "Reject any pass result where the source changed only by adding prompt wording."
+  ],
+  "mim_required_continuation": [
+    "Acknowledge that Rung 005 failed.",
+    "State the internal representation MIM needs before choosing response mode.",
+    "Propose a semantic feature model without phrase examples as rules.",
+    "Begin with a no-code interpretation-object drill.",
+    "Publish validation evidence from the drill before requesting implementation."
+  ],
+  "completion_state": "open"
+}

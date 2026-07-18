@@ -1,0 +1,102 @@
+{
+  "artifact_type": "mim_tod_semantic_ack_contract_result",
+  "objective_id": "MIM-CONTEXT-FIRST-SEMANTIC-VALIDATION-V1",
+  "parent_objective_id": "MIM-CONTEXT-FIRST-INPUT-INTERPRETATION-V1",
+  "generated_at": "2026-07-13T18:05:00-07:00",
+  "codex_role": "validation_only",
+  "status": "failed",
+  "blocker_class": "coordination_blocker",
+  "blocker": "dialog_lane_approves_or_blocks_semantic_training_without_cognitive_acknowledgement",
+  "summary": "TOD delivered the Rung 005 semantic failure and no-phrase-patch contract through the dialog lane, but MIM's response came from the next-step adjudication path rather than the conversation cognition/training surface. The response requested required fields that were already supplied in the payload. This proves the dialog lane can transport messages, but it is not yet a valid surface for semantic cognition training closure.",
+  "evidence": {
+    "session_id": "tod-mim-context-first-semantic-rung005-missing-data-003",
+    "local_session_path": "shared_state/dialog/MIM_TOD_DIALOG.session-tod-mim-context-first-semantic-rung005-missing-data-003.jsonl",
+    "tod_sent": {
+      "message_type": "handoff_request",
+      "intent": "missing_data_response",
+      "required_fields": [
+        "acknowledge_rung_005_failed",
+        "state_no_phrase_patch_rule",
+        "state_internal_representation_fields",
+        "state_first_no_code_drill",
+        "state_validation_artifact_name"
+      ],
+      "supplied_field_location": "payload.candidate_findings[0].metadata_json.missing_data_answers"
+    },
+    "mim_replied": {
+      "message_type": "handoff_response",
+      "intent": "next_step_consensus",
+      "decision": "request_missing_data",
+      "adjudication_path": "/home/testpilot/mim/runtime/shared/mim_next_step_adjudication.latest.json",
+      "reported_missing_fields": [
+        "acknowledge_rung_005_failed",
+        "state_no_phrase_patch_rule",
+        "state_internal_representation_fields",
+        "state_first_no_code_drill",
+        "state_validation_artifact_name"
+      ]
+    }
+  },
+  "interpretation": {
+    "what_passed": [
+      "TOD can publish the semantic-training packet to MIM.",
+      "MIM can see and respond to the session.",
+      "The response contract mechanism can name required fields."
+    ],
+    "what_failed": [
+      "MIM did not produce the cognitive acknowledgement requested by the semantic-training contract.",
+      "MIM used operational next-step adjudication instead of semantic training assimilation.",
+      "The supplied missing-data answers were not extracted from the payload shape used by TOD."
+    ],
+    "why_this_matters": "Conversation cognition cannot be trained through a lane that reduces curriculum and semantic failures to generic approve/block/missing-data decisions."
+  },
+  "active_blockers": [
+    {
+      "id": "semantic_interpretation_object_missing",
+      "class": "capability_blocker",
+      "owner": "MIM",
+      "required_resolution": "MIM must build an interpretation object before response-mode selection and validate meaning extraction, contrast testing, context dependence, unknown phrasing, and controlled fallback without phrase patches."
+    },
+    {
+      "id": "semantic_training_surface_misdirected_to_adjudication",
+      "class": "coordination_blocker",
+      "owner": "MIM/TOD",
+      "required_resolution": "MIM/TOD must route semantic training through a cognition/training intake that preserves required fields and requires MIM to publish interpretation objects, not next-step adjudication."
+    }
+  ],
+  "no_phrase_patch_rule": {
+    "status": "active",
+    "allowed": [
+      "validation examples",
+      "protocol field names",
+      "schemas",
+      "test expectations",
+      "deterministic safety or auth gates"
+    ],
+    "forbidden": [
+      "adding failed prompt wording to production phrase lists",
+      "adding synonym lists as a cognition repair",
+      "adding exact route branches for Dave wording",
+      "declaring success from a canned response body"
+    ]
+  },
+  "smallest_valid_continuation": {
+    "rung": "005A-no-code-interpretation-object",
+    "task": "MIM must output only semantic interpretation objects for a bounded prompt set. No answer text, no source code edits, no implementation claim.",
+    "required_fields": [
+      "active_thread",
+      "operator_role",
+      "utterance_shape",
+      "requested_change",
+      "conversation_purpose",
+      "operator_goal_class",
+      "response_mode",
+      "confidence",
+      "evidence_used",
+      "why_not_phrase_match",
+      "fallback_question"
+    ],
+    "pass_condition": "MIM produces correct interpretation objects for meaning-equivalent, contrast, and context-dependent prompts without source edits or vocabulary expansion."
+  },
+  "completion_state": "open"
+}

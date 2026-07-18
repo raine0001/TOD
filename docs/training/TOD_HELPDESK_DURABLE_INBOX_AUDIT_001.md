@@ -1,0 +1,276 @@
+# TOD Helpdesk Durable Inbox Audit 001
+
+## Objective
+
+Teach TOD to treat public help tickets as operational work that must be seen, acknowledged, worked, updated, and closed with evidence.
+
+## Trigger
+
+Dave observed that public sites already have help desks and trouble tickets, and TOD should be the primary recipient. AgentMIM has a public help route at `https://www.agentmim.com/help`.
+
+## Reality
+
+AgentMIM support tickets are real database records. The inspected code shows:
+
+- `SupportTicket` model exists in `E:\comm_app\app\models.py`.
+- `SupportTicketMessage` model exists in `E:\comm_app\app\models.py`.
+- `/help/support` creates a `SupportTicket`.
+- `/help/support` stores messages and attachment context.
+- `/help/support` calls `notify_support_ticket_created(ticket)`.
+- `notify_support_ticket_created` emails admin/super_admin account owners with `notify_support_alerts=true`.
+
+The current route can tell a user that support was submitted, but that is not yet proof that TOD has accepted the work.
+
+## Observation
+
+Relevant support ticket fields already present:
+
+- `id`
+- `owner_account_id`
+- `submitted_by_owner_id`
+- `submitted_by_rep_id`
+- `status`
+- `priority`
+- `channel`
+- `subject`
+- `description`
+- `agent_mim_summary`
+- `handled_by_agent_mim`
+- `assigned_admin_id`
+- `created_at`
+- `updated_at`
+- `closed_at`
+
+Relevant message fields already present:
+
+- `ticket_id`
+- `author_type`
+- `author_owner_id`
+- `author_rep_id`
+- `author_admin_id`
+- `message`
+- `context`
+- `created_at`
+
+## Root Cause
+
+The current handoff is notification-centered, not TOD-operations-centered.
+
+Email/admin notification can alert a person, but it does not prove:
+
+- TOD saw the ticket.
+- TOD acknowledged the ticket.
+- TOD classified the blocker.
+- TOD started a diagnostic.
+- TOD updated the requester.
+- TOD closed the ticket with evidence.
+
+## Blocker Class
+
+`capability_blocker`
+
+## Blocker Name
+
+`tod_helpdesk_durable_inbox_missing`
+
+## Decomposition Ladder
+
+### Rung 001: Route Visibility
+
+Verify `https://www.agentmim.com/help` is reachable and contains the expected support marker.
+
+Pass evidence:
+
+- public route health artifact includes `route_label=help`
+- route is healthy
+
+### Rung 002: Data Contract Discovery
+
+Inspect existing support ticket models and routes before proposing implementation.
+
+Pass evidence:
+
+- ticket fields listed
+- message fields listed
+- create/update/detail routes identified
+
+### Rung 003: Open Ticket Read Path
+
+Identify an approved read-only way for TOD to list open AgentMIM support tickets.
+
+Pass evidence:
+
+- database query, API endpoint, or exported artifact path is identified
+- access boundary is documented
+- no secrets are exposed
+
+### Rung 004: TOD Queue Projection
+
+Project open tickets into a TOD-visible queue artifact.
+
+Required projected fields:
+
+- ticket_id
+- source_site
+- subject
+- priority
+- channel
+- status
+- requester_reference
+- created_at
+- updated_at
+- current_summary
+- attachments_present
+- tod_state
+- required_evidence
+
+### Rung 005: Acknowledgement Contract
+
+TOD acknowledges the ticket through an approved response lane.
+
+Required acknowledgement fields:
+
+- ticket_id
+- acknowledged_by
+- acknowledged_at
+- classification
+- owner
+- smallest_diagnostic_step
+- expected_update_by
+
+### Rung 006: Work and Update
+
+TOD performs the diagnostic or repair appropriate to the ticket, then posts a user-visible update.
+
+Required update fields:
+
+- what TOD checked
+- what TOD found
+- what changed
+- what remains
+- evidence link or artifact
+
+### Rung 007: Closure
+
+TOD closes only after evidence exists and the requester-visible update was published.
+
+Required closure fields:
+
+- final_state
+- proof
+- files/services/routes touched
+- prevention note
+- follow-up watch rule
+
+## Smallest Successful Rung
+
+Rung 001 is passing now: `/help` is included in public route health and returns its expected support marker.
+
+## Current Failing Rung
+
+Rung 003 is not yet proven. TOD still needs an approved read-only ticket list path that does not rely on a human noticing an email.
+
+## Rung 003 Probe Result
+
+TOD attempted a read-only AgentMIM app-context query for open support tickets.
+
+Result:
+
+`blocked`
+
+Observed blocker:
+
+`agentmim_ticket_db_host_not_resolvable_from_tod`
+
+Evidence:
+
+The local AgentMIM app context loaded successfully far enough to initialize the model query, but the configured production database host could not be resolved from the TOD machine.
+
+Classification:
+
+`infrastructure_blocker`
+
+Why it blocks:
+
+TOD cannot patrol live AgentMIM support tickets if the only available read path depends on a database hostname that this environment cannot resolve.
+
+Smallest repair/proof step:
+
+Provide or create one approved TOD-readable ticket lane:
+
+1. a reachable read-only database connection from TOD,
+2. a local AgentMIM export/projection artifact generated by the AgentMIM service,
+3. an authenticated read-only support ticket API endpoint,
+4. or a scheduled AgentMIM-side projection copied to TOD shared state.
+
+What not to claim:
+
+Do not claim TOD is the primary recipient of AgentMIM support tickets until one of those lanes is proven and TOD can acknowledge/update/close a ticket.
+
+## Implementation Summary
+
+No production helpdesk implementation was applied in this audit.
+
+The only deterministic infrastructure expansion already made is public route/media patrol coverage in `scripts/Invoke-TODPublicRouteHealthCheck.ps1`.
+
+## Validation
+
+Completed:
+
+- `Invoke-Pester .\tests\TOD.PublicRouteHealth.Tests.ps1 -PassThru`
+- Result: `11 passed, 0 failed`
+- Live route patrol showed `/help` healthy.
+- Live route patrol showed `/forum` healthy with image media HTTP 200 checks.
+
+Not complete:
+
+- TOD open-ticket queue projection
+- TOD acknowledgement lane
+- TOD requester update lane
+- TOD closure proof lane
+- live ticket queue read path from TOD
+
+## General Rule Learned
+
+A help ticket is not handed to TOD until TOD can independently see it, acknowledge it, work it, update the user, and close it with evidence.
+
+## Prevention Rule
+
+Never use `tod_handoff=true`, email notification, or UI success text as the only proof of operational handoff.
+
+## Reuse Trigger
+
+Use this capability whenever a public form, support route, bug report, issue intake, or operator request claims TOD received work.
+
+## Dependent Capabilities
+
+- public route patrol
+- database/API read-only audit
+- TOD ticket queue projection
+- communication acknowledgement closure
+- user-visible status update
+- worktree restore readiness
+
+## Capability Confidence
+
+0.45
+
+Reason:
+
+Route visibility and model discovery are proven. TOD-owned inbox and closure are not yet implemented or validated.
+
+## Independent Pass Rate
+
+1 of 3 current rungs proven:
+
+- Route visibility: pass
+- Data contract discovery: partial/pass by audit
+- Open ticket read path: not proven
+
+## Date Frozen
+
+2026-07-10
+
+## Generalized Principle
+
+Operational ownership requires a durable queue and a closure path. Notifications are useful, but they are not ownership.

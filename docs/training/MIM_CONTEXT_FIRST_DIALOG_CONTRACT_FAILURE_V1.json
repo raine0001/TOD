@@ -1,0 +1,49 @@
+{
+  "artifact_type": "mim_dialog_contract_failure",
+  "objective_id": "MIM-CONTEXT-FIRST-SEMANTIC-VALIDATION-V1",
+  "generated_at": "2026-07-13T11:55:00-07:00",
+  "status": "open",
+  "blocker_class": "coordination_blocker",
+  "blocker": "dialog_lane_approves_semantic_findings_without_cognitive_acknowledgement",
+  "summary": "TOD sent a semantic validation failure packet with explicit required fields. MIM replied through the next-step consensus/adjudication path and marked the finding approved, but did not provide the required cognitive acknowledgement fields.",
+  "session_id": "tod-mim-context-first-semantic-rung005-failure-001",
+  "tod_sent": {
+    "message_type": "handoff_request",
+    "intent": "semantic_interpretation_rung005_failed_no_phrase_patch",
+    "task_id": "MIM-CONTEXT-FIRST-SEMANTIC-VALIDATION-V1",
+    "required_fields": [
+      "acknowledge_rung_005_failed",
+      "state_no_phrase_patch_rule",
+      "state_internal_representation_fields",
+      "state_first_no_code_drill",
+      "state_validation_artifact_name"
+    ]
+  },
+  "mim_replied": {
+    "message_type": "handoff_response",
+    "intent": "next_step_consensus",
+    "summary": "MIM reviewed 1 finding(s): auto_execute_candidate=0, proposal_only=1, approval_required=0, blocked=0.",
+    "decision": "approve",
+    "missing_required_fields": [
+      "acknowledge_rung_005_failed",
+      "state_no_phrase_patch_rule",
+      "state_internal_representation_fields",
+      "state_first_no_code_drill",
+      "state_validation_artifact_name"
+    ]
+  },
+  "diagnosis": "The dialog lane is operating as an adjudication/coordination responder. It can acknowledge, approve, and route findings, but it is not currently a cognitive training surface that performs semantic interpretation or curriculum assimilation.",
+  "why_this_blocks_progress": "If semantic training packets are sent only through this dialog lane, MIM can falsely close them as approved without demonstrating the required internal representation or no-code drill.",
+  "smallest_successful_continuation": "Route the Rung 005 semantic drill through the actual conversation/cognition surface or build a specific training intake path that requires MIM to publish an interpretation object artifact before any approve/complete status is allowed.",
+  "validation_debt": [
+    "Existing focused tests pass but only prove non-identical responses for a few known examples.",
+    "A stronger semantic probe is needed for meaning extraction, contrast, context dependence, unknown phrasing, and controlled fallback.",
+    "Completion must require artifact fields, not generic next-step approval."
+  ],
+  "not_allowed": [
+    "Do not add the failed prompt text to phrase gates.",
+    "Do not treat MIM's approve decision as semantic learning.",
+    "Do not mark Rung 005 complete until a real semantic interpretation object is produced and validated."
+  ],
+  "next_active_training_rung": "MIM-CONTEXT-FIRST-SEMANTIC-INTERPRETATION-OBJECT-DRILL-001"
+}
