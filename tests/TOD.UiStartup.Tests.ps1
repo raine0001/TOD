@@ -79,7 +79,7 @@ function Wait-TodUrlReady {
     $deadline = (Get-Date).ToUniversalTime().AddSeconds($TimeoutSeconds)
     while ((Get-Date).ToUniversalTime() -lt $deadline) {
         try {
-            $response = Invoke-WebRequest -UseBasicParsing -Uri (([string]$BaseUrl).TrimEnd('/') + '/api/project-status') -TimeoutSec 3
+            $response = Invoke-WebRequest -UseBasicParsing -Uri (([string]$BaseUrl).TrimEnd('/') + '/api/project-status?readiness=1') -TimeoutSec 3
             if ($response.StatusCode -eq 200) {
                 return $true
             }

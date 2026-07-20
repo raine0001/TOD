@@ -32,6 +32,11 @@ Describe 'TOD public route health classification' {
         Import-PublicRouteHealthFunction -Name 'Read-DotEnvValue'
         Import-PublicRouteHealthFunction -Name 'Join-HttpUrl'
         Import-PublicRouteHealthFunction -Name 'Resolve-PublicTodTargets'
+        Import-PublicRouteHealthFunction -Name 'Resolve-ConfiguredBaseUrl'
+        Import-PublicRouteHealthFunction -Name 'New-TechnicalOperationsRouteInventory'
+        Import-PublicRouteHealthFunction -Name 'Resolve-RouteMediaUrl'
+        Import-PublicRouteHealthFunction -Name 'Get-RouteImageCandidates'
+        Import-PublicRouteHealthFunction -Name 'Get-RouteMediaAssessment'
         Import-PublicRouteHealthFunction -Name 'Get-DateOrMinValue'
         Import-PublicRouteHealthFunction -Name 'Get-TodPublicSurfaceClassification'
         Import-PublicRouteHealthFunction -Name 'Get-PreferredCanonicalObjective'
@@ -127,5 +132,53 @@ Describe 'TOD public route health classification' {
         [bool]$assessment.local_state_superseded_by_public | Should Be $true
         [string]$assessment.expected_canonical_objective | Should Be '2495'
         @($assessment.blockers).Count | Should Be 0
+    }
+
+    It 'builds a Technical Operations route inventory for public, Studio, AgentMIM, and local TOD surfaces' {
+        $routes = @(New-TechnicalOperationsRouteInventory -PublicSiteBaseUrl 'https://www.mimtod.com' -StudioBaseUrl 'https://mim.mimtod.com' -AgentMimBaseUrl 'https://www.agentmim.com' -LocalTodUrlValue 'http://localhost:8844/tod' -RepoRoot $repoRoot)
+
+        @($routes).Count | Should BeGreaterThan 10
+        ((@($routes.route_label) -contains 'research_observatory')) | Should Be $true
+        ((@($routes.route_label) -contains 'build')) | Should Be $true
+        ((@($routes.route_label) -contains 'studio_projects')) | Should Be $true
+        ((@($routes.route_label) -contains 'studio_training')) | Should Be $true
+        ((@($routes.route_label) -contains 'forum')) | Should Be $true
+        ((@($routes.route_label) -contains 'help')) | Should Be $true
+        ((@($routes.route_label) -contains 'local_tod_ui')) | Should Be $true
+        $forumRoute = @($routes | Where-Object { [string]$_.route_label -eq 'forum' } | Select-Object -First 1)
+        [string]$forumRoute[0].media_probe | Should Be 'required'
+        [int]$forumRoute[0].minimum_media_count | Should Be 1
+        $helpRoute = @($routes | Where-Object { [string]$_.route_label -eq 'help' } | Select-Object -First 1)
+        [string]$helpRoute[0].recovery_boundary | Should Match 'support ticket'
+    }
+
+    It 'extracts forum image candidates from route HTML for media patrol' {
+        $html = @'
+<main>
+  <img src="/forum/posts/12/image" alt="first">
+  <img src="https://cdn.example.com/forum/13.jpg" alt="second">
+  <img src="data:image/png;base64,AAAA" alt="ignored">
+</main>
+'@
+        $candidates = @(Get-RouteImageCandidates -Html $html -BaseUrl 'https://www.agentmim.com/forum' -MaxCandidates 5)
+
+        @($candidates).Count | Should Be 2
+        [string]$candidates[0] | Should Be 'https://www.agentmim.com/forum/posts/12/image'
+        [string]$candidates[1] | Should Be 'https://cdn.example.com/forum/13.jpg'
+    }
+
+    It 'classifies required forum media as unhealthy when no image candidates exist' {
+        $route = [pscustomobject]@{
+            route_label = 'forum'
+            url = 'https://www.agentmim.com/forum'
+            media_probe = 'required'
+            minimum_media_count = 1
+        }
+
+        $assessment = Get-RouteMediaAssessment -Route $route -Html '<main>No images here.</main>' -TimeoutSeconds 1
+
+        [bool]$assessment.required | Should Be $true
+        [bool]$assessment.healthy | Should Be $false
+        [string]$assessment.blocker | Should Be 'media_candidates_missing'
     }
 }

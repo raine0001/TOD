@@ -3,12 +3,24 @@ from __future__ import annotations
 import argparse
 import http.client
 import http.server
+import socket
 import socketserver
 
 
 class ThreadingProxyServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+
+class DualStackThreadingProxyServer(ThreadingProxyServer):
+    address_family = socket.AF_INET6
+
+    def server_bind(self) -> None:
+        try:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        except OSError:
+            pass
+        super().server_bind()
 
 
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
@@ -75,7 +87,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    server = ThreadingProxyServer((args.listen_host, args.listen_port), ProxyHandler)
+    if args.listen_host in {"0.0.0.0", "::", "*"}:
+        server = DualStackThreadingProxyServer(("::", args.listen_port), ProxyHandler)
+    else:
+        server = ThreadingProxyServer((args.listen_host, args.listen_port), ProxyHandler)
     server.target_host = args.target_host
     server.target_port = args.target_port
     try:

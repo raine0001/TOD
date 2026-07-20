@@ -1342,7 +1342,32 @@ def _attempt_executor_binding_materialization(
         if not expected_executor:
             result["expected_executor"] = "local"
         return result
-    if planner_status not in {"queued", "ready"}:
+    binding_repair_task = _is_local_executor_binding_repair_task(live_task, execution)
+    local_capable = _is_ledger_coverage_task(live_task, execution) or binding_repair_task
+    binding_blocker_text = " ".join(
+        str(value or "")
+        for value in (
+            planner_state.get("summary"),
+            planner_state.get("current_step"),
+            planner_state.get("next_step"),
+            execution.get("wait_reason"),
+            execution.get("current_action"),
+            execution.get("next_step"),
+            execution.get("reason_code"),
+        )
+    ).lower()
+    allow_blocked_binding_repair = bool(
+        planner_status == "blocked"
+        and missing_fields
+        and local_capable
+        and (
+            "executor binding" in binding_blocker_text
+            or "local_execution_binding_missing" in binding_blocker_text
+            or "blocked_missing_local_executor_binding" in binding_blocker_text
+            or LOCAL_EXECUTOR_BINDING.lower() in binding_blocker_text
+        )
+    )
+    if planner_status not in {"queued", "ready"} and not allow_blocked_binding_repair:
         result["status"] = "not_queued"
         return result
     if not missing_fields:
@@ -1364,8 +1389,6 @@ def _attempt_executor_binding_materialization(
         },
     )
 
-    binding_repair_task = _is_local_executor_binding_repair_task(live_task, execution)
-    local_capable = _is_ledger_coverage_task(live_task, execution) or binding_repair_task
     target_artifact_path_for_task = LOCAL_EXECUTOR_BINDING_REPAIR_ARTIFACT if binding_repair_task else LEDGER_PHASE_A_COVERAGE_ARTIFACT
     task_category_for_request = "diagnostic/implementation-repair" if binding_repair_task else "validation"
     task_classification_for_request = "diagnostic/implementation-repair" if binding_repair_task else "validation/reporting/diagnostic"
@@ -1419,17 +1442,42 @@ def _attempt_executor_binding_materialization(
         )
         return result
 
+    request_path = SHARED_RUNTIME_ROOT / "MIM_TOD_TASK_REQUEST.latest.json"
     marker_path = SHARED_RUNTIME_ROOT / "TOD_EXECUTOR_BINDING_REPAIR.latest.json"
     repair_key = "|".join((objective_id, task_id, str(live_task.get("request_id") or "").strip()))
     previous = _load_json(marker_path)
-    if str(previous.get("repair_key") or "").strip() == repair_key and bool(previous.get("attempted") is True):
+    current_request = _load_json(request_path)
+    current_request_has_binding = bool(
+        str(current_request.get("objective_id") or "").strip() == objective_id
+        and str(current_request.get("task_id") or "").strip() == task_id
+        and str(current_request.get("source") or "").strip() == "tod-ui-executor-binding-repair-v1"
+        and str(current_request.get("selected_executor") or "").strip().lower() == "local"
+        and str(current_request.get("active_engine") or "").strip().lower() == "local"
+        and LOCAL_EXECUTOR_BINDING.lower() in str(current_request.get("executor_binding") or "").lower()
+    )
+    previous_repair_is_current = bool(
+        str(previous.get("repair_key") or "").strip() == repair_key
+        and bool(previous.get("attempted") is True)
+        and bool(previous.get("published") is True)
+        and current_request_has_binding
+    )
+    if previous_repair_is_current:
         result["reason_code"] = "executor_binding_already_attempted"
         result["status"] = "already_attempted"
         return result
+    if str(previous.get("repair_key") or "").strip() == repair_key and bool(previous.get("attempted") is True):
+        _record_executor_binding_event(
+            "stale_executor_binding_attempt_ignored",
+            objective_id,
+            task_id,
+            {
+                "previous_published": bool(previous.get("published") is True),
+                "current_request_has_binding": current_request_has_binding,
+            },
+        )
 
     generated_at = _utc_now_iso()
     request_id = str(live_task.get("request_id") or task_id or "").strip()
-    request_path = SHARED_RUNTIME_ROOT / "MIM_TOD_TASK_REQUEST.latest.json"
     trigger_path = SHARED_RUNTIME_ROOT / "MIM_TO_TOD_TRIGGER.latest.json"
     request_payload = {
         **live_task,
@@ -1443,7 +1491,7 @@ def _attempt_executor_binding_materialization(
         "tod_action": "execute-chat-task",
         "task_classification": task_classification_for_request,
         "task_category": task_category_for_request,
-        "assigned_executor": "tod",
+        "assigned_executor": "local",
         "selected_executor": "local",
         "expected_executor": "local",
         "active_engine": "local",
@@ -1462,7 +1510,7 @@ def _attempt_executor_binding_materialization(
     request_payload["metadata_json"] = {
         **metadata,
         "task_category": task_category_for_request,
-        "assigned_executor": "tod",
+        "assigned_executor": "local",
         "selected_executor": "local",
         "expected_executor": "local",
         "active_engine": "local",
@@ -1520,6 +1568,7 @@ def _attempt_executor_binding_materialization(
                 "materialized": True,
                 "status": "materialized",
                 "reason_code": "local_executor_binding_materialized",
+                "assigned_executor": "local",
                 "selected_executor": "local",
                 "expected_executor": "local",
                 "active_engine": "local",
@@ -6505,11 +6554,191 @@ def _classify_prompt(message: str) -> str:
         return "drift"
     if "out of sync" in text or "out-of-sync" in text or "mismatch" in text:
         return "sync"
-    if "attention" in text or "needs review" in text or "blocking" in text or "blocker" in text:
+    if "attention" in text or "needs review" in text or "blocking" in text or "blocked" in text or "blocker" in text:
         return "blockers"
     if any(token in text for token in ("can you fix", "fix this", "please fix", "troubleshoot", "debug this", "begin to troubleshoot")):
         return "task"
     return "status"
+
+
+def _operator_requested_technical_diagnostics(message: str) -> bool:
+    text = message.lower()
+    normalized = re.sub(r"\s+", " ", text)
+    diagnostic_markers = (
+        "debug",
+        "diagnostic",
+        "technical",
+        "exact id",
+        "request id",
+        "task id",
+        "objective id",
+        "raw state",
+        "artifact",
+        "show evidence",
+        "show details",
+        "drift summary",
+    )
+    return any(marker in normalized for marker in diagnostic_markers)
+
+
+def _operator_requested_blocker_policy(message: str) -> bool:
+    normalized = re.sub(r"\s+", " ", message.lower()).strip()
+    if not normalized:
+        return False
+    policy_terms = (
+        "policy",
+        "back up",
+        "smaller task",
+        "smaller step",
+        "smallest task",
+        "smallest step",
+        "escalate",
+        "escalation",
+        "what should you do",
+        "what do you do",
+    )
+    blocker_terms = ("blocker", "blocked", "stall", "stalled", "stuck", "failure", "fails")
+    return any(term in normalized for term in policy_terms) and any(term in normalized for term in blocker_terms)
+
+
+def _clean_operator_status_text(value: Any, limit: int = 220) -> str:
+    text = _compact_text(value, limit)
+    if not text:
+        return ""
+    text = re.sub(r"^\s*[A-Z_ ]+\s*-\s*", "", text).strip()
+    text = re.sub(r"\brequest_id=[^,;. ]+", "request", text)
+    text = re.sub(r"\btask_id=[^,;. ]+", "task", text)
+    text = re.sub(r"\bobjective_id=[^,;. ]+", "objective", text)
+    text = re.sub(r"\b([a-z]+(?:_[a-z0-9]+){2,})\b", lambda match: match.group(1).replace("_", " "), text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _compose_blocker_policy_reply(state: dict[str, Any]) -> str:
+    execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
+    binding = execution.get("executor_binding") if isinstance(execution.get("executor_binding"), dict) else {}
+    binding_status = str(binding.get("status") or execution.get("executor_binding_status") or "").strip().lower()
+    blocker = _clean_operator_status_text(
+        _pick_first_text(
+            execution.get("wait_reason"),
+            execution.get("activity_summary"),
+            execution.get("summary"),
+        ),
+        260,
+    )
+    if binding_status == "ready" and "local execution binding missing" in blocker.lower():
+        blocker = "The local executor binding is ready; the remaining blocker is stale execution evidence and no fresh material proof."
+    smallest_step = _clean_operator_status_text(
+        _pick_first_text(
+            "Back up to the smallest proof that changes the blocker: verify one current request, one ACK/result pair, and one fresh material-evidence result before resuming implementation.",
+            execution.get("next_validation"),
+            execution.get("next_step"),
+        ),
+        320,
+    )
+    return "\n".join(
+        [
+            "Yes. I should back up to a smaller task before continuing implementation.",
+            f"Current blocker: {blocker or 'the current execution lane has not produced fresh proof.'}",
+            "Blocker policy: classify the blocker, name the evidence checked, explain why forward motion is blocked, choose the smallest repair step, validate that the blocker changed, then retry the original work only after that proof exists.",
+            f"Smallest next task: {smallest_step}",
+            "Escalation rule: escalate only after the smallest internal proof fails, the blocker repeats with the same evidence, or the dependency is external.",
+            "Dave needed: no, unless the blocker becomes credentials, authority only Dave can grant, or a physical-machine decision.",
+        ]
+    )
+
+
+def _compose_contextual_tod_reply(message: str, state: dict[str, Any], *, focus: str = "status") -> str:
+    del message
+    status = state.get("status") if isinstance(state.get("status"), dict) else {}
+    execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
+    training = state.get("training_status") if isinstance(state.get("training_status"), dict) else {}
+    binding = execution.get("executor_binding") if isinstance(execution.get("executor_binding"), dict) else {}
+
+    activity_label = _clean_operator_status_text(execution.get("activity_label"), 80)
+    activity_state = str(execution.get("activity_state") or execution.get("status") or status.get("code") or "").strip().lower()
+    binding_status = str(binding.get("status") or execution.get("executor_binding_status") or "").strip().lower()
+    binding_reason = str(binding.get("reason_code") or "").strip()
+    current_work = _pick_first_text(
+        execution.get("current_action"),
+        execution.get("activity_summary"),
+        execution.get("summary"),
+        training.get("current_step"),
+        training.get("summary"),
+        status.get("summary"),
+    )
+    current_work = _clean_operator_status_text(current_work, 280)
+    next_action = _clean_operator_status_text(
+        _pick_first_text(
+            execution.get("next_step"),
+            execution.get("next_validation"),
+            training.get("latest_resolution"),
+            training.get("current_step"),
+            _next_bounded_repair_request(state),
+        ),
+        260,
+    )
+    blocker = _clean_operator_status_text(
+        _pick_first_text(
+            execution.get("wait_reason"),
+            execution.get("activity_summary") if activity_state in {"blocked", "stalled", "waiting"} else "",
+            status.get("summary") if str(status.get("code") or "").lower() in {"blocked", "blocked_with_reason"} else "",
+        ),
+        260,
+    )
+
+    blocked = activity_state in {"blocked", "stalled", "waiting"} or binding_status == "missing"
+    if binding_status == "missing":
+        blocker = _pick_first_text(
+            blocker,
+            "The active task is missing a local executor binding, so TOD cannot run the selected work yet.",
+        )
+        next_action = _pick_first_text(
+            next_action,
+            "Materialize the local executor binding, republish the task request, and verify the listener consumes it.",
+        )
+    elif binding_status == "ready" and binding_reason in {"local_executor_binding_materialized", "local_executor_binding_present"}:
+        stale_binding_text = " ".join((blocker, current_work)).lower()
+        if "local execution binding missing" in stale_binding_text or "localexecutionengine" in stale_binding_text:
+            blocker = "The local executor binding is ready; the remaining blocker is stale execution evidence and no fresh material proof from the next execution slice."
+            next_action = "Back up to the smallest proof step: confirm one current request, one matching ACK/result pair, and one fresh material-evidence result."
+        current_work = _pick_first_text(
+            current_work,
+            "The local executor binding is available; TOD is waiting for the next execution/result update.",
+        )
+
+    if focus == "blocker":
+        if blocked:
+            lines = [
+                f"Yes. I am currently blocked or stalled on: {blocker or current_work or 'the current execution lane.'}",
+                f"What I am doing next: {next_action or 'checking the smallest evidence path that changes the blocker.'}",
+                "Dave needed: no, unless this turns into a credential, authority, or physical-machine dependency.",
+            ]
+        else:
+            lines = [
+                f"No active blocker is published right now. I am working on: {current_work or 'the current TOD execution lane.'}",
+                f"Next proof I should produce: {next_action or 'a fresh execution result or validation artifact.'}",
+                "Dave needed: no.",
+            ]
+        return "\n".join(lines)
+
+    if focus == "work":
+        lines = [
+            f"I am working on: {current_work or 'the current TOD execution lane.'}",
+            f"Current blocker: {blocker if blocked else 'none published as active.'}",
+            f"Next thing I should prove: {next_action or 'a fresh execution result with validation evidence.'}",
+            "Dave needed: no, unless I hit an external dependency.",
+        ]
+        return "\n".join(lines)
+
+    lines = [
+        f"TOD is {activity_label.lower() if activity_label else (activity_state or 'active')}.",
+        f"What matters: {current_work or 'I need to keep the active execution lane moving with real evidence.'}",
+        f"Blocked: {'yes - ' + blocker if blocked and blocker else 'yes' if blocked else 'no active blocker is published.'}",
+        f"Continuing now: {next_action or 'checking for a fresh execution result and validation proof.'}",
+        "Dave needed: no, unless the next blocker is external.",
+    ]
+    return "\n".join(lines)
 
 
 def _compose_task_worklog(
@@ -7112,6 +7341,10 @@ def _compose_tod_reply(message: str, state: dict[str, Any]) -> str:
             ]
         )
     if intent == "blockers":
+        if _operator_requested_blocker_policy(message) and not _operator_requested_technical_diagnostics(message):
+            return _compose_blocker_policy_reply(state)
+        if not _operator_requested_technical_diagnostics(message):
+            return _compose_contextual_tod_reply(message, state, focus="blocker")
         return "\n".join(
             [
                 f"Current blocker posture: {issue_summary}",
@@ -7121,6 +7354,9 @@ def _compose_tod_reply(message: str, state: dict[str, Any]) -> str:
                 f"Next validation: {next_validation}",
             ]
         )
+    if intent == "status" and not _operator_requested_technical_diagnostics(message):
+        status_focus = "work" if re.search(r"\bwhat\s+(?:are|were)\s+you\s+(?:working|doing)|\bwhat\s+are\s+you\s+working\s+on", message.lower()) else "status"
+        return _compose_contextual_tod_reply(message, state, focus=status_focus)
     return "\n".join(
         [
             f"TOD status: {issue_summary}",
@@ -7975,7 +8211,7 @@ def _build_tod_console_state() -> dict[str, Any]:
     if binding_materialization.get("materialized"):
         planner_state["assigned_executor"] = str(binding_materialization.get("selected_executor") or "local").strip()
 
-    binding_status = "present" if bool(binding_materialization.get("materialized")) else "missing" if str(binding_materialization.get("reason_code") or "").strip() else "unknown"
+    binding_status = "ready" if bool(binding_materialization.get("materialized")) else "missing" if str(binding_materialization.get("reason_code") or "").strip() else "unknown"
     execution_status["executor_binding"] = {
         "status": binding_status,
         "reason_code": str(binding_materialization.get("reason_code") or "").strip(),
@@ -7993,8 +8229,8 @@ def _build_tod_console_state() -> dict[str, Any]:
         "missing_field_or_function": str(binding_materialization.get("missing_field_or_function") or "").strip(),
         "next_executable_repair": str(binding_materialization.get("next_executable_repair") or "").strip(),
     }
-    if binding_status == "present":
-        execution_status["executor_binding_status"] = "present"
+    if binding_status in {"present", "ready"}:
+        execution_status["executor_binding_status"] = binding_status
         execution_status["executor_binding_target"] = str(binding_materialization.get("executor_binding") or LOCAL_EXECUTOR_BINDING).strip()
         execution_status["executor_binding_command"] = ""
         if str(execution_status.get("status") or "").strip().lower() in {"completed", "complete", "success", "succeeded"}:
