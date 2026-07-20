@@ -47,6 +47,11 @@ from core.db import get_db
 from core.config import settings
 from core.communication_composer import build_deterministic_communication_reply
 from core.communication_composer import compose_expert_communication_reply
+from core.conversation_purpose_engine import build_conversation_purpose_reply
+from core.mim_cognitive_entrypoint import (
+    build_mim_cognitive_interpretation,
+    interpretation_response_authority,
+)
 from core.execution_strategy_service import understand_intent
 from core.execution_policy_gate import (
     build_intent_key,
@@ -5706,6 +5711,12 @@ def _mim_clean_operator_reply_boilerplate(value: str) -> str:
     ):
         if lowered.startswith(prefix):
             return content[len(prefix) :].lstrip()
+    greeting_match = re.match(
+        r"(?is)^([a-z][a-z\s]{0,24},\s+)(hi[.!]\s+.+)$",
+        content,
+    )
+    if greeting_match:
+        return greeting_match.group(2).strip()
     return content
 
 
@@ -5726,41 +5737,99 @@ def _mim_reply_has_operator_impact_contract(reply_text: str) -> bool:
 def _mim_operator_impact_contract_applies(raw_input: str, reply_text: str) -> bool:
     query = " ".join(str(raw_input or "").lower().split())
     reply = " ".join(str(reply_text or "").lower().split())
-    triggers = (
+    if _mim_operator_query_is_social_only(query):
+        return False
+    query_tokens = set(re.findall(r"[a-z0-9]+", query))
+    reply_tokens = set(re.findall(r"[a-z0-9]+", reply))
+    token_triggers = {
         "status",
         "recommend",
         "recommendation",
         "priority",
-        "what should",
-        "what next",
-        "next action",
-        "next step",
         "training",
         "scorecard",
         "stuck",
         "blocked",
         "blocker",
-        "needs attention",
         "project",
         "objective",
         "task",
         "tod",
+    }
+    phrase_triggers = (
+        "what should",
+        "what next",
+        "next action",
+        "next step",
+        "needs attention",
     )
-    if any(trigger in query for trigger in triggers):
+    if query_tokens & token_triggers or any(trigger in query for trigger in phrase_triggers):
         return True
-    return any(
-        trigger in reply
-        for trigger in (
-            "next step",
-            "next action",
-            "active objective",
-            "active task",
-            "current health",
-            "tod is",
-            "training",
-            "blocked",
-        )
+    reply_token_triggers = {"training", "blocked", "tod"}
+    reply_phrase_triggers = (
+        "next step",
+        "next action",
+        "active objective",
+        "active task",
+        "current health",
+        "tod is",
     )
+    return bool(reply_tokens & reply_token_triggers) or any(
+        trigger in reply for trigger in reply_phrase_triggers
+    )
+
+
+def _mim_operator_query_is_social_only(query: str) -> bool:
+    normalized = " ".join(str(query or "").lower().replace("?", "").split())
+    if not normalized:
+        return False
+    normalized = normalized.replace("hi mim,", "hi mim ").replace("hello mim,", "hello mim ")
+    greetings = {
+        "hi",
+        "hello",
+        "hey",
+        "hi mim",
+        "hello mim",
+        "hey mim",
+        "good morning",
+        "good afternoon",
+        "good evening",
+        "good morning mim",
+        "good afternoon mim",
+        "good evening mim",
+    }
+    if normalized in greetings:
+        return True
+    if any(
+        phrase in normalized
+        for phrase in (
+            "how are you",
+            "how are you today",
+            "how are you doing",
+            "how's it going",
+            "how is it going",
+        )
+    ):
+        tokens = set(normalized.split())
+        operational_terms = (
+            "training",
+            "project",
+            "objective",
+            "blocked",
+            "blocker",
+            "stuck",
+            "status",
+            "tod",
+        )
+        operational_phrases = (
+            "working on",
+            "next",
+        )
+        return not (
+            any(term in tokens for term in operational_terms)
+            or any(term in normalized for term in operational_phrases)
+        )
+    return False
 
 
 def _mim_append_operator_impact_contract(reply_text: str, *, raw_input: str) -> str:
@@ -5878,7 +5947,14 @@ def _build_mim_interface_response(
             reply_text,
             raw_input=event.raw_input,
         )
-    if _mim_operator_impact_contract_applies(event.raw_input, reply_text):
+    suppress_operator_contract = bool(
+        resolution_meta.get("suppress_operator_impact_contract")
+        or communication_contract.get("suppress_operator_impact_contract")
+    )
+    if (
+        bool(communication_contract.get("operator_contract_allowed")) and not suppress_operator_contract
+        and _mim_operator_impact_contract_applies(event.raw_input, reply_text)
+    ):
         reply_text = _mim_append_operator_impact_contract(
             reply_text,
             raw_input=event.raw_input,
@@ -9141,6 +9217,10 @@ def _looks_like_mim_tod_activity_question(query: str) -> bool:
             "how are mim and tod doing",
             "how are you and tod doing",
             "what are you working on",
+            "what did you work on",
+            "what did you work on today",
+            "what have you worked on",
+            "what have you worked on today",
             "what are you and tod working on",
             "what are you guys working on",
             "what are mim and tod working on",
@@ -9386,33 +9466,14 @@ def _mim_tod_combined_activity_response(
                 "Dave is not needed unless a blocker requires a human decision, credential, or physical-world check."
             ).strip()
         return (
-            "Training is active.\n\n"
-            "MIM focus:\n"
-            f"- {mim_topic or 'Project manager judgment and response-mode selection'}.\n"
-            "- The specific skill is choosing the right response mode before answering, instead of defaulting to status reporting.\n\n"
-            "Current MIM benchmark:\n"
-            f"- Judgment V2 pass rate: {pass_rate if pass_rate is not None else 'baseline needed'}%."
-            f" {passed if passed is not None else 'baseline needed'} passed, {failed if failed is not None else 'baseline needed'} failed"
-            f"{f' across {cases} prompts' if cases is not None else ''}.\n"
-            f"{_group_line('recommendation_mode', 'Recommendation Mode')}\n"
-            f"{_group_line('explanation_mode', 'Explanation Mode')}\n"
-            f"{_group_line('demonstration_mode', 'Demonstration Mode')}\n"
-            f"{_group_line('consultative_discovery', 'Consultative Discovery')}\n"
-            f"{_group_line('problem_analysis', 'Problem Analysis')}\n\n"
-            "What this means:\n"
-            "- Demonstration Mode is currently the strongest area.\n"
-            "- Recommendation, Consultative Discovery, and Problem Analysis are the main weak spots.\n"
-            "- The next MIM training step is to improve those weak modes until the focused V2 suite reaches at least 80%.\n\n"
-            "TOD focus:\n"
-            f"- {tod_topic or 'Codex-style implementation'}.\n"
-            "- Inspect, plan, edit, validate, and report evidence.\n\n"
-            "Blocker cleanup:\n"
-            f"- Active blockers moved from {blocked_total or '33'} to {after_blocked or '30'}.\n"
-            f"- Current focus: {current_blocker_class.replace('_', ' ') if current_blocker_class else 'linked-task evidence inspection'}.\n"
-            f"- Latest finding: {(current_finding or 'TOD is inspecting the next blocker with evidence before changing state').rstrip('.')}.\n\n"
-            "Next:\n"
-            f"- {next_drill.rstrip('.') if next_drill else 'Inspect and narrow the next linked-task blocker'}.\n\n"
-            "Dave is not needed right now unless a blocker requires a decision, credential, or physical-world check."
+            "I am working on MIM/TOD training right now.\n\n"
+            f"Current MIM focus: {mim_topic or 'choosing the right conversation mode before answering'}.\n"
+            f"Current TOD focus: {tod_topic or 'inspect, change behavior, validate, and report evidence'}.\n"
+            f"What changed: blocker cleanup moved from {blocked_total or '33'} active blockers to {after_blocked or '30'}, and TOD is now working a harder linked-task evidence class.\n"
+            f"What continues now: {next_drill.rstrip('.') if next_drill else 'inspect and narrow the next linked-task blocker with evidence'}.\n"
+            "What matters: MIM should answer from the same grounded operator context on every surface, not from page-specific heuristics or scoreboard dumps.\n"
+            "What I should not claim yet: the single cognitive entrypoint is not fully proven across every live surface.\n"
+            "Dave needed: no, unless a blocker requires a decision, credential, or physical-world check."
         ).strip()
 
     if operator_status and not technical_detail:
@@ -9660,6 +9721,72 @@ def _mim_tod_active_project_status_response(
     query = _normalize_operator_query_for_routing(normalized_query)
     if not query:
         return ""
+    if any(
+        marker in query
+        for marker in {
+            "what is the next bounded action",
+            "what's the next bounded action",
+            "next bounded action",
+            "next bounded task",
+            "what is the next bounded task",
+        }
+    ):
+        task_request = _load_mim_tod_json_artifact(
+            (shared_root or Path.cwd() / "runtime" / "shared") / "MIM_TOD_TASK_REQUEST.latest.json"
+        )
+        task_result = _load_mim_tod_json_artifact(
+            (shared_root or Path.cwd() / "runtime" / "shared") / "TOD_EXECUTION_RESULT.latest.json"
+        )
+        continuous_training = _load_mim_tod_json_artifact(
+            (shared_root or Path.cwd() / "runtime" / "shared") / "MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json"
+        )
+        reason_code = _mim_tod_first_text(task_result.get("reason_code"), task_result.get("status_reason"))
+        result_status = _mim_tod_first_text(
+            task_result.get("result_status"),
+            task_result.get("completion_status"),
+            task_result.get("status"),
+        )
+        target_file = _mim_tod_first_text(task_request.get("target_file"))
+        target_files = task_request.get("target_files") if isinstance(task_request.get("target_files"), list) else []
+        objective_id = _mim_tod_first_text(task_request.get("objective_id"), task_result.get("objective_id"))
+        task_id = _mim_tod_first_text(task_request.get("task_id"), task_result.get("task_id"))
+        missing_target = (
+            reason_code == "blocked_missing_bounded_edit_mode"
+            or (task_request and not target_file and not target_files)
+        )
+        if missing_target:
+            return (
+                "There is no valid bounded implementation task selected yet. "
+                "TOD is blocked because the latest request does not name exactly one target file and edit mode. "
+                f"Current objective: {objective_id or 'not recorded'}. "
+                f"Current task: {task_id or 'not recorded'}. "
+                "Next bounded action: MIM should republish the request with one target file, exact edit location, expected behavior change, validation command, and rollback note before TOD executes."
+            )
+        tod_training = continuous_training.get("tod_training") if isinstance(continuous_training.get("tod_training"), dict) else {}
+        blocker_training = (
+            tod_training.get("active_blocker_clearing_drill")
+            if isinstance(tod_training.get("active_blocker_clearing_drill"), dict)
+            else {}
+        )
+        next_drill = _compact_text(_mim_tod_first_text(blocker_training.get("next_drill")), 180)
+        if next_drill:
+            if ":" in next_drill:
+                next_drill = next_drill.split(":", 1)[1].strip()
+            return (
+                f"TOD's next bounded action is: {next_drill.rstrip('.')}. "
+                "Evidence should be inspected files, changed behavior or a precise blocker, validation output, and a prevention lesson."
+            )
+        if target_file or target_files:
+            selected_target = target_file or _mim_tod_first_text(target_files[0])
+            return (
+                f"TOD's next bounded action is the selected task {task_id or objective_id or 'current request'} "
+                f"against {selected_target}. Current result status: {result_status or 'pending'}. "
+                "Evidence should be a changed file or precise blocker plus validation output."
+            )
+        return (
+            "I do not see a grounded bounded action in the current artifacts. "
+            "Next action: select one target file, one behavior change, and one validation command before telling TOD to execute."
+        )
     if "studio context" in query:
         page_match = re.search(r"studio context:?\s*(.*?)\s*\.?\s*operator request:?", query, flags=re.IGNORECASE)
         page_name = (page_match.group(1).strip().title() if page_match else "Studio")
@@ -11899,6 +12026,13 @@ def _create_reporting_visibility_task(
     now = _mim_tod_stage_timestamp()
     objective_id = _mim_implementation_dispatch_objective_id(raw_input).upper()
     task_id = f"{_slugify_mim_tod_identifier(objective_id, fallback='reporting-visibility')}-{request_id}"
+    bounded_slice = _mim_bounded_implementation_slice(raw_input, objective_id)
+    target_files = list(
+        bounded_slice.get("likely_target_files")
+        or _mim_implementation_dispatch_target_files(raw_input)
+        or ["core/routers/gateway.py"]
+    )
+    executable_target_files = target_files[:1]
     payload = {
         "packet_type": "mim-tod-task-request-v1",
         "generated_at": now,
@@ -11917,10 +12051,17 @@ def _create_reporting_visibility_task(
         "result_status": "pending",
         "status": "pending",
         "completion_status": "pending",
-        "task_class": "diagnostic_only",
-        "objective_type": "diagnostic_only",
+        "task_class": "implementation",
+        "objective_type": "implementation",
         "audit_only": False,
-        "patch_attempted": False,
+        "patch_attempted": True,
+        "target_file": executable_target_files[0],
+        "target_files": executable_target_files,
+        "likely_target_files": executable_target_files,
+        "bounded_change": bounded_slice.get("bounded_change", "Repair operator-facing reporting behavior with a small, validated code change."),
+        "target_component": bounded_slice.get("target_component", "MIM/TOD operator reporting behavior"),
+        "minimal_patch_plan": bounded_slice.get("minimal_patch_plan", {}),
+        "expected_changed_files": bounded_slice.get("expected_changed_files", executable_target_files),
         "content": raw_input,
         "expected_evidence": [
             "completion_status",
@@ -11930,14 +12071,20 @@ def _create_reporting_visibility_task(
             "sample_operator_output",
         ],
         "validation_plan": [
+            bounded_slice.get("validation_command", f"python -m py_compile {executable_target_files[0]}"),
             "reporting_contract_sample_operator_output_check",
-            "artifact_contract_check runtime/shared/reporting_behavior",
         ],
         "task": (
-            "Produce per-objective MIM/TOD reporting behavior proof with completion_status, "
-            "changed_files, validation_results, behavior_artifact, and sample_operator_output. "
-            "No wrapper-like operator output is allowed."
+            "Implement the smallest operator-reporting behavior repair for this objective. "
+            "Return completion_status, changed_files, validation_results, behavior_artifact, and "
+            "sample_operator_output. No wrapper-like operator output is allowed."
         ),
+        "completion_gate": {
+            "changed_files_required_for_success": True,
+            "allow_blocked_with_inspection": True,
+            "reject_wrapper_only_completion": True,
+            "reject_service_status_only": True,
+        },
         "next_action": "tod_reporting_behavior_proof_required",
     }
     request_path = shared_root / "MIM_TOD_TASK_REQUEST.latest.json"
@@ -11977,7 +12124,8 @@ def _create_reporting_visibility_task(
         "request_path": "runtime/shared/MIM_TOD_TASK_REQUEST.latest.json",
         "objective_id": objective_id,
         "task_id": task_id,
-        "task_class": "diagnostic_only",
+        "task_class": "implementation",
+        "target_files": executable_target_files,
         "result_status": "pending",
     }
 
@@ -13444,6 +13592,8 @@ def _mim_bounded_implementation_slice(raw_input: str, objective_id: str) -> dict
                 "static_assert_contains core/routers/gateway.py :: _mim_first_pass_self_check",
             ]
             if target_component == "MIM initial request to execution recovery"
+            else [validation_command]
+            if validation_command
             else []
         ),
         "failure_fallback": (
@@ -18796,6 +18946,102 @@ def _is_self_evolution_next_work_query(normalized_query: str) -> bool:
     )
 
 
+def _is_self_directed_focus_query(normalized_query: str) -> bool:
+    query = str(normalized_query or "").strip().lower()
+    if not query:
+        return False
+    actor_grounded = any(token in query for token in {"mim", "you", "your", "yourself"})
+    if not actor_grounded:
+        return False
+    asks_for_choice = any(
+        phrase in query
+        for phrase in {
+            "what would you like",
+            "what do you want",
+            "what would you choose",
+            "what training would you choose",
+            "which training would you choose",
+            "what should you choose",
+            "what would you focus",
+            "what should you focus",
+            "what would you study",
+            "what should you study",
+        }
+    )
+    asks_for_training_focus = any(
+        token in query
+        for token in {
+            "focus training",
+            "training focus",
+            "focus on training",
+            "focus your training",
+            "focus to train",
+            "train next",
+            "training would you",
+            "learn today",
+            "learn next",
+            "improve next",
+            "study next",
+            "work on or learn",
+            "work on today",
+        }
+    )
+    return asks_for_choice and asks_for_training_focus
+
+
+def _should_defer_conversation_purpose_to_operator_context(
+    raw_text: str,
+    page_context: str = "",
+) -> bool:
+    """Let grounded MIM/TOD status handlers answer operator-context prompts."""
+    query = _normalize_conversation_query(raw_text)
+    context = _normalize_conversation_query(page_context)
+    if not query:
+        return False
+    if _is_self_evolution_next_work_query(query) or _is_self_directed_focus_query(query):
+        return True
+    operator_context = (
+        "mim" in query
+        or "tod" in query
+        or "training" in query
+        or "operator" in context
+        or "studio" in context
+        or str(page_context or "").strip().lower() in {"mim_ui_text_chat", "mim_ui_voice_chat"}
+    )
+    if not operator_context:
+        return False
+    current_work_markers = {
+        "what are you working on",
+        "what are you working on today",
+        "what did you work on",
+        "what did you work on today",
+        "what have you worked on",
+        "what have you worked on today",
+        "what are you doing",
+        "what are you doing today",
+        "what is mim working on",
+        "what is tod working on",
+        "what are mim and tod working on",
+        "what are you and tod working on",
+        "quick status",
+        "what should we work on",
+        "what should we work on next",
+        "what should we prioritize",
+        "highest priority",
+    }
+    return any(marker in query for marker in current_work_markers)
+
+
+def _conversation_purpose_direct_response_enabled() -> bool:
+    """Legacy direct replies stay opt-in while MIM uses the unified composer path."""
+    return str(os.getenv("MIM_ENABLE_CONVERSATION_PURPOSE_DIRECT_RESPONSE", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 RETURN_BRIEFING_GOAL_STALE_HOURS = 24.0
 
 
@@ -19006,7 +19252,11 @@ def _return_briefing_response(context: dict[str, object]) -> str:
     return f"While you were away: {goal_sentence}. {next_step_sentence}. {self_evolution_sentence}."
 
 
-def _self_evolution_next_work_response(context: dict[str, object]) -> str:
+def _self_evolution_next_work_response(
+    context: dict[str, object],
+    *,
+    self_directed_focus: bool = False,
+) -> str:
     briefing = (
         context.get("self_evolution_briefing")
         if isinstance(context.get("self_evolution_briefing"), dict)
@@ -19110,6 +19360,34 @@ def _self_evolution_next_work_response(context: dict[str, object]) -> str:
         why = "There is already an open improvement candidate, so I should inspect it before creating more backlog"
     if next_step.lower().startswith("finish the active"):
         next_step = "Finish the active training slice, validate it, record proof, then move to the next highest-value slice."
+
+    if self_directed_focus:
+        primary = focus
+        if primary.strip().lower() in {"natural-language development", "intent recognition"} and next_work:
+            primary = next_work
+        if "newest improvement recommendation" in primary.lower():
+            primary = "turning the current improvement recommendation into one validated behavior change"
+        secondary = "TOD choosing and completing the next bounded task without waiting for Codex"
+        if "tod" in (summary + " " + language_summary + " " + snapshot_summary).lower():
+            secondary = "TOD independent resolution: inspect, change behavior, validate, and publish evidence"
+        reason_one = why or language_summary or snapshot_summary
+        if not reason_one:
+            reason_one = "it is the current evidence-backed training pressure from the self-evolution briefing"
+        reason_two = (
+            "it reduces repeated stalls where operator intent is translated repeatedly and TOD waits for a more exact packet"
+        )
+        parts = [
+            f"I would focus first on {primary.rstrip('.')}.",
+            f"Second, I would focus on {secondary}.",
+            "",
+            f"Those outrank broader training because {reason_one.rstrip('.')}.",
+            f"They also create more autonomy than another general conversation drill because {reason_two}.",
+        ]
+        if progress:
+            parts.extend(["", f"Current evidence: {progress.rstrip('.')}."])
+        if next_step:
+            parts.extend(["", f"Next proof I would want: {next_step.rstrip('.')}."])
+        return "\n".join(parts).strip()
 
     readable_parts = [
         "Yes. The next thing I would work on is improving how I understand and carry operator intent across normal conversation.",
@@ -21392,9 +21670,28 @@ async def _compose_conversation_reply(
                 "memory_people": [],
                 "memory_events": [],
                 "memory_experiences": [],
+                "suppress_operator_impact_contract": True,
             },
         }
-    if _is_self_evolution_next_work_query(_normalize_conversation_query(user_input)):
+    normalized_user_input = _normalize_conversation_query(user_input)
+    if _is_self_directed_focus_query(normalized_user_input):
+        reply_text = _conversation_response(user_input, context=context)
+        return {
+            "reply_text": str(reply_text or fallback_reply).strip(),
+            "contract": {
+                "reply_text": str(reply_text or fallback_reply).strip(),
+                "response_mode": "self_directed_focus",
+                "composer_mode": "deterministic_self_evolution_briefing",
+                "should_store_memory": True,
+                "memory_topics": ["mim_self_directed_focus", "self_evolution"],
+                "memory_people": [],
+                "memory_events": [],
+                "memory_experiences": [],
+                "suppress_operator_impact_contract": True,
+                "operator_contract_allowed": False,
+            },
+        }
+    if _is_self_evolution_next_work_query(normalized_user_input):
         deterministic_reply = build_deterministic_communication_reply(
             user_input=user_input,
             context=context,
@@ -22095,10 +22392,19 @@ def _conversation_response(
     ):
         return "Current objective focus is reliability, task-state clarity, and stable MIM to TOD execution handoff."
 
-    if _is_self_evolution_next_work_query(normalized_query):
-        next_work_response = _self_evolution_next_work_response(context)
+    self_directed_focus = _is_self_directed_focus_query(normalized_query)
+    if _is_self_evolution_next_work_query(normalized_query) or self_directed_focus:
+        next_work_response = _self_evolution_next_work_response(
+            context,
+            self_directed_focus=self_directed_focus,
+        )
         if next_work_response:
             return next_work_response
+        if self_directed_focus:
+            return (
+                "I would focus on the highest-friction training gap that current evidence can prove, then validate it with a live prompt. "
+                "I should not ask you to choose unless the evidence is tied between two priorities."
+            )
         return (
             "Next I would refresh the current self-evolution state, pick one communication-focused improvement task, "
             "and turn it into a bounded implementation plan."
@@ -23575,6 +23881,8 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
     initiative_boundary_reason = ""
     lane_registry_followup_response = ""
     structured_step_status_response = ""
+    suppress_operator_impact_contract = False
+    cognitive_interpretation: dict[str, object] = {}
 
     if conversation_override:
         conversation_context = await _build_live_operational_context(db)
@@ -23590,6 +23898,12 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
                 **conversation_context,
             }
         normalized_conversation_query = _normalize_conversation_query(event.raw_input)
+        cognitive_interpretation = build_mim_cognitive_interpretation(
+            raw_input=event.raw_input,
+            surface=str(metadata.get("source") or event.source or "gateway_intake"),
+            page_context=str(metadata.get("studio_page_context") or metadata.get("source") or ""),
+            metadata=metadata,
+        )
         session_display_name = str(
             conversation_context.get("session_display_name") or ""
         ).strip()
@@ -23624,6 +23938,12 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
             structured_step_status_response = _mim_tod_structured_step_status_response(
                 shared_root=Path.cwd() / "runtime" / "shared",
                 context=conversation_context,
+            )
+        if cognitive_interpretation.get("response_mode") == "grounded_bounded_action":
+            structured_step_status_response = _mim_tod_active_project_status_response(
+                normalized_conversation_query,
+                conversation_context,
+                shared_root=Path.cwd() / "runtime" / "shared",
             )
         if (
             _is_conversation_action_approval_query(normalized_conversation_query)
@@ -23723,7 +24043,44 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
             normalized_conversation_query,
             prior_action_request=session_pending_action_request,
         )
-        if captured_session_display_name:
+        purpose_reply = build_conversation_purpose_reply(
+            event.raw_input,
+            str(metadata.get("studio_page_context") or metadata.get("source") or ""),
+            shared_root=Path.cwd() / "runtime" / "shared",
+        ) if (
+            _conversation_purpose_direct_response_enabled()
+            and not _should_defer_conversation_purpose_to_operator_context(
+            event.raw_input,
+            str(metadata.get("studio_page_context") or metadata.get("source") or ""),
+            )
+        ) else None
+        if purpose_reply:
+            outcome = "store_only"
+            safety_decision = "store_only"
+            reason = (
+                "conversation_purpose_"
+                f"{str(purpose_reply.get('conversation_purpose', {}).get('purpose') or 'unknown')}"
+            )
+            clarification_prompt = str(purpose_reply.get("reply_text") or "").strip()
+            conversation_topic = str(
+                purpose_reply.get("conversation_purpose", {}).get("purpose")
+                or "conversation_purpose"
+            )
+            mim_interface_reply_override = clarification_prompt
+            mim_interface_result_override = clarification_prompt
+            suppress_operator_impact_contract = True
+            communication_reply_contract = {
+                "reply_text": clarification_prompt,
+                "response_mode": str(
+                    purpose_reply.get("response_mode") or "conversation_purpose"
+                ),
+                "composer_mode": "conversation_purpose_engine",
+                "should_store_memory": True,
+                "memory_topics": ["conversation_purpose", conversation_topic],
+                "conversation_purpose": purpose_reply.get("conversation_purpose", {}),
+                "suppress_operator_impact_contract": True,
+            }
+        elif captured_session_display_name:
             outcome = "store_only"
             safety_decision = "store_only"
             reason = "conversation_session_identity_capture"
@@ -23763,6 +24120,32 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
                     "runtime/shared/MIM_PRIVATE_LAB_FULL_RESOURCE_AUTHORITY.latest.json",
                     "runtime/shared/MIM_SENSOR_CAPABILITY_PROJECT_INTAKE.latest.json",
                 ],
+            }
+        elif cognitive_interpretation.get("response_mode") == "grounded_status":
+            outcome = "store_only"
+            safety_decision = "store_only"
+            reason = "mim_tod_grounded_status_answered"
+            clarification_prompt = _mim_tod_combined_activity_response(
+                shared_root=Path.cwd() / "runtime" / "shared",
+                technical_detail=_mim_tod_operator_requested_technical_detail(
+                    normalized_conversation_query
+                ),
+                query=normalized_conversation_query,
+            )
+            conversation_topic = "mim_tod_current_state"
+            mim_interface_reply_override = clarification_prompt
+            mim_interface_result_override = clarification_prompt
+            suppress_operator_impact_contract = True
+            communication_reply_contract = {
+                "reply_text": clarification_prompt,
+                "response_mode": "grounded_status",
+                "composer_mode": "mim_tod_activity_state",
+                "should_store_memory": True,
+                "memory_topics": ["mim_tod_current_state"],
+                "memory_people": [],
+                "memory_events": [],
+                "memory_experiences": [],
+                "suppress_operator_impact_contract": True,
             }
         elif clarification_followup_query:
             outcome = "store_only"
@@ -24019,7 +24402,9 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
             reason = "conversation_override"
             if _is_return_briefing_query(normalized_conversation_query):
                 return_briefing_context = await _build_return_briefing_context(db)
-            if _is_self_evolution_next_work_query(normalized_conversation_query):
+            if _is_self_evolution_next_work_query(
+                normalized_conversation_query
+            ) or _is_self_directed_focus_query(normalized_conversation_query):
                 self_evolution_briefing_result = await build_self_evolution_briefing(
                     actor="gateway_self_evolution_next_work",
                     source="gateway_conversation_self_evolution_next_work",
@@ -24056,6 +24441,9 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
                 "target_system": event.target_system,
                 "operator_return_briefing": return_briefing_context,
                 "self_evolution_briefing": self_evolution_briefing,
+                "self_directed_focus_selection": _is_self_directed_focus_query(
+                    normalized_conversation_query
+                ),
                 "response_mode": str(metadata.get("response_mode") or "").strip().lower(),
                 "force_deterministic_communication": bool(
                     str(event.requested_goal or "").strip().lower()
@@ -24667,6 +25055,7 @@ async def _resolve_event(event: InputEvent, db: AsyncSession) -> InputEventResol
             "mim_interface_next_action_override": mim_interface_next_action_override,
             "mim_interface_result_override": mim_interface_result_override,
             "mim_interface_reply_override": mim_interface_reply_override,
+            "suppress_operator_impact_contract": suppress_operator_impact_contract,
             "initiative_auto_execute": initiative_auto_execute,
             "initiative_boundary_mode": initiative_boundary_mode,
             "initiative_boundary_reason": initiative_boundary_reason,
@@ -25015,19 +25404,59 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
     fast_homepage_revision_response: dict[str, object] = {}
     is_user_app_build_query = bool(_mim_user_app_build_intake_response(event.raw_input))
     event_metadata = event.metadata_json if isinstance(event.metadata_json, dict) else {}
+    fast_conversation_purpose_reply = None
+    if (
+        event.source == "text"
+        and str(event_metadata.get("route_preference") or "").strip().lower()
+        == "conversation_layer"
+        and _conversation_purpose_direct_response_enabled()
+        and not _should_defer_conversation_purpose_to_operator_context(
+            event.raw_input,
+            str(
+                event_metadata.get("studio_page_context")
+                or event_metadata.get("source")
+                or ""
+            ),
+        )
+    ):
+        fast_conversation_purpose_reply = build_conversation_purpose_reply(
+            event.raw_input,
+            str(
+                event_metadata.get("studio_page_context")
+                or event_metadata.get("source")
+                or ""
+            ),
+            shared_root=Path.cwd() / "runtime" / "shared",
+        )
     skip_fast_active_project_for_eval = str(event_metadata.get("test") or "").strip().lower() in {
         "mim_durability_smoke_v2",
         "training_scoreboard_eval",
         "mim_intent_reinforcement_round",
         "mim_typo_tolerant_intent_smoke",
     }
-    if not skip_fast_active_project_for_eval and not fast_mim_self_model_objective and not fast_mim_autonomy_roadmap_execution and not fast_mim_semantic_intent_simulation and not fast_tod_simulation_factory and not fast_mim_tod_handoff and not fast_mim_implementation_objective and not fast_reporting_visibility_objective and not fast_personal_email_summary and event.source == "text":
+    if (
+        not fast_conversation_purpose_reply
+        and not skip_fast_active_project_for_eval
+        and not fast_mim_self_model_objective
+        and not fast_mim_autonomy_roadmap_execution
+        and not fast_mim_semantic_intent_simulation
+        and not fast_tod_simulation_factory
+        and not fast_mim_tod_handoff
+        and not fast_mim_implementation_objective
+        and not fast_reporting_visibility_objective
+        and not fast_personal_email_summary
+        and event.source == "text"
+    ):
         fast_active_project_response = _mim_tod_active_project_status_response(
             _normalize_conversation_query(event.raw_input),
             {},
             shared_root=Path.cwd() / "runtime" / "shared",
         )
-    if event.source == "text" and not is_user_app_build_query:
+    if (
+        event.source == "text"
+        and not is_user_app_build_query
+        and not fast_conversation_purpose_reply
+    ):
         fast_homepage_revision_response = _mim_homepage_revision_contract(
             event.raw_input,
             shared_root=Path.cwd() / "runtime" / "shared",
@@ -25041,7 +25470,71 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
                 event.raw_input,
                 shared_root=Path.cwd() / "runtime" / "shared",
             )
-    if fast_homepage_revision_response:
+    if fast_conversation_purpose_reply:
+        deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
+        deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["deterministic_classifier_completed_at"]
+        conversation_purpose = fast_conversation_purpose_reply.get("conversation_purpose", {})
+        if not isinstance(conversation_purpose, dict):
+            conversation_purpose = {}
+        purpose_name = str(conversation_purpose.get("purpose") or "unknown").strip() or "unknown"
+        reply_text = str(fast_conversation_purpose_reply.get("reply_text") or "").strip()
+        response_mode = str(
+            fast_conversation_purpose_reply.get("response_mode")
+            or "conversation_purpose"
+        ).strip() or "conversation_purpose"
+        resolution = InputEventResolution(
+            input_event_id=event.id,
+            internal_intent=f"conversation_purpose_{purpose_name}",
+            confidence_tier="conversation",
+            outcome="store_only",
+            resolution_status="completed",
+            safety_decision="store_only",
+            reason=f"conversation_purpose_{purpose_name}",
+            clarification_prompt=reply_text,
+            escalation_reasons=[],
+            capability_name="conversation_purpose_engine",
+            capability_registered=True,
+            capability_enabled=True,
+            goal_id=None,
+            proposed_goal_description=event.requested_goal or event.raw_input,
+            proposed_actions=[],
+            metadata_json={
+                "request_id": request_id,
+                "source": event.source,
+                "confidence": event.confidence,
+                "safety_flags": event.safety_flags,
+                "target_system": event.target_system,
+                "route_preference": "conversation_layer",
+                "conversation_override": True,
+                "skip_conversation_memory": False,
+                "deterministic_classifier": "conversation_purpose_engine_v1",
+                "request_type_classification": purpose_name,
+                "execution_mode": "conversation_purpose_engine",
+                "operator_summary": reply_text,
+                "mim_interface_status_override": "done",
+                "mim_interface_next_action_override": "",
+                "mim_interface_result_override": reply_text,
+                "mim_interface_reply_override": reply_text,
+                "suppress_operator_impact_contract": True,
+                "communication_reply_contract": {
+                    "reply_text": reply_text,
+                    "response_mode": response_mode,
+                    "composer_mode": "conversation_purpose_engine",
+                    "should_store_memory": True,
+                    "memory_topics": ["conversation_purpose", purpose_name],
+                    "memory_people": [],
+                    "memory_events": [],
+                    "memory_experiences": [],
+                    "conversation_purpose": conversation_purpose,
+                    "suppress_operator_impact_contract": True,
+                },
+                "classification_stage_timestamps": deterministic_stage_timestamps,
+            },
+        )
+        db.add(resolution)
+        await db.flush()
+    elif fast_homepage_revision_response:
         deterministic_stage_timestamps["deterministic_classifier_started_at"] = _mim_tod_stage_timestamp()
         deterministic_stage_timestamps["deterministic_classifier_completed_at"] = _mim_tod_stage_timestamp()
         deterministic_stage_timestamps["route_decided_at"] = deterministic_stage_timestamps["deterministic_classifier_completed_at"]
@@ -25831,6 +26324,7 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
                     "memory_people": [],
                     "memory_events": [],
                     "memory_experiences": [],
+                    "suppress_operator_impact_contract": True,
                 },
                 "classification_stage_timestamps": deterministic_stage_timestamps,
             },
@@ -25857,6 +26351,43 @@ async def _store_normalized(payload: NormalizedInputCreate, db: AsyncSession) ->
     resolution_meta = (
         resolution.metadata_json if isinstance(resolution.metadata_json, dict) else {}
     )
+    event_meta = event.metadata_json if isinstance(event.metadata_json, dict) else {}
+    gateway_cognitive_interpretation = build_mim_cognitive_interpretation(
+        raw_input=event.raw_input,
+        surface=str(event_meta.get("source") or event.source or "gateway_intake"),
+        page_context=str(event_meta.get("studio_page_context") or event_meta.get("source") or ""),
+        metadata=event_meta,
+    )
+    response_authority = interpretation_response_authority(
+        gateway_cognitive_interpretation,
+        composer_source=str(
+            (
+                resolution_meta.get("communication_reply_contract")
+                if isinstance(resolution_meta.get("communication_reply_contract"), dict)
+                else {}
+            ).get("composer_mode")
+            or resolution_meta.get("deterministic_classifier")
+            or "gateway_resolution"
+        ),
+        wrapper_sources=[],
+        prior_fragment_reused=False,
+    )
+    communication_contract = (
+        resolution_meta.get("communication_reply_contract")
+        if isinstance(resolution_meta.get("communication_reply_contract"), dict)
+        else {}
+    )
+    resolution_meta = {
+        **resolution_meta,
+        "mim_cognitive_interpretation": gateway_cognitive_interpretation,
+        "response_authority": response_authority,
+        "communication_reply_contract": {
+            **communication_contract,
+            "mim_cognitive_interpretation": gateway_cognitive_interpretation,
+            "response_authority": response_authority,
+        },
+    }
+    resolution.metadata_json = resolution_meta
     is_conversation_override = bool(resolution_meta.get("conversation_override"))
     skip_conversation_memory = bool(resolution_meta.get("skip_conversation_memory"))
     tod_dispatch = None
@@ -30141,6 +30672,6 @@ async def get_voice_policy() -> dict:
         ),
     }
     expected_evidence = [
-        "fresh changed_files for the target gateway/test files or blocked_with_inspection",
+        "fresh changed_files for the selected one-file target or blocked_with_inspection naming target_file_exactly_one",
         "focused validation command output",
     ]

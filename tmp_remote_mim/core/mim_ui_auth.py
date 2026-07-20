@@ -15,6 +15,8 @@ from fastapi.responses import RedirectResponse
 from core.config import PROJECT_ROOT, settings
 
 
+# Operator-console auth only. Public/project accounts use a separate
+# mim_project_portal_session cookie and must never satisfy /studio access.
 MIMTOD_AUTH_COOKIE_NAME = "mimtod_operator_session"
 MIM_STUDIO_TEST_AUTH_HEADER = "x-mim-studio-test-auth"
 

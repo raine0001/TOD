@@ -406,3 +406,115 @@ def test_public_mim_alternative_query_uses_blocked_url_context() -> None:
     )
 
     assert query == "London weather forecast"
+
+
+def test_public_mim_enterprise_product_question_answers_from_enterprise_context() -> None:
+    reply = public_chat._public_enterprise_product_reply("what is an enterprise account?")
+
+    assert "private, branded MIM workspace" in reply
+    assert "public Research Observatory" in reply
+    assert "Pricing depends on seats" in reply
+    assert "My first working hypothesis" not in reply
+
+
+def test_public_mim_enterprise_fallback_preempts_exploration_reply() -> None:
+    reply = _build_public_fallback_reply(
+        message="how could my business benefit from the enterprise account?",
+        mode="mim",
+        profile={"visit_count": 1},
+        recall_summary="",
+    )
+
+    assert "shared organizational memory" in reply
+    assert "what should happen next" in reply
+    assert "My first working hypothesis" not in reply
+
+
+def test_public_mim_enterprise_pricing_question_uses_pricing_mode() -> None:
+    reply = _build_public_fallback_reply(
+        message="how much is an enterprise account?",
+        mode="mim",
+        profile={"visit_count": 1},
+        recall_summary="",
+    )
+
+    assert "not a fixed public one-size number yet" in reply
+    assert "smallest paid launch that proves value" in reply
+    assert "An Enterprise account is a private, branded MIM workspace" not in reply
+    assert "My first working hypothesis" not in reply
+
+
+def test_public_mim_observatory_services_certification_smoke() -> None:
+    scenarios = [
+        (
+            "What is Observatory?",
+            ("research and organizational-memory workspace", "questions", "evidence"),
+        ),
+        (
+            "Describe all /observatory services.",
+            ("Research Observatory", "Enterprise Observatory", "Documents and Evidence", "Integrations"),
+        ),
+        (
+            "How does Observatory differ from Studio?",
+            ("Observatory is the research", "Studio is the operator", "training workspace"),
+        ),
+        (
+            "What is the relationship between MIM and TOD?",
+            ("MIM is the conversation", "TOD is the execution", "validation"),
+        ),
+        (
+            "Can multiple companies use Observatory?",
+            ("Tenant isolation", "Public research should not leak", "separate"),
+        ),
+        (
+            "What happens after enterprise login?",
+            ("Enterprise setup starts", "clean Enterprise Observatory", "public research"),
+        ),
+        (
+            "Can I upload PDFs for company policies?",
+            ("uploaded documents", "evidence", "avoid treating guesses as company policy"),
+        ),
+        (
+            "Can you connect QuickBooks or Google Drive?",
+            ("setup-dependent", "credentials", "what evidence it can actually read"),
+        ),
+        (
+            "Can Observatory replace project management software?",
+            ("support project management", "should not claim to replace", "workflow"),
+        ),
+        (
+            "How could my business benefit from the enterprise account?",
+            ("private, branded MIM workspace", "shared organizational memory", "Pricing depends on seats"),
+        ),
+    ]
+
+    for prompt, expected_fragments in scenarios:
+        reply = _build_public_fallback_reply(
+            message=prompt,
+            mode="mim",
+            profile={"visit_count": 1},
+            recall_summary="",
+        )
+        assert "My first working hypothesis" not in reply
+        assert "first visible explanation" not in reply
+        for fragment in expected_fragments:
+            assert fragment in reply
+
+
+def test_public_mim_self_reflection_prompt_can_preempt_research_context() -> None:
+    prompt = "what do you think would show your increased capabilities after 1 month?"
+
+    assert public_chat._is_mim_self_reflection_request(prompt)
+    assert not public_chat._is_mim_self_reflection_request("what is this research investigation about?")
+
+    reply = public_chat.build_conversation_purpose_reply(prompt, "public_chat")
+
+    assert reply is not None
+    assert reply["response_mode"] in {
+        "curriculum_assimilation",
+        "executive_discussion",
+        "reflective_understanding",
+        "reflective_oral_exam",
+    }
+    assert "Observation-Driven Intelligence" not in reply["reply_text"]
+    assert "Research Observatory initiative" not in reply["reply_text"]

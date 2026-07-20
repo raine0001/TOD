@@ -288,6 +288,11 @@ def build_interaction_quality_snapshot(project_root: Path = PROJECT_ROOT) -> dic
         for item in artifacts
         if isinstance(item.get("weighted_pass_rate"), (int, float))
     ]
+    available_ages = [
+        item.get("age_seconds")
+        for item in artifacts
+        if item.get("available") and isinstance(item.get("age_seconds"), int)
+    ]
     quality = {
         "schema_version": "mim-interaction-quality-dashboard-v1",
         "generated_at": _now_iso(),
@@ -301,6 +306,11 @@ def build_interaction_quality_snapshot(project_root: Path = PROJECT_ROOT) -> dic
                 for item in artifacts
                 if item.get("available") and isinstance(item.get("age_seconds"), int) and item.get("age_seconds") > 86400
             ),
+            "artifact_freshness": {
+                "freshest_age_seconds": min(available_ages) if available_ages else None,
+                "oldest_age_seconds": max(available_ages) if available_ages else None,
+                "stale_threshold_seconds": 86400,
+            },
             "best_weighted_pass_rate": max(best_weighted) if best_weighted else None,
             "total_failure_examples": len(failure_analysis.get("examples") or []),
             "internal_jargon_failure_count": sum(

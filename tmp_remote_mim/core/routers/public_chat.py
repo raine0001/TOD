@@ -20,6 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.communication_composer import compose_expert_communication_reply
 from core.config import settings
+from core.conversation_purpose_engine import build_conversation_purpose_reply
+from core.mim_cognitive_entrypoint import (
+    build_mim_cognitive_interpretation,
+    interpretation_response_authority,
+)
 from core.db import get_db
 from core.identity import MIM_LEGAL_CONTACT_EMAIL
 from core.identity import MIM_LEGAL_ENTITY_NAME
@@ -37,6 +42,9 @@ from core.interface_service import (
     upsert_interface_session,
 )
 from core.models import MemoryEntry
+from core.observatory_research import get_research_initiative, list_research_initiatives
+from core.public_research_context import is_research_context, research_context_from_initiative, research_context_reply
+from core.routers.project_portal import _current_account_or_none
 
 
 router = APIRouter(tags=["public-chat"])
@@ -73,20 +81,279 @@ PUBLIC_CHAT_DEFAULT_TIMEZONE = "America/Los_Angeles"
 
 
 def _approved_public_homepage_html() -> str:
-    artifact_path = Path.cwd() / "runtime" / "shared" / PUBLIC_HOMEPAGE_ARTIFACT
-    try:
-        html_text = artifact_path.read_text(encoding="utf-8")
-    except OSError:
+    artifact_candidates = (
+        Path.cwd() / "runtime" / "shared" / PUBLIC_HOMEPAGE_ARTIFACT,
+        Path(__file__).resolve().parents[2] / "runtime" / "shared" / PUBLIC_HOMEPAGE_ARTIFACT,
+    )
+    html_text = ""
+    for artifact_path in artifact_candidates:
+        try:
+            html_text = artifact_path.read_text(encoding="utf-8")
+            break
+        except OSError:
+            continue
+    if not html_text:
         return ""
     required_markers = (
-        "What do you want to create?",
-        "Meet MIM",
-        "Talk to MIM",
-        "Trusted by Design",
+        "<title>MIM</title>",
+        "A Collaborative Intelligence built to",
+        "observe, learn, reason, and explore with you.",
+        "/observatory",
+        "/observatory/enterprise",
+        "/build",
+        "/community",
+        "/community/questions",
+        "researchQuestionBanner",
+        "menuAccountBadge",
+        "chat-shell",
+        "frontQuestion",
     )
     if not all(marker in html_text for marker in required_markers):
         return ""
     return html_text
+
+
+def _clean_public_homepage_fallback_html() -> str:
+    return """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MIM</title>
+  <style>
+    :root { color-scheme: dark; --bg:#000; --panel:#0d0f14; --line:#2a2d36; --text:#f5f7fb; --muted:#9aa3af; --accent:#ffffff; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font:14px/1.45 Arial, sans-serif; overflow-x:hidden; }
+    a { color:inherit; text-decoration:none; }
+    .site-menu { position:fixed; top:20px; right:20px; z-index:10; display:flex; align-items:center; gap:8px; }
+    .menu-account-badge { max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.045); color:var(--text); padding:10px 12px; font-weight:800; }
+    .icon-button { width:42px; height:42px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.045); color:var(--text); display:grid; place-items:center; cursor:pointer; }
+    .icon-button svg { width:19px; height:19px; stroke:currentColor; stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+    .menu-panel { position:absolute; top:52px; right:0; min-width:172px; padding:10px; border:1px solid var(--line); border-radius:8px; background:#090b10; display:none; gap:4px; box-shadow:0 20px 60px rgba(0,0,0,.45); }
+    .site-menu.open .menu-panel { display:grid; }
+    .menu-panel a { padding:10px 12px; border-radius:7px; color:#c7ced8; font-weight:700; }
+    .menu-panel a:hover { background:rgba(255,255,255,.06); color:#fff; }
+    .account-button { display:none; }
+    .auth-ready .account-button { display:grid; }
+    .auth-ready .login-button { display:none; }
+    .menu-link-button { width:100%; border:0; border-radius:7px; background:transparent; color:#c7ced8; padding:10px 12px; text-align:left; font:inherit; font-weight:700; cursor:pointer; }
+    .menu-link-button:hover,.menu-link-button:focus-visible { background:rgba(255,255,255,.06); color:#fff; outline:none; }
+    main { min-height:100vh; display:grid; place-items:center; padding:72px 18px 32px; }
+    .stage { width:min(760px,100%); min-height:min(680px,calc(100vh - 104px)); display:grid; place-items:center; position:relative; }
+    .intro-word { position:absolute; margin:0; font-size:clamp(64px,13vw,150px); letter-spacing:0; opacity:0; animation:introWord 8.6s ease forwards; }
+    .intro-line { position:absolute; margin:0; text-align:center; font-size:clamp(21px,4vw,42px); line-height:1.22; font-weight:700; opacity:0; animation:introLine 8.8s ease forwards; animation-delay:3.6s; }
+    .intro-line span { display:block; }
+    .chat-shell { width:min(760px,100%); height:min(520px,calc(100vh - 132px)); border:1px solid var(--line); border-radius:18px; background:linear-gradient(180deg,rgba(16,17,22,.94),rgba(8,9,12,.98)); box-shadow:0 30px 110px rgba(0,0,0,.62); display:grid; grid-template-rows:auto 1fr auto; overflow:hidden; opacity:0; animation:chatIn 1.1s ease forwards; animation-delay:7.2s; }
+    .chat-head { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--line); color:#d7dce4; }
+    .identity { display:flex; align-items:center; gap:10px; font-weight:800; }
+    .pulse { width:8px; height:8px; border-radius:999px; background:#fff; box-shadow:0 0 18px rgba(255,255,255,.85); }
+    .chat-status { color:var(--muted); font-size:12px; }
+    .messages { padding:22px 18px; overflow-y:auto; display:flex; flex-direction:column; gap:16px; }
+    .message { max-width:82%; border:1px solid var(--line); border-radius:14px; padding:12px 14px; white-space:pre-wrap; }
+    .message.user { align-self:flex-end; background:#f3f5f8; color:#090b10; }
+    .message.mim { align-self:flex-start; background:#11141b; color:#eef2f7; }
+    .composer { padding:14px; border-top:1px solid var(--line); background:rgba(0,0,0,.22); }
+    .composer-inner { min-height:64px; display:grid; grid-template-columns:auto 1fr auto auto; align-items:end; gap:10px; border:1px solid var(--line); border-radius:999px; padding:8px; background:#090b10; }
+    .research-question-banner { width:min(980px,100%); margin:18px auto 0; border:1px solid var(--line); border-radius:14px; background:rgba(255,255,255,.035); padding:14px; opacity:0; animation:chatIn 1.1s ease forwards; animation-delay:7.35s; }
+    .research-question-banner h2 { margin:0 0 10px; font-size:14px; color:#d8dee8; }
+    .question-rail { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; }
+    .question-card { min-height:108px; border:1px solid var(--line); border-radius:10px; padding:12px; background:#11141b; display:grid; gap:8px; align-content:start; }
+    .question-card strong { color:#fff; }
+    .question-card span { color:#d7dce4; }
+    .question-card small { color:var(--muted); }
+    textarea { width:100%; max-height:180px; min-height:38px; resize:none; border:0; outline:0; background:transparent; color:var(--text); padding:10px 6px; font:inherit; }
+    textarea::placeholder { color:#858b95; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    @keyframes introWord { 0%{opacity:0; transform:translateY(8px)} 16%,46%{opacity:1; transform:translateY(0)} 72%,100%{opacity:0; transform:translateY(-10px)} }
+    @keyframes introLine { 0%{opacity:0; transform:translateY(8px)} 18%,48%{opacity:1; transform:translateY(0)} 74%,100%{opacity:0; transform:translateY(-10px)} }
+    @keyframes chatIn { from{opacity:0; transform:translateY(16px) scale(.985)} to{opacity:1; transform:translateY(0) scale(1)} }
+    @media (prefers-reduced-motion: reduce) { .intro-word,.intro-line{display:none}.chat-shell{opacity:1; animation:none} }
+    @media (max-width:640px) { .chat-shell{height:calc(100vh - 112px); border-radius:14px}.composer-inner{grid-template-columns:auto 1fr auto}.voice-button{display:none}.chat-status{display:none} }
+  </style>
+</head>
+<body>
+  <nav class="site-menu" id="siteMenu" aria-label="Site menu">
+    <span class="menu-account-badge" id="menuAccountBadge" hidden></span>
+    <a class="icon-button login-button" id="loginIcon" href="/login" aria-label="Login" title="Login">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><path d="M10 17l5-5-5-5"></path><path d="M15 12H3"></path></svg>
+    </a>
+    <button class="icon-button account-button" type="button" id="accountButton" aria-label="Account" title="Account">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0"></path><path d="M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path></svg>
+    </button>
+    <button class="icon-button" type="button" id="menuButton" aria-label="Open menu" aria-expanded="false" aria-controls="menuPanel">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+    </button>
+    <div class="menu-panel" id="menuPanel">
+      <a href="/">Home</a>
+      <a href="/observatory">Research</a>
+      <a href="/observatory/enterprise">Enterprise</a>
+      <a href="/build">Build</a>
+      <a href="/community">Community</a>
+      <a href="/community/questions">Questions</a>
+      <button id="menuLogoutButton" class="menu-link-button" type="button" hidden>Logout</button>
+    </div>
+  </nav>
+  <main>
+    <section class="stage" aria-label="MIM interaction">
+      <h1 class="intro-word">MIM</h1>
+      <p class="intro-line"><span>A Collaborative Intelligence built to</span><span>observe, learn, reason, and explore with you.</span></p>
+      <section class="chat-shell" aria-label="MIM chat">
+        <header class="chat-head">
+          <div class="identity"><span class="pulse" aria-hidden="true"></span><strong>MIM</strong></div>
+          <div class="chat-status" id="chatStatus">ready</div>
+        </header>
+        <div class="messages" id="messages" aria-live="polite" aria-label="Conversation"></div>
+        <form class="composer" id="composer">
+          <label class="sr-only" for="messageInput">what would you like to collaborate on?</label>
+          <div class="composer-inner">
+            <button class="icon-button" type="button" id="attachButton" aria-label="Attach file" title="Attach file">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l9.2-9.2a3.2 3.2 0 0 1 4.5 4.5l-9.1 9.1a1.5 1.5 0 0 1-2.1-2.1l8.3-8.3"></path></svg>
+            </button>
+            <textarea id="messageInput" rows="1" placeholder="what would you like to collaborate on?" autocomplete="off"></textarea>
+            <button class="icon-button voice-button" type="button" aria-label="Start voice input" title="Start voice input">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"></path><path d="M19 11a7 7 0 0 1-14 0"></path><path d="M12 18v3"></path></svg>
+            </button>
+            <button class="icon-button" type="submit" id="sendButton" aria-label="Send message" title="Send message">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13"></path><path d="M22 2l-7 20-4-9-9-4 20-7z"></path></svg>
+            </button>
+          </div>
+        </form>
+      </section>
+      <section class="research-question-banner" id="researchQuestionBanner" aria-label="MIM research questions">
+        <h2>MIM is wondering</h2>
+        <div class="question-rail">
+          <a class="question-card" href="/observatory/investigations/observation-driven-intelligence#researchConversation"><strong>Observation-Driven Intelligence</strong><span>What would prove that MIM understands better after a month?</span><small>Discuss with MIM</small></a>
+          <a class="question-card" href="/observatory/investigations/relationship-based-learning#researchConversation"><strong>Relationship-Based Learning</strong><span>Which evidence should MIM inspect first?</span><small>Respond with evidence</small></a>
+          <a class="question-card" href="/observatory/enterprise"><strong>Enterprise Observatory</strong><span>How could a private organization use MIM as a living knowledge system?</span><small>Explore Enterprise</small></a>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script>
+    (function () {
+      const menu = document.getElementById('siteMenu');
+      const menuButton = document.getElementById('menuButton');
+      const form = document.getElementById('composer');
+      const input = document.getElementById('messageInput');
+      const messages = document.getElementById('messages');
+      const status = document.getElementById('chatStatus');
+      const badge = document.getElementById('menuAccountBadge');
+      const loginIcon = document.getElementById('loginIcon');
+      const logoutButton = document.getElementById('menuLogoutButton');
+      menuButton.addEventListener('click', () => {
+        const open = !menu.classList.contains('open');
+        menu.classList.toggle('open', open);
+        menuButton.setAttribute('aria-expanded', String(open));
+      });
+      async function refreshAuth() {
+        try {
+          const response = await fetch('/projects/state', { credentials: 'same-origin', cache: 'no-store' });
+          if (!response.ok) return;
+          const state = await response.json();
+          const account = state.account || {};
+          const name = String(account.contact_name || account.company_name || account.email || '').trim();
+          if (state.authenticated) {
+            document.body.classList.add('auth-ready');
+            if (badge) { badge.hidden = false; badge.textContent = name ? 'Hi ' + name.split(/\\s+/)[0] : 'Hi'; }
+            if (loginIcon) loginIcon.hidden = true;
+            if (logoutButton) logoutButton.hidden = false;
+          }
+        } catch (error) {}
+      }
+      if (logoutButton) {
+        logoutButton.addEventListener('click', async () => {
+          await fetch('/projects/logout', { method: 'POST', credentials: 'same-origin' });
+          window.location.href = '/login?logged_out=1';
+        });
+      }
+      function visitorId() {
+        let value = localStorage.getItem('mim_public_visitor_id') || '';
+        if (!value) {
+          value = 'visitor-' + (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+          localStorage.setItem('mim_public_visitor_id', value);
+        }
+        return value;
+      }
+      function addMessage(role, text) {
+        const item = document.createElement('div');
+        item.className = 'message ' + role;
+        item.textContent = String(text || '');
+        messages.appendChild(item);
+        messages.scrollTop = messages.scrollHeight;
+      }
+      function replyText(payload) {
+        if (!payload) return '';
+        const reply = payload.reply;
+        if (typeof reply === 'string') return reply;
+        if (reply && typeof reply.content === 'string') return reply.content;
+        if (reply && typeof reply.text === 'string') return reply.text;
+        if (typeof payload.message === 'string') return payload.message;
+        if (payload.message && typeof payload.message.content === 'string') return payload.message.content;
+        return '';
+      }
+      function autoSize() {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 180) + 'px';
+      }
+      input.addEventListener('input', autoSize);
+      async function proactiveGreeting() {
+        const key = 'mim_public_home_greeted_' + new Date().toISOString().slice(0, 10);
+        if (sessionStorage.getItem(key)) return;
+        sessionStorage.setItem(key, '1');
+        status.textContent = 'greeting';
+        try {
+          const id = visitorId();
+          const response = await fetch('/public/chat/message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: 'A visitor just opened mimtod.com. Greet them once in a warm, concise way and invite them to ask about research, building, community, or Enterprise MIM.',
+              visitor_id: id,
+              session_key: id + '-mim',
+              mode: 'mim',
+              source: 'public_home_proactive_greeting',
+              context: { event: 'new_homepage_session', greeting_policy: 'one_natural_greeting_per_session' }
+            })
+          });
+          const payload = await response.json();
+          const reply = replyText(payload);
+          if (reply) addMessage('mim', reply);
+        } catch (error) {
+        } finally {
+          status.textContent = 'ready';
+        }
+      }
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const text = (input.value || '').trim();
+        if (!text) return;
+        addMessage('user', text);
+        input.value = '';
+        autoSize();
+        status.textContent = 'thinking';
+        try {
+          const id = visitorId();
+          const response = await fetch('/public/chat/message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text, visitor_id: id, session_key: id + '-mim', mode: 'mim', source: 'public_home' })
+          });
+          const payload = await response.json();
+          addMessage('mim', replyText(payload) || 'I received that, but I do not have a response yet.');
+        } catch (error) {
+          addMessage('mim', 'I could not reach the conversation service. Please try again in a moment.');
+        } finally {
+          status.textContent = 'ready';
+        }
+      });
+      refreshAuth();
+      window.setTimeout(proactiveGreeting, 8200);
+    })();
+  </script>
+</body>
+</html>
+    """.strip()
 
 
 def _template_slug(value: object) -> str:
@@ -297,6 +564,75 @@ class PublicChatMessageRequest(BaseModel):
     message: str = Field(min_length=1)
     mode: Literal["mim", "tod"] = "mim"
     session_key: str = Field(min_length=1)
+    context: dict[str, Any] | None = None
+
+
+def _observatory_research_context_from_session_key(session_key: str) -> dict[str, Any]:
+    normalized = str(session_key or "").strip()
+    prefix = "observatory-"
+    if not normalized.lower().startswith(prefix):
+        return {}
+    initiative_id = normalized[len(prefix) :].strip()
+    if initiative_id.lower().startswith("research-"):
+        initiative_id = initiative_id[len("research-") :].strip()
+    if not initiative_id:
+        return {}
+    initiative = get_research_initiative(initiative_id)
+    if not initiative:
+        return {}
+    return research_context_from_initiative(initiative)
+
+
+def _observatory_research_context_from_message(message: str) -> dict[str, Any]:
+    lowered = f" {str(message or '').strip().lower()} "
+    if not lowered.strip():
+        return {}
+    for initiative in list_research_initiatives():
+        initiative_id = str(initiative.get("id") or "").strip().lower()
+        identity = initiative.get("identity") if isinstance(initiative.get("identity"), dict) else {}
+        title = str(identity.get("title") or "").strip().lower()
+        aliases = {initiative_id, title}
+        for alias in aliases:
+            if alias and f" {alias} " in lowered:
+                return research_context_from_initiative(initiative)
+    return {}
+
+
+def _is_public_project_planning_request(message: str) -> bool:
+    lowered = f" {str(message or '').strip().lower()} "
+    if not lowered.strip():
+        return False
+    planning_markers = (
+        " i need ",
+        " i want ",
+        " create ",
+        " build ",
+        " plan ",
+        " blueprint ",
+        " roadmap ",
+        " project ",
+        " proposal ",
+        " automate ",
+        " automation ",
+        " workflow ",
+    )
+    work_markers = (
+        " app ",
+        " system ",
+        " tool ",
+        " platform ",
+        " dashboard ",
+        " facility ",
+        " factory ",
+        " manufacturing ",
+        " manufacture ",
+        " manufacturer ",
+        " production ",
+        " process ",
+        " warehouse ",
+        " line ",
+    )
+    return any(marker in lowered for marker in planning_markers) and any(marker in lowered for marker in work_markers)
 
 
 def _utc_now_iso() -> str:
@@ -327,6 +663,32 @@ def _is_affirmative_continue(text: str) -> bool:
             normalized,
         )
     )
+
+
+def _is_mim_self_reflection_request(text: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9\s]+", " ", str(text or "").lower())
+    lowered = f" {normalized} "
+    if not any(pronoun in lowered for pronoun in (" you ", " your ", " yourself ", " mim ")):
+        return False
+    reflection_markers = (
+        "capabilit",
+        "learn",
+        "learning",
+        "improve",
+        "improvement",
+        "increased",
+        "weakness",
+        "weaknesses",
+        "strength",
+        "different",
+        "changed",
+        "future",
+        "month",
+        "priority",
+        "priorities",
+        "think",
+    )
+    return any(marker in lowered for marker in reflection_markers)
 
 
 def _accounting_receipt_platform_reply(*, recall_summary: str = "", greeting: str = "") -> str:
@@ -855,6 +1217,13 @@ def _public_customer_success_seed_reply(query: str) -> str:
             "Ask one critical question first: does the customer currently download carrier reports manually?"
         )
 
+    if any(marker in lowered for marker in ("automation plan", "automate", "automation")) and any(marker in lowered for marker in ("manufacture", "manufacturer", "manufacturing", "factory", "facility", "production line")):
+        return (
+            "This is a manufacturing automation planning request. Lead with a useful starter structure instead of saying evidence is unavailable. "
+            "Name likely discovery lanes: current process map, bottlenecks, labor-heavy steps, material handling, machine tending, packaging, quality inspection, safety, downtime, throughput, and integration with existing controls. "
+            "Then ask focused questions that help MIM learn the project: products made, process steps, current machines, volumes per shift, labor bottlenecks, quality problems, space constraints, budget/timeline, and whether the goal is robotics, conveyors, vision inspection, packaging automation, data collection, or all of them."
+        )
+
     if any(marker in lowered for marker in ("reporting sucks", "employees don't follow up", "lose inventory", "losing inventory", "data everywhere", "too much time entering", "nobody knows", "month end")):
         return (
             "This is a business problem, not automatically a software request. Start by naming the likely root problem in plain language, then recommend a solution direction and explain why it helps. "
@@ -1036,6 +1405,193 @@ def _public_temporal_context() -> dict[str, Any]:
     }
 
 
+def _public_observatory_service_catalog() -> list[dict[str, str]]:
+    return [
+        {
+            "name": "Research Observatory",
+            "route": "/observatory",
+            "summary": "A public and private research workspace where MIM tracks questions, investigations, evidence, confidence, and what changed.",
+        },
+        {
+            "name": "Enterprise Observatory",
+            "route": "/observatory/enterprise",
+            "summary": "A private, branded organization workspace with tenant-separated research, documents, objectives, blockers, and executive summaries.",
+        },
+        {
+            "name": "Enterprise Account Setup",
+            "route": "/observatory/enterprise",
+            "summary": "The onboarding path for organization identity, administrator ownership, tenant slug, branding, first use case, and initial roles.",
+        },
+        {
+            "name": "Investigations",
+            "route": "/observatory/investigations",
+            "summary": "Living research records that preserve the current question, hypotheses, evidence, unknowns, confidence, and next experiment.",
+        },
+        {
+            "name": "Documents and Evidence",
+            "route": "/observatory/investigations",
+            "summary": "Source material attached to investigations so MIM can distinguish evidence, inference, missing proof, and unsupported claims.",
+        },
+        {
+            "name": "MIM Questions",
+            "route": "/observatory",
+            "summary": "Open questions MIM wants help exploring, including evidence gaps and next observations that could change confidence.",
+        },
+        {
+            "name": "Research Conversation",
+            "route": "/observatory/investigations/{slug}#researchConversation",
+            "summary": "Conversation with MIM around a research record, including reframes, hypotheses, follow-up questions, and research evolution.",
+        },
+        {
+            "name": "Projects and Objectives",
+            "route": "/projects",
+            "summary": "Work management surfaces where MIM frames priorities and TOD executes bounded tasks with validation evidence.",
+        },
+        {
+            "name": "Users, Roles, and Invitations",
+            "route": "/observatory/enterprise",
+            "summary": "Enterprise administration for account owner, administrator setup, invitations, user roles, and future department access.",
+        },
+        {
+            "name": "Integrations",
+            "route": "/observatory/enterprise",
+            "summary": "Planned and setup-dependent connections to tools such as cloud storage, calendars, email, CRM, APIs, and business systems.",
+        },
+    ]
+
+
+def _public_observatory_services_summary() -> str:
+    service_names = ", ".join(item["name"] for item in _public_observatory_service_catalog())
+    return (
+        "The Observatory services are: "
+        f"{service_names}. "
+        "The common pattern is conversation first, evidence second, and action only when the source material supports it."
+    )
+
+
+def _public_observatory_product_reply(message: str) -> str:
+    query = " ".join(str(message or "").strip().split())
+    lowered = query.lower()
+    product_context_terms = (
+        "observatory",
+        "enterprise",
+        "service",
+        "account",
+        "tenant",
+        "studio",
+        "mim",
+        "tod",
+        "research",
+        "document",
+        "pdf",
+        "company polic",
+        "quickbooks",
+        "google drive",
+        "slack",
+        "zoom",
+        "twilio",
+        "crm",
+        "calendar",
+        "email",
+        "webhook",
+        "api",
+    )
+    if not any(term in lowered for term in product_context_terms):
+        return ""
+    product_question_signals = (
+        "what is",
+        "what's",
+        "explain",
+        "describe",
+        "service",
+        "benefit",
+        "available",
+        "use",
+        "pricing",
+        "price",
+        "cost",
+        "setup",
+        "account",
+        "login",
+        "after login",
+        "first login",
+        "tenant",
+        "isolation",
+        "private",
+        "upload",
+        "document",
+        "policies",
+        "connect",
+        "integration",
+        "relationship",
+        "differ",
+        "replace",
+        "private organization",
+        "business",
+        "company",
+        "organization",
+    )
+    if not any(signal in lowered for signal in product_question_signals):
+        return ""
+    if any(term in lowered for term in ("quickbooks", "google drive", "slack", "zoom", "twilio", "crm", "calendar", "email", "webhook", "api", "integration", "connect")):
+        return (
+            "Observatory integrations are setup-dependent. The safe current model is to start with files, documents, links, and verified source material, then connect systems such as Google Drive, Microsoft, Slack, Zoom, Twilio, QuickBooks, CRM, email, calendars, or custom APIs only after credentials, permissions, and supported objects are confirmed. "
+            "MIM should not silently claim a connection is live; it should say what is connected, what is pending, and what evidence it can actually read."
+        )
+    if any(term in lowered for term in ("how much", "pricing", "price", "cost", "costs", "monthly", "per month", "subscription")):
+        return (
+            "Enterprise pricing is not a fixed public one-size number yet. It depends on seats, private knowledge volume, connected systems, setup help, MIM/TOD execution support, security needs, and service level. "
+            "The practical starting point is a scoped setup conversation: identify the organization size, first workspace, documents or systems to connect, admin owner, and whether MIM is only answering questions or also coordinating TOD execution. "
+            "For a small pilot, MIM should recommend the smallest paid launch that proves value before expanding seats, integrations, or automation."
+        )
+    if "mim" in lowered and "tod" in lowered or "relationship" in lowered and ("mim" in lowered or "tod" in lowered):
+        return (
+            "MIM is the conversation and planning layer: it interprets goals, explains context, frames decisions, and decides what should happen next. "
+            "TOD is the execution and verification layer: it handles bounded implementation work, validation, blocker evidence, and proof that work actually moved. "
+            "In Observatory, MIM should explain and manage the work; TOD should change or validate systems only through bounded tasks with evidence."
+        )
+    if any(term in lowered for term in ("tenant", "isolation", "multiple companies", "separation", "private")):
+        return (
+            "Tenant isolation means an Enterprise account has its own organization context before Observatory content is selected. "
+            "Public research should not leak into a private enterprise workspace unless the user intentionally opens public discovery, and one company's documents, users, objectives, and conversations should stay separate from another company's workspace."
+        )
+    if any(term in lowered for term in ("first login", "after login", "login", "setup", "create", "administrator", "admin", "invite", "logo", "branding", "subdomain")):
+        return (
+            "Enterprise setup starts by identifying the organization, account owner or administrator, tenant slug, logo or branding, first use case, and initial roles. "
+            "After login, the user should land in a clean Enterprise Observatory with no unrelated public research, then MIM should guide setup by asking only for missing information and saving it to the enterprise account for future use."
+        )
+    if any(term in lowered for term in ("document", "pdf", "upload", "company polic", "knowledge", "source", "evidence")):
+        return (
+            "Observatory can use uploaded documents and source material as evidence for research and enterprise knowledge. "
+            "MIM should answer from the documents it can actually inspect, name uncertainty when evidence is missing, preserve source boundaries, and avoid treating guesses as company policy."
+        )
+    if any(term in lowered for term in ("service", "services", "available", "describe all", "what can", "include")):
+        return _public_observatory_services_summary()
+    if "studio" in lowered or "project management" in lowered or "replace" in lowered:
+        return (
+            "Observatory is the research, knowledge, and enterprise memory layer. Studio is the operator and training workspace for MIM/TOD development and operations. "
+            "Observatory can support project management by preserving decisions, objectives, blockers, documents, and executive summaries, but it should not claim to replace a team's existing project-management system until the needed workflow, integrations, and permissions are proven."
+        )
+    if "enterprise" in lowered:
+        return (
+            "An Enterprise account is a private, branded MIM workspace for an organization. "
+            "Instead of mixing your team into the public Research Observatory, the company gets its own clean Observatory where MIM can help organize documents, investigations, objectives, decisions, blockers, and executive summaries. "
+            "The practical benefit is shared organizational memory: MIM can help people understand what is happening, what changed, what needs attention, and what should happen next without scattering that knowledge across email, files, and meetings. "
+            "Setup starts with the organization name, administrator, tenant slug, logo or brand details, first use case, and user roles. Pricing depends on seats, private knowledge volume, connected systems, MIM/TOD execution support, and service level."
+        )
+    if "observatory" in lowered or "research" in lowered:
+        return (
+            "Observatory is MIM's research and organizational-memory workspace. "
+            "It is designed to keep questions, evidence, hypotheses, confidence, unknowns, documents, conversations, and next actions together so a discussion can become learning instead of disappearing after one answer. "
+            "For public users it supports shared research exploration; for Enterprise users it becomes a private tenant workspace for company knowledge, objectives, blockers, and executive summaries."
+        )
+    return ""
+
+
+def _public_enterprise_product_reply(message: str) -> str:
+    return _public_observatory_product_reply(message)
+
+
 def _public_direct_conversational_reply(
     *,
     message: str,
@@ -1066,6 +1622,11 @@ def _public_direct_conversational_reply(
     ):
         temporal = _public_temporal_context()
         return f"{recall_prefix}Today is {temporal['current_date']}."
+
+    if normalized_mode == "mim":
+        enterprise_reply = _public_enterprise_product_reply(query)
+        if enterprise_reply:
+            return f"{recall_prefix}{enterprise_reply}"
 
     if normalized_mode == "mim" and re.search(r"\bwhat\s+time\s+is\s+it\b|\bwhat(?:'s|\s+is)\s+the\s+time\b", lowered):
         temporal = _public_temporal_context()
@@ -1599,7 +2160,8 @@ async def public_privacy_policy() -> HTMLResponse:
 async def public_chat_home() -> HTMLResponse:
         approved_homepage = _approved_public_homepage_html()
         if approved_homepage:
-                return HTMLResponse(_inject_template_gallery(approved_homepage))
+                return HTMLResponse(approved_homepage)
+        return HTMLResponse(_clean_public_homepage_fallback_html())
         template_gallery = _template_gallery_section(include_style=False)
         return HTMLResponse(
                 f"""
@@ -1608,7 +2170,7 @@ async def public_chat_home() -> HTMLResponse:
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MIM | Business Software Consultant</title>
+    <title>MIM</title>
     <style>
         :root {{
             color-scheme: dark;
@@ -1776,9 +2338,9 @@ async def public_chat_home() -> HTMLResponse:
     <main class="wrap">
         <section class="hero">
             <div>
-                <div class="eyebrow">Business software consultant</div>
-                <h1>Build the software your business actually needs.</h1>
-                <p class="lead">MIM starts with the problem, not the app. Describe what is slow, expensive, confusing, manual, or missing, and MIM turns it into discovery, a blueprint, a roadmap, pricing, and implementation-ready work.</p>
+                <div class="eyebrow">Collaborative intelligence</div>
+                <h1>MIM</h1>
+                <p class="lead">A Collaborative Intelligence built to observe, learn, reason, and explore with you.</p>
                 <div id="ask" class="askbox">
                     <label for="painInput"><strong>What is slowing your business down?</strong></label>
                     <textarea id="painInput" placeholder="Inventory is a mess. Reporting takes too long. Managers still use spreadsheets. We need automation."></textarea>
@@ -2016,7 +2578,31 @@ async def public_app_template_demo(slug: str) -> HTMLResponse:
 
 
 @router.get("/demo", response_class=HTMLResponse)
-async def public_demo_entry(idea: str = "") -> HTMLResponse:
+@router.get("/build", response_class=HTMLResponse)
+async def public_demo_entry(
+        request: Request,
+        idea: str = "",
+        db: AsyncSession = Depends(get_db),
+) -> HTMLResponse:
+        account = await _current_account_or_none(request, db)
+        account_name = str(getattr(account, "contact_name", "") or getattr(account, "email", "") or "").strip()
+        account_first_name = html.escape(account_name.split()[0] if account_name else "")
+        greeting_html = f"<p class='login-greeting'>Hi {account_first_name}.</p>" if account_first_name else ""
+        auth_menu_item = (
+            "<button class='menu-link' type='button' data-logout>Logout</button>"
+            if account
+            else "<a href='/login'>Login</a>"
+        )
+        primary_account_action = (
+            "<a class='btn primary' href='/projects'>Open my workspace</a>"
+            if account
+            else "<a class='btn primary' href='/login'>Create my account now</a>"
+        )
+        secondary_build_actions = (
+            "<a class='btn' href='/demo'>Explore public demo</a>"
+            "<a class='btn' href='/apps/templates'>App templates</a>"
+        )
+        template_gallery = _template_gallery_section(include_style=False)
         initial_idea = html.escape(str(idea or "").strip())
         return HTMLResponse(
                 f"""<!doctype html>
@@ -2024,7 +2610,7 @@ async def public_demo_entry(idea: str = "") -> HTMLResponse:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MIM App Builder Demo</title>
+  <title>MIM Apps / Build intake</title>
   <style>
     :root {{
       color-scheme: dark;
@@ -2052,7 +2638,17 @@ async def public_demo_entry(idea: str = "") -> HTMLResponse:
     h3 {{ font-size:15px; }}
     p {{ color:var(--muted); line-height:1.45; }}
     a {{ color:var(--accent); text-decoration:none; font-weight:800; }}
+    .site-menu {{ position:fixed; top:18px; right:18px; z-index:50; }}
+    .icon-button {{ width:42px; height:42px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.035); color:var(--text); display:inline-grid; place-items:center; cursor:pointer; }}
+    .icon-button:hover, .icon-button:focus-visible {{ background:rgba(255,255,255,.075); outline:none; }}
+    .icon-button svg {{ width:19px; height:19px; stroke:currentColor; stroke-width:2; fill:none; stroke-linecap:round; }}
+    .site-menu .menu-panel {{ position:absolute; top:52px; right:0; min-width:210px; border:1px solid var(--line); border-radius:14px; background:rgba(12,13,16,.97); box-shadow:0 24px 70px rgba(0,0,0,.48); padding:8px; display:none; }}
+    .site-menu.open .menu-panel {{ display:grid; }}
+    .site-menu .menu-panel a,.site-menu .menu-panel .menu-link {{ color:var(--muted); text-decoration:none; text-align:left; border:0; border-radius:10px; padding:12px 13px; background:transparent; font:inherit; font-weight:800; cursor:pointer; }}
+    .site-menu .menu-panel a:hover, .site-menu .menu-panel a:focus-visible,.site-menu .menu-panel .menu-link:hover,.site-menu .menu-panel .menu-link:focus-visible {{ background:rgba(255,255,255,.07); color:var(--text); outline:none; }}
     .actions {{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }}
+    .top-copy {{ display:grid; gap:7px; }}
+    .login-greeting {{ color:var(--accent); font-weight:850; }}
     .btn, button {{ border:1px solid var(--line); background:#132234; color:var(--text); border-radius:7px; padding:9px 12px; cursor:pointer; font-weight:800; }}
     .btn.primary, button.primary {{ background:linear-gradient(135deg,#56d8e8,#75b7ff); color:#061019; border-color:transparent; }}
     .btn.green {{ background:#0f6b4c; border-color:#168663; color:white; }}
@@ -2085,6 +2681,16 @@ async def public_demo_entry(idea: str = "") -> HTMLResponse:
     .help-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }}
     .help-card {{ border:1px solid #d9e2ea; border-radius:8px; padding:12px; background:white; }}
     .help-card ol, .help-card ul {{ margin:8px 0 0; padding-left:20px; color:#405367; line-height:1.45; }}
+    .section-head {{ display:flex; align-items:end; justify-content:space-between; gap:16px; margin-bottom:12px; }}
+    .section-head p {{ max-width:620px; }}
+    .feature-grid {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }}
+    .feature-card {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; min-height:120px; }}
+    .feature-card small {{ display:block; color:var(--accent); font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.06em; margin-bottom:9px; }}
+    .feature-card h3 {{ font-size:17px; margin-bottom:8px; }}
+    .create-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }}
+    .create-grid div {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:13px; min-height:92px; }}
+    .create-grid strong {{ display:block; margin-bottom:6px; }}
+    .create-grid span {{ color:var(--muted); line-height:1.35; }}
     .mim-help {{ border:1px solid #8bc9ff; border-radius:8px; padding:14px; background:#edf7ff; color:#24415c; display:grid; gap:10px; }}
     .mim-help-row {{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }}
     .mim-help input {{ border:1px solid #bdd7ef; border-radius:7px; padding:10px; background:white; color:#1f2937; }}
@@ -2106,14 +2712,25 @@ async def public_demo_entry(idea: str = "") -> HTMLResponse:
     .event {{ display:grid; grid-template-columns:94px 1fr; gap:10px; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--panel2); }}
     .event time {{ color:var(--accent); font-weight:800; }}
     .event strong {{ display:block; margin-bottom:4px; }}
-    .side {{ border-left:1px solid var(--line); background:#090f17; min-height:100vh; display:grid; grid-template-rows:auto 1fr auto; }}
-    .side-head {{ padding:14px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:10px; }}
-    .chat {{ overflow:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }}
+    .side {{ position:sticky; top:72px; border-left:1px solid var(--line); background:#090f17; height:calc(100vh - 72px); min-height:560px; display:grid; grid-template-rows:auto minmax(0,1fr) auto; overflow:hidden; }}
+    .side-head {{ min-height:48px; padding:10px 12px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:10px; }}
+    .side-actions {{ display:flex; gap:6px; align-items:center; }}
+    .side-action {{ width:32px; height:32px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.035); color:var(--text); display:grid; place-items:center; padding:0; cursor:pointer; }}
+    .side-action:hover,.side-action:focus-visible {{ background:rgba(255,255,255,.08); outline:none; }}
+    .side-action svg,.chat-tool-button svg,.chat-send-button svg {{ width:17px; height:17px; stroke:currentColor; stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }}
+    .chat {{ overflow:auto; padding:14px; display:flex; flex-direction:column; gap:10px; scroll-behavior:smooth; }}
     .msg {{ border:1px solid var(--line); background:var(--panel); border-radius:8px; padding:11px; line-height:1.45; }}
     .msg.user {{ background:#17263a; margin-left:22px; }}
     .msg.mim {{ margin-right:22px; }}
-    .composer {{ padding:14px; border-top:1px solid var(--line); display:grid; gap:10px; }}
-    textarea {{ width:100%; min-height:86px; resize:vertical; border:1px solid var(--line); border-radius:8px; background:#0c141d; color:var(--text); padding:10px; }}
+    .composer {{ padding:12px; border-top:1px solid var(--line); display:grid; gap:8px; }}
+    .composer-row {{ display:grid; grid-template-columns:1fr 44px; gap:9px; align-items:end; }}
+    textarea {{ width:100%; min-height:76px; max-height:32vh; resize:vertical; border:1px solid var(--line); border-radius:8px; background:#0c141d; color:var(--text); padding:10px; }}
+    .chat-send-button {{ width:44px; height:44px; border-radius:999px; padding:0; display:grid; place-items:center; }}
+    .chat-tool-row {{ display:flex; justify-content:space-between; gap:8px; align-items:center; }}
+    .chat-tool-group {{ display:flex; gap:8px; align-items:center; }}
+    .chat-tool-button {{ width:36px; height:36px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.035); color:var(--text); display:grid; place-items:center; padding:0; }}
+    .chat-tool-button:hover,.chat-tool-button:focus-visible,.chat-tool-button.active {{ background:rgba(125,211,252,.16); outline:none; }}
+    .chat-file-input {{ display:none; }}
     .examples {{ display:grid; gap:8px; }}
     .examples button {{ text-align:left; }}
     .hidden {{ display:none !important; }}
@@ -2121,29 +2738,47 @@ async def public_demo_entry(idea: str = "") -> HTMLResponse:
     .collapsed .side {{ display:none; }}
     .restore-chat {{ display:none; position:fixed; right:16px; bottom:16px; z-index:20; box-shadow:0 12px 30px rgba(0,0,0,.35); }}
     .collapsed .restore-chat {{ display:inline-flex; }}
+    .side.minimized {{ height:auto; min-height:0; grid-template-rows:auto; }}
+    .side.minimized .chat,.side.minimized .composer {{ display:none; }}
+    .side.maximized {{ position:fixed; inset:14px; z-index:90; height:auto; min-height:0; border:1px solid var(--line); border-radius:8px; }}
     @media (max-width:1000px) {{
       .shell {{ grid-template-columns:1fr; }}
-      .side {{ min-height:auto; border-left:0; border-top:1px solid var(--line); }}
+      .side {{ min-height:auto; margin-top:0; border-left:0; border-top:1px solid var(--line); }}
       .workbench {{ grid-template-columns:1fr; }}
-      .status-grid, .app-grid {{ grid-template-columns:1fr 1fr; }}
+      .status-grid, .app-grid, .feature-grid, .create-grid {{ grid-template-columns:1fr 1fr; }}
     }}
     @media (max-width:620px) {{
       .top {{ align-items:flex-start; flex-direction:column; }}
-      .status-grid, .app-grid, .input-row {{ grid-template-columns:1fr; }}
+      .status-grid, .app-grid, .input-row, .feature-grid, .create-grid {{ grid-template-columns:1fr; }}
       h1 {{ font-size:24px; }}
     }}
   </style>
+  {_template_gallery_style()}
 </head>
 <body>
+  <nav class="site-menu" id="siteMenu" aria-label="Site menu">
+    <button class="icon-button" type="button" id="menuButton" aria-label="Open menu" aria-expanded="false" aria-controls="menuPanel">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+    </button>
+    <div class="menu-panel" id="menuPanel">
+      <a href="/">Home</a>
+      <a href="/observatory">Research</a>
+      <a href="/build">Build</a>
+      <a href="/community">Community</a>
+      {auth_menu_item}
+    </div>
+  </nav>
   <div id="shell" class="shell">
     <main id="main" class="main">
       <header class="top">
-        <div>
-          <h1>MIM App Builder Demo</h1>
-          <p>Explore a guided sample app build. No login required, no real changes created.</p>
+        <div class="top-copy">
+          {greeting_html}
+          <h1>What would you like to build?</h1>
+          <p>MIM Apps turns app ideas, demos, services, and tools into guided build projects. No login required for this public preview.</p>
         </div>
         <div class="actions">
-          <a class="btn primary" href="/login">Create my account now</a>
+          {primary_account_action}
+          {secondary_build_actions}
         </div>
       </header>
 
@@ -2153,6 +2788,41 @@ async def public_demo_entry(idea: str = "") -> HTMLResponse:
         <div class="card metric"><small>Progress</small><strong id="progressText">62%</strong></div>
         <div class="card metric"><small>Mode</small><strong>Public Demo</strong></div>
       </section>
+
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <h2>Example Projects</h2>
+            <p>People imagine faster when they can react to examples. MIM can help shape personal tools, business systems, automation, robotics, games, and AI-assisted workflows.</p>
+          </div>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card"><small>Health and coaching</small><h3>Running App</h3><p>Track training plans, goals, analytics, coaching prompts, progress history, and wearable data.</p></article>
+          <article class="feature-card"><small>Lab and automation</small><h3>Robotics Controller</h3><p>Design camera views, sensor feedback, arm controls, safety checks, and learning routines.</p></article>
+          <article class="feature-card"><small>Operations</small><h3>Inventory Platform</h3><p>Manage counts, forecasting, variance alerts, approval workflows, reports, and integrations.</p></article>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <h2>What MIM Can Help Create</h2>
+            <p>Start with an idea, a frustration, a wish, or a half-finished concept. MIM turns it into discovery, design, planning, and implementation-ready work.</p>
+          </div>
+        </div>
+        <div class="create-grid">
+          <div><strong>Apps</strong><span>Portals, dashboards, CRMs, internal tools, and SaaS products.</span></div>
+          <div><strong>Games</strong><span>Mechanics, prototypes, progression systems, content tools, and launch plans.</span></div>
+          <div><strong>AI Systems</strong><span>Assistants, research tools, document workflows, and decision support.</span></div>
+          <div><strong>Robotics</strong><span>Vision, sensing, motion planning, control surfaces, and experiments.</span></div>
+          <div><strong>Web</strong><span>Public sites, product surfaces, client portals, and admin consoles.</span></div>
+          <div><strong>Mobile</strong><span>Native and cross-platform app planning, workflows, and release needs.</span></div>
+          <div><strong>Analytics</strong><span>Reports, forecasts, KPI surfaces, alerts, and executive views.</span></div>
+          <div><strong>Automation</strong><span>Handoffs, integrations, notifications, approvals, and repetitive work.</span></div>
+        </div>
+      </section>
+
+      {template_gallery}
 
       <section class="card">
         <div class="tabs">
@@ -2326,23 +2996,70 @@ async def public_demo_entry(idea: str = "") -> HTMLResponse:
 
     <aside class="side">
       <div class="side-head">
-        <div><strong>MIM</strong><p>Demo workbench assistant</p></div>
-        <button id="hideChat" type="button">Hide</button>
+        <strong>MIM</strong>
+        <div class="side-actions">
+          <button class="side-action" id="minimizeChat" type="button" aria-label="Minimize MIM chat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path></svg>
+          </button>
+          <button class="side-action" id="maximizeChat" type="button" aria-label="Maximize MIM chat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"></path></svg>
+          </button>
+        </div>
       </div>
       <div id="chat" class="chat"></div>
       <div class="composer">
-        <textarea id="prompt" placeholder="Try: add a help page, change the font, add a reports menu...">{initial_idea}</textarea>
-        <button class="primary" id="sendPrompt" type="button">Ask MIM</button>
+        <div class="composer-row">
+          <textarea id="prompt" placeholder="Ask MIM what you want to build...">{initial_idea}</textarea>
+          <button class="primary chat-send-button" id="sendPrompt" type="button" aria-label="Send message">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2 11 13"></path><path d="m22 2-7 20-4-9-9-4Z"></path></svg>
+          </button>
+        </div>
+        <div class="chat-tool-row">
+          <div class="chat-tool-group">
+            <button class="chat-tool-button" id="attachFile" type="button" aria-label="Attach file or image">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+            </button>
+            <button class="chat-tool-button" id="voiceInput" type="button" aria-label="Voice to text">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"></path></svg>
+            </button>
+            <button class="chat-tool-button" id="speechOutput" type="button" aria-label="Toggle spoken replies" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"></path><path d="M15 9.5a4 4 0 0 1 0 5M18 7a8 8 0 0 1 0 10"></path></svg>
+            </button>
+            <input class="chat-file-input" id="chatFileInput" type="file" accept="image/*,.txt,.md,.pdf,.doc,.docx,.xls,.xlsx,.csv,.json">
+          </div>
+        </div>
       </div>
     </aside>
-    <button class="restore-chat primary" id="restoreChat" type="button">Show MIM</button>
   </div>
   <script>
+    (function () {{
+      const menu = document.getElementById('siteMenu');
+      const menuButton = document.getElementById('menuButton');
+      if (!menu || !menuButton) return;
+      menuButton.addEventListener('click', () => {{
+        const open = !menu.classList.contains('open');
+        menu.classList.toggle('open', open);
+        menuButton.setAttribute('aria-expanded', String(open));
+      }});
+      document.addEventListener('click', (event) => {{
+        if (!menu.contains(event.target)) {{
+          menu.classList.remove('open');
+          menuButton.setAttribute('aria-expanded', 'false');
+        }}
+      }});
+      document.querySelectorAll('[data-logout]').forEach(button => button.addEventListener('click', async () => {{
+        await fetch('/projects/logout', {{ method:'POST', credentials:'same-origin' }});
+        window.location.href = '/';
+      }}));
+    }})();
     const chat = document.getElementById('chat');
     const timeline = document.getElementById('timeline');
     const stage = document.getElementById('demoStage');
     const statusText = document.getElementById('statusText');
     const progressText = document.getElementById('progressText');
+    const side = document.querySelector('.side');
+    const speechButton = document.getElementById('speechOutput');
+    let speechEnabled = false;
     let activeScreen = 'dashboard';
     const events = [
       ['09:00', 'Project opened', 'MIM identified a client follow-up workflow as the sample app.'],
@@ -2359,6 +3076,11 @@ async def public_demo_entry(idea: str = "") -> HTMLResponse:
       node.innerHTML = `<strong>${{esc(role)}}</strong><br>${{esc(text)}}`;
       chat.appendChild(node);
       chat.scrollTop = chat.scrollHeight;
+      if (role !== 'You' && speechEnabled && 'speechSynthesis' in window) {{
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(String(text || ''));
+        window.speechSynthesis.speak(utterance);
+      }}
     }}
     function renderTimeline() {{
       timeline.innerHTML = events.map(item => `<div class="event"><time>${{esc(item[0])}}</time><div><strong>${{esc(item[1])}}</strong><p>${{esc(item[2])}}</p></div></div>`).join('');
@@ -2525,11 +3247,43 @@ async def public_demo_entry(idea: str = "") -> HTMLResponse:
       else if (lower.includes('sort')) applyDemo('sortable');
       else applyDemo('help');
     }});
-    document.getElementById('hideChat').addEventListener('click', () => {{
-      document.getElementById('shell').classList.add('collapsed');
+    document.getElementById('minimizeChat').addEventListener('click', () => {{
+      side.classList.toggle('minimized');
+      if (side.classList.contains('minimized')) side.classList.remove('maximized');
     }});
-    document.getElementById('restoreChat').addEventListener('click', () => {{
-      document.getElementById('shell').classList.remove('collapsed');
+    document.getElementById('maximizeChat').addEventListener('click', () => {{
+      side.classList.toggle('maximized');
+      if (side.classList.contains('maximized')) side.classList.remove('minimized');
+    }});
+    document.getElementById('attachFile').addEventListener('click', () => document.getElementById('chatFileInput').click());
+    document.getElementById('chatFileInput').addEventListener('change', event => {{
+      const file = event.target.files && event.target.files[0];
+      event.target.value = '';
+      if (!file) return;
+      addMessage('You', `Attached file: ${{file.name}}`);
+      addMessage('MIM', 'File attachment noted in this public build demo. In a real project workspace, I would attach it to the project and use it as build context.');
+    }});
+    speechButton.addEventListener('click', () => {{
+      speechEnabled = !speechEnabled;
+      speechButton.classList.toggle('active', speechEnabled);
+      speechButton.setAttribute('aria-pressed', String(speechEnabled));
+      if (!speechEnabled && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+    }});
+    document.getElementById('voiceInput').addEventListener('click', () => {{
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {{
+        addMessage('MIM', 'Voice input is not available in this browser.');
+        return;
+      }}
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      recognition.onresult = event => {{
+        const text = event.results && event.results[0] && event.results[0][0] ? event.results[0][0].transcript : '';
+        if (text) document.getElementById('prompt').value = text;
+      }};
+      recognition.start();
     }});
     renderTimeline();
     renderExamples();
@@ -3095,6 +3849,25 @@ async def public_chat_message(
     )
     session_context = session.context_json if isinstance(getattr(session, "context_json", None), dict) else {}
     active_project_context = session_context.get("active_public_project") if isinstance(session_context.get("active_public_project"), dict) else {}
+    incoming_context = payload.context if isinstance(payload.context, dict) else {}
+    incoming_research_context = incoming_context if is_research_context(incoming_context) else {}
+    session_research_context = _observatory_research_context_from_session_key(normalized_session) if not incoming_research_context else {}
+    message_research_context = (
+        _observatory_research_context_from_message(payload.message)
+        if not incoming_research_context and not session_research_context
+        else {}
+    )
+    if incoming_research_context or session_research_context or message_research_context:
+        active_project_context = incoming_research_context or session_research_context or message_research_context
+    clear_stored_research_context = (
+        bool(active_project_context)
+        and not incoming_research_context
+        and not session_research_context
+        and not message_research_context
+        and _is_public_project_planning_request(payload.message)
+    )
+    if clear_stored_research_context:
+        active_project_context = {}
     _, prior_rows = await list_interface_messages(session_key=normalized_session, limit=12, db=db)
     recent_messages = [
         {
@@ -3108,7 +3881,11 @@ async def public_chat_message(
             "role": "context",
             "content": json.dumps(active_project_context, ensure_ascii=True),
         })
-    project_context_update: dict[str, Any] = {}
+    project_context_update: dict[str, Any] = (
+        dict(incoming_research_context or session_research_context or message_research_context)
+        if (incoming_research_context or session_research_context or message_research_context)
+        else {}
+    )
     if _has_accounting_receipt_app_context(payload.message):
         project_context_update = {
             "kind": "expense_intelligence_platform",
@@ -3133,6 +3910,8 @@ async def public_chat_message(
             "public_guest_chat": True,
             "public_channel": channel_context["channel"],
             "public_application": channel_context["application_name"],
+            "incoming_context_kind": str(incoming_context.get("kind") or "") if incoming_context else "",
+            "incoming_context_id": str(incoming_context.get("id") or "") if incoming_context else "",
         },
         db=db,
     )
@@ -3153,7 +3932,60 @@ async def public_chat_message(
             str(recall_summary or ""),
         ]
     )
+    grounded_research_reply = research_context_reply(
+        message=payload.message,
+        context=active_project_context,
+        recall_summary=recall_summary,
+    )
+    self_reflection_request = _is_mim_self_reflection_request(payload.message)
+    cognitive_interpretation = build_mim_cognitive_interpretation(
+        raw_input=str(payload.message).strip(),
+        surface="public_chat",
+        page_context=f"public_chat:{normalized_mode}",
+        metadata={
+            "mode": normalized_mode,
+            "public_guest_chat": True,
+            "public_channel": channel_context["channel"],
+            "public_application": channel_context["application_name"],
+        },
+        recent_messages=recent_messages,
+    )
+    cognitive_surface_reply = ""
     if (
+        normalized_mode == "mim"
+        and not block_reason
+        and cognitive_interpretation.get("response_mode") == "grounded_bounded_action"
+    ):
+        cognitive_surface_reply = (
+            "I read that as a follow-up asking for one concrete next step. "
+            "In public chat I do not have operator task-state access, so I should not pretend I can see the active TOD queue. "
+            "Name the project or goal you want to move, and I can turn it into one bounded next action with the proof needed to know it moved."
+        )
+    enterprise_product_reply = ""
+    if normalized_mode == "mim" and not block_reason:
+        enterprise_product_reply = _public_enterprise_product_reply(str(payload.message).strip())
+    conversation_purpose_reply: dict[str, Any] | None = None
+    if (
+        normalized_mode == "mim"
+        and not block_reason
+        and (not active_project_context or self_reflection_request)
+        and not cognitive_surface_reply
+        and not enterprise_product_reply
+    ):
+        conversation_purpose_reply = build_conversation_purpose_reply(
+            str(payload.message).strip(),
+            "public_chat",
+            shared_root=Path.cwd() / "runtime" / "shared",
+        )
+    if cognitive_surface_reply:
+        reply_text = cognitive_surface_reply
+    elif enterprise_product_reply:
+        reply_text = enterprise_product_reply
+    elif conversation_purpose_reply:
+        reply_text = str(conversation_purpose_reply.get("reply_text") or "").strip()
+    elif normalized_mode == "mim" and not block_reason and grounded_research_reply:
+        reply_text = grounded_research_reply
+    elif (
         normalized_mode == "mim"
         and not block_reason
         and _is_affirmative_continue(payload.message)
@@ -3185,6 +4017,37 @@ async def public_chat_message(
             "public_guest_chat": True,
             "public_channel": channel_context["channel"],
             "public_application": channel_context["application_name"],
+            "conversation_purpose": (
+                conversation_purpose_reply.get("conversation_purpose", {})
+                if conversation_purpose_reply
+                else {
+                    "purpose": "enterprise_product_explanation",
+                    "confidence": "high",
+                    "signals": ["enterprise", "product_question"],
+                    "downstream_policy": "answer_from_enterprise_product_context",
+                    "operator_contract_allowed": False,
+                } if enterprise_product_reply
+                else cognitive_interpretation.get("classifier_purpose", {})
+            ),
+            "response_mode": (
+                str(conversation_purpose_reply.get("response_mode") or "")
+                if conversation_purpose_reply
+                else "enterprise_product_explanation" if enterprise_product_reply
+                else str(cognitive_interpretation.get("response_mode") or "")
+            ),
+            "mim_cognitive_interpretation": cognitive_interpretation,
+            "response_authority": interpretation_response_authority(
+                cognitive_interpretation,
+                composer_source=(
+                    "conversation_purpose_engine"
+                    if conversation_purpose_reply
+                    else "public_enterprise_product_context"
+                    if enterprise_product_reply
+                    else "public_chat_composer"
+                ),
+                wrapper_sources=[],
+                prior_fragment_reused=False,
+            ),
         },
         db=db,
     )
@@ -3198,22 +4061,26 @@ async def public_chat_message(
         db=db,
     )
     await _remember_profile(visitor_key=visitor_key, ip_hash=ip_hash, profile=updated_profile, db=db)
-    if project_context_update:
+    if project_context_update or clear_stored_research_context:
+        next_context_json = {
+            **session_context,
+            "public_guest_chat": True,
+            "visitor_key": visitor_key,
+            "last_mode": normalized_mode,
+            "public_channel": channel_context["channel"],
+            "public_application": channel_context["application_name"],
+        }
+        if project_context_update:
+            next_context_json["active_public_project"] = project_context_update
+        else:
+            next_context_json.pop("active_public_project", None)
         await upsert_interface_session(
             session_key=normalized_session,
             actor="visitor",
             source="public_chat",
             channel=str(channel_context["channel"]),
             status="active",
-            context_json={
-                **session_context,
-                "public_guest_chat": True,
-                "visitor_key": visitor_key,
-                "last_mode": normalized_mode,
-                "public_channel": channel_context["channel"],
-                "public_application": channel_context["application_name"],
-                "active_public_project": project_context_update,
-            },
+            context_json=next_context_json,
             metadata_json={
                 **(session.metadata_json if isinstance(getattr(session, "metadata_json", None), dict) else {}),
                 "public_guest_chat": True,

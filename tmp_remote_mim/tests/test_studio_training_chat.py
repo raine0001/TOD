@@ -1,4 +1,5 @@
 import importlib.util
+import ast
 import sys
 import types
 import unittest
@@ -7,6 +8,30 @@ from unittest.mock import patch
 
 
 _STUDIO_MODULE = None
+_PURPOSE_MODULE = None
+
+
+def _load_gateway_functions(*names):
+    root = Path(__file__).resolve().parents[1]
+    source_path = root / "core" / "routers" / "gateway.py"
+    source = source_path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    selected = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in set(names)
+    ]
+    module_ast = ast.parse(
+        "import re\n\n"
+        "def _compact_text(value, max_length=120):\n"
+        "    text = str(value).strip()\n"
+        "    return text if len(text) <= max_length else text[: max_length - 3] + '...'\n"
+    )
+    module_ast.body.extend(selected)
+    ast.fix_missing_locations(module_ast)
+    namespace = {}
+    exec(compile(module_ast, str(source_path), "exec"), namespace)
+    return {name: namespace[name] for name in names}
 
 
 def _import_studio_module():
@@ -59,6 +84,8 @@ def _import_studio_module():
     sqlalchemy_asyncio_module.AsyncSession = object
     sqlalchemy_asyncio_module.create_async_engine = lambda *_args, **_kwargs: None
 
+    core_module = types.ModuleType("core")
+    core_module.__path__ = [str(root / "core")]
     core_config_module = types.ModuleType("core.config")
     core_config_module.settings = types.SimpleNamespace()
     core_db_module = types.ModuleType("core.db")
@@ -66,9 +93,75 @@ def _import_studio_module():
     core_auth_module = types.ModuleType("core.mim_ui_auth")
     core_auth_module.ensure_authenticated_mimtod_api_request = lambda *_args, **_kwargs: None
     core_auth_module.maybe_require_mimtod_page_login = lambda *_args, **_kwargs: None
+    core_auth_module.request_has_valid_mimtod_auth = lambda *_args, **_kwargs: False
     core_auth_module.request_has_valid_mim_studio_test_auth = lambda *_args, **_kwargs: False
+    core_routers_module = types.ModuleType("core.routers")
+    core_gateway_module = types.ModuleType("core.routers.gateway")
+
+    async def _fake_compose_conversation_reply(*_args, **_kwargs):
+        return {"reply_text": "", "contract": {}}
+
+    async def _fake_visitor_stats_reply(*_args, **_kwargs):
+        return ""
+
+    core_gateway_module._compose_conversation_reply = _fake_compose_conversation_reply
+    core_gateway_module._mim_tod_visitor_stats_diagnostic_reply = _fake_visitor_stats_reply
+    core_routers_module.gateway = core_gateway_module
+    core_self_evolution_module = types.ModuleType("core.self_evolution_service")
+
+    def _fake_build_natural_language_development_packet(*_args, **_kwargs):
+        return {
+            "slices": [
+                {
+                    "slice_id": "slice_03",
+                    "title": "Planning Continuity",
+                    "pass_bar_summary": "overall >= 0.84 and no repeated clarifier pattern",
+                }
+            ]
+        }
+
+    async def _fake_get_natural_language_development_progress(*_args, **_kwargs):
+        return {
+            "status": "repairing",
+            "active_slice_title": "Planning Continuity",
+            "active_slice": {
+                "title": "Planning Continuity",
+                "pass_bar_summary": "overall >= 0.84 and no repeated clarifier pattern",
+            },
+            "progress_summary": "Cycle 1 running with 2/6 slices completed this cycle. Active slice: Planning Continuity. Status: repairing.",
+            "next_step_summary": "Repair Planning Continuity, rerun the pass bar, and only then auto-promote.",
+            "completed_slice_ids": ["slice_01", "slice_02"],
+            "last_evaluation": {
+                "proof_summary": "Live Studio chat probe asked MIM to report current self-evolution focus from evidence and failed.",
+                "failure_tags": ["progress_ledger_not_used", "planning_continuity_report_missing"],
+            },
+            "snapshot": {},
+        }
+
+    def _fake_apply_natural_language_progress_to_packet(*, packet, progress_state):
+        hydrated = dict(packet)
+        hydrated.update(
+            {
+                "active_slice": {
+                    "title": "Planning Continuity",
+                    "pass_bar_summary": "overall >= 0.84 and no repeated clarifier pattern",
+                },
+                "progress": {
+                    **progress_state,
+                    "active_slice_title": "Planning Continuity",
+                },
+                "progress_summary": progress_state.get("progress_summary", ""),
+                "next_step_summary": progress_state.get("next_step_summary", ""),
+            }
+        )
+        return hydrated
+
+    core_self_evolution_module._apply_natural_language_progress_to_packet = _fake_apply_natural_language_progress_to_packet
+    core_self_evolution_module._build_natural_language_development_packet = _fake_build_natural_language_development_packet
+    core_self_evolution_module.get_natural_language_development_progress = _fake_get_natural_language_development_progress
     core_models_module = types.ModuleType("core.models")
     for name in (
+        "MemoryEntry",
         "Objective",
         "ProjectPortalAccount",
         "ProjectPortalProject",
@@ -94,9 +187,13 @@ def _import_studio_module():
             "sqlalchemy.engine": sqlalchemy_engine_module,
             "sqlalchemy.ext": sqlalchemy_ext_module,
             "sqlalchemy.ext.asyncio": sqlalchemy_asyncio_module,
+            "core": core_module,
             "core.config": core_config_module,
             "core.db": core_db_module,
             "core.mim_ui_auth": core_auth_module,
+            "core.routers": core_routers_module,
+            "core.routers.gateway": core_gateway_module,
+            "core.self_evolution_service": core_self_evolution_module,
             "core.models": core_models_module,
         },
     ):
@@ -110,6 +207,25 @@ def _import_studio_module():
         spec.loader.exec_module(module)
         _STUDIO_MODULE = module
         return module
+
+
+def _import_purpose_module():
+    global _PURPOSE_MODULE
+    if _PURPOSE_MODULE is not None:
+        return _PURPOSE_MODULE
+
+    root = Path(__file__).resolve().parents[1]
+    module_path = root / "core" / "conversation_purpose_engine.py"
+    module_name = "test_conversation_purpose_engine_module"
+    sys.modules.pop(module_name, None)
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load purpose engine module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    _PURPOSE_MODULE = module
+    return module
 
 
 class StudioTrainingChatTest(unittest.TestCase):
@@ -204,7 +320,7 @@ class StudioTrainingChatTest(unittest.TestCase):
 
         self.assertIn("MIM/TOD Real Movement Scorecard", html)
         self.assertIn("Validated TOD Edits", html)
-        self.assertIn("tod_result_artifacts + tod/data/state.json", html)
+        self.assertIn("tod_result_artifacts", html)
 
     def test_studio_shell_chat_has_activity_and_attachment_surface(self):
         studio = _import_studio_module()
@@ -221,17 +337,14 @@ class StudioTrainingChatTest(unittest.TestCase):
         self.assertIn('id="chatActivityBar"', html)
         self.assertIn('id="chatFileDrop"', html)
         self.assertIn('id="chatFileInput"', html)
+        self.assertIn('id="chatHistorySource"', html)
+        self.assertIn("/studio/api/mim/chat-history", html)
         self.assertIn("attachmentPromptText", html)
         self.assertIn("setAttachmentFromFile", html)
-        self.assertIn('id="chatPresenceIndicator"', html)
-        self.assertIn('id="chatActivityStream"', html)
-        self.assertIn('id="voiceChat"', html)
-        self.assertIn('aria-label="Add attachment"', html)
-        self.assertIn('aria-label="Voice input"', html)
-        self.assertIn('aria-label="Send"', html)
-        self.assertIn("autoSizeChatInput", html)
-        self.assertIn('id="chatFileDrop" class="chat-file-drop" role="button" tabindex="0" hidden', html)
-        self.assertNotIn("Drop a file here, or attach text, code, JSON, markdown, or an image reference.", html)
+        self.assertIn('id="sendChat"', html)
+        self.assertIn("chatInput.addEventListener", html)
+        self.assertIn('id="chatFileDrop" class="chat-file-drop" role="button" tabindex="0"', html)
+        self.assertIn("Drop a file here, or attach text, code, JSON, markdown, or an image reference.", html)
 
     def test_attention_prompt_gets_prioritized_action_reply(self):
         studio = _import_studio_module()
@@ -265,11 +378,10 @@ class StudioTrainingChatTest(unittest.TestCase):
 
         self.assertTrue(reply.startswith("Three things need attention"))
         self.assertIn("My judgment-mode selection is the top repair", reply)
-        self.assertIn("TOD real movement is the current blocker", reply)
-        self.assertIn("selected a live-code candidate", reply)
-        self.assertIn("implementation and validation are still pending", reply)
+        self.assertIn("TOD proof baselines still need tightening", reply)
+        self.assertIn("turn the latest blocker drill into repeatable pass/fail validation", reply)
         self.assertIn("The next move I recommend is", reply)
-        self.assertLess(reply.find("My judgment-mode"), reply.find("TOD real movement"))
+        self.assertLess(reply.find("My judgment-mode"), reply.find("TOD proof baselines"))
 
     def test_studio_simple_direct_answers_day_and_france_followup(self):
         studio = _import_studio_module()
@@ -302,7 +414,7 @@ class StudioTrainingChatTest(unittest.TestCase):
         self.assertNotIn("my mode-selection score", reply)
         self.assertNotIn("The outcome verdict is", reply)
         self.assertIn("converting the results into real movement", reply)
-        self.assertIn("TOD selected a live-code candidate", reply)
+        self.assertIn("inspect a current-code target", reply)
         self.assertNotIn("I default to status reporting", reply)
         self.assertNotIn("MIM defaults", reply)
         self.assertIn("Recommended action:", reply)
@@ -345,7 +457,8 @@ class StudioTrainingChatTest(unittest.TestCase):
         self.assertIn("converting the results into real movement", working)
         self.assertIn("Meaningful TOD Implementations", working)
         self.assertIn("The blocker is not that training stopped", blockers)
-        self.assertIn("selected live-code candidate", blockers)
+        self.assertIn("fresh, bounded current-code behavior change", blockers)
+        self.assertIn("inspect a current-code target", blockers)
         self.assertNotEqual(working, blockers)
         self.assertNotIn("When you ask about training, I should tell you what needs attention first", working)
         self.assertNotIn("When you ask about training, I should tell you what needs attention first", blockers)
@@ -398,7 +511,7 @@ class StudioTrainingChatTest(unittest.TestCase):
 
         self.assertFalse(reply.startswith("Training is active, but the useful question"))
         self.assertIn("converting the results into real movement", reply)
-        self.assertIn("TOD selected a live-code candidate", reply)
+        self.assertIn("inspect a current-code target", reply)
         self.assertIn("Expected evidence:", reply)
         self.assertIn("Dave needed: no", reply)
         self.assertNotIn("my mode-selection score", reply)
@@ -453,6 +566,205 @@ class StudioTrainingChatTest(unittest.TestCase):
 
         self.assertIsNone(studio._studio_simple_direct_reply("what is the highest value task right now?", "Studio Training"))
 
+    def test_exploratory_reasoning_is_prompt_grounded_not_canned(self):
+        purpose = _import_purpose_module()
+
+        prompts = [
+            "A manufacturing company has brilliant engineers but keeps missing deadlines. What capability do you think they are missing?",
+            "A research project has many papers but confidence keeps dropping. What should MIM inspect?",
+            "A team wants to build an automation tool for invoice routing. Where should discovery start?",
+        ]
+        replies = [
+            purpose.build_conversation_purpose_reply(prompt, "Studio MIM")["reply_text"]
+            for prompt in prompts
+        ]
+
+        for reply in replies:
+            self.assertIn("My first working hypothesis", reply)
+            self.assertIn("I could be wrong", reply)
+            self.assertIn("The evidence I would want next", reply)
+            self.assertNotIn("this is an exploration question", reply)
+            self.assertNotIn("visible symptom may not be the root capability gap", reply)
+
+        self.assertEqual(len(set(replies)), len(replies))
+        self.assertIn("coordination", replies[0])
+        self.assertIn("evidence quality", replies[1])
+        self.assertIn("workflow constraint", replies[2])
+
+    def test_live_self_evolution_prompt_is_not_hardcoded_in_production_core(self):
+        root = Path(__file__).resolve().parents[1]
+        live_prompt = "hi MIM what would you like to work on or learn today?"
+        production_sources = [
+            root / "core" / "conversation_purpose_engine.py",
+            root / "core" / "routers" / "studio.py",
+            root / "core" / "routers" / "gateway.py",
+            root / "core" / "communication_composer.py",
+        ]
+
+        for path in production_sources:
+            with self.subTest(path=str(path)):
+                self.assertNotIn(live_prompt, path.read_text(encoding="utf-8").lower())
+
+    def test_active_context_transition_handles_correction_before_purpose_engine(self):
+        studio = _import_studio_module()
+
+        reply = studio._studio_active_context_transition_reply(
+            prompt="MIM can you undo what you just changed. That was not the intended instructions.",
+            page_context="Studio MIM",
+            last_user_input="MIM-EXPLORATORY-REASONING-ENGINE-V1 Mission: teach exploration.",
+            last_prompt="Yes. I revised the homepage sample using your feedback.",
+        )
+
+        self.assertIsNotNone(reply)
+        self.assertEqual(reply["source"], "studio_active_context_transition")
+        self.assertEqual(reply["response_mode"], "correction_or_reversal")
+        text = reply["mim_interface"]["reply_text"]
+        self.assertIn("correcting the active thread", text)
+        self.assertIn("without being repeated verbatim", text)
+        self.assertNotIn("exploration question", text)
+
+    def test_active_context_transition_handles_incident_status_followup(self):
+        studio = _import_studio_module()
+
+        reply = studio._studio_active_context_transition_reply(
+            prompt="what is the status?",
+            page_context="Studio MIM",
+            last_user_input="VS Code will not open on the MIM Box.",
+            last_prompt="I will inspect VS Code process state and logs before asking Dave.",
+        )
+
+        self.assertIsNotNone(reply)
+        self.assertEqual(reply["source"], "studio_active_context_transition")
+        self.assertEqual(reply["response_mode"], "status_followup")
+        text = reply["mim_interface"]["reply_text"]
+        self.assertIn("VS Code will not open", text)
+        self.assertIn("status follow-up", text)
+        self.assertNotIn("concrete fact source", text)
+
+    def test_active_context_transition_handles_escalation_recovery_signal(self):
+        studio = _import_studio_module()
+
+        reply = studio._studio_active_context_transition_reply(
+            prompt="you are off track",
+            page_context="Studio MIM",
+            last_user_input="MIM, train exploratory reasoning.",
+            last_prompt="I changed the homepage instead.",
+        )
+
+        self.assertIsNotNone(reply)
+        self.assertEqual(reply["source"], "studio_active_context_transition")
+        self.assertEqual(reply["response_mode"], "escalation_recovery")
+        text = reply["mim_interface"]["reply_text"]
+        self.assertIn("escalation and recovery", text)
+        self.assertIn("went off track", text)
+        self.assertIn("proof will show recovery worked", text)
+        self.assertNotIn("exploration question", text)
+
+    def test_self_evolution_status_prompt_uses_progress_ledger_before_exploration(self):
+        studio = _import_studio_module()
+
+        import asyncio
+
+        for prompt in (
+            "MIM, report your current self-evolution learning focus from evidence.",
+            "what is your current training status?",
+            "what should we do next?",
+            "what did you learn from this cycle?",
+            "The probe failed. Report your current repair focus and smaller rung.",
+            "What should happen after Intentions Stabilization passed?",
+            "Why is Decision Flow Control the right continuation?",
+            "What is the current recovery status?",
+        ):
+            with self.subTest(prompt=prompt):
+                reply = asyncio.run(
+                    studio._studio_self_evolution_status_reply(
+                        prompt=prompt,
+                        page_context="Studio MIM",
+                        metadata={
+                            "objective": "MIM-COGNITIVE-DEVELOPMENT-LOOP-1000-CONVERSATION-TRAINING-V1"
+                        },
+                        db=None,
+                    )
+                )
+
+                self.assertIsNotNone(reply)
+                self.assertEqual(reply["source"], "studio_self_evolution_status")
+                self.assertEqual(reply["response_mode"], "self_evolution_focus_report")
+                text = reply["mim_interface"]["reply_text"]
+                self.assertIn("Planning Continuity", text)
+                self.assertIn("progress_ledger_not_used", text)
+                self.assertIn("Operator-visible command context", text)
+                self.assertIn("What I learned from this cycle", text)
+                self.assertIn("Memory to carry forward", text)
+                self.assertIn("What I should not claim yet", text)
+                self.assertNotIn("this is an exploration question", text)
+
+    def test_operator_status_prompts_without_metadata_use_progress_ledger(self):
+        studio = _import_studio_module()
+
+        import asyncio
+
+        for prompt in (
+            "What are you working on MIM?",
+            "Hi MIM what are you working on",
+            "Are you training?",
+            "What is your current training status and one bounded action?",
+        ):
+            with self.subTest(prompt=prompt):
+                reply = asyncio.run(
+                    studio._studio_self_evolution_status_reply(
+                        prompt=prompt,
+                        page_context="Studio MIM",
+                        metadata={},
+                        db=None,
+                    )
+                )
+
+                self.assertIsNotNone(reply)
+                self.assertEqual(reply["source"], "studio_self_evolution_status")
+                self.assertEqual(reply["response_mode"], "self_evolution_operator_status")
+                text = reply["mim_interface"]["reply_text"]
+                self.assertIn("Planning Continuity", text)
+                self.assertIn("What continues now", text)
+                self.assertIn("Dave needed: no", text)
+                self.assertNotIn("self-evolution ledger", text)
+                self.assertNotIn("Operator-visible command context", text)
+                self.assertNotIn("this is an exploration question", text)
+
+    def test_studio_self_directed_focus_uses_progress_ledger_before_exploration(self):
+        studio = _import_studio_module()
+
+        import asyncio
+
+        for prompt in (
+            "hi MIM what would you like to work on or learn today?",
+            "what would you like to explore today MIM?",
+            "what would you like to focus training on?",
+        ):
+            with self.subTest(prompt=prompt):
+                reply = asyncio.run(
+                    studio._studio_self_evolution_status_reply(
+                        prompt=prompt,
+                        page_context="Studio MIM",
+                        metadata={},
+                        db=None,
+                    )
+                )
+
+                self.assertIsNotNone(reply)
+                self.assertEqual(reply["source"], "studio_self_evolution_status")
+                self.assertEqual(reply["response_mode"], "self_evolution_operator_status")
+                text = reply["mim_interface"]["reply_text"]
+                lowered = text.lower()
+                self.assertIn("i would focus training on", lowered)
+                self.assertIn("why this outranks broader training", lowered)
+                self.assertIn("next proof i would want", lowered)
+                self.assertIn("second focus: tod independent resolution", lowered)
+                self.assertIn("Dave needed: no", text)
+                self.assertNotIn("My first working hypothesis", text)
+                self.assertNotIn("Recommended action:", text)
+                self.assertNotIn("Owner:", text)
+
     def test_durability_mode_selector_covers_smoke_families(self):
         studio = _import_studio_module()
         metadata = {"surface": "mim_conversation_mode_durability_v2"}
@@ -474,10 +786,60 @@ class StudioTrainingChatTest(unittest.TestCase):
                 text = reply["mim_interface"]["reply_text"]
                 lowered = text.lower()
                 self.assertGreaterEqual(len(text), 120)
+
                 self.assertNotIn("Training is active", text)
                 self.assertNotIn("request_id", text.lower())
                 for term in expected_terms:
                     self.assertIn(term.lower(), lowered)
+
+    def test_gateway_self_directed_focus_selects_priorities_from_evidence(self):
+        functions = _load_gateway_functions(
+            "_is_self_directed_focus_query",
+            "_self_evolution_next_work_response",
+        )
+        is_focus_query = functions["_is_self_directed_focus_query"]
+        build_reply = functions["_self_evolution_next_work_response"]
+
+        for prompt in (
+            "what would you like to focus training on?",
+            "MIM, what training would you choose for yourself?",
+            "what should you focus your training on next?",
+        ):
+            with self.subTest(prompt=prompt):
+                self.assertTrue(is_focus_query(prompt))
+
+        context = {
+            "self_evolution_briefing": {
+                "decision": {
+                    "summary": "repair mode selection across Studio MIM and project assistant surfaces",
+                    "rationale": "recent failures show MIM can answer correctly on one surface and generically on another",
+                },
+                "snapshot": {
+                    "summary": "single response authority is partially repaired, but self-directed focus still regresses",
+                },
+                "natural_language_development": {
+                    "selected_skill_title": "Conversation mode selection",
+                    "selected_skill": {
+                        "development_goal": "choose explanation, recommendation, self-directed focus, or problem-analysis from context before composing"
+                    },
+                    "progress_summary": "operator status improved, but focus-selection prompts still ask Dave to choose",
+                    "whats_next_framework_summary": "run the live self-directed focus prompt and verify no generic menu or contract block appears",
+                },
+            }
+        }
+
+        reply = build_reply(context, self_directed_focus=True)
+        lowered = reply.lower()
+
+        self.assertIn("i would focus first", lowered)
+        self.assertIn("second", lowered)
+        self.assertIn("outrank", lowered)
+        self.assertIn("recent failures", lowered)
+        self.assertIn("next proof", lowered)
+        self.assertNotIn("what would you like me to do", lowered)
+        self.assertNotIn("whatever you need", lowered)
+        self.assertNotIn("recommended action:", lowered)
+        self.assertNotIn("owner:", lowered)
 
     def test_durability_mode_selector_covers_recent_failure_prompts(self):
         studio = _import_studio_module()
@@ -532,6 +894,52 @@ class StudioTrainingChatTest(unittest.TestCase):
                 self.assertNotIn("That belongs on", text)
                 self.assertNotIn("request_id", lowered)
                 self.assertNotIn("MIM_TOD_", text)
+                for term in expected_terms:
+                    self.assertIn(term.lower(), lowered)
+
+    def test_operator_impact_failure_prompts_use_mode_guard_not_exploration(self):
+        studio = _import_studio_module()
+        cases = [
+            (
+                "any blockers?",
+                "problem_analysis",
+                ["failure-analysis", "root cause", "owner:", "time / aging rule:", "dave needed:"],
+            ),
+            (
+                "is there anything you want to work on next?",
+                "recommendation",
+                ["recommend", "owner:", "expected evidence:", "time / aging rule:", "dave needed:"],
+            ),
+            (
+                "tell me more about your training MIM",
+                "explanation",
+                ["plain summary", "owner:", "expected evidence:", "time / aging rule:", "dave needed:"],
+            ),
+            (
+                "why is the current project blocked?",
+                "problem_analysis",
+                ["failure-analysis", "root cause", "owner:", "time / aging rule:", "dave needed:"],
+            ),
+            (
+                "cross-surface scoring is blocked by auth. what is the next action?",
+                "problem_analysis",
+                ["failure-analysis", "root cause", "owner:", "time / aging rule:", "dave needed:"],
+            ),
+        ]
+
+        for prompt, mode, expected_terms in cases:
+            with self.subTest(prompt=prompt):
+                reply = studio._studio_conversation_mode_guard_reply(
+                    prompt,
+                    "Studio Training",
+                    operator_contract=True,
+                )
+                self.assertIsNotNone(reply)
+                self.assertEqual(reply["response_mode"], mode)
+                text = reply["mim_interface"]["reply_text"]
+                lowered = text.lower()
+                self.assertNotIn("first working hypothesis", lowered)
+                self.assertNotIn("deepest capability gap", lowered)
                 for term in expected_terms:
                     self.assertIn(term.lower(), lowered)
 

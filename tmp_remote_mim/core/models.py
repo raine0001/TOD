@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.db import Base
@@ -293,6 +293,31 @@ class StudioReportCanvas(Base, TimestampMixin):
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class Enterprise(Base, TimestampMixin):
+    __tablename__ = "enterprises"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    enterprise_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    company_name: Mapped[str] = mapped_column(String(240), index=True)
+    display_name: Mapped[str] = mapped_column(String(240), default="")
+    owner_user_id: Mapped[str] = mapped_column(String(120), index=True)
+    status: Mapped[str] = mapped_column(String(40), default="active", index=True)
+    license_type: Mapped[str] = mapped_column(String(80), default="demo", index=True)
+    subscription_status: Mapped[str] = mapped_column(String(80), default="trial", index=True)
+    logo_url: Mapped[str] = mapped_column(String(1000), default="")
+    tagline: Mapped[str] = mapped_column(String(300), default="")
+    domains_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    theme_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    colors_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    brand_assets_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    config_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    state_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    audit_log_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 class ProjectPortalAccount(Base, TimestampMixin):
     __tablename__ = "project_portal_accounts"
 
@@ -376,6 +401,240 @@ class ProjectPortalBlueprint(Base, TimestampMixin):
     review_questions_json: Mapped[list] = mapped_column(JSON, default=list)
     readiness_json: Mapped[dict] = mapped_column(JSON, default=dict)
     tod_export_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchInitiative(Base, TimestampMixin):
+    __tablename__ = "research_initiatives"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slug: Mapped[str] = mapped_column(String(180), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(260), index=True)
+    primary_question: Mapped[str] = mapped_column(Text, default="")
+    why_it_matters: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(80), default="seed", index=True)
+    maturity_state: Mapped[str] = mapped_column(String(80), default="seed", index=True)
+    visibility: Mapped[str] = mapped_column(String(80), default="community", index=True)
+    category: Mapped[str] = mapped_column(String(120), default="research", index=True)
+    confidence_score: Mapped[float] = mapped_column(Float, default=0.0)
+    last_meaningful_update: Mapped[str] = mapped_column(Text, default="")
+    identity_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    current_understanding_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    active_dialogue_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    observations_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    evidence_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    relationships_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    unknowns_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    contradictions_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    simulations_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    predictions_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    participants_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    development_journal_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    contribution_queue_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    verification_notes_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    mim_reflection_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchContribution(Base, TimestampMixin):
+    __tablename__ = "research_contributions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_id: Mapped[int | None] = mapped_column(
+        ForeignKey("research_initiatives.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    initiative_slug: Mapped[str] = mapped_column(String(180), default="", index=True)
+    contribution_type: Mapped[str] = mapped_column(String(80), default="observation", index=True)
+    title: Mapped[str] = mapped_column(String(260), default="", index=True)
+    body: Mapped[str] = mapped_column(Text, default="")
+    source_url: Mapped[str] = mapped_column(String(1000), default="")
+    source_path: Mapped[str] = mapped_column(String(1000), default="")
+    status: Mapped[str] = mapped_column(String(80), default="pending_review", index=True)
+    submitted_by: Mapped[str] = mapped_column(String(160), default="community", index=True)
+    review_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchSource(Base, TimestampMixin):
+    __tablename__ = "research_sources"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_slug: Mapped[str] = mapped_column(String(180), default="", index=True)
+    source_key: Mapped[str] = mapped_column(String(180), default="", index=True)
+    title: Mapped[str] = mapped_column(String(320), default="", index=True)
+    source_type: Mapped[str] = mapped_column(String(140), default="research_source", index=True)
+    tier: Mapped[str] = mapped_column(String(160), default="", index=True)
+    evidence_weight: Mapped[float] = mapped_column(Float, default=0.0)
+    authors_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    journal: Mapped[str] = mapped_column(String(260), default="")
+    organization: Mapped[str] = mapped_column(String(260), default="", index=True)
+    published_at: Mapped[str] = mapped_column(String(80), default="", index=True)
+    peer_reviewed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    citation_count: Mapped[int] = mapped_column(Integer, default=0)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    bias_indicators_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    methodology: Mapped[str] = mapped_column(Text, default="")
+    relevance: Mapped[str] = mapped_column(Text, default="")
+    applicable_research_objects_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    supported_claims_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    contradicted_claims_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    related_projects_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    review_status: Mapped[str] = mapped_column(String(120), default="source_candidate", index=True)
+    last_reviewed: Mapped[str] = mapped_column(String(80), default="", index=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchArchive(Base, TimestampMixin):
+    __tablename__ = "research_archives"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_slug: Mapped[str] = mapped_column(String(180), default="", index=True)
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("research_sources.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    archive_key: Mapped[str] = mapped_column(String(220), default="", index=True)
+    title: Mapped[str] = mapped_column(String(320), default="", index=True)
+    original_url: Mapped[str] = mapped_column(String(1200), default="")
+    original_source_label: Mapped[str] = mapped_column(String(320), default="")
+    preserved_path: Mapped[str] = mapped_column(String(1200), default="")
+    extracted_text_path: Mapped[str] = mapped_column(String(1200), default="")
+    thumbnail_path: Mapped[str] = mapped_column(String(1200), default="")
+    archive_version: Mapped[str] = mapped_column(String(120), default="", index=True)
+    archive_status: Mapped[str] = mapped_column(String(120), default="preservation_candidate", index=True)
+    archive_date: Mapped[str] = mapped_column(String(80), default="", index=True)
+    content_hash: Mapped[str] = mapped_column(String(160), default="", index=True)
+    hash_algorithm: Mapped[str] = mapped_column(String(80), default="sha256")
+    license: Mapped[str] = mapped_column(String(260), default="")
+    mime_type: Mapped[str] = mapped_column(String(160), default="")
+    byte_size: Mapped[int] = mapped_column(Integer, default=0)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    evidence_weight: Mapped[float] = mapped_column(Float, default=0.0)
+    current_confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    relationship_links_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    integrity_checks_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchProjectParticipant(Base, TimestampMixin):
+    __tablename__ = "research_project_participants"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_slug: Mapped[str] = mapped_column(String(180), default="", index=True)
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_portal_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    email: Mapped[str] = mapped_column(String(240), default="", index=True)
+    display_name: Mapped[str] = mapped_column(String(160), default="")
+    role: Mapped[str] = mapped_column(String(80), default="contributor", index=True)
+    status: Mapped[str] = mapped_column(String(80), default="invited", index=True)
+    invitation_status: Mapped[str] = mapped_column(String(80), default="pending", index=True)
+    invited_by: Mapped[str] = mapped_column(String(160), default="MIM")
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchProjectNotificationPreference(Base, TimestampMixin):
+    __tablename__ = "research_project_notification_preferences"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_slug: Mapped[str] = mapped_column(String(180), default="", index=True)
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_portal_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    email: Mapped[str] = mapped_column(String(240), default="", index=True)
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    frequency: Mapped[str] = mapped_column(String(80), default="important_changes", index=True)
+    change_types_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    unsubscribe_token: Mapped[str] = mapped_column(String(160), default="", index=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchProjectChangeNotification(Base, TimestampMixin):
+    __tablename__ = "research_project_change_notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_slug: Mapped[str] = mapped_column(String(180), default="", index=True)
+    title: Mapped[str] = mapped_column(String(260), default="", index=True)
+    change_type: Mapped[str] = mapped_column(String(120), default="research_update", index=True)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    project_url: Mapped[str] = mapped_column(String(1000), default="")
+    artifact_url: Mapped[str] = mapped_column(String(1000), default="")
+    delivery_status: Mapped[str] = mapped_column(String(80), default="template_ready", index=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchProjectCalendarEvent(Base, TimestampMixin):
+    __tablename__ = "research_project_calendar_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_slug: Mapped[str] = mapped_column(String(180), default="", index=True)
+    title: Mapped[str] = mapped_column(String(260), default="", index=True)
+    event_type: Mapped[str] = mapped_column(String(80), default="research_meeting", index=True)
+    starts_at: Mapped[str] = mapped_column(String(80), default="", index=True)
+    ends_at: Mapped[str] = mapped_column(String(80), default="")
+    timezone: Mapped[str] = mapped_column(String(120), default="America/Los_Angeles")
+    description: Mapped[str] = mapped_column(Text, default="")
+    meeting_url: Mapped[str] = mapped_column(String(1000), default="")
+    zoom_meeting_id: Mapped[str] = mapped_column(String(160), default="", index=True)
+    zoom_status: Mapped[str] = mapped_column(String(100), default="not_requested", index=True)
+    created_by: Mapped[str] = mapped_column(String(160), default="MIM")
+    participants_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchProjectArchiveRecord(Base, TimestampMixin):
+    __tablename__ = "research_project_archive_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_slug: Mapped[str] = mapped_column(String(180), default="", index=True)
+    object_type: Mapped[str] = mapped_column(String(120), default="", index=True)
+    object_id: Mapped[str] = mapped_column(String(180), default="", index=True)
+    deleted_by: Mapped[str] = mapped_column(String(240), default="", index=True)
+    deleted_reason: Mapped[str] = mapped_column(Text, default="")
+    archived_payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    restore_status: Mapped[str] = mapped_column(String(80), default="restorable_by_owner", index=True)
+    restored_by: Mapped[str] = mapped_column(String(240), default="")
+    restored_at: Mapped[str] = mapped_column(String(80), default="")
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchProjectSettings(Base, TimestampMixin):
+    __tablename__ = "research_project_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_slug: Mapped[str] = mapped_column(String(180), unique=True, index=True)
+    visibility: Mapped[str] = mapped_column(String(80), default="invite_only", index=True)
+    owner_display_name: Mapped[str] = mapped_column(String(160), default="")
+    owner_email: Mapped[str] = mapped_column(String(240), default="", index=True)
+    owner_email_visibility: Mapped[str] = mapped_column(String(80), default="hidden")
+    document_default_visibility: Mapped[str] = mapped_column(String(80), default="owner_review_required")
+    evidence_promotion_policy: Mapped[str] = mapped_column(String(80), default="owner_or_reviewer")
+    settings_admin_emails_json: Mapped[list[str]] = mapped_column(JSON, default=list)
+    social_sharing_enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    linkedin_url: Mapped[str] = mapped_column(String(1000), default="")
+    facebook_url: Mapped[str] = mapped_column(String(1000), default="")
+    external_page_url: Mapped[str] = mapped_column(String(1000), default="")
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ResearchProjectSourceWatch(Base, TimestampMixin):
+    __tablename__ = "research_project_source_watch"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    initiative_slug: Mapped[str] = mapped_column(String(180), default="", index=True)
+    source_type: Mapped[str] = mapped_column(String(80), default="other", index=True)
+    title: Mapped[str] = mapped_column(String(260), default="", index=True)
+    url: Mapped[str] = mapped_column(String(1000), default="")
+    status: Mapped[str] = mapped_column(String(80), default="pending_review", index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    submitted_by: Mapped[str] = mapped_column(String(240), default="", index=True)
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
 
 

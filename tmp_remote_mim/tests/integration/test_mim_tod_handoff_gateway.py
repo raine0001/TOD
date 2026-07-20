@@ -51,6 +51,10 @@ def _load_gateway_handoff_helpers() -> types.SimpleNamespace:
         "_mim_tod_operator_requested_technical_detail",
         "_mim_tod_combined_activity_response",
         "_mim_tod_active_project_status_response",
+        "_is_self_evolution_next_work_query",
+        "_is_self_directed_focus_query",
+        "_should_defer_conversation_purpose_to_operator_context",
+        "_conversation_purpose_direct_response_enabled",
         "_compact_text",
         "_compact_interface_text",
         "_normalize_operator_query_for_routing",
@@ -60,6 +64,7 @@ def _load_gateway_handoff_helpers() -> types.SimpleNamespace:
         "_mim_interface_result",
         "_mim_operator_requested_response_wrapper_detail",
         "_mim_operator_impact_contract_applies",
+        "_mim_operator_query_is_social_only",
         "_mim_reply_has_operator_impact_contract",
         "_mim_append_operator_impact_contract",
         "_mim_interface_wrapper_text",
@@ -156,6 +161,7 @@ def _load_gateway_handoff_helpers() -> types.SimpleNamespace:
         "datetime": datetime,
         "timezone": timezone,
         "json": json,
+        "os": os,
         "Path": Path,
         "re": re,
         "time": time,
@@ -573,6 +579,99 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
         self.assertIn("objective_id:", reply)
         self.assertIn("TOD_RUNTIME_OWNERSHIP.latest.json", reply)
 
+    def test_operator_context_status_prompt_defers_conversation_purpose(self) -> None:
+        self.assertTrue(
+            self.gateway._should_defer_conversation_purpose_to_operator_context(
+                "hi MIM what are you working on?",
+                "mim_ui_text_chat",
+            )
+        )
+        self.assertTrue(
+            self.gateway._should_defer_conversation_purpose_to_operator_context(
+                "what should we work on next?",
+                "Studio Projects",
+            )
+        )
+        self.assertFalse(
+            self.gateway._should_defer_conversation_purpose_to_operator_context(
+                "can you help me understand a business idea?",
+                "mimtod public chat",
+            )
+        )
+
+    def test_conversation_purpose_direct_response_is_opt_in(self) -> None:
+        previous = os.environ.pop("MIM_ENABLE_CONVERSATION_PURPOSE_DIRECT_RESPONSE", None)
+        try:
+            self.assertFalse(self.gateway._conversation_purpose_direct_response_enabled())
+            os.environ["MIM_ENABLE_CONVERSATION_PURPOSE_DIRECT_RESPONSE"] = "1"
+            self.assertTrue(self.gateway._conversation_purpose_direct_response_enabled())
+        finally:
+            if previous is None:
+                os.environ.pop("MIM_ENABLE_CONVERSATION_PURPOSE_DIRECT_RESPONSE", None)
+            else:
+                os.environ["MIM_ENABLE_CONVERSATION_PURPOSE_DIRECT_RESPONSE"] = previous
+
+    def test_social_greeting_does_not_receive_operator_impact_contract(self) -> None:
+        self.assertTrue(
+            self.gateway._mim_operator_query_is_social_only("hi MIM how are you today")
+        )
+        self.assertFalse(
+            self.gateway._mim_operator_impact_contract_applies(
+                "hi MIM how are you today",
+                "Hi. MIM and TOD training are active.",
+            )
+        )
+        self.assertFalse(
+            self.gateway._mim_operator_impact_contract_applies(
+                "HI mim what did you work on today?",
+                "Hi! I'm MIM. What would you like to work on today?",
+            )
+        )
+
+    def test_worked_on_today_routes_to_activity_status(self) -> None:
+        self.assertTrue(
+            self.gateway._looks_like_mim_tod_activity_question(
+                "HI mim what did you work on today?"
+            )
+        )
+
+    def test_clean_operator_reply_strips_short_prepended_fragment_before_greeting(self) -> None:
+        self.assertEqual(
+            self.gateway._mim_clean_operator_reply_boilerplate(
+                "like crazy, Hi! I'm running smoothly with no issues to report."
+            ),
+            "Hi! I'm running smoothly with no issues to report.",
+        )
+
+    def test_next_bounded_action_uses_current_blocker_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir)
+            (shared_root / "MIM_TOD_TASK_REQUEST.latest.json").write_text(
+                json.dumps(
+                    {
+                        "objective_id": "MIM-SINGLE-COGNITIVE-ENTRYPOINT-V1-RUNG-002",
+                        "task_id": "rung-002-remediation-dispatch",
+                        "target_file": "",
+                        "target_files": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (shared_root / "TOD_EXECUTION_RESULT.latest.json").write_text(
+                json.dumps({"reason_code": "blocked_missing_bounded_edit_mode"}),
+                encoding="utf-8",
+            )
+
+            reply = self.gateway._mim_tod_active_project_status_response(
+                "what is the next bounded action?",
+                shared_root=shared_root,
+            )
+
+        self.assertIn("no valid bounded implementation task selected", reply)
+        self.assertIn("exactly one target file", reply)
+        self.assertIn("MIM-SINGLE-COGNITIVE-ENTRYPOINT-V1-RUNG-002", reply)
+        self.assertNotIn("Select and execute the next bounded action", reply)
+
     def test_operator_interface_response_hides_wrapper_by_default(self) -> None:
         event = types.SimpleNamespace(
             id=7,
@@ -604,9 +703,9 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
             execution=None,
         )
 
-        self.assertTrue(response["reply_text"].startswith("MIM and TOD are both active."))
-        self.assertIn("Recommended action:", response["reply_text"])
-        self.assertIn("Owner: TOD.", response["reply_text"])
+        self.assertEqual(response["reply_text"], "MIM and TOD are both active.")
+        self.assertNotIn("Recommended action:", response["reply_text"])
+        self.assertNotIn("Owner:", response["reply_text"])
         self.assertNotIn("Request mim-request-cleanup", response["reply_text"])
         self.assertNotIn("I understood", response["reply_text"])
         self.assertNotIn("Next action", response["reply_text"])
@@ -668,6 +767,7 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
                 "mim_interface_status_override": "done",
                 "mim_interface_next_action_override": "create TOD request",
                 "mim_interface_result_override": "Dispatched to TOD.",
+                "communication_reply_contract": {"operator_contract_allowed": True},
             },
         )
 
@@ -1452,6 +1552,45 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
         self.assertTrue(request_artifact["safe_to_dispatch"])
         self.assertIn("test_confidence_estimation_for_action", request_artifact["validation_command"])
 
+    def test_codex_escalation_dispatch_materializes_validation_plan_from_command(self) -> None:
+        content = (
+            "OBJECTIVE: MIM-GROWTH-DEPENDENCY-REDUCTION-NEXT-V1\n\n"
+            "Goal: reduce Codex escalation by teaching MIM to require evidence before "
+            "handing implementation work to Codex.\n\n"
+            "Required behavior:\n"
+            "- inspect Codex escalation evidence\n"
+            "- tighten the handoff intake gate\n"
+            "- validate with the handoff intake service tests\n"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            shared_root = Path(temp_dir) / "runtime" / "shared"
+            result = self.gateway._route_mim_implementation_objective_to_tod(
+                shared_root=shared_root,
+                request_id="mim-request-dependency-reduction",
+                raw_input=content,
+            )
+            request_artifact = json.loads(
+                (shared_root / "MIM_TOD_TASK_REQUEST.latest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(result["status"], "dispatched_to_TOD")
+        self.assertEqual(request_artifact["target_component"], "Codex escalation evidence gate")
+        self.assertEqual(
+            request_artifact["validation_command"],
+            "python -m unittest tests.integration.test_handoff_intake_service",
+        )
+        self.assertIn(
+            request_artifact["validation_command"],
+            request_artifact["validation_plan"],
+        )
+        self.assertIn(
+            request_artifact["validation_command"],
+            request_artifact["bounded_slice"]["validation_plan"],
+        )
+
     def test_minimal_patch_planner_dispatch_fields(self) -> None:
         content = (
             "OBJECTIVE: MIM-MINIMAL-PATCH-PLANNER\n\n"
@@ -1920,7 +2059,7 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
             )
         )
 
-    def test_reporting_visibility_objectives_dispatch_as_diagnostic_proofs(self) -> None:
+    def test_reporting_visibility_objectives_dispatch_as_implementation_proofs(self) -> None:
         objective = "MIM-EXECUTION-SUMMARY-CONTRACT-V1"
         content = (
             f"OBJECTIVE: {objective}\n\n"
@@ -1944,7 +2083,11 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
         self.assertEqual(result["status"], "dispatched_to_TOD")
         self.assertEqual(request_artifact["objective_id"], objective)
         self.assertEqual(request_artifact["dispatch_kind"], "reporting_visibility_behavior_proof")
-        self.assertEqual(request_artifact["task_class"], "diagnostic_only")
+        self.assertEqual(request_artifact["task_class"], "implementation")
+        self.assertEqual(request_artifact["objective_type"], "implementation")
+        self.assertTrue(request_artifact["completion_gate"]["changed_files_required_for_success"])
+        self.assertTrue(request_artifact["target_file"])
+        self.assertEqual(request_artifact["target_files"], [request_artifact["target_file"]])
         self.assertIn("completion_status", request_artifact["expected_evidence"])
         self.assertIn("sample_operator_output", request_artifact["expected_evidence"])
 
@@ -2254,11 +2397,16 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
             finally:
                 os.chdir(original_cwd)
 
-        self.assertIn("/tod/ui/state/execution", requested_paths)
-        self.assertNotIn("/tod/ui/state", requested_paths)
         timestamps = result["stage_timestamps"]
-        self.assertEqual(timestamps["tod_execution_started_at"], "2026-05-08T16:00:02Z")
-        self.assertEqual(timestamps["tod_execution_start_probe"], "tod_execution_probe")
+        if requested_paths:
+            self.assertIn("/tod/ui/state/execution", requested_paths)
+            self.assertNotIn("/tod/ui/state", requested_paths)
+            self.assertEqual(timestamps["tod_execution_start_probe"], "tod_execution_probe")
+            self.assertEqual(timestamps["tod_execution_started_at"], "2026-05-08T16:00:02Z")
+        else:
+            self.assertEqual(timestamps["tod_execution_start_probe"], "tod_direct_router_result")
+            self.assertEqual(timestamps["tod_result_consumption_source"], "tod_direct_router_result")
+            self.assertTrue(timestamps["tod_execution_started_at"])
         self.assertIn("ack_to_execution_start_ms", result["stage_durations_ms"])
 
     def test_dispatch_uses_bridge_artifact_readback_for_ack_timestamp(self) -> None:
@@ -2307,8 +2455,11 @@ class MimTodHandoffGatewayTest(unittest.TestCase):
             finally:
                 os.chdir(original_cwd)
 
-        self.assertIn("/tod/ui/chat/message", requested_paths)
         timestamps = result["stage_timestamps"]
+        if requested_paths:
+            self.assertIn("/tod/ui/chat/message", requested_paths)
+        else:
+            self.assertEqual(timestamps["tod_execution_start_probe"], "tod_direct_router_result")
         self.assertTrue(timestamps["tod_ack_seen_at"])
         self.assertEqual(timestamps["tod_ack_source"], "bridge_artifact_readback")
         self.assertIn("handoff_publish_to_ack_ms", result["stage_durations_ms"])

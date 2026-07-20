@@ -52,6 +52,9 @@ def test_interaction_quality_snapshot_reads_smoke_artifacts(tmp_path: Path):
     assert snapshot["schema_version"] == "mim-interaction-quality-dashboard-v1"
     assert snapshot["headline"]["available_artifacts"] == 1
     assert snapshot["headline"]["best_weighted_pass_rate"] == 0.96
+    assert snapshot["headline"]["artifact_freshness"]["freshest_age_seconds"] is not None
+    assert snapshot["headline"]["artifact_freshness"]["oldest_age_seconds"] is not None
+    assert snapshot["headline"]["artifact_freshness"]["stale_threshold_seconds"] == 86400
     assert snapshot["artifacts"][0]["surfaces"][0]["surface"] == "mimtod_public_chat"
     assert snapshot["next_actions"][0]["action"] == "Authorize and run logged-in AgentMIM surface certification."
 

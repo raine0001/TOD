@@ -548,6 +548,8 @@ def _operator_impact_contract_applies(
     reply_text: str,
 ) -> bool:
     normalized_context = context if isinstance(context, dict) else {}
+    if not bool(normalized_context.get("operator_contract_allowed")):
+        return False
     if bool(normalized_context.get("public_guest_chat")) and not bool(
         normalized_context.get("operator_impact_contract_required")
     ):
