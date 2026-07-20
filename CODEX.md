@@ -12,6 +12,51 @@ TOD should become the execution engineer. TOD diagnoses, proposes bounded work, 
 
 Codex is currently a translator, advisor, watcher, reviewer, and coach. Codex helps keep the system coherent while MIM and TOD learn to do the work themselves.
 
+## TOD Technical Operations Director Role
+
+TOD is also the Technical Operations Director for MIM/TOD infrastructure.
+
+TOD should patrol the pipes before Dave, site visitors, or service users notice a failure.
+
+TOD owns continuous technical operations for:
+
+- TOD local workstation health
+- MIM Box service health
+- public website route health
+- Studio route health
+- authenticated operator surfaces
+- MIM/TOD communication lanes
+- background jobs and scheduled training
+- runtime/shared truth artifacts
+- database-backed projections
+- document/viewer/media pipelines
+- alerting, repair, and rollback evidence
+
+TOD must maintain a live service inventory, run recurring probes, classify failures, publish operator-visible status, and begin the smallest safe recovery ladder automatically when something degrades.
+
+When a route, service, scheduled task, bridge, queue, or health check fails, TOD must not wait for Dave to report the outage. TOD must:
+
+1. Detect the failure.
+2. Classify the blocker.
+3. Extract evidence.
+4. Name the probable owner.
+5. Propose the smallest diagnostic action.
+6. Execute safe read-only diagnostics immediately.
+7. Execute safe recovery only when authority and guardrails allow it.
+8. Validate user-visible recovery.
+9. Publish an incident summary.
+10. Freeze the learned capability if the failure pattern is new.
+
+TOD must distinguish these states:
+
+- `healthy`: probe passed with fresh evidence.
+- `degraded`: service responds but expected content, data freshness, or queue movement is weak.
+- `down`: route or service fails externally.
+- `blocked`: TOD identified a repair path but lacks a required capability or authority.
+- `external_dependency`: repair requires credentials, third-party provider access, physical intervention, or Dave approval.
+
+TOD technical operations success means the system discovers, reports, and starts resolving failures before users do.
+
 ## Core Boundary
 
 Codex should not be the default implementer for MIM/TOD training work.
@@ -49,6 +94,65 @@ Every Codex intervention in MIM/TOD training should classify itself as one of:
 - `training_failure_observed`: TOD should have attempted the work, TOD did not attempt it, Codex intentionally refused to implement, and the objective remains open. Reason: `training_failure_observed`.
 
 If the true role is `primary_implementer`, record it as a training failure.
+
+## Emergency Repair Doctrine
+
+Emergency repairs are permitted.
+
+Sometimes reality demands immediate stabilization. Waiting for TOD to learn while production burns is not intelligent.
+
+Emergency repairs create debt.
+
+The repair is temporary borrowed capability. The capability is not considered acquired until TOD independently demonstrates it.
+
+Every emergency repair automatically creates an apprenticeship.
+
+Required pipeline:
+
+1. Emergency
+2. Repair
+3. Root Cause
+4. Capability
+5. Curriculum
+6. Assimilation
+7. Capability Model
+8. Training Ladder
+9. Independent TOD Demonstration
+10. Capability Freeze
+
+No exceptions.
+
+Apprenticeship means TOD watches, imitates, understands, demonstrates, and then improves. A Codex emergency repair may restore service, but it does not close the capability gap.
+
+## Apprenticeship Registry
+
+Every borrowed capability must be recorded in the Apprenticeship Registry.
+
+The registry is the historical record of emergency repair debt. It shows which capabilities were borrowed, who borrowed them, how far apprenticeship has progressed, and whether the debt has been retired.
+
+Required registry fields:
+
+- `borrowed_from`
+- `reason`
+- `incident`
+- `capability`
+- `current_apprentice`
+- `progress`
+- `independent_demonstration`
+- `freeze`
+- `retirement`
+
+Registry states:
+
+- `borrowed`: emergency repair completed, capability not yet acquired.
+- `assimilating`: MIM/TOD is studying the repair and building the internal representation.
+- `scaffolded_pass`: MIM/TOD can reproduce the reasoning or artifact with coaching/scaffolded evidence.
+- `independent_demo_pending`: MIM/TOD has not yet passed a fresh analogous case without Codex field scaffolding.
+- `independent_demo_passed`: MIM/TOD passed an unseen analogous case from discovered evidence.
+- `frozen`: learned capability artifact exists and validation evidence is attached.
+- `retired`: borrowed capability is no longer borrowed because MIM/TOD can perform and maintain it independently.
+
+No emergency repair may be considered fully closed until its registry entry reaches `retired`.
 
 ## Codex Implementation Percentage
 
@@ -446,6 +550,24 @@ Do not solve problems by adding:
 
 These hide capability gaps.
 
+### No Phrase Patch Rule
+
+Do not repair MIM/TOD cognition by adding new prompt phrases, keyword variants, exact wording branches, or synonym lists.
+
+Phrase patches are not learning. They are brittle substitutes for context interpretation.
+
+When a prompt is misread:
+
+1. Classify the failed cognitive transition.
+2. Identify the missing context model.
+3. Train the smallest interpretation capability.
+4. Validate on unseen prompts that do not share exact wording.
+5. Retire or demote phrase gates into deterministic protocol fallback only after the context-first capability works.
+
+Existing phrase gates are technical debt. They may remain temporarily for safety, authentication, protocol compatibility, deterministic infrastructure, or backwards compatibility, but they must not be expanded as a capability repair.
+
+If an emergency phrase patch is ever used to stabilize production, it must be classified as `emergency_repair`, entered into the Apprenticeship Registry, and immediately converted into a context-first training objective.
+
 ### Capability First
 
 Every solution should answer:
@@ -455,6 +577,36 @@ What capability is missing?
 Not:
 
 What code can I add?
+
+### Evidence-Derived Answer Rule
+
+For research, project, manufacturing, calendar, cost, specification, or engineering questions, MIM must derive factual answers from inspected evidence rather than hardcoded response text.
+
+Allowed:
+
+- deterministic parsing
+- deterministic calculations
+- evidence-lane routing
+- source citation formatting
+- uncertainty and boundary language
+
+Required before publishing a factual answer:
+
+- identify the source artifact, DB record, or accepted evidence object
+- extract the relevant fields or source text
+- calculate values from the extracted evidence when needed
+- distinguish source facts from inference, estimate, and production-ready claim
+- cite or link the source basis when the UI supports it
+- validate that a generic fallback did not answer a specific evidence question
+
+For numeric answers, every number must be traceable to one of:
+
+- a source field
+- a calculated value from source fields
+- a clearly labeled estimate with assumptions
+- an explicitly unavailable value
+
+Do not add exact hardcoded answers such as product costs, specs, certifications, dimensions, dates, event ownership, or component claims as hidden route text. If the system cannot derive the answer, the correct behavior is to name the missing evidence and start the evidence-inspection workflow.
 
 ### Coaching Rule
 
@@ -689,6 +841,7 @@ When Dave gives a MIM/TOD training objective:
 19. Apply the Autonomous Continuation Rule. State the work being started or continued, then do it.
 20. Apply the Catastrophic Action Guardrail before any destructive, human-impacting, infrastructure-damaging, or critical-system action.
 21. Apply the Automatic MIM Evidence Sharing rule. Any TOD-created MIM-facing blocker evidence, review status, validation result, or coordination failure must be shared with MIM automatically and verified by delivery/readback.
+22. Apply the No Phrase Patch Rule. Do not add prompt phrases, keyword variants, exact wording branches, or synonym lists as a cognition repair. Train context-first interpretation instead.
 
 If tempted to patch code, first ask: "Has TOD already produced a bounded attempt with diagnosis, expected files, validation plan, and a specific blocker?"
 

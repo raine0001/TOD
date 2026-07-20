@@ -65,6 +65,88 @@ Freeze: open; no learned capability exists yet for Research Observatory conversa
 
 Retirement: open.
 
+### APP-TOD-027: Public Homepage Structured Reply Rendering Boundary
+
+Borrowed From: Codex emergency production repair.
+
+Reason: The live public `mimtod.com` homepage rendered `[object Object]` in MIM chat bubbles because the homepage JavaScript passed the structured `/public/chat/message` `reply` object directly into the visible message renderer instead of extracting `reply.content` or `reply.text`.
+
+Incident: `MIM-PUBLIC-HOMEPAGE-OBJECT-REPLY-RENDERING-20260720`
+
+Capability: When a public MIM surface consumes a structured response contract, TOD must verify the UI display boundary extracts operator-visible text deterministically, preserves the semantic answer, and does not concatenate raw objects or metadata into the human chat transcript.
+
+Current Apprentice: TOD
+
+Progress: `borrowed`; Codex patched `tmp_remote_mim/core/routers/public_chat.py`, added a homepage-shell regression assertion in `tmp_remote_mim/tests/test_public_homepage_enterprise_shell.py`, deployed the router to `/home/testpilot/mim/core/routers/public_chat.py`, restarted `mim-mobile-web.service`, and proved the live homepage HTML includes `replyText(payload)` while the old `payload.reply || payload.message` object-rendering path is absent.
+
+Independent Demonstration: `pending`; TOD must inspect a fresh MIM UI surface that receives a structured response, identify the display-text extraction boundary, add or validate a regression guard, and publish evidence without Codex selecting the exact target or patch.
+
+Freeze: open; requires a learned-capability note after TOD demonstrates the structured-response display-boundary pattern on a fresh analogous surface.
+
+Retirement: open.
+
+### APP-TOD-028: Public Enterprise Product Question Routing
+
+Borrowed From: Codex emergency production repair.
+
+Reason: The live public `mimtod.com` MIM chat answered "what is an enterprise account?" with the generic conversation-purpose exploration fallback: "My first working hypothesis...". That was wrong because the Enterprise front door already defines the product context, setup flow, pricing guidance, and clean private Observatory value proposition.
+
+Incident: `MIM-PUBLIC-ENTERPRISE-PRODUCT-QUESTION-ROUTING-20260720`
+
+Capability: When a public MIM visitor asks about a visible product, account type, setup flow, pricing, or business benefit, TOD must ensure product-context authority is checked before generic exploration or structural-reasoning fallback. Product questions should answer from the product surface context and only ask discovery follow-ups after providing a useful explanation.
+
+Current Apprentice: TOD
+
+Progress: `borrowed`; Codex patched `tmp_remote_mim/core/routers/public_chat.py` so Enterprise product questions use the Enterprise product-context branch before `build_conversation_purpose_reply()`, added focused direct-answer regression checks in `tmp_remote_mim/tests/test_public_chat_direct_answers.py`, deployed the router to `/home/testpilot/mim/core/routers/public_chat.py`, restarted `mim-mobile-web.service`, and proved live `/public/chat/message` answers both "what is an enterprise account?" and "how could my business benefit from the enterprise account" without the generic hypothesis fallback.
+
+Independent Demonstration: `pending`; TOD must inspect a fresh public product/context question that is being preempted by generic exploration, identify the correct authoritative content source, add the smallest routing or authority fix, validate with a live prompt, and publish evidence without Codex selecting the exact target or answer text.
+
+Freeze: open; requires a learned-capability note after TOD demonstrates product-context authority on a fresh analogous public-surface question.
+
+Retirement: open.
+
+### APP-TOD-029: Observatory Service Knowledge Product Context Certification
+
+Borrowed From: Codex emergency product-knowledge repair.
+
+Reason: The public MIM chat needed to describe `/observatory` services 10/10, but Observatory and Enterprise product questions were still vulnerable to the generic exploration fallback. The live failure mode was visible as an answer beginning with "My first working hypothesis..." when the visitor asked for a basic product explanation.
+
+Incident: `MIM-OBSERVATORY-SERVICES-CERTIFICATION-20260720`
+
+Capability: When a visitor asks about Observatory services, Enterprise accounts, setup, tenant isolation, documents, integrations, MIM/TOD roles, or business value, MIM must answer from the current product/service context before generic exploration fallback. It must distinguish proven capabilities from setup-dependent integrations and avoid hallucinating live connections.
+
+Current Apprentice: TOD
+
+Progress: `borrowed`; Codex added an Observatory service catalog and product-context reply boundary in `tmp_remote_mim/core/routers/public_chat.py`, added a 10-question Observatory service certification smoke in `tmp_remote_mim/tests/test_public_chat_direct_answers.py`, separated Enterprise pricing questions from general Enterprise definition answers, deployed the router to `/home/testpilot/mim/core/routers/public_chat.py`, restarted `mim-mobile-web.service`, redesigned `/studio/auditor` as an Executive Truth surface with `/studio/auditor/lab` as the protected Behavior Lab, and proved the live `/public/chat/message` endpoint answers both "what is an enterprise account?" and "how much is an enterprise account?" in distinct modes.
+
+Independent Demonstration: `pending`; TOD must independently inspect a fresh Observatory/Enterprise service question class, identify the authoritative service context, extend the certification set or auditor without Codex selecting the exact answer boundary, deploy safely, and prove live behavior.
+
+Freeze: partial; evidence is recorded in `runtime_remote_training/read_only_audit_artifacts/MIM_OBSERVATORY_SERVICES_CERTIFICATION_V1.latest.json`, and the protected `/studio/auditor` certification run produced `runtime_remote_training/read_only_audit_artifacts/STUDIO_AUDITOR_OBSERVATORY_CERTIFICATION_V1.latest.json` with 10/10 passed. The Auditor UI now separates Executive Truth from Behavioral Testing and removes the default MIM chat panel. Full freeze requires expanding the auditor into the broader certification suite.
+
+Retirement: open.
+
+### APP-TOD-030: AgentMIM Visible Page-Context Fast Path Before Generic Chat
+
+Borrowed From: Codex emergency production repair.
+
+Reason: AgentMIM sidebar chat timed out on the Clients page when Dave asked what visible `bonus` records were. The page showed the relevant rows, but the backend did not receive structured visible-row context and therefore fell into the slower generic assistant path.
+
+Incident: `AGENTMIM-CLIENTS-VISIBLE-RECORDS-SIDEBAR-TIMEOUT-20260720`
+
+Capability: When a user asks a factual question about records currently visible on an AgentMIM page, TOD must ensure the page publishes enough structured context for MIM to answer deterministically before generic chat. The pattern includes identifying the visible data source, publishing `window.mimPageContext` for that surface, adding the smallest deterministic fast path, validating that generic chat is not called, and deploying safely.
+
+Current Apprentice: TOD
+
+Progress: `borrowed`; Codex added `window.mimPageContext.clients` to the Clients page, added `_maybe_answer_visible_client_records_request` before slower assistant paths, added regression tests, pushed commit `739bbcc5d88471da9376f7a121886ed082c2e4e8`, triggered Render deploy `dep-d9f4rgb7uimc73amaong`, and verified GitHub fast checks plus production `/health`. Live Chrome then showed inline page context was not reliable enough, so Codex added shared assistant send-time Clients table context collection in commit `8776e505a22c3b2cf321b771ea065a2bd2f7d974` and deployed `dep-d9f565b7uimc73ams4q0`. The first live sidebar smoke no longer timed out but answered too broadly, so Codex added named-row matching in commit `1bd202e626163e6f03f5d9d425b9357797150aaf`, passed the 11-test focused regression suite, and deployed `dep-d9f598jrjlhs73dj654g`. Final post-deploy Chrome smoke remains pending because the browser session refreshed back to the AgentMIM login page and the stale pre-refresh send hit a CSRF-session-token error.
+
+Proficiency: `observed`; TOD has not yet independently inspected, materialized, implemented, and validated this class.
+
+Independent Demonstration: `pending`; TOD must inspect a fresh AgentMIM page where sidebar MIM times out or ignores visible data, identify the missing page-context or deterministic answer boundary, produce a bounded implementation, validate that generic chat is bypassed, deploy, and publish evidence without Codex authoring the fix.
+
+Freeze: partial; evidence is recorded in `runtime_remote_training/read_only_audit_artifacts/AGENTMIM_CLIENTS_VISIBLE_RECORDS_FAST_PATH_V1.latest.json`.
+
+Retirement: open.
+
 ### APP-TOD-026: AgentMIM Deterministic App-Data Answer Before LLM Fallback
 
 Borrowed From: Codex emergency AgentMIM production repair.
