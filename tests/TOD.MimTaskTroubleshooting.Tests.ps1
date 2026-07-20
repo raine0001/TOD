@@ -122,6 +122,40 @@ Describe 'TOD MIM task troubleshooting' {
         }
     }
 
+    It 'bypasses provider guidance for malformed bounded edit packets' {
+        $providerScript = New-MockConversationProviderScript -ReplyText 'Restore the task to the active lane and execute now.'
+        try {
+            $guidance = Invoke-TaskTroubleshootingGuidance -ConversationProviderScriptAbs $providerScript -RequestId 'objective-404-task-001' -ObjectiveId '404' -TaskId 'objective-404-task-001' -CorrelationId 'corr-404' -Action 'execute-chat-task' -Execution ([pscustomobject]@{
+                    ok = $true
+                    blocked = $true
+                    execution_mode = 'direct_script_success'
+                    error = 'TOD intake arbitration stored the request as rejected_before_active_lane; active task identity was preserved.'
+                    result_reason_code = 'malformed_bounded_edit_packet'
+                    execution_readiness = [pscustomobject]@{ status = 'stale' }
+                    output = 'rejected_before_active_lane'
+                }) -DecisionPayload ([pscustomobject]@{
+                    decision_outcome = 'execute'
+                    reason_code = 'authorized_routine_request'
+                    next_step_recommendation = 'execute_now'
+                }) -ReviewGate ([pscustomobject]@{ passed = $true }) -ValidatorResult ([pscustomobject]@{ passed = $true }) -IntegrationStatus ([pscustomobject]@{
+                    objective_alignment = [pscustomobject]@{ status = 'aligned' }
+                })
+
+            [string]$guidance.result_status | Should Be 'blocked'
+            [bool]$guidance.provider_status.used | Should Be $false
+            [string]$guidance.provider_status.source | Should Be 'deterministic_fallback'
+            [string]$guidance.provider_status.detail | Should Match 'Provider bypassed'
+            [string]$guidance.guidance_text | Should Match 'corrected bounded edit packet'
+            [string]$guidance.guidance_text | Should Not Match 'Restore the task'
+            [string]$guidance.recommended_report_back | Should Be 'return_to_originating_authority_for_replan'
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($providerScript) -and (Test-Path -Path $providerScript)) {
+                Remove-Item -Path $providerScript -Force
+            }
+        }
+    }
+
     It 'opens a troubleshooting handoff request for blocked or failed work' {
         $script:capturedDialogCall = $null
         function global:Invoke-DialogNotice {

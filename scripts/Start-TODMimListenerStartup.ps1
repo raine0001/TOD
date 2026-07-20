@@ -8,4 +8,4 @@ if (-not (Test-Path -Path $listenerScript)) {
     throw "Missing listener script: $listenerScript"
 }
 
-& $listenerScript -PollSeconds 2 -RegressionNoDeltaThreshold 4 -EnvFile ".env" -RemoteRoot "/home/testpilot/mim/runtime/shared" -StageDir "tod/out/context-sync/listener" -PublishIntegrationStatus
+& $listenerScript -PollSeconds 30 -RegressionNoDeltaThreshold 4 -EnvFile ".env" -RemoteRoot "/home/testpilot/mim/runtime/shared" -StageDir "tod/out/context-sync/listener" -PublishIntegrationStatus

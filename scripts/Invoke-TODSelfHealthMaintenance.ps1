@@ -16,7 +16,7 @@ param(
     [string]$LogPath = "shared_state/TOD_SELF_HEALTH_RUN.log.jsonl",
     [int]$FallbackWarningThresholdRuns = 6,
     [int]$FallbackWarningWindowHours = 48,
-    [int]$FallbackWarningTailLines = 128,
+    [int]$FallbackWarningTailLines = 8,
     [switch]$RestartUiOnFailure,
     [switch]$RefreshAgentMimReadiness,
     [switch]$EmitJson
@@ -135,6 +135,54 @@ function Read-JsonLinesTail {
     return @($entries)
 }
 
+function Read-MaintenanceHistoryEntriesTail {
+    param(
+        [Parameter(Mandatory = $true)][string]$PathValue,
+        [int]$TailLines = 128
+    )
+
+    if (-not (Test-Path -Path $PathValue)) {
+        return @()
+    }
+
+    try {
+        $lines = @(Get-Content -Path $PathValue -Tail $TailLines -ErrorAction Stop)
+    }
+    catch {
+        return @()
+    }
+
+    $entries = @()
+    foreach ($line in $lines) {
+        if ([string]::IsNullOrWhiteSpace([string]$line)) {
+            continue
+        }
+
+        $text = [string]$line
+        if ($text.Length -gt 2000) {
+            $text = $text.Substring(0, 2000)
+        }
+        $invocationMatch = [regex]::Match($text, '"invocation_mode"\s*:\s*"([^"]*)"')
+        if (-not $invocationMatch.Success) {
+            continue
+        }
+
+        $generatedAtMatch = [regex]::Match($text, '"generated_at"\s*:\s*"([^"]*)"')
+        $severityReasonMatch = [regex]::Match($text, '"severity_reason"\s*:\s*"([^"]*)"')
+        $fallbackOnlyWarning = ($text -match '"fallback_only_warning"\s*:\s*true')
+        $entries += [pscustomobject]@{
+            generated_at = if ($generatedAtMatch.Success) { [string]$generatedAtMatch.Groups[1].Value } else { '' }
+            invocation_mode = [string]$invocationMatch.Groups[1].Value
+            severity_reason = if ($severityReasonMatch.Success) { [string]$severityReasonMatch.Groups[1].Value } else { '' }
+            postflight = [pscustomobject]@{
+                fallback_only_warning = $fallbackOnlyWarning
+            }
+        }
+    }
+
+    return @($entries)
+}
+
 function Test-IsExpectedBoundedFallbackEntry {
     param([AllowNull()]$Entry)
 
@@ -164,7 +212,7 @@ function Get-MaintenanceHistorySummary {
     )
 
     $windowStart = (Get-Date).ToUniversalTime().AddHours(-1 * [Math]::Abs($WindowHours))
-    $entries = @(Read-JsonLinesTail -PathValue $LogPathValue -TailLines $TailLines)
+    $entries = @(Read-MaintenanceHistoryEntriesTail -PathValue $LogPathValue -TailLines $TailLines)
     $scheduledEntries = @()
     foreach ($entry in $entries) {
         $entryInvocationMode = if ($entry.PSObject.Properties['invocation_mode']) { [string]$entry.invocation_mode } else { '' }
@@ -425,6 +473,114 @@ function Invoke-Step {
     }
 }
 
+function Get-ProcessPressureSnapshot {
+    param(
+        [int]$SampleSeconds = 5,
+        [int]$Top = 15
+    )
+
+    $interval = [Math]::Max(1, $SampleSeconds)
+    $currentProcessId = [int]$PID
+    $before = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $null -ne $_.CPU } | Select-Object Id, ProcessName, CPU, Path)
+    Start-Sleep -Seconds $interval
+    $after = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $null -ne $_.CPU } | Select-Object Id, ProcessName, CPU, Path)
+
+    $rows = @()
+    foreach ($process in $after) {
+        if ([int]$process.Id -eq $currentProcessId) {
+            continue
+        }
+
+        $previous = $before | Where-Object { [int]$_.Id -eq [int]$process.Id } | Select-Object -First 1
+        if ($null -eq $previous) {
+            continue
+        }
+
+        $cpuDelta = [double]$process.CPU - [double]$previous.CPU
+        if ($cpuDelta -lt 0) {
+            continue
+        }
+
+        $rows += [pscustomobject]@{
+            process_id = [int]$process.Id
+            process_name = [string]$process.ProcessName
+            cpu_seconds_delta = [Math]::Round($cpuDelta, 3)
+            approximate_one_core_percent = [Math]::Round(($cpuDelta / $interval) * 100, 1)
+            path = if ($process.Path) { [string]$process.Path } else { "" }
+        }
+    }
+
+    $topRows = @($rows | Sort-Object -Property cpu_seconds_delta -Descending | Select-Object -First $Top)
+    $topIds = @($topRows | ForEach-Object { [int]$_.process_id })
+    $commandLines = @{}
+    if (@($topIds).Count -gt 0) {
+        try {
+            foreach ($proc in @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { $topIds -contains [int]$_.ProcessId })) {
+                $commandLines[[int]$proc.ProcessId] = if ($proc.CommandLine) { [string]$proc.CommandLine } else { "" }
+            }
+        }
+        catch {
+        }
+    }
+
+    $annotated = @()
+    foreach ($row in $topRows) {
+        $commandLine = if ($commandLines.ContainsKey([int]$row.process_id)) { [string]$commandLines[[int]$row.process_id] } else { "" }
+        $path = [string]$row.path
+        $isTodOwned = $false
+        if ($path.StartsWith($repoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $isTodOwned = $true
+        }
+        elseif ($commandLine.IndexOf($repoRoot, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            $isTodOwned = $true
+        }
+
+        $annotated += [pscustomobject]@{
+            process_id = [int]$row.process_id
+            process_name = [string]$row.process_name
+            cpu_seconds_delta = [double]$row.cpu_seconds_delta
+            approximate_one_core_percent = [double]$row.approximate_one_core_percent
+            path = $path
+            command_line = $commandLine
+            tod_owned = [bool]$isTodOwned
+        }
+    }
+
+    $hotRows = @($annotated | Where-Object { [double]$_.approximate_one_core_percent -ge 85 })
+    $todHotRows = @($hotRows | Where-Object { [bool]$_.tod_owned })
+    $severity = "ok"
+    $summary = "No process sustained near-full-core CPU during the sample."
+    if (@($todHotRows).Count -gt 0) {
+        $severity = "warning"
+        $summary = "TOD-owned process pressure detected; classify before recovery."
+    }
+    elseif (@($hotRows).Count -gt 0) {
+        $severity = "notice"
+        $summary = "Non-TOD process pressure detected; report evidence before taking action."
+    }
+
+    $safeActions = @()
+    if (@($todHotRows).Count -gt 0) {
+        $safeActions += "Classify the hot TOD-owned process, preserve command line evidence, then restart or throttle only that bounded TOD lane if it remains hot across a second sample."
+    }
+    if (@($hotRows).Count -gt 0 -and @($todHotRows).Count -eq 0) {
+        $safeActions += "Do not kill non-TOD applications automatically; report the process pressure and suggest closing or restarting the specific application if user-visible lag continues."
+    }
+    if (@($safeActions).Count -eq 0) {
+        $safeActions += "Continue normal self-health monitoring."
+    }
+
+    return [pscustomobject]@{
+        sample_seconds = $interval
+        severity = $severity
+        summary = $summary
+        hot_process_count = @($hotRows).Count
+        tod_owned_hot_process_count = @($todHotRows).Count
+        top_processes = @($annotated)
+        safe_actions = @($safeActions)
+    }
+}
+
 function Get-StateBusSnapshot {
     param([Parameter(Mandatory = $true)][string]$ScriptPath)
 
@@ -618,6 +774,22 @@ $preflightStep = Invoke-Step -Name "preflight_snapshot" -Action {
 $preflightBus = if ($preflightStep.ok) { $preflightStep.result } else { $null }
 $preflightSummary = Get-HealthSnapshotSummary -StateBus $preflightBus
 $actions.Add((New-ActionRecord -Name "preflight_snapshot" -Attempted $true -Ok $preflightStep.ok -Summary $(if ($preflightStep.ok) { $preflightSummary.summary } else { $preflightStep.error }) -Details $(if ($preflightStep.ok) { $preflightSummary } else { [pscustomobject]@{ error = $preflightStep.error } }) -DurationMs $preflightStep.duration_ms))
+
+$processPressureStep = Invoke-Step -Name "workstation_process_pressure" -Action {
+    Get-ProcessPressureSnapshot -SampleSeconds 15 -Top 15
+}
+
+$processPressureSummary = if ($processPressureStep.ok -and $processPressureStep.result) {
+    [string]$processPressureStep.result.summary
+}
+elseif ($processPressureStep.ok) {
+    "Workstation process pressure sample completed."
+}
+else {
+    $processPressureStep.error
+}
+
+$actions.Add((New-ActionRecord -Name "workstation_process_pressure" -Attempted $true -Ok $processPressureStep.ok -Summary $processPressureSummary -Details $(if ($processPressureStep.ok) { $processPressureStep.result } else { [pscustomobject]@{ error = $processPressureStep.error } }) -DurationMs $processPressureStep.duration_ms))
 
 $shouldRefreshSharedState = ($Profile -ne "light")
 $shouldRunWatchdog = ($Profile -ne "light")
@@ -819,14 +991,19 @@ else {
     $actions.Add((New-ActionRecord -Name "codex_readiness" -Attempted $false -Ok $true -Summary "Reserved for deep maintenance runs."))
 }
 
-$completedAt = (Get-Date).ToUniversalTime()
 $historySummary = Get-MaintenanceHistorySummary -LogPathValue $logAbs -CurrentInvocationMode $InvocationMode -CurrentSeverityReason ([string]$postflightSummary.severity_reason) -WindowHours $FallbackWarningWindowHours -ThresholdRuns $FallbackWarningThresholdRuns -TailLines $FallbackWarningTailLines
 $overallSeverity = [string]$postflightSummary.operational_severity
 $sourceSeverity = [string]$postflightSummary.severity
 $overallSeverityReason = [string]$postflightSummary.severity_reason
+$processPressureSeverity = if ($processPressureStep.ok -and $processPressureStep.result -and $processPressureStep.result.PSObject.Properties['severity']) { [string]$processPressureStep.result.severity } else { "unknown" }
 $publicRouteBlockers = @()
 if ($publicRouteHealthStep.ok -and $publicRouteHealthStep.result -and $publicRouteHealthStep.result.PSObject.Properties['blockers']) {
     $publicRouteBlockers = @($publicRouteHealthStep.result.blockers | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+}
+
+if ((Get-SeverityRank -Value $processPressureSeverity) -gt (Get-SeverityRank -Value $overallSeverity)) {
+    $overallSeverity = $processPressureSeverity
+    $overallSeverityReason = 'workstation_process_pressure'
 }
 
 if (@($publicRouteBlockers).Count -gt 0 -and (Get-SeverityRank -Value $overallSeverity) -lt 2) {
@@ -865,6 +1042,13 @@ if (@($publicRouteBlockers).Count -gt 0) {
 if (@($failedActions).Count -gt 0) {
     $recommendations += "One or more maintenance steps failed; review the action log in shared_state/TOD_SELF_HEALTH_RUN.log.jsonl."
 }
+if ($processPressureStep.ok -and $processPressureStep.result -and (Get-SeverityRank -Value $processPressureSeverity) -ge 1) {
+    foreach ($safeAction in @($processPressureStep.result.safe_actions)) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$safeAction)) {
+            $recommendations += [string]$safeAction
+        }
+    }
+}
 if ($overallStatus -eq "healthy_with_fallback") {
     if ($overallSeverity -eq 'warning' -and $overallSeverityReason -eq 'fallback_persistence_threshold_exceeded') {
         $recommendations += ("TOD remains operationally healthy, but fallback has persisted across {0} scheduled maintenance runs inside the last {1} hours; treat it as warning-level until the full-state path is restored or fallback becomes a first-class operating mode." -f [int]$historySummary.scheduled_fallback_runs_including_current, [int]$historySummary.window_hours)
@@ -895,6 +1079,8 @@ elseif ($overallStatus -eq "healthy_with_fallback") {
 elseif ($overallStatus -eq "warning") {
     $reportSummary = "TOD self-health maintenance completed, but residual warnings remain."
 }
+
+$completedAt = (Get-Date).ToUniversalTime()
 
 $reportMap = [ordered]@{
     generated_at = $completedAt.ToString("o")

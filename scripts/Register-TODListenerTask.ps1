@@ -1,6 +1,6 @@
 param(
     [string]$TaskName = "TOD-MimListener",
-    [int]$PollSeconds = 2,
+    [int]$PollSeconds = 30,
     [int]$RegressionNoDeltaThreshold = 4,
     [switch]$PublishIntegrationStatus,
     [switch]$SystemStartup,

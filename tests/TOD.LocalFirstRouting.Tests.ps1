@@ -37,6 +37,7 @@ Describe 'TOD local-first routing policy' {
                 'Normalize-RoutingWeights',
                 'Get-SupportedExecutionEngines',
                 'Resolve-TaskCategory',
+                'Get-ObjectPropertyString',
                 'Get-TaskRoutingText',
                 'Get-TaskRoutingFileHints',
                 'Get-LocalExecutionReuseSignal',

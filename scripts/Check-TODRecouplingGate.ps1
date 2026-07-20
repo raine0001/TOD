@@ -202,7 +202,15 @@ $tod_obj = if ($nextActions -and $nextActions.PSObject.Properties["current_objec
 else {
     ""
 }
-$mim_obj = if ($integration -and $integration.PSObject.Properties["mim_status"] -and $integration.mim_status.PSObject.Properties["objective_active"]) {
+$mim_obj = if ($integration -and
+    $integration.PSObject.Properties["objective_alignment"] -and
+    $integration.objective_alignment.PSObject.Properties["status"] -and
+    [string]::Equals([string]$integration.objective_alignment.status, "in_sync", [System.StringComparison]::OrdinalIgnoreCase) -and
+    $integration.objective_alignment.PSObject.Properties["mim_objective_active"] -and
+    -not [string]::IsNullOrWhiteSpace([string]$integration.objective_alignment.mim_objective_active)) {
+    [string]$integration.objective_alignment.mim_objective_active
+}
+elseif ($integration -and $integration.PSObject.Properties["mim_status"] -and $integration.mim_status.PSObject.Properties["objective_active"]) {
     [string]$integration.mim_status.objective_active
 }
 else {

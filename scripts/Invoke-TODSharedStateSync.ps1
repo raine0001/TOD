@@ -2000,6 +2000,10 @@ function Get-BridgeCanonicalEvidence {
     $objectiveInSync = [bool]($ObjectiveAlignment -and $ObjectiveAlignment.PSObject.Properties["status"] -and [string]$ObjectiveAlignment.status -eq "in_sync")
     $sharedTruthPath = Join-Path $repoRoot 'runtime/shared/TOD_MIM_SHARED_TRUTH.latest.json'
     $sharedTruth = Get-JsonFileIfExists -PathValue $sharedTruthPath
+    $sharedTruthGeneratedAt = if ($sharedTruth -and $sharedTruth.PSObject.Properties['generated_at']) { [string]$sharedTruth.generated_at } else { "" }
+    $sharedTruthTimestamp = Convert-ToUtcDateOrNull -Value $sharedTruthGeneratedAt
+    $liveTaskTimestamp = if ($LiveTaskRequest -and $LiveTaskRequest.PSObject.Properties['generated_at']) { Convert-ToUtcDateOrNull -Value ([string]$LiveTaskRequest.generated_at) } else { $null }
+    $sharedTruthIsOlderThanLiveTask = [bool]($null -ne $sharedTruthTimestamp -and $null -ne $liveTaskTimestamp -and $sharedTruthTimestamp -lt $liveTaskTimestamp)
     $canonicalTaskId = if ($sharedTruth -and $sharedTruth.PSObject.Properties['task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$sharedTruth.task_id)) {
         [string]$sharedTruth.task_id
     }
@@ -2008,6 +2012,9 @@ function Get-BridgeCanonicalEvidence {
     }
     else {
         ""
+    }
+    if ($sharedTruthIsOlderThanLiveTask) {
+        $canonicalTaskId = ""
     }
     $canonicalObjective = if ($ObjectiveAlignment -and $ObjectiveAlignment.PSObject.Properties["mim_objective_active"] -and -not [string]::IsNullOrWhiteSpace([string]$ObjectiveAlignment.mim_objective_active)) {
         Normalize-ObjectiveIdText -Value ([string]$ObjectiveAlignment.mim_objective_active)
@@ -2021,10 +2028,18 @@ function Get-BridgeCanonicalEvidence {
     else {
         ""
     }
+    $liveTaskObjectiveComparable = [bool](
+        -not [string]::IsNullOrWhiteSpace($canonicalObjective) -and
+        -not [string]::IsNullOrWhiteSpace($liveTaskObjective) -and
+        (
+            [regex]::IsMatch($canonicalObjective, '^\d+$') -eq [regex]::IsMatch($liveTaskObjective, '^\d+$')
+        )
+    )
     $liveTaskMatchesCanonical = [bool](
         -not $liveTaskAvailable -or
         [string]::IsNullOrWhiteSpace($canonicalObjective) -or
         [string]::IsNullOrWhiteSpace($liveTaskObjective) -or
+        -not $liveTaskObjectiveComparable -or
         [string]::Equals($liveTaskObjective, $canonicalObjective, [System.StringComparison]::OrdinalIgnoreCase)
     )
     $liveTaskMatchesCanonicalTask = [bool](

@@ -34,6 +34,7 @@ $supervisedScript = Join-Path $PSScriptRoot 'Invoke-TODSupervisedExecution.ps1'
 $trainingLoopScript = Join-Path $PSScriptRoot 'Invoke-TODTrainingLoop.ps1'
 $simulationBundleScript = Join-Path $PSScriptRoot 'Invoke-TODAutonomousSimulationBundle.ps1'
 $repoEditRecoverSimulationScript = Join-Path $PSScriptRoot 'Invoke-TODRepoEditTestRecoverSimulationDaily.ps1'
+$communicationSoakScript = Join-Path $PSScriptRoot 'Invoke-TODMimCommunicationSimulationSoak.ps1'
 $auditPublisherScript = Join-Path $PSScriptRoot 'Invoke-MIMTOD7DayTrainingAudit.ps1'
 $statusScript = Join-Path $PSScriptRoot 'Write-TODCompletionStatus.ps1'
 $todStatePath = Join-Path $repoRoot 'tod/data/state.json'
@@ -190,6 +191,41 @@ function Invoke-JsonScriptInline {
     }
 
     return (ConvertFrom-JsonLoose -Text $rawOutput)
+}
+
+function Invoke-JsonScriptInlineBounded {
+    param(
+        [Parameter(Mandatory = $true)][string]$ScriptPath,
+        [hashtable]$Arguments = @{},
+        [int]$TimeoutSeconds = 120
+    )
+
+    $job = Start-Job -ScriptBlock {
+        param(
+            [string]$InnerScriptPath,
+            [hashtable]$InnerArguments
+        )
+
+        & $InnerScriptPath @InnerArguments 2>&1 | Out-String
+    } -ArgumentList $ScriptPath, $Arguments
+
+    try {
+        $finished = Wait-Job -Job $job -Timeout $TimeoutSeconds
+        if ($null -eq $finished) {
+            Stop-Job -Job $job -ErrorAction SilentlyContinue
+            throw ("Script timed out after {0}s: {1}" -f $TimeoutSeconds, $ScriptPath)
+        }
+
+        $rawOutput = Receive-Job -Job $job 2>&1 | Out-String
+        if ($job.State -eq 'Failed') {
+            throw ("Script failed in background job: {0}`n{1}" -f $ScriptPath, $rawOutput.Trim())
+        }
+
+        return (ConvertFrom-JsonLoose -Text $rawOutput)
+    }
+    finally {
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+    }
 }
 
 $resolvedConfigPath = Resolve-RepoPath -PathValue $ConfigPath
@@ -436,7 +472,7 @@ function Invoke-StartupHealthPass {
     New-DirectoryIfMissing -PathValue $startupDir
 
     try {
-        $health = Invoke-JsonPowerShellScript -ScriptPath $supervisedScript -Arguments @{
+        $health = Invoke-JsonScriptInlineBounded -ScriptPath $supervisedScript -TimeoutSeconds 120 -Arguments @{
             ImplementationConfigPath = $resolvedConfigPath
             ImplementationOutputDir = $startupDir
             RefreshMimContextFromSsh = $true
@@ -447,13 +483,13 @@ function Invoke-StartupHealthPass {
 
         if ($health -and $health.PSObject.Properties['needs_escalation'] -and [bool]$health.needs_escalation) {
             Write-DaemonLog ('startup health escalated; applying runtime-safe correction: ' + [string]$health.escalation_reason)
-            $null = Invoke-JsonPowerShellScript -ScriptPath $trainingLoopScript -Arguments @{
+            $null = Invoke-JsonScriptInlineBounded -ScriptPath $trainingLoopScript -TimeoutSeconds 180 -Arguments @{
                 ConfigPath = $resolvedConfigPath
                 OutputDir = (Join-Path $startupDir 'runtime-safe-correction')
                 SkipTests = $true
                 SkipSmoke = $true
             }
-            $retry = Invoke-JsonPowerShellScript -ScriptPath $supervisedScript -Arguments @{
+            $retry = Invoke-JsonScriptInlineBounded -ScriptPath $supervisedScript -TimeoutSeconds 120 -Arguments @{
                 ImplementationConfigPath = $resolvedConfigPath
                 ImplementationOutputDir = (Join-Path $startupDir 'post-correction')
                 RefreshMimContextFromSsh = $true
@@ -730,11 +766,73 @@ function Start-MimSolicitation {
     }
 }
 
+function Get-IdleTrainingEvidenceText {
+    $evidencePaths = @(
+        'runtime_remote_training/MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json',
+        'shared_state/tod_training_status.latest.json',
+        'shared_state/tod_autonomy_status.latest.json',
+        'runtime_remote_training/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json',
+        'runtime_remote_training/TOD_NEXT_TASK_SELECTION.latest.json'
+    )
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    foreach ($relPath in $evidencePaths) {
+        $absPath = Join-Path $repoRoot $relPath
+        if (Test-Path -Path $absPath -PathType Leaf) {
+            try {
+                $parts.Add([string](Get-Content -Path $absPath -Raw)) | Out-Null
+            }
+            catch {
+                $parts.Add(('unreadable_training_evidence:{0}:{1}' -f $relPath, [string]$_.Exception.Message)) | Out-Null
+            }
+        }
+    }
+
+    return (($parts.ToArray()) -join "`n")
+}
+
 function Get-IdleTrainingProfile {
     param(
         [double]$IdleMinutes = 0,
         [string]$Reason = 'no_mim_reply'
     )
+
+    $evidenceText = (Get-IdleTrainingEvidenceText).ToLowerInvariant()
+    if ($evidenceText -match 'packet capability incomplete|blocked_missing_artifact_content|old_text/new_text|packet materialization|artifact-body synthesis') {
+        return [pscustomobject]@{
+            id = 'packet_materialization_pressure'
+            label = 'Packet materialization pressure drill'
+            reason = $Reason
+            kind = 'weakness_evidence'
+        }
+    }
+
+    if (($evidenceText -match 'open mim/tod dialog debt|unmanaged open replies|awaiting_mim_reply|mim_timeout') -and $evidenceText -notmatch '\b0 unmanaged open replies\b') {
+        return [pscustomobject]@{
+            id = 'coordination_closure_pressure'
+            label = 'MIM/TOD coordination closure pressure drill'
+            reason = $Reason
+            kind = 'weakness_evidence'
+        }
+    }
+
+    if ($evidenceText -match 'blocked_missing_bounded_edit_mode|bounded_edit_mode_missing|missing bounded edit mode') {
+        return [pscustomobject]@{
+            id = 'bounded_execution_contract_pressure'
+            label = 'Bounded execution contract pressure drill'
+            reason = $Reason
+            kind = 'weakness_evidence'
+        }
+    }
+
+    if ($evidenceText -match 'passeds?all=false|passedall=false|runtime-safe validation completed\. passedall=false') {
+        return [pscustomobject]@{
+            id = 'runtime_safe_subset'
+            label = 'Runtime-safe validation subset'
+            reason = $Reason
+            kind = 'weakness_evidence'
+        }
+    }
 
     if ($IdleMinutes -ge $LongIdleProfileThresholdMinutes) {
         return [pscustomobject]@{
@@ -766,8 +864,16 @@ function Invoke-SimulationFallback {
 
     try {
         Write-DaemonLog ('starting idle training fallback; profile=' + [string]$profile.id + ' idle=' + ('{0:n1}' -f $IdleMinutes) + 'm reason=' + $Reason)
-        if ([string]$profile.id -eq 'repo_edit_test_recover') {
+        if (@('repo_edit_test_recover', 'packet_materialization_pressure', 'bounded_execution_contract_pressure') -contains [string]$profile.id) {
             $null = Invoke-JsonPowerShellScript -ScriptPath $repoEditRecoverSimulationScript -Arguments @{
+                OutputRoot = $simulationDir
+                EmitJson = $true
+            }
+        }
+        elseif ([string]$profile.id -eq 'coordination_closure_pressure') {
+            $null = Invoke-JsonPowerShellScript -ScriptPath $communicationSoakScript -Arguments @{
+                Iterations = 3
+                Scenario = 'all'
                 OutputRoot = $simulationDir
                 EmitJson = $true
             }

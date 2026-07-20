@@ -2,6 +2,9 @@ param(
     [string]$PublicTodUrl = '',
     [string]$PublicTodStateUrl = '',
     [string]$PublicAppUrl = '',
+    [string]$PublicSiteUrl = '',
+    [string]$StudioUrl = '',
+    [string]$AgentMimUrl = '',
     [string]$LocalTodUrl = 'http://localhost:8844/tod',
     [string]$IntegrationStatusPath = 'shared_state/integration_status.json',
     [string]$SharedTruthPath = 'runtime/shared/TOD_MIM_SHARED_TRUTH.latest.json',
@@ -163,6 +166,95 @@ function Resolve-PublicTodTargets {
     }
 }
 
+function Resolve-ConfiguredBaseUrl {
+    param(
+        [AllowEmptyString()][string]$ExplicitUrl,
+        [Parameter(Mandatory = $true)][string[]]$EnvNames,
+        [Parameter(Mandatory = $true)][string]$DefaultUrl,
+        [Parameter(Mandatory = $true)][string]$RepoRoot
+    )
+
+    $resolved = ([string]$ExplicitUrl).Trim()
+    if (-not [string]::IsNullOrWhiteSpace($resolved)) {
+        return $resolved.TrimEnd('/')
+    }
+
+    foreach ($name in $EnvNames) {
+        $envItem = Get-Item -Path ('Env:{0}' -f $name) -ErrorAction SilentlyContinue
+        $envValue = if ($null -ne $envItem) { [string]$envItem.Value } else { '' }
+        if (-not [string]::IsNullOrWhiteSpace($envValue)) {
+            return $envValue.TrimEnd('/')
+        }
+    }
+
+    foreach ($name in $EnvNames) {
+        $fileValue = Read-DotEnvValue -PathValue (Join-Path $RepoRoot '.env') -Name $name
+        if (-not [string]::IsNullOrWhiteSpace($fileValue)) {
+            return $fileValue.TrimEnd('/')
+        }
+    }
+
+    return $DefaultUrl.TrimEnd('/')
+}
+
+function New-TechnicalOperationsRouteInventory {
+    param(
+        [AllowEmptyString()][string]$PublicSiteBaseUrl,
+        [AllowEmptyString()][string]$StudioBaseUrl,
+        [AllowEmptyString()][string]$AgentMimBaseUrl,
+        [Parameter(Mandatory = $true)][string]$LocalTodUrlValue,
+        [Parameter(Mandatory = $true)][string]$RepoRoot
+    )
+
+    $publicBase = Resolve-ConfiguredBaseUrl -ExplicitUrl $PublicSiteBaseUrl -EnvNames @('MIMTOD_PUBLIC_URL', 'PUBLIC_SITE_URL') -DefaultUrl 'https://www.mimtod.com' -RepoRoot $RepoRoot
+    $studioBase = Resolve-ConfiguredBaseUrl -ExplicitUrl $StudioBaseUrl -EnvNames @('MIM_STUDIO_URL', 'MIMTOD_STUDIO_URL') -DefaultUrl 'https://mim.mimtod.com' -RepoRoot $RepoRoot
+    $agentBase = Resolve-ConfiguredBaseUrl -ExplicitUrl $AgentMimBaseUrl -EnvNames @('AGENTMIM_PUBLIC_URL') -DefaultUrl 'https://www.agentmim.com' -RepoRoot $RepoRoot
+
+    return @(
+        [pscustomobject]@{ host_key = 'public_www_mimtod'; route_label = 'home'; url = $publicBase; expected_marker = 'MIM'; owner = 'MIM public web'; recovery_boundary = 'MIM Box public web service' },
+        [pscustomobject]@{ host_key = 'public_www_mimtod'; route_label = 'research_observatory'; url = Join-HttpUrl -BaseUrl $publicBase -RelativePath '/observatory'; expected_marker = 'Research Observatory'; owner = 'MIM public web'; recovery_boundary = 'MIM Box public web service' },
+        [pscustomobject]@{ host_key = 'public_www_mimtod'; route_label = 'build'; url = Join-HttpUrl -BaseUrl $publicBase -RelativePath '/build'; expected_marker = 'build'; owner = 'MIM public web'; recovery_boundary = 'MIM Box public web service' },
+        [pscustomobject]@{ host_key = 'public_www_mimtod'; route_label = 'community'; url = Join-HttpUrl -BaseUrl $publicBase -RelativePath '/community'; expected_marker = 'Community'; owner = 'MIM public web'; recovery_boundary = 'MIM Box public web service' },
+        [pscustomobject]@{ host_key = 'public_www_mimtod'; route_label = 'community_questions'; url = Join-HttpUrl -BaseUrl $publicBase -RelativePath '/community/questions'; expected_marker = 'Questions'; owner = 'MIM public web'; recovery_boundary = 'MIM Box public web service' },
+        [pscustomobject]@{ host_key = 'studio_mim_mimtod'; route_label = 'studio_home'; url = Join-HttpUrl -BaseUrl $studioBase -RelativePath '/studio'; expected_marker = 'Restricted Operator Access'; owner = 'MIM Studio'; recovery_boundary = 'MIM Box Studio router and auth service' },
+        [pscustomobject]@{ host_key = 'studio_mim_mimtod'; route_label = 'studio_projects'; url = Join-HttpUrl -BaseUrl $studioBase -RelativePath '/studio/projects'; expected_marker = 'Restricted Operator Access'; owner = 'MIM Studio'; recovery_boundary = 'MIM Box Studio router and auth service' },
+        [pscustomobject]@{ host_key = 'studio_mim_mimtod'; route_label = 'studio_training'; url = Join-HttpUrl -BaseUrl $studioBase -RelativePath '/studio/training'; expected_marker = 'Restricted Operator Access'; owner = 'MIM Studio'; recovery_boundary = 'MIM Box Studio router and auth service' },
+        [pscustomobject]@{ host_key = 'studio_mim_mimtod'; route_label = 'studio_visitors'; url = Join-HttpUrl -BaseUrl $studioBase -RelativePath '/studio/visitors'; expected_marker = 'Restricted Operator Access'; owner = 'MIM Studio'; recovery_boundary = 'MIM Box Studio router and auth service' },
+        [pscustomobject]@{ host_key = 'agentmim_public'; route_label = 'forum'; url = Join-HttpUrl -BaseUrl $agentBase -RelativePath '/forum'; expected_marker = 'MIM'; owner = 'AgentMIM web'; recovery_boundary = 'AgentMIM service owner'; media_probe = 'required'; minimum_media_count = 1 },
+        [pscustomobject]@{ host_key = 'agentmim_public'; route_label = 'help'; url = Join-HttpUrl -BaseUrl $agentBase -RelativePath '/help'; expected_marker = 'Support'; owner = 'AgentMIM web'; recovery_boundary = 'AgentMIM help desk and support ticket service' },
+        [pscustomobject]@{ host_key = 'local_tod'; route_label = 'local_tod_ui'; url = $LocalTodUrlValue; expected_marker = 'TOD Command Console'; owner = 'TOD workstation'; recovery_boundary = 'TOD local service' }
+    )
+}
+
+function Invoke-TechnicalOperationsRouteProbe {
+    param(
+        [Parameter(Mandatory = $true)]$Route,
+        [int]$TimeoutSeconds = 20
+    )
+
+    $probe = Invoke-HttpProbe -Url ([string]$Route.url) -TimeoutSeconds $TimeoutSeconds
+    $content = if ($probe.PSObject.Properties['content']) { [string]$probe.content } else { '' }
+    $marker = [string]$Route.expected_marker
+    $markerFound = if ([string]::IsNullOrWhiteSpace($marker)) { $true } else { $content -match [regex]::Escape($marker) }
+    $mediaAssessment = Get-RouteMediaAssessment -Route $Route -Html $content -TimeoutSeconds $TimeoutSeconds
+    $mediaHealthy = if ($mediaAssessment -and $mediaAssessment.PSObject.Properties['healthy']) { [bool]$mediaAssessment.healthy } else { $true }
+    $healthy = [bool]$probe.ok -and [int]$probe.http_status -ge 200 -and [int]$probe.http_status -lt 400 -and $markerFound -and $mediaHealthy
+
+    return [pscustomobject]@{
+        host_key = [string]$Route.host_key
+        route_label = [string]$Route.route_label
+        url = [string]$Route.url
+        owner = [string]$Route.owner
+        recovery_boundary = [string]$Route.recovery_boundary
+        expected_marker = $marker
+        marker_found = $markerFound
+        media = $mediaAssessment
+        healthy = $healthy
+        probe = ConvertTo-ProbeSummary -Probe $probe
+        blocker = if ($healthy) { '' } elseif (-not [bool]$probe.ok) { ('technical_route_unreachable:{0}' -f [string]$Route.route_label) } elseif (-not $markerFound) { ('technical_route_marker_missing:{0}' -f [string]$Route.route_label) } elseif (-not $mediaHealthy) { ('technical_route_media_unhealthy:{0}' -f [string]$Route.route_label) } else { ('technical_route_unhealthy:{0}' -f [string]$Route.route_label) }
+    }
+}
+
 function Convert-ToStringList {
     param([AllowNull()]$Value)
 
@@ -239,6 +331,125 @@ function Invoke-HttpProbe {
             content = $content
             error = [string]$_.Exception.Message
         }
+    }
+}
+
+function Resolve-RouteMediaUrl {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [Parameter(Mandatory = $true)][string]$Candidate
+    )
+
+    $value = ([string]$Candidate).Trim()
+    if ([string]::IsNullOrWhiteSpace($value) -or $value.StartsWith('data:', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return ''
+    }
+
+    if ($value -match '^https?://') {
+        return $value
+    }
+
+    if ($value.StartsWith('//')) {
+        $baseUri = [uri]$BaseUrl
+        return ('{0}:{1}' -f $baseUri.Scheme, $value)
+    }
+
+    try {
+        $base = [uri]$BaseUrl
+        return ([uri]::new($base, $value)).AbsoluteUri
+    }
+    catch {
+        return ''
+    }
+}
+
+function Get-RouteImageCandidates {
+    param(
+        [AllowNull()][string]$Html,
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [int]$MaxCandidates = 5
+    )
+
+    $items = New-Object System.Collections.Generic.List[string]
+    $body = [string]$Html
+    foreach ($match in [regex]::Matches($body, '<img\b[^>]*\bsrc\s*=\s*["'']([^"'']+)["'']', 'IgnoreCase')) {
+        $resolved = Resolve-RouteMediaUrl -BaseUrl $BaseUrl -Candidate ([string]$match.Groups[1].Value)
+        if (-not [string]::IsNullOrWhiteSpace($resolved) -and -not $items.Contains($resolved)) {
+            $items.Add($resolved)
+        }
+        if ($items.Count -ge $MaxCandidates) {
+            break
+        }
+    }
+
+    return @($items.ToArray())
+}
+
+function Get-RouteMediaAssessment {
+    param(
+        [AllowNull()]$Route,
+        [AllowNull()][string]$Html,
+        [int]$TimeoutSeconds = 20
+    )
+
+    $mediaProbeMode = ''
+    if ($Route -and $Route.PSObject.Properties['media_probe']) {
+        $mediaProbeMode = [string]$Route.media_probe
+    }
+    $required = ($mediaProbeMode -eq 'required')
+    if (-not $required) {
+        return [pscustomobject]@{
+            required = $false
+            healthy = $true
+            expected_count = 0
+            candidates = @()
+            checked = @()
+            blocker = ''
+        }
+    }
+
+    $minimumMediaCount = 1
+    if ($Route.PSObject.Properties['minimum_media_count']) {
+        try {
+            $minimumMediaCount = [Math]::Max(1, [int]$Route.minimum_media_count)
+        }
+        catch {
+            $minimumMediaCount = 1
+        }
+    }
+
+    $candidates = @(Get-RouteImageCandidates -Html $Html -BaseUrl ([string]$Route.url) -MaxCandidates 5)
+    if (@($candidates).Count -lt $minimumMediaCount) {
+        return [pscustomobject]@{
+            required = $true
+            healthy = $false
+            expected_count = $minimumMediaCount
+            candidates = @($candidates)
+            checked = @()
+            blocker = 'media_candidates_missing'
+        }
+    }
+
+    $checked = @()
+    foreach ($candidate in @($candidates)) {
+        $probe = Invoke-HttpProbe -Url ([string]$candidate) -TimeoutSeconds $TimeoutSeconds
+        $checked += [pscustomobject]@{
+            url = [string]$candidate
+            ok = [bool]$probe.ok
+            http_status = $probe.http_status
+            error = if ($probe.PSObject.Properties['error']) { [string]$probe.error } else { '' }
+        }
+    }
+
+    $okCount = @($checked | Where-Object { [bool]$_.ok -and [int]$_.http_status -ge 200 -and [int]$_.http_status -lt 400 }).Count
+    $healthy = ($okCount -ge $minimumMediaCount)
+    return [pscustomobject]@{
+        required = $true
+        healthy = $healthy
+        expected_count = $minimumMediaCount
+        candidates = @($candidates)
+        checked = @($checked)
+        blocker = if ($healthy) { '' } else { 'media_probe_failed' }
     }
 }
 
@@ -479,6 +690,9 @@ $canonicalAuthority = if ($null -ne $sharedTruth) { $sharedTruth } else { $local
 $publicHtmlProbe = Invoke-HttpProbe -Url $resolvedPublicTargets.public_tod_url -TimeoutSeconds $TimeoutSec
 $publicStateProbe = Invoke-HttpProbe -Url $resolvedPublicTargets.public_tod_state_url -TimeoutSeconds $TimeoutSec
 $localHtmlProbe = Invoke-HttpProbe -Url $LocalTodUrl -TimeoutSeconds $TimeoutSec
+$technicalRouteInventory = @(New-TechnicalOperationsRouteInventory -PublicSiteBaseUrl $PublicSiteUrl -StudioBaseUrl $StudioUrl -AgentMimBaseUrl $AgentMimUrl -LocalTodUrlValue $LocalTodUrl -RepoRoot $repoRoot)
+$technicalRouteResults = @($technicalRouteInventory | ForEach-Object { Invoke-TechnicalOperationsRouteProbe -Route $_ -TimeoutSeconds $TimeoutSec })
+$technicalRouteBlockers = @($technicalRouteResults | Where-Object { -not [bool]$_.healthy -and -not [string]::IsNullOrWhiteSpace([string]$_.blocker) } | ForEach-Object { [string]$_.blocker } | Select-Object -Unique)
 
 $publicSurface = if (-not [string]::IsNullOrWhiteSpace([string]$publicHtmlProbe.content)) {
     Get-TodPublicSurfaceClassification -Html ([string]$publicHtmlProbe.content)
@@ -544,8 +758,11 @@ $payload = [pscustomobject]@{
     public_tod_state_url = [string]$resolvedPublicTargets.public_tod_state_url
     local_tod_url = $LocalTodUrl
     status = if (@($blockers).Count -eq 0) { 'healthy' } else { 'attention' }
+    technical_operations_status = if (@($technicalRouteBlockers).Count -eq 0) { 'healthy' } else { 'attention' }
     summary = (@($summaryParts.ToArray()) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }) -join ' '
     blockers = @($blockers.ToArray() | Select-Object -Unique)
+    technical_operations_blockers = @($technicalRouteBlockers)
+    technical_operations_routes = @($technicalRouteResults)
     public_surface = [pscustomobject]@{
         probe = ConvertTo-ProbeSummary -Probe $publicHtmlProbe
         classification = $publicSurface

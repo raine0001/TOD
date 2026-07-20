@@ -33,8 +33,8 @@ Describe 'TOD-MIM Phase A coverage report' {
             [int]$report.expected.total | Should Be 6
             [int]$report.recorded.total | Should Be 1
             [double]$report.coverage_percent | Should Be 16.67
-            $report.recorded.lifecycle_event_types | Should Contain 'request_observed'
-            $report.recorded.missing_event_types | Should Contain 'ack_observed'
+            (@($report.recorded.lifecycle_event_types) -contains 'request_observed') | Should Be $true
+            (@($report.recorded.missing_event_types) -contains 'ack_observed') | Should Be $true
             $report.non_blocking_confirmed | Should Be $true
             $report.runtime_impact | Should Be 'none'
         }

@@ -1559,7 +1559,7 @@ while ($true) {
         }
         else {
             Stop-ScriptProcesses -ScriptAbs @($listenerAbs, $listenerStartupAbs)
-            Start-BackgroundScript -ScriptAbs $listenerAbs -ScriptArgs @("-PollSeconds", "2")
+            Start-BackgroundScript -ScriptAbs $listenerAbs -ScriptArgs @("-PollSeconds", "30")
         }
 
         if ($issueCode -eq "ui_unhealthy" -or ($RestartUiOnFailure -and -not $uiHealthy)) {
@@ -1573,7 +1573,18 @@ while ($true) {
         $uiRecovered = Test-UiHealthy -Port $UiPort
         $bridgeSmokeAfter = Invoke-BridgeSmokeCheck -ScriptAbs $bridgeSmokeAbs -StageDirValue $StageDir -IntegrationStatusPathValue $integrationStatusPath -OutputPathValue $bridgeSmokeOutputPath
         $recoveryOk = ($listenerRecovered -and $uiRecovered -and [bool]$bridgeSmokeAfter.passed)
-        $taskState = if ($recoveryOk) { "recovered" } else { "failed" }
+        $freshHandoffSuppressed = (
+            $publicationRepairResult -and
+            $publicationRepairResult.PSObject.Properties['suppressed'] -and
+            [bool]$publicationRepairResult.suppressed -and
+            $publicationRepairResult.PSObject.Properties['reason'] -and
+            [string]$publicationRepairResult.reason -eq 'fresh_noncanonical_mim_tod_handoff_pending'
+        )
+        $watchdogOutcomeState = if ($recoveryOk) { "recovered" } elseif ($freshHandoffSuppressed) { "watch" } else { "error" }
+        $taskState = if ($recoveryOk) { "recovered" } elseif ($freshHandoffSuppressed) { "observing" } else { "failed" }
+        if ($freshHandoffSuppressed) {
+            $progressClassification = "fresh_handoff_preserved_under_observation"
+        }
 
         $selfHealOrder = [pscustomobject]@{
             generated_at = $nowUtc.ToString("o")
@@ -1736,7 +1747,7 @@ while ($true) {
         $logEntry = [pscustomobject]@{
             timestamp = $nowUtc.ToString("o")
             source = $watchdogId
-            state = if ($recoveryOk) { "recovered" } else { "error" }
+            state = $watchdogOutcomeState
             issue_code = $issueCode
             issue_detail = $issueDetail
             action = $recoveryAction
@@ -1769,7 +1780,7 @@ while ($true) {
         $stateDoc = [pscustomobject]@{
             generated_at = $nowUtc.ToString("o")
             source = $watchdogId
-            state = if ($recoveryOk) { "recovered" } else { "error" }
+            state = $watchdogOutcomeState
             task_state = $taskState
             progress_classification = $progressClassification
             last_check_at = $nowUtc.ToString("o")

@@ -224,6 +224,186 @@ function Resolve-SshHostAlias {
     return $RemoteHostValue
 }
 
+function Quote-RemoteShellSingle {
+    param([string]$Value)
+
+    return "'" + ([string]$Value).Replace("'", "'\''") + "'"
+}
+
+function Get-OpenSshToolPath {
+    param([Parameter(Mandatory = $true)][string]$ToolName)
+
+    $command = Get-Command $ToolName -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $command) {
+        return ''
+    }
+
+    return [string]$command.Source
+}
+
+function Ensure-PoshSshModulePath {
+    $candidateRoots = @(
+        (Join-Path $HOME 'OneDrive\Documents\WindowsPowerShell\Modules'),
+        (Join-Path $HOME 'Documents\WindowsPowerShell\Modules'),
+        (Join-Path $HOME 'OneDrive\Documents\PowerShell\Modules'),
+        (Join-Path $HOME 'Documents\PowerShell\Modules')
+    )
+
+    $pathParts = @([string]$env:PSModulePath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    foreach ($candidateRoot in $candidateRoots) {
+        if ((Test-Path -Path (Join-Path $candidateRoot 'Posh-SSH')) -and -not ($pathParts -contains $candidateRoot)) {
+            $pathParts = @($candidateRoot) + $pathParts
+        }
+    }
+    $env:PSModulePath = ($pathParts | Select-Object -Unique) -join ';'
+}
+
+function Test-UsePoshSshTransport {
+    param([Parameter(Mandatory = $true)]$Settings)
+
+    if ([string]::IsNullOrWhiteSpace([string]$Settings.password)) {
+        return $false
+    }
+
+    try {
+        Ensure-PoshSshModulePath
+        Import-Module Posh-SSH -ErrorAction Stop | Out-Null
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-MimDialogTransportReason {
+    param([Parameter(Mandatory = $true)]$Settings)
+
+    if ([string]::IsNullOrWhiteSpace([string]$Settings.password)) {
+        return 'posh_ssh_password_missing'
+    }
+    try {
+        Ensure-PoshSshModulePath
+        Import-Module Posh-SSH -ErrorAction Stop | Out-Null
+    }
+    catch {
+        return 'posh_ssh_module_missing'
+    }
+
+    return 'posh_ssh_available'
+}
+
+function Invoke-OpenSshCommand {
+    param(
+        [Parameter(Mandatory = $true)]$Settings,
+        [Parameter(Mandatory = $true)][string]$Command
+    )
+
+    $sshPath = Get-OpenSshToolPath -ToolName 'ssh.exe'
+    if ([string]::IsNullOrWhiteSpace($sshPath)) {
+        throw 'OpenSSH ssh.exe is unavailable.'
+    }
+
+    $resolvedHost = Resolve-SshHostAlias -RemoteHostValue ([string]$Settings.host)
+    $connectTimeoutSeconds = [Math]::Max(1, [int][Math]::Ceiling($RemoteConnectionTimeoutMilliseconds / 1000))
+    $destination = ('{0}@{1}' -f [string]$Settings.user, $resolvedHost)
+    $arguments = @(
+        '-o', 'BatchMode=yes',
+        '-o', ('ConnectTimeout={0}' -f $connectTimeoutSeconds),
+        '-p', ([string]$Settings.port),
+        $destination,
+        $Command
+    )
+    $output = & $sshPath @arguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw ('OpenSSH command failed with exit {0}: {1}' -f $LASTEXITCODE, (($output | Out-String).Trim()))
+    }
+
+    return ($output | Out-String).Trim()
+}
+
+function Copy-ToOpenSsh {
+    param(
+        [Parameter(Mandatory = $true)]$Settings,
+        [Parameter(Mandatory = $true)][string]$LocalPathValue,
+        [Parameter(Mandatory = $true)][string]$RemoteDirectory
+    )
+
+    $scpPath = Get-OpenSshToolPath -ToolName 'scp.exe'
+    if ([string]::IsNullOrWhiteSpace($scpPath)) {
+        throw 'OpenSSH scp.exe is unavailable.'
+    }
+
+    $resolvedHost = Resolve-SshHostAlias -RemoteHostValue ([string]$Settings.host)
+    $connectTimeoutSeconds = [Math]::Max(1, [int][Math]::Ceiling($RemoteConnectionTimeoutMilliseconds / 1000))
+    $destination = ('{0}@{1}:{2}/' -f [string]$Settings.user, $resolvedHost, [string]$RemoteDirectory)
+    $arguments = @(
+        '-o', 'BatchMode=yes',
+        '-o', ('ConnectTimeout={0}' -f $connectTimeoutSeconds),
+        '-P', ([string]$Settings.port),
+        $LocalPathValue,
+        $destination
+    )
+    $output = & $scpPath @arguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw ('OpenSSH upload failed with exit {0}: {1}' -f $LASTEXITCODE, (($output | Out-String).Trim()))
+    }
+}
+
+function Copy-FromOpenSshIfAvailable {
+    param(
+        [Parameter(Mandatory = $true)]$Settings,
+        [Parameter(Mandatory = $true)][string]$RemotePathValue,
+        [Parameter(Mandatory = $true)][string]$LocalPathValue
+    )
+
+    $result = [pscustomobject]@{
+        ok = $false
+        remote_path = $RemotePathValue
+        local_path = $LocalPathValue
+        error = ''
+    }
+
+    try {
+        $scpPath = Get-OpenSshToolPath -ToolName 'scp.exe'
+        if ([string]::IsNullOrWhiteSpace($scpPath)) {
+            $result.error = 'openssh_scp_unavailable'
+            return $result
+        }
+
+        Ensure-ParentDirectoryForFile -FilePath $LocalPathValue
+        $destinationDir = Split-Path -Parent $LocalPathValue
+        if ([string]::IsNullOrWhiteSpace($destinationDir)) {
+            $destinationDir = Get-Location
+        }
+
+        $resolvedHost = Resolve-SshHostAlias -RemoteHostValue ([string]$Settings.host)
+        $connectTimeoutSeconds = [Math]::Max(1, [int][Math]::Ceiling($RemoteConnectionTimeoutMilliseconds / 1000))
+        $source = ('{0}@{1}:{2}' -f [string]$Settings.user, $resolvedHost, [string]$RemotePathValue)
+        $arguments = @(
+            '-o', 'BatchMode=yes',
+            '-o', ('ConnectTimeout={0}' -f $connectTimeoutSeconds),
+            '-P', ([string]$Settings.port),
+            $source,
+            $destinationDir
+        )
+        $output = & $scpPath @arguments 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $result.error = ('OpenSSH download failed with exit {0}: {1}' -f $LASTEXITCODE, (($output | Out-String).Trim()))
+            return $result
+        }
+        if (Test-Path -Path $LocalPathValue -PathType Leaf) {
+            $result.ok = $true
+            return $result
+        }
+        $result.error = 'optional_missing'
+    }
+    catch {
+        $result.error = [string]$_.Exception.Message
+    }
+
+    return $result
+}
+
 function New-MimSshConnections {
     param(
         [Parameter(Mandatory = $true)][string]$HostAlias,
@@ -233,6 +413,9 @@ function New-MimSshConnections {
         [int]$ConnectionTimeoutMilliseconds = 15000
     )
 
+    if (-not (Get-Module -ListAvailable -Name Posh-SSH)) {
+        Ensure-PoshSshModulePath
+    }
     if (-not (Get-Module -ListAvailable -Name Posh-SSH)) {
         throw 'Posh-SSH is not installed. Install-Module -Name Posh-SSH -Scope CurrentUser'
     }
@@ -338,7 +521,7 @@ function Get-RemoteDialogSettings {
     }
 
     return [pscustomobject]@{
-        available = (-not [string]::IsNullOrWhiteSpace($resolvedHost)) -and (-not [string]::IsNullOrWhiteSpace($resolvedPassword))
+        available = (-not [string]::IsNullOrWhiteSpace($resolvedHost)) -and (-not [string]::IsNullOrWhiteSpace($resolvedUser))
         host = $resolvedHost
         user = $resolvedUser
         port = $resolvedPort
@@ -370,6 +553,8 @@ function Publish-DialogArtifactsRemote {
         remote_root = [string]$Settings.root
         ssh_host = [string]$Settings.host
         ssh_port = [int]$Settings.port
+        transport = ''
+        transport_reason = ''
         error = ''
     }
 
@@ -381,15 +566,29 @@ function Publish-DialogArtifactsRemote {
 
     $connections = $null
     try {
-        $connections = New-MimSshConnections -HostAlias ([string]$Settings.host) -UserName ([string]$Settings.user) -Port ([int]$Settings.port) -Password ([string]$Settings.password) -ConnectionTimeoutMilliseconds $RemoteConnectionTimeoutMilliseconds
-        $mkdirResult = Invoke-SSHCommand -SessionId ([int]$connections.ssh.SessionId) -Command ("mkdir -p '{0}'" -f [string]$Settings.root) -TimeOut 20
-        if ($mkdirResult.ExitStatus -ne 0) {
-            throw 'remote_dialog_root_create_failed'
-        }
+        if (Test-UsePoshSshTransport -Settings $Settings) {
+            $result.transport = 'posh_ssh'
+            $result.transport_reason = Get-MimDialogTransportReason -Settings $Settings
+            $connections = New-MimSshConnections -HostAlias ([string]$Settings.host) -UserName ([string]$Settings.user) -Port ([int]$Settings.port) -Password ([string]$Settings.password) -ConnectionTimeoutMilliseconds $RemoteConnectionTimeoutMilliseconds
+            $mkdirResult = Invoke-SSHCommand -SessionId ([int]$connections.ssh.SessionId) -Command ("mkdir -p '{0}'" -f [string]$Settings.root) -TimeOut 20
+            if ($mkdirResult.ExitStatus -ne 0) {
+                throw 'remote_dialog_root_create_failed'
+            }
 
-        foreach ($localPath in @($Paths.session_path, $Paths.session_state_path, $Paths.channel_path, $Paths.index_path)) {
-            if (Test-Path -Path $localPath) {
-                Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $localPath -Destination ([string]$Settings.root) -Force -ErrorAction Stop | Out-Null
+            foreach ($localPath in @($Paths.session_path, $Paths.session_state_path, $Paths.channel_path, $Paths.index_path)) {
+                if (Test-Path -Path $localPath) {
+                    Set-SFTPItem -SessionId ([int]$connections.sftp.SessionId) -Path $localPath -Destination ([string]$Settings.root) -Force -ErrorAction Stop | Out-Null
+                }
+            }
+        }
+        else {
+            $result.transport = 'openssh_batch'
+            $result.transport_reason = Get-MimDialogTransportReason -Settings $Settings
+            Invoke-OpenSshCommand -Settings $Settings -Command ('mkdir -p {0}' -f (Quote-RemoteShellSingle -Value ([string]$Settings.root))) | Out-Null
+            foreach ($localPath in @($Paths.session_path, $Paths.session_state_path, $Paths.channel_path, $Paths.index_path)) {
+                if (Test-Path -Path $localPath) {
+                    Copy-ToOpenSsh -Settings $Settings -LocalPathValue $localPath -RemoteDirectory ([string]$Settings.root)
+                }
             }
         }
 
@@ -422,6 +621,8 @@ function Refresh-DialogArtifactsRemote {
         refreshed = $false
         status = 'pending'
         remote_root = [string]$Settings.root
+        transport = ''
+        transport_reason = ''
         error = ''
     }
 
@@ -433,8 +634,8 @@ function Refresh-DialogArtifactsRemote {
 
     $connections = $null
     try {
-        $connections = New-MimSshConnections -HostAlias ([string]$Settings.host) -UserName ([string]$Settings.user) -Port ([int]$Settings.port) -Password ([string]$Settings.password) -ConnectionTimeoutMilliseconds $RemoteConnectionTimeoutMilliseconds
         $items = @()
+        $pullErrors = New-Object System.Collections.Generic.List[string]
         if ($IncludeSessionLog) {
             $items += [pscustomobject]@{ remote = (Get-RemoteDialogPath -Settings $Settings -FileName (Split-Path -Leaf $Paths.session_path)); local = $Paths.session_path }
         }
@@ -448,14 +649,44 @@ function Refresh-DialogArtifactsRemote {
             $items += [pscustomobject]@{ remote = (Get-RemoteDialogPath -Settings $Settings -FileName (Split-Path -Leaf $Paths.channel_path)); local = $Paths.channel_path }
         }
 
-        foreach ($item in @($items)) {
-            $pull = Copy-FromSftpIfAvailable -SessionId ([int]$connections.sftp.SessionId) -RemotePathValue ([string]$item.remote) -LocalPathValue ([string]$item.local)
-            if ($pull.ok) {
-                $result.refreshed = $true
+        if (Test-UsePoshSshTransport -Settings $Settings) {
+            $result.transport = 'posh_ssh'
+            $result.transport_reason = Get-MimDialogTransportReason -Settings $Settings
+            $connections = New-MimSshConnections -HostAlias ([string]$Settings.host) -UserName ([string]$Settings.user) -Port ([int]$Settings.port) -Password ([string]$Settings.password) -ConnectionTimeoutMilliseconds $RemoteConnectionTimeoutMilliseconds
+            foreach ($item in @($items)) {
+                $pull = Copy-FromSftpIfAvailable -SessionId ([int]$connections.sftp.SessionId) -RemotePathValue ([string]$item.remote) -LocalPathValue ([string]$item.local)
+                if ($pull.ok) {
+                    $result.refreshed = $true
+                }
+                elseif (-not [string]::IsNullOrWhiteSpace([string]$pull.error) -and [string]$pull.error -ne 'optional_missing') {
+                    $pullErrors.Add([string]$pull.error) | Out-Null
+                }
+            }
+        }
+        else {
+            $result.transport = 'openssh_batch'
+            $result.transport_reason = Get-MimDialogTransportReason -Settings $Settings
+            foreach ($item in @($items)) {
+                $pull = Copy-FromOpenSshIfAvailable -Settings $Settings -RemotePathValue ([string]$item.remote) -LocalPathValue ([string]$item.local)
+                if ($pull.ok) {
+                    $result.refreshed = $true
+                }
+                elseif (-not [string]::IsNullOrWhiteSpace([string]$pull.error) -and [string]$pull.error -ne 'optional_missing') {
+                    $pullErrors.Add([string]$pull.error) | Out-Null
+                }
             }
         }
 
-        $result.status = if ($result.refreshed) { 'refreshed' } else { 'no_remote_updates' }
+        if ($result.refreshed) {
+            $result.status = 'refreshed'
+        }
+        elseif ($pullErrors.Count -gt 0) {
+            $result.status = 'refresh_failed'
+            $result.error = (@($pullErrors.ToArray()) | Select-Object -Unique) -join '; '
+        }
+        else {
+            $result.status = 'no_remote_updates'
+        }
     }
     catch {
         $result.status = 'refresh_failed'
@@ -953,8 +1184,9 @@ switch ($Action) {
         $actionableInboxStatuses = @('awaiting_reply', 'timed_out', 'open')
         $seenSessionIds = @{}
         $remoteRefresh = $null
+        $remotePublish = $null
+        $refreshPaths = Get-SessionPaths -DialogDirValue $dialogDirAbs -SessionValue ("inbox-{0}" -f $actorName.ToLowerInvariant())
         if ($RefreshFromRemote) {
-            $refreshPaths = Get-SessionPaths -DialogDirValue $dialogDirAbs -SessionValue ("inbox-{0}" -f $actorName.ToLowerInvariant())
             $remoteRefresh = Refresh-DialogArtifactsRemote -Settings $remoteDialogSettings -Paths $refreshPaths -IncludeIndex
         }
 
@@ -973,6 +1205,16 @@ switch ($Action) {
                     $indexedOpenReply = if ($sessionState.PSObject.Properties['open_reply']) { $sessionState.open_reply } else { $null }
                     if (-not $indexedOpenReply -or -not ($actionableInboxStatuses -contains $indexedStatus)) {
                         continue
+                    }
+
+                    $sessionPaths = Get-SessionPaths -DialogDirValue $dialogDirAbs -SessionValue $sessionIdValue
+                    if (Test-Path -Path $sessionPaths.session_path) {
+                        $sessionState = Get-RefreshedSessionState -DialogDirValue $dialogDirAbs -SessionIdValue $sessionIdValue -MaxOpenMinutesValue $MaxOpenMinutes
+                        $indexedStatus = if ($sessionState.PSObject.Properties['status']) { [string]$sessionState.status } else { '' }
+                        $indexedOpenReply = if ($sessionState.PSObject.Properties['open_reply']) { $sessionState.open_reply } else { $null }
+                        if (-not $indexedOpenReply -or -not ($actionableInboxStatuses -contains $indexedStatus)) {
+                            continue
+                        }
                     }
 
                     if ([string]::Equals([string]$indexedOpenReply.to, $actorName, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -1004,6 +1246,10 @@ switch ($Action) {
             }
         }
 
+        if ($PublishRemote) {
+            $remotePublish = Publish-DialogArtifactsRemote -Settings $remoteDialogSettings -Paths $refreshPaths
+        }
+
         $result = [pscustomobject]@{
             ok = $true
             action = 'read-inbox'
@@ -1012,6 +1258,7 @@ switch ($Action) {
                 if ($_.PSObject.Properties['updated_at']) { [string]$_.updated_at } else { '' }
             } -Descending)
             remote = $remoteRefresh
+            remote_publish = $remotePublish
         }
 
         if ($EmitJson) {

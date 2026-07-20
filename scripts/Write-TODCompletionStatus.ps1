@@ -209,7 +209,8 @@ $dailyTask = Get-TaskSummary -TaskName $DailyTaskName
 $daemonTask = Get-TaskSummary -TaskName $DaemonTaskName
 $guardTask = Get-TaskSummary -TaskName $GuardTaskName
 
-$lastMimRequestSeconds = if ($daemonState) { Get-SecondsAgo -WhenUtc ([string]$daemonState.pending_mim_requested_at_utc) } else { $null }
+$lastMimRequestAt = if ($daemonState -and $daemonState.PSObject.Properties['pending_mim_requested_at_utc']) { [string]$daemonState.pending_mim_requested_at_utc } else { "" }
+$lastMimRequestSeconds = if ($daemonState -and -not [string]::IsNullOrWhiteSpace($lastMimRequestAt)) { Get-SecondsAgo -WhenUtc $lastMimRequestAt } else { $null }
 $lastTodActionSeconds = if ($daemonState) { Get-SecondsAgo -WhenUtc ([string]$daemonState.updated_at_utc) } else { $null }
 
 $payload = [pscustomobject]@{

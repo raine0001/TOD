@@ -38,6 +38,26 @@ function Test-PathPrefixMatch {
     return ($pathNorm -eq $prefixNorm -or $pathNorm.StartsWith($prefixNorm + "/"))
 }
 
+function Test-BlockedPathMatch {
+    param(
+        [Parameter(Mandatory = $true)][string]$PathValue,
+        [Parameter(Mandatory = $true)][string]$Prefix
+    )
+
+    $pathNorm = (Normalize-Path -PathValue $PathValue).ToLowerInvariant()
+    $prefixNorm = (Normalize-Path -PathValue $Prefix).ToLowerInvariant()
+
+    if ([string]::IsNullOrWhiteSpace($prefixNorm)) { return $false }
+    if (Test-PathPrefixMatch -PathValue $pathNorm -Prefix $prefixNorm) { return $true }
+
+    if ($prefixNorm -notmatch "/") {
+        $segments = @($pathNorm.Split("/") | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+        return ($segments -contains $prefixNorm)
+    }
+
+    return $false
+}
+
 $resolvedRegistryPath = Resolve-LocalPath -PathValue $RegistryPath
 if (-not (Test-Path -Path $resolvedRegistryPath)) {
     throw "Registry file not found: $resolvedRegistryPath"
@@ -76,7 +96,7 @@ foreach ($path in $RelativePaths) {
 
     $matchedBlocked = $false
     foreach ($blockedPrefix in $blocked) {
-        if (Test-PathPrefixMatch -PathValue $normalizedPath -Prefix ([string]$blockedPrefix)) {
+        if (Test-BlockedPathMatch -PathValue $normalizedPath -Prefix ([string]$blockedPrefix)) {
             $matchedBlocked = $true
             break
         }

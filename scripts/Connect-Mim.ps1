@@ -44,6 +44,21 @@ function Resolve-PreferredSshHost {
     return $HostName
 }
 
+function Ensure-PoshSshModulePath {
+    $candidateRoots = @(
+        (Join-Path $HOME 'OneDrive\Documents\WindowsPowerShell\Modules'),
+        (Join-Path $HOME 'Documents\WindowsPowerShell\Modules'),
+        (Join-Path $HOME 'OneDrive\Documents\PowerShell\Modules'),
+        (Join-Path $HOME 'Documents\PowerShell\Modules')
+    )
+
+    foreach ($root in $candidateRoots) {
+        if ((Test-Path -Path (Join-Path $root 'Posh-SSH')) -and ($env:PSModulePath -notlike "*$root*")) {
+            $env:PSModulePath = $root + [System.IO.Path]::PathSeparator + $env:PSModulePath
+        }
+    }
+}
+
 if (-not (Test-Path -Path $EnvFile)) {
     throw "Missing $EnvFile. Copy .env.example to .env and set MIM_SSH_PASSWORD."
 }
@@ -61,6 +76,7 @@ if ([string]::IsNullOrWhiteSpace($password) -or $password -eq "CHANGE_ME") {
     throw "Set MIM_SSH_PASSWORD in $EnvFile before connecting."
 }
 
+Ensure-PoshSshModulePath
 if (-not (Get-Module -ListAvailable -Name Posh-SSH)) {
     throw "Posh-SSH is not installed. Run: Install-Module -Name Posh-SSH -Scope CurrentUser"
 }
@@ -80,8 +96,13 @@ try {
         Write-Host "Using IPv4 endpoint $connectHost for reliable SSH connect." -ForegroundColor DarkGray
     }
     if ($PSBoundParameters.ContainsKey("Command") -and -not [string]::IsNullOrWhiteSpace($Command)) {
-        $result = Invoke-SSHCommandStream -SessionId $session.SessionId -Command $Command -TimeOut 120
-        if ($result) { $result }
+        $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $Command -TimeOut 120
+        if ($result.Output) { $result.Output }
+        if ($result.ExitStatus -ne 0) {
+            if ($result.Error) { $result.Error | Write-Error }
+            throw "Remote command failed with exit status $($result.ExitStatus)."
+        }
+        if ($result.Error) { $result.Error }
         return
     }
 
@@ -91,8 +112,18 @@ try {
         if ([string]::IsNullOrWhiteSpace($remoteCommand)) { continue }
         if ($remoteCommand.Trim().ToLowerInvariant() -in @("exit", "quit")) { break }
 
-        $result = Invoke-SSHCommandStream -SessionId $session.SessionId -Command $remoteCommand -TimeOut 120
-        if ($result) { $result }
+        if (Get-Command -Name Invoke-SSHCommandStream -ErrorAction SilentlyContinue) {
+            $result = Invoke-SSHCommandStream -SessionId $session.SessionId -Command $remoteCommand -TimeOut 120
+            if ($result) { $result }
+            continue
+        }
+        $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $remoteCommand -TimeOut 120
+        if ($result.Output) { $result.Output }
+        if ($result.ExitStatus -ne 0) {
+            if ($result.Error) { $result.Error | Write-Error }
+            Write-Warning "Remote command failed with exit status $($result.ExitStatus)."
+        }
+        elseif ($result.Error) { $result.Error }
     }
 }
 finally {

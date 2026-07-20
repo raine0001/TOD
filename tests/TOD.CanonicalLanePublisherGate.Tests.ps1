@@ -127,6 +127,8 @@ Describe 'TOD canonical lane publisher gate' {
         Import-TodFunction -Name 'Get-TodExecutionArtifactLane'
         Import-TodFunction -Name 'Get-TodCanonicalPublishContext'
         Import-TodFunction -Name 'Test-TodCanonicalLaneTerminal'
+        Import-TodFunction -Name 'Test-TodIntakeTerminalStatus'
+        Import-TodFunction -Name 'Get-TodTaskStatusFromState'
         Import-TodFunction -Name 'Test-TodArtifactMatchesCanonicalLane'
         Import-TodFunction -Name 'Test-TodLatestArtifactPublishGate'
         Import-TodFunction -Name 'Write-TodBlockedLatestArtifactRecord'
@@ -174,6 +176,24 @@ Describe 'TOD canonical lane publisher gate' {
         Remove-Item function:\Get-UtcNow -ErrorAction SilentlyContinue
         Remove-Item function:\Write-TodSharedArtifactWriteFailureRecord -ErrorAction SilentlyContinue
         Import-TodFunction -Name 'Write-TodSharedArtifactWriteFailureRecord'
+    }
+
+    It 'writes artifacts near the Windows path limit without lengthening the temp path past the limit' {
+        $deepDir = Join-Path $script:sharedRoot 'superseded/MIM_TOD_TASK_REQUEST.latest.json'
+        while ((Join-Path $deepDir 'x.json').Length -lt 250) {
+            $deepDir = Join-Path $deepDir ('d' + ('x' * 20))
+        }
+        New-Item -ItemType Directory -Path $deepDir -Force | Out-Null
+        $targetPath = Join-Path $deepDir 'x.json'
+
+        Write-TodExecutionJsonAtomically -Path $targetPath -Payload ([ordered]@{
+            status = 'ok'
+            reason = 'path_limit_regression'
+        })
+
+        $written = Read-TodExecutionJsonIfExists -Path $targetPath
+        [string]$written.status | Should Be 'ok'
+        @(Get-ChildItem -Path $deepDir -Force | Where-Object { $_.Name -like '.t*' -or $_.Name -like '.b*' }).Count | Should Be 0
     }
 
     It 'blocks stale 0631 next-task publication when shared truth anchors to objective 2913' {
@@ -290,6 +310,32 @@ Describe 'TOD canonical lane publisher gate' {
         $written = Read-TestJson -Path $path
         [string]$written.task_id | Should Be 'TSK-FRESH-1'
         (Test-Path -Path (Join-Path $script:sharedRoot 'superseded/TOD_EXECUTION_RESULT.latest.json/latest.blocked.json')) | Should Be $false
+    }
+
+    It 'blocks reselecting the terminal canonical task for dispatch' {
+        $sharedTruth = New-CanonicalSharedTruth
+        $sharedTruth.state = 'ACCEPTED_COMPLETE'
+        $sharedTruth.execution_state = 'completed'
+        Write-TestJson -Path (Join-Path $script:sharedRoot 'TOD_MIM_SHARED_TRUTH.latest.json') -Payload $sharedTruth
+
+        $path = Join-Path $script:sharedRoot 'TOD_ACTIVE_TASK.latest.json'
+        $payload = [ordered]@{
+            generated_at = '2026-05-05T03:11:00.0000000Z'
+            source = 'tod-next-task-selection-v1'
+            request_id = 'objective-2913-task-7144'
+            task_id = 'objective-2913-task-7144'
+            objective_id = '2913'
+            status = 'active'
+            execution_state = 'selected_for_dispatch'
+        }
+
+        $writeResult = Write-TodExecutionSharedJson -Path $path -Payload $payload
+
+        [bool]$writeResult.written | Should Be $false
+        [bool]$writeResult.blocked | Should Be $true
+        [string]$writeResult.reason_code | Should Be 'terminal_canonical_task_cannot_update_latest'
+        $blockedRecord = Read-TestJson -Path (Join-Path $script:sharedRoot 'superseded/TOD_ACTIVE_TASK.latest.json/latest.blocked.json')
+        [string]$blockedRecord.reason_code | Should Be 'terminal_canonical_task_cannot_update_latest'
     }
 
     It 'returns a structured write failure when the shared artifact path is unauthorized' {

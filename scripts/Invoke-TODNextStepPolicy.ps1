@@ -86,10 +86,35 @@ if ([string]::Equals($status, 'pending_mim', [System.StringComparison]::OrdinalI
         $continuationReason = 'TOD/MIM consensus exceeded the timeout threshold, so TOD should proceed with a provisional local decision instead of preserving deadlock.'
     }
     else {
-        $continuationRoute = 'tod_executes_under_open_mim_dialog'
-        $continuationDecision = 'proceed_while_mim_dialog_open'
-        $continuationReason = 'TOD published its position and continues under the best supported next step while the TOD-MIM dialog remains open; operator prompts stay disabled.'
+        $continuationRoute = 'tod_mim_consensus_dialog'
+        $continuationDecision = 'await_tod_mim_consensus'
+        $continuationReason = 'TOD published its position and keeps the coordination item dialog-routed until MIM answers or the timeout policy permits provisional local continuation.'
     }
+}
+
+$sourceExecutionPolicy = if ($consensus.PSObject.Properties['consensus']) {
+    $consensus.consensus.execution_policy
+}
+else {
+    [pscustomobject]@{ class = 'none'; applied = $false; applied_reason = 'missing_consensus_execution_policy' }
+}
+$sourcePolicyApplied = if ($sourceExecutionPolicy.PSObject.Properties['applied'] -and $null -ne $sourceExecutionPolicy.applied) {
+    [bool]$sourceExecutionPolicy.applied
+}
+else {
+    $false
+}
+$sourcePolicyReason = if ($sourceExecutionPolicy.PSObject.Properties['applied_reason'] -and -not [string]::IsNullOrWhiteSpace([string]$sourceExecutionPolicy.applied_reason)) {
+    [string]$sourceExecutionPolicy.applied_reason
+}
+elseif ($pendingConsensusTimedOut) {
+    'pending_consensus_timeout_provisional_local_decision'
+}
+elseif ([string]::Equals($status, 'pending_mim', [System.StringComparison]::OrdinalIgnoreCase)) {
+    'awaiting_mim_consensus'
+}
+else {
+    'consensus_policy_projection'
 }
 
 $policy = [pscustomobject]@{
@@ -100,9 +125,9 @@ $policy = [pscustomobject]@{
     status = $status
     selected_finding_id = if ($selectedFinding) { [string]$selectedFinding.finding.finding_id } else { '' }
     recommended_action = $recommendation
-    execution_policy = if ($consensus.PSObject.Properties['consensus']) { $consensus.consensus.execution_policy } else { [pscustomobject]@{ class = 'none'; applied = $false; applied_reason = 'missing_consensus_execution_policy' } }
-    applied = $true
-    applied_reason = if ($pendingConsensusTimedOut) { 'pending_consensus_timeout_provisional_local_decision' } else { 'continue_execution_while_mim_dialog_open' }
+    execution_policy = $sourceExecutionPolicy
+    applied = $sourcePolicyApplied
+    applied_reason = $sourcePolicyReason
     provisional = $pendingConsensusTimedOut
     pending_consensus_timeout_minutes = $PendingConsensusTimeoutMinutes
     pending_consensus_age_minutes = $pendingConsensusAgeMinutes

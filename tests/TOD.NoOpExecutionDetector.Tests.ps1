@@ -82,6 +82,7 @@ Describe 'TOD no-op execution detector' {
         Import-TodFunction -Name 'Get-LocalExecutionCommandCapture'
         Import-TodFunction -Name 'Get-LocalExecutionRollbackState'
         Import-TodFunction -Name 'Get-NormalizedObjectiveToken'
+        Import-TodFunction -Name 'Get-TodTaskIdentity'
         Import-TodFunction -Name 'Resolve-LocalExecutionTaskClass'
         Import-TodFunction -Name 'Test-LocalExecutionPatchRequired'
         Import-TodFunction -Name 'Get-LocalExecutionNoOpAssessment'
@@ -286,6 +287,36 @@ Validation Command: Select-String -Path scripts/TOD.ps1 -Pattern validation_only
         [bool]$published.execution_result.material_implementation_proof.no_change_required | Should Be $true
         [bool]$published.execution_result.material_implementation_proof.allows_authoritative_completion | Should Be $false
         @($published.execution_result.material_implementation_proof.reason_codes) -contains 'validation_only_no_material_change' | Should Be $true
+    }
+
+    It 'accepts validated artifact_write output when the runtime artifact is the intended deliverable' {
+        $task = New-NoOpTestTask -Title 'Write training artifact' -Scope 'Target File: runtime/shared/TOD_TRAINING_ARTIFACT.latest.json
+Edit Mode: artifact_write
+Validation Command: python -m json.tool runtime/shared/TOD_TRAINING_ARTIFACT.latest.json' -Type 'implementation' -TaskCategory 'artifact_write'
+        $result = New-NoOpResultPayload -FilesChanged @('runtime/shared/TOD_TRAINING_ARTIFACT.latest.json') -Summary 'LocalExecutionEngine wrote the requested training artifact and validation passed.' -TestsRun @('target_file_exists', 'focused_validation_exit_zero', 'change_or_requested_state_present') -TestResults @('pass', 'pass', 'pass') -StructuredFindings @(
+            [pscustomobject]@{
+                type = 'result_contract'
+                action_taken = 'Wrote runtime/shared/TOD_TRAINING_ARTIFACT.latest.json.'
+                changed_files = @('runtime/shared/TOD_TRAINING_ARTIFACT.latest.json')
+                accepted = $true
+            },
+            [pscustomobject]@{
+                type = 'command'
+                capture = [pscustomobject]@{
+                    command = 'python -m json.tool runtime/shared/TOD_TRAINING_ARTIFACT.latest.json'
+                    stdout = '{}'
+                    exit_code = 0
+                }
+            }
+        )
+
+        $published = Publish-LocalExecutionArtifacts -Task $task -Objective $null -ResultPayload $result -ReviewDecision 'pass' -ExecutionId 'EXEC-ARTIFACT-001' -PackagePath 'E:\TOD\tod\out\prompts\artifact-write.md' -ExecutionReadiness ([pscustomobject]@{ status = 'valid' })
+
+        [string]$published.active_task.status | Should Be 'completed'
+        [string]$published.execution_result.execution_state | Should Be 'completed'
+        [bool]$published.execution_result.material_implementation_proof.artifact_write_evidence_present | Should Be $true
+        [bool]$published.execution_result.material_implementation_proof.wrapper_only_success_rejected | Should Be $false
+        @($published.execution_result.material_implementation_proof.reason_codes) -contains 'material_diff_missing' | Should Be $false
     }
 
     It 'signals replay_or_replan_required for rejected no-op executions' {
