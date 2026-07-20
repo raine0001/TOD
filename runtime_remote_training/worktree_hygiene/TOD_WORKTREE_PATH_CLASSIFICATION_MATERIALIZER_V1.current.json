@@ -2,7 +2,7 @@
   "ok": true,
   "objective_id": "TOD-WORKTREE-PATH-CLASSIFICATION-MATERIALIZER-V1",
   "artifact_type": "tod_worktree_path_classification_manifest",
-  "generated_at": "2026-07-20T19:28:20Z",
+  "generated_at": "2026-07-20T19:35:38Z",
   "source_artifact": "shared_state\\tod_sync_cleanliness.latest.json",
   "intervention_class": "escalation_after_TOD_attempt",
   "tod_independent_capability_acquired": false,
@@ -86,8 +86,8 @@
   "validation": {
     "every_input_path_has_bucket_owner_action": true,
     "all_paths_represented_once": true,
-    "source_dirty_count_before": null,
-    "source_remaining_dirty_count": null
+    "source_dirty_count_before": 63,
+    "source_remaining_dirty_count": 63
   },
   "duplicates": [],
   "unclassified": [],
