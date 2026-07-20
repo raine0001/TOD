@@ -1,5 +1,6 @@
 param(
     [string]$ContextSyncRoot = "tod/out/context-sync",
+    [string]$RuntimeSharedRoot = "runtime/shared",
     [string]$ObjectiveArtifactPath = "runtime_remote_training/MIM_CONTEXT_SYNC_DATA_ACCURACY_REPAIR_2026_06_04.latest.json",
     [int]$FreshWrapperOldEmbeddedMinutes = 180,
     [switch]$WhatIfOnly,
@@ -73,6 +74,83 @@ function Get-JsonDate {
     return $null
 }
 
+function Get-ExecutionOutcome {
+    param(
+        $ListenerResult,
+        [string]$RuntimeSharedRootAbs
+    )
+
+    $listenerRequestId = Get-JsonString -Object $ListenerResult -Name "request_id"
+    $listenerTaskId = Get-JsonString -Object $ListenerResult -Name "task_id"
+    $listenerStatus = Get-JsonString -Object $ListenerResult -Name "status"
+    $listenerGeneratedAt = Get-JsonDate -Object $ListenerResult
+
+    $outcome = [ordered]@{
+        status = $listenerStatus
+        reason_code = Get-JsonString -Object $ListenerResult -Name "reason_code"
+        source = "listener/TOD_MIM_TASK_RESULT.latest.json"
+        generated_at = if ($null -ne $listenerGeneratedAt) { Convert-ToIsoUtc -Value $listenerGeneratedAt } else { "" }
+        conflict_detected = $false
+        conflict_summary = ""
+    }
+
+    $runtimeCandidates = @(
+        "TOD_EXECUTION_RESULT.latest.json",
+        "TOD_EXECUTION_TRUTH.latest.json"
+    )
+    foreach ($candidate in $runtimeCandidates) {
+        $candidatePath = Join-Path $RuntimeSharedRootAbs $candidate
+        $payload = Read-JsonFileIfExists -PathValue $candidatePath
+        if ($null -eq $payload) { continue }
+
+        $records = New-Object System.Collections.Generic.List[object]
+        $records.Add($payload)
+        if ($payload.PSObject.Properties["summary"] -and $null -ne $payload.summary) {
+            $records.Add($payload.summary)
+        }
+        if ($payload.PSObject.Properties["recent_execution_truth"] -and $null -ne $payload.recent_execution_truth) {
+            foreach ($record in @($payload.recent_execution_truth)) {
+                if ($null -ne $record) { $records.Add($record) }
+            }
+        }
+
+        foreach ($record in $records) {
+            $recordRequestId = Get-JsonString -Object $record -Name "request_id"
+            $recordTaskId = Get-JsonString -Object $record -Name "task_id"
+            $recordStatus = Get-JsonString -Object $record -Name "status"
+            if ([string]::IsNullOrWhiteSpace($recordStatus)) {
+                $recordStatus = Get-JsonString -Object $record -Name "execution_state"
+            }
+            if ([string]::IsNullOrWhiteSpace($recordStatus)) { continue }
+
+            $requestMatches = (-not [string]::IsNullOrWhiteSpace($listenerRequestId) -and $recordRequestId -eq $listenerRequestId)
+            $taskMatches = (-not [string]::IsNullOrWhiteSpace($listenerTaskId) -and $recordTaskId -eq $listenerTaskId)
+            if (-not ($requestMatches -or $taskMatches)) { continue }
+
+            $recordGeneratedAt = Get-JsonDate -Object $record
+            $recordReasonCode = Get-JsonString -Object $record -Name "reason_code"
+            $recordIsFreshEnough = ($null -eq $listenerGeneratedAt -or $null -eq $recordGeneratedAt -or $recordGeneratedAt -ge $listenerGeneratedAt)
+            if (-not $recordIsFreshEnough -and -not [string]::IsNullOrWhiteSpace($recordReasonCode) -and $recordStatus -ne $listenerStatus) {
+                $ageGapMinutes = [Math]::Abs(($listenerGeneratedAt - $recordGeneratedAt).TotalMinutes)
+                $recordIsFreshEnough = ($ageGapMinutes -le 10)
+            }
+            if (-not $recordIsFreshEnough) { continue }
+
+            if ($recordStatus -ne $listenerStatus) {
+                $outcome["conflict_detected"] = $true
+                $outcome["conflict_summary"] = "Runtime execution truth reports $recordStatus while listener task result reports $listenerStatus for $listenerTaskId."
+            }
+            $outcome["status"] = $recordStatus
+            $outcome["reason_code"] = $recordReasonCode
+            $outcome["source"] = "runtime/shared/$candidate"
+            $outcome["generated_at"] = if ($null -ne $recordGeneratedAt) { Convert-ToIsoUtc -Value $recordGeneratedAt } else { "" }
+            return [pscustomobject]$outcome
+        }
+    }
+
+    return [pscustomobject]$outcome
+}
+
 function Backup-ThenWriteJson {
     param(
         [Parameter(Mandatory = $true)][string]$PathValue,
@@ -103,12 +181,14 @@ function Backup-ThenWriteJson {
 }
 
 $contextRootAbs = Resolve-RepoPath -PathValue $ContextSyncRoot
+$runtimeSharedAbs = Resolve-RepoPath -PathValue $RuntimeSharedRoot
 $listenerAbs = Join-Path $contextRootAbs "listener"
 $objectiveAbs = Resolve-RepoPath -PathValue $ObjectiveArtifactPath
 $nowUtc = (Get-Date).ToUniversalTime()
 $nowIso = Convert-ToIsoUtc -Value $nowUtc
 
 $resultPath = Join-Path $listenerAbs "TOD_MIM_TASK_RESULT.latest.json"
+$requestPath = Join-Path $listenerAbs "MIM_TOD_TASK_REQUEST.latest.json"
 $commandStatusPath = Join-Path $listenerAbs "TOD_MIM_COMMAND_STATUS.latest.json"
 $integrationPath = Join-Path $listenerAbs "TOD_INTEGRATION_STATUS.latest.json"
 $syncStatusPath = Join-Path $contextRootAbs "MIM_CONTEXT_SYNC_STATUS.latest.json"
@@ -116,12 +196,39 @@ $validationPath = Join-Path $listenerAbs "MIM_CONTEXT_SYNC_DATA_ACCURACY_VALIDAT
 $objectiveRuntimePath = Join-Path $contextRootAbs "MIM_CONTEXT_SYNC_DATA_ACCURACY_REPAIR_OBJECTIVE.latest.json"
 
 $latestResult = Read-JsonFileIfExists -PathValue $resultPath
+$latestRequest = Read-JsonFileIfExists -PathValue $requestPath
 $latestCommand = Read-JsonFileIfExists -PathValue $commandStatusPath
 $latestRequestId = Get-JsonString -Object $latestResult -Name "request_id"
 $latestTaskId = Get-JsonString -Object $latestResult -Name "task_id"
 $latestObjectiveId = Get-JsonString -Object $latestResult -Name "objective_id"
 $latestCorrelationId = Get-JsonString -Object $latestResult -Name "correlation_id"
-$latestStatus = Get-JsonString -Object $latestResult -Name "status"
+$latestOutcome = Get-ExecutionOutcome -ListenerResult $latestResult -RuntimeSharedRootAbs $runtimeSharedAbs
+$latestStatus = Get-JsonString -Object $latestOutcome -Name "status"
+$latestReasonCode = Get-JsonString -Object $latestOutcome -Name "reason_code"
+$latestStatusSource = Get-JsonString -Object $latestOutcome -Name "source"
+$latestResultRequestId = $latestRequestId
+$latestResultTaskId = $latestTaskId
+$latestResultStatus = $latestStatus
+$liveRequestId = Get-JsonString -Object $latestRequest -Name "request_id"
+$liveTaskId = Get-JsonString -Object $latestRequest -Name "task_id"
+$liveObjectiveId = Get-JsonString -Object $latestRequest -Name "objective_id"
+$liveCorrelationId = Get-JsonString -Object $latestRequest -Name "correlation_id"
+$requestTimestamp = Get-JsonDate -Object $latestRequest
+$resultTimestamp = Get-JsonDate -Object $latestResult
+$requestNewerThanResult = (
+    -not [string]::IsNullOrWhiteSpace($liveRequestId) -and
+    -not [string]::Equals($liveRequestId, $latestResultRequestId, [System.StringComparison]::Ordinal) -and
+    ($null -eq $resultTimestamp -or $null -eq $requestTimestamp -or $requestTimestamp -gt $resultTimestamp)
+)
+if ($requestNewerThanResult) {
+    $latestRequestId = $liveRequestId
+    $latestTaskId = if (-not [string]::IsNullOrWhiteSpace($liveTaskId)) { $liveTaskId } else { $liveRequestId }
+    $latestObjectiveId = $liveObjectiveId
+    $latestCorrelationId = if (-not [string]::IsNullOrWhiteSpace($liveCorrelationId)) { $liveCorrelationId } else { $liveRequestId }
+    $latestStatus = "pending_result"
+    $latestReasonCode = "latest_request_awaiting_terminal_result"
+    $latestStatusSource = "listener/MIM_TOD_TASK_REQUEST.latest.json"
+}
 
 $mutations = New-Object System.Collections.Generic.List[object]
 $findings = New-Object System.Collections.Generic.List[object]
@@ -171,7 +278,6 @@ foreach ($name in $staleWrapperFiles) {
 }
 
 $olderRequestFiles = @(
-    "MIM_TO_TOD_TRIGGER.latest.json",
     "MIM_TOD_COORDINATION_ACK.latest.json",
     "TOD_MIM_COORDINATION_REQUEST.latest.json",
     "TOD_MIM_EMERGENCY_REQUEST.latest.json",
@@ -192,7 +298,7 @@ foreach ($name in $olderRequestFiles) {
         $resolved = [ordered]@{
             packet_type = "context-sync-superseded-status-v1"
             generated_at = $nowIso
-            status = "superseded_by_newer_success"
+            status = "superseded_by_current_result"
             original_artifact = $name
             original_status = $payloadStatus
             original_request_id = $payloadRequest
@@ -212,6 +318,29 @@ foreach ($name in $olderRequestFiles) {
             original_request_id = $payloadRequest
             original_task_id = $payloadTask
             original_status = $payloadStatus
+        })
+    }
+}
+
+$protectedControlPlaneFiles = @(
+    "MIM_TO_TOD_TRIGGER.latest.json"
+)
+foreach ($name in $protectedControlPlaneFiles) {
+    $path = Join-Path $listenerAbs $name
+    $payload = Read-JsonFileIfExists -PathValue $path
+    if ($null -eq $payload) { continue }
+    $payloadRequest = Get-JsonString -Object $payload -Name "request_id"
+    $payloadTask = Get-JsonString -Object $payload -Name "task_id"
+    $requestMismatch = (-not [string]::IsNullOrWhiteSpace($payloadRequest) -and $payloadRequest -ne $latestRequestId)
+    $taskMismatch = (-not [string]::IsNullOrWhiteSpace($payloadTask) -and $payloadTask -ne $latestTaskId)
+    if ($requestMismatch -or $taskMismatch) {
+        $findings.Add([pscustomobject]@{
+            file = $name
+            classification = "protected_control_plane_file_stale"
+            original_request_id = $payloadRequest
+            original_task_id = $payloadTask
+            repair_action = "finding_only"
+            reason = "Do not overwrite canonical command trigger files with status packets; listeners must keep trigger semantics intact."
         })
     }
 }
@@ -237,6 +366,12 @@ $truthRepairPayload.Add("generated_at", [string]$nowIso)
 $truthRepairPayload.Add("current_request_id", [string]$latestRequestId)
 $truthRepairPayload.Add("current_task_id", [string]$latestTaskId)
 $truthRepairPayload.Add("current_result_status", [string]$latestStatus)
+$truthRepairPayload.Add("current_result_reason_code", [string]$latestReasonCode)
+$truthRepairPayload.Add("current_result_source", [string]$latestStatusSource)
+$truthRepairPayload.Add("latest_result_request_id", [string]$latestResultRequestId)
+$truthRepairPayload.Add("latest_result_task_id", [string]$latestResultTaskId)
+$truthRepairPayload.Add("latest_result_status", [string]$latestResultStatus)
+$truthRepairPayload.Add("live_request_newer_than_result", [bool]$requestNewerThanResult)
 $truthRepairPayload.Add("repaired_count", $mutationCountText)
 $truthRepairPayload.Add("validation_artifact", "listener/MIM_CONTEXT_SYNC_DATA_ACCURACY_VALIDATION.latest.json")
 
@@ -269,6 +404,8 @@ if ($null -ne $objectivePayload) {
     $objectivePayload | Add-Member -NotePropertyName current_request_id -NotePropertyValue $latestRequestId -Force
     $objectivePayload | Add-Member -NotePropertyName current_task_id -NotePropertyValue $latestTaskId -Force
     $objectivePayload | Add-Member -NotePropertyName latest_result_status -NotePropertyValue $latestStatus -Force
+    $objectivePayload | Add-Member -NotePropertyName latest_result_reason_code -NotePropertyValue $latestReasonCode -Force
+    $objectivePayload | Add-Member -NotePropertyName latest_result_source -NotePropertyValue $latestStatusSource -Force
     if (-not $WhatIfOnly) {
         Write-JsonFile -PathValue $objectiveRuntimePath -Payload $objectivePayload
     }
@@ -285,7 +422,15 @@ $validation.Add("current_task_id", $latestTaskId)
 $validation.Add("current_objective_id", $latestObjectiveId)
 $validation.Add("current_correlation_id", $latestCorrelationId)
 $validation.Add("current_result_status", $latestStatus)
+$validation.Add("current_result_reason_code", $latestReasonCode)
+$validation.Add("current_result_source", $latestStatusSource)
+$validation.Add("latest_result_request_id", $latestResultRequestId)
+$validation.Add("latest_result_task_id", $latestResultTaskId)
+$validation.Add("latest_result_status", $latestResultStatus)
+$validation.Add("live_request_newer_than_result", [bool]$requestNewerThanResult)
 $validation.Add("current_command_status", $currentCommandStatus)
+$validation.Add("runtime_truth_conflict_detected", [bool]$latestOutcome.conflict_detected)
+$validation.Add("runtime_truth_conflict_summary", [string]$latestOutcome.conflict_summary)
 $validation.Add("findings", $findings)
 $validation.Add("mutations", $mutations)
 $validation.Add("remaining_action", "Keep this objective active until the listener no longer refreshes superseded latest files with stale embedded truth.")
@@ -299,6 +444,6 @@ if ($EmitJson) {
 else {
     "context_sync_truth_repair_status=$($validation.status)"
     "current_task_id=$latestTaskId"
-    "mutations=$(@($mutations).Count)"
+    "mutations=$($mutations.Count)"
     "validation=$validationPath"
 }
