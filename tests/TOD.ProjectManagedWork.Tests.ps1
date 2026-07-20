@@ -83,4 +83,28 @@ Describe 'TOD project managed work classification' {
 
         [string]$result.classification | Should Be 'qa_support_artifact'
     }
+
+    It 'classifies TOD runtime remote training artifacts as support artifacts instead of manual review' {
+        $project = [pscustomobject]@{
+            boundaries = [pscustomobject]@{
+                allowed_paths = @('scripts', 'tests', 'ui', 'docs', 'tod/config')
+                blocked_paths = @('tod/data', 'tod/state', 'tod/out')
+            }
+            managed_work = [pscustomobject]@{
+                path_classification = [pscustomobject]@{
+                    support_artifact_patterns = @('tmp_', 'raw-sweep', 'runtime_remote_training/')
+                }
+            }
+        }
+
+        $config = Get-ManagedWorkConfig -Project $project
+        $entry = [pscustomobject]@{
+            path = 'runtime_remote_training/deploy_payloads/example.json'
+            status = 'untracked'
+        }
+
+        $result = Classify-ChangeEntry -Project $project -ManagedWorkConfig $config -Entry $entry
+
+        [string]$result.classification | Should Be 'qa_support_artifact'
+    }
 }

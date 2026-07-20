@@ -142,6 +142,7 @@ Describe 'TOD self-driving next task selection' {
         Import-TodFunction -Name 'Test-TodExecutionSummaryLooksWrapperOnly'
         Import-TodFunction -Name 'Test-TodExecutionHasMeaningfulEvidence'
         Import-TodFunction -Name 'Get-TodTerminalTaskOutcome'
+        Import-TodFunction -Name 'Test-TodTaskMaterializationAlreadyApplied'
         Import-TodFunction -Name 'Get-TodRecoveryContractFromTerminalOutcome'
         Import-TodFunction -Name 'Get-TaskRoutingText'
         Import-TodFunction -Name 'Get-TaskRoutingFileHints'
@@ -152,6 +153,7 @@ Describe 'TOD self-driving next task selection' {
         Import-TodFunction -Name 'Convert-ToCanonicalBoundedEditMode'
         Import-TodFunction -Name 'Get-BoundedEditSectionTitle'
         Import-TodFunction -Name 'Resolve-TaskCategory'
+        Import-TodFunction -Name 'Get-ObjectPropertyString'
         Import-TodFunction -Name 'Get-CanonicalBoundedTargetFileHints'
         Import-TodFunction -Name 'Get-InferredBoundedValidationCommand'
         Import-TodFunction -Name 'Get-InferredBoundedReplaceDirective'
@@ -171,6 +173,7 @@ Describe 'TOD self-driving next task selection' {
         Import-TodFunction -Name 'Get-TodIndependentResolutionPackets'
         Import-TodFunction -Name 'Get-TodLatestIndependentResolutionPacketArtifact'
         Import-TodFunction -Name 'Get-TodLatestIndependentResolutionPacket'
+        Import-TodFunction -Name 'Resolve-TodTargetTextCheckPath'
         Import-TodFunction -Name 'Test-TodPacketOldTextStillCurrent'
         Import-TodFunction -Name 'Test-TodPacketNewTextAlreadyPresent'
         Import-TodFunction -Name 'New-TodTaskSpecFromIndependentResolutionPacket'
@@ -187,6 +190,8 @@ Describe 'TOD self-driving next task selection' {
         Import-TodFunction -Name 'Get-TodActivityStreamEventLimit'
         Import-TodFunction -Name 'Get-TodExecutionArtifactLane'
         Import-TodFunction -Name 'Get-TodCanonicalPublishContext'
+        Import-TodFunction -Name 'Get-TodTaskStatusFromState'
+        Import-TodFunction -Name 'Test-TodIntakeTerminalStatus'
         Import-TodFunction -Name 'New-TodActivityEventRecord'
         Import-TodFunction -Name 'Convert-TodActivityPayloadToStream'
         Import-TodFunction -Name 'Merge-TodActivityStreamPayload'
@@ -1855,27 +1860,14 @@ Expected output: publish a packet candidate artifact or a precise blocker.
     }
 
     It 'discovers Studio bounded packet artifacts as actionable independent-resolution packets' {
-        $relativePath = 'runtime_remote_training/tod_independent_resolution_attempts/TOD_STUDIO_MODE_SELECTION_BOUNDED_PACKET.latest.json'
-        $packetPath = Join-Path $repoRoot ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
-        $originalContent = if (Test-Path -Path $packetPath) { Get-Content -Path $packetPath -Raw } else { $null }
-        $studioPath = Join-Path $repoRoot 'tmp_remote_mim/core/routers/studio.py'
-        $originalStudioContent = if (Test-Path -Path $studioPath) { Get-Content -Path $studioPath -Raw } else { $null }
-        try {
+        Invoke-WithIsolatedPacketRepoRoot {
+            $relativePath = 'runtime_remote_training/tod_independent_resolution_attempts/TOD_STUDIO_MODE_SELECTION_BOUNDED_PACKET.latest.json'
+            $packetPath = Join-Path $global:repoRoot ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+            $studioPath = Join-Path $global:repoRoot 'tmp_remote_mim/core/routers/studio.py'
+            New-Item -ItemType Directory -Path (Split-Path -Parent $studioPath) -Force | Out-Null
             $currentStudioText = 'I recommend working on TOD self-authored bounded edit materialization next.'
             $nextStudioText = 'I recommend working on TOD packet-discovery verification next.'
-            if (-not [string]::IsNullOrWhiteSpace($originalStudioContent)) {
-                $seededStudioContent = [string]$originalStudioContent
-                if (-not $seededStudioContent.Contains($currentStudioText)) {
-                    $seededStudioContent = $seededStudioContent.Replace(
-                        'I recommend working on TOD current-code packet materialization next.',
-                        $currentStudioText
-                    )
-                    if (-not $seededStudioContent.Contains($currentStudioText)) {
-                        $seededStudioContent = $seededStudioContent + "`n" + $currentStudioText + "`n"
-                    }
-                    [System.IO.File]::WriteAllText($studioPath, $seededStudioContent, (New-Object System.Text.UTF8Encoding($false)))
-                }
-            }
+            [System.IO.File]::WriteAllText($studioPath, ("def build_reply():`n    return '{0}'`n" -f $currentStudioText), (New-Object System.Text.UTF8Encoding($false)))
             $packetPayload = [ordered]@{
                 artifact_type = 'tod_packet_formation_artifact'
                 status = 'packet_candidate_ready'
@@ -1896,7 +1888,7 @@ Expected output: publish a packet candidate artifact or a precise blocker.
             $packetPayload | ConvertTo-Json -Depth 12 | Set-Content -Path $packetPath -Encoding UTF8
             (Get-Item -Path $packetPath).LastWriteTime = (Get-Date).AddMinutes(6)
 
-            $records = @(Get-TodIndependentResolutionPackets -RepoRoot $repoRoot)
+            $records = @(Get-TodIndependentResolutionPackets -RepoRoot $global:repoRoot)
             (@($records | Where-Object { [string]$_.name -eq 'TOD_STUDIO_MODE_SELECTION_BOUNDED_PACKET.latest.json' }).Count -gt 0) | Should Be $true
 
             $state = New-SelectionState -Objectives @(
@@ -1917,17 +1909,6 @@ Expected output: publish a packet candidate artifact or a precise blocker.
             [string]$plan.dispatch_status | Should Be 'not_started'
             [string]$plan.create_task.scope | Should Match 'Target File: tmp_remote_mim/core/routers/studio.py'
             [string]$plan.create_task.scope | Should Match 'TOD packet-discovery verification'
-        }
-        finally {
-            if ([string]::IsNullOrWhiteSpace($originalContent)) {
-                if (Test-Path -Path $packetPath) { Remove-Item -Path $packetPath -Force }
-            }
-            else {
-                [System.IO.File]::WriteAllText($packetPath, $originalContent, (New-Object System.Text.UTF8Encoding($false)))
-            }
-            if ($null -ne $originalStudioContent) {
-                [System.IO.File]::WriteAllText($studioPath, $originalStudioContent, (New-Object System.Text.UTF8Encoding($false)))
-            }
         }
     }
 

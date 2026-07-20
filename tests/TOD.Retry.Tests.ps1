@@ -70,6 +70,14 @@ function New-RetryTestStatePath {
                 updated_at = ""
                 dependencies = @()
                 acceptance_criteria = @()
+                materialization = [pscustomobject]@{
+                    status = "materialized"
+                    edit_mode = "validation_only"
+                    target_files = @()
+                    prompt_directives = [pscustomobject]@{
+                        "Edit Mode" = "validation_only"
+                    }
+                }
             }
         )
         execution_results = @()

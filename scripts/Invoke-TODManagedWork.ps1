@@ -78,7 +78,8 @@ function Get-TodManagedWorkPolicy {
         if ([string]$entry.status -eq 'untracked') {
             $supportCleanupFiles += [pscustomobject]@{
                 path = [string]$entry.path
-                action = 'remove_untracked_support_artifact'
+                action = 'archive_then_remove_untracked_support_artifact'
+                archive_path = Join-Path $archiveRoot ([string]$entry.path -replace '/', [System.IO.Path]::DirectorySeparatorChar)
             }
         }
     }
@@ -97,7 +98,7 @@ function Get-TodManagedWorkPolicy {
                 'Generate the managed-work classification report.',
                 'Archive each tracked blocked-scope engineering-memory file before cleanup.',
                 'Restore archived blocked-scope files to the git HEAD version.',
-                'Delete only untracked support artifacts that match TOD cleanup policy.',
+                'Archive then delete only untracked support artifacts that match TOD cleanup policy.',
                 'Re-run managed-work classification and treat the updated report as the next TOD work boundary.'
             )
         }
@@ -153,8 +154,17 @@ function Remove-UntrackedSupportArtifacts {
     foreach ($entry in @($SupportFiles)) {
         $targetPath = Join-Path $ProjectRootPath ([string]$entry.path -replace '/', [System.IO.Path]::DirectorySeparatorChar)
         if (Test-Path -Path $targetPath) {
+            $archivePath = [string]$entry.archive_path
+            if (-not [string]::IsNullOrWhiteSpace($archivePath)) {
+                $archiveDir = Split-Path -Parent $archivePath
+                Ensure-Directory -PathValue $archiveDir
+                Copy-Item -Path $targetPath -Destination $archivePath -Force -Recurse
+            }
             Remove-Item -Path $targetPath -Force -Recurse
-            $removed += [string]$entry.path
+            $removed += [pscustomobject]@{
+                path = [string]$entry.path
+                archive_path = $archivePath
+            }
         }
     }
 
@@ -188,6 +198,7 @@ $cleanupReport = [pscustomobject]@{
         applied = $false
         archived_blocked_files = @()
         restored_blocked_files = @()
+        archived_support_artifacts = @()
         removed_support_artifacts = @()
     }
     before = $managedWorkReport
@@ -202,7 +213,8 @@ if ($ApplyCleanup) {
     $cleanupReport.action.applied = $true
     $cleanupReport.action.archived_blocked_files = @($archivedFiles)
     $cleanupReport.action.restored_blocked_files = @($policy.cleanup_strategy.blocked_tracked_files | ForEach-Object { [string]$_.path })
-    $cleanupReport.action.removed_support_artifacts = @($removedSupportArtifacts)
+    $cleanupReport.action.archived_support_artifacts = @($removedSupportArtifacts)
+    $cleanupReport.action.removed_support_artifacts = @($removedSupportArtifacts | ForEach-Object { [string]$_.path })
 
     $managedWorkReport = Get-JsonReport -ScriptPath $delegateScript -ArgumentMap $args
     $cleanupReport.after = $managedWorkReport

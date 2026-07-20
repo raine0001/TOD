@@ -30,10 +30,12 @@ function Import-CleanupFunction {
 Describe 'TOD managed work cleanup policy' {
     BeforeAll {
         Import-CleanupFunction -Name 'Resolve-LocalPath'
+        Import-CleanupFunction -Name 'Ensure-Directory'
         Import-CleanupFunction -Name 'Get-TodManagedWorkPolicy'
+        Import-CleanupFunction -Name 'Remove-UntrackedSupportArtifacts'
     }
 
-    It 'plans to archive and restore tracked blocked files while removing only untracked support artifacts' {
+    It 'plans to archive and restore tracked blocked files while archiving untracked support artifacts before removal' {
         $report = [pscustomobject]@{
             patch_scope = [pscustomobject]@{
                 blocked_scope = @(
@@ -52,5 +54,28 @@ Describe 'TOD managed work cleanup policy' {
         @($policy.cleanup_strategy.blocked_tracked_files).Count | Should Be 2
         @($policy.cleanup_strategy.support_cleanup_files).Count | Should Be 1
         [string]$policy.cleanup_strategy.support_cleanup_files[0].path | Should Be 'tmp_live_project_status.json'
+        [string]$policy.cleanup_strategy.support_cleanup_files[0].action | Should Be 'archive_then_remove_untracked_support_artifact'
+        [string]$policy.cleanup_strategy.support_cleanup_files[0].archive_path | Should Match 'managed-work-archives'
+    }
+
+    It 'reports archive evidence when removing untracked support artifacts' {
+        $caseRoot = Join-Path $TestDrive 'repo'
+        $supportFile = Join-Path $caseRoot 'runtime_remote_training/tod_training_scratch/proof.json'
+        $archiveFile = Join-Path $caseRoot 'shared_state/agentmim/managed-work-archives/case/runtime_remote_training/tod_training_scratch/proof.json'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $supportFile) -Force | Out-Null
+        Set-Content -Path $supportFile -Value '{"ok":true}' -Encoding utf8
+
+        $removed = Remove-UntrackedSupportArtifacts -ProjectRootPath $caseRoot -SupportFiles @(
+            [pscustomobject]@{
+                path = 'runtime_remote_training/tod_training_scratch/proof.json'
+                archive_path = $archiveFile
+            }
+        )
+
+        Test-Path -Path $supportFile | Should Be $false
+        Test-Path -Path $archiveFile | Should Be $true
+        @($removed).Count | Should Be 1
+        [string]$removed[0].path | Should Be 'runtime_remote_training/tod_training_scratch/proof.json'
+        [string]$removed[0].archive_path | Should Be $archiveFile
     }
 }
