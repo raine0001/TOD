@@ -1142,9 +1142,21 @@ def _data_sources_html(state: dict[str, Any], page_key: str) -> str:
 def _studio_mim_live_feed_state() -> dict[str, Any]:
     activity_path = SHARED_RUNTIME_ROOT / "TOD_ACTIVITY_STREAM.latest.json"
     activity = _load_json_path(activity_path)
+    active_lane = _load_json("TOD_ACTIVE_EXECUTION_LANE.latest.json")
+    execution_result = _load_json("TOD_EXECUTION_RESULT.latest.json")
     operator_status = _load_json("MIM_OPERATOR_STATUS.latest.json")
-    event = _first_text(activity.get("event"), activity.get("status"), operator_status.get("status"), default="ready")
+    event = _first_text(
+        execution_result.get("reason_code"),
+        active_lane.get("terminal_event_type"),
+        activity.get("event"),
+        activity.get("status"),
+        operator_status.get("status"),
+        default="ready",
+    )
     summary = _first_text(
+        execution_result.get("current_action"),
+        execution_result.get("summary"),
+        active_lane.get("terminal_message"),
         activity.get("current_action"),
         activity.get("summary"),
         activity.get("next_step"),
@@ -1152,14 +1164,27 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         operator_status.get("next_safe_action"),
         default="No active MIM/TOD activity is currently visible.",
     )
-    raw_status = _first_text(activity.get("status"), activity.get("execution_state"), operator_status.get("status"), default="ready")
+    raw_status = _first_text(
+        execution_result.get("execution_state"),
+        execution_result.get("status"),
+        active_lane.get("status"),
+        activity.get("execution_state"),
+        activity.get("status"),
+        operator_status.get("status"),
+        default="ready",
+    )
     status_lower = raw_status.lower()
     active_states = {"pending", "running", "accepted", "dispatched", "working", "in_progress", "medium"}
-    terminal_states = {"done", "complete", "completed", "succeeded", "failed", "blocked", "error"}
+    blocked_states = {"blocked", "failed", "error", "reject_duplicate", "blocked_with_reason"}
+    terminal_states = {"done", "complete", "completed", "succeeded", "failed", "blocked", "error", "reject_duplicate"}
     if status_lower in active_states:
         state = "working"
         label = "In progress"
         plain_meaning = "MIM/TOD has accepted work and is waiting for fresh terminal evidence."
+    elif status_lower in blocked_states:
+        state = "waiting"
+        label = "Blocked"
+        plain_meaning = "The current visible lane needs a smaller executable packet, inspected blocker, or fresh validated task before it can move."
     elif status_lower in terminal_states:
         state = "complete" if status_lower in {"done", "complete", "completed", "succeeded"} else "waiting"
         label = raw_status.title()
@@ -1168,7 +1193,71 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         state = "idle"
         label = "Ready"
         plain_meaning = "No active work is currently visible in the live feed."
-    timestamp = _first_text(activity.get("updated_at"), activity.get("generated_at"), operator_status.get("updated_at"), default="")
+    timestamp = _first_text(
+        execution_result.get("generated_at"),
+        active_lane.get("terminal_at"),
+        active_lane.get("generated_at"),
+        activity.get("updated_at"),
+        activity.get("generated_at"),
+        operator_status.get("updated_at"),
+        default="",
+    )
+    objective_id = _first_text(
+        execution_result.get("objective_id"),
+        active_lane.get("objective_id"),
+        activity.get("objective_id"),
+        operator_status.get("current_objective_id"),
+        default="",
+    )
+    task_id = _first_text(
+        execution_result.get("task_id"),
+        active_lane.get("task_id"),
+        activity.get("task_id"),
+        default="",
+    )
+    if objective_id or task_id:
+        parts = []
+        if objective_id:
+            parts.append(f"Objective: {objective_id}")
+        if task_id:
+            parts.append(f"Task: {task_id}")
+        parts.append(f"Now: {summary}")
+        plain_meaning = " | ".join(parts)
+
+    def activity_entry(label: str, payload: dict[str, Any], text: str, *, state_value: str = "") -> dict[str, str] | None:
+        if not isinstance(payload, dict) or not text:
+            return None
+        event_time = _first_text(
+            payload.get("updated_at"),
+            payload.get("generated_at"),
+            payload.get("terminal_at"),
+            payload.get("started_at"),
+            default="",
+        )
+        return {
+            "label": label,
+            "state": state_value or _first_text(payload.get("status"), payload.get("execution_state"), default="info"),
+            "time": _la_time(event_time, default=""),
+            "summary": text,
+            "meaning": _first_text(
+                payload.get("reason_code"),
+                payload.get("terminal_reason_code"),
+                payload.get("event"),
+                payload.get("source"),
+                default="",
+            ),
+        }
+
+    recent_events = [
+        item
+        for item in [
+            activity_entry("Execution result", execution_result, _first_text(execution_result.get("summary"), execution_result.get("current_action"), default="")),
+            activity_entry("Active lane", active_lane, _first_text(active_lane.get("terminal_message"), active_lane.get("status"), default="")),
+            activity_entry("Activity stream", activity, _first_text(activity.get("current_action"), activity.get("summary"), activity.get("next_step"), default="")),
+            activity_entry("MIM status", operator_status, _first_text(operator_status.get("what_mim_is_doing"), operator_status.get("current_focus"), default="")),
+        ]
+        if item
+    ]
     return {
         "ok": True,
         "state": state,
@@ -1180,6 +1269,9 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         "timestamp": timestamp,
         "timestamp_la": _la_time(timestamp, default=""),
         "source_path": str(activity_path),
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "recent_events": recent_events,
     }
 
 
@@ -1191,18 +1283,20 @@ def _studio_mim_body() -> str:
     live_meaning = _html(live.get("plain_meaning", ""))
     return f"""
     <style>
-      .mim-chat-page {{ height: calc(100vh - 170px); min-height: 680px; display: grid; grid-template-columns: minmax(210px, 280px) minmax(0, 1fr); gap: 16px; }}
+      .mim-chat-page {{ height: calc(100vh - 170px); min-height: 680px; display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 16px; }}
       .mim-history-rail, .mim-chat-workspace {{ border: 1px solid var(--line); border-radius: 10px; background: rgba(7,15,24,.82); min-height: 0; }}
       .mim-history-rail {{ display: flex; flex-direction: column; overflow: hidden; }}
       .mim-rail-head {{ padding: 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 10px; }}
       .mim-rail-title {{ font-weight: 900; }}
+      .mim-rail-subtitle {{ margin-top: 4px; color: var(--muted); font-size: 12px; }}
+      .mim-thread-heading {{ padding: 10px 12px 0; color: var(--soft); font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }}
       .mim-thread-list {{ padding: 8px; overflow: auto; display: grid; gap: 8px; }}
       .mim-thread-item {{ border: 1px solid rgba(38,51,68,.75); border-radius: 8px; padding: 10px; background: rgba(21,31,44,.72); color: var(--soft); text-align: left; cursor: pointer; }}
       .mim-thread-item.active {{ border-color: rgba(110,231,216,.55); background: rgba(110,231,216,.10); color: var(--text); }}
       .mim-thread-item strong {{ display: block; font-size: 13px; }}
       .mim-thread-item span {{ display: block; margin-top: 5px; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
       .mim-chat-workspace {{ display: grid; grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; }}
-      .mim-live-card {{ margin: 10px 8px 8px; border: 1px solid rgba(110,231,216,.26); border-radius: 10px; background: rgba(5,18,28,.86); overflow: hidden; min-height: 0; }}
+      .mim-live-card {{ margin: 10px 8px 8px; border: 1px solid rgba(110,231,216,.26); border-radius: 10px; background: rgba(5,18,28,.86); overflow: hidden; min-height: 0; flex: 0 0 auto; }}
       .mim-live-head {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid rgba(110,231,216,.18); }}
       .mim-live-title {{ display: inline-flex; align-items: center; gap: 8px; font-weight: 900; }}
       .mim-live-dot {{ width: 9px; height: 9px; border-radius: 999px; background: var(--muted); }}
@@ -1213,7 +1307,7 @@ def _studio_mim_body() -> str:
       .mim-live-body {{ padding: 12px; display: grid; gap: 7px; }}
       .mim-live-row {{ display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; font-size: 13px; }}
       .mim-live-row b {{ color: var(--soft); text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }}
-      .mim-activity-list {{ max-height: 260px; overflow: auto; display: grid; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid rgba(110,231,216,.14); }}
+      .mim-activity-list {{ max-height: min(360px, 42vh); overflow: auto; display: grid; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid rgba(110,231,216,.14); }}
       .mim-activity-item {{ border: 1px solid rgba(110,231,216,.18); border-radius: 9px; background: rgba(2,10,18,.58); padding: 9px 10px; display: grid; gap: 5px; }}
       .mim-activity-meta {{ color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }}
       .mim-activity-summary {{ color: var(--text); font-size: 12px; line-height: 1.35; }}
@@ -1245,12 +1339,11 @@ def _studio_mim_body() -> str:
       <aside class="mim-history-rail" aria-label="Chat history">
         <div class="mim-rail-head">
           <div>
-            <div class="mim-rail-title">Chats</div>
-            <div id="mimHistorySource" class="muted" style="font-size:12px;">Loading history...</div>
+            <div class="mim-rail-title">MIM</div>
+            <div class="mim-rail-subtitle">Live work and chat history</div>
           </div>
           <button id="newMimThread" class="mim-icon-button" type="button" title="New chat" aria-label="New chat">+</button>
         </div>
-        <div id="mimThreadList" class="mim-thread-list"></div>
         <div id="mimLiveCard" class="mim-live-card" data-state="{_html(live.get("state", "idle"))}">
           <div class="mim-live-head">
             <span class="mim-live-title"><span class="mim-live-dot" aria-hidden="true"></span>Live Feed</span>
@@ -1262,6 +1355,9 @@ def _studio_mim_body() -> str:
           </div>
           <div id="mimActivityList" class="mim-activity-list" aria-label="MIM live activity stream"></div>
         </div>
+        <div class="mim-thread-heading">Chats</div>
+        <div id="mimHistorySource" class="muted" style="font-size:12px; padding: 5px 12px 0;">Loading history...</div>
+        <div id="mimThreadList" class="mim-thread-list"></div>
       </aside>
       <section class="mim-chat-workspace">
         <div id="mimChatScroll" class="mim-chat-scroll" aria-live="polite"></div>
@@ -1338,6 +1434,20 @@ def _studio_mim_body() -> str:
             activityItems.unshift({{ ...item, signature }});
             activityItems = activityItems.slice(0, 20);
           }}
+          renderActivityList();
+        }}
+        function setActivityEvents(events) {{
+          if (!Array.isArray(events) || !events.length) return;
+          activityItems = events.map((event) => {{
+            const item = {{
+              state: String(event && event.state || 'info'),
+              label: String(event && event.label || 'Activity'),
+              time: String(event && event.time || ''),
+              summary: String(event && event.summary || ''),
+              meaning: String(event && event.meaning || '')
+            }};
+            return {{ ...item, signature: [item.state, item.label, item.time, item.summary, item.meaning].join('|') }};
+          }}).filter((item) => item.summary).slice(0, 20);
           renderActivityList();
         }}
         function nowIso() {{ return new Date().toISOString(); }}
@@ -1517,7 +1627,8 @@ def _studio_mim_body() -> str:
             if (liveStatus) liveStatus.textContent = (data.label || 'Ready') + (data.timestamp_la ? ' - ' + data.timestamp_la : '');
             if (liveSummary) liveSummary.textContent = data.summary || 'No active MIM/TOD activity is currently visible.';
             if (liveMeaning) liveMeaning.textContent = data.plain_meaning || '';
-            rememberActivity(data);
+            if (Array.isArray(data.recent_events) && data.recent_events.length) setActivityEvents(data.recent_events);
+            else rememberActivity(data);
           }} catch (error) {{}}
         }}
         attach && attach.addEventListener('click', () => fileInput && fileInput.click());
@@ -1571,10 +1682,9 @@ def _studio_tod_body() -> str:
     <section class="tod-chat-page">
       <aside class="tod-history-rail" aria-label="TOD conversation history">
         <div class="tod-rail-header">
-          <div><p class="tod-kicker">TOD</p><h2>Sessions</h2></div>
+          <div><p class="tod-kicker">TOD</p><h2>Live Work</h2><div class="tod-rail-subtitle">Execution lane and sessions</div></div>
           <button type="button" id="newTodThread" class="tod-icon-button" aria-label="New TOD thread" title="New TOD thread">+</button>
         </div>
-        <div id="todThreadList" class="tod-thread-list"></div>
         <div class="tod-live-card" id="todLiveCard" data-state="loading">
           <div class="tod-live-top">
             <div><div class="tod-live-eyebrow"><span class="tod-dot"></span>TOD Live Activity</div><h2 id="todLiveTitle">Checking TOD activity...</h2></div>
@@ -1584,6 +1694,8 @@ def _studio_tod_body() -> str:
           <p id="todLiveMeaning" class="tod-live-meaning">This panel shows what TOD is doing now in plain operator language.</p>
           <div id="todActivityList" class="tod-activity-list" aria-label="TOD live activity stream"></div>
         </div>
+        <div class="tod-thread-heading">Sessions</div>
+        <div id="todThreadList" class="tod-thread-list"></div>
       </aside>
       <section class="tod-chat-workspace" aria-label="TOD conversation">
         <div class="tod-chat-scroll" id="todChatScroll" aria-live="polite"></div>
@@ -1605,11 +1717,11 @@ def _studio_tod_body() -> str:
       </section>
     </section>
     <style>
-      .tod-chat-page{height:calc(100vh - 170px);min-height:680px;display:grid;grid-template-columns:minmax(210px,280px) minmax(0,1fr);gap:16px}
+      .tod-chat-page{height:calc(100vh - 170px);min-height:680px;display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:16px}
       .tod-history-rail,.tod-chat-workspace{border:1px solid rgba(97,219,191,.24);background:rgba(4,18,28,.72);border-radius:18px;box-shadow:0 16px 36px rgba(0,0,0,.18)}
-      .tod-history-rail{padding:14px;overflow:auto}.tod-rail-header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}.tod-kicker{margin:0 0 4px;color:#69d7ff;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.tod-rail-header h2{margin:0;font-size:18px}.tod-thread-list{display:grid;gap:8px}.tod-thread-item{width:100%;text-align:left;border:1px solid rgba(97,219,191,.18);background:rgba(2,10,18,.62);color:var(--studio-ink);border-radius:12px;padding:11px 12px;cursor:pointer}.tod-thread-item.active{border-color:rgba(105,215,255,.68);background:rgba(9,46,67,.72)}.tod-thread-title{font-weight:900;font-size:13px;margin-bottom:4px}.tod-thread-meta{color:var(--studio-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .tod-chat-workspace{display:grid;grid-template-rows:minmax(280px,1fr) auto;gap:12px;padding:14px;overflow:hidden}.tod-live-card{border:1px solid rgba(97,219,191,.24);border-radius:16px;padding:14px;background:rgba(2,12,20,.76);margin-top:14px}.tod-live-card[data-state=working],.tod-live-card[data-state=running],.tod-live-card[data-state=pending]{border-color:rgba(105,215,255,.56);background:rgba(7,35,52,.76)}.tod-live-card[data-state=blocked],.tod-live-card[data-state=stalled],.tod-live-card[data-state=failed]{border-color:rgba(255,111,141,.58);background:rgba(48,13,27,.58)}.tod-live-top{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.tod-live-eyebrow{display:flex;align-items:center;gap:8px;color:#69d7ff;font-size:12px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.tod-dot{width:9px;height:9px;border-radius:50%;background:#69d7ff;box-shadow:0 0 14px rgba(105,215,255,.6)}.tod-live-card h2{margin:9px 0 6px;font-size:clamp(18px,2vw,24px)}.tod-live-card p{margin:0;color:var(--studio-muted);line-height:1.45}.tod-live-meaning{margin-top:8px!important;color:#b7d7e6!important}.tod-live-pill{border:1px solid rgba(105,215,255,.45);border-radius:999px;color:#c5f1ff;padding:7px 10px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
-      .tod-activity-list{max-height:260px;overflow:auto;display:grid;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(97,219,191,.16)}.tod-activity-item{border:1px solid rgba(97,219,191,.18);border-radius:12px;background:rgba(2,10,18,.58);padding:9px 10px;display:grid;gap:5px}.tod-activity-meta{color:var(--studio-muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.tod-activity-summary{color:var(--studio-ink);font-size:12px;line-height:1.35}.tod-activity-meaning{color:#b7d7e6;font-size:12px;line-height:1.35}
+      .tod-history-rail{padding:14px;overflow:auto}.tod-rail-header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}.tod-kicker{margin:0 0 4px;color:#69d7ff;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.tod-rail-header h2{margin:0;font-size:18px}.tod-rail-subtitle{margin-top:4px;color:var(--studio-muted);font-size:12px}.tod-thread-heading{margin:14px 0 8px;color:#c5f1ff;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.tod-thread-list{display:grid;gap:8px}.tod-thread-item{width:100%;text-align:left;border:1px solid rgba(97,219,191,.18);background:rgba(2,10,18,.62);color:var(--studio-ink);border-radius:12px;padding:11px 12px;cursor:pointer}.tod-thread-item.active{border-color:rgba(105,215,255,.68);background:rgba(9,46,67,.72)}.tod-thread-title{font-weight:900;font-size:13px;margin-bottom:4px}.tod-thread-meta{color:var(--studio-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .tod-chat-workspace{display:grid;grid-template-rows:minmax(280px,1fr) auto;gap:12px;padding:14px;overflow:hidden}.tod-live-card{border:1px solid rgba(97,219,191,.24);border-radius:16px;padding:14px;background:rgba(2,12,20,.76)}.tod-live-card[data-state=working],.tod-live-card[data-state=running],.tod-live-card[data-state=pending]{border-color:rgba(105,215,255,.56);background:rgba(7,35,52,.76)}.tod-live-card[data-state=blocked],.tod-live-card[data-state=stalled],.tod-live-card[data-state=failed]{border-color:rgba(255,111,141,.58);background:rgba(48,13,27,.58)}.tod-live-top{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.tod-live-eyebrow{display:flex;align-items:center;gap:8px;color:#69d7ff;font-size:12px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.tod-dot{width:9px;height:9px;border-radius:50%;background:#69d7ff;box-shadow:0 0 14px rgba(105,215,255,.6)}.tod-live-card h2{margin:9px 0 6px;font-size:clamp(18px,2vw,24px)}.tod-live-card p{margin:0;color:var(--studio-muted);line-height:1.45}.tod-live-meaning{margin-top:8px!important;color:#b7d7e6!important}.tod-live-pill{border:1px solid rgba(105,215,255,.45);border-radius:999px;color:#c5f1ff;padding:7px 10px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+      .tod-activity-list{max-height:min(360px,42vh);overflow:auto;display:grid;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(97,219,191,.16)}.tod-activity-item{border:1px solid rgba(97,219,191,.18);border-radius:12px;background:rgba(2,10,18,.58);padding:9px 10px;display:grid;gap:5px}.tod-activity-meta{color:var(--studio-muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.tod-activity-summary{color:var(--studio-ink);font-size:12px;line-height:1.35}.tod-activity-meaning{color:#b7d7e6;font-size:12px;line-height:1.35}
       .tod-chat-scroll{overflow:auto;padding:18px 6px;scroll-behavior:smooth}.tod-message-row{display:flex;margin:0 0 14px}.tod-message-row.operator{justify-content:flex-end}.tod-message-row.system{justify-content:center}.tod-message-bubble{max-width:min(760px,86%);border:1px solid rgba(97,219,191,.18);border-radius:18px;padding:12px 14px;white-space:pre-wrap;line-height:1.48;background:rgba(3,13,22,.72)}.tod-message-row.operator .tod-message-bubble{background:rgba(13,74,105,.7);border-color:rgba(105,215,255,.35)}.tod-message-row.tod .tod-message-bubble{background:rgba(5,35,28,.74);border-color:rgba(103,255,188,.24)}.tod-message-row.system .tod-message-bubble{max-width:min(620px,88%);background:rgba(50,40,11,.42);border-color:rgba(255,209,102,.34);color:#ffe8a8}.tod-message-meta{color:var(--studio-muted);font-size:11px;font-weight:900;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
       .tod-composer-shell{border:1px solid rgba(97,219,191,.24);border-radius:18px;padding:12px;background:rgba(2,11,18,.82)}.tod-file-drop{display:none;border:1px dashed rgba(105,215,255,.42);border-radius:12px;padding:10px 12px;margin-bottom:10px;color:var(--studio-muted);font-size:12px}.tod-file-drop.active{display:block}#todChatInput{width:100%;max-height:180px;min-height:54px;resize:none;border:0;outline:0;border-radius:14px;background:rgba(5,19,31,.86);color:var(--studio-ink);padding:14px;font:inherit;line-height:1.45}.tod-attachment-summary{min-height:18px;margin:8px 0 0;color:var(--studio-muted);font-size:12px}.tod-composer-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px}.tod-tool-row{display:flex;align-items:center;gap:8px}.tod-icon-button,.tod-send-button{border:1px solid rgba(105,215,255,.34);background:rgba(8,42,60,.82);color:#e8f8ff;cursor:pointer;font:inherit}.tod-icon-button{width:34px;height:34px;border-radius:50%;display:inline-grid;place-items:center;font-weight:900}.tod-send-button{border-radius:999px;padding:9px 16px;font-weight:900}.tod-icon-button:hover,.tod-send-button:hover{border-color:rgba(105,215,255,.78);background:rgba(13,82,112,.9)}
       @media(max-width:860px){.tod-chat-page{height:auto;grid-template-columns:1fr}.tod-history-rail{min-height:auto}.tod-chat-workspace{min-height:680px}}

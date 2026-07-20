@@ -943,6 +943,79 @@ class StudioTrainingChatTest(unittest.TestCase):
                 for term in expected_terms:
                     self.assertIn(term.lower(), lowered)
 
+    def test_studio_mim_live_feed_uses_active_lane_and_recent_events(self):
+        studio = _import_studio_module()
+
+        def fake_load_json(name):
+            payloads = {
+                "TOD_ACTIVE_EXECUTION_LANE.latest.json": {
+                    "status": "blocked",
+                    "objective_id": "OBJ-LIVE",
+                    "task_id": "TSK-LIVE",
+                    "terminal_at": "2026-07-20T22:12:32Z",
+                    "terminal_event_type": "bounded_edit_mode_missing",
+                    "terminal_reason_code": "blocked_missing_bounded_edit_mode",
+                    "terminal_message": "TOD needs exact old/new text before continuing.",
+                },
+                "TOD_EXECUTION_RESULT.latest.json": {
+                    "generated_at": "2026-07-20T22:14:19Z",
+                    "execution_state": "blocked",
+                    "objective_id": "OBJ-LIVE",
+                    "task_id": "TSK-LIVE",
+                    "summary": "TOD cannot continue until the bounded packet is materialized.",
+                    "current_action": "Projected the terminal active execution result.",
+                    "reason_code": "blocked_missing_bounded_edit_mode",
+                },
+                "MIM_OPERATOR_STATUS.latest.json": {
+                    "what_mim_is_doing": "MIM is coordinating the active TOD repair.",
+                    "updated_at": "2026-07-20T22:00:00Z",
+                },
+            }
+            return payloads.get(name, {})
+
+        def fake_load_json_path(_path):
+            return {
+                "updated_at": "2026-07-20T22:14:20Z",
+                "status": "reject_duplicate",
+                "current_action": "Recorded the request without overwriting the active lane.",
+                "event": "intake_rejected_duplicate",
+            }
+
+        with patch.object(studio, "_load_json", side_effect=fake_load_json), patch.object(
+            studio,
+            "_load_json_path",
+            side_effect=fake_load_json_path,
+        ):
+            live = studio._studio_mim_live_feed_state()
+
+        self.assertEqual(live["state"], "waiting")
+        self.assertEqual(live["label"], "Blocked")
+        self.assertEqual(live["objective_id"], "OBJ-LIVE")
+        self.assertEqual(live["task_id"], "TSK-LIVE")
+        self.assertIn("OBJ-LIVE", live["plain_meaning"])
+        self.assertIn("TSK-LIVE", live["plain_meaning"])
+        self.assertGreaterEqual(len(live["recent_events"]), 3)
+        self.assertEqual(live["recent_events"][0]["label"], "Execution result")
+
+    def test_studio_mim_and_tod_side_rails_prioritize_live_work(self):
+        studio = _import_studio_module()
+        live = {
+            "state": "working",
+            "label": "In progress",
+            "timestamp_la": "Jul 20, 3:14 PM",
+            "summary": "Current live work summary.",
+            "plain_meaning": "Objective: OBJ | Task: TSK",
+            "recent_events": [],
+        }
+        with patch.object(studio, "_studio_mim_live_feed_state", return_value=live):
+            mim_body = studio._studio_mim_body()
+        tod_body = studio._studio_tod_body()
+
+        self.assertLess(mim_body.index('id="mimLiveCard"'), mim_body.index('id="mimThreadList"'))
+        self.assertIn("Live work and chat history", mim_body)
+        self.assertLess(tod_body.index('id="todLiveCard"'), tod_body.index('id="todThreadList"'))
+        self.assertIn("Execution lane and sessions", tod_body)
+
 
 if __name__ == "__main__":
     unittest.main()
