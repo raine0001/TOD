@@ -1,0 +1,81 @@
+{
+  "objective_id": "OBJ-0142",
+  "objective_title": "TOD Enterprise deployment pattern assimilation",
+  "training_goal": "TOD independently reproduces the Enterprise deployment pattern on a harmless Enterprise slice before the capability is marked learned.",
+  "captured_at": "2026-07-18T10:45:00-07:00",
+  "status": "active_blocked_on_run_task_execution",
+  "capability_state": "borrowed",
+  "tod_independent_capability_acquired": false,
+  "codex_role": "coach_validator_and_training_scaffold",
+  "source_code_changed_by_this_training": false,
+  "objective_registration": {
+    "created": true,
+    "objective_id": "OBJ-0142",
+    "created_by": "TOD.ps1 new-objective"
+  },
+  "attempts": [
+    {
+      "task_id": "TSK-ENT-PATTERN-ASSIMILATION-001",
+      "rung": "independent_multi_file_pattern_inspection",
+      "created": true,
+      "packaged": true,
+      "executed": "attempted",
+      "result": "blocked",
+      "blocker": "Package materialization forced a multi-file inspection task into bounded-edit shape and required target_file_exactly_one.",
+      "evidence": "tod/out/prompts/TSK-ENT-PATTERN-ASSIMILATION-001.md"
+    },
+    {
+      "task_id": "TSK-ENT-PATTERN-ASSIMILATION-002",
+      "rung": "guided_single_source_target_with_artifact_output",
+      "created": true,
+      "packaged": true,
+      "executed": "attempted",
+      "result": "blocked",
+      "blocker": "Package materialization treated the required evidence artifact path as a second target file.",
+      "evidence": "tod/out/prompts/TSK-ENT-PATTERN-ASSIMILATION-002.md"
+    },
+    {
+      "task_id": "TSK-ENT-PATTERN-ASSIMILATION-003",
+      "rung": "guided_single_source_target_stdout_packet",
+      "created": true,
+      "packaged": true,
+      "executed": "attempted",
+      "result": "blocked",
+      "blocker": "Clean package produced no materialization-block tail, but run-task stayed alive without stdout, result publication, shared-state updates, or materialized packet artifact.",
+      "evidence": "tod/out/prompts/TSK-ENT-PATTERN-ASSIMILATION-003.md"
+    }
+  ],
+  "artifacts": {
+    "first_attempt": "runtime_remote_training/apprenticeship/TOD_ENTERPRISE_PATTERN_ASSIMILATION_V1.first_attempt.latest.json",
+    "second_attempt": "runtime_remote_training/apprenticeship/TOD_ENTERPRISE_PATTERN_ASSIMILATION_V1.second_attempt.latest.json",
+    "expected_materialized_packet": "runtime_remote_training/apprenticeship/TOD_ENTERPRISE_PATTERN_ASSIMILATION_V1.materialized_packet.latest.json",
+    "expected_materialized_packet_exists": false
+  },
+  "training_findings": [
+    "TOD can register and package the Enterprise apprenticeship objective and tasks through TOD.ps1.",
+    "TOD cannot yet complete the independent multi-file pattern-inspection to bounded-packet transition.",
+    "TOD's materializer still confuses evidence-output artifact paths with source-code target files.",
+    "After target/evidence path ambiguity is removed, run-task still hangs for this assimilation task class without publishing shared-state evidence.",
+    "A follow-up new-objective call printed OBJ-0143, but add-task could not find OBJ-0143 in local state immediately afterward; this indicates objective-create/read-after-write inconsistency.",
+    "The Enterprise deployment pattern capability remains borrowed from Codex."
+  ],
+  "next_required_training_objective": {
+    "objective_id": "TOD-RUN-TASK-MATERIALIZATION-HANG-DIAGNOSIS-V1",
+    "goal": "Diagnose why run-task hangs on TSK-ENT-PATTERN-ASSIMILATION-003 after clean packaging, then make TOD publish a precise terminal blocker instead of leaving no result.",
+    "acceptance": [
+      "Inspect TOD.ps1 run-task path and LocalExecutionEngine handoff for TSK-ENT-PATTERN-ASSIMILATION-003.",
+      "Identify the last reached phase before silence.",
+      "Publish a terminal blocked result when the local engine cannot execute a non-edit materialization task.",
+      "Preserve malformed bounded-edit rejection behavior.",
+      "Rerun TSK-ENT-PATTERN-ASSIMILATION-003 and prove it returns a packet or a precise blocker."
+    ]
+  },
+  "next_objective_registration_attempt": {
+    "attempted_objective_id": "OBJ-0143",
+    "title": "TOD run-task materialization hang diagnosis",
+    "new_objective_printed_success": true,
+    "local_state_contains_objective_afterward": false,
+    "add_task_result": "failed_objective_not_found",
+    "classification": "objective_create_read_after_write_inconsistency"
+  }
+}

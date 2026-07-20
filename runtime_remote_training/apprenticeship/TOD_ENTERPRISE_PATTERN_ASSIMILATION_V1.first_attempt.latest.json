@@ -1,0 +1,40 @@
+{
+  "objective_id": "OBJ-0142",
+  "training_objective": "TOD Enterprise deployment pattern assimilation",
+  "task_id": "TSK-ENT-PATTERN-ASSIMILATION-001",
+  "captured_at": "2026-07-18T10:37:54.0368059-07:00",
+  "status": "blocked_before_materialized_packet",
+  "tod_independent_capability_acquired": false,
+  "attempt_summary": "TOD registered and packaged the Enterprise apprenticeship task, but the run-task path did not publish the required materialized packet artifact.",
+  "evidence": {
+    "objective_created": "OBJ-0142",
+    "task_created": "TSK-ENT-PATTERN-ASSIMILATION-001",
+    "package_path": "tod/out/prompts/TSK-ENT-PATTERN-ASSIMILATION-001.md",
+    "expected_artifact": "runtime_remote_training/apprenticeship/TOD_ENTERPRISE_PATTERN_ASSIMILATION_V1.materialized_packet.latest.json",
+    "expected_artifact_created": false,
+    "package_materialization_status": "blocked_missing_bounded_edit_mode",
+    "package_required_clarification": "target_file_exactly_one",
+    "package_blocker_text": "TOD needs exactly one bounded target_file before LocalExecutionEngine can proceed; multiple target_file candidates were provided."
+  },
+  "classification": {
+    "blocker_type": "task_mode_materialization_blocker",
+    "root_cause": "The first task asked for multi-file inspection plus materialized implementation planning. TOD's current run-task materializer forced the request into bounded edit shape and could not proceed without one exact target file.",
+    "training_lesson": "TOD still needs a ladder from multi-file pattern inspection to single-file bounded implementation. Until read-only/multi-file inspection can produce a packet without bounded-edit coercion, use a guided single-target rung and require TOD to synthesize the anchor and snippet itself.",
+    "codex_patch_authored": false
+  },
+  "next_training_rung": {
+    "task_id": "TSK-ENT-PATTERN-ASSIMILATION-002",
+    "mode": "guided_single_target_materialization",
+    "target_file": "tmp_remote_mim/core/routers/observatory.py",
+    "tod_must_still_author": [
+      "exact anchor",
+      "new snippet",
+      "validation command",
+      "deployment command",
+      "rollback note",
+      "prevention lesson",
+      "expected live evidence"
+    ],
+    "success_condition": "TOD produces a materialized packet from current code without Codex providing old_text/new_text."
+  }
+}

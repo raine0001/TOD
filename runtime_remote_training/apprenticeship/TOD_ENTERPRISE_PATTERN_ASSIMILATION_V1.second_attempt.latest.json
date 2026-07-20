@@ -1,0 +1,30 @@
+{
+  "objective_id": "OBJ-0142",
+  "task_id": "TSK-ENT-PATTERN-ASSIMILATION-002",
+  "captured_at": "2026-07-18T10:40:00-07:00",
+  "status": "blocked_before_materialized_packet",
+  "tod_independent_capability_acquired": false,
+  "guided_rung": true,
+  "attempt_summary": "The guided single-target task still blocked in package materialization because TOD treated the required output artifact path as a second target-file candidate.",
+  "evidence": {
+    "package_path": "tod/out/prompts/TSK-ENT-PATTERN-ASSIMILATION-002.md",
+    "expected_packet_artifact_created": false,
+    "package_materialization_status": "blocked_missing_bounded_edit_mode",
+    "target_file_candidates": [
+      "tmp_remote_mim/core/routers/observatory.py",
+      "runtime_remote_training/apprenticeship/TOD_ENTERPRISE_PATTERN_ASSIMILATION_V1.materialized_packet.latest.json"
+    ],
+    "required_clarification": "target_file_exactly_one",
+    "blocker_text": "TOD needs exactly one bounded target_file before LocalExecutionEngine can proceed; multiple target_file candidates were provided."
+  },
+  "classification": {
+    "blocker_type": "artifact_path_misclassified_as_code_target",
+    "training_lesson": "TOD's materializer cannot yet distinguish an evidence-output artifact from a source-code target inside task scope. The next rung must avoid path-like evidence artifact wording or the control plane must learn target/evidence path separation.",
+    "codex_patch_authored": false
+  },
+  "next_training_rung": {
+    "task_id": "TSK-ENT-PATTERN-ASSIMILATION-003",
+    "goal": "Ask TOD to inspect only tmp_remote_mim/core/routers/observatory.py and emit the materialized packet JSON in command output, with no path-like evidence artifact in the task body.",
+    "success_condition": "TOD produces non-placeholder anchor/snippet content or a precise exact_anchor_materialization_failed blocker."
+  }
+}

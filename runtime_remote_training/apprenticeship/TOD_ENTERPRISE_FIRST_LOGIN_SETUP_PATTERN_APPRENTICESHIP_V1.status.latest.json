@@ -1,0 +1,340 @@
+﻿{
+    "objective_id":  "OBJ-0144",
+    "objective_title":  "TOD enterprise first-login setup pattern apprenticeship",
+    "training_goal":  "TOD independently reproduces the Enterprise deployment pattern on the first-login setup/admin-dashboard slice before the capability is marked learned.",
+    "captured_at":  "2026-07-19T16:42:12.4624604Z",
+    "status":  "route_shell_independent_synthesis_passed_full_independence_pending",
+    "capability_state":  "guided_to_narrow_independent_route_shell",
+    "tod_independent_capability_acquired":  false,
+    "codex_role":  "coach_validator_and_packet_artifact_executor_source_not_author",
+    "source_code_changed_by_this_training":  true,
+    "product_scope_artifact":  "runtime_remote_training/read_only_audit_artifacts/MIM_ENTERPRISE_FIRST_LOGIN_SETUP_WIZARD_V1.scope.latest.json",
+    "objective_registration":  {
+                                   "created":  true,
+                                   "objective_id":  "OBJ-0144",
+                                   "created_by":  "scripts/TOD.ps1 -Action new-objective"
+                               },
+    "task_registration":  {
+                              "created":  true,
+                              "task_id":  "TSK-ENT-FIRST-LOGIN-SETUP-001",
+                              "created_by":  "scripts/TOD.ps1 -Action add-task",
+                              "state_contains_objective":  true,
+                              "state_contains_task":  true
+                          },
+    "attempts":  [
+                     {
+                         "task_id":  "TSK-ENT-FIRST-LOGIN-SETUP-001",
+                         "rung":  "enterprise_first_login_setup_pattern_materialization",
+                         "created":  true,
+                         "packaged":  true,
+                         "package_path":  "tod/out/prompts/TSK-ENT-FIRST-LOGIN-SETUP-001.md",
+                         "package_blocker_tail_present":  false,
+                         "executed":  "attempted_with_90_second_timeout",
+                         "result":  "blocked",
+                         "blocker":  "run-task stayed alive without stdout, stderr, fresh shared execution result, or terminal evidence for the task. The wrapper stopped the process after 90 seconds.",
+                         "stdout_log":  "runtime_remote_training/apprenticeship/TSK-ENT-FIRST-LOGIN-SETUP-001.run.stdout.log",
+                         "stderr_log":  "runtime_remote_training/apprenticeship/TSK-ENT-FIRST-LOGIN-SETUP-001.run.stderr.log"
+                     },
+                     {
+                         "task_id":  "TSK-RUN-TASK-TERMINAL-RESULT-001",
+                         "objective_id":  "OBJ-0145",
+                         "rung":  "run_task_terminal_result_diagnosis",
+                         "created":  true,
+                         "packaged":  true,
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "blocked_with_fresh_terminal_evidence",
+                         "blocker":  "The task returned a terminal blocker when run with -SkipNextTaskSelectionLoop -SkipPostCompletionTail. LocalExecutionEngine rejected the inspection task because multiple target files were present and it would not guess.",
+                         "fresh_shared_result_task_id":  "TSK-RUN-TASK-TERMINAL-RESULT-001",
+                         "stdout_log":  "runtime_remote_training/apprenticeship/TSK-RUN-TASK-TERMINAL-RESULT-001.run-skip-tail.stdout.log",
+                         "stderr_log":  "runtime_remote_training/apprenticeship/TSK-RUN-TASK-TERMINAL-RESULT-001.run-skip-tail.stderr.log"
+                     },
+                     {
+                         "task_id":  "TSK-ENT-FIRST-LOGIN-SETUP-001",
+                         "rung":  "enterprise_first_login_setup_terminal_result_retry",
+                         "created":  true,
+                         "packaged":  true,
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "blocked_with_fresh_terminal_evidence",
+                         "blocker":  "LocalExecutionEngine rejected the Enterprise setup task because multiple target files were present and TOD had not selected one bounded implementation target.",
+                         "fresh_shared_result_task_id":  "TSK-ENT-FIRST-LOGIN-SETUP-001",
+                         "fresh_shared_result_generated_at":  "2026-07-18T18:27:13.5572204Z",
+                         "fresh_shared_result_reason_code":  "codex_wrapper_only_no_execution",
+                         "stdout_log":  "runtime_remote_training/apprenticeship/TSK-ENT-FIRST-LOGIN-SETUP-001.run-skip-tail.stdout.log",
+                         "stderr_log":  "runtime_remote_training/apprenticeship/TSK-ENT-FIRST-LOGIN-SETUP-001.run-skip-tail.stderr.log"
+                     },
+                     {
+                         "task_id":  "TSK-ENT-FIRST-LOGIN-SETUP-002",
+                         "rung":  "single_target_packet_materialization_attempt",
+                         "created":  true,
+                         "target_file":  "tmp_remote_mim/core/routers/project_portal.py",
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "blocked",
+                         "blocker":  "TOD selected one target file but did not synthesize a complete bounded edit packet from current code; LocalExecutionEngine returned blocked_missing_bounded_edit_mode.",
+                         "credit_decision":  "not_independent"
+                     },
+                     {
+                         "task_id":  "TSK-ENT-FIRST-LOGIN-SETUP-003",
+                         "rung":  "packet_formation_after_control_plane_repair",
+                         "created":  true,
+                         "target_file":  "tmp_remote_mim/core/routers/project_portal.py",
+                         "first_result":  "blocked_current_code_anchor_missing",
+                         "control_plane_repair":  {
+                                                      "classification":  "borrowed_capability",
+                                                      "file":  "scripts/engines/LocalExecutionEngine.ps1",
+                                                      "reason":  "TOD could not independently discover and materialize the current-code old/new packet for the Enterprise setup payload target.",
+                                                      "validation":  "PowerShell parser accepted scripts/engines/LocalExecutionEngine.ps1"
+                                                  },
+                         "second_result":  "packet_candidate_ready",
+                         "packet_artifact":  "runtime_remote_training/tod_independent_resolution_attempts/TOD_ENTERPRISE_FIRST_LOGIN_SETUP_PACKET_FORMATION.latest.json",
+                         "credit_decision":  "packet_materialization_positive_but_borrowed"
+                     },
+                     {
+                         "task_id":  "TSK-ENT-FIRST-LOGIN-SETUP-004",
+                         "rung":  "tod_packet_apply",
+                         "target_file":  "tmp_remote_mim/core/routers/project_portal.py",
+                         "executed":  "attempted_via_execute_chat_task",
+                         "result":  "code_changed_validation_passed_but_terminal_result_not_clean",
+                         "changed_fields":  [
+                                                "enterprise_role",
+                                                "enterprise_setup",
+                                                "enterprise_launch_ready"
+                                            ],
+                         "validation":  "python -m py_compile tmp_remote_mim/core/routers/project_portal.py passed",
+                         "result_publisher_issue":  "execute-chat-task hung and the latest shared result was later superseded by an unrelated task before clean terminal evidence for TSK-ENT-FIRST-LOGIN-SETUP-004 was preserved.",
+                         "backup_evidence":  "tod/out/local-engine-backups/project_portal.py.20260718T184332Z.bak",
+                         "credit_decision":  "meaningful_code_change_present_but_not_independent_resolution"
+                     },
+                     {
+                         "task_id":  "TSK-ENT-FIRST-LOGIN-SETUP-005",
+                         "rung":  "validation_only_after_packet_apply",
+                         "target_file":  "tmp_remote_mim/core/routers/project_portal.py",
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "validation_passed_but_task_status_blocked",
+                         "latest_shared_result_task_id":  "TSK-ENT-FIRST-LOGIN-SETUP-005",
+                         "latest_shared_result_generated_at":  "2026-07-18T18:48:16.2985402Z",
+                         "latest_shared_result_status":  "blocked",
+                         "latest_shared_result_reason_code":  "validation_only_no_material_change",
+                         "validation":  "python -m py_compile tmp_remote_mim/core/routers/project_portal.py passed and enterprise_role, enterprise_setup, enterprise_launch_ready are present.",
+                         "debt":  "TOD result classification still treats validation-only/no-change proof as blocked even when the intended validation evidence is present.",
+                         "stdout_log":  "runtime_remote_training/apprenticeship/TSK-ENT-FIRST-LOGIN-SETUP-005.run-skip-tail.stdout.log",
+                         "stderr_log":  "runtime_remote_training/apprenticeship/TSK-ENT-FIRST-LOGIN-SETUP-005.run-skip-tail.stderr.log"
+                     },
+                     {
+                         "task_id":  "TSK-0080",
+                         "objective_id":  "OBJ-0146",
+                         "rung":  "fresh_enterprise_packet_formation_precise_blocker",
+                         "target_file":  "tmp_remote_mim/core/routers/observatory.py",
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "completed_precise_packet_blocker_artifact",
+                         "packet_artifact":  "runtime_remote_training/tod_independent_resolution_attempts/TOD_ENTERPRISE_INDEPENDENT_PATTERN_REPEAT_PACKET.latest.json",
+                         "blocker":  "Packet synthesis could not find exact current source old_text for observatory.py.",
+                         "credit_decision":  "positive_blocker_handling_not_implementation"
+                     },
+                     {
+                         "task_id":  "TSK-0081",
+                         "objective_id":  "OBJ-0146",
+                         "rung":  "fresh_enterprise_source_anchor_observation",
+                         "target_file":  "tmp_remote_mim/core/routers/observatory.py",
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "completed_source_anchor_artifact",
+                         "anchor_artifact":  "runtime_remote_training/read_only_audit_artifacts/TOD_ENTERPRISE_OBSERVATORY_CLEAN_SLATE_ANCHOR.latest.json",
+                         "validation":  "Anchor matched lines 1446-1457, exact_text was non-empty, and no source code changed.",
+                         "credit_decision":  "guided_inspection_pass"
+                     },
+                     {
+                         "task_id":  "TSK-0084",
+                         "objective_id":  "OBJ-0146",
+                         "rung":  "fresh_enterprise_packet_body_synthesis",
+                         "target_file":  "tmp_remote_mim/core/routers/observatory.py",
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "completed_packet_candidate_artifact",
+                         "packet_artifact":  "runtime_remote_training/tod_independent_resolution_attempts/TOD_ENTERPRISE_OBSERVATORY_ADMIN_PROMPT_PACKET.latest.json",
+                         "validation":  "Packet candidate ready with complete old_text/new_text fields and no source edit during synthesis.",
+                         "coaching_required":  [
+                                                   "TSK-0082 exposed that input and output artifact paths can be misclassified as multiple target candidates.",
+                                                   "TSK-0083 exposed that packet synthesis still needs explicit artifact_write edit mode."
+                                               ],
+                         "credit_decision":  "guided_packet_materialization_pass"
+                     },
+                     {
+                         "task_id":  "TSK-0085",
+                         "objective_id":  "OBJ-0146",
+                         "rung":  "fresh_enterprise_packet_apply",
+                         "target_file":  "tmp_remote_mim/core/routers/observatory.py",
+                         "executed":  "attempted_via_execute_chat_task",
+                         "result":  "code_changed_validation_passed",
+                         "validation":  "python -m py_compile tmp_remote_mim/core/routers/observatory.py passed and the Enterprise administrator prompt was present.",
+                         "quality_issue":  "The synthesized insert-before pattern was too broad and inserted the prompt twice.",
+                         "credit_decision":  "meaningful_code_change_present_but_anchor_specificity_failed"
+                     },
+                     {
+                         "task_id":  "TSK-0086",
+                         "objective_id":  "OBJ-0146",
+                         "rung":  "fresh_enterprise_duplicate_cleanup",
+                         "target_file":  "tmp_remote_mim/core/routers/observatory.py",
+                         "executed":  "attempted_via_execute_chat_task",
+                         "result":  "completed_cleanup_validation_passed",
+                         "validation":  "The Enterprise administrator prompt appears exactly once and python -m py_compile tmp_remote_mim/core/routers/observatory.py passed.",
+                         "credit_decision":  "guided_cleanup_pass"
+                     },
+                     {
+                         "task_id":  "TSK-0087",
+                         "objective_id":  "OBJ-0147",
+                         "rung":  "no_coaching_independent_repeat_attempt",
+                         "target_file":  "tmp_remote_mim/core/routers/enterprises.py",
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "blocked_validation_only_no_material_change",
+                         "validation":  "python -m py_compile tmp_remote_mim/core/routers/enterprises.py passed, but no source change or packet synthesis occurred.",
+                         "blocker":  "TOD classified the implementation request into a validation-only/no-material-change path instead of producing a current-code bounded packet.",
+                         "credit_decision":  "independent_repeat_failed"
+                     },
+                     {
+                         "task_id":  "TSK-0088",
+                         "objective_id":  "OBJ-0147",
+                         "rung":  "recovery_to_current_source_inspection",
+                         "target_file":  "tmp_remote_mim/core/routers/enterprises.py",
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "completed_source_anchor_artifact",
+                         "anchor_artifact":  "runtime_remote_training/read_only_audit_artifacts/TOD_ENTERPRISES_GET_ENDPOINT_ANCHOR.latest.json",
+                         "validation":  "Anchor matched lines 44-64, exact_text was non-empty, and no source code changed.",
+                         "credit_decision":  "guided_recovery_inspection_pass"
+                     },
+                     {
+                         "task_id":  "TSK-0090",
+                         "objective_id":  "OBJ-0148",
+                         "rung":  "clean_no_snippet_packet_synthesis_boundary_test",
+                         "target_file":  "tmp_remote_mim/core/routers/enterprises.py",
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "completed_precise_blocker_artifact",
+                         "packet_artifact":  "runtime_remote_training/tod_independent_resolution_attempts/TOD_CURRENT_CODE_PACKET_SYNTHESIS_ENTERPRISES_V1.latest.json",
+                         "blocker":  "Packet candidate was not ready because TOD still could not synthesize exact current-code old_text/new_text from the inspected source anchor without a supplied snippet/body.",
+                         "validation_issue":  "The generic artifact validation passed because the artifact contained packet_candidate_ready, even though the value was false. Future validation must distinguish ready packets from blocker artifacts.",
+                         "credit_decision":  "independent_synthesis_not_demonstrated"
+                     },
+                     {
+                         "task_id":  "TSK-0091",
+                         "objective_id":  "OBJ-0148",
+                         "rung":  "current_source_anchor_observation_for_route_synthesis",
+                         "target_file":  "tmp_remote_mim/core/routers/observatory.py",
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "completed_source_anchor_artifact",
+                         "anchor_artifact":  "runtime_remote_training/read_only_audit_artifacts/TOD_ENTERPRISE_ROUTE_SYNTHESIS_FUNCTION_BOUNDARY_ANCHOR.latest.json",
+                         "validation":  "Artifact matched def _initiative_list_count at lines 1459-1465, exact_text was non-empty, no_code_changes=true.",
+                         "credit_decision":  "independent_inspection_pass_after_state_repair"
+                     },
+                     {
+                         "task_id":  "TSK-0092",
+                         "objective_id":  "OBJ-0148",
+                         "rung":  "route_shell_packet_synthesis_without_codex_snippet",
+                         "target_file":  "tmp_remote_mim/core/routers/observatory.py",
+                         "executed":  "attempted_with_skip_tail_profile",
+                         "result":  "completed_packet_candidate_artifact",
+                         "packet_artifact":  "runtime_remote_training/tod_independent_resolution_attempts/TOD_ENTERPRISE_ROUTE_SHELL_SYNTHESIS_PACKET.latest.json",
+                         "validation":  "packet_candidate_ready=true; old_text and new_text non-empty and different; new_text contains enterprise_setup_guide_shell; no source edit during synthesis.",
+                         "credit_decision":  "independent_new_text_synthesis_pass_for_route_shell_pattern"
+                     },
+                     {
+                         "task_id":  "TSK-0092-APPLY",
+                         "objective_id":  "OBJ-0148",
+                         "rung":  "tod_generated_packet_apply_and_validate",
+                         "target_file":  "tmp_remote_mim/core/routers/observatory.py",
+                         "executed":  "run-task using TOD-created packet fields after direct execute-chat-task stalled behind stale active lane",
+                         "result":  "code_changed_validation_passed",
+                         "validation":  "enterprise_setup_guide_shell and /observatory/enterprise/setup-guide are present; python -m py_compile tmp_remote_mim/core/routers/observatory.py exited 0.",
+                         "terminal_publication_issue":  "execute-chat-task direct apply stalled and shared TOD_EXECUTION_RESULT.latest.json remained stale TSK-0086; package/run eventually changed source but stdout/stderr stayed empty.",
+                         "credit_decision":  "meaningful_tod_implementation_pass_but_full_independent_resolution_still_not_retired"
+                     }
+                 ],
+    "verified_state":  {
+                           "tod_data_state_objective_status":  "open",
+                           "tod_data_state_task_status":  "blocked",
+                           "latest_shared_execution_result_belongs_to_task":  true,
+                           "latest_shared_execution_result_observed_task_id":  "TSK-0086",
+                           "latest_shared_execution_result_observed_generated_at":  "2026-07-18T19:28:20.5579687Z",
+                           "latest_shared_execution_result_status":  "completed",
+                           "latest_shared_execution_result_reason_code":  "",
+                           "target_file_validation_passed":  true,
+                           "target_file_payload_fields_present":  true,
+                           "fresh_enterprise_target_validation_passed":  true,
+                           "fresh_enterprise_admin_prompt_occurrences":  1,
+                           "fresh_route_shell_validation_passed":  true,
+                           "fresh_route_shell_occurrences":  1,
+                           "latest_route_shell_validation_command":  "python -m py_compile tmp_remote_mim/core/routers/observatory.py"
+                       },
+    "training_findings":  [
+                              "The Enterprise first-login setup product scope is captured and valid JSON.",
+                              "TOD can register the apprenticeship objective and task in local state when all required TOD.ps1 parameters are provided.",
+                              "TOD can package the task without the earlier target_file_exactly_one materialization blocker.",
+                              "TOD still does not safely complete default run-task for this Enterprise pattern materialization task class without the compact skip-tail profile.",
+                              "With -SkipNextTaskSelectionLoop and -SkipPostCompletionTail, TOD publishes a fresh terminal blocked result instead of hanging.",
+                              "TOD did produce a bounded packet after Codex repaired the packet-formation control plane.",
+                              "The TOD-authored packet produced a real code change in tmp_remote_mim/core/routers/project_portal.py: enterprise_role, enterprise_setup, and enterprise_launch_ready are now exposed in the account payload.",
+                              "The target file compiles with python -m py_compile.",
+                              "TOD still did not complete this as an independent resolution because Codex repaired the materializer and the implementation result publisher hung or was superseded.",
+                              "A validation-only rerun preserved evidence but was classified as blocked because no material diff occurred.",
+                              "On the fresh Enterprise observatory target, TOD produced a precise packet-formation blocker, then completed a source-anchor observation artifact.",
+                              "TOD then completed packet-body synthesis from the source-anchor artifact after the task was corrected to separate artifact target, source target, and artifact_write mode.",
+                              "TOD applied the synthesized packet through execute-chat-task and validated the file with python -m py_compile.",
+                              "The first synthesized insertion used a non-unique closing-section anchor and created a duplicate prompt; the cleanup task removed the duplicate and validation proved the prompt appears exactly once.",
+                              "This is guided capability improvement, not independent capability acquisition, because Codex coached the task-shape corrections and duplicate cleanup.",
+                              "A later no-coaching repeat attempt on tmp_remote_mim/core/routers/enterprises.py failed: TOD ran validation but did not produce a packet or material source change.",
+                              "TOD recovered one rung by capturing an exact source anchor for the Enterprise get endpoint, proving inspection still works after the failed no-op attempt.",
+                              "The current unresolved capability is independent new_text synthesis from inspected current source and product intent.",
+                              "A cleaner no-snippet packet synthesis test produced a precise blocker artifact instead of a ready packet, confirming that autonomous current-code packet body synthesis is not yet demonstrated.",
+                              "The packet artifact validator also needs a stricter ready-vs-blocked distinction so packet_candidate_ready=false cannot be treated as implementation-ready completion."
+                          ],
+    "next_required_training_objective":  {
+                                             "objective_id":  "TOD-NO-COACHING-FRESH-SLICE-SELECTION-AND-PACKET-APPLY-V1",
+                                             "goal":  "TOD independently selects a fresh harmless Enterprise slice, creates the source anchor, synthesizes a packet through an existing lane, applies it, validates it, and publishes terminal evidence without Codex shaping route/field intent.",
+                                             "acceptance":  [
+                                                                "TOD selects exactly one fresh harmless Enterprise target from current code.",
+                                                                "TOD names the user-visible behavior delta and why it is harmless.",
+                                                                "TOD captures a unique current source anchor.",
+                                                                "TOD synthesizes packet old_text/new_text without Codex snippet/body.",
+                                                                "TOD applies the packet through an execution path that returns terminal evidence for the same task ID.",
+                                                                "Validation proves compile success and content appears exactly once.",
+                                                                "Apprenticeship status advances to independent_demo_passed only if Codex did not provide target, route/field intent, old_text, or new_text."
+                                                            ]
+                                         },
+    "new_training_debt":  [
+                              {
+                                  "objective_id":  "TOD-EXECUTE-CHAT-TASK-TERMINAL-RESULT-PUBLISHING-V1",
+                                  "reason":  "A task can produce material code change and validation while the terminal result remains hung, blocked, or superseded by unrelated work."
+                              },
+                              {
+                                  "objective_id":  "TOD-VALIDATION-ONLY-SUCCESS-CLASSIFICATION-V1",
+                                  "reason":  "Validation-only tasks should be able to complete when intended evidence is present and no material diff is expected."
+                              },
+                              {
+                                  "objective_id":  "TOD-PACKET-TARGET-ARTIFACT-SEPARATION-V1",
+                                  "reason":  "Packet formation tasks must distinguish output artifact target, input evidence artifact, and source target so the materializer does not treat evidence inputs as competing target files."
+                              },
+                              {
+                                  "objective_id":  "TOD-ANCHOR-SPECIFICITY-VALIDATION-V1",
+                                  "reason":  "Packet synthesis must prove the insert or replace anchor is unique, or include validation that catches unintended duplicate insertions before completion."
+                              },
+                              {
+                                  "objective_id":  "TOD-CURRENT-CODE-PACKET-SYNTHESIS-WITHOUT-CODEX-SNIPPET-V1",
+                                  "reason":  "TOD can inspect source and apply a supplied packet, but it has not demonstrated independent synthesis of the bounded new_text body from current code and product intent."
+                              },
+                              {
+                                  "objective_id":  "TOD-PACKET-CANDIDATE-READY-VALIDATION-STRICTNESS-V1",
+                                  "reason":  "Packet artifact validation must distinguish packet_candidate_ready=true from packet_candidate_ready=false blocker artifacts."
+                              }
+                          ],
+    "current_credit_decision":  {
+                                    "validated_tod_edit":  true,
+                                    "meaningful_tod_implementation":  true,
+                                    "independent_tod_resolution":  false,
+                                    "narrow_capability_acquired":  "TOD can synthesize and apply a Python route-shell old_text/new_text packet from current source anchor plus route intent without Codex providing a snippet.",
+                                    "remaining_gap":  "TOD still needs a no-coaching fresh slice where it selects target, route/field intent, source anchor, packet synthesis path, apply path, validation, and terminal evidence without Codex task shaping."
+                                },
+    "enterprise_product_decision":  {
+                                        "owner_admin_dashboard_required":  true,
+                                        "general_user_observatory_required":  true,
+                                        "role_resolution_before_dashboard_required":  true,
+                                        "mim_proactive_setup_guidance_required":  true,
+                                        "administrator_invite_handoff_required":  true
+                                    },
+    "dave_needed":  false
+}
