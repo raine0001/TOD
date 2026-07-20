@@ -877,20 +877,23 @@ Use the fresh inquiry router discovery target and publish exact old_text/new_tex
     }
 
     It 'blocks packet formation as already applied before reporting a stale old_text anchor' {
+        $originalRoot = $script:LocalEngineRepoRoot
+        $tempRoot = Join-Path $repoRoot ('tod/out/tests/local-fallback-already-applied-' + [guid]::NewGuid().ToString('N'))
         $relativePath = 'runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_ALREADY_APPLIED_TEST.latest.json'
-        $target = Join-Path $repoRoot ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $target = Join-Path $tempRoot ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
         $originalContent = if (Test-Path -Path $target) { Get-Content -Path $target -Raw } else { $null }
-        $durabilityPath = Join-Path $repoRoot 'scripts/run_mim_durability_smoke_v2.py'
+        $durabilityPath = Join-Path $tempRoot 'scripts/run_mim_durability_smoke_v2.py'
         $durabilityOriginalContent = if (Test-Path -Path $durabilityPath) { Get-Content -Path $durabilityPath -Raw } else { $null }
         $discoveryRelativePath = 'runtime_remote_training/tod_independent_resolution_attempts/TOD_DIFFERENT_TARGET_DISCOVERY_DRILL.latest.json'
-        $discoveryTarget = Join-Path $repoRoot ($discoveryRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $discoveryTarget = Join-Path $tempRoot ($discoveryRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
         $discoveryOriginalContent = if (Test-Path -Path $discoveryTarget) { Get-Content -Path $discoveryTarget -Raw } else { $null }
-        $studioPath = Join-Path $repoRoot 'tmp_remote_mim/core/routers/studio.py'
+        $studioPath = Join-Path $tempRoot 'tmp_remote_mim/core/routers/studio.py'
         $studioOriginalContent = if (Test-Path -Path $studioPath) { Get-Content -Path $studioPath -Raw } else { $null }
-        $todPath = Join-Path $repoRoot 'scripts/TOD.ps1'
+        $todPath = Join-Path $tempRoot 'scripts/TOD.ps1'
         $todOriginalContent = if (Test-Path -Path $todPath) { Get-Content -Path $todPath -Raw } else { $null }
 
         try {
+            $script:LocalEngineRepoRoot = $tempRoot
             $discoveryArtifact = [ordered]@{
                 artifact_type = 'tod_different_target_discovery'
                 status = 'candidate_selected'
@@ -902,6 +905,9 @@ Use the fresh inquiry router discovery target and publish exact old_text/new_tex
             }
             New-Item -ItemType Directory -Path (Split-Path -Parent $discoveryTarget) -Force | Out-Null
             [System.IO.File]::WriteAllText($discoveryTarget, ($discoveryArtifact | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
+            New-Item -ItemType Directory -Path (Split-Path -Parent $studioPath) -Force | Out-Null
+            [System.IO.File]::WriteAllText($studioPath, "# TOD current-code packet materialization`n", (New-Object System.Text.UTF8Encoding($false)))
+            New-Item -ItemType Directory -Path (Split-Path -Parent $todPath) -Force | Out-Null
             if ($null -ne $todOriginalContent -and -not $todOriginalContent.Contains("'Prevention Lesson',")) {
                 [System.IO.File]::WriteAllText($todPath, ($todOriginalContent.TrimEnd() + "`n        'Prevention Lesson',`n"), (New-Object System.Text.UTF8Encoding($false)))
             }
@@ -950,6 +956,7 @@ Packet formation task for the next independent TOD resolution attempt.
             Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
         }
         finally {
+            $script:LocalEngineRepoRoot = $originalRoot
             if ([string]::IsNullOrWhiteSpace($originalContent)) {
                 if (Test-Path -Path $target) { Remove-Item -Path $target -Force }
             }
@@ -971,6 +978,7 @@ Packet formation task for the next independent TOD resolution attempt.
             if ($null -ne $todOriginalContent) {
                 [System.IO.File]::WriteAllText($todPath, $todOriginalContent, (New-Object System.Text.UTF8Encoding($false)))
             }
+            if (Test-Path -Path $tempRoot) { Remove-Item -Path $tempRoot -Recurse -Force }
         }
     }
 
@@ -1888,16 +1896,24 @@ Forbidden target paths for this packet: tmp_remote_mim/core/routers/gateway.py, 
     }
 
     It 'writes Studio mode-selection packet candidates without changing the target yet' {
+        $originalRoot = $script:LocalEngineRepoRoot
+        $tempRoot = Join-Path $repoRoot ('tod/out/tests/local-fallback-studio-mode-' + [guid]::NewGuid().ToString('N'))
         $relativePath = 'runtime_remote_training/tod_independent_resolution_attempts/TOD_STUDIO_MODE_SELECTION_BOUNDED_PACKET.latest.json'
-        $target = Join-Path $repoRoot ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $target = Join-Path $tempRoot ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
         $originalContent = if (Test-Path -Path $target) { Get-Content -Path $target -Raw } else { $null }
         $studioRelativePath = 'tmp_remote_mim/core/routers/studio.py'
-        $studioPath = Join-Path $repoRoot ($studioRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $studioPath = Join-Path $tempRoot ($studioRelativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
         $studioOriginalContent = if (Test-Path -Path $studioPath -PathType Leaf) { Get-Content -Path $studioPath -Raw } else { $null }
         $studioOldText = 'I recommend working on MIM conversation mode selection next.'
         $studioNewText = 'I recommend working on TOD self-authored bounded edit materialization next.'
 
         try {
+            $script:LocalEngineRepoRoot = $tempRoot
+            New-Item -ItemType Directory -Path (Split-Path -Parent $studioPath) -Force | Out-Null
+            if ($null -eq $studioOriginalContent) {
+                [System.IO.File]::WriteAllText($studioPath, ($studioOldText + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+                $studioOriginalContent = $studioOldText + "`n"
+            }
             if ($null -ne $studioOriginalContent -and -not $studioOriginalContent.Contains($studioOldText)) {
                 $seededStudioContent = if ($studioOriginalContent.Contains($studioNewText)) {
                     $studioOriginalContent.Replace($studioNewText, $studioOldText)
@@ -1945,6 +1961,7 @@ Required behavior: inspect the Studio mode-selection target and publish packet_c
             Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
         }
         finally {
+            $script:LocalEngineRepoRoot = $originalRoot
             if ([string]::IsNullOrWhiteSpace($originalContent)) {
                 if (Test-Path -Path $target) { Remove-Item -Path $target -Force }
             }
@@ -1954,6 +1971,7 @@ Required behavior: inspect the Studio mode-selection target and publish packet_c
             if ($null -ne $studioOriginalContent) {
                 [System.IO.File]::WriteAllText($studioPath, $studioOriginalContent, (New-Object System.Text.UTF8Encoding($false)))
             }
+            if (Test-Path -Path $tempRoot) { Remove-Item -Path $tempRoot -Recurse -Force }
         }
     }
 
@@ -2135,6 +2153,227 @@ Validation Pattern: NEW_SENTINEL
         [string]$result.blockers[0].missing_variable | Should Be 'allowed_path'
 
         Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+    }
+
+    It 'allows learned capability artifact writes inside the bounded training artifact root' {
+        $relativePath = 'runtime_remote_training/learned_capabilities/TOD_BOUNDED_PACKET_FIELD_PRESERVATION_TEST.latest.json'
+        $targetPath = Join-Path $repoRoot ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        if (Test-Path -Path $targetPath -PathType Leaf) {
+            Remove-Item -Path $targetPath -Force
+        }
+        $promptText = @"
+Target File: $relativePath
+Edit Mode: artifact_write
+New Text: {"capability_name":"Bounded Packet Field Preservation Test","validation":"safe-root write allowed"}
+Validation Command: if (-not (Select-String -Path $relativePath -Pattern 'Bounded Packet Field Preservation Test' -SimpleMatch -Quiet)) { throw 'learned capability test artifact missing' }
+"@
+        $promptPath = New-LocalFallbackPromptFile -Content $promptText
+        $context = New-LocalFallbackContext -TaskId 'TSK-LF-LEARNED-CAPABILITY' -ObjectiveId 'OBJ-LF' -Title 'Freeze learned capability' -Scope 'Write a learned capability artifact under the bounded training artifact root.' -PromptPath $promptPath -Metadata @{ task_category = 'artifact_write'; local_fallback_target_file = $relativePath }
+
+        $result = Invoke-LocalExecutionEngine -Context $context
+
+        [string]$result.status | Should Be 'completed'
+        (@($result.files_changed) -contains $relativePath) | Should Be $true
+        (Test-Path -Path $targetPath -PathType Leaf) | Should Be $true
+
+        Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+        if (Test-Path -Path $targetPath -PathType Leaf) {
+            Remove-Item -Path $targetPath -Force
+        }
+    }
+
+    It 'publishes regression snapshot counts and failure families from read-only audit input' {
+        $inputRel = ('tod/out/tests/regression-summary-{0}.json' -f [guid]::NewGuid().ToString('N'))
+        $outputRel = ('runtime_remote_training/read_only_audit_artifacts/TOD_REGRESSION_AUDIT_TEST_{0}.json' -f [guid]::NewGuid().ToString('N'))
+        $inputPath = Join-Path $repoRoot ($inputRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $outputPath = Join-Path $repoRoot ($outputRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $summary = [ordered]@{
+            generated_at = '2026-07-10T01:00:00Z'
+            passed_all = $false
+            passed = 410
+            failed = 3
+            total = 413
+            failed_tests = @(
+                [ordered]@{ describe = 'TOD local fallback executor'; name = 'first'; message = 'failed'; classification = 'deterministic' },
+                [ordered]@{ describe = 'TOD local fallback executor'; name = 'second'; message = 'failed'; classification = 'deterministic' },
+                [ordered]@{ describe = 'TOD self-driving next task selection'; name = 'third'; message = 'failed'; classification = 'deterministic' }
+            )
+        }
+        New-Item -ItemType Directory -Path (Split-Path -Parent $inputPath) -Force | Out-Null
+        [System.IO.File]::WriteAllText($inputPath, ($summary | ConvertTo-Json -Depth 6), (New-Object System.Text.UTF8Encoding($false)))
+
+        $promptText = @"
+Input: $inputRel
+Output artifact: $outputRel
+Audit Subject: TOD operations regression snapshot.
+Use the read-only audit artifact lane.
+No code changes.
+"@
+        $promptPath = New-LocalFallbackPromptFile -Content $promptText
+        $context = New-LocalFallbackContext -TaskId 'TSK-LF-REGRESSION-AUDIT' -ObjectiveId 'OBJ-LF' -Title 'Regression snapshot read-only audit artifact' -Scope $promptText -PromptPath $promptPath -Metadata @{ task_category = 'report_only' }
+
+        $result = Invoke-LocalExecutionEngine -Context $context
+        $artifact = Get-Content -Path $outputPath -Raw | ConvertFrom-Json
+
+        [string]$result.status | Should Be 'completed'
+        [string]$artifact.classification | Should Be 'regression_snapshot_review_required'
+        @($artifact.evidence_used[0].fields) -contains 'failed_tests' | Should Be $true
+        @($artifact.findings | Where-Object { [string]$_.finding -eq 'regression_snapshot_counts' -and [string]$_.evidence -match 'passed=410; failed=3; total=413' }).Count | Should Be 1
+        @($artifact.findings | Where-Object { [string]$_.finding -eq 'regression_failure_families' -and [string]$_.evidence -match 'TOD local fallback executor' }).Count | Should Be 1
+        @($artifact.blockers | Where-Object { [string]$_.reason_code -eq 'regression_failures' }).Count | Should Be 1
+        [bool]$artifact.no_code_changes | Should Be $true
+
+        Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+        if (Test-Path -Path $inputPath -PathType Leaf) {
+            Remove-Item -Path $inputPath -Force
+        }
+        if (Test-Path -Path $outputPath -PathType Leaf) {
+            Remove-Item -Path $outputPath -Force
+        }
+    }
+
+    It 'publishes semantic source audit fields from source-anchor artifacts' {
+        $inputOneRel = ('runtime_remote_training/read_only_audit_artifacts/TOD_TEST_SEMANTIC_ANCHOR_ONE_{0}.json' -f [guid]::NewGuid().ToString('N'))
+        $inputTwoRel = ('runtime_remote_training/read_only_audit_artifacts/TOD_TEST_SEMANTIC_ANCHOR_TWO_{0}.json' -f [guid]::NewGuid().ToString('N'))
+        $outputRel = ('runtime_remote_training/read_only_audit_artifacts/TOD_TEST_SEMANTIC_AUDIT_{0}.json' -f [guid]::NewGuid().ToString('N'))
+        $inputOnePath = Join-Path $repoRoot ($inputOneRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $inputTwoPath = Join-Path $repoRoot ($inputTwoRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $outputPath = Join-Path $repoRoot ($outputRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $anchorOne = [ordered]@{
+            artifact_type = 'tod_source_anchor_observation'
+            source_file = 'tmp_remote_mim/core/next_step_dialog_service.py'
+            anchor_pattern = 'def _derive_capability_model_status('
+            start_line = 1
+            end_line = 20
+            exact_text = @'
+def _derive_capability_model_status(*, item, metadata, shared_root):
+    return {
+        "artifact_type": "mim_capability_model_v1",
+        "capability_name": "requested capability",
+        "confidence": "medium",
+    }
+'@
+        }
+        $anchorTwo = [ordered]@{
+            artifact_type = 'tod_source_anchor_observation'
+            source_file = 'tmp_remote_mim/core/next_step_dialog_service.py'
+            anchor_pattern = 'def _collect_contract_output_fields('
+            start_line = 21
+            end_line = 80
+            exact_text = @'
+def _collect_contract_output_fields(*, item, metadata, required_fields, shared_root):
+    candidate_sources = _contract_candidate_sources(item=item, metadata=metadata, shared_root=shared_root)
+    for raw_field in required_fields:
+        field = str(raw_field or "").strip()
+        value = _first_present_source_value(candidate_sources, field)
+        if value is None:
+            missing_fields.append(field)
+
+def _contract_candidate_sources(*, item, metadata, shared_root):
+    capability_model_status = _derive_capability_model_status(item=item, metadata=metadata, shared_root=shared_root)
+    if capability_model_status:
+        candidate_sources.append(capability_model_status)
+'@
+        }
+        New-Item -ItemType Directory -Path (Split-Path -Parent $inputOnePath) -Force | Out-Null
+        [System.IO.File]::WriteAllText($inputOnePath, ($anchorOne | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
+        [System.IO.File]::WriteAllText($inputTwoPath, ($anchorTwo | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
+
+        $promptText = @"
+Semantic read-only audit-body synthesis from source-anchor evidence.
+Input: $inputOneRel
+Additional Evidence: $inputTwoRel
+Output: $outputRel
+
+Required output fields: observed_blocker, suspected_root_cause, evidence_checked, evidence_missing, why_forward_motion_is_blocked, smallest_diagnostic_step, confidence, no_phrase_patch_rule=true.
+"@
+        $promptPath = New-LocalFallbackPromptFile -Content $promptText
+        $context = New-LocalFallbackContext -TaskId 'TSK-LF-SEMANTIC-SOURCE-AUDIT' -ObjectiveId 'OBJ-LF' -Title 'Semantic source audit artifact' -Scope $promptText -PromptPath $promptPath -Metadata @{ task_category = 'inspection_only' }
+
+        $result = Invoke-LocalExecutionEngine -Context $context
+        $artifact = Get-Content -Path $outputPath -Raw | ConvertFrom-Json
+
+        [string]$result.status | Should Be 'completed'
+        [string]$artifact.artifact_type | Should Be 'tod_semantic_source_audit_artifact'
+        [string]$artifact.classification | Should Be 'semantic_audit_body_synthesis_from_source_anchors'
+        [string]$artifact.observed_blocker | Should Not BeNullOrEmpty
+        [string]$artifact.suspected_root_cause | Should Match 'contract collector'
+        @($artifact.evidence_checked).Count -ge 2 | Should Be $true
+        [string]$artifact.why_forward_motion_is_blocked | Should Not BeNullOrEmpty
+        [string]$artifact.smallest_diagnostic_step | Should Not BeNullOrEmpty
+        [bool]$artifact.no_phrase_patch_rule | Should Be $true
+        [bool]$artifact.no_code_changes | Should Be $true
+
+        Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+        foreach ($path in @($inputOnePath, $inputTwoPath, $outputPath)) {
+            if (Test-Path -Path $path -PathType Leaf) {
+                Remove-Item -Path $path -Force
+            }
+        }
+    }
+
+    It 'publishes SolAir research evidence demonstration from source evidence without new text' {
+        $sourceRel = 'runtime/shared/SOLAIR_POWER_CURVE_OBSERVATION.latest.json'
+        $outputRel = ('runtime/shared/TOD_TEST_INDEPENDENT_UNSEEN_DEMO_{0}.json' -f [guid]::NewGuid().ToString('N'))
+        $sourcePath = Join-Path $repoRoot ($sourceRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $outputPath = Join-Path $repoRoot ($outputRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        if (-not (Test-Path -Path $sourcePath -PathType Leaf)) {
+            Set-ItResult -Skipped -Because 'SolAir power curve source artifact is not present in this checkout.'
+            return
+        }
+
+        $promptText = @"
+OBJECTIVE: TOD-INDEPENDENT-UNSEEN-APPRENTICESHIP-DEMONSTRATION-TEST
+
+Goal: TOD independently demonstrates borrowed artifact-body synthesis on a fresh analogous case without Codex-provided final artifact body text.
+
+Fresh case: SolAir power-output question. Read-only source evidence is the SolAir power curve observation artifact in the runtime shared folder.
+
+Source evidence: $sourceRel
+Target File: $outputRel
+Edit Mode: artifact_write
+Task Category: validation_only
+
+Required proof fields:
+- objective_id
+- selected_unseen_case
+- source_evidence_discovered
+- diagnosis
+- authority_boundary
+- answer_model
+- validation_plan
+- validation_result
+- what_TOD_did_without_Codex
+- what_TOD_still_cannot_do
+- registry_update_recommendation
+
+Rules:
+- No source code edits.
+- No hardcoded answer snippets from Codex.
+- No final completion claim unless the JSON artifact exists and all required fields are populated from source evidence.
+"@
+        $promptPath = New-LocalFallbackPromptFile -Content $promptText
+        $context = New-LocalFallbackContext -TaskId 'TSK-LF-SOLAIR-UNSEEN-DEMO' -ObjectiveId 'OBJ-LF' -Title 'SolAir unseen apprenticeship demonstration' -Scope $promptText -PromptPath $promptPath -Metadata @{ task_category = 'validation_only'; local_fallback_target_file = $outputRel }
+
+        $result = Invoke-LocalExecutionEngine -Context $context
+        $artifact = Get-Content -Path $outputPath -Raw | ConvertFrom-Json
+
+        [string]$result.status | Should Be 'completed'
+        [string]$artifact.artifact_type | Should Be 'tod_independent_unseen_apprenticeship_demonstration'
+        [string]$artifact.selected_unseen_case | Should Match 'SolAir'
+        @($artifact.source_evidence_discovered).Count | Should Be 1
+        [int]$artifact.source_evidence_discovered[0].physics_limit_rows | Should BeGreaterThan 0
+        [int]$artifact.source_evidence_discovered[0].chart_rows | Should BeGreaterThan 0
+        [double]$artifact.answer_model.ten_mph.physics_after_generator_efficiency_watts | Should Be 52.7
+        [double]$artifact.answer_model.ten_mph.chart_one_unit_watts | Should Be 175
+        [bool]$artifact.answer_model.ten_mph.source_conflict | Should Be $true
+        [string]$artifact.authority_boundary.answer_rule | Should Match 'Report both lanes'
+        [bool]$artifact.no_code_changes | Should Be $true
+
+        Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+        if (Test-Path -Path $outputPath -PathType Leaf) {
+            Remove-Item -Path $outputPath -Force
+        }
     }
 
     It 'completes validation_only tasks without changing the target file' {

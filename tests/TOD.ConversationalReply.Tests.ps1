@@ -4,6 +4,62 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $scriptUnderTest = Join-Path $repoRoot 'scripts/Invoke-TODConversationalReply.ps1'
 
+function Write-TestTextWithRetry {
+    param(
+        [Parameter(Mandatory = $true)][string]$PathValue,
+        [Parameter(Mandatory = $true)][string]$Content,
+        [Parameter(Mandatory = $true)][System.Text.Encoding]$Encoding,
+        [int]$MaxAttempts = 10,
+        [int]$DelayMilliseconds = 100
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            [System.IO.File]::WriteAllText($PathValue, $Content, $Encoding)
+            return
+        }
+        catch [System.IO.IOException] {
+            if ($attempt -ge $MaxAttempts) {
+                throw
+            }
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+        catch [System.UnauthorizedAccessException] {
+            if ($attempt -ge $MaxAttempts) {
+                throw
+            }
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+}
+
+function Remove-TestPathWithRetry {
+    param(
+        [Parameter(Mandatory = $true)][string]$PathValue,
+        [int]$MaxAttempts = 10,
+        [int]$DelayMilliseconds = 100
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            Remove-Item -Path $PathValue -Force
+            return
+        }
+        catch [System.IO.IOException] {
+            if ($attempt -ge $MaxAttempts) {
+                throw
+            }
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+        catch [System.UnauthorizedAccessException] {
+            if ($attempt -ge $MaxAttempts) {
+                throw
+            }
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+}
+
 function Write-JsonNoBom {
     param(
         [Parameter(Mandatory = $true)][string]$PathValue,
@@ -17,7 +73,7 @@ function Write-JsonNoBom {
     }
 
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($PathValue, ($Payload | ConvertTo-Json -Depth $Depth), $utf8NoBom)
+    Write-TestTextWithRetry -PathValue $PathValue -Content ($Payload | ConvertTo-Json -Depth $Depth) -Encoding $utf8NoBom
 }
 
 function New-ConversationalReplyFixture {
@@ -159,10 +215,10 @@ function Restore-ChatDispatchArtifacts {
                 New-Item -ItemType Directory -Path $directory -Force | Out-Null
             }
             $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-            [System.IO.File]::WriteAllText([string]$record.path, [string]$record.content, $utf8NoBom)
+            Write-TestTextWithRetry -PathValue ([string]$record.path) -Content ([string]$record.content) -Encoding $utf8NoBom
         }
         elseif (Test-Path -Path ([string]$record.path)) {
-            Remove-Item -Path ([string]$record.path) -Force
+            Remove-TestPathWithRetry -PathValue ([string]$record.path)
         }
     }
 }
@@ -492,6 +548,386 @@ current_owner:
             [string]$result.reply_text | Should Not Match 'Durable Memory:'
             [string]$result.reply_text | Should Not Match 'Refresh Governance Snapshot'
             [string]$result.reply_text | Should Not Match 'objective 170'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'copies explicit evidence report fields without stale status fallback' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        try {
+            $query = @'
+Evidence-only micro-rung. No task creation. No dispatch.
+
+Use only the evidence:
+quality_result=fail
+target_file=tmp_remote_mim/core/routers/observatory.py
+target_function=_document_viewer_panel
+what_failed=source payload was classified as status_request
+what_not_to_claim=do not claim source edit, packet readiness, or viewer completion
+
+Answer only these fields:
+pass_or_fail:
+evidence_used:
+target_file:
+target_function:
+what_failed:
+what_not_to_claim:
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -CommitmentPath $fixture.CommitmentPath -ReasoningPath $fixture.ReasoningPath -ActionAuditPath $fixture.ActionAuditPath -ProviderConfigPath $fixture.VoiceConfigPath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $reply = [string]$result.reply_text | ConvertFrom-Json
+
+            [string]$result.request_kind | Should Be 'evidence_report'
+            [string]$reply.pass_or_fail | Should Be 'fail'
+            [string]$reply.target_file | Should Be 'tmp_remote_mim/core/routers/observatory.py'
+            [string]$reply.target_function | Should Be '_document_viewer_panel'
+            [string]$reply.what_failed | Should Match 'classified as status_request'
+            [string]$reply.what_not_to_claim | Should Match 'viewer completion'
+            [string]$result.reply_text | Should Not Match 'Current Work:'
+            [string]$result.reply_text | Should Not Match 'objective 170'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'extracts explicit evidence bullets and required JSON fields only reports' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        try {
+            $query = @'
+TOD evidence-only closure drill.
+Use only the explicit evidence below. Ignore stale objective context.
+
+Explicit evidence:
+- pass_or_fail: partial_pass_with_deployment_blocker
+- what_was_done: TOD added retry-after-review-rejection behavior for local GPU forum image candidates.
+- remaining_blockers: deployment reload evidence is not proven
+- what_not_to_claim: do not claim public deployment
+
+Required JSON fields only:
+pass_or_fail
+what_was_done
+evidence_used
+what_not_to_claim
+remaining_blockers
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -CommitmentPath $fixture.CommitmentPath -ReasoningPath $fixture.ReasoningPath -ActionAuditPath $fixture.ActionAuditPath -ProviderConfigPath $fixture.VoiceConfigPath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $reply = [string]$result.reply_text | ConvertFrom-Json
+
+            [string]$result.request_kind | Should Be 'evidence_report'
+            [string]$reply.pass_or_fail | Should Be 'partial_pass_with_deployment_blocker'
+            [string]$reply.what_was_done | Should Match 'retry-after-review-rejection'
+            @($reply.evidence_used).Count | Should BeGreaterThan 0
+            [string]$reply.what_not_to_claim | Should Match 'public deployment'
+            [string]$reply.remaining_blockers | Should Match 'deployment reload'
+            [string]$result.reply_text | Should Not Match 'Current Work:'
+            [string]$result.reply_text | Should Not Match 'objective 170'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'derives evidence report closure fields from status and product change' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        try {
+            $query = @'
+TOD evidence-only closure drill.
+Use only the explicit evidence below. Ignore stale objective context.
+
+Explicit evidence:
+- status: frozen_with_deployment_blocker
+- product_change: E:/comm_app/routes/routes.py retries with the review-rejection helper after local GPU review rejection.
+- remaining_blockers: public deployment reload evidence is not proven
+- what_not_to_claim: do not claim public deployment
+
+Required JSON fields only:
+pass_or_fail
+what_was_done
+evidence_used
+what_not_to_claim
+remaining_blockers
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -CommitmentPath $fixture.CommitmentPath -ReasoningPath $fixture.ReasoningPath -ActionAuditPath $fixture.ActionAuditPath -ProviderConfigPath $fixture.VoiceConfigPath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $reply = [string]$result.reply_text | ConvertFrom-Json
+
+            [string]$result.request_kind | Should Be 'evidence_report'
+            [string]$reply.pass_or_fail | Should Be 'partial_pass_with_deployment_blocker'
+            [string]$reply.what_was_done | Should Match 'review-rejection helper'
+            @($reply.evidence_used).Count | Should BeGreaterThan 0
+            [string]$reply.what_not_to_claim | Should Match 'public deployment'
+            [string]$reply.remaining_blockers | Should Match 'deployment reload'
+            [string]$result.reply_text | Should Not Match 'Current Work:'
+            [string]$result.reply_text | Should Not Match 'objective 170'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'honors exact JSON reply drills without stale current-work scaffold' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        try {
+            Write-JsonNoBom -PathValue $fixture.BuildStatePath -Payload ([pscustomobject]@{
+                objective_id = '170'
+                status = 'active'
+                task = 'stale-governance-task'
+            })
+            Write-JsonNoBom -PathValue $fixture.CommitmentPath -Payload ([pscustomobject]@{
+                objective_id = '170'
+                state = 'abandoned'
+                action_label = 'Refresh Governance Snapshot'
+                summary = 'Operator abandoned the commitment for Refresh Governance Snapshot.'
+            })
+
+            $expected = '{"drill":"json_only_no_leak","status":"copied","tod_understands":"current drill outranks stale status"}'
+            $query = "TOD JSON-only no-leak drill.`nReturn exactly this JSON and nothing else: $expected"
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -CommitmentPath $fixture.CommitmentPath -ReasoningPath $fixture.ReasoningPath -ActionAuditPath $fixture.ActionAuditPath -ProviderConfigPath $fixture.VoiceConfigPath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+
+            [string]$result.request_kind | Should Be 'exact_json_reply'
+            [string]$result.intent.action | Should Be 'exact JSON reply'
+            [string]$result.reply_text | Should Be $expected
+            [string]$result.reply_text | Should Not Match 'Current Work'
+            [string]$result.reply_text | Should Not Match 'Refresh Governance Snapshot'
+            [string]$result.reply_text | Should Not Match 'stale-governance-task'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'routes evidence-only arbitrary JSON field drills away from implementation scaffold' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        try {
+            $query = @'
+Evidence-only micro-rung. Use only the explicit evidence below. Ignore stale objective context.
+
+Explicit evidence:
+- objective_id: TOD-CROSS-SURFACE-CONVERSATION-PURPOSE-ROUTING-BACKFILL-001
+- observed_failure: Direct Studio API recognized a reflective oral-exam prompt, but real operator gateway surfaces returned an operational action contract.
+- bypass_found: Gateway routes used deterministic active-project/context handling before the shared conversation purpose decision.
+- formatter_leak_found: The final reply used operational contract fields instead of a reflective oral-exam answer.
+- smallest_repair_model: Put shared conversation purpose recognition in front of operational fallback on every operator surface.
+
+Required JSON fields only:
+objective_id
+observed_failure
+bypass_found
+formatter_leak_found
+smallest_repair_model
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -CommitmentPath $fixture.CommitmentPath -ReasoningPath $fixture.ReasoningPath -ActionAuditPath $fixture.ActionAuditPath -ProviderConfigPath $fixture.VoiceConfigPath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $reply = [string]$result.reply_text | ConvertFrom-Json
+
+            [string]$result.request_kind | Should Be 'evidence_report'
+            [string]$reply.objective_id | Should Be 'TOD-CROSS-SURFACE-CONVERSATION-PURPOSE-ROUTING-BACKFILL-001'
+            [string]$reply.observed_failure | Should Match 'reflective oral-exam'
+            [string]$reply.bypass_found | Should Match 'deterministic active-project'
+            [string]$reply.formatter_leak_found | Should Match 'operational contract'
+            [string]$reply.smallest_repair_model | Should Match 'shared conversation purpose'
+            [string]$result.reply_text | Should Not Match 'Current Work'
+            [string]$result.reply_text | Should Not Match 'Bounded Steps'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'derives apprenticeship artifact fields from source excerpt headings' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        try {
+            $query = @'
+Evidence-only source excerpt synthesis drill. Use only the source excerpts below. Ignore stale objective context.
+
+Explicit evidence:
+Source: docs/training/TOD_EMERGENCY_REPAIR_APPRENTICESHIP_V1.md
+Failure: the direct Studio API recognized a reflective oral-exam prompt, but the real operator surfaces routed through gateway paths that returned an operational action contract.
+Pass criteria: TOD explains why /studio/api/mim/chat passing was not enough; TOD explains why /gateway/intake/text and /gateway/intake had to be tested; TOD names the deterministic active-project/context shortcut as a possible bypass class; TOD names the operational formatter contract as a separate failure class.
+Smallest repair: make all operator surfaces use the same purpose decision before operational fallback and validate with live route probes.
+
+Required JSON fields only:
+observed_failure
+operator_surface_map
+bypass_found
+formatter_leak_found
+smallest_repair_model
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -CommitmentPath $fixture.CommitmentPath -ReasoningPath $fixture.ReasoningPath -ActionAuditPath $fixture.ActionAuditPath -ProviderConfigPath $fixture.VoiceConfigPath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $reply = [string]$result.reply_text | ConvertFrom-Json
+
+            [string]$result.request_kind | Should Be 'evidence_report'
+            [string]$reply.observed_failure | Should Match 'reflective oral-exam'
+            [string]$reply.operator_surface_map | Should Match '/studio/api/mim/chat'
+            [string]$reply.operator_surface_map | Should Match '/gateway/intake/text'
+            [string]$reply.bypass_found | Should Match 'shortcut'
+            [string]$reply.formatter_leak_found | Should Match 'operational formatter contract'
+            [string]$reply.smallest_repair_model | Should Match 'same purpose decision'
+            [string]$result.reply_text | Should Not Match 'Current Work'
+            [string]$result.reply_text | Should Not Match 'Bounded Steps'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'does not stop evidence extraction at field-like evidence keys' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        try {
+            $query = @'
+Evidence-only apprenticeship report drill. Use only this evidence:
+objective_id: TOD-CROSS-SURFACE-CONVERSATION-PURPOSE-ROUTING-BACKFILL-001
+learned_capability_fields: Capability Freeze V2 fields include trigger, reality, observation, root cause, validation, prevention rule, and reuse trigger.
+recurrence_detection: If one live surface passes while another returns a different response frame, classify cross-surface routing split before closure.
+active_continuation: Continue to Objective 002 after Objective 001 artifact validation.
+
+Required JSON fields only:
+objective_id
+learned_capability_fields
+recurrence_detection
+active_continuation
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -CommitmentPath $fixture.CommitmentPath -ReasoningPath $fixture.ReasoningPath -ActionAuditPath $fixture.ActionAuditPath -ProviderConfigPath $fixture.VoiceConfigPath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $reply = [string]$result.reply_text | ConvertFrom-Json
+
+            [string]$result.request_kind | Should Be 'evidence_report'
+            [string]$reply.objective_id | Should Be 'TOD-CROSS-SURFACE-CONVERSATION-PURPOSE-ROUTING-BACKFILL-001'
+            [string]$reply.learned_capability_fields | Should Match 'Capability Freeze V2'
+            [string]$reply.recurrence_detection | Should Match 'cross-surface routing split'
+            [string]$reply.active_continuation | Should Match 'Objective 002'
+            [string]$result.reply_text | Should Not Match 'not specified by evidence'
+            [string]$result.reply_text | Should Not Match 'none specified by evidence'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'maps numeric-answer backfill evidence headings into required report fields' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        try {
+            $query = @'
+Evidence-only numeric-answer backfill drill. Use only this evidence:
+Failure observation: The user asked how much it costs to build one SolAir, but MIM returned a generic manufacturing-discovery answer.
+Intent: one-unit build cost, not general manufacturing readiness.
+Source artifact: SOLAIR_PARTS_BOM_OBSERVATION.latest.json and solair_cost\ALL NEW BILL OF MATERIAL.xlsx.
+Artifact fields: row_number, part_no, quantity, description, supplier, supplier_part_no, cost, assembly_path.
+Calculation model: parse money and quantity fields, exclude duplicate packaged subtotal rows, calculate extended and unextended sums.
+Boundary: historical BOM material estimate, not current production quote.
+Source link strategy: cite and link the workbook used for the calculation.
+Fallback failure: generic manufacturing-discovery fallback must not win over specific cost evidence.
+Validation proof: local tests passed, remote tests passed, service restarted, live HTTP probe returned corrected answer.
+Reusable rule: numeric research questions activate source selection, field extraction, deterministic calculation, uncertainty boundary, source citation, and fallback rejection.
+Handling model: inspect source evidence first, calculate from fields, label boundaries, test live route, and freeze the rule.
+
+Required JSON fields only:
+observed_bad_answer
+user_intent
+source_artifact_selected
+artifact_fields_used
+calculation_plan
+uncertainty_boundary
+source_link_strategy
+generic_fallback_that_must_not_win
+validation_commands
+live_probe_plan
+reusable_rule
+how_TOD_would_handle_next_time_without_Codex
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -CommitmentPath $fixture.CommitmentPath -ReasoningPath $fixture.ReasoningPath -ActionAuditPath $fixture.ActionAuditPath -ProviderConfigPath $fixture.VoiceConfigPath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+            $reply = [string]$result.reply_text | ConvertFrom-Json
+
+            [string]$result.request_kind | Should Be 'evidence_report'
+            [string]$reply.observed_bad_answer | Should Match 'generic manufacturing-discovery'
+            [string]$reply.user_intent | Should Match 'one-unit build cost'
+            [string]$reply.source_artifact_selected | Should Match 'SOLAIR_PARTS_BOM_OBSERVATION'
+            [string]$reply.artifact_fields_used | Should Match 'supplier_part_no'
+            [string]$reply.calculation_plan | Should Match 'extended and unextended sums'
+            [string]$reply.uncertainty_boundary | Should Match 'not current production quote'
+            [string]$reply.source_link_strategy | Should Match 'workbook'
+            [string]$reply.generic_fallback_that_must_not_win | Should Match 'specific cost evidence'
+            [string]$reply.validation_commands | Should Match 'live HTTP probe'
+            [string]$reply.live_probe_plan | Should Match 'live HTTP probe'
+            [string]$reply.reusable_rule | Should Match 'numeric research questions'
+            [string]$reply.how_TOD_would_handle_next_time_without_Codex | Should Match 'inspect source evidence first'
+            [string]$result.reply_text | Should Not Match 'not specified by evidence'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
+    It 'does not classify embedded source payload labels as operator intent' {
+        (Test-Path -Path $scriptUnderTest) | Should Be $true
+
+        $fixture = New-ConversationalReplyFixture
+        try {
+            $query = @'
+Return JSON object only. This is a source-anchor packet draft. No source alteration. No task record. No dispatch.
+
+Facts:
+target_file=scripts/Invoke-TODConversationalReply.ps1
+target_function=Get-RequestKind
+old_text=
+    f"<p><strong>Status:</strong> {_e(document.get('body_status'))}</p>"
+    "conversation payload sample"
+safe_direction=shield structured payload text before intent classification
+
+Fields:
+target_file
+target_function
+old_text
+safe_direction
+'@
+
+            $result = (& $scriptUnderTest -Query $query -CurrentBuildStatePath $fixture.BuildStatePath -ObjectivesPath $fixture.ObjectivesPath -MaintenancePath $fixture.MaintenancePath -WatchdogPath $fixture.WatchdogPath -CommitmentPath $fixture.CommitmentPath -ReasoningPath $fixture.ReasoningPath -ActionAuditPath $fixture.ActionAuditPath -ProviderConfigPath $fixture.VoiceConfigPath -SkipModel -AsJson | Out-String | ConvertFrom-Json)
+
+            [string]$result.request_kind | Should Be 'general_request'
+            [string]$result.intent.intent | Should Be 'CONVERSATION'
+            [bool]$result.command_dispatch.attempted | Should Be $false
+            [bool]$result.system_dispatch.attempted | Should Be $false
         }
         finally {
             if ($fixture -and (Test-Path -Path $fixture.Base)) {

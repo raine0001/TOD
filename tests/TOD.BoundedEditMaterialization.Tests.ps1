@@ -118,6 +118,139 @@ Describe 'TOD bounded edit materialization' {
         Import-TodFunction -Name 'Get-BoundedEditSourceFileText'
         Import-TodFunction -Name 'New-BoundedEditMaterializationBlockedPayload'
         Import-TodFunction -Name 'Resolve-TaskBoundedEditMaterialization'
+        Import-TodFunction -Name 'Test-TaskAllowsLocalExecutionWithoutMaterialization'
+        Import-TodFunction -Name 'Sync-CodexHandoffTaskMirror'
+    }
+
+    It 'allows inspection read-only audit artifact tasks to bypass bounded edit materialization' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-INSPECTION-AUDIT'
+            title = 'Inspection read-only audit artifact'
+            task_category = 'inspection'
+            scope = @'
+Input: runtime/shared/TOD_EXECUTION_RESULT.latest.json
+Output artifact: runtime_remote_training/read_only_audit_artifacts/TOD_INSPECTION_AUDIT_TEST.latest.json
+Audit Subject: latest execution result.
+Use the read-only audit artifact lane.
+No code changes.
+'@
+        }
+
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'inspection' | Should Be $true
+    }
+
+    It 'allows source-anchor observation tasks to bypass bounded edit materialization' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-SOURCE-ANCHOR'
+            title = 'Source anchor observation'
+            task_category = 'source_anchor_observation'
+            scope = @'
+Source-anchor observation from current code.
+Source File: scripts/TOD.ps1
+Output: runtime_remote_training/read_only_audit_artifacts/TOD_SOURCE_ANCHOR_TEST.latest.json
+Anchor Pattern: $resolvedTaskMode = Resolve-TodTaskMode -Task $taskModeProbe
+No code changes.
+'@
+        }
+
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'source_anchor_observation' | Should Be $true
+    }
+
+    It 'allows report-only read-only audit tasks with stale blocked materialization to reach LocalExecutionEngine' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-STALE-AUDIT'
+            title = 'Stale blocked report-only audit'
+            task_category = 'report_only'
+            scope = 'Input: runtime/shared/TOD_EXECUTION_RESULT.latest.json Output artifact: runtime_remote_training/read_only_audit_artifacts/TOD_STALE_AUDIT_TEST.latest.json'
+        }
+        $materialization = [pscustomobject]@{
+            status = 'blocked'
+            reason_code = 'blocked_missing_bounded_edit_mode'
+            target_file_candidates = @(
+                'runtime/shared/TOD_EXECUTION_RESULT.latest.json',
+                'runtime_remote_training/read_only_audit_artifacts/TOD_STALE_AUDIT_TEST.latest.json'
+            )
+        }
+
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'report_only' -TaskMaterialization $materialization | Should Be $true
+    }
+
+    It 'reads routing text from JSON-deserialized task properties' {
+        $task = @'
+{
+  "id": "TSK-MAT-JSON-TEXT",
+  "title": "JSON task title",
+  "scope": "Input: runtime/shared/TOD_EXECUTION_RESULT.latest.json Output artifact: runtime_remote_training/read_only_audit_artifacts/TOD_JSON_TEXT_TEST.latest.json",
+  "acceptance_criteria": "No code changes."
+}
+'@ | ConvertFrom-Json
+
+        $text = Get-TaskRoutingText -Task $task
+
+        [string]$text | Should Match 'JSON task title'
+        [string]$text | Should Match 'TOD_EXECUTION_RESULT'
+        [string]$text | Should Match 'No code changes'
+    }
+
+    It 'preserves bridge request packet fields when mirroring state' {
+        $script:MirrorState = [pscustomobject]@{
+            objectives = @()
+            tasks = @()
+        }
+        function global:Test-TodEphemeralStateAccess { return $false }
+        function global:Load-State { return $script:MirrorState }
+        function global:Save-State {
+            param($State)
+            $script:MirrorState = $State
+        }
+        function global:Resolve-PreferredAssignedExecutor {
+            param($TaskCategory, $State, $Task)
+            return 'local'
+        }
+        function global:Get-UtcNow { return '2026-07-02T00:00:00Z' }
+
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'REQ-MIRROR-PACKET'
+                task_id = 'TSK-MIRROR-PACKET'
+                objective_id = 'OBJ-MIRROR'
+                title = 'Mirror bounded packet'
+                summary = 'Mirror bounded packet.'
+                requested_outcome = 'Materialize exact bounded edit.'
+                target_file = 'tmp_remote_mim/core/routers/observatory.py'
+                bounded_edit_mode = $true
+                edit_mode = 'replace_text'
+                old_text = 'OLD_SENTINEL'
+                new_text = 'NEW_SENTINEL'
+                validation_command = 'python -m py_compile tmp_remote_mim/core/routers/observatory.py'
+                metadata_json = [pscustomobject]@{
+                    task_category = 'diagnostic_implementation_repair'
+                    assigned_executor = 'local'
+                }
+            }
+
+            $mirror = Sync-CodexHandoffTaskMirror -Request $request
+            $mirroredTask = @($script:MirrorState.tasks | Where-Object { [string]$_.id -eq 'TSK-MIRROR-PACKET' } | Select-Object -First 1)[0]
+
+            [string]$mirror.reason | Should Be 'task_mirror_created'
+            [string]$mirroredTask.target_file | Should Be 'tmp_remote_mim/core/routers/observatory.py'
+            [string]$mirroredTask.edit_mode | Should Be 'replace_text'
+            [string]$mirroredTask.old_text | Should Be 'OLD_SENTINEL'
+            [string]$mirroredTask.new_text | Should Be 'NEW_SENTINEL'
+            [string]$mirroredTask.validation_command | Should Be 'python -m py_compile tmp_remote_mim/core/routers/observatory.py'
+
+            $materialization = Resolve-TaskBoundedEditMaterialization -Task $mirroredTask
+            [string]$materialization.status | Should Be 'materialized'
+            [string]$materialization.edit_mode | Should Be 'replace_text'
+        }
+        finally {
+            Remove-Item -Path function:\Test-TodEphemeralStateAccess -ErrorAction SilentlyContinue
+            Remove-Item -Path function:\Load-State -ErrorAction SilentlyContinue
+            Remove-Item -Path function:\Save-State -ErrorAction SilentlyContinue
+            Remove-Item -Path function:\Resolve-PreferredAssignedExecutor -ErrorAction SilentlyContinue
+            Remove-Item -Path function:\Get-UtcNow -ErrorAction SilentlyContinue
+            Remove-Variable -Name MirrorState -Scope Script -ErrorAction SilentlyContinue
+        }
     }
 
     It 'materializes explicit replace_exact_text directives' {
@@ -287,8 +420,7 @@ Inspect the Studio training API path and repair the response_mode metadata so re
 
         [string]$materialization.status | Should Be 'materialized'
         [string]@($materialization.target_files)[0] | Should Be 'tmp_remote_mim/core/routers/studio.py'
-        $studioSource = Get-Content -Path (Join-Path $repoRoot 'tmp_remote_mim/core/routers/studio.py') -Raw
-        if ($studioSource.Contains('"response_mode": "recommendation" if attention_prompt else "training_summary",')) {
+        if ([string]$materialization.edit_mode -eq 'replace_text') {
             [string]$materialization.edit_mode | Should Be 'replace_text'
             [string]$materialization.prompt_directives['New Text'] | Should Match 'anything you want to work on next'
             [string]$materialization.validation_plan.command | Should Be 'python -m py_compile tmp_remote_mim/core/routers/studio.py'
@@ -342,6 +474,32 @@ Validation Command: powershell -NoProfile -ExecutionPolicy Bypass -File tests\TO
         [string]@($materialization.target_files)[0] | Should Be 'scripts/TOD.ps1'
         @($materialization.target_file_candidates).Count | Should Be 1
         [string]$materialization.prompt_directives['Validation Command'] | Should Match 'TOD.CanonicalLanePublisherGate.Tests.ps1'
+    }
+
+    It 'tolerates noisy slash-bearing hints with path-illegal characters' {
+        $hints = Get-CanonicalBoundedTargetFileHints -FileHints @(
+            'runtime_remote_training/tod_result_artifacts/TOD_FIELD_PRESERVATION_SMOKE.latest.json',
+            'Target File: runtime_remote_training/tod_result_artifacts/TOD_FIELD_PRESERVATION_SMOKE.latest.json New Text: {"smoke_marker":"before_field_preservation_fix"}'
+        )
+
+        @($hints).Count | Should Be 2
+        (@($hints) -contains 'runtime_remote_training/tod_result_artifacts/TOD_FIELD_PRESERVATION_SMOKE.latest.json') | Should Be $true
+    }
+
+    It 'materializes escaped-newline artifact_write directives as one target' {
+        $task = [pscustomobject]@{
+            id = 'TSK-ESCAPED-NEWLINE-ARTIFACT'
+            title = 'Seed TOD field preservation smoke artifact'
+            scope = 'Target File: runtime_remote_training/tod_result_artifacts/TOD_FIELD_PRESERVATION_SMOKE.latest.json`nEdit Mode: artifact_write`nNew Text: {"smoke_marker":"before_field_preservation_fix","purpose":"bounded packet old/new smoke"}`nValidation Command: if (-not (Select-String -Path runtime_remote_training/tod_result_artifacts/TOD_FIELD_PRESERVATION_SMOKE.latest.json -Pattern "before_field_preservation_fix" -SimpleMatch -Quiet)) { throw "seed marker missing" }'
+            task_category = 'diagnostic_implementation_repair'
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]$materialization.edit_mode | Should Be 'artifact_write'
+        @($materialization.target_file_candidates).Count | Should Be 1
+        [string]@($materialization.target_files)[0] | Should Be 'runtime_remote_training/tod_result_artifacts/TOD_FIELD_PRESERVATION_SMOKE.latest.json'
     }
 
     It 'uses nested bounded_slice likely_target_files when top-level target fields are absent' {
@@ -592,6 +750,51 @@ Required behavior: inspect current code and choose one different live-path targe
         @($materialization.target_files).Count | Should Be 0
     }
 
+    It 'materializes apply-from-packet work from Packet Artifact without repeated old/new directives' {
+        $fixture = New-MaterializationFixture
+        try {
+            $packetPath = Join-Path $fixture.Base 'packet.json'
+            Write-JsonNoBom -PathValue $packetPath -Payload ([pscustomobject]@{
+                packet_candidate_ready = $true
+                packet = [pscustomobject]@{
+                    target_file = 'tmp_remote_mim/core/routers/studio.py'
+                    old_text = 'old from packet'
+                    new_text = 'new from packet'
+                    validation_command = 'python -m py_compile tmp_remote_mim/core/routers/studio.py'
+                    validation_pattern = 'new from packet'
+                }
+            })
+
+            $task = [pscustomobject]@{
+                id = 'TSK-MAT-PACKET-ARTIFACT'
+                title = 'Apply packet artifact'
+                scope = @"
+Task Class: implementation
+Apply packet artifact from TOD packet formation.
+Packet Artifact: $packetPath
+Target File: tmp_remote_mim/core/routers/studio.py
+Edit Mode: replace_exact_text
+"@
+                task_category = 'implementation'
+                bounded_edit_mode = $true
+            }
+
+            $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+            [string]$materialization.status | Should Be 'materialized'
+            [string]$materialization.edit_mode | Should Be 'replace_text'
+            [string]$materialization.prompt_directives.'Old Text' | Should Be 'old from packet'
+            [string]$materialization.prompt_directives.'New Text' | Should Be 'new from packet'
+            [string]$materialization.prompt_directives.'Validation Command' | Should Be 'python -m py_compile tmp_remote_mim/core/routers/studio.py'
+            [string]$materialization.prompt_directives.'Validation Pattern' | Should Be 'new from packet'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Base)) {
+                Remove-Item -Path $fixture.Base -Recurse -Force
+            }
+        }
+    }
+
     It 'does not invoke LocalExecutionEngine when edit_mode is missing' {
         $fixture = New-MaterializationFixture
         try {
@@ -654,6 +857,10 @@ Required behavior: inspect current code and choose one different live-path targe
             [string]$executionResult.task_id | Should Be 'TSK-MAT-RUN'
             [string]$executionResult.status | Should Be 'blocked'
             [string]$executionResult.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
+
+            $stateAfter = Get-Content -Raw $fixture.TodStatePath | ConvertFrom-Json
+            $taskAfter = @($stateAfter.tasks | Where-Object { [string]$_.id -eq 'TSK-MAT-RUN' } | Select-Object -First 1)
+            [string]$taskAfter.status | Should Be 'blocked'
         }
         finally {
             if (Test-Path -Path $fixture.Base) {

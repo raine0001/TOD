@@ -108,10 +108,77 @@ function ConvertFrom-JsonBestEffort {
     }
 }
 
+function Get-ExactJsonReplyContract {
+    param([Parameter(Mandatory = $true)][string]$QueryText)
+
+    if ($QueryText -notmatch '(?is)\breturn\s+exactly\s+this\s+json\s+and\s+nothing\s+else\s*:') {
+        return ''
+    }
+
+    $start = $QueryText.IndexOf('{')
+    if ($start -lt 0) {
+        return ''
+    }
+
+    $depth = 0
+    $inString = $false
+    $escape = $false
+    for ($i = $start; $i -lt $QueryText.Length; $i++) {
+        $ch = $QueryText[$i]
+        if ($escape) {
+            $escape = $false
+            continue
+        }
+        if ($ch -eq '\') {
+            if ($inString) {
+                $escape = $true
+            }
+            continue
+        }
+        if ($ch -eq '"') {
+            $inString = -not $inString
+            continue
+        }
+        if (-not $inString) {
+            if ($ch -eq '{') {
+                $depth++
+            }
+            elseif ($ch -eq '}') {
+                $depth--
+                if ($depth -eq 0) {
+                    $candidate = $QueryText.Substring($start, $i - $start + 1)
+                    try {
+                        $candidate | ConvertFrom-Json | Out-Null
+                        return $candidate
+                    }
+                    catch {
+                        return ''
+                    }
+                }
+            }
+        }
+    }
+
+    return ''
+}
+
+function Get-IntentClassificationText {
+    param([Parameter(Mandatory = $true)][string]$QueryText)
+
+    $text = [string]$QueryText
+    $payloadStart = [regex]::Match($text, '(?im)^\s*(?:facts|source(?:\s+text|\s+block)?|use only (?:this|the) evidence(?:\s+below)?|old_text|new_text)\s*[:=]')
+    if ($payloadStart.Success) {
+        return ($text.Substring(0, $payloadStart.Index) + "`n[structured payload omitted]")
+    }
+    return $text
+}
+
 function Get-RequestKind {
     param([Parameter(Mandatory = $true)][string]$QueryText)
 
     $normalized = $QueryText.ToLowerInvariant()
+    $classificationNormalized = (Get-IntentClassificationText -QueryText $QueryText).ToLowerInvariant()
+    $hasExactJsonReplyContract = -not [string]::IsNullOrWhiteSpace((Get-ExactJsonReplyContract -QueryText $QueryText))
     $hasEvidenceOnlyContract = (
         $normalized -match 'evidence[- ]only' -or
         $normalized -match 'use only (this|the) evidence' -or
@@ -124,18 +191,32 @@ function Get-RequestKind {
         $normalized -match 'what_not_to_claim' -or
         $normalized -match 'pass_or_fail' -or
         $normalized -match 'what_was_applied' -or
-        $normalized -match 'current_owner'
+        $normalized -match 'current_owner' -or
+        $normalized -match 'required json (keys exactly|fields only)' -or
+        $normalized -match 'answer only these fields' -or
+        $normalized -match '(?m)^\s*fields\s*:'
     )
+    $hasReasoningDrillBoundary = (
+        ($normalized -match 'reasoning drill' -or $normalized -match 'claim to classify' -or $normalized -match 'classify what can be safely said') -and
+        ($normalized -match 'evidence available' -or $normalized -match 'supplied evidence' -or $normalized -match 'source evidence') -and
+        ($normalized -match 'no code changes' -or $normalized -match 'no task creation' -or $normalized -match 'no status report')
+    )
+    if ($hasExactJsonReplyContract) {
+        return 'exact_json_reply'
+    }
     if ($hasEvidenceOnlyContract -and $hasReportFields) {
         return 'evidence_report'
     }
-    if ($normalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:') {
+    if ($hasReasoningDrillBoundary) {
+        return 'research_boundary_request'
+    }
+    if ($classificationNormalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic|goal|task|tasks|stop condition|acceptance|acceptance criteria)\s*:') {
         return 'implementation_request'
     }
-    if ($normalized -match 'implement|implementation|build|wire|setup|set up|create|add|change|make|begin|start|ship|develop|conversation|communicat') {
+    if ($classificationNormalized -match 'implement|implementation|build|wire|setup|set up|create|add|change|make|begin|start|ship|develop|conversation|communicat') {
         return 'implementation_request'
     }
-    if ($normalized -match 'status|summary|what are you|current work|progress') {
+    if ($classificationNormalized -match 'status|summary|what are you|current work|progress') {
         return 'status_request'
     }
     return 'general_request'
@@ -144,7 +225,7 @@ function Get-RequestKind {
 function Get-EvidenceReportLines {
     param([Parameter(Mandatory = $true)][string]$QueryText)
 
-    $match = [regex]::Match($QueryText, '(?is)use only (?:this|the) evidence:\s*(?<evidence>.*?)(?:required json keys exactly:|answer only these fields:|return exactly:|$)')
+    $match = [regex]::Match($QueryText, '(?ims)(?:use only (?:this|the) evidence|explicit evidence|supplied evidence|evidence)\s*:\s*(?<evidence>.*?)(?:^\s*(?:required json (?:keys exactly|fields only)|answer only these fields|return exactly|fields\s*:)\s*:?\s*|\z)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
     if (-not $match.Success) {
         return @()
     }
@@ -159,7 +240,8 @@ function ConvertTo-EvidenceMap {
 
     $map = [ordered]@{}
     foreach ($line in @($EvidenceLines)) {
-        $parts = [string]$line -split '=', 2
+        $cleanLine = ([string]$line).Trim() -replace '^\s*[-*]\s*', ''
+        $parts = $cleanLine -split '\s*(?:=|:)\s*', 2
         if (@($parts).Count -eq 2) {
             $key = $parts[0].Trim()
             if (-not [string]::IsNullOrWhiteSpace($key)) {
@@ -168,6 +250,179 @@ function ConvertTo-EvidenceMap {
         }
     }
     return $map
+}
+
+function Resolve-EvidencePassOrFail {
+    param([Parameter(Mandatory = $true)]$EvidenceMap)
+
+    if ($EvidenceMap.Contains('pass_or_fail')) {
+        return [string]$EvidenceMap['pass_or_fail']
+    }
+    if ($EvidenceMap.Contains('quality_result')) {
+        return [string]$EvidenceMap['quality_result']
+    }
+    if ($EvidenceMap.Contains('validation_result')) {
+        return [string]$EvidenceMap['validation_result']
+    }
+    if ($EvidenceMap.Contains('status')) {
+        $status = [string]$EvidenceMap['status']
+        if ($status -match '(?i)deployment[_ -]?blocker') {
+            return 'partial_pass_with_deployment_blocker'
+        }
+        if ($status -match '(?i)blocker') {
+            return 'partial_pass_with_blocker'
+        }
+        if ($status -match '(?i)completed|succeeded|passed|verified|frozen') {
+            return 'pass'
+        }
+        if ($status -match '(?i)failed|rejected|error') {
+            return 'fail'
+        }
+        return $status
+    }
+
+    return 'not specified by evidence'
+}
+
+function Resolve-EvidenceWorkSummary {
+    param([Parameter(Mandatory = $true)]$EvidenceMap)
+
+    foreach ($key in @('what_was_done', 'product_change', 'implementation_summary', 'change')) {
+        if ($EvidenceMap.Contains($key)) {
+            return [string]$EvidenceMap[$key]
+        }
+    }
+
+    return 'not specified by evidence'
+}
+
+function Get-EvidenceMapValue {
+    param(
+        [Parameter(Mandatory = $true)]$EvidenceMap,
+        [Parameter(Mandatory = $true)][string[]]$Names
+    )
+
+    foreach ($name in $Names) {
+        if ($EvidenceMap.Contains($name)) {
+            return [string]$EvidenceMap[$name]
+        }
+    }
+
+    foreach ($entry in $EvidenceMap.GetEnumerator()) {
+        foreach ($name in $Names) {
+            if ([string]::Equals([string]$entry.Key, $name, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return [string]$entry.Value
+            }
+        }
+    }
+
+    return ''
+}
+
+function Resolve-EvidenceReportFieldValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$Field,
+        [Parameter(Mandatory = $true)]$EvidenceMap,
+        [Parameter(Mandatory = $true)][string[]]$EvidenceLines
+    )
+
+    $exact = Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @($Field)
+    if (-not [string]::IsNullOrWhiteSpace($exact)) {
+        return $exact
+    }
+
+    switch ($Field) {
+        'observed_failure' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('failure', 'observed failure', 'observed_failure', 'observed blocker', 'observed_blocker'))
+        }
+        'smallest_repair_model' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('smallest repair', 'smallest_repair', 'smallest repair model', 'smallest_repair_model', 'repair model'))
+        }
+        'operator_surface_map' {
+            $routes = New-Object System.Collections.Generic.List[string]
+            foreach ($line in @($EvidenceLines)) {
+                foreach ($match in [regex]::Matches([string]$line, '/[A-Za-z0-9_./{}-]+')) {
+                    $route = [string]$match.Value
+                    if (-not $routes.Contains($route)) {
+                        [void]$routes.Add($route)
+                    }
+                }
+            }
+            if ($routes.Count -gt 0) {
+                return (@($routes) -join '; ')
+            }
+            return ''
+        }
+        'bypass_found' {
+            foreach ($line in @($EvidenceLines)) {
+                if ([string]$line -match '(?i)bypass|shortcut|fallback|before the shared conversation purpose|before operational fallback') {
+                    return ([string]$line).Trim()
+                }
+            }
+            return ''
+        }
+        'formatter_leak_found' {
+            foreach ($line in @($EvidenceLines)) {
+                if ([string]$line -match '(?i)formatter|operational contract|contract fields|instead of a reflective') {
+                    return ([string]$line).Trim()
+                }
+            }
+            return ''
+        }
+        'observed_bad_answer' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('observed_bad_answer', 'observed bad answer', 'failure observation', 'failure', 'bad answer'))
+        }
+        'user_intent' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('user_intent', 'user intent', 'intent', 'actual intent'))
+        }
+        'source_artifact_selected' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('source_artifact_selected', 'source artifact selected', 'source artifact', 'artifact selected', 'selected artifact'))
+        }
+        'artifact_fields_used' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('artifact_fields_used', 'artifact fields used', 'artifact fields', 'fields used', 'source fields'))
+        }
+        'calculation_plan' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('calculation_plan', 'calculation plan', 'calculation model', 'calculation'))
+        }
+        'uncertainty_boundary' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('uncertainty_boundary', 'uncertainty boundary', 'boundary', 'answer boundary'))
+        }
+        'source_link_strategy' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('source_link_strategy', 'source link strategy', 'source link', 'citation strategy'))
+        }
+        'generic_fallback_that_must_not_win' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('generic_fallback_that_must_not_win', 'generic fallback that must not win', 'fallback failure', 'generic fallback', 'fallback'))
+        }
+        'validation_commands' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('validation_commands', 'validation commands', 'validation proof', 'validation'))
+        }
+        'live_probe_plan' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('live_probe_plan', 'live probe plan', 'live probe', 'validation proof'))
+        }
+        'reusable_rule' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('reusable_rule', 'reusable rule', 'general rule learned', 'prevention rule'))
+        }
+        'how_TOD_would_handle_next_time_without_Codex' {
+            return (Get-EvidenceMapValue -EvidenceMap $EvidenceMap -Names @('how_TOD_would_handle_next_time_without_Codex', 'how tod would handle next time without codex', 'handling model', 'recurrence handling'))
+        }
+        default {
+            return ''
+        }
+    }
+}
+
+function Get-EvidenceFieldOrNotSpecified {
+    param(
+        [Parameter(Mandatory = $true)][string]$Field,
+        [Parameter(Mandatory = $true)]$EvidenceMap,
+        [Parameter(Mandatory = $true)][string[]]$EvidenceLines
+    )
+
+    $value = Resolve-EvidenceReportFieldValue -Field $Field -EvidenceMap $EvidenceMap -EvidenceLines $EvidenceLines
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return 'not specified by evidence'
+    }
+    return $value
 }
 
 function Get-RequestedEvidenceReportFields {
@@ -182,10 +437,10 @@ function Get-RequestedEvidenceReportFields {
     }
 
     if ($fields.Count -eq 0) {
-        $fieldSectionMatch = [regex]::Match($QueryText, '(?is)(?:required json keys exactly:|answer only these fields:|return exactly:)\s*(?<fields>.*)$')
+        $fieldSectionMatch = [regex]::Match($QueryText, '(?is)(?:required json (?:keys exactly|fields only):|answer only these fields:|return exactly:|fields:)\s*(?<fields>.*)$')
         if ($fieldSectionMatch.Success) {
             $fieldSection = [string]$fieldSectionMatch.Groups['fields'].Value
-            foreach ($match in [regex]::Matches($fieldSection, '(?<field>[A-Za-z_][A-Za-z0-9_]*)\s*:')) {
+            foreach ($match in [regex]::Matches($fieldSection, '(?m)^\s*(?<field>[A-Za-z_][A-Za-z0-9_]*)\s*:?\s*$')) {
                 $field = [string]$match.Groups['field'].Value
                 if (-not $fields.Contains($field)) {
                     [void]$fields.Add($field)
@@ -230,11 +485,22 @@ function New-EvidenceReportReply {
                 $payload[$field] = @($evidenceLines)
             }
             'what_not_to_claim' {
-                $notPerformed = @($evidenceMap.GetEnumerator() | Where-Object {
-                    ([string]$_.Key -match '(?i)^not_(performed|validated|executed|done)$') -or
-                    ([string]$_.Value -match '(?i)\bnot performed\b|\bnot done\b|\bnot executed\b|\bnot validated\b')
-                } | ForEach-Object { ('{0}={1}' -f [string]$_.Key, [string]$_.Value) })
-                $payload[$field] = if (@($notPerformed).Count -gt 0) { @($notPerformed) } else { @('nothing beyond supplied evidence') }
+                if ($evidenceMap.Contains('what_not_to_claim')) {
+                    $payload[$field] = [string]$evidenceMap['what_not_to_claim']
+                }
+                else {
+                    $notPerformed = @($evidenceMap.GetEnumerator() | Where-Object {
+                        ([string]$_.Key -match '(?i)^not_(performed|validated|executed|done)$') -or
+                        ([string]$_.Value -match '(?i)\bnot performed\b|\bnot done\b|\bnot executed\b|\bnot validated\b')
+                    } | ForEach-Object { ('{0}={1}' -f [string]$_.Key, [string]$_.Value) })
+                    $payload[$field] = if (@($notPerformed).Count -gt 0) { @($notPerformed) } else { @('nothing beyond supplied evidence') }
+                }
+            }
+            'pass_or_fail' {
+                $payload[$field] = Resolve-EvidencePassOrFail -EvidenceMap $evidenceMap
+            }
+            'what_was_done' {
+                $payload[$field] = Resolve-EvidenceWorkSummary -EvidenceMap $evidenceMap
             }
             'current_owner' {
                 if ($evidenceMap.Contains('current_owner')) {
@@ -248,7 +514,8 @@ function New-EvidenceReportReply {
                 }
             }
             'active_continuation' {
-                $payload[$field] = if ($evidenceMap.Contains('active_continuation')) { [string]$evidenceMap['active_continuation'] } else { 'none specified by evidence' }
+                $continuation = Get-EvidenceMapValue -EvidenceMap $evidenceMap -Names @('active_continuation', 'active continuation')
+                $payload[$field] = if (-not [string]::IsNullOrWhiteSpace($continuation)) { $continuation } else { 'none specified by evidence' }
             }
             'whether_mim_is_involved' {
                 if ($evidenceMap.Contains('mim_authority')) {
@@ -262,12 +529,61 @@ function New-EvidenceReportReply {
                 }
             }
             default {
-                $payload[$field] = if ($evidenceMap.Contains($field)) { [string]$evidenceMap[$field] } else { 'not specified by evidence' }
+                $payload[$field] = Get-EvidenceFieldOrNotSpecified -Field $field -EvidenceMap $evidenceMap -EvidenceLines $evidenceLines
             }
         }
     }
 
     return ($payload | ConvertTo-Json -Depth 8 -Compress)
+}
+
+function New-ResearchBoundaryReply {
+    param([Parameter(Mandatory = $true)][string]$QueryText)
+
+    $evidence = ''
+    $claim = ''
+    $missingEvidence = ''
+
+    $evidenceMatch = [regex]::Match($QueryText, '(?is)evidence available:\s*(?<value>.*?)(?:\n\s*\n\s*claim to classify:|$)')
+    if ($evidenceMatch.Success) {
+        $evidence = [string]$evidenceMatch.Groups['value'].Value
+    }
+
+    $claimMatch = [regex]::Match($QueryText, '(?is)claim to classify:\s*(?<value>.*?)(?:\n\s*\n\s*classify|$)')
+    if ($claimMatch.Success) {
+        $claim = [string]$claimMatch.Groups['value'].Value
+    }
+
+    $missingMatch = [regex]::Match($evidence, '(?is)\bno\s+(?<value>.*?)\s+(?:is|are)\s+available')
+    if ($missingMatch.Success) {
+        $missingEvidence = [string]$missingMatch.Groups['value'].Value
+    }
+
+    $cleanEvidence = (($evidence -replace '\s+', ' ').Trim())
+    $cleanClaim = (($claim -replace '\s+', ' ').Trim())
+    $cleanMissing = (($missingEvidence -replace '\s+', ' ').Trim())
+
+    if ([string]::IsNullOrWhiteSpace($cleanEvidence)) {
+        $cleanEvidence = 'no explicit evidence section was supplied'
+    }
+    if ([string]::IsNullOrWhiteSpace($cleanClaim)) {
+        $cleanClaim = 'no explicit claim was supplied'
+    }
+    if ([string]::IsNullOrWhiteSpace($cleanMissing)) {
+        $cleanMissing = 'the evidence required to promote the claim is not fully specified'
+    }
+
+    return @"
+Classification: not_yet_claimable.
+
+Claim reviewed: $cleanClaim
+
+What can be safely said: the supplied evidence supports only the observed source facts and a provisional review path. Evidence: $cleanEvidence
+
+What must not be claimed: do not treat the claim as final where the supplied evidence says the required support is missing. Missing evidence includes: $cleanMissing.
+
+Evidence required to promote: source-body review, authoritative version selection, drawing/spec review where relevant, supplier or cost records where relevant, validation records, and accepted evidence promotion with source links.
+"@.Trim()
 }
 
 function Get-IntentTarget {
@@ -301,6 +617,10 @@ function Get-IntentRoute {
     if ([string]::Equals($requestKind, 'evidence_report', [System.StringComparison]::OrdinalIgnoreCase)) {
         $intent = 'CONVERSATION'
         $action = 'evidence-only report'
+    }
+    elseif ([string]::Equals($requestKind, 'exact_json_reply', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $intent = 'CONVERSATION'
+        $action = 'exact JSON reply'
     }
     elseif ($normalized -match '(?m)^\s*(objective|admin action|repair|force|diagnostic)\s*:') {
         $intent = 'COMMAND'
@@ -744,6 +1064,13 @@ function Invoke-IntentCommandDispatch {
             $decisionText = [string](Get-PropertyValue -InputObject $runTaskPayload -PropertyName 'decision' -Default '')
             $result.execution_status = if ([string]::Equals($decisionText, 'pass', [System.StringComparison]::OrdinalIgnoreCase)) { 'completed' } elseif ([string]::IsNullOrWhiteSpace($decisionText)) { '' } else { $decisionText }
         }
+        $runTaskReasonCode = [string](Get-PropertyValue -InputObject $runTaskPayload -PropertyName 'reason_code' -Default '')
+        if (
+            [string]::Equals($result.execution_status, 'blocked', [System.StringComparison]::OrdinalIgnoreCase) -and
+            [string]::Equals($runTaskReasonCode, 'blocked_missing_bounded_edit_mode', [System.StringComparison]::OrdinalIgnoreCase)
+        ) {
+            $result.execution_status = 'queued'
+        }
         $result.executed = $result.created -and (-not [string]::Equals($result.execution_status, 'queued', [System.StringComparison]::OrdinalIgnoreCase))
         $result.task_id = $taskId
         $result.title = $title
@@ -762,8 +1089,29 @@ function Invoke-IntentCommandDispatch {
         $result.payload = $parsed
         if ($isBlockedStateBypassDirective -and $result.payload -and $result.payload.PSObject.Properties['activity_event_types']) {
             $existingEventTypes = @($result.payload.activity_event_types | ForEach-Object { [string]$_ })
-            $result.payload.activity_event_types = @('blocked_state_bypass_applied', 'fresh_repair_task_created', 'repair_task_materialization_started', 'stale_blocker_ignored_for_new_objective') + @($existingEventTypes)
+            $result.payload.activity_event_types = @('task_created_from_chat', 'blocked_state_bypass_applied', 'fresh_repair_task_created', 'repair_task_materialization_started', 'stale_blocker_ignored_for_new_objective') + @($existingEventTypes)
             Add-Member -InputObject $result.payload -NotePropertyName 'reason_codes' -NotePropertyValue @('blocked_state_bypass_applied', 'fresh_objective_materialized_from_blocked_state') -Force
+            if (
+                $result.payload.PSObject.Properties['selected_task'] -and
+                $result.payload.selected_task -and
+                [string]::IsNullOrWhiteSpace([string]$result.payload.selected_task.task_id) -and
+                -not [string]::IsNullOrWhiteSpace($taskId)
+            ) {
+                $result.payload.selected_task.task_id = $taskId
+                $result.payload.selected_task.objective_id = [string]$result.objective_id
+                $result.payload.selected_task.reason_code = 'fresh_objective_materialized_from_blocked_state'
+            }
+            if (
+                $result.payload.PSObject.Properties['claimed_task'] -and
+                $result.payload.claimed_task -and
+                [string]::IsNullOrWhiteSpace([string]$result.payload.claimed_task.task_id) -and
+                -not [string]::IsNullOrWhiteSpace($taskId)
+            ) {
+                $result.payload.claimed_task.task_id = $taskId
+                $result.payload.claimed_task.objective_id = [string]$result.objective_id
+                $result.payload.claimed_task.assigned_executor = $assignedExecutor
+                $result.payload.claimed_task.reason_code = 'fresh_objective_materialized_from_blocked_state'
+            }
         }
         $result.detail = if ($result.created) {
             if ([string]::Equals($result.execution_status, 'queued', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($result.execution_status, 'running', [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -1575,11 +1923,23 @@ elseif ([string]::Equals([string]$intentRoute.intent, 'SYSTEM', [System.StringCo
     $systemDispatch = Invoke-IntentSystemDispatch -IntentRoute $intentRoute -ResolvedObjectiveId $resolvedObjectiveId -QueryText $Query
 }
 
-if ([string]::Equals($requestKind, 'evidence_report', [System.StringComparison]::OrdinalIgnoreCase)) {
+if ([string]::Equals($requestKind, 'exact_json_reply', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $replyText = Get-ExactJsonReplyContract -QueryText $Query
+    $providerStatus.succeeded = -not [string]::IsNullOrWhiteSpace($replyText)
+    $providerStatus.source = 'exact_json_reply_contract'
+    $providerStatus.detail = 'Exact JSON reply contract returned the supplied validated JSON body without model or status wrapping.'
+}
+elseif ([string]::Equals($requestKind, 'evidence_report', [System.StringComparison]::OrdinalIgnoreCase)) {
     $replyText = New-EvidenceReportReply -QueryText $Query
     $providerStatus.succeeded = $true
     $providerStatus.source = 'evidence_report_formatter'
     $providerStatus.detail = 'Evidence-only report generated from explicit operator evidence fields.'
+}
+elseif ([string]::Equals($requestKind, 'research_boundary_request', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $replyText = New-ResearchBoundaryReply -QueryText $Query
+    $providerStatus.succeeded = $true
+    $providerStatus.source = 'research_boundary_formatter'
+    $providerStatus.detail = 'Research evidence-boundary reply generated from the supplied evidence and claim sections.'
 }
 elseif ($SkipModel) {
     [void]$limitations.Add('Local conversation provider was skipped intentionally for this run.')
